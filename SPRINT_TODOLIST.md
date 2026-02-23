@@ -13,35 +13,35 @@
 **Goal**：開發環境可一鍵啟動，Kaggle 資料可用
 
 ### 0.1 開發環境一鍵啟動
-- ⬜ Docker Compose 建置（PostgreSQL, Redis, Qdrant）
-- ⬜ `infra/docker-compose.yml` 設定所有服務
-- ⬜ `infra/docker-compose.dev.yml` 開發覆蓋設定
-- ⬜ `make dev-up` / `make dev-down` 指令可用
-- ⬜ 驗收：所有服務 health check 通過
+- ✅ Docker Compose 建置（PostgreSQL, Redis, Qdrant）
+- ✅ `infra/docker-compose.yml` 設定所有服務
+- ✅ `infra/docker-compose.dev.yml` 開發覆蓋設定
+- ✅ `make dev-up` / `make dev-down` 指令可用
+- ✅ 驗收：所有服務 health check 通過
 
 ### 0.2 專案骨架建立
-- ⬜ `apps/backend/pyproject.toml`（FastAPI + pytest-bdd + LangGraph 依賴）
-- ⬜ `apps/backend/src/` DDD 4-Layer 目錄結構（domain/application/infrastructure/interfaces）
-- ⬜ `apps/backend/tests/` 測試目錄結構（features/ + unit/ + integration/）
-- ⬜ `apps/backend/tests/conftest.py` 基礎 fixture
-- ⬜ 後端 health check endpoint：`GET /api/v1/health` 可通
-- ⬜ `apps/frontend/` Next.js 15 App Router 初始化
-- ⬜ `apps/frontend/vitest.config.ts` + `playwright.config.ts` 測試設定
-- ⬜ `apps/frontend/src/test/setup.ts` + `test-utils.tsx`
-- ⬜ 前端 health check：`http://localhost:3000` 可通
-- ⬜ `Makefile` 統一入口指令（dev-up/down, test, lint, seed-data）
-- ⬜ 驗收：`make test` 可執行（即使 0 測試）
+- ✅ `apps/backend/pyproject.toml`（FastAPI + pytest-bdd + LangGraph 依賴）
+- ✅ `apps/backend/src/` DDD 4-Layer 目錄結構（domain/application/infrastructure/interfaces）
+- ✅ `apps/backend/tests/` 測試目錄結構（features/ + unit/ + integration/）
+- ✅ `apps/backend/tests/conftest.py` 基礎 fixture
+- ✅ 後端 health check endpoint：`GET /api/v1/health` 可通
+- ✅ `apps/frontend/` Next.js 15 App Router 初始化
+- ✅ `apps/frontend/vitest.config.ts` + `playwright.config.ts` 測試設定
+- ✅ `apps/frontend/src/test/setup.ts` + `test-utils.tsx`
+- ✅ 前端 health check：`http://localhost:3000` 可通
+- ✅ `Makefile` 統一入口指令（dev-up/down, test, lint, seed-data）
+- ✅ 驗收：`make test` 可執行（即使 0 測試）
 
 ### 0.3 Kaggle 測試資料
 - ⬜ 下載 Brazilian E-Commerce (Olist) 資料集
-- ⬜ `data/raw/` 存放原始資料
-- ⬜ ETL 腳本：`data/seeds/` 種子資料產生
-- ⬜ `make seed-data` 灌入模擬資料
-- ⬜ 驗收：PostgreSQL 中有訂單/商品/客戶資料
+- ✅ `data/raw/` 存放原始資料
+- ✅ ETL 腳本：`data/seeds/` 種子資料產生
+- ✅ `make seed-data` 灌入模擬資料
+- ✅ 驗收：PostgreSQL 中有訂單/商品/客戶資料
 
 ### 0.4 CI Pipeline
-- ⬜ `.github/workflows/ci.yml`（lint + test + build）
-- ⬜ PR 自動觸發 CI
+- ✅ `.github/workflows/ci.yml`（lint + test + build）
+- ✅ PR 自動觸發 CI
 - ⬜ 驗收：PR 建立時自動執行 pipeline
 
 ---
@@ -301,7 +301,7 @@
 
 | Sprint | 狀態 | 完成率 | 備註 |
 |--------|------|--------|------|
-| S0 基礎建設 | ⬜ 待辦 | 0% | |
+| S0 基礎建設 | 🔄 進行中 | 95% | 待 Kaggle 下載 + CI 驗收 |
 | S1 租戶+知識 | ⬜ 待辦 | 0% | blocked by S0 |
 | S2 文件+向量化 | ⬜ 待辦 | 0% | blocked by S1 |
 | S3 RAG 查詢 | ⬜ 待辦 | 0% | blocked by S2 |

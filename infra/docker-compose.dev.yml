@@ -1,0 +1,13 @@
+services:
+  db:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+
+  redis:
+    command: redis-server --save "" --appendonly no
+
+  qdrant:
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334

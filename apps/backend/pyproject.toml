@@ -1,0 +1,78 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentic-rag-backend"
+version = "0.1.0"
+description = "Agentic RAG Customer Service — Backend (FastAPI + DDD)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]",
+    "uvicorn[standard]",
+    "pydantic-settings",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg",
+    "redis",
+    "qdrant-client",
+    "dependency-injector",
+    "langgraph",
+    "langchain-core",
+    "httpx",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-bdd>=8.1",
+    "pytest-asyncio",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+testpaths = ["tests"]
+python_files = "test_*.py"
+pythonpath = "."
+addopts = "-v"
+bdd_features_base_dir = "tests/features/"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "C", "B"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+parallel = true
+omit = [
+    "tests/*",
+    "src/infrastructure/db/seed.py",
+]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+precision = 2
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+]
