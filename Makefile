@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-ps install test test-backend test-frontend lint lint-backend lint-frontend seed-data
+.PHONY: dev-up dev-down dev-ps install test test-backend test-frontend lint lint-backend lint-frontend seed-data seed-knowledge
 
 COMPOSE_FILE := infra/docker-compose.yml
 COMPOSE_DEV  := infra/docker-compose.dev.yml
@@ -44,3 +44,6 @@ lint-frontend:
 # ─── Data ────────────────────────────────────────────────────
 seed-data:
 	cd apps/backend && uv run python -m src.infrastructure.db.seed
+
+seed-knowledge:
+	cd apps/backend && uv run python ../../data/seeds/seed_knowledge.py
