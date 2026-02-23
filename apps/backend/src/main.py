@@ -20,6 +20,7 @@ from src.interfaces.api.auth_router import router as auth_router
 from src.interfaces.api.document_router import router as document_router
 from src.interfaces.api.health_router import router as health_router
 from src.interfaces.api.knowledge_base_router import router as kb_router
+from src.interfaces.api.line_webhook_router import router as line_webhook_router
 from src.interfaces.api.rag_router import router as rag_router
 from src.interfaces.api.task_router import router as task_router
 from src.interfaces.api.tenant_router import router as tenant_router
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     application.include_router(task_router)
     application.include_router(rag_router)
     application.include_router(agent_router)
+    application.include_router(line_webhook_router)
 
     return application
 
