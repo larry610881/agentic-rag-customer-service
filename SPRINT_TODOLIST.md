@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-23 (Sprint 3+4 完成)
+> 最後更新：2026-02-23 (Sprint 5 完成)
 
 ---
 
@@ -234,52 +234,76 @@
 
 ---
 
-## Sprint 5：前端 MVP（Week 11-12）
+## Sprint 5：前端 MVP + LINE Bot（Week 11-12）
 
-**Goal**：Chat UI + 管理後台可用
+**Goal**：Chat UI + 管理後台 + LINE Bot 可用
 
 ### 5.1 Chat UI
-- ⬜ 訊息列表元件
-- ⬜ 輸入框 + 送出按鈕
-- ⬜ Streaming 逐字顯示
-- ⬜ Unit Test + Integration Test (MSW)
-- ⬜ 驗收：可發送問題、看到 AI 回答
+- ✅ 訊息列表元件（MessageList + MessageBubble）
+- ✅ 輸入框 + 送出按鈕（ChatInput + Textarea）
+- ✅ Streaming 逐字顯示（useStreaming hook + fetchSSE）
+- ✅ Unit Test + Integration Test (MSW)（14 test files, 42 tests）
+- ✅ 驗收：可發送問題、看到 AI 回答
 
 ### 5.2 Citation 元件
-- ⬜ 來源引用列表（可展開查看原文）
-- ⬜ 驗收：點擊引用可查看來源片段
+- ✅ 來源引用列表（CitationList + CitationCard, Collapsible）
+- ✅ 驗收：點擊引用可查看來源片段
 
 ### 5.3 文件上傳頁面
-- ⬜ 拖拽上傳 + 進度條
-- ⬜ 驗收：上傳文件並顯示處理進度
+- ✅ 拖拽上傳（UploadDropzone）+ 進度條（UploadProgress + task polling）
+- ✅ 驗收：上傳文件並顯示處理進度
 
 ### 5.4 知識庫 CRUD 頁面
-- ⬜ 新增/編輯/刪除知識庫
-- ⬜ 驗收：管理員可管理知識庫
+- ✅ 知識庫列表（KnowledgeBaseList + KnowledgeBaseCard）
+- ✅ 新增知識庫（CreateKBDialog + React Hook Form + Zod）
+- ✅ 文件管理頁（DocumentList）
+- ✅ 驗收：管理員可管理知識庫
 
 ### 5.5 登入 + 租戶切換
-- ⬜ Auth 頁面（JWT 登入）
-- ⬜ 租戶選擇器
-- ⬜ 驗收：可登入並切換租戶
+- ✅ Auth 頁面（LoginForm + JWT 登入 + Zustand auth store）
+- ✅ 租戶選擇器（TenantSelector + useTenants hook）
+- ✅ AuthGuard（dashboard layout 自動重導）
+- ✅ 驗收：可登入並切換租戶
 
 ### 5.6 Agent 思考過程可視化
-- ⬜ 顯示 Agent 使用了哪些工具
-- ⬜ 驗收：用戶可展開「思考過程」
+- ✅ 顯示 Agent 使用了哪些工具（ToolCallBadge）
+- ✅ 思考過程面板（AgentThoughtPanel, Collapsible）
+- ✅ 驗收：用戶可展開「思考過程」
 
 ### 5.7 LINE Bot 整合
-- ⬜ LINE Developers Console 設定 Messaging API Channel
-- ⬜ Infrastructure：`LineMessagingService`（回覆/推播訊息）
-- ⬜ Interfaces：`POST /api/v1/webhook/line`（Webhook 接收 LINE events）
-- ⬜ 串接 Agent Use Case（與 Web Chat 共用同一套 RAG + Agent Pipeline）
-- ⬜ 支援文字訊息 + 快速回覆按鈕（Quick Reply）
-- ⬜ BDD Feature：LINE Webhook 收到訊息 → Agent 回答 → 回傳 LINE
-- ⬜ 驗收：LINE Bot 可回答知識庫問題 + Agent 工具調用
+- ⬜ LINE Developers Console 設定 Messaging API Channel（需手動設定）
+- ✅ Domain：`LineTextMessageEvent` Entity + `LineMessagingService` ABC
+- ✅ Infrastructure：`HttpxLineMessagingService`（HMAC 簽名驗證 + LINE Reply API）
+- ✅ Application：`HandleWebhookUseCase`（Agent → LINE 回覆）
+- ✅ Interfaces：`POST /api/v1/webhook/line`（簽名驗證 + BackgroundTasks）
+- ✅ 串接 Agent Use Case（與 Web Chat 共用同一套 RAG + Agent Pipeline）
+- ✅ Config：line_channel_secret, line_channel_access_token, line_default_tenant_id/kb_id
+- ✅ BDD Feature：5 scenarios（文字回覆、簽名驗證、無效簽名、非文字忽略、工具調用）
+- ✅ Unit Test：5 step definitions 全部通過
+- ✅ 驗收：LINE Bot 可回答知識庫問題 + Agent 工具調用
 
-### 5.8 E2E BDD 測試
-- ⬜ `e2e/features/auth/login.feature`
-- ⬜ `e2e/features/conversation/chat.feature`
-- ⬜ `e2e/features/knowledge/upload.feature`
+### 5.8 前端基礎建設
+- ✅ shadcn/ui 初始化（15 個 UI 元件）
+- ✅ API client（apiFetch wrapper + ApiError）
+- ✅ SSE client（fetchSSE + ReadableStream 解析）
+- ✅ 共用型別定義（auth, chat, knowledge, api）
+- ✅ TanStack Query hooks（auth, tenants, KB, documents, tasks, chat）
+- ✅ MSW handlers（7 個 domain handlers）+ test fixtures（3 組）
+- ✅ App Router 路由分組：(auth)/login + (dashboard)/chat|knowledge
+- ✅ Layout 元件（Sidebar + Header + AppShell）
+
+### 5.9 E2E BDD 測試
+- ⬜ `e2e/features/auth/login.feature`（延至 S7）
+- ⬜ `e2e/features/conversation/chat.feature`（延至 S7）
+- ⬜ `e2e/features/knowledge/upload.feature`（延至 S7）
 - ⬜ 驗收：核心 E2E 場景通過
+
+### 5.10 測試與品質
+- ✅ 後端：65 BDD scenarios 通過（60 既有 + 5 LINE Bot 新增）
+- ✅ 後端覆蓋率：82.47% > 80%
+- ✅ 前端：42 tests 通過（11 unit files + 3 integration files）
+- ✅ 前端：tsc --noEmit + ESLint 通過
+- ✅ 10 個 git commits 完成（F1-F7 + B1-B3）
 
 ---
 
@@ -361,6 +385,6 @@
 | S2 文件+向量化 | ✅ 完成 | 100% | 29 scenarios, 83.71% coverage, 51 chunks |
 | S3 RAG 查詢 | ✅ 完成 | 100% | 17 scenarios (6+5+6), 82% coverage |
 | S4 Agent 框架 | ✅ 完成 | 100% | 14 scenarios (3+2+3+2+2+5+3), 82% coverage |
-| S5 前端 MVP + LINE Bot | ⬜ 待辦 | 0% | S3 完成，可開始；含 LINE Messaging API |
-| S6 Agentic 工作流 | ⬜ 待辦 | 0% | S4 完成，可開始 |
-| S7 整合+Demo | ⬜ 待辦 | 0% | blocked by S6, 含 LINE Bot Demo |
+| S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
+| S6 Agentic 工作流 | ⬜ 待辦 | 0% | S5 完成，可開始 |
+| S7 整合+Demo | ⬜ 待辦 | 0% | blocked by S6, 含 LINE Bot Demo + E2E |
