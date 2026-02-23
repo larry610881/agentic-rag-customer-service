@@ -8,14 +8,17 @@ from src.container import Container
 from src.infrastructure.db.base import Base
 from src.infrastructure.db.engine import engine
 from src.infrastructure.db.models import (  # noqa: F401
+    ChunkModel,
     DocumentModel,
     KnowledgeBaseModel,
+    ProcessingTaskModel,
     TenantModel,
 )
 from src.interfaces.api.auth_router import router as auth_router
 from src.interfaces.api.document_router import router as document_router
 from src.interfaces.api.health_router import router as health_router
 from src.interfaces.api.knowledge_base_router import router as kb_router
+from src.interfaces.api.task_router import router as task_router
 from src.interfaces.api.tenant_router import router as tenant_router
 
 
@@ -50,6 +53,7 @@ def create_app() -> FastAPI:
     application.include_router(tenant_router)
     application.include_router(kb_router)
     application.include_router(document_router)
+    application.include_router(task_router)
 
     return application
 

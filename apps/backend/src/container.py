@@ -4,8 +4,14 @@ from src.application.health.health_check_use_case import HealthCheckUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
 )
+from src.application.knowledge.get_processing_task_use_case import (
+    GetProcessingTaskUseCase,
+)
 from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
+)
+from src.application.knowledge.process_document_use_case import (
+    ProcessDocumentUseCase,
 )
 from src.application.knowledge.upload_document_use_case import (
     UploadDocumentUseCase,
@@ -17,11 +23,17 @@ from src.config import Settings
 from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.health_repository import HealthRepository
+from src.infrastructure.db.repositories.chunk_repository import (
+    SQLAlchemyChunkRepository,
+)
 from src.infrastructure.db.repositories.document_repository import (
     SQLAlchemyDocumentRepository,
 )
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
+)
+from src.infrastructure.db.repositories.processing_task_repository import (
+    SQLAlchemyProcessingTaskRepository,
 )
 from src.infrastructure.db.repositories.tenant_repository import (
     SQLAlchemyTenantRepository,
@@ -49,6 +61,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.tenant_router",
             "src.interfaces.api.knowledge_base_router",
             "src.interfaces.api.document_router",
+            "src.interfaces.api.task_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -85,6 +98,16 @@ class Container(containers.DeclarativeContainer):
 
     document_repository = providers.Factory(
         SQLAlchemyDocumentRepository,
+        session=db_session,
+    )
+
+    chunk_repository = providers.Factory(
+        SQLAlchemyChunkRepository,
+        session=db_session,
+    )
+
+    processing_task_repository = providers.Factory(
+        SQLAlchemyProcessingTaskRepository,
         session=db_session,
     )
 
@@ -164,6 +187,21 @@ class Container(containers.DeclarativeContainer):
         UploadDocumentUseCase,
         knowledge_base_repository=kb_repository,
         document_repository=document_repository,
-        processing_task_repository=providers.Object(None),
+        processing_task_repository=processing_task_repository,
         file_parser_service=file_parser_service,
+    )
+
+    process_document_use_case = providers.Factory(
+        ProcessDocumentUseCase,
+        document_repository=document_repository,
+        chunk_repository=chunk_repository,
+        processing_task_repository=processing_task_repository,
+        text_splitter_service=text_splitter_service,
+        embedding_service=embedding_service,
+        vector_store=vector_store,
+    )
+
+    get_processing_task_use_case = providers.Factory(
+        GetProcessingTaskUseCase,
+        processing_task_repository=processing_task_repository,
     )

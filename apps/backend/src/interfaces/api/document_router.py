@@ -1,13 +1,26 @@
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel
 
+from src.application.knowledge.process_document_use_case import (
+    ProcessDocumentUseCase,
+)
 from src.application.knowledge.upload_document_use_case import (
     UploadDocumentCommand,
     UploadDocumentUseCase,
 )
 from src.container import Container
-from src.domain.shared.exceptions import EntityNotFoundError, UnsupportedFileTypeError
+from src.domain.shared.exceptions import (
+    EntityNotFoundError,
+    UnsupportedFileTypeError,
+)
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 
 router = APIRouter(
@@ -44,9 +57,13 @@ class UploadDocumentResponse(BaseModel):
 async def upload_document(
     kb_id: str,
     file: UploadFile,
+    background_tasks: BackgroundTasks,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: UploadDocumentUseCase = Depends(
         Provide[Container.upload_document_use_case]
+    ),
+    process_use_case: ProcessDocumentUseCase = Depends(
+        Provide[Container.process_document_use_case]
     ),
 ) -> UploadDocumentResponse:
     raw_content = await file.read()
@@ -76,6 +93,13 @@ async def upload_document(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from None
+
+    # Trigger async processing
+    background_tasks.add_task(
+        process_use_case.execute,
+        result.document.id.value,
+        result.task.id.value,
+    )
 
     doc = result.document
     return UploadDocumentResponse(
