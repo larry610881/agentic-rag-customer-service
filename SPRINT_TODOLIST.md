@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-23 (MCP + UI Designer + Test Integrity + LoginForm Fix)
+> 最後更新：2026-02-23 (Login Bug Fix + E2E BDD 測試套件 13 scenarios)
 
 ---
 
@@ -293,10 +293,15 @@
 - ✅ Layout 元件（Sidebar + Header + AppShell）
 
 ### 5.9 E2E BDD 測試
-- ⬜ `e2e/features/auth/login.feature`（延至 S7）
-- ⬜ `e2e/features/conversation/chat.feature`（延至 S7）
-- ⬜ `e2e/features/knowledge/upload.feature`（延至 S7）
-- ⬜ 驗收：核心 E2E 場景通過
+- ✅ `e2e/features/auth/login.feature`（3 scenarios）
+- ✅ `e2e/features/chat/rag-query.feature`（2 scenarios）
+- ✅ `e2e/features/chat/agent-chat.feature`（4 scenarios）
+- ✅ `e2e/features/knowledge/knowledge-crud.feature`（2 scenarios）
+- ✅ `e2e/features/knowledge/upload.feature`（1 scenario）
+- ✅ `e2e/features/auth/tenant-isolation.feature`（1 scenario）
+- ✅ Page Objects：LoginPage, ChatPage, KnowledgePage, KnowledgeDetailPage, AppLayout
+- ✅ Step Definitions：7 個 steps 檔案 + fixtures.ts
+- ⬜ 驗收：Playwright E2E 全場景通過（需啟動 backend + frontend + docker）
 
 ### 5.10 測試與品質
 - ✅ 後端：65 BDD scenarios 通過（60 既有 + 5 LINE Bot 新增）
@@ -422,6 +427,21 @@
 - ✅ LoginForm integration test：mock `next/navigation` useRouter（`login-form.integration.test.tsx`）
 - ✅ 全量驗證：Backend 102 passed + Frontend 42 passed
 
+### 7.10 登入流程 Bug 修復
+- ✅ Auth store 加入 persist middleware（token 持久化至 localStorage）
+- ✅ DashboardLayout 加入 hydration 等待（避免 SSR 時誤導向 login）
+- ✅ Root page 改為 client component（已登入→chat，未登入→login）
+- ✅ Login page 加入已登入檢查（已有 token 自動導向 chat）
+- ✅ Test setup 加入 localStorage.clear()（測試隔離）
+
+### 7.11 E2E BDD 測試套件（Mock Mode）
+- ✅ 6 個 feature files（13 scenarios）：auth/knowledge/chat
+- ✅ 5 個 Page Objects：LoginPage, ChatPage, KnowledgePage, KnowledgeDetailPage, AppLayout
+- ✅ 7 個 step definition files + fixtures.ts
+- ✅ bddgen 成功產生 spec files
+- ✅ TypeScript 編譯通過
+- ⬜ 驗收：Playwright E2E 全場景通過（需啟動完整 stack）
+
 ---
 
 ## Sprint 7：整合測試 + Demo + 上線準備（Week 15-16）
@@ -429,8 +449,8 @@
 **Goal**：系統穩定、Demo 完整、可展示
 
 ### 7.1 E2E 全場景測試
-- ⬜ 5 個核心 user journey E2E 測試
-- ⬜ 驗收：Playwright 全部通過
+- ✅ 13 個 E2E BDD scenarios 已建立（mock mode）
+- ⬜ 驗收：Playwright 全部通過（需啟動 docker + backend + frontend）
 
 ### 7.2 BDD 全場景
 - ⬜ pytest-bdd 執行所有 feature
@@ -476,5 +496,5 @@
 | S4 Agent 框架 | ✅ 完成 | 100% | 14 scenarios (3+2+3+2+2+5+3), 82% coverage |
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 95% | 84 scenarios, 84.83% coverage, 前端對話列表延至 S7 |
-| S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7 UI 基礎設施 + 7.8 測試紅線 + 7.9 測試修復 |
-| S7 整合+Demo | 🔄 進行中 | 20% | docs/ 5 文件完成, Demo 場景待驗證 |
+| S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
+| S7 整合+Demo | 🔄 進行中 | 40% | Login 修復 + E2E 13 scenarios + docs 5 文件, Playwright 驗收待跑 |
