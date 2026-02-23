@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-23 (Config 重構 + Qwen 整合 + MVP 文件)
+> 最後更新：2026-02-23 (Runtime Bug Fixes — DateTime TZ + Auth Login + Redirect)
 
 ---
 
@@ -393,6 +393,12 @@
 - ✅ BDD Feature：`llm_provider_config.feature`（4 scenarios）
 - ✅ 全量測試：102 scenarios 通過，覆蓋率 85.30%
 
+### 7.0.2 Runtime Bug Fixes
+- ✅ ORM Models：8 個 model 改用 `DateTime(timezone=True)` 修正 aware/naive timezone mismatch
+- ✅ Auth Router：新增 `POST /api/v1/auth/login` 端點（username=tenant name, dev-only）
+- ✅ Auth Router：修正 TenantId 序列化（`tenant.id.value` 取代 `str(tenant.id)`）
+- ✅ Login Form：登入成功後 `router.replace("/chat")` 導向聊天頁
+
 ---
 
 ## Sprint 7：整合測試 + Demo + 上線準備（Week 15-16）
@@ -447,5 +453,5 @@
 | S4 Agent 框架 | ✅ 完成 | 100% | 14 scenarios (3+2+3+2+2+5+3), 82% coverage |
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 95% | 84 scenarios, 84.83% coverage, 前端對話列表延至 S7 |
-| S7P1 MCP+Multi-Agent 基礎 | 🔄 進行中 | 90% | 102 scenarios, 85.30% coverage, Config 重構+Qwen 完成, MCP 待安裝 |
+| S7P1 MCP+Multi-Agent 基礎 | 🔄 進行中 | 95% | 102 scenarios, 85.30% coverage, Config+Qwen+Runtime bugs 修復完成, MCP 待安裝 |
 | S7 整合+Demo | 🔄 進行中 | 20% | docs/ 5 文件完成, Demo 場景待驗證 |
