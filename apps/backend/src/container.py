@@ -47,6 +47,9 @@ from src.infrastructure.embedding.openai_embedding_service import (
 from src.infrastructure.file_parser.default_file_parser_service import (
     DefaultFileParserService,
 )
+from src.infrastructure.llm.anthropic_llm_service import AnthropicLLMService
+from src.infrastructure.llm.fake_llm_service import FakeLLMService
+from src.infrastructure.llm.openai_llm_service import OpenAILLMService
 from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
 from src.infrastructure.text_splitter.recursive_text_splitter_service import (
     RecursiveTextSplitterService,
@@ -147,6 +150,35 @@ class Container(containers.DeclarativeContainer):
         ),
         port=providers.Callable(
             lambda cfg: cfg.qdrant_rest_port, config
+        ),
+    )
+
+    llm_service = providers.Selector(
+        providers.Callable(lambda cfg: cfg.llm_provider, config),
+        fake=providers.Factory(FakeLLMService),
+        anthropic=providers.Factory(
+            AnthropicLLMService,
+            api_key=providers.Callable(
+                lambda cfg: cfg.anthropic_api_key, config
+            ),
+            model=providers.Callable(
+                lambda cfg: cfg.llm_model or "claude-sonnet-4-20250514", config
+            ),
+            max_tokens=providers.Callable(
+                lambda cfg: cfg.llm_max_tokens, config
+            ),
+        ),
+        openai=providers.Factory(
+            OpenAILLMService,
+            api_key=providers.Callable(
+                lambda cfg: cfg.openai_chat_api_key, config
+            ),
+            model=providers.Callable(
+                lambda cfg: cfg.llm_model or "gpt-4o", config
+            ),
+            max_tokens=providers.Callable(
+                lambda cfg: cfg.llm_max_tokens, config
+            ),
         ),
     )
 

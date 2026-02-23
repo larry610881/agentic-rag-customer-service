@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_vector_size: int = 1536
 
+    # LLM
+    llm_provider: str = "fake"  # "fake", "anthropic", or "openai"
+    anthropic_api_key: str = ""
+    openai_chat_api_key: str = ""
+    llm_model: str = ""
+    llm_max_tokens: int = 1024
+
+    # RAG
+    rag_score_threshold: float = 0.3
+    rag_top_k: int = 5
+
     # App
     app_env: str = "development"
     app_version: str = "0.1.0"

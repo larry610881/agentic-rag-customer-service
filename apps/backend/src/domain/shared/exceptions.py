@@ -44,3 +44,11 @@ class DocumentProcessingError(DomainException):
         )
         self.document_id = document_id
         self.reason = reason
+
+
+class NoRelevantKnowledgeError(DomainException):
+    """Raised when no relevant knowledge is found for a query."""
+
+    def __init__(self, query: str) -> None:
+        super().__init__(f"No relevant knowledge found for query: '{query}'")
+        self.query = query
