@@ -1,11 +1,13 @@
 """Agent 限界上下文實體"""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from src.domain.rag.value_objects import Source
+from src.domain.rag.value_objects import Source, TokenUsage
 
 
 @dataclass
@@ -21,6 +23,7 @@ class AgentResponse:
     tool_calls: list[dict[str, str]] = field(default_factory=list)
     sources: list[Source] = field(default_factory=list)
     conversation_id: str = ""
+    usage: TokenUsage | None = None
 
 
 @dataclass
