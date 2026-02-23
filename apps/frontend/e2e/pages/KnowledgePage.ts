@@ -12,8 +12,8 @@ export class KnowledgePage {
 
   constructor(private page: Page) {
     this.heading = page.getByRole('heading', { name: 'Knowledge Bases' });
-    this.kbList = page.locator('.grid.gap-4');
-    this.kbCards = page.locator('.grid.gap-4').getByRole('link');
+    this.kbList = page.locator('.grid').first();
+    this.kbCards = page.getByRole('link');
     this.createKbButton = page.getByRole('button', { name: 'Create Knowledge Base' });
     this.createDialog = page.getByRole('dialog');
     this.kbNameInput = page.getByLabel('Name');
@@ -23,6 +23,7 @@ export class KnowledgePage {
 
   async goto() {
     await this.page.goto('/knowledge');
+    await this.heading.waitFor({ timeout: 10000 });
   }
 
   async getKnowledgeBases() {

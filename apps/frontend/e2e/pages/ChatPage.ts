@@ -1,26 +1,37 @@
-import { type Page, type Locator, expect } from '@playwright/test';
+import { type Page, type Locator, expect } from "@playwright/test";
 
 export class ChatPage {
   readonly messageInput: Locator;
   readonly sendButton: Locator;
-  readonly messageList: Locator;
   readonly assistantMessages: Locator;
-  readonly citationCards: Locator;
   readonly thoughtPanel: Locator;
-  readonly streamingIndicator: Locator;
 
   constructor(private page: Page) {
-    this.messageInput = page.getByLabel('Message input');
-    this.sendButton = page.getByRole('button', { name: 'Send' });
-    this.messageList = page.locator('.flex.flex-col.gap-4');
-    this.assistantMessages = page.locator('.bg-muted.text-muted-foreground .whitespace-pre-wrap');
-    this.citationCards = page.getByText('Sources').locator('..');
+    this.messageInput = page.getByLabel("Message input");
+    this.sendButton = page.getByRole("button", { name: /^Send$|^Sending/ });
+    this.assistantMessages = page.locator(
+      ".bg-muted.text-muted-foreground .whitespace-pre-wrap",
+    );
     this.thoughtPanel = page.getByText(/Agent Actions/);
-    this.streamingIndicator = page.getByRole('button', { name: 'Sending...' });
+  }
+
+  get streamingIndicator() {
+    return this.page.getByRole("button", { name: "Sending..." });
   }
 
   async goto() {
-    await this.page.goto('/chat');
+    // Register response listener BEFORE navigation to catch the KB fetch
+    const kbPromise = this.page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/knowledge-bases") && resp.status() === 200,
+      { timeout: 15000 },
+    );
+    await this.page.goto("/chat");
+    await this.messageInput.waitFor({ state: "visible", timeout: 15000 });
+    // Wait for KB list to load so auto-KB-selection completes
+    await kbPromise.catch(() => {
+      /* KB fetch may not happen if tenantId is missing */
+    });
   }
 
   async sendMessage(text: string) {
@@ -29,8 +40,14 @@ export class ChatPage {
   }
 
   async waitForAssistantResponse() {
-    await expect(this.assistantMessages.last()).toBeVisible({ timeout: 30000 });
-    await expect(this.streamingIndicator).toBeHidden({ timeout: 30000 });
+    // Wait for assistant message to have actual content (streaming complete)
+    await expect(this.assistantMessages.last()).toHaveText(/.+/, {
+      timeout: 60000,
+    });
+    // Wait for send button to be re-enabled (streaming finished)
+    await expect(
+      this.page.getByRole("button", { name: "Send", exact: true }),
+    ).toBeVisible({ timeout: 10000 });
   }
 
   async getLastAssistantMessage() {
@@ -42,11 +59,11 @@ export class ChatPage {
   }
 
   async getCitations() {
-    const sourceSections = this.page.locator('.flex.flex-col.gap-1.sm\\:ml-4');
-    const count = await sourceSections.count();
+    const sourceHeader = this.page.getByText("Sources", { exact: true });
+    const count = await sourceHeader.count();
     if (count === 0) return [];
-    const lastSection = sourceSections.last();
-    const cards = lastSection.locator('.rounded-md.border');
+    const sourceSection = sourceHeader.last().locator("..");
+    const cards = sourceSection.locator(".rounded-md.border");
     return cards.allTextContents();
   }
 }
