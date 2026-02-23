@@ -20,6 +20,9 @@ dependencies = [
     "langchain-core",
     "httpx",
     "python-jose[cryptography]>=3.5.0",
+    "pypdf>=6.7.2",
+    "python-docx>=1.2.0",
+    "striprtf>=0.0.29",
 ]
 
 [dependency-groups]

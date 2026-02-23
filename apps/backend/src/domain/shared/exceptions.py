@@ -25,3 +25,22 @@ class DuplicateEntityError(DomainException):
         self.entity_type = entity_type
         self.field = field
         self.value = value
+
+
+class UnsupportedFileTypeError(DomainException):
+    """Raised when an unsupported file type is uploaded."""
+
+    def __init__(self, content_type: str) -> None:
+        super().__init__(f"Unsupported file type: '{content_type}'")
+        self.content_type = content_type
+
+
+class DocumentProcessingError(DomainException):
+    """Raised when document processing fails."""
+
+    def __init__(self, document_id: str, reason: str) -> None:
+        super().__init__(
+            f"Failed to process document '{document_id}': {reason}"
+        )
+        self.document_id = document_id
+        self.reason = reason

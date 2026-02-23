@@ -7,6 +7,9 @@ from src.application.knowledge.create_knowledge_base_use_case import (
 from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
 )
+from src.application.knowledge.upload_document_use_case import (
+    UploadDocumentUseCase,
+)
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
@@ -14,11 +17,17 @@ from src.config import Settings
 from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.health_repository import HealthRepository
+from src.infrastructure.db.repositories.document_repository import (
+    SQLAlchemyDocumentRepository,
+)
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
 )
 from src.infrastructure.db.repositories.tenant_repository import (
     SQLAlchemyTenantRepository,
+)
+from src.infrastructure.file_parser.default_file_parser_service import (
+    DefaultFileParserService,
 )
 
 
@@ -29,6 +38,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.auth_router",
             "src.interfaces.api.tenant_router",
             "src.interfaces.api.knowledge_base_router",
+            "src.interfaces.api.document_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -63,6 +73,13 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
     )
 
+    document_repository = providers.Factory(
+        SQLAlchemyDocumentRepository,
+        session=db_session,
+    )
+
+    file_parser_service = providers.Singleton(DefaultFileParserService)
+
     # --- Application ---
 
     health_check_use_case = providers.Factory(
@@ -94,4 +111,12 @@ class Container(containers.DeclarativeContainer):
     list_knowledge_bases_use_case = providers.Factory(
         ListKnowledgeBasesUseCase,
         knowledge_base_repository=kb_repository,
+    )
+
+    upload_document_use_case = providers.Factory(
+        UploadDocumentUseCase,
+        knowledge_base_repository=kb_repository,
+        document_repository=document_repository,
+        processing_task_repository=providers.Object(None),
+        file_parser_service=file_parser_service,
     )
