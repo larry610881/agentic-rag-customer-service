@@ -13,7 +13,7 @@ function createTestQueryClient() {
   });
 }
 
-function AllProviders({ children }: { children: ReactNode }) {
+export function AllProviders({ children }: { children: ReactNode }) {
   const queryClient = createTestQueryClient();
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
