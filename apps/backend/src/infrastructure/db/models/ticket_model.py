@@ -2,10 +2,12 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Index, String, Text
+from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
+
+TZDateTime = DateTime(timezone=True)
 
 
 class TicketModel(Base):
@@ -20,6 +22,7 @@ class TicketModel(Base):
         String(50), nullable=False, default="open"
     )
     created_at: Mapped[datetime] = mapped_column(
+        TZDateTime,
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )

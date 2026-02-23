@@ -2,10 +2,12 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Index, String
+from sqlalchemy import DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
+
+TZDateTime = DateTime(timezone=True)
 
 
 class ConversationModel(Base):
@@ -14,6 +16,7 @@ class ConversationModel(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
+        TZDateTime,
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )

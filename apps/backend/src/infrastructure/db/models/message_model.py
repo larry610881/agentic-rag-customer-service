@@ -2,10 +2,12 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Index, String, Text
+from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
+
+TZDateTime = DateTime(timezone=True)
 
 
 class MessageModel(Base):
@@ -17,6 +19,7 @@ class MessageModel(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     tool_calls_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     created_at: Mapped[datetime] = mapped_column(
+        TZDateTime,
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )

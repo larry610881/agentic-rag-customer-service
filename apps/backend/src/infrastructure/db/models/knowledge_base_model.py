@@ -1,9 +1,11 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
+
+TZDateTime = DateTime(timezone=True)
 
 
 class KnowledgeBaseModel(Base):
@@ -18,10 +20,12 @@ class KnowledgeBaseModel(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
+        TZDateTime,
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
+        TZDateTime,
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),

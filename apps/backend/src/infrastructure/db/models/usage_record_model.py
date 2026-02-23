@@ -2,10 +2,12 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Float, Index, Integer, String
+from sqlalchemy import DateTime, Float, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
+
+TZDateTime = DateTime(timezone=True)
 
 
 class UsageRecordModel(Base):
@@ -32,6 +34,7 @@ class UsageRecordModel(Base):
         Float, nullable=False, default=0.0
     )
     created_at: Mapped[datetime] = mapped_column(
+        TZDateTime,
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
