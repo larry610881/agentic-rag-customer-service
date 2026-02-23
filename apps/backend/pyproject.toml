@@ -84,6 +84,7 @@ omit = [
     "src/infrastructure/langgraph/langgraph_agent_service.py",
     "src/infrastructure/langgraph/tools.py",
     "src/infrastructure/tools/*",
+    "src/infrastructure/line/*",
     "src/interfaces/*",
     "src/container.py",
     "src/main.py",

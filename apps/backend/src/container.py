@@ -20,6 +20,7 @@ from src.application.knowledge.process_document_use_case import (
 from src.application.knowledge.upload_document_use_case import (
     UploadDocumentUseCase,
 )
+from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
 from src.application.rag.query_rag_use_case import QueryRAGUseCase
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
@@ -62,6 +63,7 @@ from src.infrastructure.langgraph.tools import (
     RAGQueryTool,
     TicketCreationTool,
 )
+from src.infrastructure.line.line_messaging_service import HttpxLineMessagingService
 from src.infrastructure.llm.anthropic_llm_service import AnthropicLLMService
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
 from src.infrastructure.llm.openai_llm_service import OpenAILLMService
@@ -89,6 +91,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.task_router",
             "src.interfaces.api.rag_router",
             "src.interfaces.api.agent_router",
+            "src.interfaces.api.line_webhook_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -350,4 +353,28 @@ class Container(containers.DeclarativeContainer):
     send_message_use_case = providers.Factory(
         SendMessageUseCase,
         agent_service=agent_service,
+    )
+
+    # --- LINE Bot ---
+
+    line_messaging_service = providers.Singleton(
+        HttpxLineMessagingService,
+        channel_secret=providers.Callable(
+            lambda cfg: cfg.line_channel_secret, config
+        ),
+        channel_access_token=providers.Callable(
+            lambda cfg: cfg.line_channel_access_token, config
+        ),
+    )
+
+    handle_webhook_use_case = providers.Factory(
+        HandleWebhookUseCase,
+        agent_service=agent_service,
+        line_messaging_service=line_messaging_service,
+        default_tenant_id=providers.Callable(
+            lambda cfg: cfg.line_default_tenant_id, config
+        ),
+        default_kb_id=providers.Callable(
+            lambda cfg: cfg.line_default_kb_id, config
+        ),
     )

@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     rag_score_threshold: float = 0.3
     rag_top_k: int = 5
 
+    # LINE
+    line_channel_secret: str = ""
+    line_channel_access_token: str = ""
+    line_default_tenant_id: str = ""
+    line_default_kb_id: str = ""
+
     # App
     app_env: str = "development"
     app_version: str = "0.1.0"
