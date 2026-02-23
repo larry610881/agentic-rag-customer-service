@@ -204,6 +204,7 @@ agentic-rag-customer-service/
 ┌──────────────────▼──────────────────────────────┐
 │                 API Gateway (FastAPI)             │
 │  Auth Middleware │ Tenant Middleware │ Rate Limit │
+│  LINE Webhook   │                                │
 └──────────────────┬──────────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────────┐
@@ -424,9 +425,9 @@ Scenario: 複合問題使用多個工具
 
 ---
 
-### Sprint 5：前端 MVP（Week 11-12）
+### Sprint 5：前端 MVP + LINE Bot（Week 11-12）
 
-**Sprint Goal**：Chat UI + 管理後台可用
+**Sprint Goal**：Chat UI + 管理後台 + LINE Bot 可用
 
 | # | User Story | 任務 | 驗收標準 |
 |---|-----------|------|---------|
@@ -436,6 +437,7 @@ Scenario: 複合問題使用多個工具
 | 5.4 | 管理員可管理知識庫 | 知識庫 CRUD 頁面 | 新增/編輯/刪除知識庫 |
 | 5.5 | 登入 / 租戶切換 | Auth 頁面 + 租戶選擇器 | JWT 登入，切換租戶 |
 | 5.6 | Agent 思考過程可視化 | 顯示 Agent 使用了哪些工具 | 用戶可選擇展開「思考過程」 |
+| 5.7 | 用戶可在 LINE 上對話 | LINE Messaging API Webhook + Agent 串接 | LINE Bot 可回答知識庫問題 |
 
 **前端頁面規劃**：
 ```
@@ -497,6 +499,7 @@ Agent: 了解。已為您建立退貨工單 TK-789。
 | 3 | 客戶查詢訂單狀態 → Agent 自動使用工具 | Agentic Tool Use |
 | 4 | 客戶申請退貨 → 多步驟引導 → 建立工單 | 多輪 Agentic 工作流 |
 | 5 | 租戶 B 無法看到租戶 A 的資料 | 多租戶隔離 |
+| 6 | LINE Bot 對話 → Agent 回答知識庫問題 | LINE 整合 + 共用 RAG Pipeline |
 
 ---
 
@@ -576,6 +579,7 @@ Sprint 7:
 - [ ] RAG 問答（帶引用）
 - [ ] AI Agent 路由（知識查詢 / 訂單查詢 / 建單）
 - [ ] Chat UI（streaming 回答）
+- [ ] LINE Bot（與 Web Chat 共用 Agent Pipeline）
 - [ ] 管理後台（知識庫 + 文件管理）
 - [ ] 基於 Kaggle 電商資料的真實場景
 
