@@ -46,6 +46,7 @@ Thumbs.db
 
 # Testing
 apps/frontend/e2e/.features-gen/
+apps/frontend/.features-gen/
 apps/frontend/e2e/.auth/
 apps/frontend/e2e/reports/
 apps/frontend/playwright-report/
