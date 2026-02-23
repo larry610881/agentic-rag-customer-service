@@ -6,5 +6,8 @@ import { afterAll, afterEach, beforeAll } from "vitest";
 Element.prototype.scrollIntoView = () => {};
 
 beforeAll(() => server.listen({ onUnhandledRequest: "bypass" }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  localStorage.clear();
+});
 afterAll(() => server.close());

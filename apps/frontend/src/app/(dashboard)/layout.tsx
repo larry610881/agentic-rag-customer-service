@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { useAuthStore } from "@/stores/use-auth-store";
@@ -12,14 +12,19 @@ export default function DashboardLayout({
 }) {
   const token = useAuthStore((s) => s.token);
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    if (!token) {
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (hydrated && !token) {
       router.replace("/login");
     }
-  }, [token, router]);
+  }, [hydrated, token, router]);
 
-  if (!token) {
+  if (!hydrated || !token) {
     return null;
   }
 
