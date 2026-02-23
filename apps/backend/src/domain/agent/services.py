@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 
 from src.domain.agent.entity import AgentResponse
+from src.domain.agent.value_objects import SentimentResult
 from src.domain.conversation.entity import Message
 
 
@@ -25,3 +26,8 @@ class AgentService(ABC):
         user_message: str,
         history: list[Message] | None = None,
     ) -> AsyncIterator[str]: ...  # pragma: no cover
+
+
+class SentimentService(ABC):
+    @abstractmethod
+    async def analyze(self, text: str) -> SentimentResult: ...
