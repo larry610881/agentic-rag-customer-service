@@ -76,6 +76,8 @@ omit = [
     "src/infrastructure/db/repositories/*",
     "src/infrastructure/db/health_repository.py",
     "src/infrastructure/auth/*",
+    "src/infrastructure/embedding/openai_embedding_service.py",
+    "src/infrastructure/qdrant/*",
     "src/interfaces/*",
     "src/container.py",
     "src/main.py",

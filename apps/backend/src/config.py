@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60
 
+    # Embedding
+    embedding_provider: str = "fake"  # "fake" or "openai"
+    openai_api_key: str = ""
+    embedding_model: str = "text-embedding-3-small"
+    embedding_vector_size: int = 1536
+
     # App
     app_env: str = "development"
     app_version: str = "0.1.0"

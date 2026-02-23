@@ -26,9 +26,16 @@ from src.infrastructure.db.repositories.knowledge_base_repository import (
 from src.infrastructure.db.repositories.tenant_repository import (
     SQLAlchemyTenantRepository,
 )
+from src.infrastructure.embedding.fake_embedding_service import (
+    FakeEmbeddingService,
+)
+from src.infrastructure.embedding.openai_embedding_service import (
+    OpenAIEmbeddingService,
+)
 from src.infrastructure.file_parser.default_file_parser_service import (
     DefaultFileParserService,
 )
+from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
 from src.infrastructure.text_splitter.recursive_text_splitter_service import (
     RecursiveTextSplitterService,
 )
@@ -87,6 +94,37 @@ class Container(containers.DeclarativeContainer):
         RecursiveTextSplitterService,
         chunk_size=500,
         chunk_overlap=100,
+    )
+
+    embedding_service = providers.Selector(
+        providers.Callable(
+            lambda cfg: cfg.embedding_provider, config
+        ),
+        fake=providers.Factory(
+            FakeEmbeddingService,
+            vector_size=providers.Callable(
+                lambda cfg: cfg.embedding_vector_size, config
+            ),
+        ),
+        openai=providers.Factory(
+            OpenAIEmbeddingService,
+            api_key=providers.Callable(
+                lambda cfg: cfg.openai_api_key, config
+            ),
+            model=providers.Callable(
+                lambda cfg: cfg.embedding_model, config
+            ),
+        ),
+    )
+
+    vector_store = providers.Singleton(
+        QdrantVectorStore,
+        host=providers.Callable(
+            lambda cfg: cfg.qdrant_host, config
+        ),
+        port=providers.Callable(
+            lambda cfg: cfg.qdrant_rest_port, config
+        ),
     )
 
     # --- Application ---
