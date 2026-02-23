@@ -165,6 +165,7 @@ make lint                    # 後端 + 前端 lint
 | build-error-resolver | | ✓ | ✓ | ✓ | |
 | code-reviewer | | | | ✓ | |
 | rag-pipeline-checker | | | ✓ | | |
+| ui-designer | | | | ✓ | |
 
 ### E2E 整合測試協調規則
 

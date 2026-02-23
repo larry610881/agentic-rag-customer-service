@@ -404,6 +404,15 @@
 - ✅ 更新 `planner` agent：新增 Lead 協調職責（3 層 Task 結構 + E2E 失敗處理循環）
 - ✅ 更新 `CLAUDE.md`：Agent Team 表格加入 E2E 整合欄 + 協調規則
 
+### 7.7 UI 強化基礎設施
+- ✅ `.mcp.json` 建立（shadcn-ui, context7, magic-ui, playwright）
+- ✅ framer-motion 安裝（`apps/frontend/package.json`）
+- ✅ `ui-designer` agent 建立（`.claude/agents/ui-designer.md`）
+- ✅ `/ui-enhance` skill 建立（`.claude/skills/ui-enhance/SKILL.md`）
+- ✅ `ui-design-system` rule 建立（`.claude/rules/ui-design-system.md`）
+- ✅ `CLAUDE.md` Agent Team 表格更新
+- ⬜ 驗收：`/ui-enhance KnowledgeBaseCard` 可正常強化
+
 ---
 
 ## Sprint 7：整合測試 + Demo + 上線準備（Week 15-16）
