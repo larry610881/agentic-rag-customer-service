@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-23 (Runtime Bug Fixes — DateTime TZ + Auth Login + Redirect)
+> 最後更新：2026-02-23 (Agent Team E2E 整合協調 + e2e-integration-tester)
 
 ---
 
@@ -398,6 +398,11 @@
 - ✅ Auth Router：新增 `POST /api/v1/auth/login` 端點（username=tenant name, dev-only）
 - ✅ Auth Router：修正 TenantId 序列化（`tenant.id.value` 取代 `str(tenant.id)`）
 - ✅ Login Form：登入成功後 `router.replace("/chat")` 導向聊天頁
+
+### 7.0.3 Agent Team E2E 整合協調
+- ✅ 新增 `e2e-integration-tester` agent：全棧 E2E 整合測試（API 煙霧 + Playwright + User Journey + 失敗歸因）
+- ✅ 更新 `planner` agent：新增 Lead 協調職責（3 層 Task 結構 + E2E 失敗處理循環）
+- ✅ 更新 `CLAUDE.md`：Agent Team 表格加入 E2E 整合欄 + 協調規則
 
 ---
 
