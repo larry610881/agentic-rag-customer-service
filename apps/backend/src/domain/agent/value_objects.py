@@ -2,7 +2,21 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any
+
+
+class RefundStep(str, Enum):
+    collect_order = "collect_order"
+    collect_reason = "collect_reason"
+    confirm = "confirm"
+
+
+@dataclass(frozen=True)
+class SentimentResult:
+    sentiment: str  # "positive" | "neutral" | "negative"
+    score: float
+    should_escalate: bool = False
 
 
 @dataclass(frozen=True)

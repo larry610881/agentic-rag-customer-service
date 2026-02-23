@@ -24,6 +24,9 @@ class AgentResponse:
     sources: list[Source] = field(default_factory=list)
     conversation_id: str = ""
     usage: TokenUsage | None = None
+    refund_step: str | None = None
+    sentiment: str | None = None
+    escalated: bool = False
 
 
 @dataclass
