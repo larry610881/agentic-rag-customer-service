@@ -1,0 +1,58 @@
+# Claude Code
+.claude/settings.local.json
+
+# Environment
+.env
+.env.local
+.env.production
+.env*.local
+apps/backend/.env
+apps/frontend/.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Node.js
+node_modules/
+.next/
+out/
+.turbo/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+apps/frontend/e2e/.features-gen/
+apps/frontend/e2e/.auth/
+apps/frontend/e2e/reports/
+apps/frontend/playwright-report/
+apps/frontend/test-results/
+
+# Docker
+*.log
+
+# Build
+*.tsbuildinfo

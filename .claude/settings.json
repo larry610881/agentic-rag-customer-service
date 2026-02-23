@@ -1,0 +1,52 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(make *)",
+      "Bash(uv run *)", "Bash(uv sync *)", "Bash(uv add *)",
+      "Bash(npm run *)", "Bash(npm install *)",
+      "Bash(npx vitest *)", "Bash(npx playwright *)", "Bash(npx next *)",
+      "Bash(npx bddgen *)", "Bash(npx eslint *)", "Bash(npx tsc *)",
+      "Bash(git status *)", "Bash(git diff *)", "Bash(git log *)",
+      "Bash(git add *)", "Bash(git commit *)", "Bash(git push *)",
+      "Bash(git branch *)", "Bash(git checkout *)", "Bash(git switch *)",
+      "Bash(git stash *)", "Bash(git fetch *)", "Bash(git pull *)",
+      "Bash(docker compose *)", "Bash(docker ps *)",
+      "Bash(curl *)", "Bash(chmod *)",
+      "WebSearch", "WebFetch(domain:github.com)",
+      "mcp__readme-beautifier__analyze_project",
+      "mcp__readme-beautifier__generate_badges",
+      "mcp__readme-beautifier__generate_toc",
+      "mcp__readme-beautifier__apply_template",
+      "mcp__readme-beautifier__beautify_readme"
+    ],
+    "deny": [
+      "Read(.env)", "Read(.env.local)", "Read(.env.production)",
+      "Read(apps/backend/.env)", "Read(apps/frontend/.env.local)"
+    ]
+  },
+  "hooks": {
+    "TaskCompleted": [{
+      "hooks": [{
+        "type": "command",
+        "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-task.sh",
+        "timeout": 300
+      }]
+    }],
+    "TeammateIdle": [{
+      "hooks": [{
+        "type": "command",
+        "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-idle.sh"
+      }]
+    }],
+    "Stop": [{
+      "hooks": [{
+        "type": "prompt",
+        "prompt": "檢查 $ARGUMENTS，確認：1. 所有當前 Sprint 任務完成 2. 測試通過 3. 已 commit。回傳 {\"ok\": true} 或 {\"ok\": false, \"reason\": \"原因\"}",
+        "timeout": 30
+      }]
+    }]
+  }
+}
