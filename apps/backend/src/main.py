@@ -9,8 +9,10 @@ from src.infrastructure.db.base import Base
 from src.infrastructure.db.engine import engine
 from src.infrastructure.db.models import (  # noqa: F401
     ChunkModel,
+    ConversationModel,
     DocumentModel,
     KnowledgeBaseModel,
+    MessageModel,
     ProcessingTaskModel,
     TenantModel,
     TicketModel,
@@ -18,6 +20,7 @@ from src.infrastructure.db.models import (  # noqa: F401
 )
 from src.interfaces.api.agent_router import router as agent_router
 from src.interfaces.api.auth_router import router as auth_router
+from src.interfaces.api.conversation_router import router as conversation_router
 from src.interfaces.api.document_router import router as document_router
 from src.interfaces.api.health_router import router as health_router
 from src.interfaces.api.knowledge_base_router import router as kb_router
@@ -62,6 +65,7 @@ def create_app() -> FastAPI:
     application.include_router(task_router)
     application.include_router(rag_router)
     application.include_router(agent_router)
+    application.include_router(conversation_router)
     application.include_router(line_webhook_router)
     application.include_router(usage_router)
 

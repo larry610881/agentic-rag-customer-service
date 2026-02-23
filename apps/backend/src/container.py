@@ -4,6 +4,12 @@ from src.application.agent.order_lookup_use_case import OrderLookupUseCase
 from src.application.agent.product_search_use_case import ProductSearchUseCase
 from src.application.agent.send_message_use_case import SendMessageUseCase
 from src.application.agent.ticket_creation_use_case import TicketCreationUseCase
+from src.application.conversation.get_conversation_use_case import (
+    GetConversationUseCase,
+)
+from src.application.conversation.list_conversations_use_case import (
+    ListConversationsUseCase,
+)
 from src.application.health.health_check_use_case import HealthCheckUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
@@ -34,6 +40,9 @@ from src.infrastructure.db.health_repository import HealthRepository
 from src.infrastructure.db.repositories.chunk_repository import (
     SQLAlchemyChunkRepository,
 )
+from src.infrastructure.db.repositories.conversation_repository import (
+    SQLAlchemyConversationRepository,
+)
 from src.infrastructure.db.repositories.document_repository import (
     SQLAlchemyDocumentRepository,
 )
@@ -58,9 +67,11 @@ from src.infrastructure.embedding.openai_embedding_service import (
 from src.infrastructure.file_parser.default_file_parser_service import (
     DefaultFileParserService,
 )
-from src.infrastructure.langgraph.fake_agent_service import FakeAgentService
 from src.infrastructure.langgraph.langgraph_agent_service import (
     LangGraphAgentService,
+)
+from src.infrastructure.langgraph.supervisor_agent_service import (
+    SupervisorAgentService,
 )
 from src.infrastructure.langgraph.tools import (
     OrderLookupTool,
@@ -68,11 +79,16 @@ from src.infrastructure.langgraph.tools import (
     RAGQueryTool,
     TicketCreationTool,
 )
+from src.infrastructure.langgraph.workers.fake_main_worker import FakeMainWorker
+from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWorker
 from src.infrastructure.line.line_messaging_service import HttpxLineMessagingService
 from src.infrastructure.llm.anthropic_llm_service import AnthropicLLMService
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
 from src.infrastructure.llm.openai_llm_service import OpenAILLMService
 from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
+from src.infrastructure.sentiment.keyword_sentiment_service import (
+    KeywordSentimentService,
+)
 from src.infrastructure.text_splitter.recursive_text_splitter_service import (
     RecursiveTextSplitterService,
 )
@@ -96,6 +112,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.task_router",
             "src.interfaces.api.rag_router",
             "src.interfaces.api.agent_router",
+            "src.interfaces.api.conversation_router",
             "src.interfaces.api.line_webhook_router",
             "src.interfaces.api.usage_router",
             "src.interfaces.api.deps",
@@ -144,6 +161,11 @@ class Container(containers.DeclarativeContainer):
 
     processing_task_repository = providers.Factory(
         SQLAlchemyProcessingTaskRepository,
+        session=db_session,
+    )
+
+    conversation_repository = providers.Factory(
+        SQLAlchemyConversationRepository,
         session=db_session,
     )
 
@@ -307,6 +329,16 @@ class Container(containers.DeclarativeContainer):
         llm_service=llm_service,
     )
 
+    get_conversation_use_case = providers.Factory(
+        GetConversationUseCase,
+        conversation_repository=conversation_repository,
+    )
+
+    list_conversations_use_case = providers.Factory(
+        ListConversationsUseCase,
+        conversation_repository=conversation_repository,
+    )
+
     record_usage_use_case = providers.Factory(
         RecordUsageUseCase,
         usage_repository=usage_repository,
@@ -356,9 +388,18 @@ class Container(containers.DeclarativeContainer):
 
     # --- Agent Service ---
 
+    sentiment_service = providers.Singleton(KeywordSentimentService)
+
     agent_service = providers.Selector(
         providers.Callable(lambda cfg: cfg.llm_provider, config),
-        fake=providers.Factory(FakeAgentService),
+        fake=providers.Factory(
+            SupervisorAgentService,
+            workers=providers.List(
+                providers.Factory(FakeRefundWorker),
+                providers.Factory(FakeMainWorker),
+            ),
+            sentiment_service=sentiment_service,
+        ),
         anthropic=providers.Factory(
             LangGraphAgentService,
             llm_service=llm_service,
@@ -380,6 +421,7 @@ class Container(containers.DeclarativeContainer):
     send_message_use_case = providers.Factory(
         SendMessageUseCase,
         agent_service=agent_service,
+        conversation_repository=conversation_repository,
     )
 
     # --- LINE Bot ---
