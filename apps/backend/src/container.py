@@ -197,10 +197,28 @@ class Container(containers.DeclarativeContainer):
         openai=providers.Factory(
             OpenAIEmbeddingService,
             api_key=providers.Callable(
-                lambda cfg: cfg.openai_api_key, config
+                lambda cfg: cfg.effective_openai_api_key, config
             ),
             model=providers.Callable(
                 lambda cfg: cfg.embedding_model, config
+            ),
+            base_url=providers.Callable(
+                lambda cfg: cfg.embedding_base_url or "https://api.openai.com/v1",
+                config,
+            ),
+        ),
+        qwen=providers.Factory(
+            OpenAIEmbeddingService,
+            api_key=providers.Callable(
+                lambda cfg: cfg.qwen_api_key, config
+            ),
+            model=providers.Callable(
+                lambda cfg: cfg.embedding_model, config
+            ),
+            base_url=providers.Callable(
+                lambda cfg: cfg.embedding_base_url
+                or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                config,
             ),
         ),
     )
@@ -236,7 +254,7 @@ class Container(containers.DeclarativeContainer):
         openai=providers.Factory(
             OpenAILLMService,
             api_key=providers.Callable(
-                lambda cfg: cfg.openai_chat_api_key, config
+                lambda cfg: cfg.effective_openai_api_key, config
             ),
             model=providers.Callable(
                 lambda cfg: cfg.llm_model or "gpt-4o", config
@@ -246,6 +264,49 @@ class Container(containers.DeclarativeContainer):
             ),
             pricing=providers.Callable(
                 lambda cfg: cfg.llm_pricing, config
+            ),
+            base_url=providers.Callable(
+                lambda cfg: cfg.llm_base_url or "https://api.openai.com/v1",
+                config,
+            ),
+        ),
+        qwen=providers.Factory(
+            OpenAILLMService,
+            api_key=providers.Callable(
+                lambda cfg: cfg.qwen_api_key, config
+            ),
+            model=providers.Callable(
+                lambda cfg: cfg.llm_model or "qwen-plus", config
+            ),
+            max_tokens=providers.Callable(
+                lambda cfg: cfg.llm_max_tokens, config
+            ),
+            pricing=providers.Callable(
+                lambda cfg: cfg.llm_pricing, config
+            ),
+            base_url=providers.Callable(
+                lambda cfg: cfg.llm_base_url
+                or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                config,
+            ),
+        ),
+        openrouter=providers.Factory(
+            OpenAILLMService,
+            api_key=providers.Callable(
+                lambda cfg: cfg.openrouter_api_key, config
+            ),
+            model=providers.Callable(
+                lambda cfg: cfg.llm_model or "openai/gpt-4o", config
+            ),
+            max_tokens=providers.Callable(
+                lambda cfg: cfg.llm_max_tokens, config
+            ),
+            pricing=providers.Callable(
+                lambda cfg: cfg.llm_pricing, config
+            ),
+            base_url=providers.Callable(
+                lambda cfg: cfg.llm_base_url or "https://openrouter.ai/api/v1",
+                config,
             ),
         ),
     )
@@ -423,6 +484,22 @@ class Container(containers.DeclarativeContainer):
             ticket_tool=ticket_tool,
         ),
         openai=providers.Factory(
+            LangGraphAgentService,
+            llm_service=llm_service,
+            rag_tool=rag_tool,
+            order_tool=order_tool,
+            product_tool=product_tool,
+            ticket_tool=ticket_tool,
+        ),
+        qwen=providers.Factory(
+            LangGraphAgentService,
+            llm_service=llm_service,
+            rag_tool=rag_tool,
+            order_tool=order_tool,
+            product_tool=product_tool,
+            ticket_tool=ticket_tool,
+        ),
+        openrouter=providers.Factory(
             LangGraphAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,

@@ -26,17 +26,22 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 60
 
     # Embedding
-    embedding_provider: str = "fake"  # "fake" or "openai"
+    embedding_provider: str = "fake"  # "fake" | "openai" | "qwen"
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
     embedding_vector_size: int = 1536
+    embedding_base_url: str = ""
 
     # LLM
-    llm_provider: str = "fake"  # "fake", "anthropic", or "openai"
+    # "fake" | "openai" | "anthropic" | "qwen" | "openrouter"
+    llm_provider: str = "fake"
     anthropic_api_key: str = ""
     openai_chat_api_key: str = ""
+    qwen_api_key: str = ""
+    openrouter_api_key: str = ""
     llm_model: str = ""
     llm_max_tokens: int = 1024
+    llm_base_url: str = ""
 
     # RAG
     rag_score_threshold: float = 0.3
@@ -65,6 +70,11 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         return f"redis://{self.redis_host}:{self.redis_port}"
+
+    @property
+    def effective_openai_api_key(self) -> str:
+        """Prefer openai_api_key; fall back to openai_chat_api_key."""
+        return self.openai_api_key or self.openai_chat_api_key
 
     @property
     def llm_pricing(self) -> dict[str, dict[str, float]]:

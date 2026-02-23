@@ -16,11 +16,12 @@ class OpenAILLMService(LLMService):
         model: str = "gpt-4o",
         max_tokens: int = 1024,
         pricing: dict[str, dict[str, float]] | None = None,
+        base_url: str = "https://api.openai.com/v1",
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._max_tokens = max_tokens
-        self._base_url = "https://api.openai.com/v1"
+        self._base_url = base_url
         self._pricing = pricing or {}
 
     def _build_headers(self) -> dict[str, str]:

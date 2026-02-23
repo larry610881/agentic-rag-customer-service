@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-23 (Sprint 7 Phase 1 Foundation 完成)
+> 最後更新：2026-02-23 (Config 重構 + Qwen 整合 + MVP 文件)
 
 ---
 
@@ -178,7 +178,7 @@
 - ✅ Domain：`SearchResult` / `Source` / `RAGResponse` Value Objects
 - ✅ Domain：`VectorStore.search()` + `LLMService` ABC
 - ✅ Infrastructure：`FakeLLMService` + `AnthropicLLMService` + `OpenAILLMService`
-- ✅ Config：`llm_provider` Selector (fake/anthropic/openai)
+- ✅ Config：`llm_provider` Selector (fake/anthropic/openai/qwen/openrouter)
 - ✅ 驗收：6 scenarios 通過
 
 ---
@@ -382,6 +382,17 @@
 - ⬜ MCPToolWorker 通用 MCP Client Worker（待 mcp 套件安裝）
 - ⬜ Embedded MCP Server（Knowledge, Conversation, Tenant）（待 mcp 套件安裝）
 
+### 7.0.1 Config 重構 + Qwen/OpenRouter 整合
+- ✅ Config：新增 `qwen_api_key`, `openrouter_api_key`, `llm_base_url`, `embedding_base_url`
+- ✅ Config：`effective_openai_api_key` property（向下相容 `openai_chat_api_key`）
+- ✅ `OpenAILLMService`：constructor 新增 `base_url` 參數
+- ✅ Container：`embedding_service` Selector 新增 `qwen` 分支
+- ✅ Container：`llm_service` Selector 新增 `qwen`, `openrouter` 分支
+- ✅ Container：`agent_service` Selector 新增 `qwen`, `openrouter` 分支
+- ✅ `.env.example`：完整 Provider 設定說明
+- ✅ BDD Feature：`llm_provider_config.feature`（4 scenarios）
+- ✅ 全量測試：102 scenarios 通過，覆蓋率 85.30%
+
 ---
 
 ## Sprint 7：整合測試 + Demo + 上線準備（Week 15-16）
@@ -411,8 +422,11 @@
 
 ### 7.5 文件
 - ⬜ README.md 完整
-- ⬜ API 文件（OpenAPI）
-- ⬜ 架構圖
+- ✅ API 文件：`docs/api-reference.md`
+- ✅ 架構圖：`docs/architecture.md`
+- ✅ 快速開始：`docs/getting-started.md`
+- ✅ Provider 設定指南：`docs/configuration.md`
+- ✅ Demo 操作手冊：`docs/demo-guide.md`
 - ⬜ 驗收：新人可在 30 分鐘內跑起來
 
 ### 7.6 部署
@@ -433,5 +447,5 @@
 | S4 Agent 框架 | ✅ 完成 | 100% | 14 scenarios (3+2+3+2+2+5+3), 82% coverage |
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 95% | 84 scenarios, 84.83% coverage, 前端對話列表延至 S7 |
-| S7P1 MCP+Multi-Agent 基礎 | 🔄 進行中 | 80% | 98 scenarios, 85.22% coverage, MCP Server 待安裝套件 |
-| S7 整合+Demo | ⬜ 待辦 | 0% | blocked by S6 ✅, 含 LINE Bot Demo + E2E |
+| S7P1 MCP+Multi-Agent 基礎 | 🔄 進行中 | 90% | 102 scenarios, 85.30% coverage, Config 重構+Qwen 完成, MCP 待安裝 |
+| S7 整合+Demo | 🔄 進行中 | 20% | docs/ 5 文件完成, Demo 場景待驗證 |
