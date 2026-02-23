@@ -41,8 +41,16 @@ class SQLOrderLookupService(OrderLookupService):
             data={
                 "order_id": row.order_id,
                 "order_status": row.order_status,
-                "purchase_timestamp": str(row.order_purchase_timestamp) if row.order_purchase_timestamp else None,
-                "estimated_delivery_date": str(row.order_estimated_delivery_date) if row.order_estimated_delivery_date else None,
+                "purchase_timestamp": (
+                    str(row.order_purchase_timestamp)
+                    if row.order_purchase_timestamp
+                    else None
+                ),
+                "estimated_delivery_date": (
+                    str(row.order_estimated_delivery_date)
+                    if row.order_estimated_delivery_date
+                    else None
+                ),
                 "product_category": row.product_category_name,
                 "price": float(row.price) if row.price else None,
             },

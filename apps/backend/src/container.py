@@ -1,10 +1,13 @@
 from dependency_injector import containers, providers
 
+from src.application.agent.order_lookup_use_case import OrderLookupUseCase
+from src.application.agent.product_search_use_case import ProductSearchUseCase
+from src.application.agent.send_message_use_case import SendMessageUseCase
+from src.application.agent.ticket_creation_use_case import TicketCreationUseCase
 from src.application.health.health_check_use_case import HealthCheckUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
 )
-from src.application.rag.query_rag_use_case import QueryRAGUseCase
 from src.application.knowledge.get_processing_task_use_case import (
     GetProcessingTaskUseCase,
 )
@@ -17,6 +20,7 @@ from src.application.knowledge.process_document_use_case import (
 from src.application.knowledge.upload_document_use_case import (
     UploadDocumentUseCase,
 )
+from src.application.rag.query_rag_use_case import QueryRAGUseCase
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
@@ -48,6 +52,16 @@ from src.infrastructure.embedding.openai_embedding_service import (
 from src.infrastructure.file_parser.default_file_parser_service import (
     DefaultFileParserService,
 )
+from src.infrastructure.langgraph.fake_agent_service import FakeAgentService
+from src.infrastructure.langgraph.langgraph_agent_service import (
+    LangGraphAgentService,
+)
+from src.infrastructure.langgraph.tools import (
+    OrderLookupTool,
+    ProductSearchTool,
+    RAGQueryTool,
+    TicketCreationTool,
+)
 from src.infrastructure.llm.anthropic_llm_service import AnthropicLLMService
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
 from src.infrastructure.llm.openai_llm_service import OpenAILLMService
@@ -55,6 +69,13 @@ from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
 from src.infrastructure.text_splitter.recursive_text_splitter_service import (
     RecursiveTextSplitterService,
 )
+from src.infrastructure.tools.sql_order_lookup_service import (
+    SQLOrderLookupService,
+)
+from src.infrastructure.tools.sql_product_search_service import (
+    SQLProductSearchService,
+)
+from src.infrastructure.tools.sql_ticket_service import SQLTicketService
 
 
 class Container(containers.DeclarativeContainer):
@@ -67,6 +88,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.document_router",
             "src.interfaces.api.task_router",
             "src.interfaces.api.rag_router",
+            "src.interfaces.api.agent_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -184,6 +206,23 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
+    # --- Tool Services ---
+
+    order_lookup_service = providers.Factory(
+        SQLOrderLookupService,
+        session_factory=providers.Object(async_session_factory),
+    )
+
+    product_search_service = providers.Factory(
+        SQLProductSearchService,
+        session_factory=providers.Object(async_session_factory),
+    )
+
+    ticket_service = providers.Factory(
+        SQLTicketService,
+        session_factory=providers.Object(async_session_factory),
+    )
+
     # --- Application ---
 
     health_check_use_case = providers.Factory(
@@ -246,4 +285,69 @@ class Container(containers.DeclarativeContainer):
         embedding_service=embedding_service,
         vector_store=vector_store,
         llm_service=llm_service,
+    )
+
+    order_lookup_use_case = providers.Factory(
+        OrderLookupUseCase,
+        order_lookup_service=order_lookup_service,
+    )
+
+    product_search_use_case = providers.Factory(
+        ProductSearchUseCase,
+        product_search_service=product_search_service,
+    )
+
+    ticket_creation_use_case = providers.Factory(
+        TicketCreationUseCase,
+        ticket_service=ticket_service,
+    )
+
+    # --- Agent Tools ---
+
+    rag_tool = providers.Factory(
+        RAGQueryTool,
+        query_rag_use_case=query_rag_use_case,
+    )
+
+    order_tool = providers.Factory(
+        OrderLookupTool,
+        use_case=order_lookup_use_case,
+    )
+
+    product_tool = providers.Factory(
+        ProductSearchTool,
+        use_case=product_search_use_case,
+    )
+
+    ticket_tool = providers.Factory(
+        TicketCreationTool,
+        use_case=ticket_creation_use_case,
+    )
+
+    # --- Agent Service ---
+
+    agent_service = providers.Selector(
+        providers.Callable(lambda cfg: cfg.llm_provider, config),
+        fake=providers.Factory(FakeAgentService),
+        anthropic=providers.Factory(
+            LangGraphAgentService,
+            llm_service=llm_service,
+            rag_tool=rag_tool,
+            order_tool=order_tool,
+            product_tool=product_tool,
+            ticket_tool=ticket_tool,
+        ),
+        openai=providers.Factory(
+            LangGraphAgentService,
+            llm_service=llm_service,
+            rag_tool=rag_tool,
+            order_tool=order_tool,
+            product_tool=product_tool,
+            ticket_tool=ticket_tool,
+        ),
+    )
+
+    send_message_use_case = providers.Factory(
+        SendMessageUseCase,
+        agent_service=agent_service,
     )

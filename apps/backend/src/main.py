@@ -13,7 +13,9 @@ from src.infrastructure.db.models import (  # noqa: F401
     KnowledgeBaseModel,
     ProcessingTaskModel,
     TenantModel,
+    TicketModel,
 )
+from src.interfaces.api.agent_router import router as agent_router
 from src.interfaces.api.auth_router import router as auth_router
 from src.interfaces.api.document_router import router as document_router
 from src.interfaces.api.health_router import router as health_router
@@ -56,6 +58,7 @@ def create_app() -> FastAPI:
     application.include_router(document_router)
     application.include_router(task_router)
     application.include_router(rag_router)
+    application.include_router(agent_router)
 
     return application
 

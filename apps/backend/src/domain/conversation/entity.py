@@ -28,7 +28,12 @@ class Conversation:
         default_factory=lambda: datetime.now(timezone.utc)
     )
 
-    def add_message(self, role: str, content: str, tool_calls: list[dict[str, Any]] | None = None) -> Message:
+    def add_message(
+        self,
+        role: str,
+        content: str,
+        tool_calls: list[dict[str, Any]] | None = None,
+    ) -> Message:
         message = Message(
             id=MessageId(),
             conversation_id=self.id.value,

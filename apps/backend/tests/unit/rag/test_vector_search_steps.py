@@ -33,7 +33,11 @@ def mock_vector_store():
 @given("向量資料庫中有 3 筆向量資料")
 def setup_3_results(context, mock_vector_store):
     results = [
-        SearchResult(id=f"chunk-{i}", score=0.9 - i * 0.1, payload={"content": f"content {i}", "tenant_id": "t-1"})
+        SearchResult(
+            id=f"chunk-{i}",
+            score=0.9 - i * 0.1,
+            payload={"content": f"content {i}", "tenant_id": "t-1"},
+        )
         for i in range(3)
     ]
     mock_vector_store.search = AsyncMock(return_value=results)
@@ -44,7 +48,14 @@ def setup_3_results(context, mock_vector_store):
 @given('向量資料庫中有屬於 tenant "tenant-001" 的資料')
 def setup_tenant_data(context, mock_vector_store):
     results = [
-        SearchResult(id="chunk-0", score=0.85, payload={"content": "退貨政策", "tenant_id": "tenant-001"}),
+        SearchResult(
+            id="chunk-0",
+            score=0.85,
+            payload={
+                "content": "退貨政策",
+                "tenant_id": "tenant-001",
+            },
+        ),
     ]
     mock_vector_store.search = AsyncMock(return_value=results)
     context["mock_vector_store"] = mock_vector_store
