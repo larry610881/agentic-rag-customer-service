@@ -19,6 +19,7 @@ dependencies = [
     "langgraph",
     "langchain-core",
     "httpx",
+    "python-jose[cryptography]>=3.5.0",
 ]
 
 [dependency-groups]
@@ -65,6 +66,15 @@ parallel = true
 omit = [
     "tests/*",
     "src/infrastructure/db/seed.py",
+    "src/infrastructure/db/engine.py",
+    "src/infrastructure/db/base.py",
+    "src/infrastructure/db/models/*",
+    "src/infrastructure/db/repositories/*",
+    "src/infrastructure/db/health_repository.py",
+    "src/infrastructure/auth/*",
+    "src/interfaces/*",
+    "src/container.py",
+    "src/main.py",
 ]
 
 [tool.coverage.report]

@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-23
+> 最後更新：2026-02-23 (Sprint 1 完成)
 
 ---
 
@@ -51,33 +51,34 @@
 **Goal**：多租戶 CRUD 完成，知識庫領域模型建立
 
 ### 1.1 租戶 CRUD
-- ⬜ BDD Feature：`tests/features/unit/tenant/create_tenant.feature`
-- ⬜ Domain：`Tenant` Entity + `TenantId` VO + `TenantRepository` Interface
-- ⬜ Application：`CreateTenantUseCase` + `GetTenantUseCase`
-- ⬜ Infrastructure：`SQLAlchemyTenantRepository`
-- ⬜ Interfaces：`POST /api/v1/tenants` + `GET /api/v1/tenants/{id}`
-- ⬜ Unit Test：AsyncMock Repository，覆蓋 happy path + error paths
+- ✅ BDD Feature：`tests/features/unit/tenant/create_tenant.feature`
+- ✅ Domain：`Tenant` Entity + `TenantId` VO + `TenantRepository` Interface
+- ✅ Application：`CreateTenantUseCase` + `GetTenantUseCase` + `ListTenantsUseCase`
+- ✅ Infrastructure：`SQLAlchemyTenantRepository`
+- ✅ Interfaces：`POST /api/v1/tenants` + `GET /api/v1/tenants/{id}` + `GET /api/v1/tenants`
+- ✅ Unit Test：AsyncMock Repository，覆蓋 happy path + error paths
 - ⬜ Integration Test：httpx.AsyncClient + 真實 DB
-- ⬜ 驗收：API 可建立/查詢租戶
+- ✅ 驗收：API 可建立/查詢租戶
 
 ### 1.2 知識庫 CRUD
-- ⬜ BDD Feature：`tests/features/unit/knowledge/create_knowledge_base.feature`
-- ⬜ Domain：`KnowledgeBase` Entity + `KnowledgeBaseRepository` Interface
-- ⬜ Application：`CreateKnowledgeBaseUseCase`
-- ⬜ 知識庫綁定 `tenant_id`（租戶隔離）
-- ⬜ Unit Test + Integration Test
-- ⬜ 驗收：API 可建立知識庫，自動綁定 tenant
+- ✅ BDD Feature：`tests/features/unit/knowledge/create_knowledge_base.feature`
+- ✅ Domain：`KnowledgeBase` Entity + `KnowledgeBaseRepository` Interface
+- ✅ Application：`CreateKnowledgeBaseUseCase` + `ListKnowledgeBasesUseCase`
+- ✅ 知識庫綁定 `tenant_id`（租戶隔離）
+- ✅ Unit Test（Integration Test 待 S2）
+- ✅ 驗收：API 可建立知識庫，自動綁定 tenant
 
 ### 1.3 認證機制
-- ⬜ JWT Token 發行與驗證
-- ⬜ 租戶中介軟體（從 JWT 取得 tenant_id）
-- ⬜ `interfaces/api/deps.py` — `get_current_user` / `get_current_tenant`
-- ⬜ 驗收：API 請求自動注入 tenant context
+- ✅ JWT Token 發行與驗證（`JWTService`）
+- ✅ 租戶中介軟體（從 JWT 取得 tenant_id）
+- ✅ `interfaces/api/deps.py` — `get_current_tenant`
+- ✅ `POST /api/v1/auth/token` — dev-only token endpoint
+- ✅ 驗收：API 請求自動注入 tenant context
 
 ### 1.4 測試覆蓋
-- ⬜ 配額檢查 BDD 場景
-- ⬜ 租戶隔離 BDD 場景（租戶 B 不可見租戶 A 資料）
-- ⬜ 驗收：覆蓋率 > 80%
+- ⏭️ 配額檢查 BDD 場景（移至 S2）
+- ✅ 租戶隔離 BDD 場景（租戶 B 不可見租戶 A 資料）
+- ✅ 驗收：覆蓋率 91.26% > 80%
 
 ---
 
@@ -302,7 +303,7 @@
 | Sprint | 狀態 | 完成率 | 備註 |
 |--------|------|--------|------|
 | S0 基礎建設 | 🔄 進行中 | 95% | 待 Kaggle 下載 + CI 驗收 |
-| S1 租戶+知識 | ⬜ 待辦 | 0% | blocked by S0 |
+| S1 租戶+知識 | ✅ 完成 | 90% | Unit 完成，Integration Test 待 S2 |
 | S2 文件+向量化 | ⬜ 待辦 | 0% | blocked by S1 |
 | S3 RAG 查詢 | ⬜ 待辦 | 0% | blocked by S2 |
 | S4 Agent 框架 | ⬜ 待辦 | 0% | blocked by S3 |

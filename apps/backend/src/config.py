@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     qdrant_rest_port: int = 6333
     qdrant_grpc_port: int = 6334
 
+    # JWT
+    jwt_secret_key: str = "dev-secret-key-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 60
+
     # App
     app_env: str = "development"
     app_version: str = "0.1.0"
