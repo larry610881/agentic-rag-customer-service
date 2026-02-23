@@ -56,3 +56,15 @@ CREATE TABLE IF NOT EXISTS product_category_translation (
     product_category_name VARCHAR(128) PRIMARY KEY,
     product_category_name_english VARCHAR(128)
 );
+
+CREATE TABLE IF NOT EXISTS support_tickets (
+    id VARCHAR(36) PRIMARY KEY,
+    tenant_id VARCHAR(36) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    order_id VARCHAR(64) NOT NULL DEFAULT '',
+    status VARCHAR(50) NOT NULL DEFAULT 'open',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS ix_support_tickets_tenant_id ON support_tickets(tenant_id);

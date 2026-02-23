@@ -80,6 +80,7 @@ omit = [
     "src/infrastructure/llm/anthropic_llm_service.py",
     "src/infrastructure/llm/openai_llm_service.py",
     "src/infrastructure/qdrant/*",
+    "src/infrastructure/tools/*",
     "src/interfaces/*",
     "src/container.py",
     "src/main.py",
