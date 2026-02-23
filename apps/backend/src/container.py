@@ -29,6 +29,9 @@ from src.infrastructure.db.repositories.tenant_repository import (
 from src.infrastructure.file_parser.default_file_parser_service import (
     DefaultFileParserService,
 )
+from src.infrastructure.text_splitter.recursive_text_splitter_service import (
+    RecursiveTextSplitterService,
+)
 
 
 class Container(containers.DeclarativeContainer):
@@ -79,6 +82,12 @@ class Container(containers.DeclarativeContainer):
     )
 
     file_parser_service = providers.Singleton(DefaultFileParserService)
+
+    text_splitter_service = providers.Singleton(
+        RecursiveTextSplitterService,
+        chunk_size=500,
+        chunk_overlap=100,
+    )
 
     # --- Application ---
 
