@@ -1,4 +1,11 @@
 import { http, HttpResponse } from "msw";
+import { authHandlers } from "./handlers/auth";
+import { tenantHandlers } from "./handlers/tenants";
+import { knowledgeBaseHandlers } from "./handlers/knowledge-bases";
+import { documentHandlers } from "./handlers/documents";
+import { taskHandlers } from "./handlers/tasks";
+import { ragHandlers } from "./handlers/rag";
+import { agentHandlers } from "./handlers/agent";
 
 export const handlers = [
   http.get("http://localhost:8000/api/v1/health", () => {
@@ -8,4 +15,11 @@ export const handlers = [
       version: "0.1.0",
     });
   }),
+  ...authHandlers,
+  ...tenantHandlers,
+  ...knowledgeBaseHandlers,
+  ...documentHandlers,
+  ...taskHandlers,
+  ...ragHandlers,
+  ...agentHandlers,
 ];

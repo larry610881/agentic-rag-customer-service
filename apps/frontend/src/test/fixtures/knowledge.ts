@@ -1,0 +1,64 @@
+import type {
+  DocumentResponse,
+  KnowledgeBase,
+  TaskResponse,
+  UploadDocumentResponse,
+} from "@/types/knowledge";
+
+export const mockKnowledgeBases: KnowledgeBase[] = [
+  {
+    id: "kb-1",
+    tenant_id: "tenant-1",
+    name: "Product Documentation",
+    description: "All product-related documents",
+    document_count: 5,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-15T00:00:00Z",
+  },
+  {
+    id: "kb-2",
+    tenant_id: "tenant-1",
+    name: "FAQ",
+    description: "Frequently asked questions",
+    document_count: 3,
+    created_at: "2024-02-01T00:00:00Z",
+    updated_at: "2024-02-10T00:00:00Z",
+  },
+];
+
+export const mockDocuments: DocumentResponse[] = [
+  {
+    id: "doc-1",
+    knowledge_base_id: "kb-1",
+    file_name: "product-guide.pdf",
+    file_size: 1024000,
+    status: "completed",
+    created_at: "2024-01-05T00:00:00Z",
+  },
+  {
+    id: "doc-2",
+    knowledge_base_id: "kb-1",
+    file_name: "setup-manual.pdf",
+    file_size: 512000,
+    status: "processing",
+    created_at: "2024-01-06T00:00:00Z",
+  },
+];
+
+export const mockUploadResponse: UploadDocumentResponse = {
+  document_id: "doc-3",
+  task_id: "task-1",
+};
+
+export const mockTaskResponse: TaskResponse = {
+  id: "task-1",
+  status: "completed",
+  progress: 100,
+  result: { chunks: 42 },
+};
+
+export const mockTaskPending: TaskResponse = {
+  id: "task-1",
+  status: "processing",
+  progress: 50,
+};
