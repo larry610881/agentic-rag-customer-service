@@ -1,12 +1,12 @@
-# 檢查規範合規 + 同步 Sprint Todolist
+# Sprint 進度同步 + 規範合規掃描
 
-檢查當前程式碼是否符合專案規範，並同步更新 `SPRINT_TODOLIST.md` 的完成狀態。
+掃描專案實際狀態，同步更新 `SPRINT_TODOLIST.md` 的完成狀態，並檢查規範合規。
 
 ## 使用方式
 
-- `/check-rules` — 完整掃描：規範合規 + 更新 todolist
-- `/check-rules --plan` — 僅檢查計畫變更，更新 todolist
-- `/check-rules --verify S0` — 驗證指定 Sprint 的完成狀態
+- `/sprint-sync` — 完整掃描：規範合規 + 更新 todolist
+- `/sprint-sync --plan` — 僅檢查計畫變更，更新 todolist
+- `/sprint-sync --verify S0` — 驗證指定 Sprint 的完成狀態
 
 ## 執行步驟
 

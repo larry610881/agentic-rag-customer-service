@@ -208,14 +208,14 @@ make lint                    # 後端 + 前端 lint
 
 - **開發計畫**：`DEVELOPMENT_PLAN.md` — 完整的 S0-S7 Sprint 規劃
 - **進度追蹤**：`SPRINT_TODOLIST.md` — 所有 Sprint 任務的 checkbox 追蹤
-- **合規檢查**：`/check-rules` — 掃描規範合規 + 同步更新 todolist
+- **合規檢查**：`/sprint-sync` — 掃描規範合規 + 同步更新 todolist
 
 ### Todolist 同步規則
 
 以下情境**必須**同步更新 `SPRINT_TODOLIST.md`：
 1. **任務完成時** — 將對應項目標記為 ✅
 2. **計畫變更時** — 新增/移除/修改 todolist 項目
-3. **開發驗證時** — 執行 `/check-rules` 自動掃描並更新
+3. **開發驗證時** — 執行 `/sprint-sync` 自動掃描並更新
 4. **Session 結束前** — Stop hook 會提醒檢查 todolist 是否已同步
 
 ## 安全注意事項
