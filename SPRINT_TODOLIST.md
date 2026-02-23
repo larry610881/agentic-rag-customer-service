@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-23 (Sprint 6 完成)
+> 最後更新：2026-02-23 (Sprint 7 Phase 1 Foundation 完成)
 
 ---
 
@@ -362,6 +362,28 @@
 
 ---
 
+## Sprint 7 Phase 1：MCP + Multi-Agent 架構基礎（Week 15-16）
+
+**Goal**：2-Tier Supervisor 架構、Domain Events、MCP 基礎就緒
+
+### 7.0 Phase 1 Foundation — Multi-Agent 2-Tier 架構
+- ✅ Domain：`WorkerContext` 擴展（user_role, user_permissions, mcp_tools）
+- ✅ Domain：`TeamSupervisor` ABC（extends AgentWorker，團隊級 sequential dispatch）
+- ✅ Domain：`DomainEvent` 基類 + `EventBus` ABC（shared/events.py）
+- ✅ Domain：具體事件 — `OrderRefunded`, `NegativeSentimentDetected`, `CampaignCompleted`
+- ✅ Infrastructure：`MetaSupervisorService`（頂層路由，依 user_role dispatch 到 TeamSupervisor）
+- ✅ Infrastructure：`InMemoryEventBus`（記憶體內 Event Bus，開發/測試用）
+- ✅ Container DI：fake mode 改用 `MetaSupervisorService` + `CustomerTeamSupervisor`
+- ✅ BDD Feature：4 個新功能檔（team_supervisor_routing, meta_supervisor_routing, worker_context_expansion, domain_events）
+- ✅ BDD Step Definitions：4 個新測試檔，14 scenarios 全部通過
+- ✅ 全量測試：98 scenarios 通過（84 既有 + 14 新增）
+- ✅ 覆蓋率：85.22% > 80%
+- ✅ Lint：ruff clean
+- ⬜ MCPToolWorker 通用 MCP Client Worker（待 mcp 套件安裝）
+- ⬜ Embedded MCP Server（Knowledge, Conversation, Tenant）（待 mcp 套件安裝）
+
+---
+
 ## Sprint 7：整合測試 + Demo + 上線準備（Week 15-16）
 
 **Goal**：系統穩定、Demo 完整、可展示
@@ -411,4 +433,5 @@
 | S4 Agent 框架 | ✅ 完成 | 100% | 14 scenarios (3+2+3+2+2+5+3), 82% coverage |
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 95% | 84 scenarios, 84.83% coverage, 前端對話列表延至 S7 |
+| S7P1 MCP+Multi-Agent 基礎 | 🔄 進行中 | 80% | 98 scenarios, 85.22% coverage, MCP Server 待安裝套件 |
 | S7 整合+Demo | ⬜ 待辦 | 0% | blocked by S6 ✅, 含 LINE Bot Demo + E2E |

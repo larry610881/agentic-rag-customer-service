@@ -34,6 +34,7 @@ from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
 from src.application.usage.query_usage_use_case import QueryUsageUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.config import Settings
+from src.domain.agent.team_supervisor import TeamSupervisor
 from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.health_repository import HealthRepository
@@ -64,14 +65,15 @@ from src.infrastructure.embedding.fake_embedding_service import (
 from src.infrastructure.embedding.openai_embedding_service import (
     OpenAIEmbeddingService,
 )
+from src.infrastructure.events.in_memory_event_bus import InMemoryEventBus
 from src.infrastructure.file_parser.default_file_parser_service import (
     DefaultFileParserService,
 )
 from src.infrastructure.langgraph.langgraph_agent_service import (
     LangGraphAgentService,
 )
-from src.infrastructure.langgraph.supervisor_agent_service import (
-    SupervisorAgentService,
+from src.infrastructure.langgraph.meta_supervisor_service import (
+    MetaSupervisorService,
 )
 from src.infrastructure.langgraph.tools import (
     OrderLookupTool,
@@ -386,17 +388,29 @@ class Container(containers.DeclarativeContainer):
         use_case=ticket_creation_use_case,
     )
 
+    # --- Event Bus ---
+
+    event_bus = providers.Singleton(InMemoryEventBus)
+
     # --- Agent Service ---
 
     sentiment_service = providers.Singleton(KeywordSentimentService)
 
+    customer_team = providers.Factory(
+        TeamSupervisor,
+        team_name="customer",
+        workers=providers.List(
+            providers.Factory(FakeRefundWorker),
+            providers.Factory(FakeMainWorker),
+        ),
+    )
+
     agent_service = providers.Selector(
         providers.Callable(lambda cfg: cfg.llm_provider, config),
         fake=providers.Factory(
-            SupervisorAgentService,
-            workers=providers.List(
-                providers.Factory(FakeRefundWorker),
-                providers.Factory(FakeMainWorker),
+            MetaSupervisorService,
+            teams=providers.Dict(
+                customer=customer_team,
             ),
             sentiment_service=sentiment_service,
         ),

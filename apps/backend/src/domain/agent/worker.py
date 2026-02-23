@@ -15,6 +15,9 @@ class WorkerContext:
     user_message: str
     conversation_history: list[Message] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    user_role: str = "customer"
+    user_permissions: list[str] = field(default_factory=list)
+    mcp_tools: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
