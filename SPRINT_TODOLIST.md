@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-23 (Agent Team E2E 整合協調 + e2e-integration-tester)
+> 最後更新：2026-02-23 (MCP + UI Designer + Test Integrity + LoginForm Fix)
 
 ---
 
@@ -413,6 +413,15 @@
 - ✅ `CLAUDE.md` Agent Team 表格更新
 - ⬜ 驗收：`/ui-enhance KnowledgeBaseCard` 可正常強化
 
+### 7.8 測試完整性紅線
+- ✅ `test-integrity` rule 建立（`.claude/rules/test-integrity.md`）
+- ✅ `CLAUDE.md` 測試策略新增「測試完整性紅線」5 條規則
+
+### 7.9 既有測試修復
+- ✅ LoginForm unit test：mock `next/navigation` useRouter（`login-form.test.tsx`）
+- ✅ LoginForm integration test：mock `next/navigation` useRouter（`login-form.integration.test.tsx`）
+- ✅ 全量驗證：Backend 102 passed + Frontend 42 passed
+
 ---
 
 ## Sprint 7：整合測試 + Demo + 上線準備（Week 15-16）
@@ -467,5 +476,5 @@
 | S4 Agent 框架 | ✅ 完成 | 100% | 14 scenarios (3+2+3+2+2+5+3), 82% coverage |
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 95% | 84 scenarios, 84.83% coverage, 前端對話列表延至 S7 |
-| S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0 Foundation + 7.0.1 Config/Qwen + 7.0.2 Runtime Bugs + 7.0.3 E2E Agent 協調, MCP backend 整合獨立至 S7 |
+| S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7 UI 基礎設施 + 7.8 測試紅線 + 7.9 測試修復 |
 | S7 整合+Demo | 🔄 進行中 | 20% | docs/ 5 文件完成, Demo 場景待驗證 |
