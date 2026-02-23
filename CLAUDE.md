@@ -153,17 +153,31 @@ make lint                    # 後端 + 前端 lint
 
 ## Agent Team 分工
 
-| Agent | Lead | Backend | AI/RAG | Frontend |
-|-------|:----:|:-------:|:------:|:--------:|
-| planner | ✓ | | | |
-| ddd-checker | ✓ | ✓ | ✓ | |
-| security-reviewer | ✓ | ✓ | | ✓ |
-| test-runner-backend | | ✓ | ✓ | |
-| test-runner-frontend | | | | ✓ |
-| implementation-guide | | ✓ | ✓ | |
-| build-error-resolver | | ✓ | ✓ | ✓ |
-| code-reviewer | | | | ✓ |
-| rag-pipeline-checker | | | ✓ | |
+| Agent | Lead | Backend | AI/RAG | Frontend | E2E 整合 |
+|-------|:----:|:-------:|:------:|:--------:|:--------:|
+| planner | ✓ | | | | ✓ (協調) |
+| ddd-checker | ✓ | ✓ | ✓ | | |
+| security-reviewer | ✓ | ✓ | | ✓ | |
+| test-runner-backend | | ✓ | ✓ | | |
+| test-runner-frontend | | | | ✓ | |
+| e2e-integration-tester | | | | | ✓ |
+| implementation-guide | | ✓ | ✓ | | |
+| build-error-resolver | | ✓ | ✓ | ✓ | |
+| code-reviewer | | | | ✓ | |
+| rag-pipeline-checker | | | ✓ | | |
+
+### E2E 整合測試協調規則
+
+涉及前後端的功能，Lead（planner）必須建立 **3 層 Task 結構**：
+
+```
+Task: 後端實作  ──┐
+                   ├──→ Task: E2E 整合測試 (addBlockedBy: 前兩者)
+Task: 前端實作  ──┘      owner: e2e-integration-tester
+```
+
+- E2E 通過 → 功能完成
+- E2E 失敗 → Lead 分析根因 → 建立修復 Task → 重跑 E2E
 
 ## 開發工作流（五階段，不可跳過）
 

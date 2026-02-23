@@ -70,6 +70,93 @@ maxTurns: 15
 - 不同 BC 之間透過 Application Service 或 Domain Event 協調
 - 禁止直接跨 BC 操作 Repository
 
+## Team 協調工作流（Lead 職責）
+
+當使用 Agent Teams 時，planner 同時擔任 Lead 角色，負責任務編排和跨層協調。
+
+### Task 建立規則
+
+**涉及前後端的功能，必須建立 3 層 Task 結構：**
+
+```
+Task 1: 後端實作 + 測試
+  owner: backend-implementer (general-purpose)
+  完成條件: test-runner-backend 通過
+
+Task 2: 前端實作 + 測試
+  owner: frontend-implementer (general-purpose)
+  完成條件: test-runner-frontend 通過
+
+Task 3: 全棧 E2E 整合測試          ← 必須建立
+  owner: e2e-integration-tester
+  addBlockedBy: [Task 1, Task 2]    ← 等兩邊都完成才開始
+  完成條件: API 煙霧測試 + Playwright E2E 全通過
+```
+
+**純後端或純前端功能，不需要 Task 3。**
+
+### Task 依賴設定範例
+
+```
+TaskCreate: "實作知識庫 API"          → task-1
+TaskCreate: "實作知識庫管理頁面"       → task-2
+TaskCreate: "E2E 整合驗證：知識庫流程"  → task-3
+TaskUpdate: task-3, addBlockedBy: [task-1, task-2]
+```
+
+### E2E 失敗處理流程
+
+當 `e2e-integration-tester` 回報失敗時，Lead 負責：
+
+1. **閱讀失敗報告**：確認失敗層級（後端 / 前端 / 契約 / 環境）
+2. **建立修復 Task**：根據根因指派給正確的 agent
+   - 後端問題 → 指派給 backend-implementer
+   - 前端問題 → 指派給 frontend-implementer
+   - 契約不匹配 → Lead 判斷哪方需要調整
+3. **建立重跑 E2E Task**：
+   ```
+   TaskCreate: "重跑 E2E 整合測試"
+     owner: e2e-integration-tester
+     addBlockedBy: [fix-task]
+   ```
+4. **循環直到通過**：E2E 通過 → 功能完成
+
+### 協調時序圖
+
+```
+Lead (planner)
+  │
+  ├─ TaskCreate: backend task → assign backend agent
+  ├─ TaskCreate: frontend task → assign frontend agent
+  ├─ TaskCreate: e2e task (blockedBy: backend + frontend)
+  │
+  │  [等待 backend 完成]
+  │  [等待 frontend 完成]
+  │  → e2e task 自動 unblock
+  │
+  ├─ e2e-integration-tester 執行
+  │   ├─ ✅ 通過 → 功能完成
+  │   └─ ❌ 失敗 → 回報 Lead
+  │       │
+  │       ├─ Lead 分析根因
+  │       ├─ TaskCreate: fix task → assign 對應 agent
+  │       ├─ TaskCreate: rerun e2e (blockedBy: fix task)
+  │       └─ 循環直到通過
+  │
+  └─ 更新 SPRINT_TODOLIST.md
+```
+
+### 功能完成標準（Definition of Done）
+
+一個跨前後端的功能，必須滿足以下條件才能標記為完成：
+
+- [ ] 後端 unit + integration tests 通過
+- [ ] 前端 unit + integration tests 通過
+- [ ] **全棧 E2E 整合測試通過**（e2e-integration-tester 回報 ✅）
+- [ ] 覆蓋率 ≥ 80%
+- [ ] Lint clean
+- [ ] SPRINT_TODOLIST.md 已同步
+
 ## 輸出格式
 ```
 ## 實作計畫：[功能名稱]
@@ -100,6 +187,11 @@ maxTurns: 15
 - 後端: `cd apps/backend && uv run python -m pytest tests/ -v`
 - 前端: `cd apps/frontend && npx vitest run`
 - 預期: 全部通過, 覆蓋率 >= 80%
+
+### Task 結構（Agent Teams 用）
+- Task 1: [後端] ... → assign: backend agent
+- Task 2: [前端] ... → assign: frontend agent
+- Task 3: [E2E] ... → blockedBy: [1, 2], assign: e2e-integration-tester
 
 ### Sprint 分配建議
 - S0: ...
