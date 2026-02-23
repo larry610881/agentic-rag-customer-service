@@ -14,6 +14,7 @@ from src.infrastructure.db.models import (  # noqa: F401
     ProcessingTaskModel,
     TenantModel,
     TicketModel,
+    UsageRecordModel,
 )
 from src.interfaces.api.agent_router import router as agent_router
 from src.interfaces.api.auth_router import router as auth_router
@@ -24,6 +25,7 @@ from src.interfaces.api.line_webhook_router import router as line_webhook_router
 from src.interfaces.api.rag_router import router as rag_router
 from src.interfaces.api.task_router import router as task_router
 from src.interfaces.api.tenant_router import router as tenant_router
+from src.interfaces.api.usage_router import router as usage_router
 
 
 @asynccontextmanager
@@ -61,6 +63,7 @@ def create_app() -> FastAPI:
     application.include_router(rag_router)
     application.include_router(agent_router)
     application.include_router(line_webhook_router)
+    application.include_router(usage_router)
 
     return application
 

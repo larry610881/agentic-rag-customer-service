@@ -11,6 +11,7 @@ from src.application.agent.send_message_use_case import (
     SendMessageCommand,
     SendMessageUseCase,
 )
+from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 
@@ -37,11 +38,20 @@ class SourceResponse(BaseModel):
     score: float
 
 
+class TokenUsageResponse(BaseModel):
+    model: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    estimated_cost: float
+
+
 class ChatResponse(BaseModel):
     answer: str
     conversation_id: str
     tool_calls: list[ToolCallInfo]
     sources: list[SourceResponse]
+    usage: TokenUsageResponse | None = None
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -52,6 +62,9 @@ async def agent_chat(
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
     ),
+    record_usage: RecordUsageUseCase = Depends(
+        Provide[Container.record_usage_use_case]
+    ),
 ) -> ChatResponse:
     result = await use_case.execute(
         SendMessageCommand(
@@ -61,6 +74,22 @@ async def agent_chat(
             conversation_id=request.conversation_id,
         )
     )
+
+    await record_usage.execute(
+        tenant_id=tenant.tenant_id,
+        request_type="agent",
+        usage=result.usage,
+    )
+
+    usage_resp = None
+    if result.usage:
+        usage_resp = TokenUsageResponse(
+            model=result.usage.model,
+            input_tokens=result.usage.input_tokens,
+            output_tokens=result.usage.output_tokens,
+            total_tokens=result.usage.total_tokens,
+            estimated_cost=result.usage.estimated_cost,
+        )
 
     return ChatResponse(
         answer=result.answer,
@@ -80,6 +109,7 @@ async def agent_chat(
             )
             for s in result.sources
         ],
+        usage=usage_resp,
     )
 
 

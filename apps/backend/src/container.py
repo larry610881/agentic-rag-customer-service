@@ -25,6 +25,8 @@ from src.application.rag.query_rag_use_case import QueryRAGUseCase
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
+from src.application.usage.query_usage_use_case import QueryUsageUseCase
+from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.config import Settings
 from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.db.engine import async_session_factory
@@ -43,6 +45,9 @@ from src.infrastructure.db.repositories.processing_task_repository import (
 )
 from src.infrastructure.db.repositories.tenant_repository import (
     SQLAlchemyTenantRepository,
+)
+from src.infrastructure.db.repositories.usage_repository import (
+    SQLAlchemyUsageRepository,
 )
 from src.infrastructure.embedding.fake_embedding_service import (
     FakeEmbeddingService,
@@ -92,6 +97,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.rag_router",
             "src.interfaces.api.agent_router",
             "src.interfaces.api.line_webhook_router",
+            "src.interfaces.api.usage_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -138,6 +144,11 @@ class Container(containers.DeclarativeContainer):
 
     processing_task_repository = providers.Factory(
         SQLAlchemyProcessingTaskRepository,
+        session=db_session,
+    )
+
+    usage_repository = providers.Factory(
+        SQLAlchemyUsageRepository,
         session=db_session,
     )
 
@@ -294,6 +305,16 @@ class Container(containers.DeclarativeContainer):
         embedding_service=embedding_service,
         vector_store=vector_store,
         llm_service=llm_service,
+    )
+
+    record_usage_use_case = providers.Factory(
+        RecordUsageUseCase,
+        usage_repository=usage_repository,
+    )
+
+    query_usage_use_case = providers.Factory(
+        QueryUsageUseCase,
+        usage_repository=usage_repository,
     )
 
     order_lookup_use_case = providers.Factory(
