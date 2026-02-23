@@ -4,6 +4,7 @@ from src.application.health.health_check_use_case import HealthCheckUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
 )
+from src.application.rag.query_rag_use_case import QueryRAGUseCase
 from src.application.knowledge.get_processing_task_use_case import (
     GetProcessingTaskUseCase,
 )
@@ -65,6 +66,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.knowledge_base_router",
             "src.interfaces.api.document_router",
             "src.interfaces.api.task_router",
+            "src.interfaces.api.rag_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -236,4 +238,12 @@ class Container(containers.DeclarativeContainer):
     get_processing_task_use_case = providers.Factory(
         GetProcessingTaskUseCase,
         processing_task_repository=processing_task_repository,
+    )
+
+    query_rag_use_case = providers.Factory(
+        QueryRAGUseCase,
+        knowledge_base_repository=kb_repository,
+        embedding_service=embedding_service,
+        vector_store=vector_store,
+        llm_service=llm_service,
     )
