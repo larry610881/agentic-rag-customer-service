@@ -44,7 +44,7 @@
     "Stop": [{
       "hooks": [{
         "type": "prompt",
-        "prompt": "檢查 $ARGUMENTS，確認：1. 所有當前 Sprint 任務完成 2. 測試通過 3. 已 commit。回傳 {\"ok\": true} 或 {\"ok\": false, \"reason\": \"原因\"}",
+        "prompt": "檢查 $ARGUMENTS，確認：1. 所有當前 Sprint 任務完成 2. 測試通過 3. 已 commit 4. SPRINT_TODOLIST.md 已更新（若有任務狀態變更，需同步更新 todolist 並 commit）。回傳 {\"ok\": true} 或 {\"ok\": false, \"reason\": \"原因\"}",
         "timeout": 30
       }]
     }]
