@@ -59,7 +59,7 @@ class QueryRAGUseCase:
             r.payload["content"] for r in results
         )
 
-        answer = await self._llm_service.generate(
+        llm_result = await self._llm_service.generate(
             RAG_SYSTEM_PROMPT, command.query, context
         )
 
@@ -74,11 +74,12 @@ class QueryRAGUseCase:
         ]
 
         return RAGResponse(
-            answer=answer,
+            answer=llm_result.text,
             sources=sources,
             query=command.query,
             tenant_id=command.tenant_id,
             knowledge_base_id=command.kb_id,
+            usage=llm_result.usage,
         )
 
     async def execute_stream(

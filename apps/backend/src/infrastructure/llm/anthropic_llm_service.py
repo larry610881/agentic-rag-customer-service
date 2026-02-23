@@ -4,7 +4,9 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from src.domain.rag.pricing import calculate_usage
 from src.domain.rag.services import LLMService
+from src.domain.rag.value_objects import LLMResult
 
 
 class AnthropicLLMService(LLMService):
@@ -13,11 +15,13 @@ class AnthropicLLMService(LLMService):
         api_key: str,
         model: str = "claude-sonnet-4-20250514",
         max_tokens: int = 1024,
+        pricing: dict[str, dict[str, float]] | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._max_tokens = max_tokens
         self._base_url = "https://api.anthropic.com/v1"
+        self._pricing = pricing or {}
 
     def _build_headers(self) -> dict[str, str]:
         return {
@@ -46,7 +50,7 @@ class AnthropicLLMService(LLMService):
         system_prompt: str,
         user_message: str,
         context: str,
-    ) -> str:
+    ) -> LLMResult:
         body = self._build_body(system_prompt, user_message, context)
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
@@ -56,7 +60,15 @@ class AnthropicLLMService(LLMService):
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["content"][0]["text"]
+            text = data["content"][0]["text"]
+            usage_data = data.get("usage", {})
+            usage = calculate_usage(
+                model=self._model,
+                input_tokens=usage_data.get("input_tokens", 0),
+                output_tokens=usage_data.get("output_tokens", 0),
+                pricing=self._pricing,
+            )
+            return LLMResult(text=text, usage=usage)
 
     async def generate_stream(
         self,

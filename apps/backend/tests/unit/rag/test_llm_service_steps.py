@@ -44,13 +44,14 @@ def setup_empty_context(context):
 
 @when("使用 FakeLLMService 生成回答")
 def do_generate(context, fake_llm):
-    context["answer"] = _run(
+    result = _run(
         fake_llm.generate(
             system_prompt="你是客服助手",
             user_message="退貨政策是什麼？",
             context=context["context"],
         )
     )
+    context["answer"] = result.text
 
 
 @when("使用 FakeLLMService streaming 生成回答")

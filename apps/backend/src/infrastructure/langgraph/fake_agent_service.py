@@ -7,7 +7,7 @@ from uuid import uuid4
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.conversation.entity import Message
-from src.domain.rag.value_objects import Source
+from src.domain.rag.value_objects import Source, TokenUsage
 
 # 關鍵字路由規則
 _ORDER_KEYWORDS = re.compile(r"訂單|order|ORD-|ord-|物流|配送|送達|到哪")
@@ -35,6 +35,7 @@ class FakeAgentService(AgentService):
             ],
             sources=sources,
             conversation_id=str(uuid4()),
+            usage=TokenUsage.zero("fake"),
         )
 
     async def process_message_stream(

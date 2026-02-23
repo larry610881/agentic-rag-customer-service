@@ -1,3 +1,5 @@
+import json as _json
+
 from pydantic_settings import BaseSettings
 
 
@@ -46,6 +48,9 @@ class Settings(BaseSettings):
     line_default_tenant_id: str = ""
     line_default_kb_id: str = ""
 
+    # LLM Pricing (JSON: {"model": {"input": price_per_1m, "output": price_per_1m}})
+    llm_pricing_json: str = "{}"
+
     # App
     app_env: str = "development"
     app_version: str = "0.1.0"
@@ -60,6 +65,13 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         return f"redis://{self.redis_host}:{self.redis_port}"
+
+    @property
+    def llm_pricing(self) -> dict[str, dict[str, float]]:
+        try:
+            return _json.loads(self.llm_pricing_json)
+        except (_json.JSONDecodeError, TypeError):
+            return {}
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

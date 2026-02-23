@@ -194,6 +194,9 @@ class Container(containers.DeclarativeContainer):
             max_tokens=providers.Callable(
                 lambda cfg: cfg.llm_max_tokens, config
             ),
+            pricing=providers.Callable(
+                lambda cfg: cfg.llm_pricing, config
+            ),
         ),
         openai=providers.Factory(
             OpenAILLMService,
@@ -205,6 +208,9 @@ class Container(containers.DeclarativeContainer):
             ),
             max_tokens=providers.Callable(
                 lambda cfg: cfg.llm_max_tokens, config
+            ),
+            pricing=providers.Callable(
+                lambda cfg: cfg.llm_pricing, config
             ),
         ),
     )

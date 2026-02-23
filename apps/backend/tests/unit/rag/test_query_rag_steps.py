@@ -9,7 +9,7 @@ import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from src.application.rag.query_rag_use_case import QueryRAGCommand, QueryRAGUseCase
-from src.domain.rag.value_objects import SearchResult
+from src.domain.rag.value_objects import LLMResult, SearchResult, TokenUsage
 from src.domain.shared.exceptions import EntityNotFoundError, NoRelevantKnowledgeError
 
 scenarios("unit/rag/query_rag.feature")
@@ -55,7 +55,12 @@ def _setup_use_case(context, kb_id, tenant_id, search_results, kb_exists=True):
     mock_vector_store.search = AsyncMock(return_value=search_results)
 
     mock_llm = AsyncMock()
-    mock_llm.generate = AsyncMock(return_value="根據知識庫：退貨政策為30天內可退貨")
+    mock_llm.generate = AsyncMock(
+        return_value=LLMResult(
+            text="根據知識庫：退貨政策為30天內可退貨",
+            usage=TokenUsage.zero("fake"),
+        )
+    )
 
     use_case = QueryRAGUseCase(
         knowledge_base_repository=mock_kb_repo,

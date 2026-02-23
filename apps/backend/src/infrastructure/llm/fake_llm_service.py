@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 
 from src.domain.rag.services import LLMService
+from src.domain.rag.value_objects import LLMResult, TokenUsage
 
 
 class FakeLLMService(LLMService):
@@ -13,11 +14,13 @@ class FakeLLMService(LLMService):
         system_prompt: str,
         user_message: str,
         context: str,
-    ) -> str:
+    ) -> LLMResult:
         if not context or not context.strip():
-            return "知識庫中沒有找到相關資訊，請嘗試其他問題。"
-        snippet = context[:200]
-        return f"根據知識庫：{snippet}"
+            text = "知識庫中沒有找到相關資訊，請嘗試其他問題。"
+        else:
+            snippet = context[:200]
+            text = f"根據知識庫：{snippet}"
+        return LLMResult(text=text, usage=TokenUsage.zero("fake"))
 
     async def generate_stream(
         self,
@@ -25,6 +28,6 @@ class FakeLLMService(LLMService):
         user_message: str,
         context: str,
     ) -> AsyncIterator[str]:
-        answer = await self.generate(system_prompt, user_message, context)
-        for char in answer:
+        result = await self.generate(system_prompt, user_message, context)
+        for char in result.text:
             yield char

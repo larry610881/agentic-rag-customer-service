@@ -8,7 +8,7 @@ from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.conversation.entity import Message
 from src.domain.rag.services import LLMService
-from src.domain.rag.value_objects import Source
+from src.domain.rag.value_objects import Source, TokenUsage
 from src.infrastructure.langgraph.agent_graph import build_agent_graph
 from src.infrastructure.langgraph.tools import (
     OrderLookupTool,
@@ -49,6 +49,7 @@ class LangGraphAgentService(AgentService):
             "tool_reasoning": "",
             "tool_result": {},
             "final_answer": "",
+            "accumulated_usage": {},
         }
 
         result = await self._compiled.ainvoke(initial_state)
@@ -72,6 +73,20 @@ class LangGraphAgentService(AgentService):
                 for s in raw_sources
             ]
 
+        # Convert accumulated_usage dict to TokenUsage
+        acc = result.get("accumulated_usage", {})
+        usage = (
+            TokenUsage(
+                model=acc.get("model", "unknown"),
+                input_tokens=acc.get("input_tokens", 0),
+                output_tokens=acc.get("output_tokens", 0),
+                total_tokens=acc.get("total_tokens", 0),
+                estimated_cost=acc.get("estimated_cost", 0.0),
+            )
+            if acc
+            else None
+        )
+
         return AgentResponse(
             answer=answer,
             tool_calls=[
@@ -79,6 +94,7 @@ class LangGraphAgentService(AgentService):
             ],
             sources=sources,
             conversation_id=str(uuid4()),
+            usage=usage,
         )
 
     async def process_message_stream(

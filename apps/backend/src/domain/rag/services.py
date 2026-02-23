@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any
 
-from src.domain.rag.value_objects import SearchResult
+from src.domain.rag.value_objects import LLMResult, SearchResult
 
 
 class EmbeddingService(ABC):
@@ -46,7 +46,7 @@ class LLMService(ABC):
         system_prompt: str,
         user_message: str,
         context: str,
-    ) -> str: ...
+    ) -> LLMResult: ...
 
     @abstractmethod
     async def generate_stream(

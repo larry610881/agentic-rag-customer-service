@@ -53,6 +53,7 @@ class AgentState(TypedDict):
     tool_reasoning: str
     tool_result: dict[str, Any]
     final_answer: str
+    accumulated_usage: dict[str, Any]
 
 
 def _keyword_route(msg: str) -> dict[str, str] | None:  # noqa: C901
@@ -84,6 +85,32 @@ def build_agent_graph(  # noqa: C901
 ) -> StateGraph:
     """建構 Agent StateGraph"""
 
+    def _usage_to_dict(usage: Any) -> dict[str, Any]:
+        return {
+            "model": usage.model,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "total_tokens": usage.total_tokens,
+            "estimated_cost": usage.estimated_cost,
+        }
+
+    def _merge_usage(
+        existing: dict[str, Any] | None, new_dict: dict[str, Any]
+    ) -> dict[str, Any]:
+        if not existing:
+            return new_dict
+        return {
+            "model": existing.get("model", new_dict["model"]),
+            "input_tokens": existing.get("input_tokens", 0)
+            + new_dict["input_tokens"],
+            "output_tokens": existing.get("output_tokens", 0)
+            + new_dict["output_tokens"],
+            "total_tokens": existing.get("total_tokens", 0)
+            + new_dict["total_tokens"],
+            "estimated_cost": existing.get("estimated_cost", 0.0)
+            + new_dict["estimated_cost"],
+        }
+
     async def router_node(state: AgentState) -> dict:
         """路由：判斷用戶意圖"""
         msg = state["user_message"]
@@ -96,12 +123,17 @@ def build_agent_graph(  # noqa: C901
             result = await llm_service.generate(
                 ROUTER_SYSTEM_PROMPT, msg, ""
             )
-            parsed = json.loads(result)
+            usage_dict = _usage_to_dict(result.usage)
+            accumulated = _merge_usage(
+                state.get("accumulated_usage"), usage_dict
+            )
+            parsed = json.loads(result.text)
             tool = parsed.get("tool", "rag_query")
             reasoning = parsed.get("reasoning", "LLM 意圖分類")
             return {
                 "current_tool": tool,
                 "tool_reasoning": reasoning,
+                "accumulated_usage": accumulated,
             }
         except (json.JSONDecodeError, KeyError):
             return {
@@ -145,10 +177,17 @@ def build_agent_graph(  # noqa: C901
         context = json.dumps(
             tool_result, ensure_ascii=False, default=str
         )
-        answer = await llm_service.generate(
+        result = await llm_service.generate(
             RESPOND_SYSTEM_PROMPT, state["user_message"], context
         )
-        return {"final_answer": answer}
+        usage_dict = _usage_to_dict(result.usage)
+        accumulated = _merge_usage(
+            state.get("accumulated_usage"), usage_dict
+        )
+        return {
+            "final_answer": result.text,
+            "accumulated_usage": accumulated,
+        }
 
     def route_to_tool(state: AgentState) -> str:
         tool = state.get("current_tool", "rag_query")
