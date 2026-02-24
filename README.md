@@ -48,13 +48,10 @@
 ## 🏗 系統架構
 
 <div align="center">
-<details>
-<summary>
-  <img src="docs/images/architecture_diagrams.png" alt="System Architecture" width="700" />
-  <br/><sub>🔍 點擊圖片展開全尺寸 / 再點擊收起</sub>
-</summary>
-<img src="docs/images/architecture_diagrams.png" alt="System Architecture (Full Size)" />
-</details>
+  <a href="docs/images/architecture_diagrams.png">
+    <img src="docs/images/architecture_diagrams.png" alt="System Architecture" width="800" />
+  </a>
+  <p><sub>點擊圖片可放大檢視</sub></p>
 </div>
 
 > **DDD 4-Layer**：Domain → Application → Infrastructure → Interfaces
