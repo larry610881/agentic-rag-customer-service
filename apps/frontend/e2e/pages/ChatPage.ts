@@ -47,8 +47,23 @@ export class ChatPage {
     return this.assistantMessages.last().textContent();
   }
 
+  async sendMessageAndWait(text: string) {
+    await this.sendMessage(text);
+    await this.waitForAssistantResponse();
+  }
+
   async expandThoughtPanel() {
     await this.thoughtPanel.last().click();
+  }
+
+  async getToolCallNames(): Promise<string[]> {
+    // Expand the last Agent Actions panel
+    const trigger = this.page.getByText(/Agent Actions/).last();
+    if ((await trigger.count()) === 0) return [];
+    await trigger.click();
+    // Badge components use data-slot="badge" attribute
+    const badges = this.page.locator('[data-slot="badge"]');
+    return badges.allTextContents();
   }
 
   async getCitations() {

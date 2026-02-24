@@ -1,6 +1,7 @@
 """SupervisorAgentService — Multi-Agent 調度器（含情緒偵測 + 反思）"""
 
 from collections.abc import AsyncIterator
+from typing import Any
 from uuid import uuid4
 
 from src.domain.agent.entity import AgentResponse
@@ -27,6 +28,8 @@ class SupervisorAgentService(AgentService):
         kb_id: str,
         user_message: str,
         history: list[Message] | None = None,
+        *,
+        metadata: dict[str, Any] | None = None,
     ) -> AgentResponse:
         sentiment_result = None
         if self._sentiment_service:
@@ -39,6 +42,7 @@ class SupervisorAgentService(AgentService):
             kb_id=kb_id,
             user_message=user_message,
             conversation_history=history or [],
+            metadata=metadata or {},
         )
 
         response = await self._dispatch(context)

@@ -1,6 +1,7 @@
 """MetaSupervisorService — 頂層路由，依 user_role 到對應 Team"""
 
 from collections.abc import AsyncIterator
+from typing import Any
 from uuid import uuid4
 
 from src.domain.agent.entity import AgentResponse
@@ -37,6 +38,7 @@ class MetaSupervisorService(AgentService):
         history: list[Message] | None = None,
         *,
         user_role: str = _DEFAULT_ROLE,
+        metadata: dict[str, Any] | None = None,
     ) -> AgentResponse:
         sentiment_result = None
         if self._sentiment_service:
@@ -50,6 +52,7 @@ class MetaSupervisorService(AgentService):
             user_message=user_message,
             conversation_history=history or [],
             user_role=user_role,
+            metadata=metadata or {},
         )
 
         response = await self._dispatch(context)

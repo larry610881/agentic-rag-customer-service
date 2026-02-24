@@ -18,6 +18,23 @@ export default defineConfig({
     screenshot: "on",
     video: "on",
   },
+  projects: [
+    {
+      name: "auth",
+      testMatch: "**/auth/*.feature.spec.js",
+    },
+    {
+      name: "features",
+      testMatch: /^(?!.*\/auth\/)(?!.*\/demo\/).*\.feature\.spec\.js$/,
+      dependencies: ["auth"],
+    },
+    {
+      name: "demo",
+      testMatch: "**/demo/*.feature.spec.js",
+      dependencies: ["features"],
+      timeout: 120000,
+    },
+  ],
   webServer: {
     command: "npm run dev",
     port: 3000,

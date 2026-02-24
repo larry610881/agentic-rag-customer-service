@@ -43,4 +43,19 @@ export class KnowledgeDetailPage {
     await expect(this.processingStatus).toBeVisible({ timeout: 10000 });
     await expect(this.processingStatus).toBeHidden({ timeout: 60000 });
   }
+
+  async getDocumentStatus(filename: string): Promise<string> {
+    const documents = await this.getDocuments();
+    const doc = documents.find((d) => d.name.includes(filename));
+    return doc?.status ?? "";
+  }
+
+  async waitForDocumentCompleted(filename: string, timeout = 60000) {
+    await expect(async () => {
+      const documents = await this.getDocuments();
+      const doc = documents.find((d) => d.name.includes(filename));
+      expect(doc).toBeDefined();
+      expect(doc!.status).toMatch(/Completed|completed|已完成/);
+    }).toPass({ timeout });
+  }
 }

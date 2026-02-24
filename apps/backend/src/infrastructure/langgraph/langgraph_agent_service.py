@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import AsyncIterator
+from typing import Any
 from uuid import uuid4
 
 from src.domain.agent.entity import AgentResponse
@@ -39,6 +40,8 @@ class LangGraphAgentService(AgentService):
         kb_id: str,
         user_message: str,
         history: list[Message] | None = None,
+        *,
+        metadata: dict[str, Any] | None = None,
     ) -> AgentResponse:
         initial_state = {
             "messages": [],

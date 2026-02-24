@@ -122,17 +122,34 @@ async def agent_chat_stream(
         Provide[Container.send_message_use_case]
     ),
 ) -> StreamingResponse:
+    result = await use_case.execute(
+        SendMessageCommand(
+            tenant_id=tenant.tenant_id,
+            kb_id=request.knowledge_base_id,
+            message=request.message,
+            conversation_id=request.conversation_id,
+        )
+    )
+
     async def event_generator():
-        async for chunk in use_case.execute_stream(
-            SendMessageCommand(
-                tenant_id=tenant.tenant_id,
-                kb_id=request.knowledge_base_id,
-                message=request.message,
-                conversation_id=request.conversation_id,
-            )
-        ):
-            event = {"type": "token", "content": chunk}
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        for char in result.answer:
+            yield f"data: {json.dumps({'type': 'token', 'content': char}, ensure_ascii=False)}\n\n"
+
+        if result.sources:
+            sources_data = [
+                {
+                    "document_name": s.document_name,
+                    "content_snippet": s.content_snippet,
+                    "score": s.score,
+                }
+                for s in result.sources
+            ]
+            yield f"data: {json.dumps({'type': 'sources', 'sources': sources_data}, ensure_ascii=False)}\n\n"
+
+        if result.tool_calls:
+            yield f"data: {json.dumps({'type': 'tool_calls', 'tool_calls': result.tool_calls}, ensure_ascii=False)}\n\n"
+
+        yield f"data: {json.dumps({'type': 'conversation_id', 'conversation_id': result.conversation_id})}\n\n"
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(

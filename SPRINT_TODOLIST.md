@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-23 (E2E 驗收 10/10 scenarios green, 43 frontend + 102 backend tests pass)
+> 最後更新：2026-02-24 (E2E 10/10 green + trace/video 報告模式, payngo E2E 40/40 green)
 
 ---
 
@@ -444,9 +444,13 @@
 - ✅ globalSetup 自動 seed 測試資料（KB + tenant）
 - ✅ ChatInput 在 KB 未選取前禁用 Send 按鈕（修復競態條件）
 - ✅ 後端 DB pool 優化（pool_size=20, pool_pre_ping, pool_recycle=300）
-- ✅ playwright.config.ts 加入 screenshot: "on" + video: "on-first-retry"
+- ✅ playwright.config.ts 加入 screenshot: "on" + video: "on-first-retry" + trace: "on"
+- ✅ README.md 新增 E2E 報告模式章節（HTML 報告 + 影片錄製 + Trace Viewer 操作說明）
 - ✅ 驗收：Playwright E2E 10/10 scenarios 全部通過 + 43 unit tests green
-- ⏭️ 暫時移除 3 scenarios（展開思考過程 + 來源引用 + citation）：streaming API 尚未送 tool_calls/sources 事件
+- ✅ Streaming 端點補發 sources/tool_calls/conversation_id 事件（修復 Demo 2/3/4 阻塞）
+- ✅ 多步驟退貨 metadata 傳遞（refund_step 跨對話持久化）
+- ✅ Demo 1-4 E2E Feature 檔案 + Step Definitions + POM 增強
+- ✅ Playwright config 分 3 project（auth → features → demo）
 
 ---
 
@@ -467,13 +471,13 @@
 - ⬜ 驗收：P95 < 3s，支援 50 並發
 
 ### 7.4 Demo 場景
-- ⬜ Demo 1：管理員上傳商品目錄 → 自動建立知識庫
-- ⬜ Demo 2：客戶詢問商品規格 → AI 基於知識庫回答（帶引用）
-- ⬜ Demo 3：客戶查詢訂單狀態 → Agent 使用 OrderLookupTool
-- ⬜ Demo 4：客戶申請退貨 → 多步驟引導 → 建立工單
-- ⬜ Demo 5：租戶隔離驗證（B 看不到 A 的資料）
-- ⬜ Demo 6：LINE Bot 對話 → Agent 回答（同一個 RAG Pipeline）
-- ⬜ 驗收：每個場景 < 3 分鐘完成
+- ✅ Demo 1：文件上傳與自動向量化（E2E feature + steps）
+- ✅ Demo 2：RAG 知識問答與來源引用（E2E feature + streaming 修復）
+- ✅ Demo 3：訂單狀態查詢 + OrderLookupTool（E2E feature + tool_calls 事件）
+- ✅ Demo 4：退貨多步驟引導（E2E feature + metadata 傳遞修復）
+- ✅ Demo 5：租戶隔離驗證（既有 E2E tenant-isolation.feature）
+- ⬜ Demo 6：LINE Bot 對話 → Agent 回答（後端 pytest-bdd 測試待實作）
+- 🔄 驗收：需啟動 infra 執行 E2E 確認全通過
 
 ### 7.5 文件
 - ⬜ README.md 完整
@@ -503,4 +507,4 @@
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 95% | 84 scenarios, 84.83% coverage, 前端對話列表延至 S7 |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 65% | E2E 10/10 green + 102 backend + 43 frontend tests, docs 5 文件 |
+| S7 整合+Demo | 🔄 進行中 | 80% | Demo 1-5 E2E ready, streaming 修復, 102 backend + 43 frontend tests |

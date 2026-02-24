@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from typing import Any
 
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.value_objects import SentimentResult
@@ -16,6 +17,8 @@ class AgentService(ABC):
         kb_id: str,
         user_message: str,
         history: list[Message] | None = None,
+        *,
+        metadata: dict[str, Any] | None = None,
     ) -> AgentResponse: ...
 
     @abstractmethod

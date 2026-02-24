@@ -1,6 +1,7 @@
 """FakeAgentService — SupervisorAgentService wrapper（向後相容）"""
 
 from collections.abc import AsyncIterator
+from typing import Any
 
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
@@ -25,9 +26,11 @@ class FakeAgentService(AgentService):
         kb_id: str,
         user_message: str,
         history: list[Message] | None = None,
+        *,
+        metadata: dict[str, Any] | None = None,
     ) -> AgentResponse:
         return await self._supervisor.process_message(
-            tenant_id, kb_id, user_message, history
+            tenant_id, kb_id, user_message, history, metadata=metadata
         )
 
     async def process_message_stream(
