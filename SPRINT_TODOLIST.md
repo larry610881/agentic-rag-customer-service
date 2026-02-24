@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-24 (Chat 頁面 Bot 選擇流程完成, 122 backend + 80 frontend tests green)
+> 最後更新：2026-02-24 (Embedding/LLM 獨立設定 + 百煉整合, 127 backend + 80 frontend tests green)
 
 ---
 
@@ -524,6 +524,16 @@
 - ✅ Chat Page 條件渲染：未選 Bot → BotSelector，已選 → 對話介面
 - ✅ 測試更新：store 2 + conversation-list 2 = 4 新測試（80 frontend tests green）
 - ✅ 驗收：進入 /chat → 選 Bot → 對話 → 可切換 Bot
+
+### 7.14 Embedding / LLM 獨立設定 + 百煉整合
+- ✅ Settings 新增 `embedding_api_key` / `llm_api_key` 獨立欄位
+- ✅ 新增 `effective_embedding_api_key` / `effective_llm_api_key` 解析 property（dedicated > provider > legacy）
+- ✅ Container embedding_service / llm_service 改用統一 key 解析
+- ✅ Qwen base URL 統一為 `dashscope.aliyuncs.com`（國內版）
+- ✅ `.env.example` 加入百煉 Embedding 模型排序備註 + Quick-Start 範例
+- ✅ `.env` 設定 Qwen 全套（embedding=text-embedding-v3 + llm=qwen-plus）
+- ✅ 全量測試：後端 127 passed + 前端 80 passed
+- ✅ 驗收：Embedding 與 LLM 可獨立設定不同 provider/key
 
 ---
 
