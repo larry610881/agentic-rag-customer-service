@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-24 (對話歷史列表 + README 美化完成, 122 backend + 76 frontend tests green)
+> 最後更新：2026-02-24 (Chat 頁面 Bot 選擇流程完成, 122 backend + 80 frontend tests green)
 
 ---
 
@@ -515,6 +515,16 @@
 - ✅ 全量測試：後端 122 passed + 前端 71 passed
 - ✅ 驗收：完整 Bot CRUD + 多 KB 綁定 + LLM 參數 + LINE Channel 設定
 
+### 7.13 Chat 頁面 Bot 選擇流程
+- ✅ Chat Store 新增 botId/botName 狀態 + selectBot/clearBot actions
+- ✅ ChatRequest 型別新增 bot_id 欄位
+- ✅ Streaming hook 改傳 bot_id（後端自動載入 Bot 的 KB/LLM 參數）
+- ✅ BotSelector 元件（活躍 Bot 卡片清單 + loading/empty/error 狀態）
+- ✅ ConversationList 頂部顯示 Bot 名稱 + 切換按鈕
+- ✅ Chat Page 條件渲染：未選 Bot → BotSelector，已選 → 對話介面
+- ✅ 測試更新：store 2 + conversation-list 2 = 4 新測試（80 frontend tests green）
+- ✅ 驗收：進入 /chat → 選 Bot → 對話 → 可切換 Bot
+
 ---
 
 ## 進度總覽
@@ -529,4 +539,4 @@
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 100% | 84 scenarios, 84.83% coverage |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 97% | Demo 1-6 + Bot Management + 對話列表 + README, 122 backend + 76 frontend tests |
+| S7 整合+Demo | 🔄 進行中 | 98% | Demo 1-6 + Bot Management + Chat Bot 選擇 + README, 122 backend + 80 frontend tests |
