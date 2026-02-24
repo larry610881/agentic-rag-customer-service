@@ -42,6 +42,8 @@ class MetaSupervisorService(AgentService):
         llm_params: dict[str, Any] | None = None,
         user_role: str = _DEFAULT_ROLE,
         metadata: dict[str, Any] | None = None,
+        history_context: str = "",
+        router_context: str = "",
     ) -> AgentResponse:
         sentiment_result = None
         if self._sentiment_service:

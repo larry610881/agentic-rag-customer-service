@@ -30,6 +30,8 @@ class SupervisorAgentService(AgentService):
         history: list[Message] | None = None,
         *,
         metadata: dict[str, Any] | None = None,
+        history_context: str = "",
+        router_context: str = "",
     ) -> AgentResponse:
         sentiment_result = None
         if self._sentiment_service:

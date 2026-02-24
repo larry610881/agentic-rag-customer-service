@@ -22,6 +22,8 @@ class AgentService(ABC):
         system_prompt: str | None = None,
         llm_params: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
+        history_context: str = "",
+        router_context: str = "",
     ) -> AgentResponse: ...
 
     @abstractmethod

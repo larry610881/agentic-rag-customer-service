@@ -28,6 +28,8 @@ class FakeAgentService(AgentService):
         history: list[Message] | None = None,
         *,
         metadata: dict[str, Any] | None = None,
+        history_context: str = "",
+        router_context: str = "",
     ) -> AgentResponse:
         return await self._supervisor.process_message(
             tenant_id, kb_id, user_message, history, metadata=metadata

@@ -73,6 +73,12 @@ from src.infrastructure.db.repositories.tenant_repository import (
 from src.infrastructure.db.repositories.usage_repository import (
     SQLAlchemyUsageRepository,
 )
+from src.infrastructure.conversation import (
+    FullHistoryStrategy,
+    RAGHistoryStrategy,
+    SlidingWindowStrategy,
+    SummaryRecentStrategy,
+)
 from src.infrastructure.embedding.fake_embedding_service import (
     FakeEmbeddingService,
 )
@@ -541,6 +547,21 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
+    # --- Conversation History Strategy ---
+
+    history_strategy = providers.Selector(
+        providers.Callable(
+            lambda cfg: cfg.history_strategy, config
+        ),
+        full=providers.Factory(FullHistoryStrategy),
+        sliding_window=providers.Factory(SlidingWindowStrategy),
+        summary_recent=providers.Factory(
+            SummaryRecentStrategy,
+            llm_service=llm_service,
+        ),
+        rag_history=providers.Factory(RAGHistoryStrategy),
+    )
+
     create_bot_use_case = providers.Factory(
         CreateBotUseCase,
         bot_repository=bot_repository,
@@ -571,6 +592,7 @@ class Container(containers.DeclarativeContainer):
         agent_service=agent_service,
         conversation_repository=conversation_repository,
         bot_repository=bot_repository,
+        history_strategy=history_strategy,
     )
 
     # --- LINE Bot ---

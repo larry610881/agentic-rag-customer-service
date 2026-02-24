@@ -52,6 +52,8 @@ class AgentState(TypedDict):
     kb_ids: list[str]
     system_prompt: str
     llm_params: dict[str, Any]
+    history_context: str
+    router_context: str
     current_tool: str
     tool_reasoning: str
     tool_result: dict[str, Any]
@@ -136,9 +138,10 @@ def build_agent_graph(  # noqa: C901
 
         # LLM 意圖分類
         llm_kw = _extract_llm_kwargs(state)
+        router_ctx = state.get("router_context") or ""
         try:
             result = await llm_service.generate(
-                ROUTER_SYSTEM_PROMPT, msg, "", **llm_kw
+                ROUTER_SYSTEM_PROMPT, msg, router_ctx, **llm_kw
             )
             usage_dict = _usage_to_dict(result.usage)
             accumulated = _merge_usage(
@@ -195,9 +198,15 @@ def build_agent_graph(  # noqa: C901
     async def respond_node(state: AgentState) -> dict:
         """根據工具結果生成最終回答"""
         tool_result = state.get("tool_result", {})
-        context = json.dumps(
+        tool_json = json.dumps(
             tool_result, ensure_ascii=False, default=str
         )
+        history_ctx = state.get("history_context") or ""
+        parts: list[str] = []
+        if history_ctx:
+            parts.append(f"[對話歷史]\n{history_ctx}")
+        parts.append(f"[工具結果]\n{tool_json}")
+        context = "\n\n".join(parts)
         custom_prompt = state.get("system_prompt") or ""
         sys_prompt = custom_prompt if custom_prompt.strip() else RESPOND_SYSTEM_PROMPT
         llm_kw = _extract_llm_kwargs(state)

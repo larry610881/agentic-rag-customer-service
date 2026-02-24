@@ -14,6 +14,9 @@ from src.domain.agent.entity import AgentResponse
 from src.domain.conversation.entity import Conversation
 from src.domain.conversation.value_objects import ConversationId
 from src.domain.rag.value_objects import TokenUsage
+from src.infrastructure.conversation.sliding_window_strategy import (
+    SlidingWindowStrategy,
+)
 
 scenarios("unit/conversation/conversation_memory.feature")
 
@@ -58,6 +61,7 @@ def _make_use_case(context, conversation=None):
     context["use_case"] = SendMessageUseCase(
         agent_service=mock_agent,
         conversation_repository=mock_repo,
+        history_strategy=SlidingWindowStrategy(),
     )
 
 

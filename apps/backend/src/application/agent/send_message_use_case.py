@@ -8,6 +8,10 @@ from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.bot.repository import BotRepository
 from src.domain.conversation.entity import Conversation, Message
+from src.domain.conversation.history_strategy import (
+    ConversationHistoryStrategy,
+    HistoryStrategyConfig,
+)
 from src.domain.conversation.repository import ConversationRepository
 
 _REFUND_METADATA_MARKER = "__refund_metadata"
@@ -28,10 +32,12 @@ class SendMessageUseCase:
         agent_service: AgentService,
         conversation_repository: ConversationRepository,
         bot_repository: BotRepository | None = None,
+        history_strategy: ConversationHistoryStrategy | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
         self._bot_repo = bot_repository
+        self._history_strategy = history_strategy
 
     async def execute(self, command: SendMessageCommand) -> AgentResponse:
         conversation = await self._load_or_create_conversation(command)
@@ -60,8 +66,20 @@ class SendMessageUseCase:
                 }
                 history_limit = bot.llm_params.history_limit
 
-        # Truncate history by history_limit
-        if history and history_limit is not None:
+        # Process history via strategy
+        history_context = ""
+        router_context = ""
+        if self._history_strategy and history:
+            strategy_config = HistoryStrategyConfig(
+                history_limit=history_limit or 10,
+                recent_turns=3,
+            )
+            ctx = await self._history_strategy.process(
+                history, strategy_config
+            )
+            history_context = ctx.respond_context
+            router_context = ctx.router_context
+        elif history and history_limit is not None:
             history = history[-history_limit:]
 
         response = await self._agent_service.process_message(
@@ -73,6 +91,8 @@ class SendMessageUseCase:
             system_prompt=system_prompt,
             llm_params=llm_params,
             metadata=metadata,
+            history_context=history_context,
+            router_context=router_context,
         )
 
         tool_calls_to_save = response.tool_calls[:]

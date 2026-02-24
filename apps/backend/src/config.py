@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 1024
     llm_base_url: str = ""
 
+    # Conversation History Strategy
+    # "full" | "sliding_window" | "summary_recent" | "rag_history"
+    history_strategy: str = "sliding_window"
+    history_recent_turns: int = 3
+
     # RAG
     rag_score_threshold: float = 0.3
     rag_top_k: int = 5
