@@ -15,6 +15,10 @@
     "playwright": {
       "command": "npx",
       "args": ["@playwright/mcp@latest"]
+    },
+    "ui-expert": {
+      "command": "node",
+      "args": ["/home/p10359945/source/repos/ui-expert-mcp/dist/index.js"]
     }
   }
 }
