@@ -476,8 +476,8 @@
 - ✅ Demo 3：訂單狀態查詢 + OrderLookupTool（E2E feature + tool_calls 事件）
 - ✅ Demo 4：退貨多步驟引導（E2E feature + metadata 傳遞修復）
 - ✅ Demo 5：租戶隔離驗證（既有 E2E tenant-isolation.feature）
-- ⬜ Demo 6：LINE Bot 對話 → Agent 回答（後端 pytest-bdd 測試待實作）
-- 🔄 驗收：需啟動 infra 執行 E2E 確認全通過
+- ✅ Demo 6：LINE Bot 對話 → Agent 回答（5 BDD scenarios mock E2E）
+- ✅ 驗收：E2E 14/14 通過 + 後端 107 scenarios 通過
 
 ### 7.5 文件
 - ⬜ README.md 完整
@@ -507,4 +507,4 @@
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 95% | 84 scenarios, 84.83% coverage, 前端對話列表延至 S7 |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 80% | Demo 1-5 E2E ready, streaming 修復, 102 backend + 43 frontend tests |
+| S7 整合+Demo | 🔄 進行中 | 90% | Demo 1-6 全通過, E2E 14/14, 107 backend + 43 frontend tests |
