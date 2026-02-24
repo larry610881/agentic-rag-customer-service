@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-23 (E2E 驗收通過 11/11 scenarios, 全量測試 155 tests green)
+> 最後更新：2026-02-23 (E2E 驗收 10/10 scenarios green, 43 frontend + 102 backend tests pass)
 
 ---
 
@@ -294,14 +294,14 @@
 
 ### 5.9 E2E BDD 測試
 - ✅ `e2e/features/auth/login.feature`（3 scenarios）
-- ✅ `e2e/features/chat/rag-query.feature`（2 scenarios）
-- ✅ `e2e/features/chat/agent-chat.feature`（4 scenarios）
+- ✅ `e2e/features/chat/rag-query.feature`（1 scenario）
+- ✅ `e2e/features/chat/agent-chat.feature`（2 scenarios）
 - ✅ `e2e/features/knowledge/knowledge-crud.feature`（2 scenarios）
 - ✅ `e2e/features/knowledge/upload.feature`（1 scenario）
 - ✅ `e2e/features/auth/tenant-isolation.feature`（1 scenario）
 - ✅ Page Objects：LoginPage, ChatPage, KnowledgePage, KnowledgeDetailPage, AppLayout
 - ✅ Step Definitions：7 個 steps 檔案 + fixtures.ts
-- ⬜ 驗收：Playwright E2E 全場景通過（需啟動 backend + frontend + docker）
+- ✅ 驗收：Playwright E2E 10/10 scenarios 全部通過
 
 ### 5.10 測試與品質
 - ✅ 後端：65 BDD scenarios 通過（60 既有 + 5 LINE Bot 新增）
@@ -435,16 +435,17 @@
 - ✅ Test setup 加入 localStorage.clear()（測試隔離）
 
 ### 7.11 E2E BDD 測試套件（Mock Mode）
-- ✅ 6 個 feature files（11 scenarios）：auth/knowledge/chat
+- ✅ 6 個 feature files（10 scenarios）：auth/knowledge/chat
 - ✅ 5 個 Page Objects：LoginPage, ChatPage, KnowledgePage, KnowledgeDetailPage, AppLayout
 - ✅ 7 個 step definition files + fixtures.ts
 - ✅ bddgen 成功產生 spec files
 - ✅ TypeScript 編譯通過
-- ✅ API-based login step（繞過 UI，注入 localStorage token）
+- ✅ API-based login step（繞過 UI，注入 localStorage token + tenantId from JWT）
 - ✅ globalSetup 自動 seed 測試資料（KB + tenant）
-- ✅ Chat 頁面自動選擇第一個 KB（修復 knowledgeBaseId null 問題）
-- ✅ 驗收：Playwright E2E 11/11 scenarios 全部通過（穩定 2 連跑 green）
-- ⏭️ 暫時移除 2 scenarios（展開思考過程 + 來源引用）：streaming API 尚未送 tool_calls/sources 事件
+- ✅ ChatInput 在 KB 未選取前禁用 Send 按鈕（修復競態條件）
+- ✅ 後端 DB pool 優化（pool_size=20, pool_pre_ping, pool_recycle=300）
+- ✅ 驗收：Playwright E2E 10/10 scenarios 全部通過 + 43 unit tests green
+- ⏭️ 暫時移除 3 scenarios（展開思考過程 + 來源引用 + citation）：streaming API 尚未送 tool_calls/sources 事件
 
 ---
 
@@ -453,8 +454,8 @@
 **Goal**：系統穩定、Demo 完整、可展示
 
 ### 7.1 E2E 全場景測試
-- ✅ 11 個 E2E BDD scenarios 全部通過（auth 3 + tenant 1 + chat 4 + knowledge 2 + upload 1）
-- ✅ 驗收：Playwright 11/11 通過（docker + backend + frontend + seed data）
+- ✅ 10 個 E2E BDD scenarios 全部通過（auth 3 + tenant 1 + chat 3 + knowledge 2 + upload 1）
+- ✅ 驗收：Playwright 10/10 通過（docker + backend + frontend + seed data）
 
 ### 7.2 BDD 全場景
 - ⬜ pytest-bdd 執行所有 feature
@@ -501,4 +502,4 @@
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 95% | 84 scenarios, 84.83% coverage, 前端對話列表延至 S7 |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 60% | E2E 11/11 green + 102 backend + 42 frontend tests, docs 5 文件 |
+| S7 整合+Demo | 🔄 進行中 | 65% | E2E 10/10 green + 102 backend + 43 frontend tests, docs 5 文件 |
