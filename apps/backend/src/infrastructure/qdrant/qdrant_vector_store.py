@@ -27,14 +27,21 @@ class QdrantVectorStore(VectorStore):
         collections = await self._client.get_collections()
         names = [c.name for c in collections.collections]
         if collection not in names:
-            await self._client.create_collection(
-                collection_name=collection,
-                vectors_config=VectorParams(
-                    size=vector_size,
-                    distance=Distance.COSINE,
-                ),
-            )
-            logger.info("qdrant.collection.created", collection=collection, vector_size=vector_size)
+            try:
+                await self._client.create_collection(
+                    collection_name=collection,
+                    vectors_config=VectorParams(
+                        size=vector_size,
+                        distance=Distance.COSINE,
+                    ),
+                )
+                logger.info("qdrant.collection.created", collection=collection, vector_size=vector_size)
+            except Exception:
+                # Another concurrent request may have created it; verify it exists
+                collections = await self._client.get_collections()
+                if collection not in [c.name for c in collections.collections]:
+                    raise
+                logger.debug("qdrant.collection.created_concurrently", collection=collection)
         else:
             logger.debug("qdrant.collection.exists", collection=collection)
 
@@ -64,11 +71,15 @@ class QdrantVectorStore(VectorStore):
             FieldCondition(key=k, match=MatchValue(value=v))
             for k, v in filters.items()
         ]
-        await self._client.delete(
-            collection_name=collection,
-            points_selector=Filter(must=conditions),
-        )
-        logger.info("qdrant.delete", collection=collection, filters=filters)
+        try:
+            await self._client.delete(
+                collection_name=collection,
+                points_selector=Filter(must=conditions),
+            )
+            logger.info("qdrant.delete", collection=collection, filters=filters)
+        except Exception:
+            logger.warning("qdrant.delete.skipped", collection=collection, filters=filters)
+            # Collection may not exist; safe to ignore
 
     async def search(
         self,
@@ -86,13 +97,14 @@ class QdrantVectorStore(VectorStore):
             ]
             query_filter = Filter(must=conditions)
 
-        points = await self._client.search(
+        response = await self._client.query_points(
             collection_name=collection,
-            query_vector=query_vector,
+            query=query_vector,
             limit=limit,
             score_threshold=score_threshold,
             query_filter=query_filter,
         )
+        points = response.points
         logger.info("qdrant.search", collection=collection, result_count=len(points))
         return [
             SearchResult(

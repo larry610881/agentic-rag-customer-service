@@ -22,6 +22,7 @@ class UpdateBotCommand:
     history_limit: object = _UNSET
     frequency_penalty: object = _UNSET
     reasoning_effort: object = _UNSET
+    enabled_tools: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
 
@@ -45,6 +46,8 @@ class UpdateBotUseCase:
             bot.knowledge_base_ids = list(command.knowledge_base_ids)  # type: ignore[arg-type]
         if command.system_prompt is not _UNSET:
             bot.system_prompt = command.system_prompt  # type: ignore[assignment]
+        if command.enabled_tools is not _UNSET:
+            bot.enabled_tools = list(command.enabled_tools)  # type: ignore[arg-type]
         if command.line_channel_secret is not _UNSET:
             bot.line_channel_secret = command.line_channel_secret  # type: ignore[assignment]
         if command.line_channel_access_token is not _UNSET:

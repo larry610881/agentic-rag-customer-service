@@ -24,6 +24,7 @@ class AgentService(ABC):
         metadata: dict[str, Any] | None = None,
         history_context: str = "",
         router_context: str = "",
+        enabled_tools: list[str] | None = None,
     ) -> AgentResponse: ...
 
     @abstractmethod
@@ -33,7 +34,15 @@ class AgentService(ABC):
         kb_id: str,
         user_message: str,
         history: list[Message] | None = None,
-    ) -> AsyncIterator[str]: ...  # pragma: no cover
+        *,
+        kb_ids: list[str] | None = None,
+        system_prompt: str | None = None,
+        llm_params: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        history_context: str = "",
+        router_context: str = "",
+        enabled_tools: list[str] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]: ...  # pragma: no cover
 
 
 class SentimentService(ABC):

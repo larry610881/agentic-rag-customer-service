@@ -247,6 +247,20 @@ class Container(containers.DeclarativeContainer):
                 config,
             ),
         ),
+        google=providers.Factory(
+            OpenAIEmbeddingService,
+            api_key=providers.Callable(
+                lambda cfg: cfg.effective_embedding_api_key, config
+            ),
+            model=providers.Callable(
+                lambda cfg: cfg.embedding_model, config
+            ),
+            base_url=providers.Callable(
+                lambda cfg: cfg.embedding_base_url
+                or "https://generativelanguage.googleapis.com/v1beta/openai",
+                config,
+            ),
+        ),
     )
 
     vector_store = providers.Singleton(
@@ -313,6 +327,26 @@ class Container(containers.DeclarativeContainer):
             base_url=providers.Callable(
                 lambda cfg: cfg.llm_base_url
                 or "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                config,
+            ),
+        ),
+        google=providers.Factory(
+            OpenAILLMService,
+            api_key=providers.Callable(
+                lambda cfg: cfg.effective_llm_api_key, config
+            ),
+            model=providers.Callable(
+                lambda cfg: cfg.llm_model or "gemini-2.5-flash-lite", config
+            ),
+            max_tokens=providers.Callable(
+                lambda cfg: cfg.llm_max_tokens, config
+            ),
+            pricing=providers.Callable(
+                lambda cfg: cfg.llm_pricing, config
+            ),
+            base_url=providers.Callable(
+                lambda cfg: cfg.llm_base_url
+                or "https://generativelanguage.googleapis.com/v1beta/openai",
                 config,
             ),
         ),
@@ -470,6 +504,8 @@ class Container(containers.DeclarativeContainer):
     rag_tool = providers.Factory(
         RAGQueryTool,
         query_rag_use_case=query_rag_use_case,
+        top_k=config.provided.rag_top_k,
+        score_threshold=config.provided.rag_score_threshold,
     )
 
     order_tool = providers.Factory(
@@ -533,9 +569,11 @@ class Container(containers.DeclarativeContainer):
             LangGraphAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,
-            order_tool=order_tool,
-            product_tool=product_tool,
-            ticket_tool=ticket_tool,
+        ),
+        google=providers.Factory(
+            LangGraphAgentService,
+            llm_service=llm_service,
+            rag_tool=rag_tool,
         ),
         openrouter=providers.Factory(
             LangGraphAgentService,

@@ -20,8 +20,8 @@ class OpenAIEmbeddingService(EmbeddingService):
         self._base_url = base_url
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        log = logger.bind(model=self._model, chunk_count=len(texts))
-        log.debug("embedding.request")
+        log = logger.bind(model=self._model, base_url=self._base_url, chunk_count=len(texts))
+        log.info("embedding.request", api_key_set=bool(self._api_key), api_key_prefix=self._api_key[:8] if self._api_key else "EMPTY")
         start = time.perf_counter()
         try:
             async with httpx.AsyncClient() as client:

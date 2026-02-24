@@ -34,6 +34,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 frequency_penalty=model.frequency_penalty,
                 reasoning_effort=model.reasoning_effort,
             ),
+            enabled_tools=list(model.enabled_tools or ["rag_query"]),
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
             created_at=model.created_at,
@@ -70,6 +71,7 @@ class SQLAlchemyBotRepository(BotRepository):
             existing.description = bot.description
             existing.is_active = bot.is_active
             existing.system_prompt = bot.system_prompt
+            existing.enabled_tools = bot.enabled_tools
             existing.line_channel_secret = bot.line_channel_secret
             existing.line_channel_access_token = bot.line_channel_access_token
             existing.temperature = bot.llm_params.temperature
@@ -86,6 +88,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 description=bot.description,
                 is_active=bot.is_active,
                 system_prompt=bot.system_prompt,
+                enabled_tools=bot.enabled_tools,
                 line_channel_secret=bot.line_channel_secret,
                 line_channel_access_token=bot.line_channel_access_token,
                 temperature=bot.llm_params.temperature,

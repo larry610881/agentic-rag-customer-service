@@ -23,6 +23,7 @@ class Bot:
     system_prompt: str = ""
     knowledge_base_ids: list[str] = field(default_factory=list)
     llm_params: BotLLMParams = field(default_factory=BotLLMParams)
+    enabled_tools: list[str] = field(default_factory=lambda: ["rag_query"])
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     created_at: datetime = field(

@@ -51,6 +51,7 @@ class SendMessageUseCase:
         llm_params: dict[str, Any] | None = None
         kb_id = command.kb_id
         history_limit: int | None = None
+        enabled_tools: list[str] | None = None
 
         if command.bot_id and self._bot_repo:
             bot = await self._bot_repo.find_by_id(command.bot_id)
@@ -65,6 +66,7 @@ class SendMessageUseCase:
                     "frequency_penalty": bot.llm_params.frequency_penalty,
                 }
                 history_limit = bot.llm_params.history_limit
+                enabled_tools = bot.enabled_tools or None
 
         # Process history via strategy
         history_context = ""
@@ -93,6 +95,7 @@ class SendMessageUseCase:
             metadata=metadata,
             history_context=history_context,
             router_context=router_context,
+            enabled_tools=enabled_tools,
         )
 
         tool_calls_to_save = response.tool_calls[:]
@@ -117,13 +120,86 @@ class SendMessageUseCase:
 
     async def execute_stream(
         self, command: SendMessageCommand
-    ) -> AsyncIterator[str]:
-        async for chunk in self._agent_service.process_message_stream(
+    ) -> AsyncIterator[dict[str, Any]]:
+        conversation = await self._load_or_create_conversation(command)
+
+        history = conversation.messages if conversation.messages else None
+        metadata = self._extract_metadata(conversation)
+
+        # Resolve Bot config (same as execute)
+        kb_ids: list[str] | None = None
+        system_prompt: str | None = None
+        llm_params: dict[str, Any] | None = None
+        kb_id = command.kb_id
+        history_limit: int | None = None
+        enabled_tools: list[str] | None = None
+
+        if command.bot_id and self._bot_repo:
+            bot = await self._bot_repo.find_by_id(command.bot_id)
+            if bot is not None:
+                kb_ids = bot.knowledge_base_ids or None
+                if not kb_id and kb_ids:
+                    kb_id = kb_ids[0]
+                system_prompt = bot.system_prompt or None
+                llm_params = {
+                    "temperature": bot.llm_params.temperature,
+                    "max_tokens": bot.llm_params.max_tokens,
+                    "frequency_penalty": bot.llm_params.frequency_penalty,
+                }
+                history_limit = bot.llm_params.history_limit
+                enabled_tools = bot.enabled_tools or None
+
+        # Process history via strategy
+        history_context = ""
+        router_context = ""
+        if self._history_strategy and history:
+            strategy_config = HistoryStrategyConfig(
+                history_limit=history_limit or 10,
+                recent_turns=3,
+            )
+            ctx = await self._history_strategy.process(
+                history, strategy_config
+            )
+            history_context = ctx.respond_context
+            router_context = ctx.router_context
+        elif history and history_limit is not None:
+            history = history[-history_limit:]
+
+        # Stream from agent service
+        full_answer = ""
+        tool_calls: list[dict[str, Any]] = []
+
+        async for event in self._agent_service.process_message_stream(
             tenant_id=command.tenant_id,
-            kb_id=command.kb_id,
+            kb_id=kb_id,
             user_message=command.message,
+            history=history,
+            kb_ids=kb_ids,
+            system_prompt=system_prompt,
+            llm_params=llm_params,
+            metadata=metadata,
+            history_context=history_context,
+            router_context=router_context,
+            enabled_tools=enabled_tools,
         ):
-            yield chunk
+            if event["type"] == "token":
+                full_answer += event["content"]
+            elif event["type"] == "tool_calls":
+                tool_calls = event.get("tool_calls", [])
+            yield event
+
+        # Save conversation after streaming completes
+        conversation.add_message("user", command.message)
+        conversation.add_message(
+            "assistant", full_answer, tool_calls=tool_calls
+        )
+        await self._conversation_repo.save(conversation)
+
+        yield {
+            "type": "conversation_id",
+            "conversation_id": conversation.id.value,
+        }
+        yield {"type": "done"}
 
     async def _load_or_create_conversation(
         self, command: SendMessageCommand

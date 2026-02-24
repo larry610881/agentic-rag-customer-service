@@ -16,9 +16,14 @@ class RAGQueryTool:
     description = "查詢知識庫回答用戶問題，適用於退貨政策、使用說明等知識型問題"
 
     def __init__(
-        self, query_rag_use_case: QueryRAGUseCase
+        self,
+        query_rag_use_case: QueryRAGUseCase,
+        top_k: int = 5,
+        score_threshold: float = 0.3,
     ) -> None:
         self._use_case = query_rag_use_case
+        self._top_k = top_k
+        self._score_threshold = score_threshold
 
     async def invoke(
         self,
@@ -35,6 +40,8 @@ class RAGQueryTool:
                     kb_id=kb_id,
                     query=query,
                     kb_ids=kb_ids,
+                    top_k=self._top_k,
+                    score_threshold=self._score_threshold,
                 )
             )
             return {

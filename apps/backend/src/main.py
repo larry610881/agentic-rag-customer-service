@@ -1,3 +1,4 @@
+import sqlalchemy
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -54,6 +55,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Lightweight migration: add enabled_tools column if missing
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS "
+                "enabled_tools JSON NOT NULL DEFAULT ('[]')"
+            )
+        )
     yield
     logger.info("app.shutdown")
     await engine.dispose()

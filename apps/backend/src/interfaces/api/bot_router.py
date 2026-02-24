@@ -30,6 +30,7 @@ class CreateBotRequest(BaseModel):
     history_limit: int = 10
     frequency_penalty: float = 0.0
     reasoning_effort: str = "medium"
+    enabled_tools: list[str] = ["rag_query"]
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -45,6 +46,7 @@ class UpdateBotRequest(BaseModel):
     history_limit: int | None = None
     frequency_penalty: float | None = None
     reasoning_effort: str | None = None
+    enabled_tools: list[str] | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -62,6 +64,7 @@ class BotResponse(BaseModel):
     history_limit: int
     frequency_penalty: float
     reasoning_effort: str
+    enabled_tools: list[str]
     line_channel_secret: str | None
     line_channel_access_token: str | None
     created_at: str
@@ -82,6 +85,7 @@ def _to_response(bot) -> BotResponse:
         history_limit=bot.llm_params.history_limit,
         frequency_penalty=bot.llm_params.frequency_penalty,
         reasoning_effort=bot.llm_params.reasoning_effort,
+        enabled_tools=bot.enabled_tools,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
         created_at=bot.created_at.isoformat(),
@@ -115,6 +119,7 @@ async def create_bot(
             history_limit=body.history_limit,
             frequency_penalty=body.frequency_penalty,
             reasoning_effort=body.reasoning_effort,
+            enabled_tools=body.enabled_tools,
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
         )
@@ -184,6 +189,8 @@ async def update_bot(
         kwargs["frequency_penalty"] = body.frequency_penalty
     if body.reasoning_effort is not None:
         kwargs["reasoning_effort"] = body.reasoning_effort
+    if body.enabled_tools is not None:
+        kwargs["enabled_tools"] = body.enabled_tools
     if body.line_channel_secret is not None:
         kwargs["line_channel_secret"] = body.line_channel_secret
     if body.line_channel_access_token is not None:

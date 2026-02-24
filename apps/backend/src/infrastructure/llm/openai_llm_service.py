@@ -57,8 +57,8 @@ class OpenAILLMService(LLMService):
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
     ) -> LLMResult:
-        log = logger.bind(model=self._model)
-        log.debug("llm.openai.request")
+        log = logger.bind(model=self._model, base_url=self._base_url)
+        log.info("llm.openai.request", api_key_set=bool(self._api_key), api_key_prefix=self._api_key[:8] if self._api_key else "EMPTY")
         start = time.perf_counter()
 
         messages = self._build_messages(system_prompt, user_message, context)
@@ -69,7 +69,7 @@ class OpenAILLMService(LLMService):
         }
         if temperature is not None:
             body["temperature"] = temperature
-        if frequency_penalty is not None:
+        if frequency_penalty is not None and "googleapis.com" not in self._base_url:
             body["frequency_penalty"] = frequency_penalty
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -96,6 +96,15 @@ class OpenAILLMService(LLMService):
                     output_tokens=usage_data.get("completion_tokens", 0),
                 )
                 return LLMResult(text=text, usage=usage)
+        except httpx.HTTPStatusError as e:
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
+            log.error(
+                "llm.openai.failed",
+                latency_ms=elapsed_ms,
+                status_code=e.response.status_code,
+                response_body=e.response.text[:500],
+            )
+            raise
         except Exception:
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
             log.exception("llm.openai.failed", latency_ms=elapsed_ms)
@@ -120,7 +129,7 @@ class OpenAILLMService(LLMService):
         }
         if temperature is not None:
             body["temperature"] = temperature
-        if frequency_penalty is not None:
+        if frequency_penalty is not None and "googleapis.com" not in self._base_url:
             body["frequency_penalty"] = frequency_penalty
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream(

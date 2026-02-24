@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
@@ -21,6 +22,9 @@ class BotModel(Base):
     description: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    enabled_tools: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=lambda: ["rag_query"]
+    )
     line_channel_secret: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
