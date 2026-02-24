@@ -25,20 +25,23 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60
 
-    # Embedding
-    embedding_provider: str = "fake"  # "fake" | "openai" | "qwen"
+    # Shared Provider API Keys (fallback when embedding/llm-specific keys are not set)
     openai_api_key: str = ""
+    openai_chat_api_key: str = ""  # legacy alias for openai_api_key
+    anthropic_api_key: str = ""
+    qwen_api_key: str = ""
+    openrouter_api_key: str = ""
+
+    # Embedding (independent from LLM)
+    embedding_provider: str = "fake"  # "fake" | "openai" | "qwen"
+    embedding_api_key: str = ""  # dedicated key; falls back to provider key
     embedding_model: str = "text-embedding-3-small"
     embedding_vector_size: int = 1536
     embedding_base_url: str = ""
 
-    # LLM
-    # "fake" | "openai" | "anthropic" | "qwen" | "openrouter"
-    llm_provider: str = "fake"
-    anthropic_api_key: str = ""
-    openai_chat_api_key: str = ""
-    qwen_api_key: str = ""
-    openrouter_api_key: str = ""
+    # LLM (independent from Embedding)
+    llm_provider: str = "fake"  # "fake" | "openai" | "anthropic" | "qwen" | "openrouter"
+    llm_api_key: str = ""  # dedicated key; falls back to provider key
     llm_model: str = ""
     llm_max_tokens: int = 1024
     llm_base_url: str = ""
@@ -84,6 +87,32 @@ class Settings(BaseSettings):
     def effective_openai_api_key(self) -> str:
         """Prefer openai_api_key; fall back to openai_chat_api_key."""
         return self.openai_api_key or self.openai_chat_api_key
+
+    @property
+    def effective_embedding_api_key(self) -> str:
+        """Resolve embedding API key: dedicated > provider-specific > legacy."""
+        if self.embedding_api_key:
+            return self.embedding_api_key
+        if self.embedding_provider == "qwen":
+            return self.qwen_api_key
+        if self.embedding_provider == "openai":
+            return self.effective_openai_api_key
+        return ""
+
+    @property
+    def effective_llm_api_key(self) -> str:
+        """Resolve LLM API key: dedicated > provider-specific > legacy."""
+        if self.llm_api_key:
+            return self.llm_api_key
+        if self.llm_provider == "qwen":
+            return self.qwen_api_key
+        if self.llm_provider == "openai":
+            return self.effective_openai_api_key
+        if self.llm_provider == "anthropic":
+            return self.anthropic_api_key
+        if self.llm_provider == "openrouter":
+            return self.openrouter_api_key
+        return ""
 
     @property
     def effective_log_level(self) -> str:

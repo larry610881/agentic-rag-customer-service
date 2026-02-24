@@ -223,7 +223,7 @@ class Container(containers.DeclarativeContainer):
         openai=providers.Factory(
             OpenAIEmbeddingService,
             api_key=providers.Callable(
-                lambda cfg: cfg.effective_openai_api_key, config
+                lambda cfg: cfg.effective_embedding_api_key, config
             ),
             model=providers.Callable(
                 lambda cfg: cfg.embedding_model, config
@@ -236,14 +236,14 @@ class Container(containers.DeclarativeContainer):
         qwen=providers.Factory(
             OpenAIEmbeddingService,
             api_key=providers.Callable(
-                lambda cfg: cfg.qwen_api_key, config
+                lambda cfg: cfg.effective_embedding_api_key, config
             ),
             model=providers.Callable(
                 lambda cfg: cfg.embedding_model, config
             ),
             base_url=providers.Callable(
                 lambda cfg: cfg.embedding_base_url
-                or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                or "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 config,
             ),
         ),
@@ -265,7 +265,7 @@ class Container(containers.DeclarativeContainer):
         anthropic=providers.Factory(
             AnthropicLLMService,
             api_key=providers.Callable(
-                lambda cfg: cfg.anthropic_api_key, config
+                lambda cfg: cfg.effective_llm_api_key, config
             ),
             model=providers.Callable(
                 lambda cfg: cfg.llm_model or "claude-sonnet-4-20250514", config
@@ -280,7 +280,7 @@ class Container(containers.DeclarativeContainer):
         openai=providers.Factory(
             OpenAILLMService,
             api_key=providers.Callable(
-                lambda cfg: cfg.effective_openai_api_key, config
+                lambda cfg: cfg.effective_llm_api_key, config
             ),
             model=providers.Callable(
                 lambda cfg: cfg.llm_model or "gpt-4o", config
@@ -299,7 +299,7 @@ class Container(containers.DeclarativeContainer):
         qwen=providers.Factory(
             OpenAILLMService,
             api_key=providers.Callable(
-                lambda cfg: cfg.qwen_api_key, config
+                lambda cfg: cfg.effective_llm_api_key, config
             ),
             model=providers.Callable(
                 lambda cfg: cfg.llm_model or "qwen-plus", config
@@ -312,14 +312,14 @@ class Container(containers.DeclarativeContainer):
             ),
             base_url=providers.Callable(
                 lambda cfg: cfg.llm_base_url
-                or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                or "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 config,
             ),
         ),
         openrouter=providers.Factory(
             OpenAILLMService,
             api_key=providers.Callable(
-                lambda cfg: cfg.openrouter_api_key, config
+                lambda cfg: cfg.effective_llm_api_key, config
             ),
             model=providers.Callable(
                 lambda cfg: cfg.llm_model or "openai/gpt-4o", config
