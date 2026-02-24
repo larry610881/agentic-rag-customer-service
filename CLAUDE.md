@@ -188,6 +188,24 @@ Task: 前端實作  ──┘      owner: e2e-integration-tester
 - E2E 通過 → 功能完成
 - E2E 失敗 → Lead 分析根因 → 建立修復 Task → 重跑 E2E
 
+### Subagent 使用策略
+
+- **保護主 context window** — 研究、探索、平行分析等資訊密集型工作優先委派給 subagent
+- **一 agent 一任務** — 每個 subagent 聚焦單一明確目標，避免混合職責
+- **平行化獨立工作** — 前後端無依賴的任務同時分派多個 subagent 執行
+- **避免重複勞動** — 已委派給 subagent 的調查，主 agent 不再重複搜尋同一內容
+
+### Subagent vs Agent Teams 選擇基準
+
+| 條件 | 選擇 | 範例 |
+|------|------|------|
+| 任務互相獨立、不需中間溝通 | **Subagent** | ddd-checker + security-reviewer 平行掃描 |
+| 多個獨立結果需要彙整 | **Subagent** + 主 agent 彙整 | 三個 agent 各分析一個模組，主 agent 合併結論 |
+| 任務之間有 blocking 依賴 | **Agent Teams** | 後端完成 → 前端完成 → E2E 才能跑 |
+| 需要 agent 之間即時溝通調整 | **Agent Teams** | 後端改 API schema → 通知前端同步修改 |
+
+**判斷口訣：能 fire-and-forget 就用 Subagent，需要等待或對話就用 Teams。**
+
 ## 開發工作流（五階段，不可跳過）
 
 ### Stage 1：設計與架構
@@ -211,6 +229,7 @@ Task: 前端實作  ──┘      owner: e2e-integration-tester
 ### Stage 4：規範化實作
 - **後端** DDD 4-Layer 順序：Domain Entity → Application Use Case → Infrastructure Impl → Interfaces Router
 - **前端** 元件開發順序：Type → Hook → Component → Page
+- **品質反思（非 trivial 變更）**：實作完成後自問「是否有更優雅的解法？」，若有則重構；簡單明確的修改不需額外反思
 
 ### Stage 5：驗證與交付
 - 全量測試通過：`make test`
@@ -226,6 +245,7 @@ Task: 前端實作  ──┘      owner: e2e-integration-tester
 4. **驗證**：全量測試通過 + 覆蓋率不下降
 
 > **原則：每個 Bug fix 都必須留下 regression test。**
+> **Root Cause 原則：必須找到根因再修復，禁止臨時繞過或表面修補。若修復方式感覺 hacky，退一步重新分析問題本質。**
 
 ## Sprint 管理
 
@@ -249,3 +269,56 @@ Task: 前端實作  ──┘      owner: e2e-integration-tester
 - **租戶隔離**：所有向量搜尋與知識庫操作必須包含 `tenant_id` 過濾條件
 - **前端安全**：禁止 `dangerouslySetInnerHTML`，環境變數使用 `NEXT_PUBLIC_` 前綴
 - **CORS**：正式環境禁止 `allow_origins=["*"]`
+
+---
+
+## 任務完成後：架構學習與隱憂分析（Learning Review）
+
+> **目的**：每次任務完成後，主動進行技術深度分析，幫助開發者持續提升架構與設計能力。
+> **移除提示**：此段為學習輔助用途，若 token 消耗過高可整段刪除，不影響開發流程。
+
+### 觸發時機
+
+每當一個**非 trivial 任務完成**（功能開發、Bug 修復、重構）後，在交付結果的同時附上一段 **「架構學習筆記」**。
+
+### 分析維度（依相關性挑選，不必每次全部覆蓋）
+
+| 維度 | 分析內容 |
+|------|----------|
+| **Design Patterns** | 本次實作用了哪些模式？是否有更合適的替代模式？常見誤用警示 |
+| **DDD 戰術設計** | Aggregate 邊界是否合理？Domain Event 是否該引入？Value Object vs Entity 判斷 |
+| **System Design** | 若此功能要支撐 10x/100x 流量，架構瓶頸在哪？需要哪些改動？ |
+| **微服務 / 分散式** | 當前 monolith 的哪些部分未來拆分時會痛？CAP 取捨、資料一致性風險 |
+| **高併發場景** | Race condition、冪等性、樂觀鎖 / 悲觀鎖、Queue-based 解耦是否需要？ |
+| **Design System / UI** | 元件抽象層級、Token 體系一致性、Accessibility 缺口、響應式斷點策略 |
+| **可觀測性** | Logging / Tracing / Metrics 是否足夠？告警該設在哪？ |
+| **安全隱憂** | 本次變更是否引入新的攻擊面？OWASP Top 10 對照檢查 |
+
+### 輸出格式
+
+```markdown
+### 🎓 架構學習筆記
+
+**本次相關主題**：[例：Repository Pattern、CQRS、租戶隔離]
+
+#### 做得好的地方
+- ...
+
+#### 潛在隱憂
+- [隱憂描述] → [建議改善方向] → [優先級：低/中/高]
+
+#### 延伸學習
+- [概念名稱]：[一句話解釋為什麼跟本次任務相關]
+- 若想深入：[推薦搜尋關鍵字或經典參考資料名稱]
+
+#### 如果沒有明顯隱憂
+主動挑一個與本次任務最相關的進階主題進行簡短教學（3-5 段），並提出一個思考題與開發者討論。
+```
+
+### 深度等級（依任務複雜度調整）
+
+| 任務規模 | 學習筆記深度 |
+|----------|-------------|
+| 小型修復 / 單檔變更 | 1-2 句提示，或標註「無特別隱憂」 |
+| 中型功能 / 跨層變更 | 挑 2-3 個維度分析，附延伸學習 |
+| 大型功能 / 架構變更 | 完整分析 + 討論題 + 替代方案比較 |
