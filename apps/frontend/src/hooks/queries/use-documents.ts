@@ -16,9 +16,8 @@ export function useUploadDocument() {
     }): Promise<UploadDocumentResponse> => {
       const formData = new FormData();
       formData.append("file", data.file);
-      formData.append("knowledge_base_id", data.knowledgeBaseId);
 
-      const res = await fetch(`${API_BASE}${API_ENDPOINTS.documents.upload}`, {
+      const res = await fetch(`${API_BASE}${API_ENDPOINTS.documents.upload(data.knowledgeBaseId)}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

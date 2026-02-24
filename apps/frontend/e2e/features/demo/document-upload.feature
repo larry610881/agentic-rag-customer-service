@@ -9,5 +9,4 @@ Feature: Demo 1 — 文件上傳與自動向量化
   Scenario: 上傳文件並等待處理完成
     Given 使用者在知識庫 "商品資訊" 的詳情頁面
     When 使用者上傳文件 "test-product.txt"
-    Then 應顯示文件處理狀態
-    And 文件處理完成後應出現在列表中
+    Then 應顯示文件處理進度

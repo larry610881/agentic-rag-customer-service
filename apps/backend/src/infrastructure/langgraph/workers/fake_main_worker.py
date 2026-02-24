@@ -66,13 +66,19 @@ class FakeMainWorker(AgentWorker):
                 [],
             )
         return (
-            "根據知識庫：退貨政策為 30 天內可退貨，請保持商品完整。",
+            "根據知識庫：本公司提供一年保固服務，退貨政策為 30 天內可退貨，請保持商品完整。",
             [
+                Source(
+                    document_name="保固政策.txt",
+                    content_snippet="本公司提供一年保固服務，涵蓋非人為損壞的維修與更換",
+                    score=0.92,
+                    chunk_id="chunk-fake-1",
+                ),
                 Source(
                     document_name="退貨政策.txt",
                     content_snippet="退貨政策為 30 天內可退貨",
                     score=0.9,
-                    chunk_id="chunk-fake-1",
+                    chunk_id="chunk-fake-2",
                 ),
             ],
         )
