@@ -48,6 +48,20 @@ class QdrantVectorStore(VectorStore):
             points=points,
         )
 
+    async def delete(
+        self,
+        collection: str,
+        filters: dict[str, Any],
+    ) -> None:
+        conditions = [
+            FieldCondition(key=k, match=MatchValue(value=v))
+            for k, v in filters.items()
+        ]
+        await self._client.delete(
+            collection_name=collection,
+            points_selector=Filter(must=conditions),
+        )
+
     async def search(
         self,
         collection: str,

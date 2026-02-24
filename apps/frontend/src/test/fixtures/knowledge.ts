@@ -29,24 +29,40 @@ export const mockKnowledgeBases: KnowledgeBase[] = [
 export const mockDocuments: DocumentResponse[] = [
   {
     id: "doc-1",
-    knowledge_base_id: "kb-1",
-    file_name: "product-guide.pdf",
-    file_size: 1024000,
-    status: "completed",
+    kb_id: "kb-1",
+    tenant_id: "tenant-1",
+    filename: "product-guide.pdf",
+    content_type: "application/pdf",
+    status: "processed",
+    chunk_count: 42,
     created_at: "2024-01-05T00:00:00Z",
+    updated_at: "2024-01-05T00:01:00Z",
   },
   {
     id: "doc-2",
-    knowledge_base_id: "kb-1",
-    file_name: "setup-manual.pdf",
-    file_size: 512000,
+    kb_id: "kb-1",
+    tenant_id: "tenant-1",
+    filename: "setup-manual.pdf",
+    content_type: "application/pdf",
     status: "processing",
+    chunk_count: 0,
     created_at: "2024-01-06T00:00:00Z",
+    updated_at: "2024-01-06T00:00:00Z",
   },
 ];
 
 export const mockUploadResponse: UploadDocumentResponse = {
-  document_id: "doc-3",
+  document: {
+    id: "doc-3",
+    kb_id: "kb-1",
+    tenant_id: "tenant-1",
+    filename: "new-doc.txt",
+    content_type: "text/plain",
+    status: "pending",
+    chunk_count: 0,
+    created_at: "2024-01-07T00:00:00Z",
+    updated_at: "2024-01-07T00:00:00Z",
+  },
   task_id: "task-1",
 };
 

@@ -9,6 +9,12 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
+from src.application.knowledge.delete_document_use_case import (
+    DeleteDocumentUseCase,
+)
+from src.application.knowledge.list_documents_use_case import (
+    ListDocumentsUseCase,
+)
 from src.application.knowledge.process_document_use_case import (
     ProcessDocumentUseCase,
 )
@@ -46,6 +52,51 @@ class DocumentResponse(BaseModel):
 class UploadDocumentResponse(BaseModel):
     document: DocumentResponse
     task_id: str
+
+
+def _to_response(doc) -> DocumentResponse:
+    return DocumentResponse(
+        id=doc.id.value,
+        kb_id=doc.kb_id,
+        tenant_id=doc.tenant_id,
+        filename=doc.filename,
+        content_type=doc.content_type,
+        status=doc.status,
+        chunk_count=doc.chunk_count,
+        created_at=doc.created_at.isoformat(),
+        updated_at=doc.updated_at.isoformat(),
+    )
+
+
+@router.get("", response_model=list[DocumentResponse])
+@inject
+async def list_documents(
+    kb_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: ListDocumentsUseCase = Depends(
+        Provide[Container.list_documents_use_case]
+    ),
+) -> list[DocumentResponse]:
+    documents = await use_case.execute(kb_id)
+    return [_to_response(doc) for doc in documents]
+
+
+@router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def delete_document(
+    kb_id: str,
+    doc_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: DeleteDocumentUseCase = Depends(
+        Provide[Container.delete_document_use_case]
+    ),
+) -> None:
+    try:
+        await use_case.execute(doc_id)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
 
 
 @router.post(
@@ -103,16 +154,6 @@ async def upload_document(
 
     doc = result.document
     return UploadDocumentResponse(
-        document=DocumentResponse(
-            id=doc.id.value,
-            kb_id=doc.kb_id,
-            tenant_id=doc.tenant_id,
-            filename=doc.filename,
-            content_type=doc.content_type,
-            status=doc.status,
-            chunk_count=doc.chunk_count,
-            created_at=doc.created_at.isoformat(),
-            updated_at=doc.updated_at.isoformat(),
-        ),
+        document=_to_response(doc),
         task_id=result.task.id.value,
     )

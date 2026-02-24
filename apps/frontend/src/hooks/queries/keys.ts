@@ -5,6 +5,9 @@ export const queryKeys = {
   knowledgeBases: {
     all: (tenantId: string) => ["knowledge-bases", tenantId] as const,
   },
+  documents: {
+    all: (kbId: string) => ["documents", kbId] as const,
+  },
   tasks: {
     detail: (id: string) => ["tasks", id] as const,
   },

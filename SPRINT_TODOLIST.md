@@ -257,6 +257,7 @@
 - ✅ 知識庫列表（KnowledgeBaseList + KnowledgeBaseCard）
 - ✅ 新增知識庫（CreateKBDialog + React Hook Form + Zod）
 - ✅ 文件管理頁（DocumentList）
+- ✅ 文件列表 API + 刪除（含向量清理）— ListDocuments / DeleteDocument Use Case + GET/DELETE 端點 + 前端真實資料 + AlertDialog 確認
 - ✅ 驗收：管理員可管理知識庫
 
 ### 5.5 登入 + 租戶切換
@@ -507,4 +508,4 @@
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 95% | 84 scenarios, 84.83% coverage, 前端對話列表延至 S7 |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 90% | Demo 1-6 全通過, E2E 14/14, 107 backend + 43 frontend tests |
+| S7 整合+Demo | 🔄 進行中 | 90% | Demo 1-6 全通過, E2E 14/14, 111 backend + 52 frontend tests |

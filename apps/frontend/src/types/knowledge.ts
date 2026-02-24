@@ -10,15 +10,18 @@ export interface KnowledgeBase {
 
 export interface DocumentResponse {
   id: string;
-  knowledge_base_id: string;
-  file_name: string;
-  file_size: number;
-  status: "pending" | "processing" | "completed" | "failed";
+  kb_id: string;
+  tenant_id: string;
+  filename: string;
+  content_type: string;
+  status: "pending" | "processing" | "processed" | "failed";
+  chunk_count: number;
   created_at: string;
+  updated_at: string;
 }
 
 export interface UploadDocumentResponse {
-  document_id: string;
+  document: DocumentResponse;
   task_id: string;
 }
 

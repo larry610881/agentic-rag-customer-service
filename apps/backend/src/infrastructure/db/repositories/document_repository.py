@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.knowledge.entity import Document
@@ -57,6 +57,11 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         )
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def delete(self, doc_id: str) -> None:
+        stmt = delete(DocumentModel).where(DocumentModel.id == doc_id)
+        await self._session.execute(stmt)
+        await self._session.commit()
 
     async def update_status(
         self, doc_id: str, status: str, chunk_count: int | None = None

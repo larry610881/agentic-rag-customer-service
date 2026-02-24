@@ -38,6 +38,13 @@ class VectorStore(ABC):
         filters: dict[str, Any] | None = None,
     ) -> list[SearchResult]: ...
 
+    @abstractmethod
+    async def delete(
+        self,
+        collection: str,
+        filters: dict[str, Any],
+    ) -> None: ...
+
 
 class LLMService(ABC):
     @abstractmethod

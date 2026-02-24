@@ -31,6 +31,9 @@ class DocumentRepository(ABC):
         self, doc_id: str, status: str, chunk_count: int | None = None
     ) -> None: ...
 
+    @abstractmethod
+    async def delete(self, doc_id: str) -> None: ...
+
 
 class ChunkRepository(ABC):
     @abstractmethod
@@ -38,6 +41,9 @@ class ChunkRepository(ABC):
 
     @abstractmethod
     async def find_by_document(self, document_id: str) -> list[Chunk]: ...
+
+    @abstractmethod
+    async def delete_by_document(self, document_id: str) -> None: ...
 
 
 class ProcessingTaskRepository(ABC):

@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.knowledge.entity import Chunk
@@ -34,6 +34,11 @@ class SQLAlchemyChunkRepository(ChunkRepository):
             for c in chunks
         ]
         self._session.add_all(models)
+        await self._session.commit()
+
+    async def delete_by_document(self, document_id: str) -> None:
+        stmt = delete(ChunkModel).where(ChunkModel.document_id == document_id)
+        await self._session.execute(stmt)
         await self._session.commit()
 
     async def find_by_document(

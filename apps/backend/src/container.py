@@ -14,8 +14,14 @@ from src.application.health.health_check_use_case import HealthCheckUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
 )
+from src.application.knowledge.delete_document_use_case import (
+    DeleteDocumentUseCase,
+)
 from src.application.knowledge.get_processing_task_use_case import (
     GetProcessingTaskUseCase,
+)
+from src.application.knowledge.list_documents_use_case import (
+    ListDocumentsUseCase,
 )
 from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
@@ -359,6 +365,18 @@ class Container(containers.DeclarativeContainer):
     list_knowledge_bases_use_case = providers.Factory(
         ListKnowledgeBasesUseCase,
         knowledge_base_repository=kb_repository,
+    )
+
+    list_documents_use_case = providers.Factory(
+        ListDocumentsUseCase,
+        document_repository=document_repository,
+    )
+
+    delete_document_use_case = providers.Factory(
+        DeleteDocumentUseCase,
+        document_repository=document_repository,
+        chunk_repository=chunk_repository,
+        vector_store=vector_store,
     )
 
     upload_document_use_case = providers.Factory(
