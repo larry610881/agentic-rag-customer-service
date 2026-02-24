@@ -1,0 +1,90 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#3b82f6",
+    "primaryTextColor": "#ffffff",
+    "primaryBorderColor": "#2563eb",
+    "lineColor": "#94a3b8",
+    "textColor": "#1e293b",
+    "clusterBkg": "#f8fafc",
+    "clusterBorder": "#e2e8f0",
+    "fontSize": "15px"
+  },
+  "flowchart": {
+    "padding": 20,
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis"
+  }
+}}%%
+
+graph TB
+    subgraph CLIENTS[" 🖥️ Clients "]
+        BROWSER["🌐 Browser"]
+        LINE_USER["💬 LINE"]
+    end
+
+    subgraph FE[" ⚛️ Frontend — Next.js 15 "]
+        direction LR
+        FE_APP["📄 App Router<br/>Chat · Knowledge · Bots"]
+        FE_STATE["🗃️ Zustand + TanStack Query"]
+        FE_UI["🎨 shadcn/ui"]
+    end
+
+    subgraph BE[" 🐍 Backend — FastAPI "]
+        ROUTER["🔀 REST + SSE + Webhook"]
+
+        subgraph DDD[" DDD 4-Layer "]
+            direction LR
+            D_TENANT["🏢 Tenant"]
+            D_KB["📚 Knowledge"]
+            D_RAG["🔍 RAG"]
+            D_CONV["💬 Conversation"]
+            D_AGENT["🤖 Agent"]
+        end
+    end
+
+    subgraph AI[" 🧠 AI Pipeline "]
+        LANGGRAPH["⚡ LangGraph Orchestrator"]
+        WORKERS["🔧 Workers: Main · Refund · RAG Tool"]
+    end
+
+    subgraph DATA[" 💾 Data "]
+        direction LR
+        MYSQL[("🐬 MySQL")]
+        QDRANT[("🔮 Qdrant")]
+        REDIS[("⚡ Redis")]
+    end
+
+    subgraph EXT[" ☁️ External "]
+        direction LR
+        OPENAI["🧠 OpenAI"]
+        LINE_API["💚 LINE API"]
+    end
+
+    BROWSER -->|HTTP / SSE| FE_APP
+    LINE_USER -->|Webhook| ROUTER
+    FE_APP --- FE_STATE --- FE_UI
+    FE_APP -->|REST + SSE| ROUTER
+    ROUTER --> DDD
+    D_AGENT & D_RAG --> LANGGRAPH
+    LANGGRAPH --> WORKERS
+    LANGGRAPH --> OPENAI
+    ROUTER --> LINE_API
+    DDD --> MYSQL & QDRANT & REDIS
+
+    classDef clientBox fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e40af
+    classDef feBox fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#166534
+    classDef beBox fill:#fef9c3,stroke:#eab308,stroke-width:2px,color:#854d0e
+    classDef dddBox fill:#fff7ed,stroke:#f97316,stroke-width:1px,color:#9a3412
+    classDef aiBox fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#6b21a8
+    classDef dataBox fill:#e0e7ff,stroke:#6366f1,stroke-width:2px,color:#3730a3
+    classDef extBox fill:#fce7f3,stroke:#ec4899,stroke-width:2px,color:#9d174d
+
+    class BROWSER,LINE_USER clientBox
+    class FE_APP,FE_STATE,FE_UI feBox
+    class ROUTER beBox
+    class D_TENANT,D_KB,D_RAG,D_CONV,D_AGENT dddBox
+    class LANGGRAPH,WORKERS aiBox
+    class MYSQL,QDRANT,REDIS dataBox
+    class OPENAI,LINE_API extBox

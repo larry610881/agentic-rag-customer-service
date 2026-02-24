@@ -1,0 +1,7 @@
+{
+  "theme": "base",
+  "themeVariables": {
+    "fontSize": "14px",
+    "fontFamily": "Inter, system-ui, sans-serif"
+  }
+}
