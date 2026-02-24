@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { ChatMessage, Source, ToolCallInfo } from "@/types/chat";
+import type { ConversationDetail } from "@/types/conversation";
 
 interface ChatState {
   messages: ChatMessage[];
@@ -14,6 +15,7 @@ interface ChatState {
   setConversationId: (id: string) => void;
   setKnowledgeBaseId: (id: string | null) => void;
   clearMessages: () => void;
+  loadConversation: (detail: ConversationDetail) => void;
 }
 
 let messageIdCounter = 0;
@@ -87,4 +89,15 @@ export const useChatStore = create<ChatState>((set) => ({
   setKnowledgeBaseId: (id) => set({ knowledgeBaseId: id }),
   clearMessages: () =>
     set({ messages: [], conversationId: null }),
+
+  loadConversation: (detail) =>
+    set({
+      conversationId: detail.id,
+      messages: detail.messages.map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        timestamp: m.created_at,
+      })),
+    }),
 }));

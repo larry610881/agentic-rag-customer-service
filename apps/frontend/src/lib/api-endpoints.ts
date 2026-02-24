@@ -34,4 +34,8 @@ export const API_ENDPOINTS = {
     update: (id: string) => `/api/v1/bots/${id}`,
     delete: (id: string) => `/api/v1/bots/${id}`,
   },
+  conversations: {
+    list: "/api/v1/conversations",
+    detail: (id: string) => `/api/v1/conversations/${id}`,
+  },
 } as const;

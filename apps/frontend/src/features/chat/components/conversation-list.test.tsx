@@ -1,0 +1,77 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithProviders, userEvent } from "@/test/test-utils";
+import { ConversationList } from "@/features/chat/components/conversation-list";
+import { useChatStore } from "@/stores/use-chat-store";
+import { useAuthStore } from "@/stores/use-auth-store";
+
+describe("ConversationList", () => {
+  beforeEach(() => {
+    useChatStore.setState({
+      messages: [],
+      isStreaming: false,
+      conversationId: null,
+      knowledgeBaseId: "kb-1",
+    });
+    useAuthStore.setState({
+      token: "test-token",
+      tenantId: "tenant-1",
+      tenants: [],
+    });
+  });
+
+  it("should render the conversation list header and new button", () => {
+    renderWithProviders(<ConversationList />);
+    expect(screen.getByText("Conversations")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "New conversation" }),
+    ).toBeInTheDocument();
+  });
+
+  it("should render conversation items from API", async () => {
+    renderWithProviders(<ConversationList />);
+    await waitFor(() => {
+      expect(screen.getByText("conv-abc...")).toBeInTheDocument();
+    });
+    expect(screen.getByText("conv-def...")).toBeInTheDocument();
+  });
+
+  it("should highlight active conversation", async () => {
+    useChatStore.setState({ conversationId: "conv-abc12345-1111" });
+    renderWithProviders(<ConversationList />);
+    await waitFor(() => {
+      expect(screen.getByText("conv-abc...")).toBeInTheDocument();
+    });
+    const activeButton = screen.getByText("conv-abc...").closest("button");
+    expect(activeButton).toHaveAttribute("aria-current", "true");
+  });
+
+  it("should clear messages when clicking New button", async () => {
+    const user = userEvent.setup();
+    useChatStore.setState({
+      conversationId: "conv-abc12345-1111",
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          content: "hello",
+          timestamp: "2024-01-01T00:00:00Z",
+        },
+      ],
+    });
+
+    renderWithProviders(<ConversationList />);
+    await user.click(
+      screen.getByRole("button", { name: "New conversation" }),
+    );
+
+    expect(useChatStore.getState().conversationId).toBeNull();
+    expect(useChatStore.getState().messages).toHaveLength(0);
+  });
+
+  it("should show empty state when no conversations", async () => {
+    useAuthStore.setState({ token: null, tenantId: null });
+    renderWithProviders(<ConversationList />);
+    expect(screen.getByText("No conversations yet")).toBeInTheDocument();
+  });
+});
