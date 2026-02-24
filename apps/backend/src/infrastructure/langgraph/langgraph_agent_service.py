@@ -63,6 +63,8 @@ class LangGraphAgentService(AgentService):
         history_context: str = "",
         router_context: str = "",
         enabled_tools: list[str] | None = None,
+        rag_top_k: int | None = None,
+        rag_score_threshold: float | None = None,
     ) -> AgentResponse:
         initial_state = {
             "messages": [],
@@ -80,6 +82,8 @@ class LangGraphAgentService(AgentService):
             "final_answer": "",
             "accumulated_usage": {},
             "enabled_tools": enabled_tools or [],
+            "rag_top_k": rag_top_k,
+            "rag_score_threshold": rag_score_threshold,
         }
 
         result = await self._compiled.ainvoke(initial_state)
@@ -141,6 +145,8 @@ class LangGraphAgentService(AgentService):
         history_context: str = "",
         router_context: str = "",
         enabled_tools: list[str] | None = None,
+        rag_top_k: int | None = None,
+        rag_score_threshold: float | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """真正的 streaming：路由後立刻通知前端，再跑工具，再 stream LLM"""
 
@@ -187,6 +193,8 @@ class LangGraphAgentService(AgentService):
             "final_answer": "",
             "accumulated_usage": {},
             "enabled_tools": enabled_tools or [],
+            "rag_top_k": rag_top_k,
+            "rag_score_threshold": rag_score_threshold,
         }
 
         # Phase 1: 逐節點 stream — 路由完成立即通知前端，工具再跑

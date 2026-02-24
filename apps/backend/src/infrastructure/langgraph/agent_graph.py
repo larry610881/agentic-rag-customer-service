@@ -82,6 +82,8 @@ class AgentState(TypedDict):
     final_answer: str
     accumulated_usage: dict[str, Any]
     enabled_tools: list[str]
+    rag_top_k: int | None
+    rag_score_threshold: float | None
 
 
 def _keyword_route(msg: str) -> dict[str, str] | None:  # noqa: C901
@@ -252,11 +254,18 @@ def build_agent_graph(  # noqa: C901
         kb_ids = state.get("kb_ids") or []
         if not kb_ids and state.get("kb_id"):
             kb_ids = [state["kb_id"]]
+        invoke_kwargs: dict[str, Any] = {}
+        if kb_ids and len(kb_ids) > 1:
+            invoke_kwargs["kb_ids"] = kb_ids
+        if state.get("rag_top_k") is not None:
+            invoke_kwargs["top_k"] = state["rag_top_k"]
+        if state.get("rag_score_threshold") is not None:
+            invoke_kwargs["score_threshold"] = state["rag_score_threshold"]
         result = await rag_tool.invoke(
             state["tenant_id"],
             kb_ids[0] if kb_ids else state.get("kb_id", ""),
             state["user_message"],
-            kb_ids=kb_ids if len(kb_ids) > 1 else None,
+            **invoke_kwargs,
         )
         return {"tool_result": result}
 

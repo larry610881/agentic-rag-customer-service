@@ -33,6 +33,8 @@ class SQLAlchemyBotRepository(BotRepository):
                 history_limit=model.history_limit,
                 frequency_penalty=model.frequency_penalty,
                 reasoning_effort=model.reasoning_effort,
+                rag_top_k=model.rag_top_k,
+                rag_score_threshold=model.rag_score_threshold,
             ),
             enabled_tools=list(model.enabled_tools or ["rag_query"]),
             line_channel_secret=model.line_channel_secret,
@@ -79,6 +81,8 @@ class SQLAlchemyBotRepository(BotRepository):
             existing.history_limit = bot.llm_params.history_limit
             existing.frequency_penalty = bot.llm_params.frequency_penalty
             existing.reasoning_effort = bot.llm_params.reasoning_effort
+            existing.rag_top_k = bot.llm_params.rag_top_k
+            existing.rag_score_threshold = bot.llm_params.rag_score_threshold
             existing.updated_at = datetime.now(timezone.utc)
         else:
             model = BotModel(
@@ -96,6 +100,8 @@ class SQLAlchemyBotRepository(BotRepository):
                 history_limit=bot.llm_params.history_limit,
                 frequency_penalty=bot.llm_params.frequency_penalty,
                 reasoning_effort=bot.llm_params.reasoning_effort,
+                rag_top_k=bot.llm_params.rag_top_k,
+                rag_score_threshold=bot.llm_params.rag_score_threshold,
                 created_at=bot.created_at,
                 updated_at=bot.updated_at,
             )

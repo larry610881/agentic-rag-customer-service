@@ -25,6 +25,8 @@ class AgentService(ABC):
         history_context: str = "",
         router_context: str = "",
         enabled_tools: list[str] | None = None,
+        rag_top_k: int | None = None,
+        rag_score_threshold: float | None = None,
     ) -> AgentResponse: ...
 
     @abstractmethod
@@ -42,6 +44,8 @@ class AgentService(ABC):
         history_context: str = "",
         router_context: str = "",
         enabled_tools: list[str] | None = None,
+        rag_top_k: int | None = None,
+        rag_score_threshold: float | None = None,
     ) -> AsyncIterator[dict[str, Any]]: ...  # pragma: no cover
 
 

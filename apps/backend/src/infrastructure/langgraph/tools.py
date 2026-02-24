@@ -32,6 +32,8 @@ class RAGQueryTool:
         query: str,
         *,
         kb_ids: list[str] | None = None,
+        top_k: int | None = None,
+        score_threshold: float | None = None,
     ) -> dict[str, Any]:
         try:
             result = await self._use_case.execute(
@@ -40,8 +42,8 @@ class RAGQueryTool:
                     kb_id=kb_id,
                     query=query,
                     kb_ids=kb_ids,
-                    top_k=self._top_k,
-                    score_threshold=self._score_threshold,
+                    top_k=top_k if top_k is not None else self._top_k,
+                    score_threshold=score_threshold if score_threshold is not None else self._score_threshold,
                 )
             )
             return {

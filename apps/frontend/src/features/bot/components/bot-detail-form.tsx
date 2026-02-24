@@ -38,6 +38,8 @@ const botFormSchema = z.object({
   history_limit: z.coerce.number().int().min(0).max(35),
   frequency_penalty: z.coerce.number().min(0).max(1),
   reasoning_effort: z.enum(["low", "medium", "high"]),
+  rag_top_k: z.coerce.number().int().min(1).max(20),
+  rag_score_threshold: z.coerce.number().min(0).max(1),
   line_channel_secret: z.string().nullable().optional(),
   line_channel_access_token: z.string().nullable().optional(),
 });
@@ -66,6 +68,7 @@ export function BotDetailForm({
     handleSubmit,
     control,
     reset,
+    watch,
     formState: { errors },
   } = useForm<BotFormValues>({
     resolver: zodResolver(botFormSchema),
@@ -81,10 +84,14 @@ export function BotDetailForm({
       history_limit: bot.history_limit,
       frequency_penalty: bot.frequency_penalty,
       reasoning_effort: bot.reasoning_effort,
+      rag_top_k: bot.rag_top_k,
+      rag_score_threshold: bot.rag_score_threshold,
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     },
   });
+
+  const enabledTools = watch("enabled_tools");
 
   useEffect(() => {
     reset({
@@ -99,6 +106,8 @@ export function BotDetailForm({
       history_limit: bot.history_limit,
       frequency_penalty: bot.frequency_penalty,
       reasoning_effort: bot.reasoning_effort,
+      rag_top_k: bot.rag_top_k,
+      rag_score_threshold: bot.rag_score_threshold,
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     });
@@ -231,6 +240,55 @@ export function BotDetailForm({
           )}
         />
       </section>
+
+      {enabledTools.includes("rag_query") && (
+        <>
+          <Separator />
+
+          {/* RAG Parameters */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">RAG Parameters</h3>
+            <p className="text-sm text-muted-foreground">
+              Configure retrieval parameters for the knowledge base query tool.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-rag-top-k">Top K (1-20)</Label>
+                <Input
+                  id="bot-rag-top-k"
+                  type="number"
+                  min="1"
+                  max="20"
+                  {...register("rag_top_k")}
+                />
+                {errors.rag_top_k && (
+                  <p className="text-sm text-destructive">
+                    {errors.rag_top_k.message}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-rag-score-threshold">
+                  Score Threshold (0-1)
+                </Label>
+                <Input
+                  id="bot-rag-score-threshold"
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  max="1"
+                  {...register("rag_score_threshold")}
+                />
+                {errors.rag_score_threshold && (
+                  <p className="text-sm text-destructive">
+                    {errors.rag_score_threshold.message}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        </>
+      )}
 
       <Separator />
 

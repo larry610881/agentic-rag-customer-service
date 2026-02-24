@@ -19,6 +19,8 @@ class CreateBotCommand:
     history_limit: int = 10
     frequency_penalty: float = 0.0
     reasoning_effort: str = "medium"
+    rag_top_k: int = 5
+    rag_score_threshold: float = 0.3
     enabled_tools: list[str] = field(default_factory=lambda: ["rag_query"])
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
@@ -42,6 +44,8 @@ class CreateBotUseCase:
                 history_limit=command.history_limit,
                 frequency_penalty=command.frequency_penalty,
                 reasoning_effort=command.reasoning_effort,
+                rag_top_k=command.rag_top_k,
+                rag_score_threshold=command.rag_score_threshold,
             ),
             enabled_tools=list(command.enabled_tools),
             line_channel_secret=command.line_channel_secret,

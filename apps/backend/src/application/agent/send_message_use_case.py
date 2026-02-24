@@ -52,6 +52,8 @@ class SendMessageUseCase:
         kb_id = command.kb_id
         history_limit: int | None = None
         enabled_tools: list[str] | None = None
+        rag_top_k: int | None = None
+        rag_score_threshold: float | None = None
 
         if command.bot_id and self._bot_repo:
             bot = await self._bot_repo.find_by_id(command.bot_id)
@@ -67,6 +69,8 @@ class SendMessageUseCase:
                 }
                 history_limit = bot.llm_params.history_limit
                 enabled_tools = bot.enabled_tools or None
+                rag_top_k = bot.llm_params.rag_top_k
+                rag_score_threshold = bot.llm_params.rag_score_threshold
 
         # Process history via strategy
         history_context = ""
@@ -96,6 +100,8 @@ class SendMessageUseCase:
             history_context=history_context,
             router_context=router_context,
             enabled_tools=enabled_tools,
+            rag_top_k=rag_top_k,
+            rag_score_threshold=rag_score_threshold,
         )
 
         tool_calls_to_save = response.tool_calls[:]
@@ -133,6 +139,8 @@ class SendMessageUseCase:
         kb_id = command.kb_id
         history_limit: int | None = None
         enabled_tools: list[str] | None = None
+        rag_top_k: int | None = None
+        rag_score_threshold: float | None = None
 
         if command.bot_id and self._bot_repo:
             bot = await self._bot_repo.find_by_id(command.bot_id)
@@ -148,6 +156,8 @@ class SendMessageUseCase:
                 }
                 history_limit = bot.llm_params.history_limit
                 enabled_tools = bot.enabled_tools or None
+                rag_top_k = bot.llm_params.rag_top_k
+                rag_score_threshold = bot.llm_params.rag_score_threshold
 
         # Process history via strategy
         history_context = ""
@@ -181,6 +191,8 @@ class SendMessageUseCase:
             history_context=history_context,
             router_context=router_context,
             enabled_tools=enabled_tools,
+            rag_top_k=rag_top_k,
+            rag_score_threshold=rag_score_threshold,
         ):
             if event["type"] == "token":
                 full_answer += event["content"]

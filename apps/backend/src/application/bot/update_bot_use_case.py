@@ -22,6 +22,8 @@ class UpdateBotCommand:
     history_limit: object = _UNSET
     frequency_penalty: object = _UNSET
     reasoning_effort: object = _UNSET
+    rag_top_k: object = _UNSET
+    rag_score_threshold: object = _UNSET
     enabled_tools: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
@@ -62,6 +64,8 @@ class UpdateBotUseCase:
                 history_limit=params.history_limit,
                 frequency_penalty=params.frequency_penalty,
                 reasoning_effort=params.reasoning_effort,
+                rag_top_k=params.rag_top_k,
+                rag_score_threshold=params.rag_score_threshold,
             )
         if command.max_tokens is not _UNSET:
             params = BotLLMParams(
@@ -70,6 +74,8 @@ class UpdateBotUseCase:
                 history_limit=params.history_limit,
                 frequency_penalty=params.frequency_penalty,
                 reasoning_effort=params.reasoning_effort,
+                rag_top_k=params.rag_top_k,
+                rag_score_threshold=params.rag_score_threshold,
             )
         if command.history_limit is not _UNSET:
             params = BotLLMParams(
@@ -78,6 +84,8 @@ class UpdateBotUseCase:
                 history_limit=command.history_limit,  # type: ignore[arg-type]
                 frequency_penalty=params.frequency_penalty,
                 reasoning_effort=params.reasoning_effort,
+                rag_top_k=params.rag_top_k,
+                rag_score_threshold=params.rag_score_threshold,
             )
         if command.frequency_penalty is not _UNSET:
             params = BotLLMParams(
@@ -86,6 +94,8 @@ class UpdateBotUseCase:
                 history_limit=params.history_limit,
                 frequency_penalty=command.frequency_penalty,  # type: ignore[arg-type]
                 reasoning_effort=params.reasoning_effort,
+                rag_top_k=params.rag_top_k,
+                rag_score_threshold=params.rag_score_threshold,
             )
         if command.reasoning_effort is not _UNSET:
             params = BotLLMParams(
@@ -94,6 +104,28 @@ class UpdateBotUseCase:
                 history_limit=params.history_limit,
                 frequency_penalty=params.frequency_penalty,
                 reasoning_effort=command.reasoning_effort,  # type: ignore[arg-type]
+                rag_top_k=params.rag_top_k,
+                rag_score_threshold=params.rag_score_threshold,
+            )
+        if command.rag_top_k is not _UNSET:
+            params = BotLLMParams(
+                temperature=params.temperature,
+                max_tokens=params.max_tokens,
+                history_limit=params.history_limit,
+                frequency_penalty=params.frequency_penalty,
+                reasoning_effort=params.reasoning_effort,
+                rag_top_k=command.rag_top_k,  # type: ignore[arg-type]
+                rag_score_threshold=params.rag_score_threshold,
+            )
+        if command.rag_score_threshold is not _UNSET:
+            params = BotLLMParams(
+                temperature=params.temperature,
+                max_tokens=params.max_tokens,
+                history_limit=params.history_limit,
+                frequency_penalty=params.frequency_penalty,
+                reasoning_effort=params.reasoning_effort,
+                rag_top_k=params.rag_top_k,
+                rag_score_threshold=command.rag_score_threshold,  # type: ignore[arg-type]
             )
         bot.llm_params = params
 

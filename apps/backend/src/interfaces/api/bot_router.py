@@ -30,6 +30,8 @@ class CreateBotRequest(BaseModel):
     history_limit: int = 10
     frequency_penalty: float = 0.0
     reasoning_effort: str = "medium"
+    rag_top_k: int = 5
+    rag_score_threshold: float = 0.3
     enabled_tools: list[str] = ["rag_query"]
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
@@ -46,6 +48,8 @@ class UpdateBotRequest(BaseModel):
     history_limit: int | None = None
     frequency_penalty: float | None = None
     reasoning_effort: str | None = None
+    rag_top_k: int | None = None
+    rag_score_threshold: float | None = None
     enabled_tools: list[str] | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
@@ -64,6 +68,8 @@ class BotResponse(BaseModel):
     history_limit: int
     frequency_penalty: float
     reasoning_effort: str
+    rag_top_k: int
+    rag_score_threshold: float
     enabled_tools: list[str]
     line_channel_secret: str | None
     line_channel_access_token: str | None
@@ -85,6 +91,8 @@ def _to_response(bot) -> BotResponse:
         history_limit=bot.llm_params.history_limit,
         frequency_penalty=bot.llm_params.frequency_penalty,
         reasoning_effort=bot.llm_params.reasoning_effort,
+        rag_top_k=bot.llm_params.rag_top_k,
+        rag_score_threshold=bot.llm_params.rag_score_threshold,
         enabled_tools=bot.enabled_tools,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
@@ -119,6 +127,8 @@ async def create_bot(
             history_limit=body.history_limit,
             frequency_penalty=body.frequency_penalty,
             reasoning_effort=body.reasoning_effort,
+            rag_top_k=body.rag_top_k,
+            rag_score_threshold=body.rag_score_threshold,
             enabled_tools=body.enabled_tools,
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
@@ -189,6 +199,10 @@ async def update_bot(
         kwargs["frequency_penalty"] = body.frequency_penalty
     if body.reasoning_effort is not None:
         kwargs["reasoning_effort"] = body.reasoning_effort
+    if body.rag_top_k is not None:
+        kwargs["rag_top_k"] = body.rag_top_k
+    if body.rag_score_threshold is not None:
+        kwargs["rag_score_threshold"] = body.rag_score_threshold
     if body.enabled_tools is not None:
         kwargs["enabled_tools"] = body.enabled_tools
     if body.line_channel_secret is not None:

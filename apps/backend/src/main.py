@@ -55,11 +55,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Lightweight migration: add enabled_tools column if missing
+        # Lightweight migration: add columns if missing
         await conn.execute(
             sqlalchemy.text(
                 "ALTER TABLE bots ADD COLUMN IF NOT EXISTS "
                 "enabled_tools JSON NOT NULL DEFAULT ('[]')"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS "
+                "rag_top_k INTEGER NOT NULL DEFAULT 5"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS "
+                "rag_score_threshold FLOAT NOT NULL DEFAULT 0.3"
             )
         )
     yield

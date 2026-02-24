@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-24 (Bot 工具選擇 + 真實 SSE + 工具動畫, 127 backend + 81 frontend tests green)
+> 最後更新：2026-02-25 (Per-Bot RAG 參數 top_k/score_threshold, 127 backend + 81 frontend tests green)
 
 ---
 
@@ -554,6 +554,15 @@
 - ✅ Frontend: `toolHint` Zustand 狀態 + framer-motion 跳動點動畫 (`ToolHintIndicator`)
 - ✅ Frontend: Bot enabled_tools 設定 UI（checkboxes in BotDetailForm）
 - ✅ Frontend: 測試更新 — bot fixture 加 enabled_tools, BotDetailForm 新增 test
+- ✅ 全量測試：127 backend + 81 frontend passed
+
+### 7.17 Per-Bot RAG 參數（top_k / score_threshold）
+- ✅ Domain: `BotLLMParams` 新增 `rag_top_k` / `rag_score_threshold` 欄位
+- ✅ Infrastructure: DB Model + Repository + lightweight migration
+- ✅ Application: Create/Update Bot UseCase 傳遞新欄位
+- ✅ Interfaces: API Request/Response 加欄位
+- ✅ Agent 呼叫鏈: AgentService → LangGraphAgentService → AgentState → rag_tool_node → RAGQueryTool 全鏈傳遞
+- ✅ Frontend: types + BotDetailForm 條件顯示（rag_query 啟用時才出現）+ Zod 驗證
 - ✅ 全量測試：127 backend + 81 frontend passed
 
 ---

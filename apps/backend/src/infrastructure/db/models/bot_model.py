@@ -40,6 +40,10 @@ class BotModel(Base):
     reasoning_effort: Mapped[str] = mapped_column(
         String(10), nullable=False, default="medium"
     )
+    rag_top_k: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    rag_score_threshold: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.3
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

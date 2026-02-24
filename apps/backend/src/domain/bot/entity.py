@@ -11,6 +11,8 @@ class BotLLMParams:
     history_limit: int = 10
     frequency_penalty: float = 0.0
     reasoning_effort: str = "medium"  # low | medium | high
+    rag_top_k: int = 5
+    rag_score_threshold: float = 0.3
 
 
 @dataclass
