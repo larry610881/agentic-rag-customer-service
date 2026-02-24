@@ -48,8 +48,8 @@
 ## 🏗 系統架構
 
 <div align="center">
-  <a href="docs/images/architecture.png" target="_blank">
-    <img src="docs/images/architecture.png" alt="System Architecture" width="800" />
+  <a href="docs/images/architecture_diagrams.png" target="_blank">
+    <img src="docs/images/architecture_diagrams.png" alt="System Architecture" width="800" />
   </a>
   <p><sub>點擊圖片可放大檢視</sub></p>
 </div>
