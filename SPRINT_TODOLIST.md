@@ -444,6 +444,7 @@
 - ✅ globalSetup 自動 seed 測試資料（KB + tenant）
 - ✅ ChatInput 在 KB 未選取前禁用 Send 按鈕（修復競態條件）
 - ✅ 後端 DB pool 優化（pool_size=20, pool_pre_ping, pool_recycle=300）
+- ✅ playwright.config.ts 加入 screenshot: "on" + video: "on-first-retry"
 - ✅ 驗收：Playwright E2E 10/10 scenarios 全部通過 + 43 unit tests green
 - ⏭️ 暫時移除 3 scenarios（展開思考過程 + 來源引用 + citation）：streaming API 尚未送 tool_calls/sources 事件
 

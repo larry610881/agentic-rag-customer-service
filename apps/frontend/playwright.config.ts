@@ -16,7 +16,7 @@ export default defineConfig({
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",
     screenshot: "on",
-    video: "on-first-retry",
+    video: "on",
   },
   webServer: {
     command: "npm run dev",
