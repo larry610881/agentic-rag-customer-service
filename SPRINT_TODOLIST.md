@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-24 (Embedding/LLM 獨立設定 + 百煉整合, 127 backend + 80 frontend tests green)
+> 最後更新：2026-02-24 (Bot 工具選擇 + 真實 SSE + 工具動畫, 127 backend + 81 frontend tests green)
 
 ---
 
@@ -535,6 +535,27 @@
 - ✅ 全量測試：後端 127 passed + 前端 80 passed
 - ✅ 驗收：Embedding 與 LLM 可獨立設定不同 provider/key
 
+### 7.15 Agent 路由修復 + RAG 隔離測試
+- ✅ ChatInput 改用 botId 判斷（修復 knowledgeBaseId 為 null 無法送訊息）
+- ✅ Agent tools 可選化：LangGraphAgentService + build_agent_graph 支援 optional tools
+- ✅ Qwen provider 暫時只掛 RAG tool（隔離測試用）
+- ✅ 寒暄關鍵字路由：你好/嗨/hi/謝謝等直接走 direct，不觸發 RAG
+- ✅ respond_node：無 tool_result 時不注入空的工具結果
+- ✅ RESPOND_SYSTEM_PROMPT 改善：允許 LLM 在工具結果與問題不相關時自然回答
+- ✅ 全量測試：127 backend + 80 frontend passed
+
+### 7.16 Bot 工具選擇 + 真實 SSE Streaming + 工具動畫提示
+- ✅ Backend: Bot `enabled_tools` 欄位（domain → application → infrastructure → interfaces 全層）
+- ✅ Backend: 動態路由 prompt — `_build_router_prompt()` 只列啟用的工具
+- ✅ Backend: 三種路由行為：無工具→直接 LLM / 單工具→跳過路由 / 多工具→LLM 分類
+- ✅ Backend: 真實 SSE streaming — `astream(stream_mode="updates")` 逐節點串流
+- ✅ Backend: RAG config 注入 — `top_k` / `score_threshold` 從 .env 讀取
+- ✅ Backend: `import sqlalchemy` 修復 + ALTER TABLE migration
+- ✅ Frontend: `toolHint` Zustand 狀態 + framer-motion 跳動點動畫 (`ToolHintIndicator`)
+- ✅ Frontend: Bot enabled_tools 設定 UI（checkboxes in BotDetailForm）
+- ✅ Frontend: 測試更新 — bot fixture 加 enabled_tools, BotDetailForm 新增 test
+- ✅ 全量測試：127 backend + 81 frontend passed
+
 ---
 
 ## 進度總覽
@@ -549,4 +570,4 @@
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 100% | 84 scenarios, 84.83% coverage |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 98% | Demo 1-6 + Bot Management + Chat Bot 選擇 + README, 122 backend + 80 frontend tests |
+| S7 整合+Demo | 🔄 進行中 | 99% | Demo 1-6 + Bot Management + Chat Bot 選擇 + 工具選擇 + SSE Streaming, 127 backend + 81 frontend tests |
