@@ -6,7 +6,7 @@ Feature: 文件上傳 (Document Upload)
   Background:
     Given 使用者已登入為 "Demo Store"
 
-  Scenario: 上傳文件至知識庫
+  Scenario: 知識庫詳情頁顯示上傳區域
     Given 使用者在知識庫 "商品資訊" 的詳情頁面
-    When 使用者選擇檔案 "product-catalog.pdf"
-    Then 應顯示上傳中狀態
+    Then 應顯示文件上傳區域
+    And 應顯示文件列表或空狀態

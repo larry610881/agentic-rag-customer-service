@@ -18,7 +18,7 @@ When("使用者點擊登入按鈕", async ({ loginPage }) => {
 });
 
 Then("應導向聊天頁面", async ({ page }) => {
-  await expect(page).toHaveURL(/\/chat/);
+  await expect(page).toHaveURL(/\/chat/, { timeout: 15000 });
 });
 
 Then(
@@ -45,6 +45,6 @@ Then(
 Then(
   "應顯示登入失敗訊息 {string}",
   async ({ page }, message: string) => {
-    await expect(page.getByText(message)).toBeVisible();
+    await expect(page.getByText(message)).toBeVisible({ timeout: 15000 });
   },
 );

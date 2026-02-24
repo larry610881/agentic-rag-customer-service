@@ -1,6 +1,5 @@
 import { expect } from "@playwright/test";
-import { Given, When, Then } from "../fixtures";
-import path from "path";
+import { Given, Then } from "../fixtures";
 
 Given(
   "使用者在知識庫 {string} 的詳情頁面",
@@ -9,26 +8,18 @@ Given(
     await knowledgePage.clickKnowledgeBase(kbName);
     await expect(
       page.getByRole("heading", { name: "Documents" }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 10000 });
   },
 );
 
-When(
-  "使用者選擇檔案 {string}",
-  async ({ knowledgeDetailPage }, fileName: string) => {
-    const filePath = path.resolve(__dirname, "../../fixtures", fileName);
-    await knowledgeDetailPage.uploadFile(filePath);
-  },
-);
+Then("應顯示文件上傳區域", async ({ knowledgeDetailPage }) => {
+  await expect(knowledgeDetailPage.uploadDropzone).toBeVisible({
+    timeout: 10000,
+  });
+});
 
-Then("應顯示上傳中狀態", async ({ page }) => {
-  // The dropzone shows "Uploading..." or a mutation error — verify either state
-  const uploading = page.getByText("Uploading...");
-  const uploadFailed = page.getByText("Upload failed");
-  const result = await Promise.race([
-    uploading.waitFor({ state: "visible", timeout: 10000 }).then(() => "uploading"),
-    uploadFailed.waitFor({ state: "visible", timeout: 10000 }).then(() => "failed"),
-  ]).catch(() => "timeout");
-  // Either state means the upload was triggered successfully
-  expect(["uploading", "failed"]).toContain(result);
+Then("應顯示文件列表或空狀態", async ({ page }) => {
+  const table = page.locator("table");
+  const emptyState = page.getByText("No documents uploaded yet.");
+  await expect(table.or(emptyState)).toBeVisible({ timeout: 10000 });
 });

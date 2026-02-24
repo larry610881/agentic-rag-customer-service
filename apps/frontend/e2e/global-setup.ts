@@ -1,6 +1,8 @@
 import { request } from "@playwright/test";
 
 const API_BASE = process.env.API_BASE_URL ?? "http://127.0.0.1:8000";
+const MAX_RETRIES = 10;
+const RETRY_DELAY = 2000;
 
 async function globalSetup() {
   let context;
@@ -11,22 +13,27 @@ async function globalSetup() {
     return;
   }
 
-  // Login as Demo Store
+  // Wait for backend to be ready by attempting login
   let loginRes;
-  try {
-    loginRes = await context.post(`${API_BASE}/api/v1/auth/login`, {
-      data: { username: "Demo Store", password: "password123" },
-    });
-  } catch (e) {
-    console.warn("[E2E Setup] Backend not reachable. Skipping seed.");
-    await context.dispose();
-    return;
+  for (let i = 1; i <= MAX_RETRIES; i++) {
+    try {
+      loginRes = await context.post(`${API_BASE}/api/v1/auth/login`, {
+        data: { username: "Demo Store", password: "password123" },
+      });
+      if (loginRes.ok()) break;
+      console.warn(
+        `[E2E Setup] Attempt ${i}: Login returned ${loginRes.status()}`,
+      );
+    } catch {
+      console.warn(`[E2E Setup] Attempt ${i}: Backend not reachable...`);
+    }
+    loginRes = undefined;
+    if (i < MAX_RETRIES)
+      await new Promise((r) => setTimeout(r, RETRY_DELAY));
   }
 
-  if (!loginRes.ok()) {
-    console.warn(
-      `[E2E Setup] Login failed (status ${loginRes.status()}). Skipping seed.`,
-    );
+  if (!loginRes?.ok()) {
+    console.warn("[E2E Setup] Backend not ready after retries. Skipping seed.");
     await context.dispose();
     return;
   }

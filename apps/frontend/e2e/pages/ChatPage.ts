@@ -20,23 +20,16 @@ export class ChatPage {
   }
 
   async goto() {
-    // Register response listener BEFORE navigation to catch the KB fetch
-    const kbPromise = this.page.waitForResponse(
-      (resp) =>
-        resp.url().includes("/knowledge-bases") && resp.status() === 200,
-      { timeout: 15000 },
-    );
     await this.page.goto("/chat");
-    await this.messageInput.waitFor({ state: "visible", timeout: 15000 });
-    // Wait for KB list to load so auto-KB-selection completes
-    await kbPromise.catch(() => {
-      /* KB fetch may not happen if tenantId is missing */
-    });
+    await this.messageInput.waitFor({ state: "visible", timeout: 30000 });
   }
 
   async sendMessage(text: string) {
     await this.messageInput.fill(text);
-    await this.sendButton.click();
+    // Wait for Send button to be enabled — signals KB auto-selection is complete
+    const sendBtn = this.page.getByRole("button", { name: "Send", exact: true });
+    await expect(sendBtn).toBeEnabled({ timeout: 15000 });
+    await sendBtn.click();
   }
 
   async waitForAssistantResponse() {

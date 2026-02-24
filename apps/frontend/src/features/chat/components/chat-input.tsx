@@ -9,11 +9,14 @@ import { useStreaming } from "@/features/chat/hooks/use-streaming";
 export function ChatInput() {
   const [input, setInput] = useState("");
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const knowledgeBaseId = useChatStore((s) => s.knowledgeBaseId);
   const { sendMessage } = useStreaming();
+
+  const canSend = !!input.trim() && !isStreaming && !!knowledgeBaseId;
 
   const handleSend = () => {
     const trimmed = input.trim();
-    if (!trimmed || isStreaming) return;
+    if (!trimmed || isStreaming || !knowledgeBaseId) return;
     setInput("");
     sendMessage(trimmed);
   };
@@ -37,7 +40,7 @@ export function ChatInput() {
         disabled={isStreaming}
         aria-label="Message input"
       />
-      <Button onClick={handleSend} disabled={!input.trim() || isStreaming}>
+      <Button onClick={handleSend} disabled={!canSend}>
         {isStreaming ? "Sending..." : "Send"}
       </Button>
     </div>

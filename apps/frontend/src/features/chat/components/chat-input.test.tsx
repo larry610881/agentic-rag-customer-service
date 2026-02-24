@@ -11,7 +11,7 @@ describe("ChatInput", () => {
       messages: [],
       isStreaming: false,
       conversationId: null,
-      knowledgeBaseId: null,
+      knowledgeBaseId: "kb-1",
     });
     useAuthStore.setState({ token: "test-token", tenantId: "tenant-1", tenants: [] });
   });
@@ -32,6 +32,14 @@ describe("ChatInput", () => {
     renderWithProviders(<ChatInput />);
     await user.type(screen.getByRole("textbox", { name: "Message input" }), "Hello");
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  });
+
+  it("should disable send button when no knowledge base is selected", async () => {
+    useChatStore.setState({ knowledgeBaseId: null });
+    const user = userEvent.setup();
+    renderWithProviders(<ChatInput />);
+    await user.type(screen.getByRole("textbox", { name: "Message input" }), "Hello");
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
 
   it("should show sending state when streaming", () => {
