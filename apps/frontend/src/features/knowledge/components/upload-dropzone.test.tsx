@@ -16,13 +16,13 @@ describe("UploadDropzone", () => {
   it("should render dropzone with instructions", () => {
     renderWithProviders(<UploadDropzone knowledgeBaseId="kb-1" />);
     expect(
-      screen.getByText("Drag and drop a file here, or click to select"),
+      screen.getByText("Drag and drop files here, or click to select"),
     ).toBeInTheDocument();
   });
 
   it("should render choose file button", () => {
     renderWithProviders(<UploadDropzone knowledgeBaseId="kb-1" />);
-    expect(screen.getByText("Choose File")).toBeInTheDocument();
+    expect(screen.getByText("Choose Files")).toBeInTheDocument();
   });
 
   it("should have upload region with proper label", () => {

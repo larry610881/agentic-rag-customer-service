@@ -13,7 +13,7 @@ export function useStreaming() {
   const token = useAuthStore((s) => s.token);
   const {
     conversationId,
-    knowledgeBaseId,
+    botId,
     addUserMessage,
     startAssistantMessage,
     appendToAssistantMessage,
@@ -60,7 +60,7 @@ export function useStreaming() {
           {
             message,
             conversation_id: conversationId,
-            knowledge_base_id: knowledgeBaseId,
+            bot_id: botId,
           },
           token,
           handleEvent,
@@ -76,7 +76,7 @@ export function useStreaming() {
     [
       token,
       conversationId,
-      knowledgeBaseId,
+      botId,
       addUserMessage,
       startAssistantMessage,
       appendToAssistantMessage,

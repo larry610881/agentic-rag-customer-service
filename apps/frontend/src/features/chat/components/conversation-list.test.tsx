@@ -12,6 +12,8 @@ describe("ConversationList", () => {
       isStreaming: false,
       conversationId: null,
       knowledgeBaseId: "kb-1",
+      botId: "bot-1",
+      botName: "Test Bot",
     });
     useAuthStore.setState({
       token: "test-token",
@@ -73,5 +75,19 @@ describe("ConversationList", () => {
     useAuthStore.setState({ token: null, tenantId: null });
     renderWithProviders(<ConversationList />);
     expect(screen.getByText("No conversations yet")).toBeInTheDocument();
+  });
+
+  it("should display bot name and switch button", () => {
+    renderWithProviders(<ConversationList />);
+    expect(screen.getByText("Test Bot")).toBeInTheDocument();
+    expect(screen.getByText("切換")).toBeInTheDocument();
+  });
+
+  it("should clear bot when clicking switch button", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConversationList />);
+    await user.click(screen.getByText("切換"));
+    expect(useChatStore.getState().botId).toBeNull();
+    expect(useChatStore.getState().botName).toBeNull();
   });
 });

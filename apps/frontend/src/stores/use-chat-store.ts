@@ -7,6 +7,8 @@ interface ChatState {
   isStreaming: boolean;
   conversationId: string | null;
   knowledgeBaseId: string | null;
+  botId: string | null;
+  botName: string | null;
   addUserMessage: (content: string) => void;
   startAssistantMessage: () => void;
   appendToAssistantMessage: (token: string) => void;
@@ -14,6 +16,8 @@ interface ChatState {
   setIsStreaming: (isStreaming: boolean) => void;
   setConversationId: (id: string) => void;
   setKnowledgeBaseId: (id: string | null) => void;
+  selectBot: (id: string, name: string) => void;
+  clearBot: () => void;
   clearMessages: () => void;
   loadConversation: (detail: ConversationDetail) => void;
 }
@@ -30,6 +34,8 @@ export const useChatStore = create<ChatState>((set) => ({
   isStreaming: false,
   conversationId: null,
   knowledgeBaseId: null,
+  botId: null,
+  botName: null,
 
   addUserMessage: (content) =>
     set((state) => ({
@@ -87,6 +93,10 @@ export const useChatStore = create<ChatState>((set) => ({
   setIsStreaming: (isStreaming) => set({ isStreaming }),
   setConversationId: (id) => set({ conversationId: id }),
   setKnowledgeBaseId: (id) => set({ knowledgeBaseId: id }),
+  selectBot: (id, name) =>
+    set({ botId: id, botName: name, messages: [], conversationId: null }),
+  clearBot: () =>
+    set({ botId: null, botName: null, messages: [], conversationId: null }),
   clearMessages: () =>
     set({ messages: [], conversationId: null }),
 

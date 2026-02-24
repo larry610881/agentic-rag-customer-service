@@ -1,22 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
 import { MessageList } from "@/features/chat/components/message-list";
 import { ChatInput } from "@/features/chat/components/chat-input";
 import { ConversationList } from "@/features/chat/components/conversation-list";
-import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
+import { BotSelector } from "@/features/chat/components/bot-selector";
 import { useChatStore } from "@/stores/use-chat-store";
 
 export default function ChatPage() {
-  const { data: kbs } = useKnowledgeBases();
-  const knowledgeBaseId = useChatStore((s) => s.knowledgeBaseId);
-  const setKnowledgeBaseId = useChatStore((s) => s.setKnowledgeBaseId);
+  const botId = useChatStore((s) => s.botId);
 
-  useEffect(() => {
-    if (!knowledgeBaseId && kbs && kbs.length > 0) {
-      setKnowledgeBaseId(kbs[0].id);
-    }
-  }, [knowledgeBaseId, kbs, setKnowledgeBaseId]);
+  if (!botId) {
+    return <BotSelector />;
+  }
 
   return (
     <div className="flex h-full">

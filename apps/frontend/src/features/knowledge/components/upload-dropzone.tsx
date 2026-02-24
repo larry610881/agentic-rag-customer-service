@@ -11,18 +11,23 @@ interface UploadDropzoneProps {
 
 export function UploadDropzone({ knowledgeBaseId, onUploadStarted }: UploadDropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const uploadMutation = useUploadDocument();
 
-  const handleFile = useCallback(
-    (file: File) => {
-      uploadMutation.mutate(
-        { knowledgeBaseId, file },
-        {
-          onSuccess: (data) => {
+  const handleFiles = useCallback(
+    (files: FileList | File[]) => {
+      const fileArray = Array.from(files);
+      setPendingCount((c) => c + fileArray.length);
+      for (const file of fileArray) {
+        uploadMutation
+          .mutateAsync({ knowledgeBaseId, file })
+          .then((data) => {
             onUploadStarted?.(data.task_id);
-          },
-        },
-      );
+          })
+          .finally(() => {
+            setPendingCount((c) => c - 1);
+          });
+      }
     },
     [knowledgeBaseId, uploadMutation, onUploadStarted],
   );
@@ -30,8 +35,9 @@ export function UploadDropzone({ knowledgeBaseId, onUploadStarted }: UploadDropz
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    if (e.dataTransfer.files.length > 0) {
+      handleFiles(e.dataTransfer.files);
+    }
   };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -44,8 +50,11 @@ export function UploadDropzone({ knowledgeBaseId, onUploadStarted }: UploadDropz
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleFiles(files);
+    }
+    e.target.value = "";
   };
 
   return (
@@ -60,21 +69,24 @@ export function UploadDropzone({ knowledgeBaseId, onUploadStarted }: UploadDropz
       aria-label="Upload dropzone"
     >
       <p className="text-sm text-muted-foreground">
-        Drag and drop a file here, or click to select
+        Drag and drop files here, or click to select
       </p>
       <label>
         <Button variant="outline" size="sm" asChild>
-          <span>Choose File</span>
+          <span>Choose Files</span>
         </Button>
         <input
           type="file"
           className="hidden"
           onChange={handleFileInput}
           accept=".pdf,.txt,.md,.docx"
+          multiple
         />
       </label>
-      {uploadMutation.isPending && (
-        <p className="text-sm text-muted-foreground">Uploading...</p>
+      {pendingCount > 0 && (
+        <p className="text-sm text-muted-foreground">
+          Uploading {pendingCount} file{pendingCount > 1 ? "s" : ""}...
+        </p>
       )}
       {uploadMutation.isError && (
         <p className="text-sm text-destructive">Upload failed. Please try again.</p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { ArrowLeftRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useConversations, useConversation } from "@/hooks/queries/use-conversations";
@@ -11,6 +11,8 @@ import { ConversationItem } from "./conversation-item";
 export function ConversationList() {
   const { data: conversations } = useConversations();
   const conversationId = useChatStore((s) => s.conversationId);
+  const botName = useChatStore((s) => s.botName);
+  const clearBot = useChatStore((s) => s.clearBot);
   const clearMessages = useChatStore((s) => s.clearMessages);
   const loadConversation = useChatStore((s) => s.loadConversation);
 
@@ -39,6 +41,20 @@ export function ConversationList() {
 
   return (
     <div className="flex h-full flex-col border-r">
+      {botName && (
+        <div className="flex items-center justify-between border-b px-3 py-2">
+          <span className="truncate text-sm font-medium">{botName}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearBot}
+            className="h-7 shrink-0 gap-1 px-2 text-xs"
+          >
+            <ArrowLeftRight className="h-3 w-3" />
+            切換
+          </Button>
+        </div>
+      )}
       <div className="flex items-center justify-between border-b px-3 py-2">
         <h2 className="text-sm font-semibold">Conversations</h2>
         <Button

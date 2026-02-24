@@ -9,6 +9,8 @@ describe("useChatStore", () => {
       isStreaming: false,
       conversationId: null,
       knowledgeBaseId: null,
+      botId: null,
+      botName: null,
     });
   });
 
@@ -67,5 +69,27 @@ describe("useChatStore", () => {
   it("should set knowledge base id", () => {
     useChatStore.getState().setKnowledgeBaseId("kb-1");
     expect(useChatStore.getState().knowledgeBaseId).toBe("kb-1");
+  });
+
+  it("should select bot and clear messages", () => {
+    useChatStore.getState().addUserMessage("Hi");
+    useChatStore.getState().setConversationId("conv-1");
+    useChatStore.getState().selectBot("bot-1", "My Bot");
+    const state = useChatStore.getState();
+    expect(state.botId).toBe("bot-1");
+    expect(state.botName).toBe("My Bot");
+    expect(state.messages).toEqual([]);
+    expect(state.conversationId).toBeNull();
+  });
+
+  it("should clear bot and reset to selection screen", () => {
+    useChatStore.getState().selectBot("bot-1", "My Bot");
+    useChatStore.getState().addUserMessage("Hi");
+    useChatStore.getState().clearBot();
+    const state = useChatStore.getState();
+    expect(state.botId).toBeNull();
+    expect(state.botName).toBeNull();
+    expect(state.messages).toEqual([]);
+    expect(state.conversationId).toBeNull();
   });
 });
