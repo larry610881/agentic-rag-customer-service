@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-24 (Bot Management 全棧完成, 122 backend + 71 frontend tests green)
+> 最後更新：2026-02-24 (對話歷史列表 + README 美化完成, 122 backend + 76 frontend tests green)
 
 ---
 
@@ -331,7 +331,7 @@
 - ✅ `GET /api/v1/conversations/{id}` — 對話詳情（含訊息）
 - ✅ 租戶隔離驗證
 - ✅ BDD：2 scenarios（列表查詢、詳情查詢）
-- ⬜ 前端對話列表（延至 S7 前端更新）
+- ✅ 前端對話列表（ConversationList 側欄 + 點選載入歷史對話）
 - ✅ 驗收：API 可查看過去的對話記錄
 
 ### 6.3 Multi-Agent 架構
@@ -481,13 +481,13 @@
 - ✅ 驗收：E2E 14/14 通過 + 後端 107 scenarios 通過
 
 ### 7.5 文件
-- ⬜ README.md 完整
+- ✅ README.md 完整（置中 badge、HTML 技術堆疊表、中文化）
 - ✅ API 文件：`docs/api-reference.md`
 - ✅ 架構圖：`docs/architecture.md`
 - ✅ 快速開始：`docs/getting-started.md`
 - ✅ Provider 設定指南：`docs/configuration.md`
 - ✅ Demo 操作手冊：`docs/demo-guide.md`
-- ⬜ 驗收：新人可在 30 分鐘內跑起來
+- ✅ 驗收：新人可在 30 分鐘內跑起來
 
 ### 7.6 部署
 - ⬜ Docker Compose 生產配置
@@ -527,6 +527,6 @@
 | S3 RAG 查詢 | ✅ 完成 | 100% | 17 scenarios (6+5+6), 82% coverage |
 | S4 Agent 框架 | ✅ 完成 | 100% | 14 scenarios (3+2+3+2+2+5+3), 82% coverage |
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
-| S6 Agentic 工作流 | ✅ 完成 | 95% | 84 scenarios, 84.83% coverage, 前端對話列表延至 S7 |
+| S6 Agentic 工作流 | ✅ 完成 | 100% | 84 scenarios, 84.83% coverage |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 95% | Demo 1-6 + Bot Management 全通過, 122 backend + 71 frontend tests |
+| S7 整合+Demo | 🔄 進行中 | 97% | Demo 1-6 + Bot Management + 對話列表 + README, 122 backend + 76 frontend tests |
