@@ -53,6 +53,10 @@ class LLMService(ABC):
         system_prompt: str,
         user_message: str,
         context: str,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        frequency_penalty: float | None = None,
     ) -> LLMResult: ...
 
     @abstractmethod
@@ -61,4 +65,8 @@ class LLMService(ABC):
         system_prompt: str,
         user_message: str,
         context: str,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        frequency_penalty: float | None = None,
     ) -> AsyncIterator[str]: ...  # pragma: no cover

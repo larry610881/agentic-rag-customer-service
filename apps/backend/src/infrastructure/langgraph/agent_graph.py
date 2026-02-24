@@ -49,6 +49,9 @@ class AgentState(TypedDict):
     user_message: str
     tenant_id: str
     kb_id: str
+    kb_ids: list[str]
+    system_prompt: str
+    llm_params: dict[str, Any]
     current_tool: str
     tool_reasoning: str
     tool_result: dict[str, Any]
@@ -74,6 +77,19 @@ def _keyword_route(msg: str) -> dict[str, str] | None:  # noqa: C901
             "tool_reasoning": "用戶搜尋商品",
         }
     return None
+
+
+def _extract_llm_kwargs(state: AgentState) -> dict[str, Any]:
+    """從 state.llm_params 取出 LLMService.generate() 接受的 kwargs"""
+    params = state.get("llm_params") or {}
+    kwargs: dict[str, Any] = {}
+    if "temperature" in params:
+        kwargs["temperature"] = params["temperature"]
+    if "max_tokens" in params:
+        kwargs["max_tokens"] = params["max_tokens"]
+    if "frequency_penalty" in params:
+        kwargs["frequency_penalty"] = params["frequency_penalty"]
+    return kwargs
 
 
 def build_agent_graph(  # noqa: C901
@@ -119,9 +135,10 @@ def build_agent_graph(  # noqa: C901
             return kw_result
 
         # LLM 意圖分類
+        llm_kw = _extract_llm_kwargs(state)
         try:
             result = await llm_service.generate(
-                ROUTER_SYSTEM_PROMPT, msg, ""
+                ROUTER_SYSTEM_PROMPT, msg, "", **llm_kw
             )
             usage_dict = _usage_to_dict(result.usage)
             accumulated = _merge_usage(
@@ -142,10 +159,14 @@ def build_agent_graph(  # noqa: C901
             }
 
     async def rag_tool_node(state: AgentState) -> dict:
+        kb_ids = state.get("kb_ids") or []
+        if not kb_ids and state.get("kb_id"):
+            kb_ids = [state["kb_id"]]
         result = await rag_tool.invoke(
             state["tenant_id"],
-            state["kb_id"],
+            kb_ids[0] if kb_ids else state.get("kb_id", ""),
             state["user_message"],
+            kb_ids=kb_ids if len(kb_ids) > 1 else None,
         )
         return {"tool_result": result}
 
@@ -177,8 +198,11 @@ def build_agent_graph(  # noqa: C901
         context = json.dumps(
             tool_result, ensure_ascii=False, default=str
         )
+        custom_prompt = state.get("system_prompt") or ""
+        sys_prompt = custom_prompt if custom_prompt.strip() else RESPOND_SYSTEM_PROMPT
+        llm_kw = _extract_llm_kwargs(state)
         result = await llm_service.generate(
-            RESPOND_SYSTEM_PROMPT, state["user_message"], context
+            sys_prompt, state["user_message"], context, **llm_kw
         )
         usage_dict = _usage_to_dict(result.usage)
         accumulated = _merge_usage(

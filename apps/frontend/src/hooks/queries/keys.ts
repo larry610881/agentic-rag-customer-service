@@ -15,4 +15,8 @@ export const queryKeys = {
     history: (conversationId: string) =>
       ["chat", conversationId] as const,
   },
+  bots: {
+    all: (tenantId: string) => ["bots", tenantId] as const,
+    detail: (botId: string) => ["bots", "detail", botId] as const,
+  },
 };

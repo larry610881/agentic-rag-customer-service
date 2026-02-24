@@ -41,6 +41,9 @@ class LangGraphAgentService(AgentService):
         user_message: str,
         history: list[Message] | None = None,
         *,
+        kb_ids: list[str] | None = None,
+        system_prompt: str | None = None,
+        llm_params: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> AgentResponse:
         initial_state = {
@@ -48,6 +51,9 @@ class LangGraphAgentService(AgentService):
             "user_message": user_message,
             "tenant_id": tenant_id,
             "kb_id": kb_id,
+            "kb_ids": kb_ids or [],
+            "system_prompt": system_prompt or "",
+            "llm_params": llm_params or {},
             "current_tool": "",
             "tool_reasoning": "",
             "tool_result": {},

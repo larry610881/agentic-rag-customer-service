@@ -31,27 +31,44 @@ class AnthropicLLMService(LLMService):
         }
 
     def _build_body(
-        self, system_prompt: str, user_message: str, context: str
+        self,
+        system_prompt: str,
+        user_message: str,
+        context: str,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> dict:
         content = (
             f"Context:\n{context}\n\nQuestion: {user_message}"
             if context.strip()
             else user_message
         )
-        return {
+        body: dict = {
             "model": self._model,
-            "max_tokens": self._max_tokens,
+            "max_tokens": max_tokens if max_tokens is not None else self._max_tokens,
             "system": system_prompt,
             "messages": [{"role": "user", "content": content}],
         }
+        if temperature is not None:
+            body["temperature"] = temperature
+        return body
 
     async def generate(
         self,
         system_prompt: str,
         user_message: str,
         context: str,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        frequency_penalty: float | None = None,
     ) -> LLMResult:
-        body = self._build_body(system_prompt, user_message, context)
+        # Anthropic API does not support frequency_penalty — ignored
+        body = self._build_body(
+            system_prompt, user_message, context,
+            temperature=temperature, max_tokens=max_tokens,
+        )
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 f"{self._base_url}/messages",
@@ -75,8 +92,15 @@ class AnthropicLLMService(LLMService):
         system_prompt: str,
         user_message: str,
         context: str,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        frequency_penalty: float | None = None,
     ) -> AsyncIterator[str]:
-        body = self._build_body(system_prompt, user_message, context)
+        body = self._build_body(
+            system_prompt, user_message, context,
+            temperature=temperature, max_tokens=max_tokens,
+        )
         body["stream"] = True
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream(

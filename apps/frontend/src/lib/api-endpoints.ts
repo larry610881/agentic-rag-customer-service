@@ -27,4 +27,11 @@ export const API_ENDPOINTS = {
     chat: "/api/v1/agent/chat",
     chatStream: "/api/v1/agent/chat/stream",
   },
+  bots: {
+    list: "/api/v1/bots",
+    create: "/api/v1/bots",
+    detail: (id: string) => `/api/v1/bots/${id}`,
+    update: (id: string) => `/api/v1/bots/${id}`,
+    delete: (id: string) => `/api/v1/bots/${id}`,
+  },
 } as const;

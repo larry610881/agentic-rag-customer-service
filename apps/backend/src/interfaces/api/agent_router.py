@@ -22,8 +22,9 @@ router = APIRouter(
 
 
 class ChatRequest(BaseModel):
-    knowledge_base_id: str
     message: str
+    bot_id: str | None = None
+    knowledge_base_id: str | None = None
     conversation_id: str | None = None
 
 
@@ -69,9 +70,10 @@ async def agent_chat(
     result = await use_case.execute(
         SendMessageCommand(
             tenant_id=tenant.tenant_id,
-            kb_id=request.knowledge_base_id,
+            kb_id=request.knowledge_base_id or "",
             message=request.message,
             conversation_id=request.conversation_id,
+            bot_id=request.bot_id,
         )
     )
 
@@ -125,9 +127,10 @@ async def agent_chat_stream(
     result = await use_case.execute(
         SendMessageCommand(
             tenant_id=tenant.tenant_id,
-            kb_id=request.knowledge_base_id,
+            kb_id=request.knowledge_base_id or "",
             message=request.message,
             conversation_id=request.conversation_id,
+            bot_id=request.bot_id,
         )
     )
 

@@ -26,5 +26,6 @@ class HandleWebhookUseCase:
                 tenant_id=self._default_tenant_id,
                 kb_id=self._default_kb_id,
                 user_message=event.message_text,
+                kb_ids=[self._default_kb_id],
             )
             await self._line_service.reply_text(event.reply_token, result.answer)

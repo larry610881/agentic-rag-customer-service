@@ -48,17 +48,26 @@ class OpenAILLMService(LLMService):
         system_prompt: str,
         user_message: str,
         context: str,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        frequency_penalty: float | None = None,
     ) -> LLMResult:
         messages = self._build_messages(system_prompt, user_message, context)
+        body: dict = {
+            "model": self._model,
+            "max_tokens": max_tokens if max_tokens is not None else self._max_tokens,
+            "messages": messages,
+        }
+        if temperature is not None:
+            body["temperature"] = temperature
+        if frequency_penalty is not None:
+            body["frequency_penalty"] = frequency_penalty
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 f"{self._base_url}/chat/completions",
                 headers=self._build_headers(),
-                json={
-                    "model": self._model,
-                    "max_tokens": self._max_tokens,
-                    "messages": messages,
-                },
+                json=body,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -77,19 +86,28 @@ class OpenAILLMService(LLMService):
         system_prompt: str,
         user_message: str,
         context: str,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        frequency_penalty: float | None = None,
     ) -> AsyncIterator[str]:
         messages = self._build_messages(system_prompt, user_message, context)
+        body: dict = {
+            "model": self._model,
+            "max_tokens": max_tokens if max_tokens is not None else self._max_tokens,
+            "messages": messages,
+            "stream": True,
+        }
+        if temperature is not None:
+            body["temperature"] = temperature
+        if frequency_penalty is not None:
+            body["frequency_penalty"] = frequency_penalty
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream(
                 "POST",
                 f"{self._base_url}/chat/completions",
                 headers=self._build_headers(),
-                json={
-                    "model": self._model,
-                    "max_tokens": self._max_tokens,
-                    "messages": messages,
-                    "stream": True,
-                },
+                json=body,
             ) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():

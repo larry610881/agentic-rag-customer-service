@@ -21,7 +21,12 @@ class RAGQueryTool:
         self._use_case = query_rag_use_case
 
     async def invoke(
-        self, tenant_id: str, kb_id: str, query: str
+        self,
+        tenant_id: str,
+        kb_id: str,
+        query: str,
+        *,
+        kb_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         try:
             result = await self._use_case.execute(
@@ -29,6 +34,7 @@ class RAGQueryTool:
                     tenant_id=tenant_id,
                     kb_id=kb_id,
                     query=query,
+                    kb_ids=kb_ids,
                 )
             )
             return {

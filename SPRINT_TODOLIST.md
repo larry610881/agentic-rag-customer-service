@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-24 (E2E 10/10 green + trace/video 報告模式, payngo E2E 40/40 green)
+> 最後更新：2026-02-24 (Bot Management 全棧完成, 122 backend + 71 frontend tests green)
 
 ---
 
@@ -494,6 +494,27 @@
 - ⬜ `make prod-up` 一鍵部署
 - ⬜ 驗收：生產環境可啟動
 
+### 7.12 機器人管理（Bot Management）
+- ✅ Domain：`Bot` Entity + `BotLLMParams` + `BotId` VO + `BotRepository` ABC
+- ✅ Infrastructure：`BotModel` + `BotKnowledgeBaseModel`（多對多 join table）+ `SQLAlchemyBotRepository`
+- ✅ Application：5 個 Use Cases（Create/List/Get/Update/Delete Bot）
+- ✅ Interfaces：`bot_router.py` — CRUD 5 端點（POST/GET/GET/:id/PUT/:id/DELETE/:id）
+- ✅ Container + Main 註冊
+- ✅ 多 KB RAG 搜尋：`QueryRAGUseCase` 支援 `kb_ids` 跨 KB 搜尋合併排序
+- ✅ LLM 參數管線：`LLMService.generate()` 支援 temperature/max_tokens/frequency_penalty kwargs
+- ✅ Agent 管線更新：`AgentState` 新增 kb_ids/system_prompt/llm_params，respond_node 支援自訂 System Prompt
+- ✅ `SendMessageUseCase` 支援 bot_id → 載入 Bot → 取 kb_ids/system_prompt/llm_params/history_limit
+- ✅ `ChatRequest` 新增 bot_id 欄位（backward compatible）
+- ✅ LINE Webhook 更新：傳入 kb_ids list
+- ✅ BDD：3 feature files + 11 scenarios 全部通過（create_bot 3 + manage_bot 6 + multi_kb_query 2）
+- ✅ 前端：types/bot.ts + api-endpoints + query keys + use-bots hooks
+- ✅ 前端元件：BotCard + BotList + CreateBotDialog + BotDetailForm（LLM 參數 + KB 綁定 + System Prompt + LINE Channel）
+- ✅ 前端頁面：`/bots` 列表頁 + `/bots/[id]` 詳情編輯頁
+- ✅ Sidebar 新增 Bots 導航
+- ✅ MSW handlers + test fixtures + 4 component test files
+- ✅ 全量測試：後端 122 passed + 前端 71 passed
+- ✅ 驗收：完整 Bot CRUD + 多 KB 綁定 + LLM 參數 + LINE Channel 設定
+
 ---
 
 ## 進度總覽
@@ -508,4 +529,4 @@
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 95% | 84 scenarios, 84.83% coverage, 前端對話列表延至 S7 |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 90% | Demo 1-6 全通過, E2E 14/14, 111 backend + 52 frontend tests |
+| S7 整合+Demo | 🔄 進行中 | 95% | Demo 1-6 + Bot Management 全通過, 122 backend + 71 frontend tests |

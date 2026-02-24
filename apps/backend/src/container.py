@@ -4,6 +4,11 @@ from src.application.agent.order_lookup_use_case import OrderLookupUseCase
 from src.application.agent.product_search_use_case import ProductSearchUseCase
 from src.application.agent.send_message_use_case import SendMessageUseCase
 from src.application.agent.ticket_creation_use_case import TicketCreationUseCase
+from src.application.bot.create_bot_use_case import CreateBotUseCase
+from src.application.bot.delete_bot_use_case import DeleteBotUseCase
+from src.application.bot.get_bot_use_case import GetBotUseCase
+from src.application.bot.list_bots_use_case import ListBotsUseCase
+from src.application.bot.update_bot_use_case import UpdateBotUseCase
 from src.application.conversation.get_conversation_use_case import (
     GetConversationUseCase,
 )
@@ -52,6 +57,9 @@ from src.infrastructure.db.repositories.conversation_repository import (
 )
 from src.infrastructure.db.repositories.document_repository import (
     SQLAlchemyDocumentRepository,
+)
+from src.infrastructure.db.repositories.bot_repository import (
+    SQLAlchemyBotRepository,
 )
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
@@ -123,6 +131,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.conversation_router",
             "src.interfaces.api.line_webhook_router",
             "src.interfaces.api.usage_router",
+            "src.interfaces.api.bot_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -179,6 +188,11 @@ class Container(containers.DeclarativeContainer):
 
     usage_repository = providers.Factory(
         SQLAlchemyUsageRepository,
+        session=db_session,
+    )
+
+    bot_repository = providers.Factory(
+        SQLAlchemyBotRepository,
         session=db_session,
     )
 
@@ -527,10 +541,36 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
+    create_bot_use_case = providers.Factory(
+        CreateBotUseCase,
+        bot_repository=bot_repository,
+    )
+
+    list_bots_use_case = providers.Factory(
+        ListBotsUseCase,
+        bot_repository=bot_repository,
+    )
+
+    get_bot_use_case = providers.Factory(
+        GetBotUseCase,
+        bot_repository=bot_repository,
+    )
+
+    update_bot_use_case = providers.Factory(
+        UpdateBotUseCase,
+        bot_repository=bot_repository,
+    )
+
+    delete_bot_use_case = providers.Factory(
+        DeleteBotUseCase,
+        bot_repository=bot_repository,
+    )
+
     send_message_use_case = providers.Factory(
         SendMessageUseCase,
         agent_service=agent_service,
         conversation_repository=conversation_repository,
+        bot_repository=bot_repository,
     )
 
     # --- LINE Bot ---

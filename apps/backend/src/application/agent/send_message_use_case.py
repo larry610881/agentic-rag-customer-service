@@ -6,6 +6,7 @@ from typing import Any
 
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
+from src.domain.bot.repository import BotRepository
 from src.domain.conversation.entity import Conversation, Message
 from src.domain.conversation.repository import ConversationRepository
 
@@ -15,9 +16,10 @@ _REFUND_METADATA_MARKER = "__refund_metadata"
 @dataclass(frozen=True)
 class SendMessageCommand:
     tenant_id: str
-    kb_id: str
-    message: str
+    kb_id: str = ""
+    message: str = ""
     conversation_id: str | None = None
+    bot_id: str | None = None
 
 
 class SendMessageUseCase:
@@ -25,9 +27,11 @@ class SendMessageUseCase:
         self,
         agent_service: AgentService,
         conversation_repository: ConversationRepository,
+        bot_repository: BotRepository | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
+        self._bot_repo = bot_repository
 
     async def execute(self, command: SendMessageCommand) -> AgentResponse:
         conversation = await self._load_or_create_conversation(command)
@@ -35,11 +39,39 @@ class SendMessageUseCase:
         history = conversation.messages if conversation.messages else None
         metadata = self._extract_metadata(conversation)
 
+        # Resolve Bot config if bot_id is provided
+        kb_ids: list[str] | None = None
+        system_prompt: str | None = None
+        llm_params: dict[str, Any] | None = None
+        kb_id = command.kb_id
+        history_limit: int | None = None
+
+        if command.bot_id and self._bot_repo:
+            bot = await self._bot_repo.find_by_id(command.bot_id)
+            if bot is not None:
+                kb_ids = bot.knowledge_base_ids or None
+                if not kb_id and kb_ids:
+                    kb_id = kb_ids[0]
+                system_prompt = bot.system_prompt or None
+                llm_params = {
+                    "temperature": bot.llm_params.temperature,
+                    "max_tokens": bot.llm_params.max_tokens,
+                    "frequency_penalty": bot.llm_params.frequency_penalty,
+                }
+                history_limit = bot.llm_params.history_limit
+
+        # Truncate history by history_limit
+        if history and history_limit is not None:
+            history = history[-history_limit:]
+
         response = await self._agent_service.process_message(
             tenant_id=command.tenant_id,
-            kb_id=command.kb_id,
+            kb_id=kb_id,
             user_message=command.message,
             history=history,
+            kb_ids=kb_ids,
+            system_prompt=system_prompt,
+            llm_params=llm_params,
             metadata=metadata,
         )
 

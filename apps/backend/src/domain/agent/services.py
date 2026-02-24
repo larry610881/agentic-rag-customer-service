@@ -18,6 +18,9 @@ class AgentService(ABC):
         user_message: str,
         history: list[Message] | None = None,
         *,
+        kb_ids: list[str] | None = None,
+        system_prompt: str | None = None,
+        llm_params: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> AgentResponse: ...
 

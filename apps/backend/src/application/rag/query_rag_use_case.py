@@ -22,6 +22,7 @@ class QueryRAGCommand:
     query: str
     top_k: int = 5
     score_threshold: float = 0.3
+    kb_ids: list[str] | None = None
 
 
 class QueryRAGUseCase:
@@ -38,19 +39,31 @@ class QueryRAGUseCase:
         self._llm_service = llm_service
 
     async def execute(self, command: QueryRAGCommand) -> RAGResponse:
-        kb = await self._kb_repo.find_by_id(command.kb_id)
-        if kb is None:
-            raise EntityNotFoundError("KnowledgeBase", command.kb_id)
+        effective_kb_ids = command.kb_ids or [command.kb_id]
+
+        # Validate all KBs exist
+        for kid in effective_kb_ids:
+            kb = await self._kb_repo.find_by_id(kid)
+            if kb is None:
+                raise EntityNotFoundError("KnowledgeBase", kid)
 
         query_vector = await self._embedding_service.embed_query(command.query)
 
-        results = await self._vector_store.search(
-            collection=f"kb_{command.kb_id}",
-            query_vector=query_vector,
-            limit=command.top_k,
-            score_threshold=command.score_threshold,
-            filters={"tenant_id": command.tenant_id},
-        )
+        # Search across all KBs and merge results
+        all_results = []
+        for kid in effective_kb_ids:
+            results = await self._vector_store.search(
+                collection=f"kb_{kid}",
+                query_vector=query_vector,
+                limit=command.top_k,
+                score_threshold=command.score_threshold,
+                filters={"tenant_id": command.tenant_id},
+            )
+            all_results.extend(results)
+
+        # Sort by score descending, take top_k
+        all_results.sort(key=lambda r: r.score, reverse=True)
+        results = all_results[: command.top_k]
 
         if not results:
             raise NoRelevantKnowledgeError(command.query)
@@ -78,7 +91,7 @@ class QueryRAGUseCase:
             sources=sources,
             query=command.query,
             tenant_id=command.tenant_id,
-            knowledge_base_id=command.kb_id,
+            knowledge_base_id=effective_kb_ids[0],
             usage=llm_result.usage,
         )
 

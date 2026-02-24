@@ -14,6 +14,10 @@ class FakeLLMService(LLMService):
         system_prompt: str,
         user_message: str,
         context: str,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        frequency_penalty: float | None = None,
     ) -> LLMResult:
         if not context or not context.strip():
             text = "知識庫中沒有找到相關資訊，請嘗試其他問題。"
@@ -27,6 +31,10 @@ class FakeLLMService(LLMService):
         system_prompt: str,
         user_message: str,
         context: str,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        frequency_penalty: float | None = None,
     ) -> AsyncIterator[str]:
         result = await self.generate(system_prompt, user_message, context)
         for char in result.text:

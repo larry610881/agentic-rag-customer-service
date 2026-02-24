@@ -1,3 +1,5 @@
+from src.infrastructure.db.models.bot_knowledge_base_model import BotKnowledgeBaseModel
+from src.infrastructure.db.models.bot_model import BotModel
 from src.infrastructure.db.models.chunk_model import ChunkModel
 from src.infrastructure.db.models.conversation_model import ConversationModel
 from src.infrastructure.db.models.document_model import DocumentModel
@@ -18,4 +20,6 @@ __all__ = [
     "UsageRecordModel",
     "ConversationModel",
     "MessageModel",
+    "BotModel",
+    "BotKnowledgeBaseModel",
 ]
