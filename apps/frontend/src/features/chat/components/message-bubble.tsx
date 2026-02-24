@@ -1,14 +1,22 @@
 "use client";
 
+import { AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useChatStore } from "@/stores/use-chat-store";
 import type { ChatMessage } from "@/types/chat";
+import { ToolHintIndicator } from "@/features/chat/components/tool-hint-indicator";
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  isLast?: boolean;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, isLast }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const toolHint = useChatStore((s) => s.toolHint);
+  const isStreaming = useChatStore((s) => s.isStreaming);
+
+  const showHint = !isUser && isLast && isStreaming && !!toolHint && !message.content;
 
   return (
     <div
@@ -22,7 +30,13 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             : "bg-muted text-muted-foreground",
         )}
       >
-        <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+        <AnimatePresence mode="wait">
+          {showHint ? (
+            <ToolHintIndicator key="hint" hint={toolHint} />
+          ) : (
+            <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

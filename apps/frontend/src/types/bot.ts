@@ -11,6 +11,7 @@ export interface Bot {
   history_limit: number;
   frequency_penalty: number;
   reasoning_effort: "low" | "medium" | "high";
+  enabled_tools: string[];
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
   created_at: string;
@@ -28,6 +29,7 @@ export interface CreateBotRequest {
   history_limit?: number;
   frequency_penalty?: number;
   reasoning_effort?: "low" | "medium" | "high";
+  enabled_tools?: string[];
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }
@@ -43,6 +45,7 @@ export interface UpdateBotRequest {
   history_limit?: number;
   frequency_penalty?: number;
   reasoning_effort?: "low" | "medium" | "high";
+  enabled_tools?: string[];
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }

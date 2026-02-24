@@ -19,12 +19,20 @@ import {
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
 import type { Bot, UpdateBotRequest } from "@/types/bot";
 
+const AVAILABLE_TOOLS = [
+  { value: "rag_query", label: "Knowledge Base Query" },
+  { value: "order_lookup", label: "Order Lookup" },
+  { value: "product_search", label: "Product Search" },
+  { value: "ticket_creation", label: "Ticket Creation" },
+] as const;
+
 const botFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
   is_active: z.boolean(),
   system_prompt: z.string().optional(),
   knowledge_base_ids: z.array(z.string()),
+  enabled_tools: z.array(z.string()),
   temperature: z.coerce.number().min(0).max(1),
   max_tokens: z.coerce.number().int().min(128).max(4096),
   history_limit: z.coerce.number().int().min(0).max(35),
@@ -67,6 +75,7 @@ export function BotDetailForm({
       is_active: bot.is_active,
       system_prompt: bot.system_prompt,
       knowledge_base_ids: bot.knowledge_base_ids,
+      enabled_tools: bot.enabled_tools,
       temperature: bot.temperature,
       max_tokens: bot.max_tokens,
       history_limit: bot.history_limit,
@@ -84,6 +93,7 @@ export function BotDetailForm({
       is_active: bot.is_active,
       system_prompt: bot.system_prompt,
       knowledge_base_ids: bot.knowledge_base_ids,
+      enabled_tools: bot.enabled_tools,
       temperature: bot.temperature,
       max_tokens: bot.max_tokens,
       history_limit: bot.history_limit,
@@ -180,6 +190,46 @@ export function BotDetailForm({
             )}
           />
         </div>
+      </section>
+
+      <Separator />
+
+      {/* Enabled Tools */}
+      <section className="flex flex-col gap-4">
+        <h3 className="text-lg font-semibold">Enabled Tools</h3>
+        <p className="text-sm text-muted-foreground">
+          Select which tools this bot can use. If none are selected, the bot will respond directly via LLM without any tools.
+        </p>
+        <Controller
+          name="enabled_tools"
+          control={control}
+          render={({ field }) => (
+            <div className="flex flex-col gap-2">
+              {AVAILABLE_TOOLS.map((tool) => (
+                <label
+                  key={tool.value}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={field.value.includes(tool.value)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        field.onChange([...field.value, tool.value]);
+                      } else {
+                        field.onChange(
+                          field.value.filter((v) => v !== tool.value),
+                        );
+                      }
+                    }}
+                    className="rounded border-input"
+                  />
+                  {tool.label}
+                </label>
+              ))}
+            </div>
+          )}
+        />
       </section>
 
       <Separator />

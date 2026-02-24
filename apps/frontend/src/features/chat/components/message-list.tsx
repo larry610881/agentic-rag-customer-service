@@ -26,9 +26,9 @@ export function MessageList() {
   return (
     <ScrollArea className="flex-1 p-4">
       <div className="flex flex-col gap-4">
-        {messages.map((message) => (
+        {messages.map((message, index) => (
           <div key={message.id} className="flex flex-col gap-2">
-            <MessageBubble message={message} />
+            <MessageBubble message={message} isLast={index === messages.length - 1} />
             {message.role === "assistant" && message.tool_calls && message.tool_calls.length > 0 && (
               <AgentThoughtPanel toolCalls={message.tool_calls} />
             )}

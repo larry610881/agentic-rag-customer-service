@@ -76,6 +76,22 @@ describe("BotDetailForm", () => {
     expect(screen.getByLabelText("Access Token")).toBeInTheDocument();
   });
 
+  it("should render enabled tools checkboxes", () => {
+    renderWithProviders(
+      <BotDetailForm
+        bot={mockBot}
+        onSave={mockOnSave}
+        onDelete={mockOnDelete}
+        isSaving={false}
+        isDeleting={false}
+      />,
+    );
+    expect(screen.getByLabelText("Knowledge Base Query")).toBeChecked();
+    expect(screen.getByLabelText("Order Lookup")).toBeChecked();
+    expect(screen.getByLabelText("Product Search")).not.toBeChecked();
+    expect(screen.getByLabelText("Ticket Creation")).not.toBeChecked();
+  });
+
   it("should render save and delete buttons", () => {
     renderWithProviders(
       <BotDetailForm

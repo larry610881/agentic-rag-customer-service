@@ -11,7 +11,8 @@ describe("ChatInput", () => {
       messages: [],
       isStreaming: false,
       conversationId: null,
-      knowledgeBaseId: "kb-1",
+      botId: "bot-1",
+      botName: "Test Bot",
     });
     useAuthStore.setState({ token: "test-token", tenantId: "tenant-1", tenants: [] });
   });
@@ -34,8 +35,8 @@ describe("ChatInput", () => {
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
   });
 
-  it("should disable send button when no knowledge base is selected", async () => {
-    useChatStore.setState({ knowledgeBaseId: null });
+  it("should disable send button when no bot is selected", async () => {
+    useChatStore.setState({ botId: null, botName: null });
     const user = userEvent.setup();
     renderWithProviders(<ChatInput />);
     await user.type(screen.getByRole("textbox", { name: "Message input" }), "Hello");

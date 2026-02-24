@@ -9,14 +9,14 @@ import { useStreaming } from "@/features/chat/hooks/use-streaming";
 export function ChatInput() {
   const [input, setInput] = useState("");
   const isStreaming = useChatStore((s) => s.isStreaming);
-  const knowledgeBaseId = useChatStore((s) => s.knowledgeBaseId);
+  const botId = useChatStore((s) => s.botId);
   const { sendMessage } = useStreaming();
 
-  const canSend = !!input.trim() && !isStreaming && !!knowledgeBaseId;
+  const canSend = !!input.trim() && !isStreaming && !!botId;
 
   const handleSend = () => {
     const trimmed = input.trim();
-    if (!trimmed || isStreaming || !knowledgeBaseId) return;
+    if (!trimmed || isStreaming || !botId) return;
     setInput("");
     sendMessage(trimmed);
   };
