@@ -5,6 +5,9 @@ from src.domain.knowledge.repository import (
 )
 from src.domain.knowledge.services import TextSplitterService
 from src.domain.rag.services import EmbeddingService, VectorStore
+from src.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class ProcessDocumentUseCase:
@@ -27,7 +30,10 @@ class ProcessDocumentUseCase:
     async def execute(
         self, document_id: str, task_id: str
     ) -> None:
+        log = logger.bind(document_id=document_id, task_id=task_id)
         try:
+            log.info("document.process.start")
+
             # Update task → processing
             await self._task_repo.update_status(
                 task_id, "processing", progress=0
@@ -40,6 +46,8 @@ class ProcessDocumentUseCase:
                     f"Document '{document_id}' not found"
                 )
 
+            log = log.bind(tenant_id=document.tenant_id, kb_id=document.kb_id)
+
             # Update doc → processing
             await self._doc_repo.update_status(
                 document_id, "processing"
@@ -51,6 +59,7 @@ class ProcessDocumentUseCase:
                 document_id,
                 document.tenant_id,
             )
+            log.info("document.split.done", chunk_count=len(chunks))
 
             # Save chunks to DB
             await self._chunk_repo.save_batch(chunks)
@@ -58,6 +67,7 @@ class ProcessDocumentUseCase:
             # Embed chunks
             texts = [c.content for c in chunks]
             vectors = await self._embedding.embed_texts(texts)
+            log.info("document.embed.done", vector_count=len(vectors))
 
             # Ensure Qdrant collection exists
             collection = f"kb_{document.kb_id}"
@@ -80,6 +90,7 @@ class ProcessDocumentUseCase:
             await self._vector_store.upsert(
                 collection, chunk_ids, vectors, payloads
             )
+            log.info("document.upsert.done", collection=collection, point_count=len(chunk_ids))
 
             # Update doc → processed
             await self._doc_repo.update_status(
@@ -91,7 +102,10 @@ class ProcessDocumentUseCase:
                 task_id, "completed", progress=100
             )
 
+            log.info("document.process.done")
+
         except Exception as e:
+            log.exception("document.process.failed", error=str(e))
             # Update task → failed
             await self._task_repo.update_status(
                 task_id,

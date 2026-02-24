@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_version: str = "0.1.0"
 
+    # Logging
+    log_level: str = "INFO"
+    debug: bool = False
+
     @property
     def database_url(self) -> str:
         return (
@@ -80,6 +84,13 @@ class Settings(BaseSettings):
     def effective_openai_api_key(self) -> str:
         """Prefer openai_api_key; fall back to openai_chat_api_key."""
         return self.openai_api_key or self.openai_chat_api_key
+
+    @property
+    def effective_log_level(self) -> str:
+        """DEBUG=true forces DEBUG level; otherwise use LOG_LEVEL."""
+        if self.debug:
+            return "DEBUG"
+        return self.log_level.upper()
 
     @property
     def llm_pricing(self) -> dict[str, dict[str, float]]:

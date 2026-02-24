@@ -24,6 +24,7 @@ dependencies = [
     "python-docx>=1.2.0",
     "striprtf>=0.0.29",
     "langchain-text-splitters>=1.1.1",
+    "structlog>=25.5.0",
 ]
 
 [dependency-groups]
@@ -75,6 +76,7 @@ omit = [
     "src/infrastructure/db/models/*",
     "src/infrastructure/db/repositories/*",
     "src/infrastructure/db/health_repository.py",
+    "src/infrastructure/logging/*",
     "src/infrastructure/auth/*",
     "src/infrastructure/embedding/openai_embedding_service.py",
     "src/infrastructure/llm/anthropic_llm_service.py",

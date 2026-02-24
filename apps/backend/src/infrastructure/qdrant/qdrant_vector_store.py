@@ -12,6 +12,9 @@ from qdrant_client.models import (
 
 from src.domain.rag.services import VectorStore
 from src.domain.rag.value_objects import SearchResult
+from src.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class QdrantVectorStore(VectorStore):
@@ -31,6 +34,9 @@ class QdrantVectorStore(VectorStore):
                     distance=Distance.COSINE,
                 ),
             )
+            logger.info("qdrant.collection.created", collection=collection, vector_size=vector_size)
+        else:
+            logger.debug("qdrant.collection.exists", collection=collection)
 
     async def upsert(
         self,
@@ -47,6 +53,7 @@ class QdrantVectorStore(VectorStore):
             collection_name=collection,
             points=points,
         )
+        logger.info("qdrant.upsert", collection=collection, point_count=len(points))
 
     async def delete(
         self,
@@ -61,6 +68,7 @@ class QdrantVectorStore(VectorStore):
             collection_name=collection,
             points_selector=Filter(must=conditions),
         )
+        logger.info("qdrant.delete", collection=collection, filters=filters)
 
     async def search(
         self,
@@ -85,6 +93,7 @@ class QdrantVectorStore(VectorStore):
             score_threshold=score_threshold,
             query_filter=query_filter,
         )
+        logger.info("qdrant.search", collection=collection, result_count=len(points))
         return [
             SearchResult(
                 id=str(p.id),

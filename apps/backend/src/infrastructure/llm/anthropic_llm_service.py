@@ -1,5 +1,6 @@
 """AnthropicLLMService — httpx 直接呼叫 Anthropic Messages API"""
 
+import time
 from collections.abc import AsyncIterator
 
 import httpx
@@ -7,6 +8,9 @@ import httpx
 from src.domain.rag.pricing import calculate_usage
 from src.domain.rag.services import LLMService
 from src.domain.rag.value_objects import LLMResult
+from src.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class AnthropicLLMService(LLMService):
@@ -65,27 +69,43 @@ class AnthropicLLMService(LLMService):
         frequency_penalty: float | None = None,
     ) -> LLMResult:
         # Anthropic API does not support frequency_penalty — ignored
+        log = logger.bind(model=self._model)
+        log.debug("llm.anthropic.request")
+        start = time.perf_counter()
+
         body = self._build_body(
             system_prompt, user_message, context,
             temperature=temperature, max_tokens=max_tokens,
         )
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                f"{self._base_url}/messages",
-                headers=self._build_headers(),
-                json=body,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            text = data["content"][0]["text"]
-            usage_data = data.get("usage", {})
-            usage = calculate_usage(
-                model=self._model,
-                input_tokens=usage_data.get("input_tokens", 0),
-                output_tokens=usage_data.get("output_tokens", 0),
-                pricing=self._pricing,
-            )
-            return LLMResult(text=text, usage=usage)
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    f"{self._base_url}/messages",
+                    headers=self._build_headers(),
+                    json=body,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                text = data["content"][0]["text"]
+                usage_data = data.get("usage", {})
+                usage = calculate_usage(
+                    model=self._model,
+                    input_tokens=usage_data.get("input_tokens", 0),
+                    output_tokens=usage_data.get("output_tokens", 0),
+                    pricing=self._pricing,
+                )
+                elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
+                log.info(
+                    "llm.anthropic.done",
+                    latency_ms=elapsed_ms,
+                    input_tokens=usage_data.get("input_tokens", 0),
+                    output_tokens=usage_data.get("output_tokens", 0),
+                )
+                return LLMResult(text=text, usage=usage)
+        except Exception:
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
+            log.exception("llm.anthropic.failed", latency_ms=elapsed_ms)
+            raise
 
     async def generate_stream(
         self,

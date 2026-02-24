@@ -4,7 +4,7 @@ from src.config import settings
 
 engine = create_async_engine(
     settings.database_url,
-    echo=False,
+    echo=settings.debug,
     pool_size=20,
     max_overflow=30,
     pool_pre_ping=True,
