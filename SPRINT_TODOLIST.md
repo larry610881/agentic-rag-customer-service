@@ -819,6 +819,9 @@
 |---|----------|----------|-------------|--------|
 | E1 | **大檔案 Embedding 429 Rate Limit** — 超大文件（>500KB, 2000+ chunks, 40+ batches）上傳後，Embedding API 回傳 429 Too Many Requests 導致文件處理失敗 | 上傳 581KB DOCX（Technical_Knowledge_Base_Large.docx），Google Gemini Embedding API | batch 間延遲 1s + 429 退避 5s×attempt + max_retries=5 + 所有參數可透過 `.env` 調整 | 低 — 一般文件不會觸發，可透過調高 `EMBEDDING_BATCH_DELAY` 緩解 |
 | ~~E2~~ | ~~product_search 查錯資料表~~ | ~~已在 E0 移除~~ | ~~已移除~~ | ~~CLOSED~~ |
+| E3 | **LINE Webhook BackgroundTask 靜默失敗** — `execute_for_bot` 在 `BackgroundTasks` 中拋出異常時，用戶看不到錯誤（Bot 不存在、Channel 未設定、簽名失敗等） | 新端點 `POST /api/v1/webhook/line/{bot_id}` 的 background task | 目前無緩解；建議加 structured logging + 錯誤通知 | 中 |
+| E4 | **LINE Webhook 無 Bot 查詢快取** — 每次 webhook 都做一次 DB `find_by_id` | 多 Bot 高頻 webhook 場景 | 目前無快取；LINE webhook 量通常不高，未來可加短 TTL 快取 | 低 |
+| E5 | **LINE Webhook 簽名驗證時序** — 新端點先在 router 解析 events（JSON parse），再在 BackgroundTask 中驗簽。若 body 格式異常，JSON parse 可能在驗簽前就失敗 | 非 LINE 來源的惡意請求發送 malformed JSON | 可考慮將事件解析也移入 Use Case，先驗簽再解析 | 低 |
 
 ---
 
