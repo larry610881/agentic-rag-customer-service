@@ -36,7 +36,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 rag_top_k=model.rag_top_k,
                 rag_score_threshold=model.rag_score_threshold,
             ),
-            enabled_tools=list(model.enabled_tools or ["rag_query"]),
+            enabled_tools=list(model.enabled_tools) if model.enabled_tools is not None else ["rag_query"],
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
             created_at=model.created_at,
