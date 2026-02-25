@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (E1 System Provider Settings 完成 — DB 化 LLM/Embedding 供應商設定, 139 backend + 8 new FE tests)
+> 最後更新：2026-02-25 (E1 完成 + 既有測試修復 + Issue-Driven 流程規則, 139 backend + 95 frontend tests green)
 
 ---
 
@@ -727,6 +727,13 @@
 - ✅ 全量測試：Backend 139 passed + Frontend 8 new tests passed
 - ✅ Lint：ruff clean
 - ✅ Git commit + push 完成
+
+### E1 後續修復
+- ✅ 修復 3 個 E0 清理後未同步的既有測試（message-list ×2 + bot-detail-form）
+- ✅ 全量測試：Backend 139 passed + Frontend 95 passed（0 failures）
+- ✅ 新增 Issue-Driven 開發流程規則（CLAUDE.md + git-workflow.md）
+- ✅ GitHub Issue 補建：#2（E1, closed）+ #1（E1.5, open）
+- ✅ gh CLI 安裝（~/bin/gh v2.67.0）
 
 ---
 
