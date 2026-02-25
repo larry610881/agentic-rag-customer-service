@@ -91,7 +91,7 @@ export function BotDetailForm({
     },
   });
 
-  const enabledTools = watch("enabled_tools");
+  const enabledTools = watch("enabled_tools") ?? [];
 
   useEffect(() => {
     reset({

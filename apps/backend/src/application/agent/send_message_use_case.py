@@ -68,7 +68,8 @@ class SendMessageUseCase:
                     "frequency_penalty": bot.llm_params.frequency_penalty,
                 }
                 history_limit = bot.llm_params.history_limit
-                enabled_tools = bot.enabled_tools or None
+                # [] means "no tools" (direct LLM), None means "all tools"
+                enabled_tools = bot.enabled_tools if bot.enabled_tools is not None else None
                 rag_top_k = bot.llm_params.rag_top_k
                 rag_score_threshold = bot.llm_params.rag_score_threshold
 
@@ -155,7 +156,8 @@ class SendMessageUseCase:
                     "frequency_penalty": bot.llm_params.frequency_penalty,
                 }
                 history_limit = bot.llm_params.history_limit
-                enabled_tools = bot.enabled_tools or None
+                # [] means "no tools" (direct LLM), None means "all tools"
+                enabled_tools = bot.enabled_tools if bot.enabled_tools is not None else None
                 rag_top_k = bot.llm_params.rag_top_k
                 rag_score_threshold = bot.llm_params.rag_score_threshold
 
