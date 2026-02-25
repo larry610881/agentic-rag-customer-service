@@ -11,10 +11,28 @@ Feature: Order Lookup
     Given 訂單 "ord-999" 不存在
     When 查詢訂單 "ord-999"
     Then 應回傳失敗的 ToolResult
-    And 錯誤訊息應包含 "not found"
+    And 錯誤訊息應包含 "ord-999"
 
   Scenario: 訂單結果包含商品資訊和價格
     Given 訂單 "ord-001" 存在且包含商品資訊
     When 查詢訂單 "ord-001"
     Then 應回傳成功的 ToolResult
     And 結果應包含商品和價格資訊
+
+  Scenario: 依狀態查詢訂單回傳符合條件的訂單列表
+    Given 資料庫中有 "shipped" 狀態的訂單
+    When 依狀態 "shipped" 查詢訂單
+    Then 應回傳成功的 ToolResult
+    And 結果應包含訂單列表
+    And 所有訂單狀態應為 "shipped"
+
+  Scenario: 列出所有訂單回傳訂單列表
+    Given 資料庫中有多筆訂單
+    When 列出所有訂單
+    Then 應回傳成功的 ToolResult
+    And 結果應包含訂單列表
+
+  Scenario: 依狀態查詢無結果回傳失敗
+    Given 沒有 "canceled" 狀態的訂單
+    When 依狀態 "canceled" 查詢訂單
+    Then 應回傳失敗的 ToolResult

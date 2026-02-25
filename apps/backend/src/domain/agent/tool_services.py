@@ -7,7 +7,13 @@ from src.domain.agent.value_objects import ToolResult
 
 class OrderLookupService(ABC):
     @abstractmethod
-    async def lookup_order(self, order_id: str) -> ToolResult: ...
+    async def lookup_order(
+        self,
+        *,
+        order_id: str | None = None,
+        status: str | None = None,
+        limit: int = 10,
+    ) -> ToolResult: ...
 
 
 class ProductSearchService(ABC):

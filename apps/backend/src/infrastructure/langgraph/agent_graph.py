@@ -23,7 +23,10 @@ _GREETING_PATTERN = re.compile(
     r"^(你好|哈囉|嗨|hi|hello|hey|早安|午安|晚安|安安|謝謝|感謝|掰掰|再見|bye|thanks|thank you)[哦呀啊喔呢嗎啦耶ㄛㄚ\s!！。？?~～]*$",
     re.IGNORECASE,
 )
-_ORDER_PATTERN = re.compile(r"訂單|order|ORD-|ord-|物流|配送|送達|到哪")
+_ORDER_PATTERN = re.compile(
+    r"訂單|order|ORD-|ord-|物流|配送|送達|到哪"
+    r"|所有訂單|全部訂單|我的訂單|訂單列表"
+)
 _PRODUCT_PATTERN = re.compile(r"商品|產品|product|搜尋|電子")
 _PRODUCT_RECOMMEND_PATTERN = re.compile(r"推薦|recommend|比較|compare|哪個好|建議買")
 _TICKET_PATTERN = re.compile(r"投訴|客訴|抱怨|工單|ticket|申訴")
@@ -281,16 +284,68 @@ def build_agent_graph(  # noqa: C901
         )
         return {"tool_result": result}
 
+    # 狀態中文→英文映射
+    _status_map: dict[str, str] = {
+        "已送達": "delivered",
+        "送到了": "delivered",
+        "已收到": "delivered",
+        "送達": "delivered",
+        "已出貨": "shipped",
+        "已寄出": "shipped",
+        "運送中": "shipped",
+        "出貨": "shipped",
+        "配送中": "shipped",
+        "處理中": "processing",
+        "備貨中": "processing",
+        "已取消": "canceled",
+        "取消": "canceled",
+        "已開票": "invoiced",
+        "已建立": "created",
+        "新訂單": "created",
+        "剛下單": "created",
+        "已核准": "approved",
+        "已確認": "approved",
+        "未出貨": "processing",
+        "未付款": "created",
+        "delivered": "delivered",
+        "shipped": "shipped",
+        "processing": "processing",
+        "canceled": "canceled",
+        "invoiced": "invoiced",
+        "created": "created",
+        "approved": "approved",
+    }
+
+    _list_all_pattern = re.compile(
+        r"所有訂單|全部訂單|我的訂單|訂單列表|list.?all|all.?order",
+        re.IGNORECASE,
+    )
+
     async def order_tool_node(state: AgentState) -> dict:
         if not order_tool:
             return {"tool_result": {"error": "order_lookup tool is disabled"}}
-        order_match = re.search(
-            r"[Oo][Rr][Dd]-?\d+", state["user_message"]
-        )
-        order_id = (
-            order_match.group(0) if order_match else "unknown"
-        )
-        result = await order_tool.invoke(order_id)
+
+        msg = state["user_message"]
+
+        # 1. 嘗試提取 order_id
+        order_match = re.search(r"[Oo][Rr][Dd]-?\d+", msg)
+        if order_match:
+            result = await order_tool.invoke(order_id=order_match.group(0))
+            return {"tool_result": result}
+
+        # 2. 嘗試提取狀態
+        for keyword, status_val in _status_map.items():
+            if keyword in msg:
+                result = await order_tool.invoke(status=status_val)
+                return {"tool_result": result}
+
+        # 3. 列出全部
+        if _list_all_pattern.search(msg):
+            result = await order_tool.invoke()
+            return {"tool_result": result}
+
+        # 4. fallback: 列出全部
+        result = await order_tool.invoke()
         return {"tool_result": result}
 
     async def product_tool_node(state: AgentState) -> dict:

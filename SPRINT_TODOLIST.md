@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (合成商品資料 + System KB + product_recommend 工具 + Qdrant 向量化, 140 backend + 87 frontend tests green)
+> 最後更新：2026-02-25 (訂單查詢多模式增強 — 狀態篩選/列全部/單筆查詢, 143 backend + 87 frontend tests green)
 
 ---
 
@@ -629,6 +629,17 @@
 - ✅ 全量測試：140 backend + 87 frontend passed，覆蓋率 80.81%
 - ✅ 驗收：3 組連續對話 E2E 驗證（5 個工具全部觸發 + RAG 來源正確引用）
 
+### 7.22 訂單查詢多模式增強（狀態篩選 / 列出全部 / 單筆查詢）
+- ✅ Domain：`OrderLookupService.lookup_order()` 擴充為 keyword-only args（order_id / status / limit）
+- ✅ Application：新增 `OrderLookupCommand` dataclass + `execute(command)` 簽章
+- ✅ Infrastructure：`SQLOrderLookupService` 動態 SQL，支援 3 種查詢模式
+- ✅ Infrastructure：`OrderLookupTool.invoke()` 支援多參數
+- ✅ Infrastructure：`order_tool_node` 意圖解析（order_id / 狀態中文→英文映射 / list all）
+- ✅ Infrastructure：`_ORDER_PATTERN` 新增所有訂單/全部訂單/我的訂單/訂單列表
+- ✅ BDD：6 scenarios（3 既有更新 + 3 新增：狀態篩選 / 列全部 / 狀態無結果）
+- ✅ 全量測試：143 backend passed
+- ✅ Lint：無新增錯誤
+
 ### 7.21 Config 外部化（Embedding / Chunking 參數）
 - ✅ Config: 新增 `embedding_batch_size`, `embedding_max_retries`, `embedding_timeout`, `embedding_batch_delay`
 - ✅ Config: 新增 `chunk_size`, `chunk_overlap`
@@ -660,4 +671,4 @@
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 100% | 84 scenarios, 84.83% coverage |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 99% | Demo 1-6 + Bot Management + Chat Bot 選擇 + 工具選擇 + SSE Streaming + 多檔上傳修復 + 對話 bot_id 隔離 + 合成商品 + ProductRecommendTool, 140 backend + 87 frontend tests |
+| S7 整合+Demo | 🔄 進行中 | 99% | Demo 1-6 + Bot Management + Chat Bot 選擇 + 工具選擇 + SSE Streaming + 多檔上傳修復 + 對話 bot_id 隔離 + 合成商品 + ProductRecommendTool + 訂單多模式查詢, 143 backend + 87 frontend tests |

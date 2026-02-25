@@ -2,7 +2,10 @@
 
 from typing import Any
 
-from src.application.agent.order_lookup_use_case import OrderLookupUseCase
+from src.application.agent.order_lookup_use_case import (
+    OrderLookupCommand,
+    OrderLookupUseCase,
+)
 from src.application.agent.product_search_use_case import ProductSearchUseCase
 from src.application.agent.ticket_creation_use_case import TicketCreationUseCase
 from src.application.rag.query_rag_use_case import QueryRAGCommand, QueryRAGUseCase
@@ -64,13 +67,22 @@ class OrderLookupTool:
     """訂單查詢工具"""
 
     name = "order_lookup"
-    description = "查詢訂單狀態、配送進度，適用於用戶查詢特定訂單"
+    description = "查詢訂單狀態、配送進度，支援單筆查詢、狀態篩選、列出全部"
 
     def __init__(self, use_case: OrderLookupUseCase) -> None:
         self._use_case = use_case
 
-    async def invoke(self, order_id: str) -> dict[str, Any]:
-        result = await self._use_case.execute(order_id)
+    async def invoke(
+        self,
+        *,
+        order_id: str | None = None,
+        status: str | None = None,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        command = OrderLookupCommand(
+            order_id=order_id, status=status, limit=limit
+        )
+        result = await self._use_case.execute(command)
         return {
             "success": result.success,
             "data": result.data,
