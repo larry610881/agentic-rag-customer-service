@@ -13,6 +13,26 @@ from src.domain.line.services import LineMessagingService
 router = APIRouter(prefix="/api/v1/webhook", tags=["webhook"])
 
 
+def _parse_text_events(body_text: str) -> list[LineTextMessageEvent]:
+    """從 LINE Webhook body 解析文字訊息事件。"""
+    data = json.loads(body_text)
+    events: list[LineTextMessageEvent] = []
+    for event_data in data.get("events", []):
+        if (
+            event_data.get("type") == "message"
+            and event_data.get("message", {}).get("type") == "text"
+        ):
+            events.append(
+                LineTextMessageEvent(
+                    reply_token=event_data["replyToken"],
+                    user_id=event_data["source"]["userId"],
+                    message_text=event_data["message"]["text"],
+                    timestamp=event_data["timestamp"],
+                )
+            )
+    return events
+
+
 @router.post("/line")
 @inject
 async def line_webhook(
@@ -32,23 +52,32 @@ async def line_webhook(
     if not await line_service.verify_signature(body_text, x_line_signature):
         raise HTTPException(status_code=403, detail="Invalid signature")
 
-    data = json.loads(body_text)
-    events: list[LineTextMessageEvent] = []
-    for event_data in data.get("events", []):
-        if (
-            event_data.get("type") == "message"
-            and event_data.get("message", {}).get("type") == "text"
-        ):
-            events.append(
-                LineTextMessageEvent(
-                    reply_token=event_data["replyToken"],
-                    user_id=event_data["source"]["userId"],
-                    message_text=event_data["message"]["text"],
-                    timestamp=event_data["timestamp"],
-                )
-            )
+    events = _parse_text_events(body_text)
 
     if events:
         background_tasks.add_task(use_case.execute, events)
+
+    return {"status": "ok"}
+
+
+@router.post("/line/{bot_id}")
+@inject
+async def line_webhook_multitenant(
+    bot_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    x_line_signature: str = Header(...),
+    use_case: HandleWebhookUseCase = Depends(
+        Provide[Container.handle_webhook_use_case]
+    ),
+) -> dict:
+    body = await request.body()
+    body_text = body.decode("utf-8")
+    events = _parse_text_events(body_text)
+
+    if events:
+        background_tasks.add_task(
+            use_case.execute_for_bot, bot_id, body_text, x_line_signature, events
+        )
 
     return {"status": "ok"}

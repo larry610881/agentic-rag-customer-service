@@ -122,6 +122,9 @@ from src.infrastructure.langgraph.tools import RAGQueryTool
 from src.infrastructure.langgraph.workers.fake_main_worker import FakeMainWorker
 from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWorker
 from src.infrastructure.line.line_messaging_service import HttpxLineMessagingService
+from src.infrastructure.line.line_messaging_service_factory import (
+    HttpxLineMessagingServiceFactory,
+)
 from src.infrastructure.llm.anthropic_llm_service import AnthropicLLMService
 from src.infrastructure.llm.dynamic_llm_factory import (
     DynamicLLMServiceFactory,
@@ -690,10 +693,16 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
+    line_messaging_service_factory = providers.Singleton(
+        HttpxLineMessagingServiceFactory,
+    )
+
     handle_webhook_use_case = providers.Factory(
         HandleWebhookUseCase,
         agent_service=agent_service,
-        line_messaging_service=line_messaging_service,
+        bot_repository=bot_repository,
+        line_service_factory=line_messaging_service_factory,
+        default_line_service=line_messaging_service,
         default_tenant_id=providers.Callable(
             lambda cfg: cfg.line_default_tenant_id, config
         ),

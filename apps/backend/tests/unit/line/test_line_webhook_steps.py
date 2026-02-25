@@ -4,7 +4,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pytest_bdd import given, scenarios, then, when
@@ -57,7 +57,9 @@ def agent_replies_return_policy(context):
     context["mock_line_service"] = mock_line_service
     context["use_case"] = HandleWebhookUseCase(
         agent_service=mock_agent,
-        line_messaging_service=mock_line_service,
+        bot_repository=AsyncMock(),
+        line_service_factory=MagicMock(),
+        default_line_service=mock_line_service,
         default_tenant_id="tenant-001",
         default_kb_id="kb-001",
     )
@@ -149,7 +151,9 @@ def agent_service_ready(context):
     context["mock_line_service"] = mock_line_service
     context["use_case"] = HandleWebhookUseCase(
         agent_service=mock_agent,
-        line_messaging_service=mock_line_service,
+        bot_repository=AsyncMock(),
+        line_service_factory=MagicMock(),
+        default_line_service=mock_line_service,
         default_tenant_id="tenant-001",
         default_kb_id="kb-001",
     )
@@ -196,7 +200,9 @@ def agent_replies_with_tool_call(context):
     context["mock_line_service"] = mock_line_service
     context["use_case"] = HandleWebhookUseCase(
         agent_service=mock_agent,
-        line_messaging_service=mock_line_service,
+        bot_repository=AsyncMock(),
+        line_service_factory=MagicMock(),
+        default_line_service=mock_line_service,
         default_tenant_id="tenant-001",
         default_kb_id="kb-001",
     )

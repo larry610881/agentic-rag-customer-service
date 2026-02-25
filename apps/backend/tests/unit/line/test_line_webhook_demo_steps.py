@@ -5,7 +5,7 @@ import base64
 import hashlib
 import hmac
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest_bdd import given, scenarios, then, when
@@ -154,7 +154,9 @@ def receive_valid_webhook(context):
 
     use_case = HandleWebhookUseCase(
         agent_service=context["mock_agent"],
-        line_messaging_service=context["mock_line_service"],
+        bot_repository=AsyncMock(),
+        line_service_factory=MagicMock(),
+        default_line_service=context["mock_line_service"],
         default_tenant_id="tenant-demo",
         default_kb_id="kb-demo",
     )
