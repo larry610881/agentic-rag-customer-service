@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (E0 Tool 清理 + Multi-Deploy 完成 — RAG-only SaaS 架構, 126 backend + 87 frontend tests green)
+> 最後更新：2026-02-25 (E1 System Provider Settings 完成 — DB 化 LLM/Embedding 供應商設定, 139 backend + 8 new FE tests)
 
 ---
 
@@ -684,6 +684,52 @@
 
 ---
 
+## Enterprise Sprint E1：System Provider Settings（DB 化）
+
+**Goal**：將 LLM / Embedding provider 設定從 .env 搬到 DB，Admin 透過 UI 即可管理，免重啟後端
+
+### E1.1 Domain 層：Entity + Repository Interface + EncryptionService ABC
+- ✅ `domain/platform/value_objects.py`：ProviderSettingId, ProviderType, ProviderName, ModelConfig
+- ✅ `domain/platform/entity.py`：ProviderSetting dataclass（enable/disable）
+- ✅ `domain/platform/repository.py`：ProviderSettingRepository ABC
+- ✅ `domain/platform/services.py`：EncryptionService ABC
+- ✅ BDD：3 scenarios（建立/重複/停用）
+
+### E1.2 Infrastructure 層：AES 加密 + ORM Model + Repository Impl
+- ✅ `infrastructure/crypto/aes_encryption_service.py`：AES-256-GCM 加密
+- ✅ `infrastructure/db/models/provider_setting_model.py`：SQLAlchemy Model + UniqueConstraint
+- ✅ `infrastructure/db/repositories/provider_setting_repository.py`：Repository Impl
+- ✅ BDD：2 scenarios（加解密還原/隨機 nonce）
+
+### E1.3 Application 層：CRUD Use Cases + TestConnection
+- ✅ 6 個 Use Cases：Create / Update / Delete / List / Get / CheckProviderConnection
+- ✅ BDD：5 scenarios（加密/重加密/列出/刪除/測試連線）
+
+### E1.4 Dynamic Factory：DB 優先 → .env 兜底
+- ✅ `DynamicLLMServiceFactory` + `DynamicLLMServiceProxy`
+- ✅ `DynamicEmbeddingServiceFactory` + `DynamicEmbeddingServiceProxy`
+- ✅ Container 整合：Proxy 取代 Selector，下游程式碼零改動
+- ✅ BDD：3 scenarios（DB 設定/無設定 fallback/全停用 fallback）
+
+### E1.5 Interfaces 層：REST API Router
+- ✅ 6 endpoints：POST/GET/GET/:id/PUT/:id/DELETE/:id + test-connection
+- ✅ Response 不含 api_key_encrypted，僅 has_api_key: bool
+
+### E1.6 Frontend：Settings 頁面
+- ✅ Types + API endpoints + Query keys + TanStack Query hooks
+- ✅ ProviderList 元件（卡片/loading/empty/test connection）
+- ✅ ProviderFormDialog 元件（React Hook Form + Zod）
+- ✅ Settings pages（/settings → /settings/providers, Tab-based）
+- ✅ Sidebar 新增「設定」導航
+- ✅ MSW handlers + fixtures + 8 unit tests
+
+### E1 驗證
+- ✅ 全量測試：Backend 139 passed + Frontend 8 new tests passed
+- ✅ Lint：ruff clean
+- ✅ Git commit + push 完成
+
+---
+
 ## Backlog（已因 E0 清理而關閉）
 
 > 以下 Backlog 項目因 Sprint E0 移除所有非 RAG 工具而不再適用，已關閉。
@@ -757,3 +803,4 @@
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
 | S7 整合+Demo | ✅ 完成 | 100% | Demo 1-6 完成（非 RAG 工具已在 E0 移除） |
 | **E0 Tool 清理 + Multi-Deploy** | **✅ 完成** | **100%** | **22 files 刪除, 20+ files 編輯, 126 backend + 87 frontend tests** |
+| **E1 System Provider Settings** | **✅ 完成** | **100%** | **46 files, 2667 insertions, 139 backend + 8 new FE tests** |
