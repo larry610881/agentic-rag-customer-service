@@ -1,6 +1,6 @@
 """更新機器人用例"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from src.domain.bot.entity import Bot, BotLLMParams
 from src.domain.bot.repository import BotRepository
@@ -55,79 +55,19 @@ class UpdateBotUseCase:
         if command.line_channel_access_token is not _UNSET:
             bot.line_channel_access_token = command.line_channel_access_token  # type: ignore[assignment]
 
-        # LLM params
-        params = bot.llm_params
-        if command.temperature is not _UNSET:
-            params = BotLLMParams(
-                temperature=command.temperature,  # type: ignore[arg-type]
-                max_tokens=params.max_tokens,
-                history_limit=params.history_limit,
-                frequency_penalty=params.frequency_penalty,
-                reasoning_effort=params.reasoning_effort,
-                rag_top_k=params.rag_top_k,
-                rag_score_threshold=params.rag_score_threshold,
-            )
-        if command.max_tokens is not _UNSET:
-            params = BotLLMParams(
-                temperature=params.temperature,
-                max_tokens=command.max_tokens,  # type: ignore[arg-type]
-                history_limit=params.history_limit,
-                frequency_penalty=params.frequency_penalty,
-                reasoning_effort=params.reasoning_effort,
-                rag_top_k=params.rag_top_k,
-                rag_score_threshold=params.rag_score_threshold,
-            )
-        if command.history_limit is not _UNSET:
-            params = BotLLMParams(
-                temperature=params.temperature,
-                max_tokens=params.max_tokens,
-                history_limit=command.history_limit,  # type: ignore[arg-type]
-                frequency_penalty=params.frequency_penalty,
-                reasoning_effort=params.reasoning_effort,
-                rag_top_k=params.rag_top_k,
-                rag_score_threshold=params.rag_score_threshold,
-            )
-        if command.frequency_penalty is not _UNSET:
-            params = BotLLMParams(
-                temperature=params.temperature,
-                max_tokens=params.max_tokens,
-                history_limit=params.history_limit,
-                frequency_penalty=command.frequency_penalty,  # type: ignore[arg-type]
-                reasoning_effort=params.reasoning_effort,
-                rag_top_k=params.rag_top_k,
-                rag_score_threshold=params.rag_score_threshold,
-            )
-        if command.reasoning_effort is not _UNSET:
-            params = BotLLMParams(
-                temperature=params.temperature,
-                max_tokens=params.max_tokens,
-                history_limit=params.history_limit,
-                frequency_penalty=params.frequency_penalty,
-                reasoning_effort=command.reasoning_effort,  # type: ignore[arg-type]
-                rag_top_k=params.rag_top_k,
-                rag_score_threshold=params.rag_score_threshold,
-            )
-        if command.rag_top_k is not _UNSET:
-            params = BotLLMParams(
-                temperature=params.temperature,
-                max_tokens=params.max_tokens,
-                history_limit=params.history_limit,
-                frequency_penalty=params.frequency_penalty,
-                reasoning_effort=params.reasoning_effort,
-                rag_top_k=command.rag_top_k,  # type: ignore[arg-type]
-                rag_score_threshold=params.rag_score_threshold,
-            )
-        if command.rag_score_threshold is not _UNSET:
-            params = BotLLMParams(
-                temperature=params.temperature,
-                max_tokens=params.max_tokens,
-                history_limit=params.history_limit,
-                frequency_penalty=params.frequency_penalty,
-                reasoning_effort=params.reasoning_effort,
-                rag_top_k=params.rag_top_k,
-                rag_score_threshold=command.rag_score_threshold,  # type: ignore[arg-type]
-            )
-        bot.llm_params = params
+        # LLM params — collect changed fields, apply once via replace()
+        _LLM_FIELDS = (
+            "temperature", "max_tokens", "history_limit",
+            "frequency_penalty", "reasoning_effort",
+            "rag_top_k", "rag_score_threshold",
+        )
+        llm_changes = {
+            k: getattr(command, k)
+            for k in _LLM_FIELDS
+            if getattr(command, k) is not _UNSET
+        }
+        if llm_changes:
+            bot.llm_params = replace(bot.llm_params, **llm_changes)
 
         await self._bot_repo.save(bot)
         return bot
