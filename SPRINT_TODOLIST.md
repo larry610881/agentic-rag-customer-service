@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (E1.5 LINE Webhook 多租戶完成, 146 backend + 95 frontend tests green)
+> 最後更新：2026-02-25 (E2 Feedback System 完成, 164 backend + 101 frontend tests green)
 
 ---
 
@@ -763,6 +763,52 @@
 
 ---
 
+## Enterprise Sprint E2：Feedback System — 回饋收集 + 統計 + Web/LINE 雙通路
+
+**Goal**：在 Web Chat 和 LINE Bot 雙通路加入 thumbs up/down 回饋收集，儲存至 DB，提供基本統計 API
+
+### E2.1 Domain + Application：Feedback Entity / VOs / Repo ABC / Use Cases
+- ✅ Domain：`FeedbackId` VO + `Rating` enum + `Channel` enum（feedback_value_objects.py）
+- ✅ Domain：`Feedback` Entity（feedback_entity.py）
+- ✅ Domain：`FeedbackRepository` ABC（feedback_repository.py）
+- ✅ Application：`SubmitFeedbackUseCase`（驗證 conversation + 防重複）
+- ✅ Application：`GetFeedbackStatsUseCase`（滿意率計算）
+- ✅ Application：`ListFeedbackUseCase`（分頁 + 按對話查詢）
+- ✅ BDD：4 scenarios（submit_feedback.feature）+ 2 scenarios（feedback_stats.feature）
+
+### E2.2 Infrastructure + Interfaces：ORM Model / Repo Impl / REST API + Container
+- ✅ Infrastructure：`FeedbackModel` ORM（UniqueConstraint on message_id + indexes）
+- ✅ Infrastructure：`SQLAlchemyFeedbackRepository`（5 methods）
+- ✅ Interfaces：`feedback_router.py` — 4 endpoints（POST / GET list / GET stats / GET by conversation）
+- ✅ Container：3 use cases + 1 repository + wiring
+- ✅ Main：feedback_router 註冊
+
+### E2.3 Frontend：types / hooks / FeedbackButtons 元件 + tests
+- ✅ Types：`feedback.ts`（Rating, Channel, SubmitFeedbackRequest, FeedbackResponse, FeedbackStats）
+- ✅ Hooks：`use-feedback.ts`（useSubmitFeedback mutation + useFeedbackStats query）
+- ✅ Component：`FeedbackButtons`（ThumbsUp/Down + 展開評論 + tag 選擇 + optimistic update）
+- ✅ Integration：`message-bubble.tsx` 加入 FeedbackButtons 渲染
+- ✅ Store：`use-chat-store.ts` 加入 `setMessageFeedback` action
+- ✅ Types：`chat.ts` 加入 `feedbackRating` 欄位
+- ✅ MSW handlers + fixtures + 6 unit tests
+
+### E2.4 LINE Postback：PostbackEvent / Quick Reply / 回饋處理
+- ✅ Domain：`LinePostbackEvent` Entity
+- ✅ Domain：`LineMessagingService.reply_with_quick_reply()` ABC
+- ✅ Infrastructure：`HttpxLineMessagingService.reply_with_quick_reply()` 實作（Quick Reply buttons）
+- ✅ Application：`HandleWebhookUseCase.handle_postback()`（解析 feedback:{msg_id}:{rating}）
+- ✅ Application：`execute()` / `execute_for_bot()` 改用 reply_with_quick_reply
+- ✅ Interfaces：`_parse_postback_events()` + postback 處理
+- ✅ Container：`feedback_repository` 注入 handle_webhook_use_case
+- ✅ BDD：3 scenarios（line_feedback.feature）
+
+### E2 驗證
+- ✅ 全量測試：Backend 164 passed + Frontend 101 passed
+- ✅ Lint：ruff clean
+- ✅ Git commit + push + Issue #3 closed
+
+---
+
 ## Backlog（已因 E0 清理而關閉）
 
 > 以下 Backlog 項目因 Sprint E0 移除所有非 RAG 工具而不再適用，已關閉。
@@ -841,3 +887,4 @@
 | **E0 Tool 清理 + Multi-Deploy** | **✅ 完成** | **100%** | **22 files 刪除, 20+ files 編輯, 126 backend + 87 frontend tests** |
 | **E1 System Provider Settings** | **✅ 完成** | **100%** | **46 files, 2667 insertions, 139 backend + 8 new FE tests** |
 | **E1.5 LINE Webhook 多租戶** | **✅ 完成** | **100%** | **11 files, 577 insertions, 146 backend + 95 frontend tests** |
+| **E2 Feedback System** | **✅ 完成** | **100%** | **39 files, 1604 insertions, 164 backend + 101 frontend tests** |
