@@ -6,30 +6,31 @@ import { useUploadDocument } from "@/hooks/queries/use-documents";
 
 interface UploadDropzoneProps {
   knowledgeBaseId: string;
-  onUploadStarted?: (taskId: string) => void;
 }
 
-export function UploadDropzone({ knowledgeBaseId, onUploadStarted }: UploadDropzoneProps) {
+export function UploadDropzone({ knowledgeBaseId }: UploadDropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [errors, setErrors] = useState<string[]>([]);
   const uploadMutation = useUploadDocument();
 
   const handleFiles = useCallback(
     (files: FileList | File[]) => {
       const fileArray = Array.from(files);
       setPendingCount((c) => c + fileArray.length);
+      setErrors([]);
       for (const file of fileArray) {
         uploadMutation
           .mutateAsync({ knowledgeBaseId, file })
-          .then((data) => {
-            onUploadStarted?.(data.task_id);
+          .catch(() => {
+            setErrors((prev) => [...prev, `${file.name}: 上傳失敗`]);
           })
           .finally(() => {
             setPendingCount((c) => c - 1);
           });
       }
     },
-    [knowledgeBaseId, uploadMutation, onUploadStarted],
+    [knowledgeBaseId, uploadMutation],
   );
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -88,8 +89,12 @@ export function UploadDropzone({ knowledgeBaseId, onUploadStarted }: UploadDropz
           正在上傳 {pendingCount} 個檔案...
         </p>
       )}
-      {uploadMutation.isError && (
-        <p className="text-sm text-destructive">上傳失敗，請重試。</p>
+      {errors.length > 0 && (
+        <ul className="text-sm text-destructive">
+          {errors.map((err, i) => (
+            <li key={i}>{err}</li>
+          ))}
+        </ul>
       )}
     </div>
   );

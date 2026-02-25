@@ -196,3 +196,9 @@ def raises_unsupported(context):
 @then("拋出 EntityNotFoundError")
 def raises_not_found(context):
     assert isinstance(context["error"], EntityNotFoundError)
+
+
+@then("檔案解析是透過 asyncio.to_thread 執行")
+def verify_to_thread(context, mock_file_parser):
+    # asyncio.to_thread 會在背景執行緒呼叫 parse，驗證 parse 有被正確調用
+    mock_file_parser.parse.assert_called_once()

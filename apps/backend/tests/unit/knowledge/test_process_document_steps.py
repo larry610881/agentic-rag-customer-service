@@ -141,6 +141,11 @@ def splitter_raises(mock_splitter):
     )
 
 
+@given("分塊結果為空")
+def splitter_returns_empty(mock_splitter):
+    mock_splitter.split.return_value = []
+
+
 @given("一個已存在的處理任務")
 def existing_task(context, mock_task_repo):
     task = ProcessingTask(

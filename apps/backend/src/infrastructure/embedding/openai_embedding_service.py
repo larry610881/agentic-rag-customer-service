@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import httpx
@@ -6,6 +7,10 @@ from src.domain.rag.services import EmbeddingService
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
+
+BATCH_SIZE = 50
+MAX_RETRIES = 3
+TIMEOUT = 120.0
 
 
 class OpenAIEmbeddingService(EmbeddingService):
@@ -20,7 +25,29 @@ class OpenAIEmbeddingService(EmbeddingService):
         self._base_url = base_url
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        all_embeddings: list[list[float]] = []
+        for i in range(0, len(texts), BATCH_SIZE):
+            batch = texts[i : i + BATCH_SIZE]
+            embeddings = await self._embed_batch_with_retry(batch)
+            all_embeddings.extend(embeddings)
+        return all_embeddings
+
+    async def _embed_batch_with_retry(self, texts: list[str]) -> list[list[float]]:
         log = logger.bind(model=self._model, base_url=self._base_url, chunk_count=len(texts))
+        for attempt in range(MAX_RETRIES):
+            try:
+                return await self._call_api(texts, log)
+            except Exception:
+                if attempt == MAX_RETRIES - 1:
+                    raise
+                wait = 2 ** attempt
+                log.warning("embedding.retry", attempt=attempt + 1, wait_seconds=wait)
+                await asyncio.sleep(wait)
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    async def _call_api(self, texts: list[str], log):  # type: ignore[no-untyped-def]
         log.info("embedding.request", api_key_set=bool(self._api_key), api_key_prefix=self._api_key[:8] if self._api_key else "EMPTY")
         start = time.perf_counter()
         try:
@@ -29,7 +56,7 @@ class OpenAIEmbeddingService(EmbeddingService):
                     f"{self._base_url}/embeddings",
                     headers={"Authorization": f"Bearer {self._api_key}"},
                     json={"input": texts, "model": self._model},
-                    timeout=60.0,
+                    timeout=TIMEOUT,
                 )
                 resp.raise_for_status()
                 data = resp.json()

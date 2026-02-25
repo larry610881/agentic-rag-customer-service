@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 
 from src.domain.knowledge.entity import Document, ProcessingTask
@@ -49,8 +50,10 @@ class UploadDocumentUseCase:
         if kb is None:
             raise EntityNotFoundError("KnowledgeBase", command.kb_id)
 
-        # Parse file content
-        content = self._file_parser.parse(command.raw_content, command.content_type)
+        # Parse file content (offload sync IO to thread to avoid blocking event loop)
+        content = await asyncio.to_thread(
+            self._file_parser.parse, command.raw_content, command.content_type
+        )
 
         # Create document
         document = Document(

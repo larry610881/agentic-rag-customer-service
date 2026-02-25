@@ -11,8 +11,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LoaderCircle, CircleCheck, CircleX } from "lucide-react";
 import type { DocumentResponse } from "@/types/knowledge";
 
 interface DocumentListProps {
@@ -21,16 +21,36 @@ interface DocumentListProps {
   isDeleting?: boolean;
 }
 
-function statusVariant(status: DocumentResponse["status"]) {
+function StatusCell({ status }: { status: DocumentResponse["status"] }) {
   switch (status) {
-    case "processed":
-      return "default" as const;
-    case "processing":
-      return "secondary" as const;
     case "pending":
-      return "outline" as const;
+      return (
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <LoaderCircle className="h-4 w-4 animate-spin" />
+          等待中
+        </span>
+      );
+    case "processing":
+      return (
+        <span className="flex items-center gap-1.5 text-green-600">
+          <LoaderCircle className="h-4 w-4 animate-spin" />
+          學習中
+        </span>
+      );
+    case "processed":
+      return (
+        <span className="flex items-center gap-1.5 text-green-600">
+          <CircleCheck className="h-4 w-4" />
+          完成
+        </span>
+      );
     case "failed":
-      return "destructive" as const;
+      return (
+        <span className="flex items-center gap-1.5 text-destructive">
+          <CircleX className="h-4 w-4" />
+          失敗
+        </span>
+      );
   }
 }
 
@@ -62,7 +82,7 @@ export function DocumentList({ documents, onDelete, isDeleting }: DocumentListPr
                 <td className="px-4 py-2">{doc.filename}</td>
                 <td className="px-4 py-2">{doc.chunk_count}</td>
                 <td className="px-4 py-2">
-                  <Badge variant={statusVariant(doc.status)}>{doc.status}</Badge>
+                  <StatusCell status={doc.status} />
                 </td>
                 <td className="px-4 py-2">
                   {new Date(doc.created_at).toLocaleDateString()}

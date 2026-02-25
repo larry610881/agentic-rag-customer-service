@@ -15,3 +15,13 @@ Feature: Vectorization
     Given 一段文字 "Hello World"
     When 使用 FakeEmbeddingService 進行 embed
     Then 回傳 1536 維向量
+
+  Scenario: OpenAI embedding 分批送出
+    Given 101 個文字 chunks 使用 OpenAI embedding
+    When 執行 OpenAI 向量化
+    Then API 呼叫次數為 3
+
+  Scenario: OpenAI embedding 失敗後重試成功
+    Given 3 個文字 chunks 使用 OpenAI embedding 且首次呼叫失敗
+    When 執行 OpenAI 向量化
+    Then 產生 3 個向量且 API 呼叫次數為 2

@@ -3,6 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DocumentList } from "./document-list";
 import { mockDocuments } from "@/test/fixtures/knowledge";
+import type { DocumentResponse } from "@/types/knowledge";
 
 describe("DocumentList", () => {
   it("renders empty state when no documents", () => {
@@ -21,10 +22,36 @@ describe("DocumentList", () => {
     expect(screen.getByText("42")).toBeInTheDocument();
   });
 
-  it("displays status badges", () => {
-    render(<DocumentList documents={mockDocuments} />);
-    expect(screen.getByText("processed")).toBeInTheDocument();
-    expect(screen.getByText("processing")).toBeInTheDocument();
+  it("displays status icon with Chinese text for processed", () => {
+    const docs: DocumentResponse[] = [
+      { ...mockDocuments[0], status: "processed" },
+    ];
+    render(<DocumentList documents={docs} />);
+    expect(screen.getByText("完成")).toBeInTheDocument();
+  });
+
+  it("displays status icon with Chinese text for processing", () => {
+    const docs: DocumentResponse[] = [
+      { ...mockDocuments[0], status: "processing" },
+    ];
+    render(<DocumentList documents={docs} />);
+    expect(screen.getByText("學習中")).toBeInTheDocument();
+  });
+
+  it("displays status icon with Chinese text for pending", () => {
+    const docs: DocumentResponse[] = [
+      { ...mockDocuments[0], status: "pending" },
+    ];
+    render(<DocumentList documents={docs} />);
+    expect(screen.getByText("等待中")).toBeInTheDocument();
+  });
+
+  it("displays status icon with Chinese text for failed", () => {
+    const docs: DocumentResponse[] = [
+      { ...mockDocuments[0], status: "failed" },
+    ];
+    render(<DocumentList documents={docs} />);
+    expect(screen.getByText("失敗")).toBeInTheDocument();
   });
 
   it("shows delete buttons when onDelete is provided", () => {

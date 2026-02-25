@@ -1,15 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useParams } from "next/navigation";
 import { DocumentList } from "@/features/knowledge/components/document-list";
 import { UploadDropzone } from "@/features/knowledge/components/upload-dropzone";
-import { UploadProgress } from "@/features/knowledge/components/upload-progress";
 import { useDocuments, useDeleteDocument } from "@/hooks/queries/use-documents";
 
 export default function KnowledgeBaseDetailPage() {
   const params = useParams<{ id: string }>();
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
   const { data: documents, isLoading, error } = useDocuments(params.id);
   const deleteDocument = useDeleteDocument();
@@ -21,11 +18,7 @@ export default function KnowledgeBaseDetailPage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <h2 className="text-2xl font-semibold">文件管理</h2>
-      <UploadDropzone
-        knowledgeBaseId={params.id}
-        onUploadStarted={setActiveTaskId}
-      />
-      {activeTaskId && <UploadProgress taskId={activeTaskId} />}
+      <UploadDropzone knowledgeBaseId={params.id} />
       {isLoading && <p className="text-muted-foreground">載入文件中...</p>}
       {error && (
         <p className="text-destructive">

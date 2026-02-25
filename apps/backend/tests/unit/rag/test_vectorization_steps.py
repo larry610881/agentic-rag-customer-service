@@ -1,13 +1,16 @@
 """向量化 BDD Step Definitions"""
 
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from src.infrastructure.embedding.fake_embedding_service import (
     FakeEmbeddingService,
+)
+from src.infrastructure.embedding.openai_embedding_service import (
+    OpenAIEmbeddingService,
 )
 
 scenarios("unit/rag/vectorization.feature")
@@ -113,3 +116,80 @@ def upsert_has_tenant_id(context, tid):
 @then(parsers.parse("回傳 {dim:d} 維向量"))
 def vector_dim(context, dim):
     assert len(context["vector"]) == dim
+
+
+# --- OpenAI Embedding batching + retry scenarios ---
+
+
+@pytest.fixture
+def mock_openai_response():
+    """建立模擬 OpenAI API 回應的工廠函式"""
+    def _make(count: int):
+        return {
+            "data": [{"embedding": [0.1] * 1536} for _ in range(count)]
+        }
+    return _make
+
+
+@given("101 個文字 chunks 使用 OpenAI embedding")
+def openai_101_chunks(context, mock_openai_response):
+    context["chunks"] = [f"chunk {i}" for i in range(101)]
+    context["api_call_count"] = 0
+
+    original_response = mock_openai_response
+
+    async def mock_post(url, **kwargs):
+        context["api_call_count"] = context.get("api_call_count", 0) + 1
+        batch_size = len(kwargs["json"]["input"])
+        resp = MagicMock()
+        resp.json.return_value = original_response(batch_size)
+        resp.raise_for_status = MagicMock()
+        return resp
+
+    context["mock_post"] = mock_post
+
+
+@given("3 個文字 chunks 使用 OpenAI embedding 且首次呼叫失敗")
+def openai_3_chunks_with_failure(context, mock_openai_response):
+    context["chunks"] = [f"chunk {i}" for i in range(3)]
+    context["api_call_count"] = 0
+
+    async def mock_post(url, **kwargs):
+        context["api_call_count"] = context.get("api_call_count", 0) + 1
+        if context["api_call_count"] == 1:
+            raise RuntimeError("API timeout")
+        batch_size = len(kwargs["json"]["input"])
+        resp = MagicMock()
+        resp.json.return_value = mock_openai_response(batch_size)
+        resp.raise_for_status = MagicMock()
+        return resp
+
+    context["mock_post"] = mock_post
+
+
+@when("執行 OpenAI 向量化")
+def do_openai_vectorize(context):
+    service = OpenAIEmbeddingService(api_key="test-key")
+
+    async def _execute():
+        mock_client = AsyncMock()
+        mock_client.post = context["mock_post"]
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                return await service.embed_texts(context["chunks"])
+
+    context["vectors"] = _run(_execute())
+
+
+@then(parsers.parse("API 呼叫次數為 {count:d}"))
+def verify_api_call_count(context, count):
+    assert context["api_call_count"] == count
+
+
+@then(parsers.parse("產生 {count:d} 個向量且 API 呼叫次數為 {api_count:d}"))
+def verify_vectors_and_calls(context, count, api_count):
+    assert len(context["vectors"]) == count
+    assert context["api_call_count"] == api_count

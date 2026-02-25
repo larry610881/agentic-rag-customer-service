@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (Sidebar 收合 + Chat 歷史釘選, 127 backend + 81 frontend tests green)
+> 最後更新：2026-02-25 (多檔上傳 Bug 修復 + 狀態 Icon 優化, 132 backend + 86 frontend tests green)
 
 ---
 
@@ -577,6 +577,18 @@
 - ✅ vitest testTimeout 10s（修復 parallel 環境下 flaky timeout）
 - ✅ 全量測試：127 backend + 81 frontend passed
 
+### 7.19 多檔上傳 Bug 修復 + 狀態 Icon 優化
+- ✅ Fix 1: `asyncio.to_thread` 包裝同步 file parsing（避免阻塞 event loop）
+- ✅ Fix 2: Embedding batching（50 chunks/batch）+ retry（3x 指數退避）+ timeout 120s
+- ✅ Fix 3a: 處理失敗時 document 狀態更新為 "failed"
+- ✅ Fix 3b: 空 chunks early return（正常完成，不觸發 embedding）
+- ✅ Fix 4: 移除 UploadProgress 獨立進度條，改用 DocumentList 表格內狀態呈現
+- ✅ Fix 5: DocumentList 狀態欄位改為 lucide-react icon + 中文（等待中/學習中/完成/失敗）
+- ✅ Fix 6: UploadDropzone per-file error 追蹤（移除 onUploadStarted prop）
+- ✅ Backend regression tests：5 new BDD scenarios（process_document 2 + upload_document 1 + vectorization 2）
+- ✅ Frontend regression tests：5 new tests（document-list 4 status icons + upload-dropzone 2 per-file errors）
+- ✅ 全量測試：132 backend + 86 frontend passed
+
 ---
 
 ## 進度總覽
@@ -591,4 +603,4 @@
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 100% | 84 scenarios, 84.83% coverage |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 99% | Demo 1-6 + Bot Management + Chat Bot 選擇 + 工具選擇 + SSE Streaming, 127 backend + 81 frontend tests |
+| S7 整合+Demo | 🔄 進行中 | 99% | Demo 1-6 + Bot Management + Chat Bot 選擇 + 工具選擇 + SSE Streaming + 多檔上傳修復, 132 backend + 86 frontend tests |

@@ -61,6 +61,13 @@ class ProcessDocumentUseCase:
             )
             log.info("document.split.done", chunk_count=len(chunks))
 
+            # Empty chunks early return
+            if not chunks:
+                log.warning("document.process.empty")
+                await self._doc_repo.update_status(document_id, "processed", chunk_count=0)
+                await self._task_repo.update_status(task_id, "completed", progress=100)
+                return
+
             # Save chunks to DB
             await self._chunk_repo.save_batch(chunks)
 
@@ -112,3 +119,8 @@ class ProcessDocumentUseCase:
                 "failed",
                 error_message=str(e),
             )
+            # Update document → failed
+            try:
+                await self._doc_repo.update_status(document_id, "failed")
+            except Exception:
+                log.exception("document.status_update.failed")

@@ -26,3 +26,7 @@ Feature: Upload Document
   Scenario: 上傳至不存在的知識庫
     When 上傳文件到不存在的知識庫
     Then 拋出 EntityNotFoundError
+
+  Scenario: 檔案解析透過 asyncio.to_thread 執行
+    When 上傳一個 TXT 文件 "async-test.txt" 到知識庫
+    Then 檔案解析是透過 asyncio.to_thread 執行

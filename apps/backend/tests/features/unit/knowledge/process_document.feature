@@ -15,6 +15,20 @@ Feature: Process Document
     Then 任務狀態變為 "failed"
     And 任務包含錯誤訊息
 
+  Scenario: 處理失敗時文件狀態更新為 failed
+    Given 一個待處理的文件和處理任務
+    And 分塊服務會拋出例外
+    When 執行文件處理
+    Then 任務狀態變為 "failed"
+    And 文件狀態變為 "failed"
+
+  Scenario: 空 chunks 時正常完成
+    Given 一個待處理的文件和處理任務
+    And 分塊結果為空
+    When 執行文件處理
+    Then 文件狀態變為 "processed"
+    And 任務狀態變為 "completed"
+
   Scenario: 查詢處理任務狀態
     Given 一個已存在的處理任務
     When 查詢該任務狀態
