@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (對話 bot_id 隔離 + 歸屬驗證 + 清除未綁定對話, 137 backend + 87 frontend tests green)
+> 最後更新：2026-02-25 (Config 外部化：Embedding/Chunking 參數移至 .env, 137 backend + 87 frontend tests green)
 
 ---
 
@@ -604,6 +604,23 @@
 - ✅ Backend BDD: 5 scenarios（儲存 bot_id / 空 bot_id / 依 bot 過濾 / 無過濾回傳全部 / 跨租戶 bot 驗證）
 - ✅ Frontend test: 新增 bot 過濾測試
 - ✅ 全量測試：137 backend + 87 frontend passed
+
+### 7.21 Config 外部化（Embedding / Chunking 參數）
+- ✅ Config: 新增 `embedding_batch_size`, `embedding_max_retries`, `embedding_timeout`, `embedding_batch_delay`
+- ✅ Config: 新增 `chunk_size`, `chunk_overlap`
+- ✅ Infrastructure: `OpenAIEmbeddingService` 改為 constructor 注入（移除 module-level 常數）
+- ✅ Container: text_splitter_service + embedding_service 3 providers 全部改用 config 注入
+- ✅ 全量測試：137 backend + 87 frontend passed
+
+---
+
+## 已知邊緣問題（Edge Cases）
+
+> 以下為已識別但暫不處理的邊緣測試問題，後續視優先級排入 Sprint。
+
+| # | 問題描述 | 觸發條件 | 目前緩解措施 | 優先級 |
+|---|----------|----------|-------------|--------|
+| E1 | **大檔案 Embedding 429 Rate Limit** — 超大文件（>500KB, 2000+ chunks, 40+ batches）上傳後，Embedding API 回傳 429 Too Many Requests 導致文件處理失敗 | 上傳 581KB DOCX（Technical_Knowledge_Base_Large.docx），Google Gemini Embedding API | batch 間延遲 1s + 429 退避 5s×attempt + max_retries=5 + 所有參數可透過 `.env` 調整 | 低 — 一般文件不會觸發，可透過調高 `EMBEDDING_BATCH_DELAY` 緩解 |
 
 ---
 
