@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (E1 完成 + 既有測試修復 + Issue-Driven 流程規則, 139 backend + 95 frontend tests green)
+> 最後更新：2026-02-25 (E1.5 LINE Webhook 多租戶完成, 146 backend + 95 frontend tests green)
 
 ---
 
@@ -737,6 +737,32 @@
 
 ---
 
+## Enterprise Sprint E1.5：LINE Webhook 多租戶
+
+**Goal**：每個 Bot 有獨立 webhook URL `POST /api/v1/webhook/line/{bot_id}`，系統自動從 Bot 取得 LINE 設定、租戶、知識庫
+
+### E1.5.1 Domain + Application：Use Case 重構 + Factory ABC
+- ✅ Domain：`LineMessagingServiceFactory` ABC（`services.py`）
+- ✅ Application：`HandleWebhookUseCase` 重構 — 新 constructor + `execute_for_bot()` 方法
+- ✅ 向後相容：舊 `execute()` 方法透過 `default_line_service` fallback
+- ✅ BDD Feature：`line_webhook_multitenant.feature`（5 scenarios）
+- ✅ BDD Step Definitions：`test_line_webhook_multitenant_steps.py`
+- ✅ 既有測試更新：2 個 step definition 檔案適配新 constructor
+
+### E1.5.2 Infrastructure + Router + Container：Factory Impl + 新端點
+- ✅ Infrastructure：`HttpxLineMessagingServiceFactory`（`line_messaging_service_factory.py`）
+- ✅ Interfaces：`POST /api/v1/webhook/line/{bot_id}` 新端點 + `_parse_text_events()` 共用抽取
+- ✅ Container：`line_messaging_service_factory` Singleton + `handle_webhook_use_case` wiring 更新
+- ✅ BDD Feature：`line_webhook_routing.feature`（2 scenarios）
+- ✅ BDD Step Definitions：`test_line_webhook_routing_steps.py`
+
+### E1.5 驗證
+- ✅ 全量測試：Backend 146 passed + Frontend 95 passed
+- ✅ Lint：所有新增/修改檔案 ruff clean
+- ✅ Git commit + Issue closed
+
+---
+
 ## Backlog（已因 E0 清理而關閉）
 
 > 以下 Backlog 項目因 Sprint E0 移除所有非 RAG 工具而不再適用，已關閉。
@@ -811,3 +837,4 @@
 | S7 整合+Demo | ✅ 完成 | 100% | Demo 1-6 完成（非 RAG 工具已在 E0 移除） |
 | **E0 Tool 清理 + Multi-Deploy** | **✅ 完成** | **100%** | **22 files 刪除, 20+ files 編輯, 126 backend + 87 frontend tests** |
 | **E1 System Provider Settings** | **✅ 完成** | **100%** | **46 files, 2667 insertions, 139 backend + 8 new FE tests** |
+| **E1.5 LINE Webhook 多租戶** | **✅ 完成** | **100%** | **11 files, 577 insertions, 146 backend + 95 frontend tests** |
