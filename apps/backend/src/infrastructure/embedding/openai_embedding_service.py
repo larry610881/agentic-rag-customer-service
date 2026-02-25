@@ -8,11 +8,6 @@ from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
 
-BATCH_SIZE = 50
-MAX_RETRIES = 5
-TIMEOUT = 120.0
-BATCH_DELAY = 1.0  # seconds between batches to avoid rate limit
-
 
 class OpenAIEmbeddingService(EmbeddingService):
     def __init__(
@@ -20,21 +15,29 @@ class OpenAIEmbeddingService(EmbeddingService):
         api_key: str,
         model: str = "text-embedding-3-small",
         base_url: str = "https://api.openai.com/v1",
+        batch_size: int = 50,
+        max_retries: int = 5,
+        timeout: float = 120.0,
+        batch_delay: float = 1.0,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._base_url = base_url
+        self._batch_size = batch_size
+        self._max_retries = max_retries
+        self._timeout = timeout
+        self._batch_delay = batch_delay
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
         all_embeddings: list[list[float]] = []
-        total_batches = (len(texts) + BATCH_SIZE - 1) // BATCH_SIZE
-        for i in range(0, len(texts), BATCH_SIZE):
-            batch_num = i // BATCH_SIZE + 1
+        total_batches = (len(texts) + self._batch_size - 1) // self._batch_size
+        for i in range(0, len(texts), self._batch_size):
+            batch_num = i // self._batch_size + 1
             if batch_num > 1:
-                await asyncio.sleep(BATCH_DELAY)
-            batch = texts[i : i + BATCH_SIZE]
+                await asyncio.sleep(self._batch_delay)
+            batch = texts[i : i + self._batch_size]
             logger.info(
                 "embedding.batch",
                 batch=batch_num,
@@ -47,11 +50,11 @@ class OpenAIEmbeddingService(EmbeddingService):
 
     async def _embed_batch_with_retry(self, texts: list[str]) -> list[list[float]]:
         log = logger.bind(model=self._model, base_url=self._base_url, chunk_count=len(texts))
-        for attempt in range(MAX_RETRIES):
+        for attempt in range(self._max_retries):
             try:
                 return await self._call_api(texts, log)
             except httpx.HTTPStatusError as e:
-                if attempt == MAX_RETRIES - 1:
+                if attempt == self._max_retries - 1:
                     raise
                 if e.response.status_code == 429:
                     wait = 5 * (attempt + 1)
@@ -60,7 +63,7 @@ class OpenAIEmbeddingService(EmbeddingService):
                 log.warning("embedding.retry", attempt=attempt + 1, wait_seconds=wait, status=e.response.status_code)
                 await asyncio.sleep(wait)
             except Exception:
-                if attempt == MAX_RETRIES - 1:
+                if attempt == self._max_retries - 1:
                     raise
                 wait = 2 ** attempt
                 log.warning("embedding.retry", attempt=attempt + 1, wait_seconds=wait)
@@ -76,7 +79,7 @@ class OpenAIEmbeddingService(EmbeddingService):
                     f"{self._base_url}/embeddings",
                     headers={"Authorization": f"Bearer {self._api_key}"},
                     json={"input": texts, "model": self._model},
-                    timeout=TIMEOUT,
+                    timeout=self._timeout,
                 )
                 resp.raise_for_status()
                 data = resp.json()

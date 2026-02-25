@@ -206,8 +206,8 @@ class Container(containers.DeclarativeContainer):
 
     text_splitter_service = providers.Singleton(
         RecursiveTextSplitterService,
-        chunk_size=500,
-        chunk_overlap=100,
+        chunk_size=providers.Callable(lambda cfg: cfg.chunk_size, config),
+        chunk_overlap=providers.Callable(lambda cfg: cfg.chunk_overlap, config),
     )
 
     embedding_service = providers.Selector(
@@ -232,6 +232,10 @@ class Container(containers.DeclarativeContainer):
                 lambda cfg: cfg.embedding_base_url or "https://api.openai.com/v1",
                 config,
             ),
+            batch_size=providers.Callable(lambda cfg: cfg.embedding_batch_size, config),
+            max_retries=providers.Callable(lambda cfg: cfg.embedding_max_retries, config),
+            timeout=providers.Callable(lambda cfg: cfg.embedding_timeout, config),
+            batch_delay=providers.Callable(lambda cfg: cfg.embedding_batch_delay, config),
         ),
         qwen=providers.Factory(
             OpenAIEmbeddingService,
@@ -246,6 +250,10 @@ class Container(containers.DeclarativeContainer):
                 or "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 config,
             ),
+            batch_size=providers.Callable(lambda cfg: cfg.embedding_batch_size, config),
+            max_retries=providers.Callable(lambda cfg: cfg.embedding_max_retries, config),
+            timeout=providers.Callable(lambda cfg: cfg.embedding_timeout, config),
+            batch_delay=providers.Callable(lambda cfg: cfg.embedding_batch_delay, config),
         ),
         google=providers.Factory(
             OpenAIEmbeddingService,
@@ -260,6 +268,10 @@ class Container(containers.DeclarativeContainer):
                 or "https://generativelanguage.googleapis.com/v1beta/openai",
                 config,
             ),
+            batch_size=providers.Callable(lambda cfg: cfg.embedding_batch_size, config),
+            max_retries=providers.Callable(lambda cfg: cfg.embedding_max_retries, config),
+            timeout=providers.Callable(lambda cfg: cfg.embedding_timeout, config),
+            batch_delay=providers.Callable(lambda cfg: cfg.embedding_batch_delay, config),
         ),
     )
 

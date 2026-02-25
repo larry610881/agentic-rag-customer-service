@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_vector_size: int = 1536
     embedding_base_url: str = ""
+    embedding_batch_size: int = 50
+    embedding_max_retries: int = 5
+    embedding_timeout: float = 120.0
+    embedding_batch_delay: float = 1.0  # seconds between batches (rate limit protection)
 
     # LLM (independent from Embedding)
     llm_provider: str = "fake"  # "fake" | "openai" | "anthropic" | "qwen" | "google" | "openrouter"
@@ -55,6 +59,10 @@ class Settings(BaseSettings):
     # RAG
     rag_score_threshold: float = 0.3
     rag_top_k: int = 5
+
+    # Text Splitter
+    chunk_size: int = 500
+    chunk_overlap: int = 100
 
     # LINE
     line_channel_secret: str = ""
