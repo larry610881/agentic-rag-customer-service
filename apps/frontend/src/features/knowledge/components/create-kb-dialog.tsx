@@ -19,8 +19,8 @@ import {
 import { useCreateKnowledgeBase } from "@/hooks/queries/use-knowledge-bases";
 
 const createKbSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  description: z.string().min(1, "Description is required"),
+  name: z.string().min(1, "請輸入名稱"),
+  description: z.string().min(1, "請輸入描述"),
 });
 
 type CreateKbFormValues = z.infer<typeof createKbSchema>;
@@ -50,36 +50,36 @@ export function CreateKbDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>Create Knowledge Base</Button>
+        <Button>建立知識庫</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create Knowledge Base</DialogTitle>
+          <DialogTitle>建立知識庫</DialogTitle>
           <DialogDescription>
-            Add a new knowledge base to organize your documents.
+            新增知識庫來管理您的文件。
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="kb-name">Name</Label>
-            <Input id="kb-name" {...register("name")} placeholder="e.g. Product Documentation" />
+            <Label htmlFor="kb-name">名稱</Label>
+            <Input id="kb-name" {...register("name")} placeholder="例如：產品文件" />
             {errors.name && (
               <p className="text-sm text-destructive">{errors.name.message}</p>
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="kb-description">Description</Label>
+            <Label htmlFor="kb-description">描述</Label>
             <Textarea
               id="kb-description"
               {...register("description")}
-              placeholder="Describe the knowledge base..."
+              placeholder="描述知識庫的用途..."
             />
             {errors.description && (
               <p className="text-sm text-destructive">{errors.description.message}</p>
             )}
           </div>
           <Button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? "Creating..." : "Create"}
+            {createMutation.isPending ? "建立中..." : "建立"}
           </Button>
         </form>
       </DialogContent>

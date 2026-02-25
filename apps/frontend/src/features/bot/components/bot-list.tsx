@@ -18,13 +18,13 @@ export function BotList() {
   }
 
   if (isError) {
-    return <p className="text-destructive">Failed to load bots.</p>;
+    return <p className="text-destructive">載入機器人失敗。</p>;
   }
 
   if (!bots || bots.length === 0) {
     return (
       <p className="text-muted-foreground">
-        No bots yet. Create one to get started.
+        尚無機器人，請建立一個來開始使用。
       </p>
     );
   }

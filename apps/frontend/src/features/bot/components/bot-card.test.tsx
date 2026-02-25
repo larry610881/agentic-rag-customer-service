@@ -17,14 +17,14 @@ describe("BotCard", () => {
 
   it("should show Active badge when bot is active", () => {
     renderWithProviders(<BotCard bot={mockBot} />);
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText("啟用")).toBeInTheDocument();
   });
 
   it("should show Inactive badge when bot is inactive", () => {
     renderWithProviders(
       <BotCard bot={{ ...mockBot, is_active: false }} />,
     );
-    expect(screen.getByText("Inactive")).toBeInTheDocument();
+    expect(screen.getByText("停用")).toBeInTheDocument();
   });
 
   it("should display KB count", () => {

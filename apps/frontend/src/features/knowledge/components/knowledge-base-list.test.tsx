@@ -31,7 +31,7 @@ describe("KnowledgeBaseList", () => {
   it("should display document counts", async () => {
     renderWithProviders(<KnowledgeBaseList />);
     await screen.findByText("Product Documentation");
-    expect(screen.getByText("5 docs")).toBeInTheDocument();
-    expect(screen.getByText("3 docs")).toBeInTheDocument();
+    expect(screen.getByText("5 份文件")).toBeInTheDocument();
+    expect(screen.getByText("3 份文件")).toBeInTheDocument();
   });
 });

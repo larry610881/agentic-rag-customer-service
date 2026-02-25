@@ -20,16 +20,16 @@ export default function KnowledgeBaseDetailPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <h2 className="text-2xl font-semibold">Documents</h2>
+      <h2 className="text-2xl font-semibold">文件管理</h2>
       <UploadDropzone
         knowledgeBaseId={params.id}
         onUploadStarted={setActiveTaskId}
       />
       {activeTaskId && <UploadProgress taskId={activeTaskId} />}
-      {isLoading && <p className="text-muted-foreground">Loading documents...</p>}
+      {isLoading && <p className="text-muted-foreground">載入文件中...</p>}
       {error && (
         <p className="text-destructive">
-          Failed to load documents. Please try again.
+          載入文件失敗，請重試。
         </p>
       )}
       {documents && (

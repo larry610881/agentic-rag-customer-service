@@ -17,7 +17,7 @@ export function MessageList() {
   if (messages.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        <p>Start a conversation by sending a message.</p>
+        <p>傳送訊息開始對話。</p>
       </div>
     );
   }

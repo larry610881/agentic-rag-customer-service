@@ -39,7 +39,7 @@ export function DocumentList({ documents, onDelete, isDeleting }: DocumentListPr
 
   if (documents.length === 0) {
     return (
-      <p className="text-muted-foreground">No documents uploaded yet.</p>
+      <p className="text-muted-foreground">尚未上傳任何文件。</p>
     );
   }
 
@@ -49,11 +49,11 @@ export function DocumentList({ documents, onDelete, isDeleting }: DocumentListPr
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left">
-              <th className="px-4 py-2 font-medium">File Name</th>
-              <th className="px-4 py-2 font-medium">Chunks</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">Uploaded</th>
-              {onDelete && <th className="px-4 py-2 font-medium">Actions</th>}
+              <th className="px-4 py-2 font-medium">檔案名稱</th>
+              <th className="px-4 py-2 font-medium">分塊數</th>
+              <th className="px-4 py-2 font-medium">狀態</th>
+              <th className="px-4 py-2 font-medium">上傳時間</th>
+              {onDelete && <th className="px-4 py-2 font-medium">操作</th>}
             </tr>
           </thead>
           <tbody>
@@ -75,7 +75,7 @@ export function DocumentList({ documents, onDelete, isDeleting }: DocumentListPr
                       disabled={isDeleting}
                       onClick={() => setDeleteTarget(doc)}
                     >
-                      Delete
+                      刪除
                     </Button>
                   </td>
                 )}
@@ -93,14 +93,14 @@ export function DocumentList({ documents, onDelete, isDeleting }: DocumentListPr
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Document</AlertDialogTitle>
+            <AlertDialogTitle>刪除文件</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &quot;{deleteTarget?.filename}&quot;?
-              This will also remove all associated vector data and cannot be undone.
+              確定要刪除「{deleteTarget?.filename}」嗎？
+              這將同時移除所有相關的向量資料，且無法復原。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (deleteTarget && onDelete) {
@@ -109,7 +109,7 @@ export function DocumentList({ documents, onDelete, isDeleting }: DocumentListPr
                 }
               }}
             >
-              Delete
+              刪除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

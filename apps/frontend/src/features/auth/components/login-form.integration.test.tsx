@@ -27,9 +27,9 @@ describe("LoginForm integration", () => {
     const user = userEvent.setup();
     renderWithProviders(<LoginForm />);
 
-    await user.type(screen.getByLabelText("Username"), "admin");
-    await user.type(screen.getByLabelText("Password"), "password");
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await user.type(screen.getByLabelText("使用者名稱"), "admin");
+    await user.type(screen.getByLabelText("密碼"), "password");
+    await user.click(screen.getByRole("button", { name: "登入" }));
 
     await waitFor(() => {
       expect(useAuthStore.getState().token).toBe("mock-jwt-token-123");

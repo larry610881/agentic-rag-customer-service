@@ -18,7 +18,7 @@ export function AgentThoughtPanel({ toolCalls }: AgentThoughtPanelProps) {
   return (
     <Collapsible className="ml-0 sm:ml-4">
       <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
-        <span>Agent Actions ({toolCalls.length})</span>
+        <span>Agent 操作（{toolCalls.length}）</span>
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 flex flex-col gap-2">
         {toolCalls.map((tc, i) => (

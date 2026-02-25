@@ -24,9 +24,9 @@ describe("ConversationList", () => {
 
   it("should render the conversation list header and new button", () => {
     renderWithProviders(<ConversationList />);
-    expect(screen.getByText("Conversations")).toBeInTheDocument();
+    expect(screen.getByText("對話紀錄")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "New conversation" }),
+      screen.getByRole("button", { name: "新對話" }),
     ).toBeInTheDocument();
   });
 
@@ -64,7 +64,7 @@ describe("ConversationList", () => {
 
     renderWithProviders(<ConversationList />);
     await user.click(
-      screen.getByRole("button", { name: "New conversation" }),
+      screen.getByRole("button", { name: "新對話" }),
     );
 
     expect(useChatStore.getState().conversationId).toBeNull();
@@ -74,7 +74,7 @@ describe("ConversationList", () => {
   it("should show empty state when no conversations", async () => {
     useAuthStore.setState({ token: null, tenantId: null });
     renderWithProviders(<ConversationList />);
-    expect(screen.getByText("No conversations yet")).toBeInTheDocument();
+    expect(screen.getByText("尚無對話紀錄")).toBeInTheDocument();
   });
 
   it("should display bot name and switch button", () => {

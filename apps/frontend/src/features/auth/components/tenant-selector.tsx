@@ -30,8 +30,8 @@ export function TenantSelector() {
 
   return (
     <Select value={tenantId ?? undefined} onValueChange={setTenantId}>
-      <SelectTrigger className="w-48" aria-label="Select tenant">
-        <SelectValue placeholder="Select tenant" />
+      <SelectTrigger className="w-48" aria-label="選擇租戶">
+        <SelectValue placeholder="選擇租戶" />
       </SelectTrigger>
       <SelectContent>
         {tenants.map((tenant) => (

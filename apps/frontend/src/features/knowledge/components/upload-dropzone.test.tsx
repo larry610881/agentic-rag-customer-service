@@ -16,17 +16,17 @@ describe("UploadDropzone", () => {
   it("should render dropzone with instructions", () => {
     renderWithProviders(<UploadDropzone knowledgeBaseId="kb-1" />);
     expect(
-      screen.getByText("Drag and drop files here, or click to select"),
+      screen.getByText("拖曳檔案至此處，或點擊選擇檔案"),
     ).toBeInTheDocument();
   });
 
   it("should render choose file button", () => {
     renderWithProviders(<UploadDropzone knowledgeBaseId="kb-1" />);
-    expect(screen.getByText("Choose Files")).toBeInTheDocument();
+    expect(screen.getByText("選擇檔案")).toBeInTheDocument();
   });
 
   it("should have upload region with proper label", () => {
     renderWithProviders(<UploadDropzone knowledgeBaseId="kb-1" />);
-    expect(screen.getByRole("region", { name: "Upload dropzone" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "上傳區域" })).toBeInTheDocument();
   });
 });

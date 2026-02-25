@@ -19,33 +19,33 @@ describe("ChatInput", () => {
 
   it("should render input and send button", () => {
     renderWithProviders(<ChatInput />);
-    expect(screen.getByRole("textbox", { name: "Message input" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "訊息輸入" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "傳送" })).toBeInTheDocument();
   });
 
   it("should disable send button when input is empty", () => {
     renderWithProviders(<ChatInput />);
-    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "傳送" })).toBeDisabled();
   });
 
   it("should enable send button when input has text", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ChatInput />);
-    await user.type(screen.getByRole("textbox", { name: "Message input" }), "Hello");
-    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    await user.type(screen.getByRole("textbox", { name: "訊息輸入" }), "Hello");
+    expect(screen.getByRole("button", { name: "傳送" })).toBeEnabled();
   });
 
   it("should disable send button when no bot is selected", async () => {
     useChatStore.setState({ botId: null, botName: null });
     const user = userEvent.setup();
     renderWithProviders(<ChatInput />);
-    await user.type(screen.getByRole("textbox", { name: "Message input" }), "Hello");
-    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    await user.type(screen.getByRole("textbox", { name: "訊息輸入" }), "Hello");
+    expect(screen.getByRole("button", { name: "傳送" })).toBeDisabled();
   });
 
   it("should show sending state when streaming", () => {
     useChatStore.setState({ isStreaming: true });
     renderWithProviders(<ChatInput />);
-    expect(screen.getByRole("button", { name: "Sending..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "傳送中..." })).toBeDisabled();
   });
 });

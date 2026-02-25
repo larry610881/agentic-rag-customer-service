@@ -12,7 +12,7 @@ export function CitationList({ sources }: CitationListProps) {
 
   return (
     <div className="ml-0 flex flex-col gap-1 sm:ml-4">
-      <p className="text-xs font-medium text-muted-foreground">Sources</p>
+      <p className="text-xs font-medium text-muted-foreground">參考來源</p>
       {sources.map((source, i) => (
         <CitationCard key={`${source.document_name}-${i}`} source={source} index={i} />
       ))}

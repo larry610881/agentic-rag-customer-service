@@ -34,14 +34,14 @@ export function ChatInput() {
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Type a message..."
+        placeholder="輸入訊息..."
         className="min-h-[40px] resize-none"
         rows={1}
         disabled={isStreaming}
-        aria-label="Message input"
+        aria-label="訊息輸入"
       />
       <Button onClick={handleSend} disabled={!canSend}>
-        {isStreaming ? "Sending..." : "Send"}
+        {isStreaming ? "傳送中..." : "傳送"}
       </Button>
     </div>
   );

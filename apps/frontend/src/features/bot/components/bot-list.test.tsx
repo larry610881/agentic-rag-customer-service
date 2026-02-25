@@ -30,7 +30,7 @@ describe("BotList", () => {
   it("should display active/inactive badges", async () => {
     renderWithProviders(<BotList />);
     await screen.findByText("Customer Service Bot");
-    expect(screen.getByText("Active")).toBeInTheDocument();
-    expect(screen.getByText("Inactive")).toBeInTheDocument();
+    expect(screen.getByText("啟用")).toBeInTheDocument();
+    expect(screen.getByText("停用")).toBeInTheDocument();
   });
 });

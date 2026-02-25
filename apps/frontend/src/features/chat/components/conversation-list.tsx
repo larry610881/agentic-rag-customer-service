@@ -55,12 +55,12 @@ export function ConversationList() {
         </div>
       )}
       <div className="flex items-center justify-between border-b px-3 py-2">
-        <h2 className="text-sm font-semibold">Conversations</h2>
+        <h2 className="text-sm font-semibold">對話紀錄</h2>
         <Button
           variant="ghost"
           size="icon"
           onClick={handleNew}
-          aria-label="New conversation"
+          aria-label="新對話"
           className="h-7 w-7"
         >
           <Plus className="h-4 w-4" />
@@ -79,7 +79,7 @@ export function ConversationList() {
             ))
           ) : (
             <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-              No conversations yet
+              尚無對話紀錄
             </p>
           )}
         </div>

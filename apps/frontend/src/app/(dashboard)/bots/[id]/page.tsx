@@ -24,7 +24,7 @@ export default function BotDetailPage() {
   if (isLoading) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">Loading bot...</p>
+        <p className="text-muted-foreground">載入中...</p>
       </div>
     );
   }
@@ -32,7 +32,7 @@ export default function BotDetailPage() {
   if (isError || !bot) {
     return (
       <div className="p-6">
-        <p className="text-destructive">Failed to load bot.</p>
+        <p className="text-destructive">載入機器人失敗。</p>
       </div>
     );
   }
@@ -41,7 +41,7 @@ export default function BotDetailPage() {
     <div className="h-full overflow-auto flex flex-col gap-6 p-6">
       <div className="flex items-center gap-2">
         <Link href="/bots" className="text-sm text-muted-foreground hover:underline">
-          Bots
+          機器人
         </Link>
         <span className="text-sm text-muted-foreground">/</span>
         <span className="text-sm">{bot.name}</span>

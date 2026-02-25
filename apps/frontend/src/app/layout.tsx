@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Agentic RAG Customer Service",
-  description: "AI-powered customer service platform",
+  title: "RAG 智能客服平台",
+  description: "AI 驅動的智能客服系統",
 };
 
 export default function RootLayout({

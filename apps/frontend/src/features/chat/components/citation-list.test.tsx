@@ -12,7 +12,7 @@ describe("CitationList", () => {
 
   it("should render source cards", () => {
     renderWithProviders(<CitationList sources={mockSources} />);
-    expect(screen.getByText("Sources")).toBeInTheDocument();
+    expect(screen.getByText("參考來源")).toBeInTheDocument();
     expect(screen.getByText("product-guide.pdf")).toBeInTheDocument();
     expect(screen.getByText("faq.pdf")).toBeInTheDocument();
   });

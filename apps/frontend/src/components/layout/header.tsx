@@ -11,7 +11,7 @@ export function Header() {
     <header className="flex h-14 items-center justify-between border-b bg-background px-4">
       <TenantSelector />
       <Button variant="ghost" size="sm" onClick={logout}>
-        Logout
+        登出
       </Button>
     </header>
   );

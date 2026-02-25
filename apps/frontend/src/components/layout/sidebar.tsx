@@ -15,9 +15,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useSidebarStore } from "@/stores/use-sidebar-store";
 
 const navItems = [
-  { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/bots", label: "Bots", icon: Bot },
-  { href: "/knowledge", label: "Knowledge", icon: BookOpen },
+  { href: "/chat", label: "對話", icon: MessageSquare },
+  { href: "/bots", label: "機器人", icon: Bot },
+  { href: "/knowledge", label: "知識庫", icon: BookOpen },
 ];
 
 export function Sidebar() {
@@ -34,7 +34,7 @@ export function Sidebar() {
     >
       <div className="flex h-14 items-center justify-between border-b px-3">
         {!isCollapsed && (
-          <h1 className="truncate text-lg font-semibold">RAG CS</h1>
+          <h1 className="truncate text-lg font-semibold">RAG 智能客服</h1>
         )}
         <Button
           variant="ghost"

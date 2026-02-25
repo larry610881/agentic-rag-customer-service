@@ -18,13 +18,13 @@ export function KnowledgeBaseList() {
   }
 
   if (isError) {
-    return <p className="text-destructive">Failed to load knowledge bases.</p>;
+    return <p className="text-destructive">載入知識庫失敗。</p>;
   }
 
   if (!knowledgeBases || knowledgeBases.length === 0) {
     return (
       <p className="text-muted-foreground">
-        No knowledge bases yet. Create one to get started.
+        尚無知識庫，請建立一個來開始使用。
       </p>
     );
   }

@@ -17,7 +17,7 @@ export function UploadProgress({ taskId }: UploadProgressProps) {
     <div className="flex items-center gap-3 rounded-md border p-3">
       <div className="flex-1">
         <div className="mb-1 flex items-center justify-between">
-          <span className="text-sm font-medium">Processing document</span>
+          <span className="text-sm font-medium">處理文件中</span>
           <Badge
             variant={
               task.status === "completed"

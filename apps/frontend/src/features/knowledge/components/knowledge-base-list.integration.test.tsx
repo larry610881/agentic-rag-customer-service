@@ -25,8 +25,8 @@ describe("KnowledgeBaseList integration", () => {
       await screen.findByText("Product Documentation"),
     ).toBeInTheDocument();
     expect(screen.getByText("FAQ")).toBeInTheDocument();
-    expect(screen.getByText("5 docs")).toBeInTheDocument();
-    expect(screen.getByText("3 docs")).toBeInTheDocument();
+    expect(screen.getByText("5 份文件")).toBeInTheDocument();
+    expect(screen.getByText("3 份文件")).toBeInTheDocument();
     expect(
       screen.getByText("All product-related documents"),
     ).toBeInTheDocument();

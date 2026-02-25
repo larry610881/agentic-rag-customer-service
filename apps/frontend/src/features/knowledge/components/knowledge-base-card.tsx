@@ -22,13 +22,13 @@ export function KnowledgeBaseCard({ knowledgeBase }: KnowledgeBaseCardProps) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">{knowledgeBase.name}</CardTitle>
-            <Badge variant="secondary">{knowledgeBase.document_count} docs</Badge>
+            <Badge variant="secondary">{knowledgeBase.document_count} 份文件</Badge>
           </div>
           <CardDescription>{knowledgeBase.description}</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-xs text-muted-foreground">
-            Updated {new Date(knowledgeBase.updated_at).toLocaleDateString()}
+            更新於 {new Date(knowledgeBase.updated_at).toLocaleDateString()}
           </p>
         </CardContent>
       </Card>

@@ -17,8 +17,8 @@ import {
 import { useLogin } from "@/hooks/queries/use-auth";
 
 const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
+  username: z.string().min(1, "請輸入使用者名稱"),
+  password: z.string().min(1, "請輸入密碼"),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -46,17 +46,17 @@ export function LoginForm() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>Login</CardTitle>
-        <CardDescription>Sign in to your account</CardDescription>
+        <CardTitle>登入</CardTitle>
+        <CardDescription>登入您的帳號</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="username">Username</Label>
+            <Label htmlFor="username">使用者名稱</Label>
             <Input
               id="username"
               type="text"
-              placeholder="Enter your username"
+              placeholder="請輸入使用者名稱"
               {...register("username")}
             />
             {errors.username && (
@@ -64,11 +64,11 @@ export function LoginForm() {
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">密碼</Label>
             <Input
               id="password"
               type="password"
-              placeholder="Enter your password"
+              placeholder="請輸入密碼"
               {...register("password")}
             />
             {errors.password && (
@@ -77,11 +77,11 @@ export function LoginForm() {
           </div>
           {loginMutation.isError && (
             <p className="text-sm text-destructive">
-              Login failed. Please check your credentials.
+              登入失敗，請確認帳號密碼是否正確。
             </p>
           )}
           <Button type="submit" disabled={loginMutation.isPending}>
-            {loginMutation.isPending ? "Signing in..." : "Sign in"}
+            {loginMutation.isPending ? "登入中..." : "登入"}
           </Button>
         </form>
       </CardContent>

@@ -19,7 +19,7 @@ import {
 import { useCreateBot } from "@/hooks/queries/use-bots";
 
 const createBotSchema = z.object({
-  name: z.string().min(1, "Name is required"),
+  name: z.string().min(1, "請輸入名稱"),
   description: z.string().optional(),
 });
 
@@ -53,37 +53,37 @@ export function CreateBotDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>Create Bot</Button>
+        <Button>建立機器人</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create Bot</DialogTitle>
+          <DialogTitle>建立機器人</DialogTitle>
           <DialogDescription>
-            Create a new bot to handle customer conversations.
+            建立新的機器人來處理客戶對話。
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="bot-name">Name</Label>
+            <Label htmlFor="bot-name">名稱</Label>
             <Input
               id="bot-name"
               {...register("name")}
-              placeholder="e.g. Customer Service Bot"
+              placeholder="例如：客服機器人"
             />
             {errors.name && (
               <p className="text-sm text-destructive">{errors.name.message}</p>
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="bot-description">Description</Label>
+            <Label htmlFor="bot-description">描述</Label>
             <Textarea
               id="bot-description"
               {...register("description")}
-              placeholder="Describe the bot's purpose..."
+              placeholder="描述機器人的用途..."
             />
           </div>
           <Button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? "Creating..." : "Create"}
+            {createMutation.isPending ? "建立中..." : "建立"}
           </Button>
         </form>
       </DialogContent>

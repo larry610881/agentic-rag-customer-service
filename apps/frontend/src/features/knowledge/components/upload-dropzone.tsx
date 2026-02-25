@@ -66,14 +66,14 @@ export function UploadDropzone({ knowledgeBaseId, onUploadStarted }: UploadDropz
         isDragOver ? "border-primary bg-primary/5" : "border-muted"
       }`}
       role="region"
-      aria-label="Upload dropzone"
+      aria-label="上傳區域"
     >
       <p className="text-sm text-muted-foreground">
-        Drag and drop files here, or click to select
+        拖曳檔案至此處，或點擊選擇檔案
       </p>
       <label>
         <Button variant="outline" size="sm" asChild>
-          <span>Choose Files</span>
+          <span>選擇檔案</span>
         </Button>
         <input
           type="file"
@@ -85,11 +85,11 @@ export function UploadDropzone({ knowledgeBaseId, onUploadStarted }: UploadDropz
       </label>
       {pendingCount > 0 && (
         <p className="text-sm text-muted-foreground">
-          Uploading {pendingCount} file{pendingCount > 1 ? "s" : ""}...
+          正在上傳 {pendingCount} 個檔案...
         </p>
       )}
       {uploadMutation.isError && (
-        <p className="text-sm text-destructive">Upload failed. Please try again.</p>
+        <p className="text-sm text-destructive">上傳失敗，請重試。</p>
       )}
     </div>
   );

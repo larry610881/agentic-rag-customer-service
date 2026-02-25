@@ -24,18 +24,18 @@ export function BotCard({ bot }: BotCardProps) {
             <CardTitle className="text-base">{bot.name}</CardTitle>
             <div className="flex gap-1">
               <Badge variant={bot.is_active ? "default" : "secondary"}>
-                {bot.is_active ? "Active" : "Inactive"}
+                {bot.is_active ? "啟用" : "停用"}
               </Badge>
               <Badge variant="outline">
                 {bot.knowledge_base_ids.length} KB
               </Badge>
             </div>
           </div>
-          <CardDescription>{bot.description || "No description"}</CardDescription>
+          <CardDescription>{bot.description || "尚無描述"}</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-xs text-muted-foreground">
-            Updated {new Date(bot.updated_at).toLocaleDateString()}
+            更新於 {new Date(bot.updated_at).toLocaleDateString()}
           </p>
         </CardContent>
       </Card>

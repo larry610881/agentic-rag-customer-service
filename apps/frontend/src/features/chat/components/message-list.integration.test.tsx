@@ -30,18 +30,18 @@ describe("MessageList integration", () => {
     ).toBeInTheDocument();
 
     // Citations
-    expect(screen.getByText("Sources")).toBeInTheDocument();
+    expect(screen.getByText("參考來源")).toBeInTheDocument();
     expect(screen.getByText("product-guide.pdf")).toBeInTheDocument();
     expect(screen.getByText("faq.pdf")).toBeInTheDocument();
 
     // Tool calls
-    expect(screen.getByText("Agent Actions (2)")).toBeInTheDocument();
+    expect(screen.getByText("Agent 操作（2）")).toBeInTheDocument();
   });
 
   it("should show empty state and then messages when conversation starts", () => {
     renderWithProviders(<MessageList />);
     expect(
-      screen.getByText("Start a conversation by sending a message."),
+      screen.getByText("傳送訊息開始對話。"),
     ).toBeInTheDocument();
 
     // Simulate adding a message - wrapped in act for React state update
@@ -50,7 +50,7 @@ describe("MessageList integration", () => {
     });
 
     // Re-render happens through Zustand subscription
-    expect(screen.queryByText("Start a conversation by sending a message.")).not.toBeInTheDocument();
+    expect(screen.queryByText("傳送訊息開始對話。")).not.toBeInTheDocument();
     expect(screen.getByText("Hello")).toBeInTheDocument();
   });
 });

@@ -18,7 +18,7 @@ describe("MessageList", () => {
   it("should show empty state when no messages", () => {
     renderWithProviders(<MessageList />);
     expect(
-      screen.getByText("Start a conversation by sending a message."),
+      screen.getByText("傳送訊息開始對話。"),
     ).toBeInTheDocument();
   });
 
@@ -36,13 +36,13 @@ describe("MessageList", () => {
   it("should render citations for assistant messages with sources", () => {
     useChatStore.setState({ messages: mockMessages });
     renderWithProviders(<MessageList />);
-    expect(screen.getByText("Sources")).toBeInTheDocument();
+    expect(screen.getByText("參考來源")).toBeInTheDocument();
     expect(screen.getByText("product-guide.pdf")).toBeInTheDocument();
   });
 
   it("should render agent thought panel for messages with tool calls", () => {
     useChatStore.setState({ messages: mockMessages });
     renderWithProviders(<MessageList />);
-    expect(screen.getByText("Agent Actions (2)")).toBeInTheDocument();
+    expect(screen.getByText("Agent 操作（2）")).toBeInTheDocument();
   });
 });
