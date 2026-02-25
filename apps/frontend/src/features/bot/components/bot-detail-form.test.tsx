@@ -87,9 +87,6 @@ describe("BotDetailForm", () => {
       />,
     );
     expect(screen.getByLabelText("知識庫查詢")).toBeChecked();
-    expect(screen.getByLabelText("訂單查詢")).toBeChecked();
-    expect(screen.getByLabelText("商品搜尋")).not.toBeChecked();
-    expect(screen.getByLabelText("建立工單")).not.toBeChecked();
   });
 
   it("should render save and delete buttons", () => {

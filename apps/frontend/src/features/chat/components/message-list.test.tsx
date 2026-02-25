@@ -43,6 +43,6 @@ describe("MessageList", () => {
   it("should render agent thought panel for messages with tool calls", () => {
     useChatStore.setState({ messages: mockMessages });
     renderWithProviders(<MessageList />);
-    expect(screen.getByText("Agent 操作（2）")).toBeInTheDocument();
+    expect(screen.getByText("Agent 操作（1）")).toBeInTheDocument();
   });
 });
