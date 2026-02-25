@@ -19,22 +19,22 @@ describe("MessageList integration", () => {
     useChatStore.setState({ messages: mockMessages });
     renderWithProviders(<MessageList />);
 
-    // User message
+    // 使用者訊息
     expect(screen.getByText("What is the return policy?")).toBeInTheDocument();
 
-    // Assistant message
+    // 助理訊息
     expect(
       screen.getByText(
         "Based on the information I found, returns are accepted within 30 days.",
       ),
     ).toBeInTheDocument();
 
-    // Citations
+    // 參考來源
     expect(screen.getByText("參考來源")).toBeInTheDocument();
     expect(screen.getByText("product-guide.pdf")).toBeInTheDocument();
     expect(screen.getByText("faq.pdf")).toBeInTheDocument();
 
-    // Tool calls
+    // 工具呼叫
     expect(screen.getByText("Agent 操作（2）")).toBeInTheDocument();
   });
 
@@ -44,12 +44,12 @@ describe("MessageList integration", () => {
       screen.getByText("傳送訊息開始對話。"),
     ).toBeInTheDocument();
 
-    // Simulate adding a message - wrapped in act for React state update
+    // 模擬新增訊息 — 包裹在 act 中以處理 React 狀態更新
     act(() => {
       useChatStore.getState().addUserMessage("Hello");
     });
 
-    // Re-render happens through Zustand subscription
+    // 透過 Zustand subscription 觸發重新渲染
     expect(screen.queryByText("傳送訊息開始對話。")).not.toBeInTheDocument();
     expect(screen.getByText("Hello")).toBeInTheDocument();
   });

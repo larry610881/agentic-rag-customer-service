@@ -41,7 +41,7 @@ export async function fetchSSE(
             const data = JSON.parse(line.slice(6));
             onEvent(data);
           } catch {
-            /* skip malformed */
+            /* 略過格式錯誤的資料 */
           }
         }
       }

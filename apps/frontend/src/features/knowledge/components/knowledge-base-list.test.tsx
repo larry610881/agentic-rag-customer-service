@@ -15,7 +15,7 @@ describe("KnowledgeBaseList", () => {
 
   it("should show loading skeletons initially", () => {
     renderWithProviders(<KnowledgeBaseList />);
-    // Skeletons should be present during loading
+    // 載入中應顯示骨架屏
     const skeletons = document.querySelectorAll("[data-slot='skeleton']");
     expect(skeletons.length).toBeGreaterThan(0);
   });

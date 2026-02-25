@@ -15,12 +15,12 @@ export function ConversationList() {
   const clearMessages = useChatStore((s) => s.clearMessages);
   const loadConversation = useChatStore((s) => s.loadConversation);
 
-  // Track which conversation we're loading (to fetch its detail)
+  // 追蹤正在載入的對話（用於取得詳細資料）
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
   const { data: detail } = useConversation(loadingId);
 
-  // Load conversation detail into store when it arrives
+  // 當對話詳細資料回來時載入至 store
   useEffect(() => {
     if (detail && detail.id === loadingId) {
       loadConversation(detail);

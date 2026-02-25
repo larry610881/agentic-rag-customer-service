@@ -119,7 +119,7 @@ export function BotDetailForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
-      {/* Basic Info */}
+      {/* 基本資訊 */}
       <section className="flex flex-col gap-4">
         <h3 className="text-lg font-semibold">基本資訊</h3>
         <div className="flex flex-col gap-2">
@@ -158,7 +158,7 @@ export function BotDetailForm({
 
       <Separator />
 
-      {/* Knowledge Base Binding */}
+      {/* 知識庫綁定 */}
       <section className="flex flex-col gap-4">
         <h3 className="text-lg font-semibold">知識庫</h3>
         <div className="flex flex-col gap-2">
@@ -203,7 +203,7 @@ export function BotDetailForm({
 
       <Separator />
 
-      {/* Enabled Tools */}
+      {/* 啟用工具 */}
       <section className="flex flex-col gap-4">
         <h3 className="text-lg font-semibold">啟用工具</h3>
         <p className="text-sm text-muted-foreground">
@@ -245,7 +245,7 @@ export function BotDetailForm({
         <>
           <Separator />
 
-          {/* RAG Parameters */}
+          {/* RAG 參數 */}
           <section className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold">RAG 參數</h3>
             <p className="text-sm text-muted-foreground">
@@ -292,7 +292,7 @@ export function BotDetailForm({
 
       <Separator />
 
-      {/* System Prompt */}
+      {/* 系統提示詞 */}
       <section className="flex flex-col gap-4">
         <h3 className="text-lg font-semibold">系統提示詞</h3>
         <div className="flex flex-col gap-2">
@@ -308,7 +308,7 @@ export function BotDetailForm({
 
       <Separator />
 
-      {/* LLM Parameters */}
+      {/* LLM 參數 */}
       <section className="flex flex-col gap-4">
         <h3 className="text-lg font-semibold">LLM 參數</h3>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -400,7 +400,7 @@ export function BotDetailForm({
 
       <Separator />
 
-      {/* LINE Channel */}
+      {/* LINE 頻道 */}
       <section className="flex flex-col gap-4">
         <h3 className="text-lg font-semibold">LINE 頻道</h3>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -427,7 +427,7 @@ export function BotDetailForm({
 
       <Separator />
 
-      {/* Actions */}
+      {/* 操作按鈕 */}
       <div className="flex items-center justify-between">
         <Button
           type="button"

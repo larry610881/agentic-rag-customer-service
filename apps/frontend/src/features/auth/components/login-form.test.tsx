@@ -45,7 +45,7 @@ describe("LoginForm", () => {
     await user.type(screen.getByLabelText("密碼"), "password");
     await user.click(screen.getByRole("button", { name: "登入" }));
 
-    // After successful login, auth store should have the token
+    // 登入成功後，auth store 應有 token
     await waitFor(() => {
       expect(useAuthStore.getState().token).toBe("mock-jwt-token-123");
     });
