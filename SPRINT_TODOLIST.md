@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (Config 外部化：Embedding/Chunking 參數移至 .env, 137 backend + 87 frontend tests green)
+> 最後更新：2026-02-25 (Kaggle ETL 管理：download/seed/reset/status CLI + COPY 快速匯入, 137 backend + 87 frontend tests green)
 
 ---
 
@@ -33,10 +33,14 @@
 - ✅ 驗收：`make test` 可執行（即使 0 測試）
 
 ### 0.3 Kaggle 測試資料
-- ⬜ 下載 Brazilian E-Commerce (Olist) 資料集
+- ✅ 下載 Brazilian E-Commerce (Olist) 資料集（`download_kaggle.py` + `make seed-kaggle`）
 - ✅ `data/raw/` 存放原始資料
 - ✅ ETL 腳本：`data/seeds/` 種子資料產生
 - ✅ `make seed-data` 灌入模擬資料
+- ✅ ETL 管理 CLI：`manage_data.py`（download/seed/reset/status）
+- ✅ 快速匯入：`copy_records_to_table` COPY 協議（~100k rows <15s）
+- ✅ 三種模式：auto / mock / kaggle + Demo 訂單 E2E 相容
+- ✅ 5 個 Makefile targets：seed-kaggle / seed-mock / seed-reset / seed-reset-all / seed-status
 - ✅ 驗收：PostgreSQL 中有訂單/商品/客戶資料
 
 ### 0.4 CI Pipeline
@@ -628,7 +632,7 @@
 
 | Sprint | 狀態 | 完成率 | 備註 |
 |--------|------|--------|------|
-| S0 基礎建設 | 🔄 進行中 | 95% | 待 Kaggle 下載 + CI 驗收 |
+| S0 基礎建設 | 🔄 進行中 | 98% | Kaggle ETL 完成，待 CI 驗收 |
 | S1 租戶+知識 | ✅ 完成 | 90% | Unit 完成，Integration Test 待後續 |
 | S2 文件+向量化 | ✅ 完成 | 100% | 29 scenarios, 83.71% coverage, 51 chunks |
 | S3 RAG 查詢 | ✅ 完成 | 100% | 17 scenarios (6+5+6), 82% coverage |
