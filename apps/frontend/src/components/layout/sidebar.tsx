@@ -32,10 +32,22 @@ export function Sidebar() {
         isCollapsed ? "w-14" : "w-60",
       )}
     >
-      <div className="flex h-14 items-center border-b px-4">
+      <div className="flex h-14 items-center justify-between border-b px-3">
         {!isCollapsed && (
-          <h1 className="truncate text-lg font-semibold">RAG Customer Service</h1>
+          <h1 className="truncate text-lg font-semibold">RAG CS</h1>
         )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          onClick={toggle}
+        >
+          {isCollapsed ? (
+            <ChevronsRight className="h-4 w-4" />
+          ) : (
+            <ChevronsLeft className="h-4 w-4" />
+          )}
+        </Button>
       </div>
       <nav className="flex flex-1 flex-col gap-1 p-2">
         {navItems.map((item) => {
@@ -69,23 +81,6 @@ export function Sidebar() {
           return button;
         })}
       </nav>
-      <div className="border-t p-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn("w-full", !isCollapsed && "justify-start")}
-          onClick={toggle}
-        >
-          {isCollapsed ? (
-            <ChevronsRight className="h-4 w-4" />
-          ) : (
-            <>
-              <ChevronsLeft className="h-4 w-4" />
-              <span className="ml-2 text-sm">Collapse</span>
-            </>
-          )}
-        </Button>
-      </div>
     </aside>
   );
 }
