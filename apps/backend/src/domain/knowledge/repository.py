@@ -15,6 +15,11 @@ class KnowledgeBaseRepository(ABC):
         self, tenant_id: str
     ) -> list[KnowledgeBase]: ...
 
+    @abstractmethod
+    async def find_system_kbs(
+        self, tenant_id: str
+    ) -> list[KnowledgeBase]: ...
+
 
 class DocumentRepository(ABC):
     @abstractmethod

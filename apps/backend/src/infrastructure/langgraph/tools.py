@@ -6,6 +6,7 @@ from src.application.agent.order_lookup_use_case import OrderLookupUseCase
 from src.application.agent.product_search_use_case import ProductSearchUseCase
 from src.application.agent.ticket_creation_use_case import TicketCreationUseCase
 from src.application.rag.query_rag_use_case import QueryRAGCommand, QueryRAGUseCase
+from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.shared.exceptions import NoRelevantKnowledgeError
 
 
@@ -120,3 +121,51 @@ class TicketCreationTool:
             "success": result.success,
             "data": result.data,
         }
+
+
+class ProductRecommendTool:
+    """商品推薦工具 — 搜尋系統 KB 進行商品推薦"""
+
+    name = "product_recommend"
+    description = "商品推薦：根據用戶需求搜尋商品目錄，適用於商品推薦、商品比較"
+
+    def __init__(
+        self,
+        query_rag_use_case: QueryRAGUseCase,
+        kb_repository: KnowledgeBaseRepository,
+        top_k: int = 5,
+        score_threshold: float = 0.3,
+    ) -> None:
+        self._use_case = query_rag_use_case
+        self._kb_repo = kb_repository
+        self._top_k = top_k
+        self._score_threshold = score_threshold
+
+    async def invoke(self, tenant_id: str, query: str) -> dict[str, Any]:
+        system_kbs = await self._kb_repo.find_system_kbs(tenant_id)
+        if not system_kbs:
+            return {"success": False, "error": "尚未建立商品目錄"}
+
+        kb_ids = [kb.id.value for kb in system_kbs]
+        try:
+            result = await self._use_case.execute(
+                QueryRAGCommand(
+                    tenant_id=tenant_id,
+                    kb_id=kb_ids[0],
+                    query=query,
+                    kb_ids=kb_ids,
+                    top_k=self._top_k,
+                    score_threshold=self._score_threshold,
+                )
+            )
+            return {
+                "success": True,
+                "answer": result.answer,
+                "sources": [s.to_dict() for s in result.sources],
+            }
+        except NoRelevantKnowledgeError:
+            return {
+                "success": True,
+                "answer": "商品目錄中沒有找到相關商品。",
+                "sources": [],
+            }

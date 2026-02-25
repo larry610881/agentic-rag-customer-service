@@ -62,6 +62,7 @@ TABLE_SCHEMA: dict[str, dict[str, type]] = {
 
 # Tables to truncate for Olist-only reset (reverse FK order)
 OLIST_TABLES = [
+    "product_catalog",
     "support_tickets",
     "olist_order_reviews",
     "olist_order_items",

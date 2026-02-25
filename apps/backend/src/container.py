@@ -97,6 +97,7 @@ from src.infrastructure.langgraph.meta_supervisor_service import (
 )
 from src.infrastructure.langgraph.tools import (
     OrderLookupTool,
+    ProductRecommendTool,
     ProductSearchTool,
     RAGQueryTool,
     TicketCreationTool,
@@ -535,6 +536,14 @@ class Container(containers.DeclarativeContainer):
         use_case=ticket_creation_use_case,
     )
 
+    product_recommend_tool = providers.Factory(
+        ProductRecommendTool,
+        query_rag_use_case=query_rag_use_case,
+        kb_repository=kb_repository,
+        top_k=config.provided.rag_top_k,
+        score_threshold=config.provided.rag_score_threshold,
+    )
+
     # --- Event Bus ---
 
     event_bus = providers.Singleton(InMemoryEventBus)
@@ -568,6 +577,7 @@ class Container(containers.DeclarativeContainer):
             order_tool=order_tool,
             product_tool=product_tool,
             ticket_tool=ticket_tool,
+            product_recommend_tool=product_recommend_tool,
         ),
         openai=providers.Factory(
             LangGraphAgentService,
@@ -576,16 +586,19 @@ class Container(containers.DeclarativeContainer):
             order_tool=order_tool,
             product_tool=product_tool,
             ticket_tool=ticket_tool,
+            product_recommend_tool=product_recommend_tool,
         ),
         qwen=providers.Factory(
             LangGraphAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,
+            product_recommend_tool=product_recommend_tool,
         ),
         google=providers.Factory(
             LangGraphAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,
+            product_recommend_tool=product_recommend_tool,
         ),
         openrouter=providers.Factory(
             LangGraphAgentService,
@@ -594,6 +607,7 @@ class Container(containers.DeclarativeContainer):
             order_tool=order_tool,
             product_tool=product_tool,
             ticket_tool=ticket_tool,
+            product_recommend_tool=product_recommend_tool,
         ),
     )
 

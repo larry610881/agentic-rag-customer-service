@@ -15,6 +15,7 @@ class KnowledgeBase:
     tenant_id: str = ""
     name: str = ""
     description: str = ""
+    kb_type: str = "user"  # "user" | "system"
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

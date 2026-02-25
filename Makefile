@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-ps install test test-backend test-frontend lint lint-backend lint-frontend seed-data seed-knowledge seed-kaggle seed-mock seed-reset seed-reset-all seed-status
+.PHONY: dev-up dev-down dev-ps install test test-backend test-frontend lint lint-backend lint-frontend seed-data seed-knowledge seed-kaggle seed-mock seed-reset seed-reset-all seed-status seed-enrich seed-vectorize
 
 COMPOSE_FILE := infra/docker-compose.yml
 COMPOSE_DEV  := infra/docker-compose.dev.yml
@@ -63,3 +63,9 @@ seed-reset-all:
 
 seed-status:
 	cd apps/backend && uv run python ../../data/seeds/manage_data.py status
+
+seed-enrich:
+	cd apps/backend && uv run python ../../data/seeds/manage_data.py enrich
+
+seed-vectorize:
+	cd apps/backend && uv run python ../../data/seeds/manage_data.py vectorize

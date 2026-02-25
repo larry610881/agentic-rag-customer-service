@@ -68,3 +68,13 @@ CREATE TABLE IF NOT EXISTS support_tickets (
 );
 
 CREATE INDEX IF NOT EXISTS ix_support_tickets_tenant_id ON support_tickets(tenant_id);
+
+CREATE TABLE IF NOT EXISTS product_catalog (
+    product_id   VARCHAR(64) PRIMARY KEY REFERENCES olist_products(product_id),
+    product_name VARCHAR(255) NOT NULL,
+    description  TEXT NOT NULL,
+    stock        INTEGER NOT NULL DEFAULT 0,
+    price        DECIMAL(10, 2),
+    category_en  VARCHAR(128),
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

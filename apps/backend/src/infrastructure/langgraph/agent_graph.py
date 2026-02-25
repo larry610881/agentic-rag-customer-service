@@ -12,6 +12,7 @@ logger = structlog.get_logger(__name__)
 from src.domain.rag.services import LLMService
 from src.infrastructure.langgraph.tools import (
     OrderLookupTool,
+    ProductRecommendTool,
     ProductSearchTool,
     RAGQueryTool,
     TicketCreationTool,
@@ -23,13 +24,17 @@ _GREETING_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _ORDER_PATTERN = re.compile(r"訂單|order|ORD-|ord-|物流|配送|送達|到哪")
-_PRODUCT_PATTERN = re.compile(r"商品|產品|product|搜尋|推薦|電子")
+_PRODUCT_PATTERN = re.compile(r"商品|產品|product|搜尋|電子")
+_PRODUCT_RECOMMEND_PATTERN = re.compile(r"推薦|recommend|比較|compare|哪個好|建議買")
 _TICKET_PATTERN = re.compile(r"投訴|客訴|抱怨|工單|ticket|申訴")
 
 _TOOL_DESCRIPTIONS = {
     "rag_query": "rag_query: 查詢知識庫中的資料（任何可能在知識庫中有答案的問題都應使用此工具）",
     "order_lookup": "order_lookup: 查詢訂單狀態（含訂單號、物流、配送）",
-    "product_search": "product_search: 搜尋商品（含產品推薦、商品查詢）",
+    "product_search": "product_search: 搜尋商品（含產品查詢）",
+    "product_recommend": (
+        "product_recommend: 商品推薦（含商品比較、推薦、查詢商品描述）"
+    ),
     "ticket_creation": "ticket_creation: 建立客服工單（含投訴、申訴、問題回報）",
 }
 
@@ -61,6 +66,7 @@ RESPOND_SYSTEM_PROMPT = (
 _VALID_TOOLS = {
     "order_lookup",
     "product_search",
+    "product_recommend",
     "ticket_creation",
     "rag_query",
 }
@@ -104,6 +110,11 @@ def _keyword_route(msg: str) -> dict[str, str] | None:  # noqa: C901
             "current_tool": "ticket_creation",
             "tool_reasoning": "用戶需要建立客服工單",
         }
+    if _PRODUCT_RECOMMEND_PATTERN.search(stripped):
+        return {
+            "current_tool": "product_recommend",
+            "tool_reasoning": "用戶需要商品推薦",
+        }
     if _PRODUCT_PATTERN.search(stripped):
         return {
             "current_tool": "product_search",
@@ -131,6 +142,7 @@ def build_agent_graph(  # noqa: C901
     order_tool: OrderLookupTool | None = None,
     product_tool: ProductSearchTool | None = None,
     ticket_tool: TicketCreationTool | None = None,
+    product_recommend_tool: ProductRecommendTool | None = None,
     *,
     include_respond: bool = True,
 ) -> StateGraph:
@@ -297,6 +309,15 @@ def build_agent_graph(  # noqa: C901
         )
         return {"tool_result": result}
 
+    async def product_recommend_tool_node(state: AgentState) -> dict:
+        if not product_recommend_tool:
+            return {"tool_result": {"error": "product_recommend tool is disabled"}}
+        result = await product_recommend_tool.invoke(
+            tenant_id=state["tenant_id"],
+            query=state["user_message"],
+        )
+        return {"tool_result": result}
+
     async def respond_node(state: AgentState) -> dict:
         """根據工具結果生成最終回答"""
         tool_result = state.get("tool_result", {})
@@ -340,6 +361,8 @@ def build_agent_graph(  # noqa: C901
         enabled_tools.add("product_search")
     if ticket_tool:
         enabled_tools.add("ticket_creation")
+    if product_recommend_tool:
+        enabled_tools.add("product_recommend")
 
     def route_to_tool(state: AgentState) -> str:
         tool = state.get("current_tool", "rag_query")
@@ -355,6 +378,7 @@ def build_agent_graph(  # noqa: C901
     graph.add_node("order_tool", order_tool_node)
     graph.add_node("product_tool", product_tool_node)
     graph.add_node("ticket_tool", ticket_tool_node)
+    graph.add_node("product_recommend_tool", product_recommend_tool_node)
 
     graph.set_entry_point("router")
 
@@ -367,6 +391,7 @@ def build_agent_graph(  # noqa: C901
                 "rag_query": "rag_tool",
                 "order_lookup": "order_tool",
                 "product_search": "product_tool",
+                "product_recommend": "product_recommend_tool",
                 "ticket_creation": "ticket_tool",
                 "direct": "respond",
             },
@@ -374,6 +399,7 @@ def build_agent_graph(  # noqa: C901
         graph.add_edge("rag_tool", "respond")
         graph.add_edge("order_tool", "respond")
         graph.add_edge("product_tool", "respond")
+        graph.add_edge("product_recommend_tool", "respond")
         graph.add_edge("ticket_tool", "respond")
         graph.add_edge("respond", END)
     else:
@@ -385,6 +411,7 @@ def build_agent_graph(  # noqa: C901
                 "rag_query": "rag_tool",
                 "order_lookup": "order_tool",
                 "product_search": "product_tool",
+                "product_recommend": "product_recommend_tool",
                 "ticket_creation": "ticket_tool",
                 "direct": END,
             },
@@ -392,6 +419,7 @@ def build_agent_graph(  # noqa: C901
         graph.add_edge("rag_tool", END)
         graph.add_edge("order_tool", END)
         graph.add_edge("product_tool", END)
+        graph.add_edge("product_recommend_tool", END)
         graph.add_edge("ticket_tool", END)
 
     return graph

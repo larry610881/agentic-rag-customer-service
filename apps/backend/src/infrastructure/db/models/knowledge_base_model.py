@@ -19,6 +19,9 @@ class KnowledgeBaseModel(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
+    kb_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="user", server_default="user"
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

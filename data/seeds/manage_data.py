@@ -8,6 +8,8 @@ Usage:
     python manage_data.py reset                 # Reset Olist tables only
     python manage_data.py reset --all           # Reset all tables
     python manage_data.py status                # Show table row counts
+    python manage_data.py enrich                # Generate synthetic product catalog
+    python manage_data.py vectorize             # Vectorize product catalog → system KB → Qdrant
 """
 
 import argparse
@@ -20,7 +22,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import download_kaggle  # noqa: E402
+import generate_synthetic_products  # noqa: E402
 import seed_postgres  # noqa: E402
+import seed_product_knowledge  # noqa: E402
 
 import asyncpg  # noqa: E402
 
@@ -100,6 +104,12 @@ def main() -> None:
     # status
     sub.add_parser("status", help="Show table row counts and data mode")
 
+    # enrich
+    sub.add_parser("enrich", help="Generate synthetic product catalog from Olist data")
+
+    # vectorize
+    sub.add_parser("vectorize", help="Vectorize product catalog into system KB + Qdrant")
+
     args = parser.parse_args()
 
     if args.command == "download":
@@ -110,6 +120,10 @@ def main() -> None:
         asyncio.run(_cmd_reset(args))
     elif args.command == "status":
         asyncio.run(_cmd_status(args))
+    elif args.command == "enrich":
+        asyncio.run(generate_synthetic_products.generate(_get_dsn()))
+    elif args.command == "vectorize":
+        asyncio.run(seed_product_knowledge.vectorize(_get_dsn()))
 
 
 if __name__ == "__main__":

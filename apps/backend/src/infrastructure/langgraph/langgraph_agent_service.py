@@ -19,6 +19,7 @@ from src.infrastructure.langgraph.agent_graph import (
 )
 from src.infrastructure.langgraph.tools import (
     OrderLookupTool,
+    ProductRecommendTool,
     ProductSearchTool,
     RAGQueryTool,
     TicketCreationTool,
@@ -35,16 +36,19 @@ class LangGraphAgentService(AgentService):
         order_tool: OrderLookupTool | None = None,
         product_tool: ProductSearchTool | None = None,
         ticket_tool: TicketCreationTool | None = None,
+        product_recommend_tool: ProductRecommendTool | None = None,
     ) -> None:
         self._llm_service = llm_service
         # Full graph (routing + tool + respond)
         graph = build_agent_graph(
-            llm_service, rag_tool, order_tool, product_tool, ticket_tool
+            llm_service, rag_tool, order_tool, product_tool, ticket_tool,
+            product_recommend_tool,
         )
         self._compiled = graph.compile()
         # Routing-only graph (no respond) — for streaming
         routing_graph = build_agent_graph(
             llm_service, rag_tool, order_tool, product_tool, ticket_tool,
+            product_recommend_tool,
             include_respond=False,
         )
         self._compiled_routing = routing_graph.compile()
@@ -92,10 +96,11 @@ class LangGraphAgentService(AgentService):
         tool_reasoning = result.get("tool_reasoning", "")
         answer = result.get("final_answer", "")
 
-        # Extract sources from RAG tool results
+        # Extract sources from RAG / product_recommend tool results
         sources: list[Source] = []
         tool_result = result.get("tool_result", {})
-        if tool_name == "rag_query" and isinstance(tool_result, dict):
+        _rag_tools = ("rag_query", "product_recommend")
+        if tool_name in _rag_tools and isinstance(tool_result, dict):
             raw_sources = tool_result.get("sources", [])
             sources = [
                 Source(
@@ -202,9 +207,10 @@ class LangGraphAgentService(AgentService):
         tool_reasoning = ""
         tool_result: dict[str, Any] = {}
 
-        _TOOL_NODES = frozenset(
-            ("rag_tool", "order_tool", "product_tool", "ticket_tool")
-        )
+        _TOOL_NODES = frozenset((
+            "rag_tool", "order_tool", "product_tool",
+            "ticket_tool", "product_recommend_tool",
+        ))
 
         async for update in self._compiled_routing.astream(
             initial_state, stream_mode="updates"
@@ -228,7 +234,8 @@ class LangGraphAgentService(AgentService):
 
         # Extract & yield sources
         sources: list[dict[str, Any]] = []
-        if tool_name == "rag_query" and isinstance(tool_result, dict):
+        _rag_tools = ("rag_query", "product_recommend")
+        if tool_name in _rag_tools and isinstance(tool_result, dict):
             raw_sources = tool_result.get("sources", [])
             sources = [
                 {
