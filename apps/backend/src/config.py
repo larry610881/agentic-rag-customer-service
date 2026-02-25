@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     # LLM Pricing (JSON: {"model": {"input": price_per_1m, "output": price_per_1m}})
     llm_pricing_json: str = "{}"
 
+    # Encryption
+    encryption_master_key: str = ""
+
     # App
     app_env: str = "development"
     app_version: str = "0.1.0"

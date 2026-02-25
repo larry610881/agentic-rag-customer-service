@@ -8,6 +8,7 @@ import { ragHandlers } from "./handlers/rag";
 import { agentHandlers } from "./handlers/agent";
 import { botHandlers } from "./handlers/bots";
 import { conversationHandlers } from "./handlers/conversations";
+import { providerSettingHandlers } from "./handlers/provider-settings";
 
 export const handlers = [
   http.get("http://localhost:8000/api/v1/health", () => {
@@ -26,4 +27,5 @@ export const handlers = [
   ...agentHandlers,
   ...botHandlers,
   ...conversationHandlers,
+  ...providerSettingHandlers,
 ];

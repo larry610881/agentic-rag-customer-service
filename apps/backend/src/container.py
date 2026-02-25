@@ -35,6 +35,24 @@ from src.application.knowledge.upload_document_use_case import (
     UploadDocumentUseCase,
 )
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
+from src.application.platform.create_provider_setting_use_case import (
+    CreateProviderSettingUseCase,
+)
+from src.application.platform.delete_provider_setting_use_case import (
+    DeleteProviderSettingUseCase,
+)
+from src.application.platform.get_provider_setting_use_case import (
+    GetProviderSettingUseCase,
+)
+from src.application.platform.list_provider_settings_use_case import (
+    ListProviderSettingsUseCase,
+)
+from src.application.platform.test_provider_connection_use_case import (
+    CheckProviderConnectionUseCase,
+)
+from src.application.platform.update_provider_setting_use_case import (
+    UpdateProviderSettingUseCase,
+)
 from src.application.rag.query_rag_use_case import QueryRAGUseCase
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
@@ -50,6 +68,7 @@ from src.infrastructure.conversation import (
     SlidingWindowStrategy,
     SummaryRecentStrategy,
 )
+from src.infrastructure.crypto.aes_encryption_service import AESEncryptionService
 from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.health_repository import HealthRepository
 from src.infrastructure.db.repositories.bot_repository import (
@@ -73,8 +92,15 @@ from src.infrastructure.db.repositories.processing_task_repository import (
 from src.infrastructure.db.repositories.tenant_repository import (
     SQLAlchemyTenantRepository,
 )
+from src.infrastructure.db.repositories.provider_setting_repository import (
+    SQLAlchemyProviderSettingRepository,
+)
 from src.infrastructure.db.repositories.usage_repository import (
     SQLAlchemyUsageRepository,
+)
+from src.infrastructure.embedding.dynamic_embedding_factory import (
+    DynamicEmbeddingServiceFactory,
+    DynamicEmbeddingServiceProxy,
 )
 from src.infrastructure.embedding.fake_embedding_service import (
     FakeEmbeddingService,
@@ -97,6 +123,10 @@ from src.infrastructure.langgraph.workers.fake_main_worker import FakeMainWorker
 from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWorker
 from src.infrastructure.line.line_messaging_service import HttpxLineMessagingService
 from src.infrastructure.llm.anthropic_llm_service import AnthropicLLMService
+from src.infrastructure.llm.dynamic_llm_factory import (
+    DynamicLLMServiceFactory,
+    DynamicLLMServiceProxy,
+)
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
 from src.infrastructure.llm.openai_llm_service import OpenAILLMService
 from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
@@ -123,6 +153,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.line_webhook_router",
             "src.interfaces.api.usage_router",
             "src.interfaces.api.bot_router",
+            "src.interfaces.api.provider_setting_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -187,6 +218,20 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
     )
 
+    provider_setting_repository = providers.Factory(
+        SQLAlchemyProviderSettingRepository,
+        session=db_session,
+    )
+
+    encryption_service = providers.Singleton(
+        AESEncryptionService,
+        master_key=providers.Callable(
+            lambda cfg: cfg.encryption_master_key
+            or "0" * 64,  # fallback dev key (all zeros)
+            config,
+        ),
+    )
+
     file_parser_service = providers.Singleton(DefaultFileParserService)
 
     text_splitter_service = providers.Singleton(
@@ -195,7 +240,7 @@ class Container(containers.DeclarativeContainer):
         chunk_overlap=providers.Callable(lambda cfg: cfg.chunk_overlap, config),
     )
 
-    embedding_service = providers.Selector(
+    _static_embedding_service = providers.Selector(
         providers.Callable(
             lambda cfg: cfg.embedding_provider, config
         ),
@@ -260,6 +305,18 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
+    _embedding_factory = providers.Singleton(
+        DynamicEmbeddingServiceFactory,
+        provider_setting_repository=provider_setting_repository,
+        encryption_service=encryption_service,
+        fallback_service=_static_embedding_service,
+    )
+
+    embedding_service = providers.Singleton(
+        DynamicEmbeddingServiceProxy,
+        factory=_embedding_factory,
+    )
+
     vector_store = providers.Singleton(
         QdrantVectorStore,
         host=providers.Callable(
@@ -270,7 +327,7 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
-    llm_service = providers.Selector(
+    _static_llm_service = providers.Selector(
         providers.Callable(lambda cfg: cfg.llm_provider, config),
         fake=providers.Factory(FakeLLMService),
         anthropic=providers.Factory(
@@ -366,6 +423,18 @@ class Container(containers.DeclarativeContainer):
                 config,
             ),
         ),
+    )
+
+    _llm_factory = providers.Singleton(
+        DynamicLLMServiceFactory,
+        provider_setting_repository=provider_setting_repository,
+        encryption_service=encryption_service,
+        fallback_service=_static_llm_service,
+    )
+
+    llm_service = providers.Singleton(
+        DynamicLLMServiceProxy,
+        factory=_llm_factory,
     )
 
     # --- Application ---
@@ -572,6 +641,41 @@ class Container(containers.DeclarativeContainer):
         conversation_repository=conversation_repository,
         bot_repository=bot_repository,
         history_strategy=history_strategy,
+    )
+
+    # --- Platform: Provider Settings ---
+
+    create_provider_setting_use_case = providers.Factory(
+        CreateProviderSettingUseCase,
+        provider_setting_repository=provider_setting_repository,
+        encryption_service=encryption_service,
+    )
+
+    update_provider_setting_use_case = providers.Factory(
+        UpdateProviderSettingUseCase,
+        provider_setting_repository=provider_setting_repository,
+        encryption_service=encryption_service,
+    )
+
+    delete_provider_setting_use_case = providers.Factory(
+        DeleteProviderSettingUseCase,
+        provider_setting_repository=provider_setting_repository,
+    )
+
+    list_provider_settings_use_case = providers.Factory(
+        ListProviderSettingsUseCase,
+        provider_setting_repository=provider_setting_repository,
+    )
+
+    get_provider_setting_use_case = providers.Factory(
+        GetProviderSettingUseCase,
+        provider_setting_repository=provider_setting_repository,
+    )
+
+    check_provider_connection_use_case = providers.Factory(
+        CheckProviderConnectionUseCase,
+        provider_setting_repository=provider_setting_repository,
+        encryption_service=encryption_service,
     )
 
     # --- LINE Bot ---
