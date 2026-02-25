@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (Per-Bot RAG 參數 top_k/score_threshold, 127 backend + 81 frontend tests green)
+> 最後更新：2026-02-25 (Sidebar 收合 + Chat 歷史釘選, 127 backend + 81 frontend tests green)
 
 ---
 
@@ -563,6 +563,18 @@
 - ✅ Interfaces: API Request/Response 加欄位
 - ✅ Agent 呼叫鏈: AgentService → LangGraphAgentService → AgentState → rag_tool_node → RAGQueryTool 全鏈傳遞
 - ✅ Frontend: types + BotDetailForm 條件顯示（rag_query 啟用時才出現）+ Zod 驗證
+- ✅ 全量測試：127 backend + 81 frontend passed
+
+### 7.18 UI 佈局強化 — Sidebar 收合 + Chat 歷史釘選
+- ✅ Zustand store: `useSidebarStore`（isCollapsed + toggle）
+- ✅ Sidebar 收合/展開（w-60 ↔ w-14, transition-all duration-200）
+- ✅ Nav items 加 lucide icons（MessageSquare / Bot / BookOpen）+ 收合時 Tooltip
+- ✅ Toggle button（ChevronsLeft / ChevronsRight）
+- ✅ shadcn/ui Tooltip 安裝 + TooltipProvider 注入 Providers
+- ✅ AppShell main overflow-auto → overflow-hidden（子頁面自控 scroll）
+- ✅ Chat page overflow-hidden + ConversationList h-full 釘選
+- ✅ Bots / Knowledge 頁面加 h-full overflow-auto 補丁
+- ✅ vitest testTimeout 10s（修復 parallel 環境下 flaky timeout）
 - ✅ 全量測試：127 backend + 81 frontend passed
 
 ---

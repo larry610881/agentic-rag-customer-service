@@ -14,11 +14,11 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-full">
-      <div className="w-64 shrink-0">
+    <div className="flex h-full overflow-hidden">
+      <div className="h-full w-64 shrink-0">
         <ConversationList />
       </div>
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <MessageList />
         <ChatInput />
       </div>

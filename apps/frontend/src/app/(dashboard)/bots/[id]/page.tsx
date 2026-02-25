@@ -38,7 +38,7 @@ export default function BotDetailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="h-full overflow-auto flex flex-col gap-6 p-6">
       <div className="flex items-center gap-2">
         <Link href="/bots" className="text-sm text-muted-foreground hover:underline">
           Bots

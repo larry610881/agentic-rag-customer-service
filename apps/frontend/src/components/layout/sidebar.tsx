@@ -2,38 +2,90 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  MessageSquare,
+  Bot,
+  BookOpen,
+  ChevronsLeft,
+  ChevronsRight,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useSidebarStore } from "@/stores/use-sidebar-store";
 
 const navItems = [
-  { href: "/chat", label: "Chat" },
-  { href: "/bots", label: "Bots" },
-  { href: "/knowledge", label: "Knowledge" },
+  { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/bots", label: "Bots", icon: Bot },
+  { href: "/knowledge", label: "Knowledge", icon: BookOpen },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const isCollapsed = useSidebarStore((s) => s.isCollapsed);
+  const toggle = useSidebarStore((s) => s.toggle);
 
   return (
-    <aside className="flex w-60 flex-col border-r bg-sidebar text-sidebar-foreground">
+    <aside
+      className={cn(
+        "flex flex-col border-r bg-sidebar text-sidebar-foreground transition-all duration-200",
+        isCollapsed ? "w-14" : "w-60",
+      )}
+    >
       <div className="flex h-14 items-center border-b px-4">
-        <h1 className="text-lg font-semibold">RAG Customer Service</h1>
+        {!isCollapsed && (
+          <h1 className="truncate text-lg font-semibold">RAG Customer Service</h1>
+        )}
       </div>
-      <nav className="flex flex-col gap-1 p-2">
-        {navItems.map((item) => (
-          <Button
-            key={item.href}
-            variant={pathname?.startsWith(item.href) ? "secondary" : "ghost"}
-            className={cn(
-              "justify-start",
-              pathname?.startsWith(item.href) && "bg-sidebar-accent",
-            )}
-            asChild
-          >
-            <Link href={item.href}>{item.label}</Link>
-          </Button>
-        ))}
+      <nav className="flex flex-1 flex-col gap-1 p-2">
+        {navItems.map((item) => {
+          const isActive = pathname?.startsWith(item.href);
+          const button = (
+            <Button
+              key={item.href}
+              variant={isActive ? "secondary" : "ghost"}
+              className={cn(
+                isCollapsed ? "justify-center px-0" : "justify-start",
+                isActive && "bg-sidebar-accent",
+              )}
+              asChild
+            >
+              <Link href={item.href}>
+                <item.icon className="h-4 w-4 shrink-0" />
+                {!isCollapsed && <span className="ml-2">{item.label}</span>}
+              </Link>
+            </Button>
+          );
+
+          if (isCollapsed) {
+            return (
+              <Tooltip key={item.href}>
+                <TooltipTrigger asChild>{button}</TooltipTrigger>
+                <TooltipContent side="right">{item.label}</TooltipContent>
+              </Tooltip>
+            );
+          }
+
+          return button;
+        })}
       </nav>
+      <div className="border-t p-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn("w-full", !isCollapsed && "justify-start")}
+          onClick={toggle}
+        >
+          {isCollapsed ? (
+            <ChevronsRight className="h-4 w-4" />
+          ) : (
+            <>
+              <ChevronsLeft className="h-4 w-4" />
+              <span className="ml-2 text-sm">Collapse</span>
+            </>
+          )}
+        </Button>
+      </div>
     </aside>
   );
 }
