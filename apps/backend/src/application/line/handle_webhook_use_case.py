@@ -1,8 +1,18 @@
 """LINE Webhook 處理 Use Case"""
 
+from datetime import datetime, timezone
+from uuid import uuid4
+
 from src.domain.agent.services import AgentService
 from src.domain.bot.repository import BotRepository
-from src.domain.line.entity import LineTextMessageEvent
+from src.domain.conversation.feedback_entity import Feedback
+from src.domain.conversation.feedback_repository import FeedbackRepository
+from src.domain.conversation.feedback_value_objects import (
+    Channel,
+    FeedbackId,
+    Rating,
+)
+from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
 
 
@@ -15,6 +25,7 @@ class HandleWebhookUseCase:
         default_line_service: LineMessagingService | None = None,
         default_tenant_id: str = "",
         default_kb_id: str = "",
+        feedback_repository: FeedbackRepository | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -22,6 +33,7 @@ class HandleWebhookUseCase:
         self._default_line_service = default_line_service
         self._default_tenant_id = default_tenant_id
         self._default_kb_id = default_kb_id
+        self._feedback_repo = feedback_repository
 
     async def execute(self, events: list[LineTextMessageEvent]) -> None:
         """舊端點：使用預設租戶設定處理 Webhook 事件。"""
@@ -36,8 +48,9 @@ class HandleWebhookUseCase:
                 user_message=event.message_text,
                 kb_ids=[self._default_kb_id],
             )
-            await self._default_line_service.reply_text(
-                event.reply_token, result.answer
+            message_id = str(uuid4())
+            await self._default_line_service.reply_with_quick_reply(
+                event.reply_token, result.answer, message_id
             )
 
     async def execute_for_bot(
@@ -75,4 +88,41 @@ class HandleWebhookUseCase:
                 kb_ids=bot.knowledge_base_ids,
                 system_prompt=bot.system_prompt or None,
             )
-            await line_service.reply_text(event.reply_token, result.answer)
+            message_id = str(uuid4())
+            await line_service.reply_with_quick_reply(
+                event.reply_token, result.answer, message_id
+            )
+
+    async def handle_postback(
+        self, event: LinePostbackEvent, tenant_id: str
+    ) -> None:
+        """處理 LINE Postback 事件（回饋收集）。"""
+        if not self._feedback_repo:
+            return
+
+        parts = event.postback_data.split(":")
+        if len(parts) != 3 or parts[0] != "feedback":
+            return
+
+        _, message_id, rating_str = parts
+        try:
+            rating = Rating(rating_str)
+        except ValueError:
+            return
+
+        existing = await self._feedback_repo.find_by_message_id(message_id)
+        if existing is not None:
+            return
+
+        feedback = Feedback(
+            id=FeedbackId(),
+            tenant_id=tenant_id,
+            conversation_id="",
+            message_id=message_id,
+            user_id=event.user_id,
+            channel=Channel.LINE,
+            rating=rating,
+            comment=None,
+            created_at=datetime.now(timezone.utc),
+        )
+        await self._feedback_repo.save(feedback)

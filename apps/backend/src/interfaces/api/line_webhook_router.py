@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
 from src.container import Container
-from src.domain.line.entity import LineTextMessageEvent
+from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService
 
 router = APIRouter(prefix="/api/v1/webhook", tags=["webhook"])
@@ -27,6 +27,23 @@ def _parse_text_events(body_text: str) -> list[LineTextMessageEvent]:
                     reply_token=event_data["replyToken"],
                     user_id=event_data["source"]["userId"],
                     message_text=event_data["message"]["text"],
+                    timestamp=event_data["timestamp"],
+                )
+            )
+    return events
+
+
+def _parse_postback_events(body_text: str) -> list[LinePostbackEvent]:
+    """從 LINE Webhook body 解析 postback 事件。"""
+    data = json.loads(body_text)
+    events: list[LinePostbackEvent] = []
+    for event_data in data.get("events", []):
+        if event_data.get("type") == "postback":
+            events.append(
+                LinePostbackEvent(
+                    reply_token=event_data["replyToken"],
+                    user_id=event_data["source"]["userId"],
+                    postback_data=event_data["postback"]["data"],
                     timestamp=event_data["timestamp"],
                 )
             )
@@ -53,9 +70,15 @@ async def line_webhook(
         raise HTTPException(status_code=403, detail="Invalid signature")
 
     events = _parse_text_events(body_text)
+    postback_events = _parse_postback_events(body_text)
 
     if events:
         background_tasks.add_task(use_case.execute, events)
+
+    for pb_event in postback_events:
+        background_tasks.add_task(
+            use_case.handle_postback, pb_event, ""
+        )
 
     return {"status": "ok"}
 
@@ -74,10 +97,16 @@ async def line_webhook_multitenant(
     body = await request.body()
     body_text = body.decode("utf-8")
     events = _parse_text_events(body_text)
+    postback_events = _parse_postback_events(body_text)
 
     if events:
         background_tasks.add_task(
             use_case.execute_for_bot, bot_id, body_text, x_line_signature, events
+        )
+
+    for pb_event in postback_events:
+        background_tasks.add_task(
+            use_case.handle_postback, pb_event, ""
         )
 
     return {"status": "ok"}

@@ -17,6 +17,7 @@ from src.infrastructure.db.models import (  # noqa: F401
     ChunkModel,
     ConversationModel,
     DocumentModel,
+    FeedbackModel,
     KnowledgeBaseModel,
     MessageModel,
     ProcessingTaskModel,
@@ -168,11 +169,13 @@ def create_app() -> FastAPI:
         application.include_router(usage_router)
         application.include_router(bot_router)
 
+        from src.interfaces.api.feedback_router import router as feedback_router
         from src.interfaces.api.provider_setting_router import (
             router as provider_setting_router,
         )
 
         application.include_router(provider_setting_router)
+        application.include_router(feedback_router)
 
     # Webhook module: LINE Bot
     if "webhook" in modules:

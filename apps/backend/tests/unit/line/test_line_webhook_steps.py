@@ -72,9 +72,10 @@ def process_webhook(context):
 
 @then('系統應透過 LINE API 回覆 "根據退貨政策，您可以在30天內退貨。"')
 def verify_reply_return_policy(context):
-    context["mock_line_service"].reply_text.assert_called_once_with(
-        "token-abc", "根據退貨政策，您可以在30天內退貨。"
-    )
+    context["mock_line_service"].reply_with_quick_reply.assert_called_once()
+    call_args = context["mock_line_service"].reply_with_quick_reply.call_args[0]
+    assert call_args[0] == "token-abc"
+    assert call_args[1] == "根據退貨政策，您可以在30天內退貨。"
 
 
 # --- Scenario: 驗證 LINE Webhook 簽名 ---
@@ -166,7 +167,7 @@ def agent_not_called(context):
 
 @then("系統不應透過 LINE API 回覆")
 def line_reply_not_called(context):
-    context["mock_line_service"].reply_text.assert_not_called()
+    context["mock_line_service"].reply_with_quick_reply.assert_not_called()
 
 
 # --- Scenario: Agent 回答包含工具調用資訊 ---
@@ -210,6 +211,7 @@ def agent_replies_with_tool_call(context):
 
 @then('系統應透過 LINE API 回覆 "30 天內可辦理退貨。"')
 def verify_reply_rag_answer(context):
-    context["mock_line_service"].reply_text.assert_called_once_with(
-        "token-xyz", "30 天內可辦理退貨。"
-    )
+    context["mock_line_service"].reply_with_quick_reply.assert_called_once()
+    call_args = context["mock_line_service"].reply_with_quick_reply.call_args[0]
+    assert call_args[0] == "token-xyz"
+    assert call_args[1] == "30 天內可辦理退貨。"

@@ -8,6 +8,11 @@ class LineMessagingService(ABC):
     async def reply_text(self, reply_token: str, text: str) -> None: ...
 
     @abstractmethod
+    async def reply_with_quick_reply(
+        self, reply_token: str, text: str, message_id: str
+    ) -> None: ...
+
+    @abstractmethod
     async def verify_signature(self, body: str, signature: str) -> bool: ...
 
 

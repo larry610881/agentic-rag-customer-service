@@ -18,6 +18,7 @@ interface ChatState {
   setConversationId: (id: string) => void;
   setKnowledgeBaseId: (id: string | null) => void;
   setToolHint: (hint: string | null) => void;
+  setMessageFeedback: (messageId: string, rating: "thumbs_up" | "thumbs_down" | undefined) => void;
   selectBot: (id: string, name: string) => void;
   clearBot: () => void;
   clearMessages: () => void;
@@ -97,6 +98,12 @@ export const useChatStore = create<ChatState>((set) => ({
   setConversationId: (id) => set({ conversationId: id }),
   setKnowledgeBaseId: (id) => set({ knowledgeBaseId: id }),
   setToolHint: (hint) => set({ toolHint: hint }),
+  setMessageFeedback: (messageId, rating) =>
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.id === messageId ? { ...m, feedbackRating: rating } : m
+      ),
+    })),
   selectBot: (id, name) =>
     set({ botId: id, botName: name, messages: [], conversationId: null }),
   clearBot: () =>

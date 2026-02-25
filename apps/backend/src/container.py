@@ -9,8 +9,17 @@ from src.application.bot.update_bot_use_case import UpdateBotUseCase
 from src.application.conversation.get_conversation_use_case import (
     GetConversationUseCase,
 )
+from src.application.conversation.get_feedback_stats_use_case import (
+    GetFeedbackStatsUseCase,
+)
 from src.application.conversation.list_conversations_use_case import (
     ListConversationsUseCase,
+)
+from src.application.conversation.list_feedback_use_case import (
+    ListFeedbackUseCase,
+)
+from src.application.conversation.submit_feedback_use_case import (
+    SubmitFeedbackUseCase,
 )
 from src.application.health.health_check_use_case import HealthCheckUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
@@ -83,17 +92,20 @@ from src.infrastructure.db.repositories.conversation_repository import (
 from src.infrastructure.db.repositories.document_repository import (
     SQLAlchemyDocumentRepository,
 )
+from src.infrastructure.db.repositories.feedback_repository import (
+    SQLAlchemyFeedbackRepository,
+)
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
 )
 from src.infrastructure.db.repositories.processing_task_repository import (
     SQLAlchemyProcessingTaskRepository,
 )
-from src.infrastructure.db.repositories.tenant_repository import (
-    SQLAlchemyTenantRepository,
-)
 from src.infrastructure.db.repositories.provider_setting_repository import (
     SQLAlchemyProviderSettingRepository,
+)
+from src.infrastructure.db.repositories.tenant_repository import (
+    SQLAlchemyTenantRepository,
 )
 from src.infrastructure.db.repositories.usage_repository import (
     SQLAlchemyUsageRepository,
@@ -153,6 +165,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.rag_router",
             "src.interfaces.api.agent_router",
             "src.interfaces.api.conversation_router",
+            "src.interfaces.api.feedback_router",
             "src.interfaces.api.line_webhook_router",
             "src.interfaces.api.usage_router",
             "src.interfaces.api.bot_router",
@@ -208,6 +221,11 @@ class Container(containers.DeclarativeContainer):
 
     conversation_repository = providers.Factory(
         SQLAlchemyConversationRepository,
+        session=db_session,
+    )
+
+    feedback_repository = providers.Factory(
+        SQLAlchemyFeedbackRepository,
         session=db_session,
     )
 
@@ -526,6 +544,22 @@ class Container(containers.DeclarativeContainer):
         conversation_repository=conversation_repository,
     )
 
+    submit_feedback_use_case = providers.Factory(
+        SubmitFeedbackUseCase,
+        feedback_repository=feedback_repository,
+        conversation_repository=conversation_repository,
+    )
+
+    get_feedback_stats_use_case = providers.Factory(
+        GetFeedbackStatsUseCase,
+        feedback_repository=feedback_repository,
+    )
+
+    list_feedback_use_case = providers.Factory(
+        ListFeedbackUseCase,
+        feedback_repository=feedback_repository,
+    )
+
     record_usage_use_case = providers.Factory(
         RecordUsageUseCase,
         usage_repository=usage_repository,
@@ -709,4 +743,5 @@ class Container(containers.DeclarativeContainer):
         default_kb_id=providers.Callable(
             lambda cfg: cfg.line_default_kb_id, config
         ),
+        feedback_repository=feedback_repository,
     )

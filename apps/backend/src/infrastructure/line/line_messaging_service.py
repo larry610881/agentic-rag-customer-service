@@ -28,6 +28,52 @@ class HttpxLineMessagingService(LineMessagingService):
                 },
             )
 
+    async def reply_with_quick_reply(
+        self, reply_token: str, text: str, message_id: str
+    ) -> None:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                "https://api.line.me/v2/bot/message/reply",
+                headers={
+                    "Authorization": f"Bearer {self._channel_access_token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "replyToken": reply_token,
+                    "messages": [
+                        {
+                            "type": "text",
+                            "text": text,
+                            "quickReply": {
+                                "items": [
+                                    {
+                                        "type": "action",
+                                        "action": {
+                                            "type": "postback",
+                                            "label": "\U0001f44d \u6709\u5e6b\u52a9",
+                                            "data": f"feedback:{message_id}:thumbs_up",
+                                            "displayText": "\U0001f44d",
+                                        },
+                                    },
+                                    {
+                                        "type": "action",
+                                        "action": {
+                                            "type": "postback",
+                                            "label": "\U0001f44e \u6c92\u5e6b\u52a9",
+                                            "data": (
+                                                f"feedback:{message_id}"
+                                                ":thumbs_down"
+                                            ),
+                                            "displayText": "\U0001f44e",
+                                        },
+                                    },
+                                ]
+                            },
+                        }
+                    ],
+                },
+            )
+
     async def verify_signature(self, body: str, signature: str) -> bool:
         hash_value = hmac.new(
             self._channel_secret.encode("utf-8"),

@@ -24,6 +24,11 @@ export const queryKeys = {
       ["conversations", tenantId, botId ?? "all"] as const,
     detail: (id: string) => ["conversations", "detail", id] as const,
   },
+  feedback: {
+    stats: (tenantId: string) => ["feedback", "stats", tenantId] as const,
+    byConversation: (conversationId: string) =>
+      ["feedback", "conversation", conversationId] as const,
+  },
   providerSettings: {
     all: ["provider-settings"] as const,
     byType: (type: string) =>

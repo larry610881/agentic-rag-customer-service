@@ -56,6 +56,7 @@ def setup_agent_fake_mode(context):
     context["mock_line_service"] = AsyncMock(spec=LineMessagingService)
     context["mock_line_service"].verify_signature = AsyncMock()
     context["mock_line_service"].reply_text = AsyncMock()
+    context["mock_line_service"].reply_with_quick_reply = AsyncMock()
 
 
 # ---------- Given: text messages ----------
@@ -253,22 +254,22 @@ def verify_agent_called_refund(context):
 
 @then('LINE 應回覆包含 "保固" 的答案')
 def verify_line_reply_warranty(context):
-    context["mock_line_service"].reply_text.assert_called_once()
-    reply_text = context["mock_line_service"].reply_text.call_args[0][1]
+    context["mock_line_service"].reply_with_quick_reply.assert_called_once()
+    reply_text = context["mock_line_service"].reply_with_quick_reply.call_args[0][1]
     assert "保固" in reply_text
 
 
 @then('LINE 應回覆包含 "訂單" 的答案')
 def verify_line_reply_order(context):
-    context["mock_line_service"].reply_text.assert_called_once()
-    reply_text = context["mock_line_service"].reply_text.call_args[0][1]
+    context["mock_line_service"].reply_with_quick_reply.assert_called_once()
+    reply_text = context["mock_line_service"].reply_with_quick_reply.call_args[0][1]
     assert "訂單" in reply_text
 
 
 @then('LINE 應回覆包含 "退貨" 的答案')
 def verify_line_reply_refund(context):
-    context["mock_line_service"].reply_text.assert_called_once()
-    reply_text = context["mock_line_service"].reply_text.call_args[0][1]
+    context["mock_line_service"].reply_with_quick_reply.assert_called_once()
+    reply_text = context["mock_line_service"].reply_with_quick_reply.call_args[0][1]
     assert "退貨" in reply_text
 
 
@@ -279,4 +280,4 @@ def verify_agent_not_called(context):
 
 @then("LINE 不應回覆任何訊息")
 def verify_line_no_reply(context):
-    context["mock_line_service"].reply_text.assert_not_called()
+    context["mock_line_service"].reply_with_quick_reply.assert_not_called()

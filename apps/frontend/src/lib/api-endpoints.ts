@@ -39,6 +39,13 @@ export const API_ENDPOINTS = {
       botId ? `/api/v1/conversations?bot_id=${botId}` : "/api/v1/conversations",
     detail: (id: string) => `/api/v1/conversations/${id}`,
   },
+  feedback: {
+    submit: "/api/v1/feedback",
+    list: "/api/v1/feedback",
+    stats: "/api/v1/feedback/stats",
+    byConversation: (conversationId: string) =>
+      `/api/v1/feedback/conversation/${conversationId}`,
+  },
   providerSettings: {
     list: "/api/v1/settings/providers",
     create: "/api/v1/settings/providers",

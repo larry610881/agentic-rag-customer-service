@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/use-chat-store";
 import type { ChatMessage } from "@/types/chat";
 import { ToolHintIndicator } from "@/features/chat/components/tool-hint-indicator";
+import { FeedbackButtons } from "@/features/chat/components/feedback-buttons";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -15,8 +16,10 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const toolHint = useChatStore((s) => s.toolHint);
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const conversationId = useChatStore((s) => s.conversationId);
 
   const showHint = !isUser && isLast && isStreaming && !!toolHint && !message.content;
+  const showFeedback = !isUser && message.content && !(isLast && isStreaming);
 
   return (
     <div
@@ -37,6 +40,13 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
             <p className="whitespace-pre-wrap text-sm">{message.content}</p>
           )}
         </AnimatePresence>
+        {showFeedback && conversationId && (
+          <FeedbackButtons
+            messageId={message.id}
+            conversationId={conversationId}
+            feedbackRating={message.feedbackRating}
+          />
+        )}
       </div>
     </div>
   );

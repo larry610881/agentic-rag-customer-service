@@ -9,3 +9,11 @@ class LineTextMessageEvent:
     user_id: str
     message_text: str
     timestamp: int
+
+
+@dataclass
+class LinePostbackEvent:
+    reply_token: str
+    user_id: str
+    postback_data: str
+    timestamp: int

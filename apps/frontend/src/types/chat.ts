@@ -32,4 +32,5 @@ export interface ChatMessage {
   sources?: Source[];
   tool_calls?: ToolCallInfo[];
   timestamp: string;
+  feedbackRating?: "thumbs_up" | "thumbs_down";
 }

@@ -8,6 +8,7 @@ import { ragHandlers } from "./handlers/rag";
 import { agentHandlers } from "./handlers/agent";
 import { botHandlers } from "./handlers/bots";
 import { conversationHandlers } from "./handlers/conversations";
+import { feedbackHandlers } from "./handlers/feedback";
 import { providerSettingHandlers } from "./handlers/provider-settings";
 
 export const handlers = [
@@ -27,5 +28,6 @@ export const handlers = [
   ...agentHandlers,
   ...botHandlers,
   ...conversationHandlers,
+  ...feedbackHandlers,
   ...providerSettingHandlers,
 ];

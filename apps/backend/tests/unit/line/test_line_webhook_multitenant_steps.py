@@ -119,9 +119,10 @@ def verify_agent_tenant(context, tenant_id):
 
 @then(parsers.parse('系統應透過 Bot 的 LINE 服務回覆 "{answer}"'))
 def verify_bot_line_reply(context, answer):
-    context["mock_line_service"].reply_text.assert_called_once_with(
-        "token-mt-001", answer
-    )
+    context["mock_line_service"].reply_with_quick_reply.assert_called_once()
+    call_args = context["mock_line_service"].reply_with_quick_reply.call_args[0]
+    assert call_args[0] == "token-mt-001"
+    assert call_args[1] == answer
 
 
 # --- Scenario: Bot 未設定 LINE Channel 時拒絕處理 ---

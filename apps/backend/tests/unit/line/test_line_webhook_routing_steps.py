@@ -127,6 +127,7 @@ def verify_execute_called_with_defaults(context):
     call_kwargs = context["mock_agent"].process_message.call_args
     assert call_kwargs.kwargs["tenant_id"] == "tenant-default"
     assert call_kwargs.kwargs["kb_ids"] == ["kb-default"]
-    context["mock_line_service"].reply_text.assert_called_once_with(
-        "tk-legacy", "default reply"
-    )
+    context["mock_line_service"].reply_with_quick_reply.assert_called_once()
+    call_args = context["mock_line_service"].reply_with_quick_reply.call_args[0]
+    assert call_args[0] == "tk-legacy"
+    assert call_args[1] == "default reply"
