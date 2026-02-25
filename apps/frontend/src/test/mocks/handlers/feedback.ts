@@ -3,6 +3,10 @@ import {
   mockFeedback,
   mockFeedbackList,
   mockFeedbackStats,
+  mockSatisfactionTrend,
+  mockTopIssues,
+  mockRetrievalQuality,
+  mockTokenCostStats,
 } from "@/test/fixtures/feedback";
 
 const API_BASE = "http://localhost:8000";
@@ -31,5 +35,20 @@ export const feedbackHandlers = [
   }),
   http.get(`${API_BASE}/api/v1/feedback/conversation/:conversationId`, () => {
     return HttpResponse.json(mockFeedbackList);
+  }),
+  http.patch(`${API_BASE}/api/v1/feedback/:feedbackId/tags`, () => {
+    return HttpResponse.json({ status: "ok" });
+  }),
+  http.get(`${API_BASE}/api/v1/feedback/analysis/satisfaction-trend`, () => {
+    return HttpResponse.json(mockSatisfactionTrend);
+  }),
+  http.get(`${API_BASE}/api/v1/feedback/analysis/top-issues`, () => {
+    return HttpResponse.json(mockTopIssues);
+  }),
+  http.get(`${API_BASE}/api/v1/feedback/analysis/retrieval-quality`, () => {
+    return HttpResponse.json(mockRetrievalQuality);
+  }),
+  http.get(`${API_BASE}/api/v1/feedback/analysis/token-cost`, () => {
+    return HttpResponse.json(mockTokenCostStats);
   }),
 ];

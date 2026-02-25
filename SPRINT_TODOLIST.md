@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (E2 Feedback System 完成, 164 backend + 101 frontend tests green)
+> 最後更新：2026-02-26 (E2 完整版完成, 182 backend + 117 frontend tests green)
 
 ---
 
@@ -802,10 +802,59 @@
 - ✅ Container：`feedback_repository` 注入 handle_webhook_use_case
 - ✅ BDD：3 scenarios（line_feedback.feature）
 
-### E2 驗證
+### E2 MVP 驗證
 - ✅ 全量測試：Backend 164 passed + Frontend 101 passed
 - ✅ Lint：ruff clean
 - ✅ Git commit + push + Issue #3 closed
+
+### E2.5 Message Metadata Capture
+- ✅ Domain：`Message` 新增 `latency_ms` + `retrieved_chunks` 欄位
+- ✅ Domain：`UsageRecord` 新增 `message_id` 欄位
+- ✅ Infrastructure：ORM Model 新增欄位 + index
+- ✅ Application：`SendMessageUseCase` 計時 + 捕獲 sources（execute + execute_stream）
+- ✅ BDD：3 scenarios（message_metadata.feature）
+
+### E2.6 Enhanced LINE Feedback（追問原因）
+- ✅ Domain：`LineMessagingService.reply_with_reason_options()` ABC
+- ✅ Domain：`FeedbackRepository.update_tags()` ABC
+- ✅ Infrastructure：Quick Reply 4 按鈕（feedback_reason postback）+ update_tags impl
+- ✅ Application：`handle_postback()` 擴充（thumbs_down → 追問原因 → update_tags）
+- ✅ BDD：3 scenarios（line_feedback_reason.feature）
+
+### E2.7 Analysis APIs（4 端點）
+- ✅ Domain：`DailyFeedbackStat` / `TagCount` / `RetrievalQualityRecord` VOs
+- ✅ Domain：`ModelCostStat` VO + `UsageRepository.get_model_cost_stats()`
+- ✅ Application：4 Use Cases（trend / top-issues / retrieval-quality / token-cost）
+- ✅ Infrastructure：Repo 實作（GROUP BY, JSON unnest, JOIN messages）
+- ✅ Interfaces：4 analysis endpoints + PATCH tags
+- ✅ Container：4 use cases 註冊
+- ✅ BDD：5 scenarios（feedback_analysis.feature）
+
+### E2.8 Admin Feedback Dashboard（Frontend）
+- ✅ 依賴：recharts 安裝 + shadcn/ui table 元件
+- ✅ Types：DailyFeedbackStat / TagCount / RetrievalQualityRecord / ModelCostStat
+- ✅ API Endpoints：4 analysis + updateTags
+- ✅ Query Keys：trend / topIssues / retrievalQuality / tokenCost / list
+- ✅ Hooks：6 query hooks + 1 mutation（useSatisfactionTrend / useTopIssues / useRetrievalQuality / useTokenCostStats / useFeedbackList / useFeedbackByConversation / useUpdateFeedbackTags）
+- ✅ 元件 ×7：FeedbackStatsSummary / SatisfactionTrendChart / TopIssuesChart / TokenCostTable / FeedbackBrowserTable / ConversationReplay / TagEditor
+- ✅ 頁面 ×3：/feedback（總覽）/ /feedback/browser（差評瀏覽器）/ /feedback/[conversationId]（對話回放）
+- ✅ Sidebar：新增「回饋分析」nav（BarChart3 icon）
+- ✅ MSW Handlers：+5 analysis + PATCH handlers
+- ✅ Test Fixtures：+5 analysis mock data
+- ✅ 元件測試 ×4（16 tests）：satisfaction-trend-chart / top-issues-chart / feedback-browser-table / tag-editor
+
+### E2.9 Enterprise Data Management
+- ✅ Domain：`pii_masking.py`（mask_user_id + mask_pii_in_text）
+- ✅ Application：`ExportFeedbackUseCase`（CSV/JSON + PII 遮蔽）
+- ✅ Application：`DataRetentionUseCase`（刪除過期回饋）
+- ✅ Config：`data_retention_months` + `data_retention_enabled`
+- ✅ Interfaces：GET /export + DELETE /retention
+- ✅ BDD：7 scenarios（4 export + 3 retention）
+
+### E2 完整版驗證
+- ✅ 全量測試：Backend 182 passed + Frontend 117 passed
+- ✅ 新增：Backend +18 scenarios（E2.5 ×3 + E2.6 ×3 + E2.7 ×5 + E2.9 ×7）
+- ✅ 新增：Frontend +16 tests（E2.8 ×4 test files）
 
 ---
 
@@ -890,4 +939,5 @@
 | **E0 Tool 清理 + Multi-Deploy** | **✅ 完成** | **100%** | **22 files 刪除, 20+ files 編輯, 126 backend + 87 frontend tests** |
 | **E1 System Provider Settings** | **✅ 完成** | **100%** | **46 files, 2667 insertions, 139 backend + 8 new FE tests** |
 | **E1.5 LINE Webhook 多租戶** | **✅ 完成** | **100%** | **11 files, 577 insertions, 146 backend + 95 frontend tests** |
-| **E2 Feedback System** | **✅ 完成** | **100%** | **39 files, 1604 insertions, 164 backend + 101 frontend tests** |
+| **E2 Feedback System (MVP)** | **✅ 完成** | **100%** | **39 files, 1604 insertions, 164 backend + 101 frontend tests** |
+| **E2 Feedback System (完整版)** | **✅ 完成** | **100%** | **E2.5-E2.9, 182 backend + 117 frontend tests** |

@@ -12,6 +12,18 @@ from src.application.conversation.get_conversation_use_case import (
 from src.application.conversation.get_feedback_stats_use_case import (
     GetFeedbackStatsUseCase,
 )
+from src.application.conversation.get_retrieval_quality_use_case import (
+    GetRetrievalQualityUseCase,
+)
+from src.application.conversation.get_satisfaction_trend_use_case import (
+    GetSatisfactionTrendUseCase,
+)
+from src.application.conversation.get_token_cost_stats_use_case import (
+    GetTokenCostStatsUseCase,
+)
+from src.application.conversation.get_top_issues_use_case import (
+    GetTopIssuesUseCase,
+)
 from src.application.conversation.list_conversations_use_case import (
     ListConversationsUseCase,
 )
@@ -558,6 +570,26 @@ class Container(containers.DeclarativeContainer):
     list_feedback_use_case = providers.Factory(
         ListFeedbackUseCase,
         feedback_repository=feedback_repository,
+    )
+
+    get_satisfaction_trend_use_case = providers.Factory(
+        GetSatisfactionTrendUseCase,
+        feedback_repository=feedback_repository,
+    )
+
+    get_top_issues_use_case = providers.Factory(
+        GetTopIssuesUseCase,
+        feedback_repository=feedback_repository,
+    )
+
+    get_retrieval_quality_use_case = providers.Factory(
+        GetRetrievalQualityUseCase,
+        feedback_repository=feedback_repository,
+    )
+
+    get_token_cost_stats_use_case = providers.Factory(
+        GetTokenCostStatsUseCase,
+        usage_repository=usage_repository,
     )
 
     record_usage_use_case = providers.Factory(

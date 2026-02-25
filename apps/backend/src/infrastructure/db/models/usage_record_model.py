@@ -33,6 +33,9 @@ class UsageRecordModel(Base):
     estimated_cost: Mapped[float] = mapped_column(
         Float, nullable=False, default=0.0
     )
+    message_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,
@@ -41,4 +44,5 @@ class UsageRecordModel(Base):
 
     __table_args__ = (
         Index("ix_token_usage_records_tenant_created", "tenant_id", "created_at"),
+        Index("ix_token_usage_records_message_id", "message_id"),
     )

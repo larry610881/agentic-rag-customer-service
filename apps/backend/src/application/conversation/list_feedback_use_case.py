@@ -22,3 +22,9 @@ class ListFeedbackUseCase:
             conversation_id
         )
         return [f for f in feedbacks if f.tenant_id == tenant_id]
+
+    async def update_tags(
+        self, feedback_id: str, tags: list[str]
+    ) -> None:
+        # feedback_id is actually used as message_id lookup
+        await self._feedback_repo.update_tags(feedback_id, tags)

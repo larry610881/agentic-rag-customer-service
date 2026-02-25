@@ -28,6 +28,15 @@ export const queryKeys = {
     stats: (tenantId: string) => ["feedback", "stats", tenantId] as const,
     byConversation: (conversationId: string) =>
       ["feedback", "conversation", conversationId] as const,
+    list: (tenantId: string) => ["feedback", "list", tenantId] as const,
+    trend: (tenantId: string, days: number) =>
+      ["feedback", "trend", tenantId, days] as const,
+    topIssues: (tenantId: string, days: number) =>
+      ["feedback", "topIssues", tenantId, days] as const,
+    retrievalQuality: (tenantId: string, days: number) =>
+      ["feedback", "retrievalQuality", tenantId, days] as const,
+    tokenCost: (tenantId: string, days: number) =>
+      ["feedback", "tokenCost", tenantId, days] as const,
   },
   providerSettings: {
     all: ["provider-settings"] as const,

@@ -6,6 +6,7 @@ import {
   MessageSquare,
   Bot,
   BookOpen,
+  BarChart3,
   Settings,
   ChevronsLeft,
   ChevronsRight,
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/chat", label: "對話", icon: MessageSquare },
   { href: "/bots", label: "機器人", icon: Bot },
   { href: "/knowledge", label: "知識庫", icon: BookOpen },
+  { href: "/feedback", label: "回饋分析", icon: BarChart3 },
   { href: "/settings", label: "設定", icon: Settings },
 ];
 

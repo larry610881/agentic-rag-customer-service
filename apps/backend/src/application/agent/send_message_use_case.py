@@ -1,5 +1,6 @@
 """發送訊息用例 — 委託 AgentService 處理，支援對話記憶"""
 
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
@@ -94,6 +95,7 @@ class SendMessageUseCase:
         elif history and history_limit is not None:
             history = history[-history_limit:]
 
+        t0 = time.perf_counter()
         response = await self._agent_service.process_message(
             tenant_id=command.tenant_id,
             kb_id=kb_id,
@@ -108,6 +110,13 @@ class SendMessageUseCase:
             enabled_tools=enabled_tools,
             rag_top_k=rag_top_k,
             rag_score_threshold=rag_score_threshold,
+        )
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+
+        retrieved_chunks = (
+            [s.to_dict() for s in response.sources]
+            if response.sources
+            else None
         )
 
         tool_calls_to_save = response.tool_calls[:]
@@ -124,6 +133,8 @@ class SendMessageUseCase:
             "assistant",
             response.answer,
             tool_calls=tool_calls_to_save,
+            latency_ms=latency_ms,
+            retrieved_chunks=retrieved_chunks,
         )
         await self._conversation_repo.save(conversation)
 
@@ -189,7 +200,9 @@ class SendMessageUseCase:
         # Stream from agent service
         full_answer = ""
         tool_calls: list[dict[str, Any]] = []
+        sources_list: list[dict[str, Any]] = []
 
+        t0 = time.perf_counter()
         async for event in self._agent_service.process_message_stream(
             tenant_id=command.tenant_id,
             kb_id=kb_id,
@@ -209,12 +222,21 @@ class SendMessageUseCase:
                 full_answer += event["content"]
             elif event["type"] == "tool_calls":
                 tool_calls = event.get("tool_calls", [])
+            elif event["type"] == "sources":
+                sources_list = event.get("sources", [])
             yield event
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+
+        retrieved_chunks = sources_list if sources_list else None
 
         # Save conversation after streaming completes
         conversation.add_message("user", command.message)
         conversation.add_message(
-            "assistant", full_answer, tool_calls=tool_calls
+            "assistant",
+            full_answer,
+            tool_calls=tool_calls,
+            latency_ms=latency_ms,
+            retrieved_chunks=retrieved_chunks,
         )
         await self._conversation_repo.save(conversation)
 

@@ -94,13 +94,28 @@ class HandleWebhookUseCase:
             )
 
     async def handle_postback(
-        self, event: LinePostbackEvent, tenant_id: str
+        self,
+        event: LinePostbackEvent,
+        tenant_id: str,
+        line_service: LineMessagingService | None = None,
     ) -> None:
-        """處理 LINE Postback 事件（回饋收集）。"""
+        """處理 LINE Postback 事件（回饋收集 + 追問原因）。"""
         if not self._feedback_repo:
             return
 
         parts = event.postback_data.split(":")
+
+        # feedback_reason:{msg_id}:{tag} — 追問原因回覆
+        if len(parts) == 3 and parts[0] == "feedback_reason":
+            _, message_id, tag = parts
+            await self._feedback_repo.update_tags(message_id, [tag])
+            if line_service:
+                await line_service.reply_text(
+                    event.reply_token, "感謝您的回饋，我們會持續改進！"
+                )
+            return
+
+        # feedback:{msg_id}:{rating} — 讚/倒讚
         if len(parts) != 3 or parts[0] != "feedback":
             return
 
@@ -126,3 +141,13 @@ class HandleWebhookUseCase:
             created_at=datetime.now(timezone.utc),
         )
         await self._feedback_repo.save(feedback)
+
+        # thumbs_down → 追問原因
+        if rating == Rating.THUMBS_DOWN and line_service:
+            await line_service.reply_with_reason_options(
+                event.reply_token, message_id
+            )
+        elif rating == Rating.THUMBS_UP and line_service:
+            await line_service.reply_text(
+                event.reply_token, "感謝您的回饋！"
+            )

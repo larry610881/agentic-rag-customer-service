@@ -14,6 +14,8 @@ class Message:
     role: str  # "user" | "assistant" | "system"
     content: str
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    latency_ms: int | None = None
+    retrieved_chunks: list[dict[str, Any]] | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -34,6 +36,8 @@ class Conversation:
         role: str,
         content: str,
         tool_calls: list[dict[str, Any]] | None = None,
+        latency_ms: int | None = None,
+        retrieved_chunks: list[dict[str, Any]] | None = None,
     ) -> Message:
         message = Message(
             id=MessageId(),
@@ -41,6 +45,8 @@ class Conversation:
             role=role,
             content=content,
             tool_calls=tool_calls or [],
+            latency_ms=latency_ms,
+            retrieved_chunks=retrieved_chunks,
         )
         self.messages.append(message)
         return message

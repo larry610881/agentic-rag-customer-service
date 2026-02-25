@@ -40,6 +40,12 @@ class SQLAlchemyConversationRepository(ConversationRepository):
                     tool_calls_json=json.dumps(
                         msg.tool_calls, ensure_ascii=False
                     ),
+                    latency_ms=msg.latency_ms,
+                    retrieved_chunks=(
+                        json.dumps(msg.retrieved_chunks, ensure_ascii=False)
+                        if msg.retrieved_chunks is not None
+                        else None
+                    ),
                     created_at=msg.created_at,
                 )
                 self._session.add(msg_model)
@@ -68,6 +74,12 @@ class SQLAlchemyConversationRepository(ConversationRepository):
                 role=r.role,
                 content=r.content,
                 tool_calls=json.loads(r.tool_calls_json),
+                latency_ms=r.latency_ms,
+                retrieved_chunks=(
+                    json.loads(r.retrieved_chunks)
+                    if r.retrieved_chunks is not None
+                    else None
+                ),
                 created_at=r.created_at,
             )
             for r in msg_rows

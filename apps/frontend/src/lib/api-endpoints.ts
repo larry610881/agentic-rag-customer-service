@@ -45,6 +45,12 @@ export const API_ENDPOINTS = {
     stats: "/api/v1/feedback/stats",
     byConversation: (conversationId: string) =>
       `/api/v1/feedback/conversation/${conversationId}`,
+    updateTags: (feedbackId: string) =>
+      `/api/v1/feedback/${feedbackId}/tags`,
+    satisfactionTrend: "/api/v1/feedback/analysis/satisfaction-trend",
+    topIssues: "/api/v1/feedback/analysis/top-issues",
+    retrievalQuality: "/api/v1/feedback/analysis/retrieval-quality",
+    tokenCost: "/api/v1/feedback/analysis/token-cost",
   },
   providerSettings: {
     list: "/api/v1/settings/providers",

@@ -1,13 +1,13 @@
 """SQLAlchemy Usage Repository 實作"""
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.usage.entity import UsageRecord
 from src.domain.usage.repository import UsageRepository
-from src.domain.usage.value_objects import UsageSummary
+from src.domain.usage.value_objects import ModelCostStat, UsageSummary
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
 
 
@@ -25,6 +25,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
             output_tokens=record.output_tokens,
             total_tokens=record.total_tokens,
             estimated_cost=record.estimated_cost,
+            message_id=record.message_id,
             created_at=record.created_at,
         )
         self._session.add(model)
@@ -58,6 +59,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 output_tokens=r.output_tokens,
                 total_tokens=r.total_tokens,
                 estimated_cost=r.estimated_cost,
+                message_id=r.message_id,
                 created_at=r.created_at,
             )
             for r in rows
@@ -93,3 +95,36 @@ class SQLAlchemyUsageRepository(UsageRepository):
             by_model=by_model,
             by_request_type=by_request_type,
         )
+
+    async def get_model_cost_stats(
+        self, tenant_id: str, days: int = 30
+    ) -> list[ModelCostStat]:
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        records = await self.find_by_tenant(tenant_id, start_date=since)
+
+        model_data: dict[str, dict] = {}
+        for r in records:
+            if r.model not in model_data:
+                model_data[r.model] = {
+                    "count": 0,
+                    "input": 0,
+                    "output": 0,
+                    "cost": 0.0,
+                }
+            d = model_data[r.model]
+            d["count"] += 1
+            d["input"] += r.input_tokens
+            d["output"] += r.output_tokens
+            d["cost"] += r.estimated_cost
+
+        return [
+            ModelCostStat(
+                model=model,
+                message_count=d["count"],
+                input_tokens=d["input"],
+                output_tokens=d["output"],
+                avg_latency_ms=0.0,  # latency is on messages, not usage records
+                estimated_cost=round(d["cost"], 4),
+            )
+            for model, d in model_data.items()
+        ]

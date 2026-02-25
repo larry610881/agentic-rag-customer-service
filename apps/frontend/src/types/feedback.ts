@@ -31,3 +31,34 @@ export interface FeedbackStats {
   thumbs_down: number;
   satisfaction_rate: number;
 }
+
+export interface DailyFeedbackStat {
+  date: string;
+  total: number;
+  positive: number;
+  negative: number;
+  satisfaction_pct: number;
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
+export interface RetrievalQualityRecord {
+  user_question: string;
+  assistant_answer: string;
+  retrieved_chunks: Record<string, unknown>[];
+  rating: string;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface ModelCostStat {
+  model: string;
+  message_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  avg_latency_ms: number;
+  estimated_cost: number;
+}

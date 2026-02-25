@@ -13,6 +13,11 @@ class LineMessagingService(ABC):
     ) -> None: ...
 
     @abstractmethod
+    async def reply_with_reason_options(
+        self, reply_token: str, message_id: str
+    ) -> None: ...
+
+    @abstractmethod
     async def verify_signature(self, body: str, signature: str) -> bool: ...
 
 

@@ -74,6 +74,47 @@ class HttpxLineMessagingService(LineMessagingService):
                 },
             )
 
+    async def reply_with_reason_options(
+        self, reply_token: str, message_id: str
+    ) -> None:
+        buttons = [
+            {"tag": "incorrect", "label": "答案不正確"},
+            {"tag": "incomplete", "label": "答案不完整"},
+            {"tag": "irrelevant", "label": "沒回答我的問題"},
+            {"tag": "tone", "label": "語氣/格式不好"},
+        ]
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                "https://api.line.me/v2/bot/message/reply",
+                headers={
+                    "Authorization": f"Bearer {self._channel_access_token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "replyToken": reply_token,
+                    "messages": [
+                        {
+                            "type": "text",
+                            "text": "請問哪裡需要改進？",
+                            "quickReply": {
+                                "items": [
+                                    {
+                                        "type": "action",
+                                        "action": {
+                                            "type": "postback",
+                                            "label": btn["label"],
+                                            "data": f"feedback_reason:{message_id}:{btn['tag']}",
+                                            "displayText": btn["label"],
+                                        },
+                                    }
+                                    for btn in buttons
+                                ]
+                            },
+                        }
+                    ],
+                },
+            )
+
     async def verify_signature(self, body: str, signature: str) -> bool:
         hash_value = hmac.new(
             self._channel_secret.encode("utf-8"),

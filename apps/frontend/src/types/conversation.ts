@@ -10,6 +10,8 @@ export interface MessageDetail {
   role: string;
   content: string;
   created_at: string;
+  latency_ms?: number | null;
+  retrieved_chunks?: Record<string, unknown>[] | null;
 }
 
 export interface ConversationDetail {
