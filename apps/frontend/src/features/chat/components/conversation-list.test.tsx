@@ -71,6 +71,23 @@ describe("ConversationList", () => {
     expect(useChatStore.getState().messages).toHaveLength(0);
   });
 
+  it("should filter conversations by bot_id", async () => {
+    useChatStore.setState({
+      messages: [],
+      isStreaming: false,
+      conversationId: null,
+      knowledgeBaseId: "kb-1",
+      botId: "bot-2",
+      botName: "Bot 2",
+    });
+    renderWithProviders(<ConversationList />);
+    await waitFor(() => {
+      expect(screen.getByText("conv-ghi...")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("conv-abc...")).not.toBeInTheDocument();
+    expect(screen.queryByText("conv-def...")).not.toBeInTheDocument();
+  });
+
   it("should show empty state when no conversations", async () => {
     useAuthStore.setState({ token: null, tenantId: null });
     renderWithProviders(<ConversationList />);

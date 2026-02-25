@@ -7,18 +7,27 @@ export const mockConversations: ConversationSummary[] = [
   {
     id: "conv-abc12345-1111",
     tenant_id: "tenant-1",
+    bot_id: "bot-1",
     created_at: "2024-03-01T10:00:00Z",
   },
   {
     id: "conv-def67890-2222",
     tenant_id: "tenant-1",
+    bot_id: "bot-1",
     created_at: "2024-03-02T14:30:00Z",
+  },
+  {
+    id: "conv-ghi11111-3333",
+    tenant_id: "tenant-1",
+    bot_id: "bot-2",
+    created_at: "2024-03-03T09:00:00Z",
   },
 ];
 
 export const mockConversationDetail: ConversationDetail = {
   id: "conv-abc12345-1111",
   tenant_id: "tenant-1",
+  bot_id: "bot-1",
   messages: [
     {
       id: "msg-1",

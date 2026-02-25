@@ -8,6 +8,7 @@ from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.bot.repository import BotRepository
 from src.domain.conversation.entity import Conversation, Message
+from src.domain.shared.exceptions import DomainException
 from src.domain.conversation.history_strategy import (
     ConversationHistoryStrategy,
     HistoryStrategyConfig,
@@ -58,6 +59,10 @@ class SendMessageUseCase:
         if command.bot_id and self._bot_repo:
             bot = await self._bot_repo.find_by_id(command.bot_id)
             if bot is not None:
+                if bot.tenant_id != command.tenant_id:
+                    raise DomainException(
+                        f"Bot '{command.bot_id}' does not belong to tenant '{command.tenant_id}'"
+                    )
                 kb_ids = bot.knowledge_base_ids or None
                 if not kb_id and kb_ids:
                     kb_id = kb_ids[0]
@@ -146,6 +151,10 @@ class SendMessageUseCase:
         if command.bot_id and self._bot_repo:
             bot = await self._bot_repo.find_by_id(command.bot_id)
             if bot is not None:
+                if bot.tenant_id != command.tenant_id:
+                    raise DomainException(
+                        f"Bot '{command.bot_id}' does not belong to tenant '{command.tenant_id}'"
+                    )
                 kb_ids = bot.knowledge_base_ids or None
                 if not kb_id and kb_ids:
                     kb_id = kb_ids[0]
@@ -225,7 +234,7 @@ class SendMessageUseCase:
             if existing is not None:
                 return existing
 
-        return Conversation(tenant_id=command.tenant_id)
+        return Conversation(tenant_id=command.tenant_id, bot_id=command.bot_id)
 
     @staticmethod
     def _extract_metadata(conversation: Conversation) -> dict[str, Any]:

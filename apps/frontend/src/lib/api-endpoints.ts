@@ -35,7 +35,8 @@ export const API_ENDPOINTS = {
     delete: (id: string) => `/api/v1/bots/${id}`,
   },
   conversations: {
-    list: "/api/v1/conversations",
+    list: (botId?: string | null) =>
+      botId ? `/api/v1/conversations?bot_id=${botId}` : "/api/v1/conversations",
     detail: (id: string) => `/api/v1/conversations/${id}`,
   },
 } as const;

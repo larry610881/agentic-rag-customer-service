@@ -20,7 +20,8 @@ export const queryKeys = {
     detail: (botId: string) => ["bots", "detail", botId] as const,
   },
   conversations: {
-    all: (tenantId: string) => ["conversations", tenantId] as const,
+    all: (tenantId: string, botId?: string | null) =>
+      ["conversations", tenantId, botId ?? "all"] as const,
     detail: (id: string) => ["conversations", "detail", id] as const,
   },
 };

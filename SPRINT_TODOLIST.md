@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (多檔上傳 Bug 修復 + 狀態 Icon 優化, 132 backend + 86 frontend tests green)
+> 最後更新：2026-02-25 (對話 bot_id 隔離 + 歸屬驗證 + 清除未綁定對話, 137 backend + 87 frontend tests green)
 
 ---
 
@@ -589,6 +589,22 @@
 - ✅ Frontend regression tests：5 new tests（document-list 4 status icons + upload-dropzone 2 per-file errors）
 - ✅ 全量測試：132 backend + 86 frontend passed
 
+### 7.20 對話紀錄 bot_id 隔離
+- ✅ Domain: `Conversation` entity 新增 `bot_id: str | None` 欄位
+- ✅ Domain: `ConversationRepository.find_by_tenant()` 新增 `bot_id` 篩選參數
+- ✅ Application: `ListConversationsUseCase` 支援 `bot_id` 過濾
+- ✅ Application: `SendMessageUseCase` 建立新對話時帶入 `bot_id`
+- ✅ Infrastructure: ORM Model + composite index + lightweight migration
+- ✅ Infrastructure: Repository impl 支援 `bot_id` 持久化 + 查詢過濾
+- ✅ Interfaces: API response schemas + `list_conversations` query param
+- ✅ Frontend: types + query keys + api-endpoints + useConversations 讀取 botId
+- ✅ Frontend: MSW handler 支援 bot_id query param 過濾
+- ✅ Application: bot 歸屬驗證 — bot.tenant_id != command.tenant_id 時拋出 DomainException
+- ✅ Migration: 啟動時清除 bot_id IS NULL 的對話及其訊息
+- ✅ Backend BDD: 5 scenarios（儲存 bot_id / 空 bot_id / 依 bot 過濾 / 無過濾回傳全部 / 跨租戶 bot 驗證）
+- ✅ Frontend test: 新增 bot 過濾測試
+- ✅ 全量測試：137 backend + 87 frontend passed
+
 ---
 
 ## 進度總覽
@@ -603,4 +619,4 @@
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
 | S6 Agentic 工作流 | ✅ 完成 | 100% | 84 scenarios, 84.83% coverage |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 99% | Demo 1-6 + Bot Management + Chat Bot 選擇 + 工具選擇 + SSE Streaming + 多檔上傳修復, 132 backend + 86 frontend tests |
+| S7 整合+Demo | 🔄 進行中 | 99% | Demo 1-6 + Bot Management + Chat Bot 選擇 + 工具選擇 + SSE Streaming + 多檔上傳修復 + 對話 bot_id 隔離, 137 backend + 87 frontend tests |

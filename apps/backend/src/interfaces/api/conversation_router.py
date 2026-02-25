@@ -31,6 +31,7 @@ class MessageResponse(BaseModel):
 class ConversationDetailResponse(BaseModel):
     id: str
     tenant_id: str
+    bot_id: str | None = None
     messages: list[MessageResponse]
     created_at: datetime
 
@@ -38,22 +39,27 @@ class ConversationDetailResponse(BaseModel):
 class ConversationSummaryResponse(BaseModel):
     id: str
     tenant_id: str
+    bot_id: str | None = None
     created_at: datetime
 
 
 @router.get("", response_model=list[ConversationSummaryResponse])
 @inject
 async def list_conversations(
+    bot_id: str | None = None,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: ListConversationsUseCase = Depends(
         Provide[Container.list_conversations_use_case]
     ),
 ) -> list[ConversationSummaryResponse]:
-    conversations = await use_case.execute(tenant_id=tenant.tenant_id)
+    conversations = await use_case.execute(
+        tenant_id=tenant.tenant_id, bot_id=bot_id
+    )
     return [
         ConversationSummaryResponse(
             id=c.id.value,
             tenant_id=c.tenant_id,
+            bot_id=c.bot_id,
             created_at=c.created_at,
         )
         for c in conversations
@@ -77,6 +83,7 @@ async def get_conversation(
     return ConversationDetailResponse(
         id=conversation.id.value,
         tenant_id=conversation.tenant_id,
+        bot_id=conversation.bot_id,
         messages=[
             MessageResponse(
                 id=m.id.value,

@@ -10,5 +10,7 @@ class ListConversationsUseCase:
     ) -> None:
         self._repo = conversation_repository
 
-    async def execute(self, tenant_id: str) -> list[Conversation]:
-        return await self._repo.find_by_tenant(tenant_id)
+    async def execute(
+        self, tenant_id: str, *, bot_id: str | None = None
+    ) -> list[Conversation]:
+        return await self._repo.find_by_tenant(tenant_id, bot_id=bot_id)

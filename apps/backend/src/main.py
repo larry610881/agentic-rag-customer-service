@@ -74,6 +74,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "rag_score_threshold FLOAT NOT NULL DEFAULT 0.3"
             )
         )
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS "
+                "bot_id VARCHAR(36) DEFAULT NULL"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "CREATE INDEX IF NOT EXISTS ix_conversations_tenant_bot "
+                "ON conversations (tenant_id, bot_id)"
+            )
+        )
+        # One-time cleanup: remove orphan messages then unbound conversations
+        await conn.execute(
+            sqlalchemy.text(
+                "DELETE FROM messages WHERE conversation_id IN "
+                "(SELECT id FROM conversations WHERE bot_id IS NULL)"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "DELETE FROM conversations WHERE bot_id IS NULL"
+            )
+        )
     yield
     logger.info("app.shutdown")
     await engine.dispose()

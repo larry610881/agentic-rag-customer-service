@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/api-client";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { queryKeys } from "@/hooks/queries/keys";
 import { useAuthStore } from "@/stores/use-auth-store";
+import { useChatStore } from "@/stores/use-chat-store";
 import type {
   ConversationSummary,
   ConversationDetail,
@@ -11,12 +12,13 @@ import type {
 export function useConversations() {
   const token = useAuthStore((s) => s.token);
   const tenantId = useAuthStore((s) => s.tenantId);
+  const botId = useChatStore((s) => s.botId);
 
   return useQuery({
-    queryKey: queryKeys.conversations.all(tenantId ?? ""),
+    queryKey: queryKeys.conversations.all(tenantId ?? "", botId),
     queryFn: () =>
       apiFetch<ConversationSummary[]>(
-        API_ENDPOINTS.conversations.list,
+        API_ENDPOINTS.conversations.list(botId),
         {},
         token ?? undefined,
       ),

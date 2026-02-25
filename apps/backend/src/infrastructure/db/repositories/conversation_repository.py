@@ -24,6 +24,7 @@ class SQLAlchemyConversationRepository(ConversationRepository):
             model = ConversationModel(
                 id=conversation.id.value,
                 tenant_id=conversation.tenant_id,
+                bot_id=conversation.bot_id,
                 created_at=conversation.created_at,
             )
             self._session.add(model)
@@ -75,18 +76,21 @@ class SQLAlchemyConversationRepository(ConversationRepository):
         return Conversation(
             id=ConversationId(value=model.id),
             tenant_id=model.tenant_id,
+            bot_id=model.bot_id,
             messages=messages,
             created_at=model.created_at,
         )
 
     async def find_by_tenant(
-        self, tenant_id: str
+        self, tenant_id: str, *, bot_id: str | None = None
     ) -> list[Conversation]:
         stmt = (
             select(ConversationModel)
             .where(ConversationModel.tenant_id == tenant_id)
-            .order_by(ConversationModel.created_at.desc())
         )
+        if bot_id is not None:
+            stmt = stmt.where(ConversationModel.bot_id == bot_id)
+        stmt = stmt.order_by(ConversationModel.created_at.desc())
         result = await self._session.execute(stmt)
         rows = result.scalars().all()
 
@@ -94,6 +98,7 @@ class SQLAlchemyConversationRepository(ConversationRepository):
             Conversation(
                 id=ConversationId(value=r.id),
                 tenant_id=r.tenant_id,
+                bot_id=r.bot_id,
                 messages=[],
                 created_at=r.created_at,
             )

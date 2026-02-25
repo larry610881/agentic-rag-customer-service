@@ -23,6 +23,7 @@ class Message:
 class Conversation:
     id: ConversationId = field(default_factory=ConversationId)
     tenant_id: str = ""
+    bot_id: str | None = None
     messages: list[Message] = field(default_factory=list)
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
