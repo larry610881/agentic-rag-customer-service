@@ -868,6 +868,9 @@
 | E3 | **LINE Webhook BackgroundTask 靜默失敗** — `execute_for_bot` 在 `BackgroundTasks` 中拋出異常時，用戶看不到錯誤（Bot 不存在、Channel 未設定、簽名失敗等） | 新端點 `POST /api/v1/webhook/line/{bot_id}` 的 background task | 目前無緩解；建議加 structured logging + 錯誤通知 | 中 |
 | E4 | **LINE Webhook 無 Bot 查詢快取** — 每次 webhook 都做一次 DB `find_by_id` | 多 Bot 高頻 webhook 場景 | 目前無快取；LINE webhook 量通常不高，未來可加短 TTL 快取 | 低 |
 | E5 | **LINE Webhook 簽名驗證時序** — 新端點先在 router 解析 events（JSON parse），再在 BackgroundTask 中驗簽。若 body 格式異常，JSON parse 可能在驗簽前就失敗 | 非 LINE 來源的惡意請求發送 malformed JSON | 可考慮將事件解析也移入 Use Case，先驗簽再解析 | 低 |
+| E6 | **回饋統計即時計算** — `count_by_tenant_and_rating` 每次都打 DB，無快取 | 單租戶累積 10k+ 筆回饋時查詢變慢 | MVP 規模可接受；未來可用 materialized view 或定期快取 | 低 |
+| E7 | **回饋 API 無 rate limiting** — UNIQUE 約束擋住同一訊息重複回饋，但端點本身沒限流 | 惡意 client 大量 POST `/api/v1/feedback` | 目前無緩解；建議加 per-IP 或 per-tenant rate limiter | 中 |
+| E8 | **回饋不支援「改變心意」** — UNIQUE on message_id 代表一旦回饋就不能修改 | 使用者想從 thumbs_down 改為 thumbs_up | 目前不支援；若需要可改為 upsert 邏輯（find existing → update rating） | 低 |
 
 ---
 
