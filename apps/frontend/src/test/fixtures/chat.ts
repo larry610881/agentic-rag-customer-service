@@ -15,12 +15,8 @@ export const mockSources: Source[] = [
 
 export const mockToolCalls: ToolCallInfo[] = [
   {
-    tool_name: "OrderLookup",
-    reasoning: "Looking up order status for the customer",
-  },
-  {
-    tool_name: "ProductSearch",
-    reasoning: "Searching for product information",
+    tool_name: "rag_query",
+    reasoning: "Querying knowledge base for relevant information",
   },
 ];
 

@@ -17,6 +17,6 @@ Feature: WorkerContext 擴展
 
   Scenario: WorkerContext 可攜帶 MCP 工具資訊
     Given 建立一個帶有 MCP 工具的 WorkerContext
-    And MCP 工具包含 "knowledge_search" 和 "order_lookup"
+    And MCP 工具包含 "knowledge_search" 和 "rag_query"
     Then mcp_tools 應包含 "knowledge_search" 鍵
-    And mcp_tools 應包含 "order_lookup" 鍵
+    And mcp_tools 應包含 "rag_query" 鍵

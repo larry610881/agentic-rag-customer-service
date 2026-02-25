@@ -1,7 +1,7 @@
-import sqlalchemy
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import sqlalchemy
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -21,23 +21,9 @@ from src.infrastructure.db.models import (  # noqa: F401
     MessageModel,
     ProcessingTaskModel,
     TenantModel,
-    TicketModel,
     UsageRecordModel,
 )
 from src.infrastructure.logging import get_logger, setup_logging
-from src.interfaces.api.agent_router import router as agent_router
-from src.interfaces.api.auth_router import router as auth_router
-from src.interfaces.api.bot_router import router as bot_router
-from src.interfaces.api.conversation_router import router as conversation_router
-from src.interfaces.api.document_router import router as document_router
-from src.interfaces.api.health_router import router as health_router
-from src.interfaces.api.knowledge_base_router import router as kb_router
-from src.interfaces.api.line_webhook_router import router as line_webhook_router
-from src.interfaces.api.middleware import RequestIDMiddleware
-from src.interfaces.api.rag_router import router as rag_router
-from src.interfaces.api.task_router import router as task_router
-from src.interfaces.api.tenant_router import router as tenant_router
-from src.interfaces.api.usage_router import router as usage_router
 
 logger = get_logger(__name__)
 
@@ -52,6 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "app.startup",
         app_env=settings.app_env,
         log_level=settings.effective_log_level,
+        enabled_modules=settings.enabled_modules,
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -114,6 +101,8 @@ def create_app() -> FastAPI:
 
     application.container = container  # type: ignore[attr-defined]
 
+    from src.interfaces.api.middleware import RequestIDMiddleware
+
     application.add_middleware(RequestIDMiddleware)
     application.add_middleware(
         CORSMiddleware,
@@ -147,18 +136,52 @@ def create_app() -> FastAPI:
             content={"detail": "Internal server error"},
         )
 
+    modules = settings.enabled_modules_set
+
+    # Health is always loaded
+    from src.interfaces.api.health_router import router as health_router
+
     application.include_router(health_router)
-    application.include_router(auth_router)
-    application.include_router(tenant_router)
-    application.include_router(kb_router)
-    application.include_router(document_router)
-    application.include_router(task_router)
-    application.include_router(rag_router)
-    application.include_router(agent_router)
-    application.include_router(conversation_router)
-    application.include_router(line_webhook_router)
-    application.include_router(usage_router)
-    application.include_router(bot_router)
+
+    # API module: tenant management, knowledge, bot, reports, etc.
+    if "api" in modules:
+        from src.interfaces.api.agent_router import router as agent_router
+        from src.interfaces.api.auth_router import router as auth_router
+        from src.interfaces.api.bot_router import router as bot_router
+        from src.interfaces.api.conversation_router import router as conversation_router
+        from src.interfaces.api.document_router import router as document_router
+        from src.interfaces.api.knowledge_base_router import router as kb_router
+        from src.interfaces.api.rag_router import router as rag_router
+        from src.interfaces.api.task_router import router as task_router
+        from src.interfaces.api.tenant_router import router as tenant_router
+        from src.interfaces.api.usage_router import router as usage_router
+
+        application.include_router(auth_router)
+        application.include_router(tenant_router)
+        application.include_router(kb_router)
+        application.include_router(document_router)
+        application.include_router(task_router)
+        application.include_router(rag_router)
+        application.include_router(agent_router)
+        application.include_router(conversation_router)
+        application.include_router(usage_router)
+        application.include_router(bot_router)
+
+    # Webhook module: LINE Bot
+    if "webhook" in modules:
+        from src.interfaces.api.line_webhook_router import router as line_webhook_router
+
+        application.include_router(line_webhook_router)
+
+    # WebSocket module: Web Chat (placeholder for E1.5)
+    # if "websocket" in modules:
+    #     from src.interfaces.ws.chat_websocket import ws_router
+    #     application.include_router(ws_router)
+
+    logger.info(
+        "app.modules_loaded",
+        modules=list(modules),
+    )
 
     return application
 

@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-25 (訂單查詢多模式增強 — 狀態篩選/列全部/單筆查詢, 143 backend + 87 frontend tests green)
+> 最後更新：2026-02-25 (E0 Tool 清理 + Multi-Deploy 完成 — RAG-only SaaS 架構, 126 backend + 87 frontend tests green)
 
 ---
 
@@ -649,6 +649,89 @@
 
 ---
 
+## Enterprise Sprint E0：Tool 清理 + Multi-Deploy 架構
+
+**Goal**：移除所有非 RAG 工具及模擬資料，回歸乾淨的 RAG-only SaaS 架構 + 模組化部署
+
+### E0.1 刪除非 RAG 檔案（22 files + 1 directory）
+- ✅ Application：刪除 order_lookup / product_search / ticket_creation use cases
+- ✅ Infrastructure：刪除 sql_order_lookup / sql_product_search / sql_ticket services + 整個 `tools/` 目錄
+- ✅ Domain：刪除 `tool_services.py`（3 個 ABC）
+- ✅ DB Model：刪除 `ticket_model.py`
+- ✅ Tests：刪除 4 個 feature files + 4 個 step definitions
+- ✅ Data Seeds：刪除 5 個 scripts（manage_data / seed_postgres / download_kaggle / generate_synthetic_products / seed_product_knowledge）
+- ✅ Frontend E2E：刪除 order-lookup.feature + generated spec
+
+### E0.2 編輯檔案移除非 RAG 引用（20+ files）
+- ✅ Domain：移除 `RefundStep` from value_objects；建立 local `_RefundStep` in fake_refund_worker
+- ✅ LangGraph：tools.py → RAG-only；agent_graph.py → RAG-only routing；langgraph_agent_service.py → 簡化
+- ✅ Container：移除所有非 RAG tool providers；簡化 agent_service wiring
+- ✅ DB models/__init__：移除 TicketModel
+- ✅ Schema SQL：移除 Olist 表
+- ✅ Makefile：移除 7 個 seed 相關 targets
+- ✅ Frontend：簡化 tool hints / bot form / test fixtures 為 RAG-only
+- ✅ Tests：更新 7 個 BDD features + step definitions
+
+### E0.5 Multi-Deploy 架構
+- ✅ `config.py`：新增 `enabled_modules` + `enabled_modules_set` property
+- ✅ `main.py`：條件載入 routers（api / websocket / webhook）
+- ✅ `infra/deploy-all.env` + `deploy-api.env` + `deploy-bot.env` 部署範本
+
+### E0.6 驗證
+- ✅ 全量測試：126 backend passed（移除 17 個非 RAG 測試）
+- ✅ Lint：main.py clean，無新增 lint 錯誤
+- ✅ 驗收：RAG-only SaaS 架構乾淨就緒
+
+---
+
+## Backlog（已因 E0 清理而關閉）
+
+> 以下 Backlog 項目因 Sprint E0 移除所有非 RAG 工具而不再適用，已關閉。
+
+### ~~B1-B4 — 商品搜尋修復~~（CLOSED — E0 移除）
+- ⏭️ product_search / product_recommend 工具已移除，不再需要修復
+
+### ~~D1-D5 — 全 DB 控制 Provider 設定~~（MIGRATED → E1）
+- ⏭️ 已遷移至 Enterprise Sprint E1（System Provider Settings DB 化）
+
+---
+
+## Backlog：全 DB 控制 — Embedding / LLM Provider 動態設定
+
+> **目標**：將目前 `.env` 靜態設定的 Embedding / LLM provider 改為 DB 儲存，支援 UI 動態切換，免重啟後端。
+
+### D1 — 系統設定 Domain 模型
+- ⬜ Domain：`SystemConfig` Entity（tenant 級設定）
+- ⬜ 欄位：`llm_provider`, `llm_model`, `llm_api_key`（加密）, `embedding_provider`, `embedding_model`, `embedding_api_key`（加密）
+- ⬜ `SystemConfigRepository` Interface
+
+### D2 — API Key 加密機制
+- ⬜ Infrastructure：AES-256 加密 / 解密 service
+- ⬜ API Key 存入 DB 前加密，讀取時解密
+- ⬜ 加密金鑰（master key）仍透過 `.env` 管理
+- ⬜ **注意：禁止明文存 API Key 到 DB**
+
+### D3 — 動態 Service 重建
+- ⬜ LLM / Embedding service 改為 factory pattern（根據 DB config 動態建立實例）
+- ⬜ 設定變更時能即時生效（不需重啟）
+- ⬜ 快取策略：per-tenant service instance cache + TTL 失效
+
+### D4 — 管理 UI
+- ⬜ 前端：系統設定頁面（Provider 選擇 + Model 選擇 + API Key 輸入）
+- ⬜ per-tenant 設定（A 租戶用 OpenAI，B 租戶用 Claude）
+- ⬜ 連線測試按鈕（驗證 API Key 有效性）
+
+### D5 — Fallback 機制
+- ⬜ DB 讀不到設定時 fallback 到 `.env`（確保系統啟動不會因 DB 設定缺失而失敗）
+- ⬜ Provider 呼叫失敗時的降級策略
+
+### 注意事項
+- 此改動影響範圍大，建議獨立 Sprint 執行
+- 優先做 D1 + D5（有 fallback 才安全），再做 D2-D4
+- 多租戶場景下，每個 tenant 的 token 用量需獨立追蹤（未來計費基礎）
+
+---
+
 ## 已知邊緣問題（Edge Cases）
 
 > 以下為已識別但暫不處理的邊緣測試問題，後續視優先級排入 Sprint。
@@ -656,6 +739,7 @@
 | # | 問題描述 | 觸發條件 | 目前緩解措施 | 優先級 |
 |---|----------|----------|-------------|--------|
 | E1 | **大檔案 Embedding 429 Rate Limit** — 超大文件（>500KB, 2000+ chunks, 40+ batches）上傳後，Embedding API 回傳 429 Too Many Requests 導致文件處理失敗 | 上傳 581KB DOCX（Technical_Knowledge_Base_Large.docx），Google Gemini Embedding API | batch 間延遲 1s + 429 退避 5s×attempt + max_retries=5 + 所有參數可透過 `.env` 調整 | 低 — 一般文件不會觸發，可透過調高 `EMBEDDING_BATCH_DELAY` 緩解 |
+| ~~E2~~ | ~~product_search 查錯資料表~~ | ~~已在 E0 移除~~ | ~~已移除~~ | ~~CLOSED~~ |
 
 ---
 
@@ -663,12 +747,13 @@
 
 | Sprint | 狀態 | 完成率 | 備註 |
 |--------|------|--------|------|
-| S0 基礎建設 | 🔄 進行中 | 98% | Kaggle ETL 完成，待 CI 驗收 |
+| S0 基礎建設 | 🔄 進行中 | 98% | Kaggle ETL 已移除（E0），待 CI 驗收 |
 | S1 租戶+知識 | ✅ 完成 | 90% | Unit 完成，Integration Test 待後續 |
 | S2 文件+向量化 | ✅ 完成 | 100% | 29 scenarios, 83.71% coverage, 51 chunks |
 | S3 RAG 查詢 | ✅ 完成 | 100% | 17 scenarios (6+5+6), 82% coverage |
-| S4 Agent 框架 | ✅ 完成 | 100% | 14 scenarios (3+2+3+2+2+5+3), 82% coverage |
-| S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage, E2E 延至 S7 |
+| S4 Agent 框架 | ✅ 完成 | 100% | 非 RAG 工具已在 E0 移除 |
+| S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage |
 | S6 Agentic 工作流 | ✅ 完成 | 100% | 84 scenarios, 84.83% coverage |
 | S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | 🔄 進行中 | 99% | Demo 1-6 + Bot Management + Chat Bot 選擇 + 工具選擇 + SSE Streaming + 多檔上傳修復 + 對話 bot_id 隔離 + 合成商品 + ProductRecommendTool + 訂單多模式查詢, 143 backend + 87 frontend tests |
+| S7 整合+Demo | ✅ 完成 | 100% | Demo 1-6 完成（非 RAG 工具已在 E0 移除） |
+| **E0 Tool 清理 + Multi-Deploy** | **✅ 完成** | **100%** | **22 files 刪除, 20+ files 編輯, 126 backend + 87 frontend tests** |

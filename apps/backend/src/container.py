@@ -1,9 +1,6 @@
 from dependency_injector import containers, providers
 
-from src.application.agent.order_lookup_use_case import OrderLookupUseCase
-from src.application.agent.product_search_use_case import ProductSearchUseCase
 from src.application.agent.send_message_use_case import SendMessageUseCase
-from src.application.agent.ticket_creation_use_case import TicketCreationUseCase
 from src.application.bot.create_bot_use_case import CreateBotUseCase
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
@@ -47,8 +44,17 @@ from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.config import Settings
 from src.domain.agent.team_supervisor import TeamSupervisor
 from src.infrastructure.auth.jwt_service import JWTService
+from src.infrastructure.conversation import (
+    FullHistoryStrategy,
+    RAGHistoryStrategy,
+    SlidingWindowStrategy,
+    SummaryRecentStrategy,
+)
 from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.health_repository import HealthRepository
+from src.infrastructure.db.repositories.bot_repository import (
+    SQLAlchemyBotRepository,
+)
 from src.infrastructure.db.repositories.chunk_repository import (
     SQLAlchemyChunkRepository,
 )
@@ -57,9 +63,6 @@ from src.infrastructure.db.repositories.conversation_repository import (
 )
 from src.infrastructure.db.repositories.document_repository import (
     SQLAlchemyDocumentRepository,
-)
-from src.infrastructure.db.repositories.bot_repository import (
-    SQLAlchemyBotRepository,
 )
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
@@ -72,12 +75,6 @@ from src.infrastructure.db.repositories.tenant_repository import (
 )
 from src.infrastructure.db.repositories.usage_repository import (
     SQLAlchemyUsageRepository,
-)
-from src.infrastructure.conversation import (
-    FullHistoryStrategy,
-    RAGHistoryStrategy,
-    SlidingWindowStrategy,
-    SummaryRecentStrategy,
 )
 from src.infrastructure.embedding.fake_embedding_service import (
     FakeEmbeddingService,
@@ -95,13 +92,7 @@ from src.infrastructure.langgraph.langgraph_agent_service import (
 from src.infrastructure.langgraph.meta_supervisor_service import (
     MetaSupervisorService,
 )
-from src.infrastructure.langgraph.tools import (
-    OrderLookupTool,
-    ProductRecommendTool,
-    ProductSearchTool,
-    RAGQueryTool,
-    TicketCreationTool,
-)
+from src.infrastructure.langgraph.tools import RAGQueryTool
 from src.infrastructure.langgraph.workers.fake_main_worker import FakeMainWorker
 from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWorker
 from src.infrastructure.line.line_messaging_service import HttpxLineMessagingService
@@ -115,13 +106,6 @@ from src.infrastructure.sentiment.keyword_sentiment_service import (
 from src.infrastructure.text_splitter.recursive_text_splitter_service import (
     RecursiveTextSplitterService,
 )
-from src.infrastructure.tools.sql_order_lookup_service import (
-    SQLOrderLookupService,
-)
-from src.infrastructure.tools.sql_product_search_service import (
-    SQLProductSearchService,
-)
-from src.infrastructure.tools.sql_ticket_service import SQLTicketService
 
 
 class Container(containers.DeclarativeContainer):
@@ -384,23 +368,6 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
-    # --- Tool Services ---
-
-    order_lookup_service = providers.Factory(
-        SQLOrderLookupService,
-        session_factory=providers.Object(async_session_factory),
-    )
-
-    product_search_service = providers.Factory(
-        SQLProductSearchService,
-        session_factory=providers.Object(async_session_factory),
-    )
-
-    ticket_service = providers.Factory(
-        SQLTicketService,
-        session_factory=providers.Object(async_session_factory),
-    )
-
     # --- Application ---
 
     health_check_use_case = providers.Factory(
@@ -497,49 +464,11 @@ class Container(containers.DeclarativeContainer):
         usage_repository=usage_repository,
     )
 
-    order_lookup_use_case = providers.Factory(
-        OrderLookupUseCase,
-        order_lookup_service=order_lookup_service,
-    )
-
-    product_search_use_case = providers.Factory(
-        ProductSearchUseCase,
-        product_search_service=product_search_service,
-    )
-
-    ticket_creation_use_case = providers.Factory(
-        TicketCreationUseCase,
-        ticket_service=ticket_service,
-    )
-
     # --- Agent Tools ---
 
     rag_tool = providers.Factory(
         RAGQueryTool,
         query_rag_use_case=query_rag_use_case,
-        top_k=config.provided.rag_top_k,
-        score_threshold=config.provided.rag_score_threshold,
-    )
-
-    order_tool = providers.Factory(
-        OrderLookupTool,
-        use_case=order_lookup_use_case,
-    )
-
-    product_tool = providers.Factory(
-        ProductSearchTool,
-        use_case=product_search_use_case,
-    )
-
-    ticket_tool = providers.Factory(
-        TicketCreationTool,
-        use_case=ticket_creation_use_case,
-    )
-
-    product_recommend_tool = providers.Factory(
-        ProductRecommendTool,
-        query_rag_use_case=query_rag_use_case,
-        kb_repository=kb_repository,
         top_k=config.provided.rag_top_k,
         score_threshold=config.provided.rag_score_threshold,
     )
@@ -574,40 +503,26 @@ class Container(containers.DeclarativeContainer):
             LangGraphAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,
-            order_tool=order_tool,
-            product_tool=product_tool,
-            ticket_tool=ticket_tool,
-            product_recommend_tool=product_recommend_tool,
         ),
         openai=providers.Factory(
             LangGraphAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,
-            order_tool=order_tool,
-            product_tool=product_tool,
-            ticket_tool=ticket_tool,
-            product_recommend_tool=product_recommend_tool,
         ),
         qwen=providers.Factory(
             LangGraphAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,
-            product_recommend_tool=product_recommend_tool,
         ),
         google=providers.Factory(
             LangGraphAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,
-            product_recommend_tool=product_recommend_tool,
         ),
         openrouter=providers.Factory(
             LangGraphAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,
-            order_tool=order_tool,
-            product_tool=product_tool,
-            ticket_tool=ticket_tool,
-            product_recommend_tool=product_recommend_tool,
         ),
     )
 

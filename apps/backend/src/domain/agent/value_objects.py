@@ -2,14 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
 from typing import Any
-
-
-class RefundStep(str, Enum):
-    collect_order = "collect_order"
-    collect_reason = "collect_reason"
-    confirm = "confirm"
 
 
 @dataclass(frozen=True)

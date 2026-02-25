@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_version: str = "0.1.0"
 
+    # Multi-Deploy: comma-separated module list
+    # "api" = REST API routers, "websocket" = WebSocket chat, "webhook" = LINE webhook
+    enabled_modules: str = "api,websocket,webhook"
+
     # Logging
     log_level: str = "INFO"
     debug: bool = False
@@ -126,6 +130,11 @@ class Settings(BaseSettings):
         if self.llm_provider == "openrouter":
             return self.openrouter_api_key
         return ""
+
+    @property
+    def enabled_modules_set(self) -> set[str]:
+        """Parse enabled_modules CSV into a set."""
+        return {m.strip() for m in self.enabled_modules.split(",") if m.strip()}
 
     @property
     def effective_log_level(self) -> str:

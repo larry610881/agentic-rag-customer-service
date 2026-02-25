@@ -27,7 +27,7 @@ Feature: LINE Bot Webhook 處理
     And 系統不應透過 LINE API 回覆
 
   Scenario: Agent 回答包含工具調用資訊
-    Given LINE 用戶 "U9876543210" 發送了文字訊息 "我的訂單 ORD-001 狀態如何？"
-    And Agent 服務回覆 "您的訂單 ORD-001 正在配送中。" 並包含工具調用 "order_lookup"
+    Given LINE 用戶 "U9876543210" 發送了文字訊息 "退貨流程是什麼？"
+    And Agent 服務回覆 "30 天內可辦理退貨。" 並包含工具調用 "rag_query"
     When 系統處理 LINE Webhook 事件
-    Then 系統應透過 LINE API 回覆 "您的訂單 ORD-001 正在配送中。"
+    Then 系統應透過 LINE API 回覆 "30 天內可辦理退貨。"

@@ -168,27 +168,27 @@ def line_reply_not_called(context):
 # --- Scenario: Agent 回答包含工具調用資訊 ---
 
 
-@given('LINE 用戶 "U9876543210" 發送了文字訊息 "我的訂單 ORD-001 狀態如何？"')
-def line_user_sends_order_query(context):
+@given('LINE 用戶 "U9876543210" 發送了文字訊息 "退貨流程是什麼？"')
+def line_user_sends_rag_query(context):
     context["events"] = [
         LineTextMessageEvent(
             reply_token="token-xyz",
             user_id="U9876543210",
-            message_text="我的訂單 ORD-001 狀態如何？",
+            message_text="退貨流程是什麼？",
             timestamp=1700000001000,
         )
     ]
 
 
 @given(
-    'Agent 服務回覆 "您的訂單 ORD-001 正在配送中。" 並包含工具調用 "order_lookup"'
+    'Agent 服務回覆 "30 天內可辦理退貨。" 並包含工具調用 "rag_query"'
 )
 def agent_replies_with_tool_call(context):
     mock_agent = AsyncMock()
     mock_agent.process_message = AsyncMock(
         return_value=AgentResponse(
-            answer="您的訂單 ORD-001 正在配送中。",
-            tool_calls=[{"name": "order_lookup", "args": "ORD-001"}],
+            answer="30 天內可辦理退貨。",
+            tool_calls=[{"name": "rag_query", "reasoning": "知識庫查詢"}],
         )
     )
     mock_line_service = AsyncMock()
@@ -202,8 +202,8 @@ def agent_replies_with_tool_call(context):
     )
 
 
-@then('系統應透過 LINE API 回覆 "您的訂單 ORD-001 正在配送中。"')
-def verify_reply_order_status(context):
+@then('系統應透過 LINE API 回覆 "30 天內可辦理退貨。"')
+def verify_reply_rag_answer(context):
     context["mock_line_service"].reply_text.assert_called_once_with(
-        "token-xyz", "您的訂單 ORD-001 正在配送中。"
+        "token-xyz", "30 天內可辦理退貨。"
     )

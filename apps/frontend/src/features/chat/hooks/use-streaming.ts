@@ -11,9 +11,6 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const TOOL_HINTS: Record<string, string> = {
   rag_query: "\u{1f50d} 正在查詢知識庫",
-  order_lookup: "\u{1f4e6} 正在查詢訂單",
-  product_search: "\u{1f6d2} 正在搜尋商品",
-  ticket_creation: "\u{1f4dd} 正在建立工單",
 };
 
 export function useStreaming() {

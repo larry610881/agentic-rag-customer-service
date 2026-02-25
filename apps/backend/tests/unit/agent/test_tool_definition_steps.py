@@ -14,17 +14,17 @@ def context():
     return {}
 
 
-@given('一個名為 "order_lookup" 的工具定義')
+@given('一個名為 "rag_query" 的工具定義')
 def create_tool_definition(context):
     context["tool"] = ToolDefinition(
-        name="order_lookup",
-        description="查詢訂單狀態",
+        name="rag_query",
+        description="查詢知識庫回答用戶問題",
         parameters_schema={
             "type": "object",
             "properties": {
-                "order_id": {"type": "string", "description": "訂單 ID"},
+                "query": {"type": "string", "description": "用戶問題"},
             },
-            "required": ["order_id"],
+            "required": ["query"],
         },
     )
 
@@ -32,14 +32,14 @@ def create_tool_definition(context):
 @given("一個包含工具調用的 AgentResponse")
 def create_agent_response(context):
     context["response"] = AgentResponse(
-        answer="您的訂單 ORD-001 已送達",
+        answer="退貨政策為 30 天內可退貨",
         tool_calls=[
-            {"tool_name": "order_lookup", "reasoning": "用戶查詢訂單狀態"},
+            {"tool_name": "rag_query", "reasoning": "用戶詢問退貨政策"},
         ],
         sources=[
             Source(
-                document_name="訂單記錄",
-                content_snippet="ORD-001 已於 2024-01-15 送達",
+                document_name="退貨政策.txt",
+                content_snippet="退貨政策為 30 天內可退貨",
                 score=0.95,
                 chunk_id="chunk-1",
             ),
@@ -48,9 +48,9 @@ def create_agent_response(context):
     )
 
 
-@then('工具名稱應為 "order_lookup"')
+@then('工具名稱應為 "rag_query"')
 def verify_tool_name(context):
-    assert context["tool"].name == "order_lookup"
+    assert context["tool"].name == "rag_query"
 
 
 @then("工具應包含描述和參數 schema")

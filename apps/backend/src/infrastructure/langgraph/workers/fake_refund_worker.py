@@ -1,14 +1,21 @@
 """FakeRefundWorker — 退貨多步驟引導 Worker"""
 
 import re
+from enum import Enum
 from uuid import uuid4
 
-from src.domain.agent.value_objects import RefundStep
 from src.domain.agent.worker import AgentWorker, WorkerContext, WorkerResult
 from src.domain.rag.value_objects import TokenUsage
 
 _REFUND_KEYWORDS = re.compile(r"退貨|退款|refund|退回|退換")
 _ORDER_ID_PATTERN = re.compile(r"ORD-\w+", re.IGNORECASE)
+
+
+class _RefundStep(str, Enum):
+    """Refund workflow steps (local to this fake worker)."""
+    collect_order = "collect_order"
+    collect_reason = "collect_reason"
+    confirm = "confirm"
 
 
 class FakeRefundWorker(AgentWorker):
@@ -26,7 +33,7 @@ class FakeRefundWorker(AgentWorker):
     async def handle(self, context: WorkerContext) -> WorkerResult:
         step = self._determine_step(context)
 
-        if step == RefundStep.collect_order:
+        if step == _RefundStep.collect_order:
             return WorkerResult(
                 answer="好的，我來協助您處理退貨。請提供您的訂單編號（例如 ORD-001）。",
                 tool_calls=[
@@ -36,10 +43,10 @@ class FakeRefundWorker(AgentWorker):
                     }
                 ],
                 usage=TokenUsage.zero("fake"),
-                metadata={"refund_step": RefundStep.collect_reason.value},
+                metadata={"refund_step": _RefundStep.collect_reason.value},
             )
 
-        if step == RefundStep.collect_reason:
+        if step == _RefundStep.collect_reason:
             order_id = self._extract_order_id(context)
             return WorkerResult(
                 answer=f"已找到訂單 {order_id}。請問您的退貨原因是什麼？",
@@ -50,7 +57,7 @@ class FakeRefundWorker(AgentWorker):
                     }
                 ],
                 usage=TokenUsage.zero("fake"),
-                metadata={"refund_step": RefundStep.confirm.value},
+                metadata={"refund_step": _RefundStep.confirm.value},
             )
 
         ticket_id = f"TK-{uuid4().hex[:6].upper()}"
@@ -66,21 +73,21 @@ class FakeRefundWorker(AgentWorker):
             metadata={"refund_step": None},
         )
 
-    def _determine_step(self, context: WorkerContext) -> RefundStep:
+    def _determine_step(self, context: WorkerContext) -> _RefundStep:
         current_step = context.metadata.get("refund_step")
 
-        if current_step == RefundStep.confirm.value:
-            return RefundStep.confirm
+        if current_step == _RefundStep.confirm.value:
+            return _RefundStep.confirm
 
-        if current_step == RefundStep.collect_reason.value:
+        if current_step == _RefundStep.collect_reason.value:
             if _ORDER_ID_PATTERN.search(context.user_message):
-                return RefundStep.collect_reason
-            return RefundStep.collect_reason
+                return _RefundStep.collect_reason
+            return _RefundStep.collect_reason
 
         if self._has_order_in_history(context):
-            return RefundStep.collect_reason
+            return _RefundStep.collect_reason
 
-        return RefundStep.collect_order
+        return _RefundStep.collect_order
 
     def _extract_order_id(self, context: WorkerContext) -> str:
         match = _ORDER_ID_PATTERN.search(context.user_message)

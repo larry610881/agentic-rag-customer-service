@@ -5,9 +5,11 @@ import asyncio
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
-from src.domain.agent.value_objects import RefundStep
 from src.domain.agent.worker import WorkerContext
-from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWorker
+from src.infrastructure.langgraph.workers.fake_refund_worker import (
+    FakeRefundWorker,
+    _RefundStep,
+)
 
 scenarios("unit/agent/refund_workflow.feature")
 
@@ -32,12 +34,12 @@ def refund_service_initialized(context):
 
 @given("退貨流程在收集原因步驟")
 def refund_at_collect_reason(context):
-    context["metadata"] = {"refund_step": RefundStep.collect_reason.value}
+    context["metadata"] = {"refund_step": _RefundStep.collect_reason.value}
 
 
 @given("退貨流程在確認步驟")
 def refund_at_confirm(context):
-    context["metadata"] = {"refund_step": RefundStep.confirm.value}
+    context["metadata"] = {"refund_step": _RefundStep.confirm.value}
 
 
 @when('用戶發送 "我想退貨"')

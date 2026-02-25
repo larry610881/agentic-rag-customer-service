@@ -10,35 +10,16 @@ from langgraph.graph import END, StateGraph
 logger = structlog.get_logger(__name__)
 
 from src.domain.rag.services import LLMService
-from src.infrastructure.langgraph.tools import (
-    OrderLookupTool,
-    ProductRecommendTool,
-    ProductSearchTool,
-    RAGQueryTool,
-    TicketCreationTool,
-)
+from src.infrastructure.langgraph.tools import RAGQueryTool
 
 # 關鍵字路由（LLM fallback 前的快速路由）
 _GREETING_PATTERN = re.compile(
     r"^(你好|哈囉|嗨|hi|hello|hey|早安|午安|晚安|安安|謝謝|感謝|掰掰|再見|bye|thanks|thank you)[哦呀啊喔呢嗎啦耶ㄛㄚ\s!！。？?~～]*$",
     re.IGNORECASE,
 )
-_ORDER_PATTERN = re.compile(
-    r"訂單|order|ORD-|ord-|物流|配送|送達|到哪"
-    r"|所有訂單|全部訂單|我的訂單|訂單列表"
-)
-_PRODUCT_PATTERN = re.compile(r"商品|產品|product|搜尋|電子")
-_PRODUCT_RECOMMEND_PATTERN = re.compile(r"推薦|recommend|比較|compare|哪個好|建議買")
-_TICKET_PATTERN = re.compile(r"投訴|客訴|抱怨|工單|ticket|申訴")
 
 _TOOL_DESCRIPTIONS = {
     "rag_query": "rag_query: 查詢知識庫中的資料（任何可能在知識庫中有答案的問題都應使用此工具）",
-    "order_lookup": "order_lookup: 查詢訂單狀態（含訂單號、物流、配送）",
-    "product_search": "product_search: 搜尋商品（含產品查詢）",
-    "product_recommend": (
-        "product_recommend: 商品推薦（含商品比較、推薦、查詢商品描述）"
-    ),
-    "ticket_creation": "ticket_creation: 建立客服工單（含投訴、申訴、問題回報）",
 }
 
 _ROUTER_PROMPT_HEADER = (
@@ -60,19 +41,13 @@ def _build_router_prompt(enabled_tools: list[str] | None = None) -> str:
 ROUTER_SYSTEM_PROMPT = _build_router_prompt()
 
 RESPOND_SYSTEM_PROMPT = (
-    "你是一個專業的電商客服助手，用友善的語氣與用戶對話。\n"
+    "你是一個專業的客服助手，用友善的語氣與用戶對話。\n"
     "如果有提供工具結果，請根據工具結果回答用戶的問題，確保準確、完整。\n"
     "如果沒有工具結果，或工具結果與用戶問題無關，請自然地回應用戶（例如打招呼、閒聊）。\n"
     "不要強行引用不相關的知識庫內容。"
 )
 
-_VALID_TOOLS = {
-    "order_lookup",
-    "product_search",
-    "product_recommend",
-    "ticket_creation",
-    "rag_query",
-}
+_VALID_TOOLS = {"rag_query"}
 
 
 class AgentState(TypedDict):
@@ -95,33 +70,13 @@ class AgentState(TypedDict):
     rag_score_threshold: float | None
 
 
-def _keyword_route(msg: str) -> dict[str, str] | None:  # noqa: C901
+def _keyword_route(msg: str) -> dict[str, str] | None:
     """快速關鍵字路由"""
     stripped = msg.strip()
     if _GREETING_PATTERN.match(stripped):
         return {
             "current_tool": "direct",
             "tool_reasoning": "簡單寒暄，直接回答",
-        }
-    if _ORDER_PATTERN.search(stripped):
-        return {
-            "current_tool": "order_lookup",
-            "tool_reasoning": "用戶查詢訂單狀態",
-        }
-    if _TICKET_PATTERN.search(stripped):
-        return {
-            "current_tool": "ticket_creation",
-            "tool_reasoning": "用戶需要建立客服工單",
-        }
-    if _PRODUCT_RECOMMEND_PATTERN.search(stripped):
-        return {
-            "current_tool": "product_recommend",
-            "tool_reasoning": "用戶需要商品推薦",
-        }
-    if _PRODUCT_PATTERN.search(stripped):
-        return {
-            "current_tool": "product_search",
-            "tool_reasoning": "用戶搜尋商品",
         }
     return None
 
@@ -139,13 +94,9 @@ def _extract_llm_kwargs(state: AgentState) -> dict[str, Any]:
     return kwargs
 
 
-def build_agent_graph(  # noqa: C901
+def build_agent_graph(
     llm_service: LLMService,
     rag_tool: RAGQueryTool,
-    order_tool: OrderLookupTool | None = None,
-    product_tool: ProductSearchTool | None = None,
-    ticket_tool: TicketCreationTool | None = None,
-    product_recommend_tool: ProductRecommendTool | None = None,
     *,
     include_respond: bool = True,
 ) -> StateGraph:
@@ -201,17 +152,13 @@ def build_agent_graph(  # noqa: C901
 
         kw_result = _keyword_route(msg)
         if kw_result:
-            # 關鍵字路由命中的工具必須在啟用清單內
-            if bot_tools and kw_result["current_tool"] not in bot_tools and kw_result["current_tool"] != "direct":
-                pass  # 不採用，fallthrough 到 LLM 路由
-            else:
-                logger.info(
-                    "agent.router.keyword",
-                    message=msg,
-                    tool=kw_result["current_tool"],
-                    reasoning=kw_result["tool_reasoning"],
-                )
-                return kw_result
+            logger.info(
+                "agent.router.keyword",
+                message=msg,
+                tool=kw_result["current_tool"],
+                reasoning=kw_result["tool_reasoning"],
+            )
+            return kw_result
 
         # LLM 意圖分類（動態 prompt 只列啟用的工具）
         router_prompt = _build_router_prompt(bot_tools if bot_tools else None)
@@ -284,95 +231,6 @@ def build_agent_graph(  # noqa: C901
         )
         return {"tool_result": result}
 
-    # 狀態中文→英文映射
-    _status_map: dict[str, str] = {
-        "已送達": "delivered",
-        "送到了": "delivered",
-        "已收到": "delivered",
-        "送達": "delivered",
-        "已出貨": "shipped",
-        "已寄出": "shipped",
-        "運送中": "shipped",
-        "出貨": "shipped",
-        "配送中": "shipped",
-        "處理中": "processing",
-        "備貨中": "processing",
-        "已取消": "canceled",
-        "取消": "canceled",
-        "已開票": "invoiced",
-        "已建立": "created",
-        "新訂單": "created",
-        "剛下單": "created",
-        "已核准": "approved",
-        "已確認": "approved",
-        "未出貨": "processing",
-        "未付款": "created",
-        "delivered": "delivered",
-        "shipped": "shipped",
-        "processing": "processing",
-        "canceled": "canceled",
-        "invoiced": "invoiced",
-        "created": "created",
-        "approved": "approved",
-    }
-
-    _list_all_pattern = re.compile(
-        r"所有訂單|全部訂單|我的訂單|訂單列表|list.?all|all.?order",
-        re.IGNORECASE,
-    )
-
-    async def order_tool_node(state: AgentState) -> dict:
-        if not order_tool:
-            return {"tool_result": {"error": "order_lookup tool is disabled"}}
-
-        msg = state["user_message"]
-
-        # 1. 嘗試提取 order_id
-        order_match = re.search(r"[Oo][Rr][Dd]-?\d+", msg)
-        if order_match:
-            result = await order_tool.invoke(order_id=order_match.group(0))
-            return {"tool_result": result}
-
-        # 2. 嘗試提取狀態
-        for keyword, status_val in _status_map.items():
-            if keyword in msg:
-                result = await order_tool.invoke(status=status_val)
-                return {"tool_result": result}
-
-        # 3. 列出全部
-        if _list_all_pattern.search(msg):
-            result = await order_tool.invoke()
-            return {"tool_result": result}
-
-        # 4. fallback: 列出全部
-        result = await order_tool.invoke()
-        return {"tool_result": result}
-
-    async def product_tool_node(state: AgentState) -> dict:
-        if not product_tool:
-            return {"tool_result": {"error": "product_search tool is disabled"}}
-        result = await product_tool.invoke(state["user_message"])
-        return {"tool_result": result}
-
-    async def ticket_tool_node(state: AgentState) -> dict:
-        if not ticket_tool:
-            return {"tool_result": {"error": "ticket_creation tool is disabled"}}
-        result = await ticket_tool.invoke(
-            tenant_id=state["tenant_id"],
-            subject="客戶投訴",
-            description=state["user_message"],
-        )
-        return {"tool_result": result}
-
-    async def product_recommend_tool_node(state: AgentState) -> dict:
-        if not product_recommend_tool:
-            return {"tool_result": {"error": "product_recommend tool is disabled"}}
-        result = await product_recommend_tool.invoke(
-            tenant_id=state["tenant_id"],
-            query=state["user_message"],
-        )
-        return {"tool_result": result}
-
     async def respond_node(state: AgentState) -> dict:
         """根據工具結果生成最終回答"""
         tool_result = state.get("tool_result", {})
@@ -408,21 +266,10 @@ def build_agent_graph(  # noqa: C901
             "accumulated_usage": accumulated,
         }
 
-    # Build enabled tools set dynamically
-    enabled_tools = {"rag_query"}
-    if order_tool:
-        enabled_tools.add("order_lookup")
-    if product_tool:
-        enabled_tools.add("product_search")
-    if ticket_tool:
-        enabled_tools.add("ticket_creation")
-    if product_recommend_tool:
-        enabled_tools.add("product_recommend")
-
     def route_to_tool(state: AgentState) -> str:
         tool = state.get("current_tool", "rag_query")
-        if tool in enabled_tools:
-            return tool
+        if tool == "rag_query":
+            return "rag_query"
         return "direct"
 
     # Build graph
@@ -430,10 +277,6 @@ def build_agent_graph(  # noqa: C901
 
     graph.add_node("router", router_node)
     graph.add_node("rag_tool", rag_tool_node)
-    graph.add_node("order_tool", order_tool_node)
-    graph.add_node("product_tool", product_tool_node)
-    graph.add_node("ticket_tool", ticket_tool_node)
-    graph.add_node("product_recommend_tool", product_recommend_tool_node)
 
     graph.set_entry_point("router")
 
@@ -444,18 +287,10 @@ def build_agent_graph(  # noqa: C901
             route_to_tool,
             {
                 "rag_query": "rag_tool",
-                "order_lookup": "order_tool",
-                "product_search": "product_tool",
-                "product_recommend": "product_recommend_tool",
-                "ticket_creation": "ticket_tool",
                 "direct": "respond",
             },
         )
         graph.add_edge("rag_tool", "respond")
-        graph.add_edge("order_tool", "respond")
-        graph.add_edge("product_tool", "respond")
-        graph.add_edge("product_recommend_tool", "respond")
-        graph.add_edge("ticket_tool", "respond")
         graph.add_edge("respond", END)
     else:
         # Routing + tool only (no respond) — for streaming
@@ -464,17 +299,9 @@ def build_agent_graph(  # noqa: C901
             route_to_tool,
             {
                 "rag_query": "rag_tool",
-                "order_lookup": "order_tool",
-                "product_search": "product_tool",
-                "product_recommend": "product_recommend_tool",
-                "ticket_creation": "ticket_tool",
                 "direct": END,
             },
         )
         graph.add_edge("rag_tool", END)
-        graph.add_edge("order_tool", END)
-        graph.add_edge("product_tool", END)
-        graph.add_edge("product_recommend_tool", END)
-        graph.add_edge("ticket_tool", END)
 
     return graph

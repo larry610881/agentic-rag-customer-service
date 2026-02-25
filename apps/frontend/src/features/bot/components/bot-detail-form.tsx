@@ -21,9 +21,6 @@ import type { Bot, UpdateBotRequest } from "@/types/bot";
 
 const AVAILABLE_TOOLS = [
   { value: "rag_query", label: "知識庫查詢" },
-  { value: "order_lookup", label: "訂單查詢" },
-  { value: "product_search", label: "商品搜尋" },
-  { value: "ticket_creation", label: "建立工單" },
 ] as const;
 
 const botFormSchema = z.object({

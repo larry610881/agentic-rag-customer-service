@@ -46,11 +46,11 @@ def create_mcp_context(context):
     )
 
 
-@given("MCP 工具包含 \"knowledge_search\" 和 \"order_lookup\"")
+@given("MCP 工具包含 \"knowledge_search\" 和 \"rag_query\"")
 def set_mcp_tools(context):
     context["wc"].mcp_tools = {
         "knowledge_search": {"description": "搜尋知識庫"},
-        "order_lookup": {"description": "訂單查詢"},
+        "rag_query": {"description": "訂單查詢"},
     }
 
 
@@ -89,6 +89,6 @@ def verify_has_knowledge_search(context):
     assert "knowledge_search" in context["wc"].mcp_tools
 
 
-@then("mcp_tools 應包含 \"order_lookup\" 鍵")
-def verify_has_order_lookup(context):
-    assert "order_lookup" in context["wc"].mcp_tools
+@then("mcp_tools 應包含 \"rag_query\" 鍵")
+def verify_has_rag_query(context):
+    assert "rag_query" in context["wc"].mcp_tools

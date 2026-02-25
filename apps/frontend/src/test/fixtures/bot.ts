@@ -9,7 +9,7 @@ export const mockBots: Bot[] = [
     is_active: true,
     system_prompt: "You are a helpful customer service bot.",
     knowledge_base_ids: ["kb-1", "kb-2"],
-    enabled_tools: ["rag_query", "order_lookup"],
+    enabled_tools: ["rag_query"],
     temperature: 0.3,
     max_tokens: 1024,
     history_limit: 10,
