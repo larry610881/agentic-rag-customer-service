@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useChatStore } from "@/stores/use-chat-store";
 import { MessageBubble } from "@/features/chat/components/message-bubble";
 import { CitationList } from "@/features/chat/components/citation-list";
@@ -24,7 +23,7 @@ export function MessageList() {
   }
 
   return (
-    <ScrollArea className="flex-1 p-4">
+    <div className="min-h-0 flex-1 overflow-y-auto p-4">
       <div className="flex flex-col gap-4">
         {messages.map((message, index) => (
           <div key={message.id} className="flex flex-col gap-2">
@@ -39,6 +38,6 @@ export function MessageList() {
         ))}
         <div ref={bottomRef} />
       </div>
-    </ScrollArea>
+    </div>
   );
 }

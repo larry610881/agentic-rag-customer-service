@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeftRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useConversations, useConversation } from "@/hooks/queries/use-conversations";
 import { useChatStore } from "@/stores/use-chat-store";
 import { ConversationItem } from "./conversation-item";
@@ -67,7 +66,7 @@ export function ConversationList() {
           <Plus className="h-4 w-4" />
         </Button>
       </div>
-      <ScrollArea className="flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-1 p-2">
           {conversations && conversations.length > 0 ? (
             conversations.map((c) => (
@@ -84,7 +83,7 @@ export function ConversationList() {
             </p>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
