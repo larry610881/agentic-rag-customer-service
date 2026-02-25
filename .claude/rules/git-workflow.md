@@ -71,6 +71,23 @@ refactor/<scope>/<描述>       # 重構
 - PR 描述需包含：變更摘要、測試計畫
 - 相關的 Issue 以 `Closes #123` 格式關聯
 
+## GitHub Issue 管理
+
+### Issue 生命週期
+
+1. **建立時機**：功能計畫確認後、開發開始前
+2. **必要欄位**：
+   - Title：`<type>(<scope>): <description>`（與 commit 格式一致）
+   - Body：Summary + Sub-tasks (checkbox) + Acceptance Criteria
+   - Labels：`enhancement` / `bug` / `refactor`
+3. **進度更新**：每個階段/子任務完成後留 comment
+4. **關閉**：開發完成 + 測試通過後 `gh issue close <number> --reason completed`
+
+### Commit 關聯 Issue
+
+- 開發中的 commit：message 末尾加 `Refs #<issue-number>`
+- 最終完成的 commit：message 末尾加 `Closes #<issue-number>`
+
 ## 提交前檢查
 
 - 確保 `make lint` 通過

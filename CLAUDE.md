@@ -206,7 +206,13 @@ Task: 前端實作  ──┘      owner: e2e-integration-tester
 
 **判斷口訣：能 fire-and-forget 就用 Subagent，需要等待或對話就用 Teams。**
 
-## 開發工作流（五階段，不可跳過）
+## 開發工作流（六階段，不可跳過）
+
+### Stage 0：Issue 建立
+- 計畫確認後，使用 `gh issue create` 建立 GitHub Issue
+- Issue 內容：Summary + Sub-tasks（checkbox） + Acceptance Criteria
+- Issue label：`enhancement`（功能）/ `bug`（修復）/ `refactor`（重構）
+- 後續 commit message 加上 `Refs #<issue-number>`
 
 ### Stage 1：設計與架構
 - 確認限界上下文歸屬
@@ -236,6 +242,7 @@ Task: 前端實作  ──┘      owner: e2e-integration-tester
 - 無 lint 錯誤：`make lint`
 - 覆蓋率 ≥ 80%
 - 已 commit 並 push
+- **Close Issue**：`gh issue close <number> --reason completed`
 
 ## Bug Fix 工作流（不可省略測試）
 
@@ -260,6 +267,12 @@ Task: 前端實作  ──┘      owner: e2e-integration-tester
 2. **計畫變更時** — 新增/移除/修改 todolist 項目
 3. **開發驗證時** — 執行 `/sprint-sync` 自動掃描並更新
 4. **Session 結束前** — Stop hook 會提醒檢查 todolist 是否已同步
+
+### Issue 進度同步規則
+
+1. **計畫完成後** — 建立 GitHub Issue（Sub-tasks 用 checkbox）
+2. **每個子任務完成後** — 在 Issue 留 comment 更新進度（如 `E1.3 完成：6 Use Cases`）
+3. **全部完成後** — Close Issue + 更新 SPRINT_TODOLIST.md
 
 ## 安全注意事項
 
