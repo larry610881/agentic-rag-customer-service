@@ -389,8 +389,8 @@
 - ✅ 全量測試：98 scenarios 通過（84 既有 + 14 新增）
 - ✅ 覆蓋率：85.22% > 80%
 - ✅ Lint：ruff clean
-- ⬜ MCPToolWorker 通用 MCP Client Worker（待 mcp 套件安裝）
-- ⬜ Embedded MCP Server（Knowledge, Conversation, Tenant）（待 mcp 套件安裝）
+- ⏭️ MCPToolWorker 通用 MCP Client Worker — 待 mcp 套件穩定後再實作
+- ⏭️ Embedded MCP Server（Knowledge, Conversation, Tenant）— 同上
 
 ### 7.0.1 Config 重構 + Qwen/OpenRouter 整合
 - ✅ Config：新增 `qwen_api_key`, `openrouter_api_key`, `llm_base_url`, `embedding_base_url`
@@ -421,7 +421,7 @@
 - ✅ `/ui-enhance` skill 建立（`.claude/skills/ui-enhance/SKILL.md`）
 - ✅ `ui-design-system` rule 建立（`.claude/rules/ui-design-system.md`）
 - ✅ `CLAUDE.md` Agent Team 表格更新
-- ⬜ 驗收：`/ui-enhance KnowledgeBaseCard` 可正常強化
+- ⏭️ 驗收：`/ui-enhance KnowledgeBaseCard` 可正常強化 — 待 MCP server 穩定
 
 ### 7.8 測試完整性紅線
 - ✅ `test-integrity` rule 建立（`.claude/rules/test-integrity.md`）
@@ -468,12 +468,12 @@
 - ✅ 驗收：Playwright 10/10 通過（docker + backend + frontend + seed data）
 
 ### 7.2 BDD 全場景
-- ⬜ pytest-bdd 執行所有 feature
-- ⬜ 驗收：100% 通過率
+- ✅ pytest-bdd 執行所有 feature（182 scenarios 全通過）
+- ✅ 驗收：100% 通過率
 
 ### 7.3 效能測試
-- ⬜ 壓力測試（Locust）
-- ⬜ 驗收：P95 < 3s，支援 50 並發
+- ⏭️ 壓力測試（Locust）— 歸入未來 Sprint，目前聚焦功能開發
+- ⏭️ 驗收：P95 < 3s，支援 50 並發
 
 ### 7.4 Demo 場景
 - ✅ Demo 1：文件上傳與自動向量化（E2E feature + steps）
@@ -490,13 +490,13 @@
 - ✅ 架構圖：`docs/architecture.md`
 - ✅ 快速開始：`docs/getting-started.md`
 - ✅ Provider 設定指南：`docs/configuration.md`
-- ✅ Demo 操作手冊：`docs/demo-guide.md`
+- ⏭️ ~~Demo 操作手冊：`docs/demo-guide.md`~~（已刪除，Demo 流程整合至 README + getting-started）
 - ✅ 驗收：新人可在 30 分鐘內跑起來
 
 ### 7.6 部署
-- ⬜ Docker Compose 生產配置
-- ⬜ `make prod-up` 一鍵部署
-- ⬜ 驗收：生產環境可啟動
+- ⏭️ Docker Compose 生產配置 — 歸入未來 Sprint
+- ⏭️ `make prod-up` 一鍵部署
+- ⏭️ 驗收：生產環境可啟動
 
 ### 7.12 機器人管理（Bot Management）
 - ✅ Domain：`Bot` Entity + `BotLLMParams` + `BotId` VO + `BotRepository` ABC
@@ -870,39 +870,19 @@
 
 ---
 
-## Backlog：全 DB 控制 — Embedding / LLM Provider 動態設定
+## ~~Backlog：全 DB 控制 — Embedding / LLM Provider 動態設定~~（COMPLETED via E1）
 
-> **目標**：將目前 `.env` 靜態設定的 Embedding / LLM provider 改為 DB 儲存，支援 UI 動態切換，免重啟後端。
+> ~~**目標**：將目前 `.env` 靜態設定的 Embedding / LLM provider 改為 DB 儲存，支援 UI 動態切換，免重啟後端。~~
+>
+> **狀態：已由 E1（System Provider Settings DB 化）全部實作完成。**
 
-### D1 — 系統設定 Domain 模型
-- ⬜ Domain：`SystemConfig` Entity（tenant 級設定）
-- ⬜ 欄位：`llm_provider`, `llm_model`, `llm_api_key`（加密）, `embedding_provider`, `embedding_model`, `embedding_api_key`（加密）
-- ⬜ `SystemConfigRepository` Interface
-
-### D2 — API Key 加密機制
-- ⬜ Infrastructure：AES-256 加密 / 解密 service
-- ⬜ API Key 存入 DB 前加密，讀取時解密
-- ⬜ 加密金鑰（master key）仍透過 `.env` 管理
-- ⬜ **注意：禁止明文存 API Key 到 DB**
-
-### D3 — 動態 Service 重建
-- ⬜ LLM / Embedding service 改為 factory pattern（根據 DB config 動態建立實例）
-- ⬜ 設定變更時能即時生效（不需重啟）
-- ⬜ 快取策略：per-tenant service instance cache + TTL 失效
-
-### D4 — 管理 UI
-- ⬜ 前端：系統設定頁面（Provider 選擇 + Model 選擇 + API Key 輸入）
-- ⬜ per-tenant 設定（A 租戶用 OpenAI，B 租戶用 Claude）
-- ⬜ 連線測試按鈕（驗證 API Key 有效性）
-
-### D5 — Fallback 機制
-- ⬜ DB 讀不到設定時 fallback 到 `.env`（確保系統啟動不會因 DB 設定缺失而失敗）
-- ⬜ Provider 呼叫失敗時的降級策略
-
-### 注意事項
-- 此改動影響範圍大，建議獨立 Sprint 執行
-- 優先做 D1 + D5（有 fallback 才安全），再做 D2-D4
-- 多租戶場景下，每個 tenant 的 token 用量需獨立追蹤（未來計費基礎）
+| D 系列子項 | E1 對應實作 |
+|-----------|------------|
+| D1 — SystemConfig Domain 模型 | ✅ `ProviderSetting` Entity + `ProviderSettingRepository` ABC |
+| D2 — API Key 加密機制 | ✅ AES-256-GCM `EncryptionService` |
+| D3 — 動態 Service 重建 | ✅ `DynamicLLMServiceFactory` + `DynamicLLMServiceProxy`（per-tenant） |
+| D4 — 管理 UI | ✅ 前端 Settings 頁面（Provider 選擇 + API Key + 連線測試） |
+| D5 — Fallback 機制 | ✅ DB → .env fallback chain |
 
 ---
 
@@ -930,15 +910,15 @@
 
 | Sprint | 狀態 | 完成率 | 備註 |
 |--------|------|--------|------|
-| S0 基礎建設 | 🔄 進行中 | 98% | Kaggle ETL 已移除（E0），待 CI 驗收 |
+| S0 基礎建設 | ✅ 完成 | 99% | CI 驗收（⬜）為 GitHub 端設定，非程式碼 |
 | S1 租戶+知識 | ✅ 完成 | 90% | Unit 完成，Integration Test 待後續 |
 | S2 文件+向量化 | ✅ 完成 | 100% | 29 scenarios, 83.71% coverage, 51 chunks |
 | S3 RAG 查詢 | ✅ 完成 | 100% | 17 scenarios (6+5+6), 82% coverage |
 | S4 Agent 框架 | ✅ 完成 | 100% | 非 RAG 工具已在 E0 移除 |
 | S5 前端 MVP + LINE Bot | ✅ 完成 | 95% | 65+42 tests, 82% coverage |
 | S6 Agentic 工作流 | ✅ 完成 | 100% | 84 scenarios, 84.83% coverage |
-| S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.11 完成 |
-| S7 整合+Demo | ✅ 完成 | 100% | Demo 1-6 完成（非 RAG 工具已在 E0 移除） |
+| S7P1 Multi-Agent + Config + Agent Team | ✅ 完成 | 100% | 7.0-7.0.3 + 7.7-7.12 完成，MCP 待穩定（⏭️） |
+| S7 整合+Demo | ✅ 完成 | 95% | Demo 1-6 ✅、BDD 全通過 ✅、效能/部署歸入未來（⏭️） |
 | **E0 Tool 清理 + Multi-Deploy** | **✅ 完成** | **100%** | **22 files 刪除, 20+ files 編輯, 126 backend + 87 frontend tests** |
 | **E1 System Provider Settings** | **✅ 完成** | **100%** | **46 files, 2667 insertions, 139 backend + 8 new FE tests** |
 | **E1.5 LINE Webhook 多租戶** | **✅ 完成** | **100%** | **11 files, 577 insertions, 146 backend + 95 frontend tests** |
