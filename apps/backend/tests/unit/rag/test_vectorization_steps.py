@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
@@ -193,3 +194,115 @@ def verify_api_call_count(context, count):
 def verify_vectors_and_calls(context, count, api_count):
     assert len(context["vectors"]) == count
     assert context["api_call_count"] == api_count
+
+
+# --- 429 Retry-After + adaptive batch size scenarios ---
+
+
+def _make_429_response(retry_after: str | None = None) -> httpx.Response:
+    """Build a mock httpx.Response that triggers HTTPStatusError with 429."""
+    request = httpx.Request("POST", "https://api.openai.com/v1/embeddings")
+    headers = {"Retry-After": retry_after} if retry_after else {}
+    response = httpx.Response(429, request=request, headers=headers)
+    return response
+
+
+@given("3 個文字 chunks 使用 OpenAI embedding 且首次回傳 429 帶 Retry-After 2")
+def openai_3_chunks_429_retry_after(context, mock_openai_response):
+    context["chunks"] = [f"chunk {i}" for i in range(3)]
+    context["api_call_count"] = 0
+
+    async def mock_post(url, **kwargs):
+        context["api_call_count"] = context.get("api_call_count", 0) + 1
+        if context["api_call_count"] == 1:
+            resp_429 = _make_429_response(retry_after="2")
+            raise httpx.HTTPStatusError(
+                "429 Too Many Requests",
+                request=resp_429.request,
+                response=resp_429,
+            )
+        batch_size = len(kwargs["json"]["input"])
+        resp = MagicMock()
+        resp.json.return_value = mock_openai_response(batch_size)
+        resp.raise_for_status = MagicMock()
+        return resp
+
+    context["mock_post"] = mock_post
+
+
+@when("執行 OpenAI 向量化並記錄等待時間")
+def do_openai_vectorize_record_sleep(context):
+    service = OpenAIEmbeddingService(api_key="test-key")
+    sleep_values: list[float] = []
+
+    async def _execute():
+        mock_client = AsyncMock()
+        mock_client.post = context["mock_post"]
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        async def mock_sleep(seconds):
+            sleep_values.append(seconds)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with patch("asyncio.sleep", side_effect=mock_sleep):
+                return await service.embed_texts(context["chunks"])
+
+    context["vectors"] = _run(_execute())
+    context["sleep_values"] = sleep_values
+
+
+@then("等待時間應至少為 2 秒")
+def verify_retry_after_wait(context):
+    # The first sleep should be the Retry-After value (2.0)
+    retry_sleeps = [s for s in context["sleep_values"] if s >= 2.0]
+    assert len(retry_sleeps) >= 1, (
+        f"Expected at least one sleep >= 2s, got: {context['sleep_values']}"
+    )
+
+
+@given("80 個文字 chunks 使用 OpenAI embedding 且首批回傳 429")
+def openai_80_chunks_429_first_batch(context, mock_openai_response):
+    context["chunks"] = [f"chunk {i}" for i in range(80)]
+    context["api_call_count"] = 0
+    context["batch_sizes"] = []
+
+    async def mock_post(url, **kwargs):
+        context["api_call_count"] = context.get("api_call_count", 0) + 1
+        batch_size = len(kwargs["json"]["input"])
+        context["batch_sizes"].append(batch_size)
+        # First call: 429 (the first batch of 50)
+        if context["api_call_count"] == 1:
+            resp_429 = _make_429_response(retry_after="1")
+            raise httpx.HTTPStatusError(
+                "429 Too Many Requests",
+                request=resp_429.request,
+                response=resp_429,
+            )
+        resp = MagicMock()
+        resp.json.return_value = mock_openai_response(batch_size)
+        resp.raise_for_status = MagicMock()
+        return resp
+
+    context["mock_post"] = mock_post
+
+
+@then("所有 80 個 chunks 向量化成功")
+def verify_80_chunks(context):
+    assert len(context["vectors"]) == 80
+
+
+@then("後續 batch 的 chunk 數應小於初始 batch size")
+def verify_batch_size_reduced(context):
+    # batch_sizes tracks actual API calls:
+    # call 1: 50 (429 fail)
+    # call 2: 50 (retry success)
+    # call 3+: should use reduced batch size (25)
+    batch_sizes = context["batch_sizes"]
+    assert len(batch_sizes) >= 3, f"Expected at least 3 API calls, got {batch_sizes}"
+    # After first batch (50) succeeded with 429, subsequent batches should be smaller
+    subsequent_sizes = batch_sizes[2:]  # skip the 429 call and its retry
+    for size in subsequent_sizes:
+        assert size < 50, (
+            f"Expected reduced batch size < 50, got {size} in {batch_sizes}"
+        )

@@ -342,6 +342,12 @@ class Container(containers.DeclarativeContainer):
             batch_delay=providers.Callable(
                 lambda cfg: cfg.embedding_batch_delay, config
             ),
+            retry_after_multiplier=providers.Callable(
+                lambda cfg: cfg.embedding_retry_after_multiplier, config
+            ),
+            min_batch_size=providers.Callable(
+                lambda cfg: cfg.embedding_min_batch_size, config
+            ),
         ),
         qwen=providers.Factory(
             OpenAIEmbeddingService,
@@ -368,6 +374,12 @@ class Container(containers.DeclarativeContainer):
             batch_delay=providers.Callable(
                 lambda cfg: cfg.embedding_batch_delay, config
             ),
+            retry_after_multiplier=providers.Callable(
+                lambda cfg: cfg.embedding_retry_after_multiplier, config
+            ),
+            min_batch_size=providers.Callable(
+                lambda cfg: cfg.embedding_min_batch_size, config
+            ),
         ),
         google=providers.Factory(
             OpenAIEmbeddingService,
@@ -393,6 +405,12 @@ class Container(containers.DeclarativeContainer):
             ),
             batch_delay=providers.Callable(
                 lambda cfg: cfg.embedding_batch_delay, config
+            ),
+            retry_after_multiplier=providers.Callable(
+                lambda cfg: cfg.embedding_retry_after_multiplier, config
+            ),
+            min_batch_size=providers.Callable(
+                lambda cfg: cfg.embedding_min_batch_size, config
             ),
         ),
     )

@@ -25,3 +25,15 @@ Feature: Vectorization
     Given 3 個文字 chunks 使用 OpenAI embedding 且首次呼叫失敗
     When 執行 OpenAI 向量化
     Then 產生 3 個向量且 API 呼叫次數為 2
+
+  Scenario: 429 Rate Limit 讀取 Retry-After header 等待後重試成功
+    Given 3 個文字 chunks 使用 OpenAI embedding 且首次回傳 429 帶 Retry-After 2
+    When 執行 OpenAI 向量化並記錄等待時間
+    Then 產生 3 個向量且 API 呼叫次數為 2
+    And 等待時間應至少為 2 秒
+
+  Scenario: 連續 429 自動縮減 batch size 後成功
+    Given 80 個文字 chunks 使用 OpenAI embedding 且首批回傳 429
+    When 執行 OpenAI 向量化
+    Then 所有 80 個 chunks 向量化成功
+    And 後續 batch 的 chunk 數應小於初始 batch size

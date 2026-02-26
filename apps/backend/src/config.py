@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     embedding_timeout: float = 120.0
     # seconds between batches (rate limit protection)
     embedding_batch_delay: float = 1.0
+    # multiplier for Retry-After header value on 429 responses
+    embedding_retry_after_multiplier: float = 1.0
+    # minimum batch size when adaptive reduction kicks in
+    embedding_min_batch_size: int = 10
 
     # LLM (independent from Embedding)
     # "fake" | "openai" | "anthropic" | "qwen" | "google" | "openrouter"
