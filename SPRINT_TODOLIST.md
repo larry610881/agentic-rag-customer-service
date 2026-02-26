@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-26 (Issue #7 Integration Test 補債完成, 221 backend + 117 frontend tests green)
+> 最後更新：2026-02-26 (Claude Code 配置最佳實踐修正完成, CLAUDE.md 瘦身 72%)
 
 ---
 
@@ -1104,3 +1104,4 @@
 | **E5 Redis Cache 統一** | **✅ 完成** | **100%** | **10 NEW + 10 MODIFY files, 200 backend + 117 frontend tests, 3 commits** |
 | **E6 Content-Aware Chunking** | **✅ 完成** | **100%** | **5 NEW + 5 MODIFY files, 207 backend + 117 frontend tests** |
 | **Issue #7 Integration Test 補債** | **✅ 完成** | **100%** | **9 NEW + 3 MODIFY, 14 integration scenarios, conftest deadlock fix, coverage omit 修正, 82.90% unit coverage** |
+| **Claude Code 配置最佳實踐修正** | **✅ 完成** | **100%** | **CLAUDE.md 358→101 行, ddd-architecture 合併入 python-standards, Learning Review 外移至 rule, settings.local.json 清除 tokens + 精簡權限, -374 行淨刪除** |
