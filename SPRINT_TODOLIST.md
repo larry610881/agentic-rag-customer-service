@@ -920,6 +920,9 @@
 | E6 | **回饋統計即時計算** — `count_by_tenant_and_rating` 每次都打 DB，無快取 | 單租戶累積 10k+ 筆回饋時查詢變慢 | MVP 規模可接受；未來可用 materialized view 或定期快取 | 低 |
 | E7 | **回饋 API 無 rate limiting** — UNIQUE 約束擋住同一訊息重複回饋，但端點本身沒限流 | 惡意 client 大量 POST `/api/v1/feedback` | 目前無緩解；建議加 per-IP 或 per-tenant rate limiter | 中 |
 | E8 | **回饋不支援「改變心意」** — UNIQUE on message_id 代表一旦回饋就不能修改 | 使用者想從 thumbs_down 改為 thumbs_up | 目前不支援；若需要可改為 upsert 邏輯（find existing → update rating） | 低 |
+| E9 | **分析查詢缺少分頁機制** — `get_negative_with_context` 只回傳 `limit` 筆，沒有游標/偏移量供大量資料翻頁 | 單租戶累積大量負面回饋時，Admin 無法瀏覽全部 | 目前只有 `limit` 參數；建議加 cursor-based pagination | 中 |
+| E10 | **Recharts 打包體積** — 增加約 200KB（gzip 後），所有頁面都會載入 | 首次載入 /feedback 以外的頁面也會拉 recharts bundle | 建議用 `next/dynamic` 動態載入圖表元件，實現程式碼分割 | 低 |
+| E11 | **PII 遮蔽基於正則表達式** — 涵蓋 email、手機、LINE user ID，但可能遺漏地址、身分證字號等 PII | 匯出含敏感資料的回饋，遮蔽不完整 | 若有合規要求，建議改用 NER（命名實體辨識）遮蔽套件 | 低 |
 
 ---
 
