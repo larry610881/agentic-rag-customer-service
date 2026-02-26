@@ -83,6 +83,13 @@ class Settings(BaseSettings):
     # Encryption
     encryption_master_key: str = ""
 
+    # Bcrypt
+    bcrypt_rounds: int = 12
+
+    # Rate Limiting
+    rate_limit_global_rpm: int = 1000
+    rate_limit_config_cache_ttl: int = 60
+
     # Cache TTL (seconds)
     cache_bot_ttl: int = 120
     cache_feedback_stats_ttl: int = 60

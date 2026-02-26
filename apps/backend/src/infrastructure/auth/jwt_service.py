@@ -27,6 +27,26 @@ class JWTService:
         token: str = jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
         return token
 
+    def create_user_token(
+        self,
+        user_id: str,
+        tenant_id: str | None,
+        role: str,
+    ) -> str:
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=self._access_token_expire_minutes
+        )
+        payload: dict[str, Any] = {
+            "sub": user_id,
+            "role": role,
+            "exp": expire,
+            "type": "user_access",
+        }
+        if tenant_id is not None:
+            payload["tenant_id"] = tenant_id
+        token: str = jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
+        return token
+
     def decode_token(self, token: str) -> dict[str, Any]:
         try:
             payload: dict[str, Any] = jwt.decode(

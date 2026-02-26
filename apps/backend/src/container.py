@@ -2,6 +2,9 @@ import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
 from src.application.agent.send_message_use_case import SendMessageUseCase
+from src.application.auth.get_user_use_case import GetUserUseCase
+from src.application.auth.login_use_case import LoginUseCase
+from src.application.auth.register_user_use_case import RegisterUserUseCase
 from src.application.bot.create_bot_use_case import CreateBotUseCase
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
@@ -76,6 +79,11 @@ from src.application.platform.update_provider_setting_use_case import (
     UpdateProviderSettingUseCase,
 )
 from src.application.rag.query_rag_use_case import QueryRAGUseCase
+from src.application.ratelimit.get_rate_limits_use_case import GetRateLimitsUseCase
+from src.application.ratelimit.seed_defaults_use_case import SeedDefaultsUseCase
+from src.application.ratelimit.update_rate_limit_use_case import (
+    UpdateRateLimitUseCase,
+)
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
@@ -83,6 +91,7 @@ from src.application.usage.query_usage_use_case import QueryUsageUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.config import Settings
 from src.domain.agent.team_supervisor import TeamSupervisor
+from src.infrastructure.auth.bcrypt_password_service import BcryptPasswordService
 from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.cache.redis_cache_service import RedisCacheService
 from src.infrastructure.conversation import (
@@ -118,11 +127,17 @@ from src.infrastructure.db.repositories.processing_task_repository import (
 from src.infrastructure.db.repositories.provider_setting_repository import (
     SQLAlchemyProviderSettingRepository,
 )
+from src.infrastructure.db.repositories.rate_limit_config_repository import (
+    SQLAlchemyRateLimitConfigRepository,
+)
 from src.infrastructure.db.repositories.tenant_repository import (
     SQLAlchemyTenantRepository,
 )
 from src.infrastructure.db.repositories.usage_repository import (
     SQLAlchemyUsageRepository,
+)
+from src.infrastructure.db.repositories.user_repository import (
+    SQLAlchemyUserRepository,
 )
 from src.infrastructure.embedding.dynamic_embedding_factory import (
     DynamicEmbeddingServiceFactory,
@@ -189,6 +204,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.usage_router",
             "src.interfaces.api.bot_router",
             "src.interfaces.api.provider_setting_router",
+            "src.interfaces.api.admin_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -217,6 +233,11 @@ class Container(containers.DeclarativeContainer):
         access_token_expire_minutes=providers.Callable(
             lambda cfg: cfg.jwt_access_token_expire_minutes, config
         ),
+    )
+
+    password_service = providers.Singleton(
+        BcryptPasswordService,
+        rounds=providers.Callable(lambda cfg: cfg.bcrypt_rounds, config),
     )
 
     health_repository = providers.Factory(
@@ -266,6 +287,16 @@ class Container(containers.DeclarativeContainer):
 
     bot_repository = providers.Factory(
         SQLAlchemyBotRepository,
+        session=db_session,
+    )
+
+    user_repository = providers.Factory(
+        SQLAlchemyUserRepository,
+        session=db_session,
+    )
+
+    rate_limit_config_repository = providers.Factory(
+        SQLAlchemyRateLimitConfigRepository,
         session=db_session,
     )
 
@@ -576,6 +607,39 @@ class Container(containers.DeclarativeContainer):
     list_tenants_use_case = providers.Factory(
         ListTenantsUseCase,
         tenant_repository=tenant_repository,
+    )
+
+    register_user_use_case = providers.Factory(
+        RegisterUserUseCase,
+        user_repository=user_repository,
+        password_service=password_service,
+    )
+
+    login_use_case = providers.Factory(
+        LoginUseCase,
+        user_repository=user_repository,
+        password_service=password_service,
+        jwt_service=jwt_service,
+    )
+
+    get_user_use_case = providers.Factory(
+        GetUserUseCase,
+        user_repository=user_repository,
+    )
+
+    get_rate_limits_use_case = providers.Factory(
+        GetRateLimitsUseCase,
+        rate_limit_config_repository=rate_limit_config_repository,
+    )
+
+    update_rate_limit_use_case = providers.Factory(
+        UpdateRateLimitUseCase,
+        rate_limit_config_repository=rate_limit_config_repository,
+    )
+
+    seed_defaults_use_case = providers.Factory(
+        SeedDefaultsUseCase,
+        rate_limit_config_repository=rate_limit_config_repository,
     )
 
     create_knowledge_base_use_case = providers.Factory(

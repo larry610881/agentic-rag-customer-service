@@ -22,8 +22,10 @@ from src.infrastructure.db.models import (  # noqa: F401
     MessageModel,
     ProcessingTaskModel,
     ProviderSettingModel,
+    RateLimitConfigModel,
     TenantModel,
     UsageRecordModel,
+    UserModel,
 )
 from src.infrastructure.logging import get_logger, setup_logging
 
@@ -113,6 +115,27 @@ def create_app() -> FastAPI:
     from src.interfaces.api.middleware import RequestIDMiddleware
 
     application.add_middleware(RequestIDMiddleware)
+
+    # Rate Limit Middleware (runs after CORS, before route handlers)
+    from src.infrastructure.ratelimit.config_loader import RateLimitConfigLoader
+    from src.infrastructure.ratelimit.redis_rate_limiter import RedisRateLimiter
+    from src.interfaces.api.rate_limit_middleware import RateLimitMiddleware
+
+    rate_limiter = RedisRateLimiter(redis_client=container.redis_client())
+    config_loader = RateLimitConfigLoader(
+        rate_limit_config_repository=container.rate_limit_config_repository(),
+        redis_client=container.redis_client(),
+        cache_ttl=settings.rate_limit_config_cache_ttl,
+    )
+    application.add_middleware(
+        RateLimitMiddleware,
+        rate_limiter=rate_limiter,
+        config_loader=config_loader,
+        jwt_secret_key=settings.jwt_secret_key,
+        jwt_algorithm=settings.jwt_algorithm,
+        global_rpm=settings.rate_limit_global_rpm,
+    )
+
     application.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000"],
@@ -176,6 +199,7 @@ def create_app() -> FastAPI:
         application.include_router(usage_router)
         application.include_router(bot_router)
 
+        from src.interfaces.api.admin_router import router as admin_router
         from src.interfaces.api.feedback_router import router as feedback_router
         from src.interfaces.api.provider_setting_router import (
             router as provider_setting_router,
@@ -183,6 +207,7 @@ def create_app() -> FastAPI:
 
         application.include_router(provider_setting_router)
         application.include_router(feedback_router)
+        application.include_router(admin_router)
 
     # Webhook module: LINE Bot
     if "webhook" in modules:
