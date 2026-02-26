@@ -1051,7 +1051,7 @@
 
 | # | 問題描述 | 狀態 | 修復方式 |
 |---|----------|------|----------|
-| E1 | **大檔案 Embedding 429 Rate Limit** | → [#8](https://github.com/larry610881/agentic-rag-customer-service/issues/8) | batch 間延遲 + 429 退避 |
+| E1 | **大檔案 Embedding 429 Rate Limit** | ✅ [#8](https://github.com/larry610881/agentic-rag-customer-service/issues/8) CLOSED | Retry-After header + adaptive batch size |
 | ~~E2~~ | ~~product_search 查錯資料表~~ | ~~CLOSED~~ | ~~E0 移除~~ |
 | E3 | **BackgroundTask 靜默失敗** | ✅ E3 Sprint | `safe_background_task` wrapper + structlog 錯誤日誌 |
 | E4 | **LINE Webhook 無 Bot 查詢快取** | ✅ E5 Redis | CacheService + Redis TTL 120s |
@@ -1073,7 +1073,7 @@
 |-------|------|--------|------|
 | [#6](https://github.com/larry610881/agentic-rag-customer-service/issues/6) | Content-Aware Chunking Strategy | `rag`, `enhancement` | S3.4, E6 |
 | ~~[#7](https://github.com/larry610881/agentic-rag-customer-service/issues/7)~~ | ~~Integration Test 補債~~ | ~~`test`~~ | ~~S1.1, S1.2, S1.4~~ ✅ CLOSED |
-| [#8](https://github.com/larry610881/agentic-rag-customer-service/issues/8) | Embedding 429 Rate Limit | `bug`, `rag` | Edge E1 |
+| ~~[#8](https://github.com/larry610881/agentic-rag-customer-service/issues/8)~~ | ~~Embedding 429 Rate Limit~~ | ~~`bug`, `rag`~~ | ~~Edge E1~~ ✅ CLOSED |
 | [#9](https://github.com/larry610881/agentic-rag-customer-service/issues/9) | API Rate Limiting + 用戶身份 | `enhancement` | Edge E7 |
 | [#10](https://github.com/larry610881/agentic-rag-customer-service/issues/10) | MCP 整合 | `enhancement`, `blocked` | S7P1 |
 | [#11](https://github.com/larry610881/agentic-rag-customer-service/issues/11) | 生產部署 + 壓力測試 | `infra` | S7.3, S7.6 |
