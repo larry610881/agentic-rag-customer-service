@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-26 (E4 EventBus 清理完成 + E5 Redis Cache 規劃, 192 backend + 117 frontend tests green)
+> 最後更新：2026-02-26 (E5 Redis Cache 統一完成, 200 backend + 117 frontend tests green)
 
 ---
 
@@ -952,19 +952,54 @@
 
 ---
 
-## Enterprise Sprint E5：Redis Cache 統一（規劃中）
+## Enterprise Sprint E5：Redis Cache 統一
 
 **Goal**：將所有 in-memory cache 遷移至 Redis，支援多 Worker 部署
 
-| # | 子任務 | 現況 | 遷移目標 | 狀態 |
-|---|--------|------|----------|------|
-| E5.1 | `RedisCacheService` ABC + 實作 | 不存在 | `infrastructure/cache/redis_cache_service.py` | ⬜ |
-| E5.2 | Bot 查詢快取 | `handle_webhook_use_case.py` dict TTL 60s | Redis TTL | ⬜ |
-| E5.3 | 回饋統計快取 | `get_feedback_stats_use_case.py` dict TTL 60s | Redis TTL | ⬜ |
-| E5.4 | 對話摘要快取 | `summary_recent_strategy.py` dict 無 TTL | Redis + TTL（防記憶體無限成長） | ⬜ |
-| E5.5 | Dynamic LLM Factory 快取 | `dynamic_llm_factory.py` 每次查 DB | Redis TTL | ⬜ |
-| E5.6 | Dynamic Embedding Factory 快取 | `dynamic_embedding_factory.py` 每次查 DB | Redis TTL | ⬜ |
-| E5.7 | Container DI | 無 Redis client | 統一注入 `redis.asyncio.Redis` | ⬜ |
+### E5.1 CacheService ABC + Redis/InMemory 實作
+- ✅ Domain：`CacheService` ABC（`domain/shared/cache_service.py`）— get/set/delete
+- ✅ Infrastructure：`RedisCacheService`（graceful degradation on RedisError）
+- ✅ Infrastructure：`InMemoryCacheService`（測試用，TTL 支援）
+- ✅ Container：`redis_client` + `cache_service` Singleton 注入
+- ✅ Main：lifespan shutdown 增加 `redis_client.aclose()`
+- ✅ BDD：4 scenarios（set/get, TTL 過期, delete, Redis 斷線 fallback）
+
+### E5.2 Bot 查詢快取 → Redis
+- ✅ `HandleWebhookUseCase` 改用 CacheService（移除 dict cache）
+- ✅ Bot JSON 序列化/反序列化 helpers（dataclasses.asdict + BotId/datetime 處理）
+- ✅ 既有測試更新為 InMemoryCacheService
+
+### E5.3 回饋統計快取 → Redis
+- ✅ `GetFeedbackStatsUseCase` 改用 CacheService（移除 dict cache）
+- ✅ FeedbackStats JSON 序列化
+- ✅ 既有測試更新為 InMemoryCacheService
+
+### E5.4 對話摘要快取 → Redis + TTL
+- ✅ `SummaryRecentStrategy` 改用 CacheService（修復記憶體洩漏！）
+- ✅ TTL 3600s 防止無限增長
+- ✅ BDD：2 scenarios（LLM 只呼叫一次, TTL 設定驗證）
+
+### E5.5 Dynamic LLM Factory 快取 → Redis（加密）
+- ✅ `DynamicLLMServiceFactory` 加 cache layer + AES 加密
+- ✅ 抽取 `_build_llm_service_from_config()` helper
+- ✅ BDD：1 scenario（DB 只查一次）
+
+### E5.6 Dynamic Embedding Factory 快取 → Redis（加密）
+- ✅ `DynamicEmbeddingServiceFactory` 同 LLM Factory 模式
+- ✅ 抽取 `_build_embedding_service_from_config()` helper
+- ✅ BDD：1 scenario（DB 只查一次）
+
+### E5.7 Config TTL + Cache Invalidation
+- ✅ Config：4 個 TTL 設定（bot 120s, feedback 60s, summary 3600s, provider 300s）
+- ✅ Cache Invalidation：UpdateBotUseCase / DeleteBotUseCase 即時清除 bot 快取
+- ✅ Cache Invalidation：UpdateProviderSettingUseCase / DeleteProviderSettingUseCase 即時清除 provider 快取
+
+### E5 驗證
+- ✅ 全量測試：Backend 200 passed + Frontend 117 passed
+- ✅ 新增：8 BDD scenarios（cache_service 4 + summary_cache 2 + dynamic_factory_cache 2）
+- ✅ Lint：ruff clean
+- ✅ 3 個 git commits：feat + fix(invalidation) + docs(journal)
+- ✅ 架構學習筆記：隱憂已解決/標記 + 延伸學習討論完成
 
 ---
 
@@ -974,17 +1009,33 @@
 
 | # | 問題描述 | 狀態 | 修復方式 |
 |---|----------|------|----------|
-| E1 | **大檔案 Embedding 429 Rate Limit** | ⬜ 未修復 | batch 間延遲 + 429 退避（可透過 `.env` 調整） |
+| E1 | **大檔案 Embedding 429 Rate Limit** | → [#8](https://github.com/larry610881/agentic-rag-customer-service/issues/8) | batch 間延遲 + 429 退避 |
 | ~~E2~~ | ~~product_search 查錯資料表~~ | ~~CLOSED~~ | ~~E0 移除~~ |
 | E3 | **BackgroundTask 靜默失敗** | ✅ E3 Sprint | `safe_background_task` wrapper + structlog 錯誤日誌 |
-| E4 | **LINE Webhook 無 Bot 查詢快取** | ✅ E3 Sprint | Use Case 層 `_bot_cache` + TTL 60s |
+| E4 | **LINE Webhook 無 Bot 查詢快取** | ✅ E5 Redis | CacheService + Redis TTL 120s |
 | E5 | **LINE Webhook 簽名驗證時序** | ✅ E3 Sprint | event parsing 移入 Use Case，先驗簽再 parse |
-| E6 | **回饋統計即時計算** | ✅ E3 Sprint | Use Case 層 TTL 快取 60s |
-| E7 | **回饋 API 無 rate limiting** | ⏭️ 移至 E4.5 | 等 E4（用戶身份體系）完成後做 per-user 限流 |
+| E6 | **回饋統計即時計算** | ✅ E5 Redis | CacheService + Redis TTL 60s |
+| E7 | **回饋 API 無 rate limiting** | → [#9](https://github.com/larry610881/agentic-rag-customer-service/issues/9) | 等用戶身份體系 + Redis rate limit |
 | E8 | **回饋不支援「改變心意」** | ✅ E3 Sprint | 改為 upsert — find existing → update rating/comment/tags |
 | E9 | **分析查詢缺少分頁機制** | ✅ E3 Sprint | Backend `offset` + `total_count`；Frontend server-side 分頁 |
 | E10 | **Recharts 打包體積** | ✅ E3 Sprint | `next/dynamic` + `{ ssr: false }` 動態載入圖表元件 |
 | E11 | **PII 遮蔽不完整** | ✅ E3 Sprint | +信用卡號 +台灣身分證 +IPv4 regex |
+
+---
+
+## Backlog — GitHub Issues 追蹤
+
+> 所有延期項目統一由 GitHub Issues 追蹤，不再散落於各 Sprint 區段。
+
+| Issue | 標題 | Labels | 來源 |
+|-------|------|--------|------|
+| [#6](https://github.com/larry610881/agentic-rag-customer-service/issues/6) | Hybrid Search + Reranking | `rag`, `enhancement` | S3.4, S3.5 |
+| [#7](https://github.com/larry610881/agentic-rag-customer-service/issues/7) | Integration Test 補債 | `test` | S1.1, S1.2, S1.4 |
+| [#8](https://github.com/larry610881/agentic-rag-customer-service/issues/8) | Embedding 429 Rate Limit | `bug`, `rag` | Edge E1 |
+| [#9](https://github.com/larry610881/agentic-rag-customer-service/issues/9) | API Rate Limiting + 用戶身份 | `enhancement` | Edge E7 |
+| [#10](https://github.com/larry610881/agentic-rag-customer-service/issues/10) | MCP 整合 | `enhancement`, `blocked` | S7P1 |
+| [#11](https://github.com/larry610881/agentic-rag-customer-service/issues/11) | 生產部署 + 壓力測試 | `infra` | S7.3, S7.6 |
+| [#12](https://github.com/larry610881/agentic-rag-customer-service/issues/12) | CI Pipeline 驗收 | `infra` | S0.4 |
 
 ---
 
@@ -1008,4 +1059,4 @@
 | **E2 Feedback System (完整版)** | **✅ 完成** | **100%** | **E2.5-E2.9, 182 backend + 117 frontend tests** |
 | **E3 Edge Case Batch Fix** | **✅ 完成** | **100%** | **8 fixes (E3-E6,E8-E11), 196 backend + 117 frontend tests** |
 | **E4 EventBus 清理** | **✅ 完成** | **100%** | **5 files 刪除 + 1 file 編輯, 192 backend + 117 frontend tests** |
-| **E5 Redis Cache 統一** | **⬜ 規劃中** | **0%** | **7 子任務，待排期實作** |
+| **E5 Redis Cache 統一** | **✅ 完成** | **100%** | **10 NEW + 10 MODIFY files, 200 backend + 117 frontend tests, 3 commits** |
