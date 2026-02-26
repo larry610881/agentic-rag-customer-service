@@ -2,57 +2,9 @@
 
 ## 專案概述
 
-Monorepo 架構的 RAG AI Agent 電商客服平台。採用 DDD（Domain-Driven Design）+ TDD + BDD 開發方法論，後端 Python FastAPI + LangGraph，前端 Next.js App Router。
+Monorepo 架構的 RAG AI Agent 電商客服平台。採用 DDD + TDD + BDD 開發方法論，後端 Python FastAPI + LangGraph，前端 Next.js App Router。
 
-## Monorepo 結構
-
-```
-agentic-rag-customer-service/
-├── apps/
-│   ├── backend/                # Python FastAPI — DDD 4-Layer
-│   │   ├── src/
-│   │   │   ├── domain/         # 領域層：Entity, Value Object, Repository Interface
-│   │   │   ├── application/    # 應用層：Use Case, Command/Query Handler
-│   │   │   ├── infrastructure/ # 基礎設施層：DB, Qdrant, LangGraph, External API
-│   │   │   └── interfaces/     # 介面層：FastAPI Router, CLI, Event Handler
-│   │   ├── tests/
-│   │   └── pyproject.toml
-│   └── frontend/               # Next.js 15 App Router
-│       ├── src/
-│       │   ├── app/            # App Router pages
-│       │   ├── components/     # 共用元件
-│       │   ├── features/       # 功能模組
-│       │   ├── hooks/          # 共用 hooks
-│       │   ├── lib/            # 工具函式
-│       │   ├── stores/         # Zustand stores
-│       │   └── test/           # 測試基礎設施
-│       ├── e2e/                # E2E BDD (Playwright)
-│       └── package.json
-├── packages/                   # 共用套件（未來擴充）
-├── infra/                      # Docker / K8s 部署設定
-├── data/                       # 種子資料、測試文件
-├── Makefile                    # 統一入口指令
-└── CLAUDE.md                   # 本檔案
-```
-
-## DDD 架構紅線（違反即修正）
-
-1. **Domain 層禁止依賴外層** — `domain/` 不可 import `application/`、`infrastructure/`、`interfaces/`
-2. **Application 層禁止直接存取 DB** — Use Case 透過 Repository Interface 操作，不可 import SQLAlchemy / Qdrant client
-3. **Infrastructure 層實作 Domain 定義的介面** — Repository Implementation、External Service Adapter 放這裡
-4. **Interfaces 層禁止包含業務邏輯** — FastAPI Router 只負責 HTTP 轉換，委派給 Application 層
-5. **禁止跨聚合根直接操作** — 聚合之間透過 Domain Event 或 Application Service 協調
-6. **禁止 hardcode 機密與環境參數** — 密鑰、連線、timeout 等必須透過 config + `.env` 管理
-
-### 依賴方向圖（只允許向下依賴）
-
-```
-Interfaces (interfaces/)
-    ↓
-Application (application/)
-    ↓
-Domain (domain/)    ← Infrastructure (infrastructure/) 實作 Domain 介面
-```
+> DDD 架構紅線、測試規則、安全規範等詳見 `.claude/rules/` 下的自動套用規則。
 
 ## 限界上下文（Bounded Contexts）
 
@@ -63,148 +15,6 @@ Domain (domain/)    ← Infrastructure (infrastructure/) 實作 Domain 介面
 | RAG | `domain/rag/` | 檢索增強生成、向量搜尋、Prompt 組裝 |
 | Conversation | `domain/conversation/` | 對話管理、對話歷史 |
 | Agent | `domain/agent/` | LangGraph Agent 編排、Tool 管理 |
-
-## 技術棧
-
-### 後端
-| 類別 | 技術 |
-|------|------|
-| 語言 | Python 3.12+ |
-| Web 框架 | FastAPI |
-| DI 容器 | dependency-injector |
-| AI 編排 | LangGraph |
-| 向量資料庫 | Qdrant |
-| Embedding | OpenAI / Azure OpenAI |
-| LLM | Claude / GPT-4 |
-| ORM | SQLAlchemy 2.0 (async) |
-| 測試 | pytest + pytest-bdd v8 |
-
-### 前端
-| 類別 | 技術 |
-|------|------|
-| 框架 | Next.js 15 (App Router) |
-| UI 元件庫 | shadcn/ui (Tailwind CSS + Radix UI) |
-| Client State | Zustand |
-| Server State | TanStack Query |
-| 表單 | React Hook Form + Zod |
-| Unit 測試 | Vitest + React Testing Library |
-| Integration 測試 | Vitest + RTL + MSW |
-| E2E 測試 | Playwright + playwright-bdd |
-
-## 套件管理
-
-| 範圍 | 工具 | 指令 |
-|------|------|------|
-| 後端 | uv | `uv sync` / `uv add <pkg>` / `uv run <cmd>` |
-| 前端 | npm | `npm install` / `npm run <script>` |
-| 統一入口 | make | `make <target>` |
-
-## 常用指令
-
-```bash
-# 開發環境
-make dev-up                  # 啟動所有服務（Docker Compose）
-make dev-down                # 停止所有服務
-
-# 後端
-make test-backend            # 後端全量測試
-make lint-backend            # 後端 lint (ruff + mypy)
-make seed-data               # 種子資料
-
-# 前端
-make test-frontend           # 前端全量測試
-make lint-frontend           # 前端 lint (ESLint + tsc)
-make test-e2e                # E2E BDD 測試
-
-# 全部
-make test                    # 後端 + 前端全量測試
-make lint                    # 後端 + 前端 lint
-```
-
-## 測試策略
-
-### 測試金字塔（60:30:10）
-
-```
-        /  E2E  \          Playwright (前端) / pytest-bdd (後端) — 真實服務
-       /  Integ  \         MSW (前端) / httpx.AsyncClient (後端) — 真實 DB
-      /   Unit    \        Vitest (前端) / pytest (後端) — 完全隔離
-```
-
-- 覆蓋率門檻：**80%**
-- **後端**：BDD-first（先寫 `.feature`，再寫 step definitions）
-- **前端**：TDD + BDD（Unit/Integration 用 TDD，E2E 用 BDD）
-
-### 測試完整性紅線（違反即修正）
-
-1. **全量測試必須通過** — 每次功能完成與 commit 前，執行 `make test`，全部測試（非僅新增的）必須 pass
-2. **禁止修改無關測試** — 不得為了消除失敗而修改與本次需求無關的測試（刪除 assert、放寬條件、skip 測試皆屬違規）
-3. **失敗歸因原則** — 既有測試失敗 = 你的程式碼有回歸，應修正實作而非修改測試
-4. **合法修改測試的唯一條件** — 需求明確要求改變行為，對應測試的斷言必須同步更新
-5. **不確定時先報告** — 若既有測試失敗且判斷非本次變更引起，向使用者報告並等待確認
-
-### 後端測試層級對照
-
-| 層級 | 位置 | 工具 | DB | Repository |
-|------|------|------|-----|-----------|
-| Unit | `tests/unit/` | pytest-bdd + AsyncMock | ❌ Mock | ❌ AsyncMock |
-| Integration | `tests/integration/` | pytest-bdd + httpx | ✅ 真實 | ✅ 真實 |
-| E2E | `tests/e2e/` | pytest-bdd | ✅ 真實 | ✅ 真實 |
-
-### 前端測試層級對照
-
-| 層級 | 位置 | 工具 | API |
-|------|------|------|-----|
-| Unit | `*.test.tsx` | Vitest + RTL | vi.mock |
-| Integration | `*.integration.test.tsx` | Vitest + RTL + MSW | MSW Handler |
-| E2E | `e2e/features/` | playwright-bdd | 真實 API |
-
-## Agent Team 分工
-
-| Agent | Lead | Backend | AI/RAG | Frontend | E2E 整合 |
-|-------|:----:|:-------:|:------:|:--------:|:--------:|
-| planner | ✓ | | | | ✓ (協調) |
-| ddd-checker | ✓ | ✓ | ✓ | | |
-| security-reviewer | ✓ | ✓ | | ✓ | |
-| test-runner-backend | | ✓ | ✓ | | |
-| test-runner-frontend | | | | ✓ | |
-| e2e-integration-tester | | | | | ✓ |
-| implementation-guide | | ✓ | ✓ | | |
-| build-error-resolver | | ✓ | ✓ | ✓ | |
-| code-reviewer | | | | ✓ | |
-| rag-pipeline-checker | | | ✓ | | |
-| ui-designer | | | | ✓ | |
-
-### E2E 整合測試協調規則
-
-涉及前後端的功能，Lead（planner）必須建立 **3 層 Task 結構**：
-
-```
-Task: 後端實作  ──┐
-                   ├──→ Task: E2E 整合測試 (addBlockedBy: 前兩者)
-Task: 前端實作  ──┘      owner: e2e-integration-tester
-```
-
-- E2E 通過 → 功能完成
-- E2E 失敗 → Lead 分析根因 → 建立修復 Task → 重跑 E2E
-
-### Subagent 使用策略
-
-- **保護主 context window** — 研究、探索、平行分析等資訊密集型工作優先委派給 subagent
-- **一 agent 一任務** — 每個 subagent 聚焦單一明確目標，避免混合職責
-- **平行化獨立工作** — 前後端無依賴的任務同時分派多個 subagent 執行
-- **避免重複勞動** — 已委派給 subagent 的調查，主 agent 不再重複搜尋同一內容
-
-### Subagent vs Agent Teams 選擇基準
-
-| 條件 | 選擇 | 範例 |
-|------|------|------|
-| 任務互相獨立、不需中間溝通 | **Subagent** | ddd-checker + security-reviewer 平行掃描 |
-| 多個獨立結果需要彙整 | **Subagent** + 主 agent 彙整 | 三個 agent 各分析一個模組，主 agent 合併結論 |
-| 任務之間有 blocking 依賴 | **Agent Teams** | 後端完成 → 前端完成 → E2E 才能跑 |
-| 需要 agent 之間即時溝通調整 | **Agent Teams** | 後端改 API schema → 通知前端同步修改 |
-
-**判斷口訣：能 fire-and-forget 就用 Subagent，需要等待或對話就用 Teams。**
 
 ## 開發工作流（六階段，不可跳過）
 
@@ -274,85 +84,18 @@ Task: 前端實作  ──┘      owner: e2e-integration-tester
 2. **每個子任務完成後** — 在 Issue 留 comment 更新進度（如 `E1.3 完成：6 Use Cases`）
 3. **全部完成後** — Close Issue + 更新 SPRINT_TODOLIST.md
 
-## 安全注意事項
+## Agent Team 協調
 
-- **hardcode 禁止**：密鑰、API key、connection string 必須透過 `.env` 管理
-- **.env 管理**：所有 `.env` 檔案已加入 `.gitignore`，禁止提交至版控
-- **Prompt Injection 防護**：使用者輸入不得直接拼入 System Prompt，必須透過 RAG Pipeline 的 sanitize 層處理
-- **租戶隔離**：所有向量搜尋與知識庫操作必須包含 `tenant_id` 過濾條件
-- **前端安全**：禁止 `dangerouslySetInnerHTML`，環境變數使用 `NEXT_PUBLIC_` 前綴
-- **CORS**：正式環境禁止 `allow_origins=["*"]`
+涉及前後端的功能，Lead 必須建立 3 層 Task 結構：
 
----
-
-## 任務完成後：架構學習與隱憂分析（Learning Review）
-
-> **目的**：每次任務完成後，主動進行技術深度分析，幫助開發者持續提升架構與設計能力。
-> **移除提示**：此段為學習輔助用途，若 token 消耗過高可整段刪除，不影響開發流程。
-
-### 觸發時機
-
-每當一個**非 trivial 任務完成**（功能開發、Bug 修復、重構）後，在交付結果的同時附上一段 **「架構學習筆記」**。
-
-### 非 Trivial 任務判定基準
-
-滿足**任一條件**即為非 trivial，需產出學習筆記：
-
-| 維度 | Trivial（不需筆記） | Non-Trivial（需要筆記） |
-|------|---------------------|------------------------|
-| 檔案數 | 1-3 個檔案 | 4+ 個檔案 |
-| DDD 層數 | 單層變更 | 跨 2+ 層（如 Domain + Infrastructure） |
-| 設計模式 | 無新模式引入 | 用了新的 Pattern |
-| 測試 | 無新 scenario | 新增 BDD scenario |
-| 前後端 | 單端變更 | 前後端都動 |
-
-> **口訣：跨層或跨端，就要寫筆記。**
-
-### 筆記持久化
-
-- 所有學習筆記**必須追加**至 `docs/architecture-journal.md`
-- 格式：每則筆記包含「Sprint 來源 → 主題 → 做得好 → 潛在隱憂 → 延伸學習」
-- 新筆記插入在目錄下方、既有筆記上方（最新在最前）
-- 同步更新目錄（Table of Contents）區塊
-
-### 分析維度（依相關性挑選，不必每次全部覆蓋）
-
-| 維度 | 分析內容 |
-|------|----------|
-| **Design Patterns** | 本次實作用了哪些模式？是否有更合適的替代模式？常見誤用警示 |
-| **DDD 戰術設計** | Aggregate 邊界是否合理？Domain Event 是否該引入？Value Object vs Entity 判斷 |
-| **System Design** | 若此功能要支撐 10x/100x 流量，架構瓶頸在哪？需要哪些改動？ |
-| **微服務 / 分散式** | 當前 monolith 的哪些部分未來拆分時會痛？CAP 取捨、資料一致性風險 |
-| **高併發場景** | Race condition、冪等性、樂觀鎖 / 悲觀鎖、Queue-based 解耦是否需要？ |
-| **Design System / UI** | 元件抽象層級、Token 體系一致性、Accessibility 缺口、響應式斷點策略 |
-| **可觀測性** | Logging / Tracing / Metrics 是否足夠？告警該設在哪？ |
-| **安全隱憂** | 本次變更是否引入新的攻擊面？OWASP Top 10 對照檢查 |
-
-### 輸出格式
-
-```markdown
-### 🎓 架構學習筆記
-
-**本次相關主題**：[例：Repository Pattern、CQRS、租戶隔離]
-
-#### 做得好的地方
-- ...
-
-#### 潛在隱憂
-- [隱憂描述] → [建議改善方向] → [優先級：低/中/高]
-
-#### 延伸學習
-- [概念名稱]：[一句話解釋為什麼跟本次任務相關]
-- 若想深入：[推薦搜尋關鍵字或經典參考資料名稱]
-
-#### 如果沒有明顯隱憂
-主動挑一個與本次任務最相關的進階主題進行簡短教學（3-5 段），並提出一個思考題與開發者討論。
+```
+Task: 後端實作  ──┐
+                   ├──→ Task: E2E 整合測試 (addBlockedBy: 前兩者)
+Task: 前端實作  ──┘
 ```
 
-### 深度等級（依任務複雜度調整）
+**判斷口訣：能 fire-and-forget 就用 Subagent，需要等待或對話就用 Teams。**
 
-| 任務規模 | 學習筆記深度 |
-|----------|-------------|
-| 小型修復 / 單檔變更 | 1-2 句提示，或標註「無特別隱憂」 |
-| 中型功能 / 跨層變更 | 挑 2-3 個維度分析，附延伸學習 |
-| 大型功能 / 架構變更 | 完整分析 + 討論題 + 替代方案比較 |
+## 架構學習筆記
+
+完成非 trivial 任務後，依照 `.claude/rules/learning-review.md` 撰寫架構筆記至 `docs/architecture-journal.md`。

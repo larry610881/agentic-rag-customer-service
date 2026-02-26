@@ -39,6 +39,30 @@ paths:
 | **Infrastructure** | Integration | Repository 實作、DB 查詢 | 真實 DB / testcontainer |
 | **Interfaces** | Integration | API 端點、認證、格式 | httpx.AsyncClient |
 
+## 聚合根邊界規則
+
+1. **一個聚合根對應一個 Repository** — `TenantRepository` 管理 `Tenant` 聚合
+2. **聚合外部只能透過 ID 引用** — 不可持有其他聚合的 Entity 實例
+3. **跨聚合操作透過 Application Service 或 Domain Event** — 禁止直接操作其他聚合的 Repository
+4. **聚合內的 Entity 只能透過聚合根存取** — 禁止直接查詢聚合內部 Entity
+
+## 違規掃描規則
+
+### CRITICAL — 必須立即修正
+- `domain/` 中 import `infrastructure/`、`interfaces/`、SQLAlchemy
+- `application/` 中 import `infrastructure/` 的具體 class
+- `interfaces/` 中直接操作 DB session 或 Repository
+- Unit Test 中使用真實 DB
+
+### HIGH — 應盡快修正
+- Application 層直接回傳 ORM Model（應轉為 Domain DTO）
+- Domain Entity 包含 ORM 相關的 annotation
+- Infrastructure 層 import Application 層
+
+### MEDIUM — 建議修正
+- 過大的 Use Case class（超過 200 行，考慮拆分）
+- Domain Event 未被訂閱處理
+
 ## Unit Test 紅線（違反即修正）
 
 以下行為在 `tests/unit/` 目錄下**一律禁止**：
@@ -50,13 +74,13 @@ paths:
 - ✅ 必須用 `AsyncMock(spec=XxxRepository)` mock Repository 層
 - ✅ 必須用 `AsyncMock` / `MagicMock` mock Infrastructure 層
 
-## pytest-bdd v8 Step Definition 完整範例
+## pytest-bdd v8 Step Definition 骨架
+
+> 完整範例見 `bdd-feature-standards-backend.md`
 
 ```python
-"""租戶知識庫查詢 BDD Step Definitions"""
+"""BDD Step Definition 骨架"""
 import asyncio
-from types import SimpleNamespace
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -64,12 +88,11 @@ from pytest_bdd import given, scenarios, then, when
 
 from src.application.knowledge.query_knowledge_use_case import QueryKnowledgeUseCase
 
-# 從 tests/features/ 起算的相對路徑
-scenarios("unit/knowledge/query_knowledge.feature")
+scenarios("unit/knowledge/query_knowledge.feature")  # 從 tests/features/ 起算
 
 
 def _run(coro):
-    """同步包裝 async 呼叫（pytest-bdd v8 step 必須是 def，不可 async def）"""
+    """同步包裝（pytest-bdd v8 step 必須是 def，不可 async def）"""
     loop = asyncio.get_event_loop()
     return loop.run_until_complete(coro)
 
@@ -81,47 +104,22 @@ def context():
 
 @given("租戶 {string} 的知識庫中有文件資料")
 def setup_knowledge_data(context, string):
-    mock_knowledge_repo = AsyncMock()
-    mock_knowledge_repo.search_by_tenant = AsyncMock(return_value=[
-        SimpleNamespace(
-            id="doc-1",
-            tenant_id=string,
-            title="退貨政策",
-            content="30 天內可退貨",
-            score=0.95,
-            created_at=datetime.now(timezone.utc),
-        ),
-    ])
-    mock_embedding_service = AsyncMock()
-    mock_embedding_service.embed_query = AsyncMock(return_value=[0.1] * 1536)
-
     context["use_case"] = QueryKnowledgeUseCase(
-        knowledge_repo=mock_knowledge_repo,
-        embedding_service=mock_embedding_service,
+        knowledge_repo=AsyncMock(), embedding_service=AsyncMock(),
     )
     context["tenant_id"] = string
-    context["mock_knowledge_repo"] = mock_knowledge_repo
 
 
 @when("我查詢 {string}", target_fixture="result")
 def query_knowledge(context, string):
     return _run(context["use_case"].execute(
-        tenant_id=context["tenant_id"],
-        query=string,
+        tenant_id=context["tenant_id"], query=string,
     ))
 
 
 @then("應回傳相關的知識庫文件")
 def verify_result(result):
     assert len(result.documents) >= 1
-    assert result.documents[0].title == "退貨政策"
-
-
-@then("回傳結果應包含 tenant_id 過濾")
-def verify_tenant_isolation(context):
-    context["mock_knowledge_repo"].search_by_tenant.assert_called_once()
-    call_args = context["mock_knowledge_repo"].search_by_tenant.call_args
-    assert call_args.kwargs.get("tenant_id") == context["tenant_id"]
 ```
 
 ## Mock 策略總表

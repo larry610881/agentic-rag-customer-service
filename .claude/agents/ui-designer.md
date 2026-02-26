@@ -119,13 +119,10 @@ const itemVariants = {
 
 ---
 
-## MCP 工具整合
+## 參考資源
 
-使用時優先查詢 MCP 取得最新元件範例：
-
-- **shadcn/ui MCP**：查詢 shadcn registry 最新元件 API 與範例
-- **Magic UI MCP**：取得高級動畫元件（如 animated-beam, shimmer-button）
-- **Context7**：查詢 framer-motion / Next.js / Tailwind 官方文件
+- shadcn/ui 文件：使用 WebFetch 查詢 ui.shadcn.com
+- Magic UI：使用 WebFetch 查詢 magicui.design
 
 ---
 
