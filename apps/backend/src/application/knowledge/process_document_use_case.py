@@ -64,7 +64,9 @@ class ProcessDocumentUseCase:
             # Empty chunks early return
             if not chunks:
                 log.warning("document.process.empty")
-                await self._doc_repo.update_status(document_id, "processed", chunk_count=0)
+                await self._doc_repo.update_status(
+                    document_id, "processed", chunk_count=0
+                )
                 await self._task_repo.update_status(task_id, "completed", progress=100)
                 return
 
@@ -97,7 +99,11 @@ class ProcessDocumentUseCase:
             await self._vector_store.upsert(
                 collection, chunk_ids, vectors, payloads
             )
-            log.info("document.upsert.done", collection=collection, point_count=len(chunk_ids))
+            log.info(
+                "document.upsert.done",
+                collection=collection,
+                point_count=len(chunk_ids),
+            )
 
             # Update doc → processed
             await self._doc_repo.update_status(

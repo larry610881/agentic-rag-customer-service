@@ -8,8 +8,6 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-logger = logging.getLogger(__name__)
-
 from src.application.agent.send_message_use_case import (
     SendMessageCommand,
     SendMessageUseCase,
@@ -17,6 +15,8 @@ from src.application.agent.send_message_use_case import (
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/agent",
@@ -144,7 +144,8 @@ async def agent_chat_stream(
             error_msg = str(exc)
             if "429" in error_msg:
                 error_msg = "API 額度已用完，請稍後再試"
-            yield f"data: {json.dumps({'type': 'error', 'message': error_msg}, ensure_ascii=False)}\n\n"
+            error_payload = {"type": "error", "message": error_msg}
+            yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(

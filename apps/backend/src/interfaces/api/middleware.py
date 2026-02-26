@@ -1,7 +1,7 @@
 """HTTP middleware: request-id tracking + structured logging."""
 
-import uuid
 import time
+import uuid
 
 import structlog
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint

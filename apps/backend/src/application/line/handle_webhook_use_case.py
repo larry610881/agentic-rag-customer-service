@@ -17,7 +17,6 @@ from src.domain.conversation.feedback_value_objects import (
 )
 from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
-from src.infrastructure.logging.error_handler import safe_background_task
 from src.infrastructure.logging.setup import get_logger
 
 logger = get_logger(__name__)

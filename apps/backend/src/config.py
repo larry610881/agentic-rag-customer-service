@@ -42,10 +42,12 @@ class Settings(BaseSettings):
     embedding_batch_size: int = 50
     embedding_max_retries: int = 5
     embedding_timeout: float = 120.0
-    embedding_batch_delay: float = 1.0  # seconds between batches (rate limit protection)
+    # seconds between batches (rate limit protection)
+    embedding_batch_delay: float = 1.0
 
     # LLM (independent from Embedding)
-    llm_provider: str = "fake"  # "fake" | "openai" | "anthropic" | "qwen" | "google" | "openrouter"
+    # "fake" | "openai" | "anthropic" | "qwen" | "google" | "openrouter"
+    llm_provider: str = "fake"
     llm_api_key: str = ""  # dedicated key; falls back to provider key
     llm_model: str = ""
     llm_max_tokens: int = 1024

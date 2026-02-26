@@ -49,7 +49,11 @@ class OpenAIEmbeddingService(EmbeddingService):
         return all_embeddings
 
     async def _embed_batch_with_retry(self, texts: list[str]) -> list[list[float]]:
-        log = logger.bind(model=self._model, base_url=self._base_url, chunk_count=len(texts))
+        log = logger.bind(
+            model=self._model,
+            base_url=self._base_url,
+            chunk_count=len(texts),
+        )
         for attempt in range(self._max_retries):
             try:
                 return await self._call_api(texts, log)
@@ -60,7 +64,12 @@ class OpenAIEmbeddingService(EmbeddingService):
                     wait = 5 * (attempt + 1)
                 else:
                     wait = 2 ** attempt
-                log.warning("embedding.retry", attempt=attempt + 1, wait_seconds=wait, status=e.response.status_code)
+                log.warning(
+                    "embedding.retry",
+                    attempt=attempt + 1,
+                    wait_seconds=wait,
+                    status=e.response.status_code,
+                )
                 await asyncio.sleep(wait)
             except Exception:
                 if attempt == self._max_retries - 1:
@@ -71,7 +80,12 @@ class OpenAIEmbeddingService(EmbeddingService):
         raise RuntimeError("unreachable")  # pragma: no cover
 
     async def _call_api(self, texts: list[str], log):  # type: ignore[no-untyped-def]
-        log.info("embedding.request", api_key_set=bool(self._api_key), api_key_prefix=self._api_key[:8] if self._api_key else "EMPTY")
+        key_prefix = self._api_key[:8] if self._api_key else "EMPTY"
+        log.info(
+            "embedding.request",
+            api_key_set=bool(self._api_key),
+            api_key_prefix=key_prefix,
+        )
         start = time.perf_counter()
         try:
             async with httpx.AsyncClient() as client:

@@ -103,7 +103,11 @@ class HttpxLineMessagingService(LineMessagingService):
                                         "action": {
                                             "type": "postback",
                                             "label": btn["label"],
-                                            "data": f"feedback_reason:{message_id}:{btn['tag']}",
+                                            "data": (
+                                                f"feedback_reason:"
+                                                f"{message_id}:"
+                                                f"{btn['tag']}"
+                                            ),
                                             "displayText": btn["label"],
                                         },
                                     }

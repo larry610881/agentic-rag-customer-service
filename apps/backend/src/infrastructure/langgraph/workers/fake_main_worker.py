@@ -16,7 +16,8 @@ class FakeMainWorker(AgentWorker):
 
     async def handle(self, context: WorkerContext) -> WorkerResult:
         answer = (
-            "根據知識庫：本公司提供一年保固服務，退貨政策為 30 天內可退貨，請保持商品完整。"
+            "根據知識庫：本公司提供一年保固服務，"
+            "退貨政策為 30 天內可退貨，請保持商品完整。"
         )
         sources = [
             Source(

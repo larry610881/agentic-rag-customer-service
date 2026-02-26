@@ -168,6 +168,16 @@ async def get_bot(
     return _to_response(bot)
 
 
+def _build_update_command(
+    bot_id: str, body: UpdateBotRequest
+) -> UpdateBotCommand:
+    """Build UpdateBotCommand from request, only including set fields."""
+    kwargs: dict = {"bot_id": bot_id}
+    for field in body.model_fields_set:
+        kwargs[field] = getattr(body, field)
+    return UpdateBotCommand(**kwargs)
+
+
 @router.put("/{bot_id}", response_model=BotResponse)
 @inject
 async def update_bot(
@@ -178,40 +188,9 @@ async def update_bot(
         Provide[Container.update_bot_use_case]
     ),
 ) -> BotResponse:
-    kwargs: dict = {"bot_id": bot_id}
-    if body.name is not None:
-        kwargs["name"] = body.name
-    if body.description is not None:
-        kwargs["description"] = body.description
-    if body.is_active is not None:
-        kwargs["is_active"] = body.is_active
-    if body.knowledge_base_ids is not None:
-        kwargs["knowledge_base_ids"] = body.knowledge_base_ids
-    if body.system_prompt is not None:
-        kwargs["system_prompt"] = body.system_prompt
-    if body.temperature is not None:
-        kwargs["temperature"] = body.temperature
-    if body.max_tokens is not None:
-        kwargs["max_tokens"] = body.max_tokens
-    if body.history_limit is not None:
-        kwargs["history_limit"] = body.history_limit
-    if body.frequency_penalty is not None:
-        kwargs["frequency_penalty"] = body.frequency_penalty
-    if body.reasoning_effort is not None:
-        kwargs["reasoning_effort"] = body.reasoning_effort
-    if body.rag_top_k is not None:
-        kwargs["rag_top_k"] = body.rag_top_k
-    if body.rag_score_threshold is not None:
-        kwargs["rag_score_threshold"] = body.rag_score_threshold
-    if body.enabled_tools is not None:
-        kwargs["enabled_tools"] = body.enabled_tools
-    if body.line_channel_secret is not None:
-        kwargs["line_channel_secret"] = body.line_channel_secret
-    if body.line_channel_access_token is not None:
-        kwargs["line_channel_access_token"] = body.line_channel_access_token
-
+    command = _build_update_command(bot_id, body)
     try:
-        bot = await use_case.execute(UpdateBotCommand(**kwargs))
+        bot = await use_case.execute(command)
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

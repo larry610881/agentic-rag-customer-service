@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, replace
 
-from src.domain.bot.entity import Bot, BotLLMParams
+from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
 from src.domain.shared.exceptions import EntityNotFoundError
 
@@ -33,29 +33,25 @@ class UpdateBotUseCase:
     def __init__(self, bot_repository: BotRepository) -> None:
         self._bot_repo = bot_repository
 
-    async def execute(self, command: UpdateBotCommand) -> Bot:
-        bot = await self._bot_repo.find_by_id(command.bot_id)
-        if bot is None:
-            raise EntityNotFoundError("Bot", command.bot_id)
+    @staticmethod
+    def _apply_updates(bot: Bot, command: UpdateBotCommand) -> None:
+        """Apply non-_UNSET fields from command to bot entity."""
+        _DIRECT_FIELDS = (
+            "name", "description", "is_active",
+            "system_prompt",
+            "line_channel_secret", "line_channel_access_token",
+        )
+        for field in _DIRECT_FIELDS:
+            val = getattr(command, field)
+            if val is not _UNSET:
+                setattr(bot, field, val)
 
-        if command.name is not _UNSET:
-            bot.name = command.name  # type: ignore[assignment]
-        if command.description is not _UNSET:
-            bot.description = command.description  # type: ignore[assignment]
-        if command.is_active is not _UNSET:
-            bot.is_active = command.is_active  # type: ignore[assignment]
         if command.knowledge_base_ids is not _UNSET:
             bot.knowledge_base_ids = list(command.knowledge_base_ids)  # type: ignore[arg-type]
-        if command.system_prompt is not _UNSET:
-            bot.system_prompt = command.system_prompt  # type: ignore[assignment]
         if command.enabled_tools is not _UNSET:
             bot.enabled_tools = list(command.enabled_tools)  # type: ignore[arg-type]
-        if command.line_channel_secret is not _UNSET:
-            bot.line_channel_secret = command.line_channel_secret  # type: ignore[assignment]
-        if command.line_channel_access_token is not _UNSET:
-            bot.line_channel_access_token = command.line_channel_access_token  # type: ignore[assignment]
 
-        # LLM params — collect changed fields, apply once via replace()
+        # LLM params — collect changed fields, apply once
         _LLM_FIELDS = (
             "temperature", "max_tokens", "history_limit",
             "frequency_penalty", "reasoning_effort",
@@ -68,6 +64,13 @@ class UpdateBotUseCase:
         }
         if llm_changes:
             bot.llm_params = replace(bot.llm_params, **llm_changes)
+
+    async def execute(self, command: UpdateBotCommand) -> Bot:
+        bot = await self._bot_repo.find_by_id(command.bot_id)
+        if bot is None:
+            raise EntityNotFoundError("Bot", command.bot_id)
+
+        self._apply_updates(bot, command)
 
         await self._bot_repo.save(bot)
         return bot

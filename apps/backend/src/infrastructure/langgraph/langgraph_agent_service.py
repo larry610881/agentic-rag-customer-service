@@ -120,6 +120,58 @@ class LangGraphAgentService(AgentService):
             usage=usage,
         )
 
+    @staticmethod
+    def _build_respond_context(
+        history_context: str,
+        tool_result: dict[str, Any],
+    ) -> str:
+        """Build context string from history and tool result."""
+        parts: list[str] = []
+        if history_context:
+            parts.append(f"[對話歷史]\n{history_context}")
+        if tool_result:
+            tool_json = json.dumps(
+                tool_result, ensure_ascii=False, default=str
+            )
+            parts.append(f"[工具結果]\n{tool_json}")
+        return "\n\n".join(parts)
+
+    async def _stream_direct(
+        self,
+        user_message: str,
+        system_prompt: str | None,
+        llm_params: dict[str, Any] | None,
+        history_context: str,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """No tools enabled — skip routing, stream LLM directly."""
+        yield {
+            "type": "tool_calls",
+            "tool_calls": [
+                {"tool_name": "direct", "reasoning": "無啟用工具"}
+            ],
+        }
+        custom_prompt = system_prompt or ""
+        sys_prompt = (
+            custom_prompt
+            if custom_prompt.strip()
+            else RESPOND_SYSTEM_PROMPT
+        )
+        llm_kw: dict[str, Any] = {}
+        params = llm_params or {}
+        for k in ("temperature", "max_tokens", "frequency_penalty"):
+            if k in params:
+                llm_kw[k] = params[k]
+
+        ctx_parts: list[str] = []
+        if history_context:
+            ctx_parts.append(f"[對話歷史]\n{history_context}")
+        context = "\n\n".join(ctx_parts)
+
+        async for token in self._llm_service.generate_stream(
+            sys_prompt, user_message, context, **llm_kw
+        ):
+            yield {"type": "token", "content": token}
+
     async def process_message_stream(
         self,
         tenant_id: str,
@@ -137,33 +189,14 @@ class LangGraphAgentService(AgentService):
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        """真正的 streaming：路由後立刻通知前端，再跑工具，再 stream LLM"""
+        """Streaming: route → tool → stream LLM response."""
 
-        # 沒有啟用任何工具 → 跳過路由，直接 LLM 對話
         if enabled_tools is not None and len(enabled_tools) == 0:
-            yield {
-                "type": "tool_calls",
-                "tool_calls": [{"tool_name": "direct", "reasoning": "無啟用工具"}],
-            }
-            custom_prompt = system_prompt or ""
-            sys_prompt = (
-                custom_prompt if custom_prompt.strip() else RESPOND_SYSTEM_PROMPT
-            )
-            llm_kw: dict[str, Any] = {}
-            params = llm_params or {}
-            for k in ("temperature", "max_tokens", "frequency_penalty"):
-                if k in params:
-                    llm_kw[k] = params[k]
-
-            ctx_parts: list[str] = []
-            if history_context:
-                ctx_parts.append(f"[對話歷史]\n{history_context}")
-            context = "\n\n".join(ctx_parts)
-
-            async for token in self._llm_service.generate_stream(
-                sys_prompt, user_message, context, **llm_kw
+            async for evt in self._stream_direct(
+                user_message, system_prompt,
+                llm_params, history_context,
             ):
-                yield {"type": "token", "content": token}
+                yield evt
             return
 
         initial_state = {
@@ -186,9 +219,8 @@ class LangGraphAgentService(AgentService):
             "rag_score_threshold": rag_score_threshold,
         }
 
-        # Phase 1: 逐節點 stream — 路由完成立即通知前端，工具再跑
+        # Phase 1: route + tool
         tool_name = ""
-        tool_reasoning = ""
         tool_result: dict[str, Any] = {}
 
         async for update in self._compiled_routing.astream(
@@ -196,49 +228,54 @@ class LangGraphAgentService(AgentService):
         ):
             for node_name, node_output in update.items():
                 if node_name == "router":
-                    tool_name = node_output.get("current_tool", "")
-                    tool_reasoning = node_output.get("tool_reasoning", "")
-                    # 路由判斷完成 → 立刻告訴前端要用哪個工具
+                    tool_name = node_output.get(
+                        "current_tool", ""
+                    )
                     yield {
                         "type": "tool_calls",
                         "tool_calls": [
                             {
                                 "tool_name": tool_name,
-                                "reasoning": tool_reasoning,
+                                "reasoning": node_output.get(
+                                    "tool_reasoning", ""
+                                ),
                             },
                         ],
                     }
                 elif node_name == "rag_tool":
-                    tool_result = node_output.get("tool_result", {})
+                    tool_result = node_output.get(
+                        "tool_result", {}
+                    )
 
         # Extract & yield sources
-        sources: list[dict[str, Any]] = []
-        if tool_name == "rag_query" and isinstance(tool_result, dict):
+        if tool_name == "rag_query" and isinstance(
+            tool_result, dict
+        ):
             raw_sources = tool_result.get("sources", [])
             sources = [
                 {
                     "document_name": s.get("document_name", ""),
-                    "content_snippet": s.get("content_snippet", ""),
+                    "content_snippet": s.get(
+                        "content_snippet", ""
+                    ),
                     "score": s.get("score", 0.0),
                 }
                 for s in raw_sources
             ]
-        if sources:
-            yield {"type": "sources", "sources": sources}
+            if sources:
+                yield {"type": "sources", "sources": sources}
 
-        # Phase 2: Stream LLM 回答
-        parts: list[str] = []
-        hist_ctx = initial_state.get("history_context") or ""
-        if hist_ctx:
-            parts.append(f"[對話歷史]\n{hist_ctx}")
-        if tool_result:
-            tool_json = json.dumps(tool_result, ensure_ascii=False, default=str)
-            parts.append(f"[工具結果]\n{tool_json}")
-        context = "\n\n".join(parts)
+        # Phase 2: Stream LLM response
+        context = self._build_respond_context(
+            initial_state.get("history_context") or "",
+            tool_result,
+        )
 
         custom_prompt = initial_state.get("system_prompt") or ""
         sys_prompt = (
-            custom_prompt if custom_prompt.strip() else RESPOND_SYSTEM_PROMPT
+            custom_prompt
+            if custom_prompt.strip()
+            else RESPOND_SYSTEM_PROMPT
         )
         llm_kw = _extract_llm_kwargs(initial_state)
 

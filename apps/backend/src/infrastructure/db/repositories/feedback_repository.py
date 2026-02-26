@@ -3,7 +3,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.conversation.feedback_analysis_vo import (

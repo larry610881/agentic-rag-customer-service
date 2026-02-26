@@ -58,7 +58,12 @@ class OpenAILLMService(LLMService):
         frequency_penalty: float | None = None,
     ) -> LLMResult:
         log = logger.bind(model=self._model, base_url=self._base_url)
-        log.info("llm.openai.request", api_key_set=bool(self._api_key), api_key_prefix=self._api_key[:8] if self._api_key else "EMPTY")
+        key_prefix = self._api_key[:8] if self._api_key else "EMPTY"
+        log.info(
+            "llm.openai.request",
+            api_key_set=bool(self._api_key),
+            api_key_prefix=key_prefix,
+        )
         start = time.perf_counter()
 
         messages = self._build_messages(system_prompt, user_message, context)

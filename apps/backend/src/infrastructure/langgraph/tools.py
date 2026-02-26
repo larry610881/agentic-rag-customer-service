@@ -40,7 +40,11 @@ class RAGQueryTool:
                     query=query,
                     kb_ids=kb_ids,
                     top_k=top_k if top_k is not None else self._top_k,
-                    score_threshold=score_threshold if score_threshold is not None else self._score_threshold,
+                    score_threshold=(
+                        score_threshold
+                        if score_threshold is not None
+                        else self._score_threshold
+                    ),
                 )
             )
             return {

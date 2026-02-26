@@ -35,13 +35,20 @@ class QdrantVectorStore(VectorStore):
                         distance=Distance.COSINE,
                     ),
                 )
-                logger.info("qdrant.collection.created", collection=collection, vector_size=vector_size)
+                logger.info(
+                    "qdrant.collection.created",
+                    collection=collection,
+                    vector_size=vector_size,
+                )
             except Exception:
                 # Another concurrent request may have created it; verify it exists
                 collections = await self._client.get_collections()
                 if collection not in [c.name for c in collections.collections]:
                     raise
-                logger.debug("qdrant.collection.created_concurrently", collection=collection)
+                logger.debug(
+                    "qdrant.collection.created_concurrently",
+                    collection=collection,
+                )
         else:
             logger.debug("qdrant.collection.exists", collection=collection)
 
@@ -78,7 +85,11 @@ class QdrantVectorStore(VectorStore):
             )
             logger.info("qdrant.delete", collection=collection, filters=filters)
         except Exception:
-            logger.warning("qdrant.delete.skipped", collection=collection, filters=filters)
+            logger.warning(
+                "qdrant.delete.skipped",
+                collection=collection,
+                filters=filters,
+            )
             # Collection may not exist; safe to ignore
 
     async def search(

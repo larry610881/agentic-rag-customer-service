@@ -7,19 +7,24 @@ from typing import Any, TypedDict
 import structlog
 from langgraph.graph import END, StateGraph
 
-logger = structlog.get_logger(__name__)
-
 from src.domain.rag.services import LLMService
 from src.infrastructure.langgraph.tools import RAGQueryTool
 
+logger = structlog.get_logger(__name__)
+
 # 關鍵字路由（LLM fallback 前的快速路由）
 _GREETING_PATTERN = re.compile(
-    r"^(你好|哈囉|嗨|hi|hello|hey|早安|午安|晚安|安安|謝謝|感謝|掰掰|再見|bye|thanks|thank you)[哦呀啊喔呢嗎啦耶ㄛㄚ\s!！。？?~～]*$",
+    r"^(你好|哈囉|嗨|hi|hello|hey|早安|午安|晚安|安安"
+    r"|謝謝|感謝|掰掰|再見|bye|thanks|thank you)"
+    r"[哦呀啊喔呢嗎啦耶ㄛㄚ\s!！。？?~～]*$",
     re.IGNORECASE,
 )
 
 _TOOL_DESCRIPTIONS = {
-    "rag_query": "rag_query: 查詢知識庫中的資料（任何可能在知識庫中有答案的問題都應使用此工具）",
+    "rag_query": (
+        "rag_query: 查詢知識庫中的資料"
+        "（任何可能在知識庫中有答案的問題都應使用此工具）"
+    ),
 }
 
 _ROUTER_PROMPT_HEADER = (
@@ -94,50 +99,44 @@ def _extract_llm_kwargs(state: AgentState) -> dict[str, Any]:
     return kwargs
 
 
-def build_agent_graph(
+def _usage_to_dict(usage: Any) -> dict[str, Any]:
+    return {
+        "model": usage.model,
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "total_tokens": usage.total_tokens,
+        "estimated_cost": usage.estimated_cost,
+    }
+
+
+def _merge_usage(
+    existing: dict[str, Any] | None, new_dict: dict[str, Any]
+) -> dict[str, Any]:
+    if not existing:
+        return new_dict
+    return {
+        "model": existing.get("model", new_dict["model"]),
+        "input_tokens": existing.get("input_tokens", 0)
+        + new_dict["input_tokens"],
+        "output_tokens": existing.get("output_tokens", 0)
+        + new_dict["output_tokens"],
+        "total_tokens": existing.get("total_tokens", 0)
+        + new_dict["total_tokens"],
+        "estimated_cost": existing.get("estimated_cost", 0.0)
+        + new_dict["estimated_cost"],
+    }
+
+
+def _make_router_node(
     llm_service: LLMService,
-    rag_tool: RAGQueryTool,
-    *,
-    include_respond: bool = True,
-) -> StateGraph:
-    """建構 Agent StateGraph
-
-    Args:
-        include_respond: True=完整圖(含回答節點), False=僅路由+工具(streaming用)
-    """
-
-    def _usage_to_dict(usage: Any) -> dict[str, Any]:
-        return {
-            "model": usage.model,
-            "input_tokens": usage.input_tokens,
-            "output_tokens": usage.output_tokens,
-            "total_tokens": usage.total_tokens,
-            "estimated_cost": usage.estimated_cost,
-        }
-
-    def _merge_usage(
-        existing: dict[str, Any] | None, new_dict: dict[str, Any]
-    ) -> dict[str, Any]:
-        if not existing:
-            return new_dict
-        return {
-            "model": existing.get("model", new_dict["model"]),
-            "input_tokens": existing.get("input_tokens", 0)
-            + new_dict["input_tokens"],
-            "output_tokens": existing.get("output_tokens", 0)
-            + new_dict["output_tokens"],
-            "total_tokens": existing.get("total_tokens", 0)
-            + new_dict["total_tokens"],
-            "estimated_cost": existing.get("estimated_cost", 0.0)
-            + new_dict["estimated_cost"],
-        }
+):
+    """Factory for router node — captures llm_service."""
 
     async def router_node(state: AgentState) -> dict:
         """路由：判斷用戶意圖"""
         msg = state["user_message"]
         bot_tools = state.get("enabled_tools") or []
 
-        # 只啟用一個工具 → 跳過路由，直接用那個工具
         if len(bot_tools) == 1:
             tool = bot_tools[0]
             logger.info(
@@ -160,57 +159,81 @@ def build_agent_graph(
             )
             return kw_result
 
-        # LLM 意圖分類（動態 prompt 只列啟用的工具）
-        router_prompt = _build_router_prompt(bot_tools if bot_tools else None)
-        llm_kw = _extract_llm_kwargs(state)
-        router_ctx = state.get("router_context") or ""
-        try:
-            result = await llm_service.generate(
-                router_prompt, msg, router_ctx, **llm_kw
-            )
-            usage_dict = _usage_to_dict(result.usage)
-            accumulated = _merge_usage(
-                state.get("accumulated_usage"), usage_dict
-            )
-            # Strip markdown code block wrapping (e.g. ```json ... ```)
-            raw_text = result.text.strip()
-            if raw_text.startswith("```"):
-                raw_text = re.sub(r"^```\w*\n?", "", raw_text)
-                raw_text = re.sub(r"\n?```$", "", raw_text).strip()
-            parsed = json.loads(raw_text)
-            tool = parsed.get("tool", "rag_query")
-            # 驗證 LLM 選的工具在啟用清單內
-            if bot_tools and tool not in bot_tools and tool != "direct":
-                tool = bot_tools[0]  # fallback 到第一個啟用的工具
-            reasoning = parsed.get("reasoning", "LLM 意圖分類")
-            logger.info(
-                "agent.router.llm",
-                message=msg,
-                tool=tool,
-                reasoning=reasoning,
-                raw_response=result.text[:200],
-            )
-            return {
-                "current_tool": tool,
-                "tool_reasoning": reasoning,
-                "accumulated_usage": accumulated,
-            }
-        except (json.JSONDecodeError, KeyError):
-            logger.warning(
-                "agent.router.fallback.parse",
-                message=msg,
-                raw_response=result.text[:200] if hasattr(result, "text") else "N/A",
-            )
-            return {
-                "current_tool": "rag_query",
-                "tool_reasoning": "預設走知識庫查詢",
-            }
-        except Exception:
-            logger.exception("agent.router.fallback.error", message=msg)
-            return {
-                "current_tool": "direct",
-                "tool_reasoning": "LLM 路由失敗，直接回答",
-            }
+        return await _llm_route(
+            llm_service, state, msg, bot_tools
+        )
+
+    return router_node
+
+
+async def _llm_route(
+    llm_service: LLMService,
+    state: AgentState,
+    msg: str,
+    bot_tools: list[str],
+) -> dict:
+    """LLM intent classification sub-routine."""
+    router_prompt = _build_router_prompt(
+        bot_tools if bot_tools else None
+    )
+    llm_kw = _extract_llm_kwargs(state)
+    router_ctx = state.get("router_context") or ""
+    try:
+        result = await llm_service.generate(
+            router_prompt, msg, router_ctx, **llm_kw
+        )
+        usage_dict = _usage_to_dict(result.usage)
+        accumulated = _merge_usage(
+            state.get("accumulated_usage"), usage_dict
+        )
+        raw_text = result.text.strip()
+        if raw_text.startswith("```"):
+            raw_text = re.sub(r"^```\w*\n?", "", raw_text)
+            raw_text = re.sub(r"\n?```$", "", raw_text).strip()
+        parsed = json.loads(raw_text)
+        tool = parsed.get("tool", "rag_query")
+        if bot_tools and tool not in bot_tools and tool != "direct":
+            tool = bot_tools[0]
+        reasoning = parsed.get("reasoning", "LLM 意圖分類")
+        logger.info(
+            "agent.router.llm",
+            message=msg,
+            tool=tool,
+            reasoning=reasoning,
+            raw_response=result.text[:200],
+        )
+        return {
+            "current_tool": tool,
+            "tool_reasoning": reasoning,
+            "accumulated_usage": accumulated,
+        }
+    except (json.JSONDecodeError, KeyError):
+        raw = (
+            result.text[:200]
+            if hasattr(result, "text")
+            else "N/A"
+        )
+        logger.warning(
+            "agent.router.fallback.parse",
+            message=msg,
+            raw_response=raw,
+        )
+        return {
+            "current_tool": "rag_query",
+            "tool_reasoning": "預設走知識庫查詢",
+        }
+    except Exception:
+        logger.exception(
+            "agent.router.fallback.error", message=msg
+        )
+        return {
+            "current_tool": "direct",
+            "tool_reasoning": "LLM 路由失敗，直接回答",
+        }
+
+
+def _make_rag_tool_node(rag_tool: RAGQueryTool):
+    """Factory for RAG tool node — captures rag_tool."""
 
     async def rag_tool_node(state: AgentState) -> dict:
         kb_ids = state.get("kb_ids") or []
@@ -222,7 +245,9 @@ def build_agent_graph(
         if state.get("rag_top_k") is not None:
             invoke_kwargs["top_k"] = state["rag_top_k"]
         if state.get("rag_score_threshold") is not None:
-            invoke_kwargs["score_threshold"] = state["rag_score_threshold"]
+            invoke_kwargs["score_threshold"] = (
+                state["rag_score_threshold"]
+            )
         result = await rag_tool.invoke(
             state["tenant_id"],
             kb_ids[0] if kb_ids else state.get("kb_id", ""),
@@ -230,6 +255,12 @@ def build_agent_graph(
             **invoke_kwargs,
         )
         return {"tool_result": result}
+
+    return rag_tool_node
+
+
+def _make_respond_node(llm_service: LLMService):
+    """Factory for respond node — captures llm_service."""
 
     async def respond_node(state: AgentState) -> dict:
         """根據工具結果生成最終回答"""
@@ -245,7 +276,11 @@ def build_agent_graph(
             parts.append(f"[工具結果]\n{tool_json}")
         context = "\n\n".join(parts)
         custom_prompt = state.get("system_prompt") or ""
-        sys_prompt = custom_prompt if custom_prompt.strip() else RESPOND_SYSTEM_PROMPT
+        sys_prompt = (
+            custom_prompt
+            if custom_prompt.strip()
+            else RESPOND_SYSTEM_PROMPT
+        )
         llm_kw = _extract_llm_kwargs(state)
         logger.info(
             "agent.respond.context",
@@ -266,25 +301,41 @@ def build_agent_graph(
             "accumulated_usage": accumulated,
         }
 
-    def route_to_tool(state: AgentState) -> str:
-        tool = state.get("current_tool", "rag_query")
-        if tool == "rag_query":
-            return "rag_query"
-        return "direct"
+    return respond_node
 
-    # Build graph
+
+def _route_to_tool(state: AgentState) -> str:
+    tool = state.get("current_tool", "rag_query")
+    if tool == "rag_query":
+        return "rag_query"
+    return "direct"
+
+
+def build_agent_graph(
+    llm_service: LLMService,
+    rag_tool: RAGQueryTool,
+    *,
+    include_respond: bool = True,
+) -> StateGraph:
+    """建構 Agent StateGraph
+
+    Args:
+        include_respond: True=完整圖(含回答節點), False=僅路由+工具(streaming用)
+    """
     graph = StateGraph(AgentState)
 
-    graph.add_node("router", router_node)
-    graph.add_node("rag_tool", rag_tool_node)
+    graph.add_node("router", _make_router_node(llm_service))
+    graph.add_node("rag_tool", _make_rag_tool_node(rag_tool))
 
     graph.set_entry_point("router")
 
     if include_respond:
-        graph.add_node("respond", respond_node)
+        graph.add_node(
+            "respond", _make_respond_node(llm_service)
+        )
         graph.add_conditional_edges(
             "router",
-            route_to_tool,
+            _route_to_tool,
             {
                 "rag_query": "rag_tool",
                 "direct": "respond",
@@ -293,10 +344,9 @@ def build_agent_graph(
         graph.add_edge("rag_tool", "respond")
         graph.add_edge("respond", END)
     else:
-        # Routing + tool only (no respond) — for streaming
         graph.add_conditional_edges(
             "router",
-            route_to_tool,
+            _route_to_tool,
             {
                 "rag_query": "rag_tool",
                 "direct": END,

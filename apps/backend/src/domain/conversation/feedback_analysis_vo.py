@@ -1,6 +1,6 @@
 """Feedback 分析值物件"""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 

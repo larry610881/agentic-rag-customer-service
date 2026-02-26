@@ -8,13 +8,13 @@ from typing import Any
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.bot.repository import BotRepository
-from src.domain.conversation.entity import Conversation, Message
-from src.domain.shared.exceptions import DomainException
+from src.domain.conversation.entity import Conversation
 from src.domain.conversation.history_strategy import (
     ConversationHistoryStrategy,
     HistoryStrategyConfig,
 )
 from src.domain.conversation.repository import ConversationRepository
+from src.domain.shared.exceptions import DomainException
 
 _REFUND_METADATA_MARKER = "__refund_metadata"
 
@@ -41,45 +41,56 @@ class SendMessageUseCase:
         self._bot_repo = bot_repository
         self._history_strategy = history_strategy
 
-    async def execute(self, command: SendMessageCommand) -> AgentResponse:
-        conversation = await self._load_or_create_conversation(command)
+    async def _load_bot_config(
+        self, command: SendMessageCommand
+    ) -> dict[str, Any]:
+        """Resolve Bot config — shared by execute & execute_stream."""
+        cfg: dict[str, Any] = {
+            "kb_ids": None,
+            "system_prompt": None,
+            "llm_params": None,
+            "kb_id": command.kb_id,
+            "history_limit": None,
+            "enabled_tools": None,
+            "rag_top_k": None,
+            "rag_score_threshold": None,
+        }
+        if not (command.bot_id and self._bot_repo):
+            return cfg
+        bot = await self._bot_repo.find_by_id(command.bot_id)
+        if bot is None:
+            return cfg
+        if bot.tenant_id != command.tenant_id:
+            msg = (
+                f"Bot '{command.bot_id}' does not belong "
+                f"to tenant '{command.tenant_id}'"
+            )
+            raise DomainException(msg)
+        cfg["kb_ids"] = bot.knowledge_base_ids or None
+        if not cfg["kb_id"] and cfg["kb_ids"]:
+            cfg["kb_id"] = cfg["kb_ids"][0]
+        cfg["system_prompt"] = bot.system_prompt or None
+        cfg["llm_params"] = {
+            "temperature": bot.llm_params.temperature,
+            "max_tokens": bot.llm_params.max_tokens,
+            "frequency_penalty": bot.llm_params.frequency_penalty,
+        }
+        cfg["history_limit"] = bot.llm_params.history_limit
+        cfg["enabled_tools"] = (
+            bot.enabled_tools
+            if bot.enabled_tools is not None
+            else None
+        )
+        cfg["rag_top_k"] = bot.llm_params.rag_top_k
+        cfg["rag_score_threshold"] = bot.llm_params.rag_score_threshold
+        return cfg
 
-        history = conversation.messages if conversation.messages else None
-        metadata = self._extract_metadata(conversation)
-
-        # Resolve Bot config if bot_id is provided
-        kb_ids: list[str] | None = None
-        system_prompt: str | None = None
-        llm_params: dict[str, Any] | None = None
-        kb_id = command.kb_id
-        history_limit: int | None = None
-        enabled_tools: list[str] | None = None
-        rag_top_k: int | None = None
-        rag_score_threshold: float | None = None
-
-        if command.bot_id and self._bot_repo:
-            bot = await self._bot_repo.find_by_id(command.bot_id)
-            if bot is not None:
-                if bot.tenant_id != command.tenant_id:
-                    raise DomainException(
-                        f"Bot '{command.bot_id}' does not belong to tenant '{command.tenant_id}'"
-                    )
-                kb_ids = bot.knowledge_base_ids or None
-                if not kb_id and kb_ids:
-                    kb_id = kb_ids[0]
-                system_prompt = bot.system_prompt or None
-                llm_params = {
-                    "temperature": bot.llm_params.temperature,
-                    "max_tokens": bot.llm_params.max_tokens,
-                    "frequency_penalty": bot.llm_params.frequency_penalty,
-                }
-                history_limit = bot.llm_params.history_limit
-                # [] means "no tools" (direct LLM), None means "all tools"
-                enabled_tools = bot.enabled_tools if bot.enabled_tools is not None else None
-                rag_top_k = bot.llm_params.rag_top_k
-                rag_score_threshold = bot.llm_params.rag_score_threshold
-
-        # Process history via strategy
+    async def _resolve_history(
+        self,
+        history: list | None,
+        history_limit: int | None,
+    ) -> tuple[list | None, str, str]:
+        """Process history via strategy, return (history, ctx, router)."""
         history_context = ""
         router_context = ""
         if self._history_strategy and history:
@@ -94,22 +105,36 @@ class SendMessageUseCase:
             router_context = ctx.router_context
         elif history and history_limit is not None:
             history = history[-history_limit:]
+        return history, history_context, router_context
+
+    async def execute(self, command: SendMessageCommand) -> AgentResponse:
+        conversation = await self._load_or_create_conversation(command)
+
+        history = conversation.messages if conversation.messages else None
+        metadata = self._extract_metadata(conversation)
+
+        bot_cfg = await self._load_bot_config(command)
+        history, history_context, router_context = (
+            await self._resolve_history(
+                history, bot_cfg["history_limit"]
+            )
+        )
 
         t0 = time.perf_counter()
         response = await self._agent_service.process_message(
             tenant_id=command.tenant_id,
-            kb_id=kb_id,
+            kb_id=bot_cfg["kb_id"],
             user_message=command.message,
             history=history,
-            kb_ids=kb_ids,
-            system_prompt=system_prompt,
-            llm_params=llm_params,
+            kb_ids=bot_cfg["kb_ids"],
+            system_prompt=bot_cfg["system_prompt"],
+            llm_params=bot_cfg["llm_params"],
             metadata=metadata,
             history_context=history_context,
             router_context=router_context,
-            enabled_tools=enabled_tools,
-            rag_top_k=rag_top_k,
-            rag_score_threshold=rag_score_threshold,
+            enabled_tools=bot_cfg["enabled_tools"],
+            rag_top_k=bot_cfg["rag_top_k"],
+            rag_score_threshold=bot_cfg["rag_score_threshold"],
         )
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
@@ -149,53 +174,12 @@ class SendMessageUseCase:
         history = conversation.messages if conversation.messages else None
         metadata = self._extract_metadata(conversation)
 
-        # Resolve Bot config (same as execute)
-        kb_ids: list[str] | None = None
-        system_prompt: str | None = None
-        llm_params: dict[str, Any] | None = None
-        kb_id = command.kb_id
-        history_limit: int | None = None
-        enabled_tools: list[str] | None = None
-        rag_top_k: int | None = None
-        rag_score_threshold: float | None = None
-
-        if command.bot_id and self._bot_repo:
-            bot = await self._bot_repo.find_by_id(command.bot_id)
-            if bot is not None:
-                if bot.tenant_id != command.tenant_id:
-                    raise DomainException(
-                        f"Bot '{command.bot_id}' does not belong to tenant '{command.tenant_id}'"
-                    )
-                kb_ids = bot.knowledge_base_ids or None
-                if not kb_id and kb_ids:
-                    kb_id = kb_ids[0]
-                system_prompt = bot.system_prompt or None
-                llm_params = {
-                    "temperature": bot.llm_params.temperature,
-                    "max_tokens": bot.llm_params.max_tokens,
-                    "frequency_penalty": bot.llm_params.frequency_penalty,
-                }
-                history_limit = bot.llm_params.history_limit
-                # [] means "no tools" (direct LLM), None means "all tools"
-                enabled_tools = bot.enabled_tools if bot.enabled_tools is not None else None
-                rag_top_k = bot.llm_params.rag_top_k
-                rag_score_threshold = bot.llm_params.rag_score_threshold
-
-        # Process history via strategy
-        history_context = ""
-        router_context = ""
-        if self._history_strategy and history:
-            strategy_config = HistoryStrategyConfig(
-                history_limit=history_limit or 10,
-                recent_turns=3,
+        bot_cfg = await self._load_bot_config(command)
+        history, history_context, router_context = (
+            await self._resolve_history(
+                history, bot_cfg["history_limit"]
             )
-            ctx = await self._history_strategy.process(
-                history, strategy_config
-            )
-            history_context = ctx.respond_context
-            router_context = ctx.router_context
-        elif history and history_limit is not None:
-            history = history[-history_limit:]
+        )
 
         # Stream from agent service
         full_answer = ""
@@ -205,18 +189,18 @@ class SendMessageUseCase:
         t0 = time.perf_counter()
         async for event in self._agent_service.process_message_stream(
             tenant_id=command.tenant_id,
-            kb_id=kb_id,
+            kb_id=bot_cfg["kb_id"],
             user_message=command.message,
             history=history,
-            kb_ids=kb_ids,
-            system_prompt=system_prompt,
-            llm_params=llm_params,
+            kb_ids=bot_cfg["kb_ids"],
+            system_prompt=bot_cfg["system_prompt"],
+            llm_params=bot_cfg["llm_params"],
             metadata=metadata,
             history_context=history_context,
             router_context=router_context,
-            enabled_tools=enabled_tools,
-            rag_top_k=rag_top_k,
-            rag_score_threshold=rag_score_threshold,
+            enabled_tools=bot_cfg["enabled_tools"],
+            rag_top_k=bot_cfg["rag_top_k"],
+            rag_score_threshold=bot_cfg["rag_score_threshold"],
         ):
             if event["type"] == "token":
                 full_answer += event["content"]
