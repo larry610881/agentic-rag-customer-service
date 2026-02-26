@@ -96,13 +96,12 @@ def agent_ready_with_answer(context, answer):
 @when(parsers.parse('系統透過 Bot ID "{bot_id}" 處理 Webhook 事件'))
 def process_webhook_for_bot(context, bot_id):
     _build_use_case(context)
-    body_text = '{"events":[{"type":"message","message":{"type":"text","text":"測試訊息"}}]}'
+    body_text = '{"events":[{"type":"message","replyToken":"token-mt-001","source":{"userId":"U-mt-user"},"message":{"type":"text","text":"測試訊息"},"timestamp":1700000000000}]}'
     signature = "valid-sig"
-    events = _default_events()
     try:
         _run(
             context["use_case"].execute_for_bot(
-                bot_id, body_text, signature, events
+                bot_id, body_text, signature
             )
         )
         context["error"] = None

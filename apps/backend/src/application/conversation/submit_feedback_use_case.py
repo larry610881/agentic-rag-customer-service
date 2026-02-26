@@ -11,7 +11,7 @@ from src.domain.conversation.feedback_value_objects import (
     Rating,
 )
 from src.domain.conversation.repository import ConversationRepository
-from src.domain.shared.exceptions import DuplicateEntityError, EntityNotFoundError
+from src.domain.shared.exceptions import EntityNotFoundError
 
 
 @dataclass(frozen=True)
@@ -45,10 +45,14 @@ class SubmitFeedbackUseCase:
         existing = await self._feedback_repo.find_by_message_id(
             command.message_id
         )
+
+        # E8: upsert — 已有回饋則更新（改變心意）
         if existing is not None:
-            raise DuplicateEntityError(
-                "Feedback", "message_id", command.message_id
-            )
+            existing.rating = Rating(command.rating)
+            existing.comment = command.comment
+            existing.tags = list(command.tags) if command.tags else existing.tags
+            await self._feedback_repo.update(existing)
+            return existing
 
         feedback = Feedback(
             id=FeedbackId(),

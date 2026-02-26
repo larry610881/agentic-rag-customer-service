@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,9 +10,26 @@ import {
   useTokenCostStats,
 } from "@/hooks/queries/use-feedback";
 import { FeedbackStatsSummary } from "@/features/feedback/components/feedback-stats-summary";
-import { SatisfactionTrendChart } from "@/features/feedback/components/satisfaction-trend-chart";
-import { TopIssuesChart } from "@/features/feedback/components/top-issues-chart";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TokenCostTable } from "@/features/feedback/components/token-cost-table";
+
+const ChartSkeleton = () => <Skeleton className="h-[300px] w-full rounded-lg" />;
+
+const SatisfactionTrendChart = dynamic(
+  () =>
+    import("@/features/feedback/components/satisfaction-trend-chart").then(
+      (m) => m.SatisfactionTrendChart,
+    ),
+  { ssr: false, loading: ChartSkeleton },
+);
+
+const TopIssuesChart = dynamic(
+  () =>
+    import("@/features/feedback/components/top-issues-chart").then(
+      (m) => m.TopIssuesChart,
+    ),
+  { ssr: false, loading: ChartSkeleton },
+);
 
 export default function FeedbackPage() {
   const stats = useFeedbackStats();

@@ -56,6 +56,19 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
         self._session.add(model)
         await self._session.commit()
 
+    async def update(self, feedback: Feedback) -> None:
+        stmt = select(FeedbackModel).where(
+            FeedbackModel.id == feedback.id.value
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model is None:
+            return
+        model.rating = feedback.rating.value
+        model.comment = feedback.comment
+        model.tags = json.dumps(feedback.tags, ensure_ascii=False)
+        await self._session.commit()
+
     async def find_by_message_id(self, message_id: str) -> Feedback | None:
         stmt = select(FeedbackModel).where(
             FeedbackModel.message_id == message_id
@@ -175,8 +188,24 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
         sorted_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)
         return [TagCount(tag=t, count=c) for t, c in sorted_tags[:limit]]
 
+    async def count_negative(
+        self, tenant_id: str, days: int = 30
+    ) -> int:
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        stmt = (
+            select(func.count())
+            .select_from(FeedbackModel)
+            .where(
+                FeedbackModel.tenant_id == tenant_id,
+                FeedbackModel.rating == Rating.THUMBS_DOWN.value,
+                FeedbackModel.created_at >= since,
+            )
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
+
     async def get_negative_with_context(
-        self, tenant_id: str, days: int = 30, limit: int = 20
+        self, tenant_id: str, days: int = 30, limit: int = 20, offset: int = 0
     ) -> list[RetrievalQualityRecord]:
         since = datetime.now(timezone.utc) - timedelta(days=days)
         stmt = (
@@ -192,6 +221,7 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
                 FeedbackModel.created_at >= since,
             )
             .order_by(FeedbackModel.created_at.desc())
+            .offset(offset)
             .limit(limit)
         )
         result = await self._session.execute(stmt)

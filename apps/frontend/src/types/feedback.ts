@@ -54,6 +54,11 @@ export interface RetrievalQualityRecord {
   created_at: string;
 }
 
+export interface RetrievalQualityResponse {
+  records: RetrievalQualityRecord[];
+  total: number;
+}
+
 export interface ModelCostStat {
   model: string;
   message_count: number;

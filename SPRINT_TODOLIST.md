@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-26 (E2 完整版完成, 182 backend + 117 frontend tests green)
+> 最後更新：2026-02-26 (E3 邊緣問題批次修復完成, 196 backend + 117 frontend tests green)
 
 ---
 
@@ -886,23 +886,75 @@
 
 ---
 
+## Enterprise Sprint E3：邊緣問題批次修復（Edge Case Batch Fix）
+
+**Goal**：批次修復 E3-E11 已知邊緣問題（E7 Rate Limiting 移至 E4.5）
+
+### E3 — BackgroundTask 錯誤止血
+- ✅ `safe_background_task` wrapper（try/except + structlog）
+- ✅ `line_webhook_router.py` 4 個 `add_task` 改用 wrapper
+- ✅ `document_router.py` 1 個 `add_task` 改用 wrapper
+- ✅ BDD：2 scenarios（例外日誌 + 正常無錯誤）
+
+### E5 — LINE Webhook 簽名驗證時序修正
+- ✅ event parsing 移入 `execute_for_bot()`，先驗簽再 parse
+- ✅ Router 只傳 `body_text` + `signature`，不再預解析 events
+- ✅ BDD：2 scenarios（無效簽名先失敗 + malformed event graceful）
+
+### E4 — Bot 查詢 TTL 快取
+- ✅ `_bot_cache: dict[str, tuple[Bot, float]]` + `_cache_ttl` 60s
+- ✅ `_get_bot_cached()` 方法
+- ✅ BDD：2 scenarios（連續查詢只打 1 次 DB + TTL 過期重查）
+
+### E8 — 回饋支援「改變心意」（Upsert）
+- ✅ `FeedbackRepository.update()` ABC + 實作
+- ✅ `SubmitFeedbackUseCase` 改為 upsert 邏輯
+- ✅ BDD：1 修改（重複→更新）+ 1 新增（改變心意附評論）
+
+### E6 — 回饋統計 TTL 快取
+- ✅ `GetFeedbackStatsUseCase` 加 `_cache` + `_cache_ttl` 60s
+- ✅ BDD：2 scenarios（連續查詢快取 + TTL 過期重查）
+
+### E9 — 分析查詢分頁（跨前後端）
+- ✅ Backend：`get_negative_with_context()` 加 `offset`；`count_negative()` 新方法
+- ✅ Backend：API 加 `offset` query param + response 含 `total`
+- ✅ Frontend：server-side 分頁（`page` state + `offset` 傳遞）
+- ✅ BDD：2 scenarios（offset 分頁 + offset 超出範圍）
+
+### E10 — Recharts 動態載入
+- ✅ `SatisfactionTrendChart` / `TopIssuesChart` 改 `next/dynamic({ ssr: false })`
+- ✅ 既有測試通過即可，無新 BDD
+
+### E11 — PII Regex 擴充
+- ✅ +信用卡 `\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}` → `****-****-****-****`
+- ✅ +台灣身分證 `[A-Z][12]\d{8}` → `A1***`
+- ✅ +IPv4 `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}` → `***.***.***.***`
+- ✅ BDD：3 scenarios（信用卡 + 身分證 + IP 遮蔽）
+
+### E3 驗證
+- ✅ 全量測試：Backend 196 passed + Frontend 117 passed
+- ✅ 新增：14 BDD scenarios + 1 修改
+- ✅ 覆蓋率 >= 80%
+
+---
+
 ## 已知邊緣問題（Edge Cases）
 
-> 以下為已識別但暫不處理的邊緣測試問題，後續視優先級排入 Sprint。
+> 以下為已識別的邊緣問題。E3-E11（除 E7）已在 E3 Sprint 批次修復。
 
-| # | 問題描述 | 觸發條件 | 目前緩解措施 | 優先級 |
-|---|----------|----------|-------------|--------|
-| E1 | **大檔案 Embedding 429 Rate Limit** — 超大文件（>500KB, 2000+ chunks, 40+ batches）上傳後，Embedding API 回傳 429 Too Many Requests 導致文件處理失敗 | 上傳 581KB DOCX（Technical_Knowledge_Base_Large.docx），Google Gemini Embedding API | batch 間延遲 1s + 429 退避 5s×attempt + max_retries=5 + 所有參數可透過 `.env` 調整 | 低 — 一般文件不會觸發，可透過調高 `EMBEDDING_BATCH_DELAY` 緩解 |
-| ~~E2~~ | ~~product_search 查錯資料表~~ | ~~已在 E0 移除~~ | ~~已移除~~ | ~~CLOSED~~ |
-| E3 | **LINE Webhook BackgroundTask 靜默失敗** — `execute_for_bot` 在 `BackgroundTasks` 中拋出異常時，用戶看不到錯誤（Bot 不存在、Channel 未設定、簽名失敗等） | 新端點 `POST /api/v1/webhook/line/{bot_id}` 的 background task | 目前無緩解；建議加 structured logging + 錯誤通知 | 中 |
-| E4 | **LINE Webhook 無 Bot 查詢快取** — 每次 webhook 都做一次 DB `find_by_id` | 多 Bot 高頻 webhook 場景 | 目前無快取；LINE webhook 量通常不高，未來可加短 TTL 快取 | 低 |
-| E5 | **LINE Webhook 簽名驗證時序** — 新端點先在 router 解析 events（JSON parse），再在 BackgroundTask 中驗簽。若 body 格式異常，JSON parse 可能在驗簽前就失敗 | 非 LINE 來源的惡意請求發送 malformed JSON | 可考慮將事件解析也移入 Use Case，先驗簽再解析 | 低 |
-| E6 | **回饋統計即時計算** — `count_by_tenant_and_rating` 每次都打 DB，無快取 | 單租戶累積 10k+ 筆回饋時查詢變慢 | MVP 規模可接受；未來可用 materialized view 或定期快取 | 低 |
-| E7 | **回饋 API 無 rate limiting** — UNIQUE 約束擋住同一訊息重複回饋，但端點本身沒限流 | 惡意 client 大量 POST `/api/v1/feedback` | 目前無緩解；建議加 per-IP 或 per-tenant rate limiter | 中 |
-| E8 | **回饋不支援「改變心意」** — UNIQUE on message_id 代表一旦回饋就不能修改 | 使用者想從 thumbs_down 改為 thumbs_up | 目前不支援；若需要可改為 upsert 邏輯（find existing → update rating） | 低 |
-| E9 | **分析查詢缺少分頁機制** — `get_negative_with_context` 只回傳 `limit` 筆，沒有游標/偏移量供大量資料翻頁 | 單租戶累積大量負面回饋時，Admin 無法瀏覽全部 | 目前只有 `limit` 參數；建議加 cursor-based pagination | 中 |
-| E10 | **Recharts 打包體積** — 增加約 200KB（gzip 後），所有頁面都會載入 | 首次載入 /feedback 以外的頁面也會拉 recharts bundle | 建議用 `next/dynamic` 動態載入圖表元件，實現程式碼分割 | 低 |
-| E11 | **PII 遮蔽基於正則表達式** — 涵蓋 email、手機、LINE user ID，但可能遺漏地址、身分證字號等 PII | 匯出含敏感資料的回饋，遮蔽不完整 | 若有合規要求，建議改用 NER（命名實體辨識）遮蔽套件 | 低 |
+| # | 問題描述 | 狀態 | 修復方式 |
+|---|----------|------|----------|
+| E1 | **大檔案 Embedding 429 Rate Limit** | ⬜ 未修復 | batch 間延遲 + 429 退避（可透過 `.env` 調整） |
+| ~~E2~~ | ~~product_search 查錯資料表~~ | ~~CLOSED~~ | ~~E0 移除~~ |
+| E3 | **BackgroundTask 靜默失敗** | ✅ E3 Sprint | `safe_background_task` wrapper + structlog 錯誤日誌 |
+| E4 | **LINE Webhook 無 Bot 查詢快取** | ✅ E3 Sprint | Use Case 層 `_bot_cache` + TTL 60s |
+| E5 | **LINE Webhook 簽名驗證時序** | ✅ E3 Sprint | event parsing 移入 Use Case，先驗簽再 parse |
+| E6 | **回饋統計即時計算** | ✅ E3 Sprint | Use Case 層 TTL 快取 60s |
+| E7 | **回饋 API 無 rate limiting** | ⏭️ 移至 E4.5 | 等 E4（用戶身份體系）完成後做 per-user 限流 |
+| E8 | **回饋不支援「改變心意」** | ✅ E3 Sprint | 改為 upsert — find existing → update rating/comment/tags |
+| E9 | **分析查詢缺少分頁機制** | ✅ E3 Sprint | Backend `offset` + `total_count`；Frontend server-side 分頁 |
+| E10 | **Recharts 打包體積** | ✅ E3 Sprint | `next/dynamic` + `{ ssr: false }` 動態載入圖表元件 |
+| E11 | **PII 遮蔽不完整** | ✅ E3 Sprint | +信用卡號 +台灣身分證 +IPv4 regex |
 
 ---
 
@@ -924,3 +976,4 @@
 | **E1.5 LINE Webhook 多租戶** | **✅ 完成** | **100%** | **11 files, 577 insertions, 146 backend + 95 frontend tests** |
 | **E2 Feedback System (MVP)** | **✅ 完成** | **100%** | **39 files, 1604 insertions, 164 backend + 101 frontend tests** |
 | **E2 Feedback System (完整版)** | **✅ 完成** | **100%** | **E2.5-E2.9, 182 backend + 117 frontend tests** |
+| **E3 Edge Case Batch Fix** | **✅ 完成** | **100%** | **8 fixes (E3-E6,E8-E11), 196 backend + 117 frontend tests** |

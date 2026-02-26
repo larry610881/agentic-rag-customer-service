@@ -104,6 +104,7 @@ def tenant_has_negative_context(context, tenant_id):
             )
         ]
     )
+    mock_repo.count_negative = AsyncMock(return_value=1)
     context["mock_feedback_repo"] = mock_repo
     context["tenant_id"] = tenant_id
     context["quality_uc"] = GetRetrievalQualityUseCase(
@@ -192,10 +193,11 @@ def verify_top_issues(context):
 @then("應回傳包含使用者問題和助理回答的記錄")
 def verify_retrieval_quality(context):
     result = context["result"]
-    assert len(result) >= 1
-    assert result[0].user_question != ""
-    assert result[0].assistant_answer != ""
-    assert isinstance(result[0].retrieved_chunks, list)
+    assert result.total >= 1
+    assert len(result.records) >= 1
+    assert result.records[0].user_question != ""
+    assert result.records[0].assistant_answer != ""
+    assert isinstance(result.records[0].retrieved_chunks, list)
 
 
 @then("應回傳每模型的 token 和成本摘要")

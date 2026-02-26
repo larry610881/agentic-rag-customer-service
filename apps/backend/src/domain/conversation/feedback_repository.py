@@ -17,6 +17,9 @@ class FeedbackRepository(ABC):
     async def save(self, feedback: Feedback) -> None: ...
 
     @abstractmethod
+    async def update(self, feedback: Feedback) -> None: ...
+
+    @abstractmethod
     async def find_by_message_id(self, message_id: str) -> Feedback | None: ...
 
     @abstractmethod
@@ -51,8 +54,13 @@ class FeedbackRepository(ABC):
 
     @abstractmethod
     async def get_negative_with_context(
-        self, tenant_id: str, days: int = 30, limit: int = 20
+        self, tenant_id: str, days: int = 30, limit: int = 20, offset: int = 0
     ) -> list[RetrievalQualityRecord]: ...
+
+    @abstractmethod
+    async def count_negative(
+        self, tenant_id: str, days: int = 30
+    ) -> int: ...
 
     @abstractmethod
     async def find_by_date_range(

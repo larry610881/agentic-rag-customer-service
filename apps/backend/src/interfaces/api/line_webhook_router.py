@@ -9,6 +9,7 @@ from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
 from src.container import Container
 from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService
+from src.infrastructure.logging.error_handler import safe_background_task
 
 router = APIRouter(prefix="/api/v1/webhook", tags=["webhook"])
 
@@ -73,11 +74,17 @@ async def line_webhook(
     postback_events = _parse_postback_events(body_text)
 
     if events:
-        background_tasks.add_task(use_case.execute, events)
+        background_tasks.add_task(
+            safe_background_task,
+            use_case.execute, events,
+            task_name="handle_webhook",
+        )
 
     for pb_event in postback_events:
         background_tasks.add_task(
-            use_case.handle_postback, pb_event, ""
+            safe_background_task,
+            use_case.handle_postback, pb_event, "",
+            task_name="handle_postback",
         )
 
     return {"status": "ok"}
@@ -96,17 +103,13 @@ async def line_webhook_multitenant(
 ) -> dict:
     body = await request.body()
     body_text = body.decode("utf-8")
-    events = _parse_text_events(body_text)
-    postback_events = _parse_postback_events(body_text)
 
-    if events:
-        background_tasks.add_task(
-            use_case.execute_for_bot, bot_id, body_text, x_line_signature, events
-        )
-
-    for pb_event in postback_events:
-        background_tasks.add_task(
-            use_case.handle_postback, pb_event, ""
-        )
+    # E5: 不在 router 解析事件，交由 Use Case 先驗簽再 parse
+    background_tasks.add_task(
+        safe_background_task,
+        use_case.execute_for_bot, bot_id, body_text, x_line_signature,
+        task_name="execute_for_bot",
+        bot_id=bot_id,
+    )
 
     return {"status": "ok"}

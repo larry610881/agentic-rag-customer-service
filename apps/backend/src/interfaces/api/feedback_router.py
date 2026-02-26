@@ -88,13 +88,18 @@ class TagCountResponse(BaseModel):
     count: int
 
 
-class RetrievalQualityResponse(BaseModel):
+class RetrievalQualityRecordResponse(BaseModel):
     user_question: str
     assistant_answer: str
     retrieved_chunks: list[dict]
     rating: str
     comment: str | None
     created_at: datetime
+
+
+class RetrievalQualityResponse(BaseModel):
+    records: list[RetrievalQualityRecordResponse]
+    total: int
 
 
 class ModelCostStatResponse(BaseModel):
@@ -284,29 +289,33 @@ async def get_top_issues(
 
 @router.get(
     "/analysis/retrieval-quality",
-    response_model=list[RetrievalQualityResponse],
+    response_model=RetrievalQualityResponse,
 )
 @inject
 async def get_retrieval_quality(
     days: int = 30,
     limit: int = 20,
+    offset: int = 0,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetRetrievalQualityUseCase = Depends(
         Provide[Container.get_retrieval_quality_use_case]
     ),
-) -> list[RetrievalQualityResponse]:
-    records = await use_case.execute(tenant.tenant_id, days, limit)
-    return [
-        RetrievalQualityResponse(
-            user_question=r.user_question,
-            assistant_answer=r.assistant_answer,
-            retrieved_chunks=r.retrieved_chunks,
-            rating=r.rating,
-            comment=r.comment,
-            created_at=r.created_at,
-        )
-        for r in records
-    ]
+) -> RetrievalQualityResponse:
+    result = await use_case.execute(tenant.tenant_id, days, limit, offset)
+    return RetrievalQualityResponse(
+        records=[
+            RetrievalQualityRecordResponse(
+                user_question=r.user_question,
+                assistant_answer=r.assistant_answer,
+                retrieved_chunks=r.retrieved_chunks,
+                rating=r.rating,
+                comment=r.comment,
+                created_at=r.created_at,
+            )
+            for r in result.records
+        ],
+        total=result.total,
+    )
 
 
 @router.get(

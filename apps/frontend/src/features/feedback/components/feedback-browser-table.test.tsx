@@ -1,13 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
-import { renderWithProviders, userEvent } from "@/test/test-utils";
+import { renderWithProviders } from "@/test/test-utils";
 import { FeedbackBrowserTable } from "./feedback-browser-table";
 import { mockFeedbackList } from "@/test/fixtures/feedback";
+
+const noop = vi.fn();
 
 describe("FeedbackBrowserTable", () => {
   it("renders feedback rows", () => {
     renderWithProviders(
-      <FeedbackBrowserTable data={mockFeedbackList} isLoading={false} />,
+      <FeedbackBrowserTable
+        data={mockFeedbackList}
+        isLoading={false}
+        page={0}
+        onPageChange={noop}
+      />,
     );
     expect(screen.getByText("回饋瀏覽器")).toBeInTheDocument();
     expect(screen.getAllByText("答案不正確").length).toBeGreaterThanOrEqual(1);
@@ -16,7 +23,12 @@ describe("FeedbackBrowserTable", () => {
 
   it("shows loading skeleton", () => {
     renderWithProviders(
-      <FeedbackBrowserTable data={undefined} isLoading={true} />,
+      <FeedbackBrowserTable
+        data={undefined}
+        isLoading={true}
+        page={0}
+        onPageChange={noop}
+      />,
     );
     expect(screen.getByText("回饋瀏覽器")).toBeInTheDocument();
     expect(
@@ -26,14 +38,24 @@ describe("FeedbackBrowserTable", () => {
 
   it("shows empty state when no data", () => {
     renderWithProviders(
-      <FeedbackBrowserTable data={[]} isLoading={false} />,
+      <FeedbackBrowserTable
+        data={[]}
+        isLoading={false}
+        page={0}
+        onPageChange={noop}
+      />,
     );
     expect(screen.getByText("無符合條件的回饋")).toBeInTheDocument();
   });
 
   it("renders filter selector", () => {
     renderWithProviders(
-      <FeedbackBrowserTable data={mockFeedbackList} isLoading={false} />,
+      <FeedbackBrowserTable
+        data={mockFeedbackList}
+        isLoading={false}
+        page={0}
+        onPageChange={noop}
+      />,
     );
     // Filter trigger (combobox) should be present
     expect(screen.getByRole("combobox")).toBeInTheDocument();
@@ -41,7 +63,12 @@ describe("FeedbackBrowserTable", () => {
 
   it("handles pagination buttons", () => {
     renderWithProviders(
-      <FeedbackBrowserTable data={mockFeedbackList} isLoading={false} />,
+      <FeedbackBrowserTable
+        data={mockFeedbackList}
+        isLoading={false}
+        page={0}
+        onPageChange={noop}
+      />,
     );
     expect(screen.getByRole("button", { name: "上一頁" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "下一頁" })).toBeDisabled();

@@ -1,9 +1,12 @@
 """LINE Webhook 處理 Use Case"""
 
+import json
+import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from src.domain.agent.services import AgentService
+from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
 from src.domain.conversation.feedback_entity import Feedback
 from src.domain.conversation.feedback_repository import FeedbackRepository
@@ -14,6 +17,10 @@ from src.domain.conversation.feedback_value_objects import (
 )
 from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
+from src.infrastructure.logging.error_handler import safe_background_task
+from src.infrastructure.logging.setup import get_logger
+
+logger = get_logger(__name__)
 
 
 class HandleWebhookUseCase:
@@ -26,6 +33,7 @@ class HandleWebhookUseCase:
         default_tenant_id: str = "",
         default_kb_id: str = "",
         feedback_repository: FeedbackRepository | None = None,
+        cache_ttl: float = 60.0,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -34,6 +42,21 @@ class HandleWebhookUseCase:
         self._default_tenant_id = default_tenant_id
         self._default_kb_id = default_kb_id
         self._feedback_repo = feedback_repository
+        self._bot_cache: dict[str, tuple[Bot, float]] = {}
+        self._cache_ttl = cache_ttl
+
+    async def _get_bot_cached(self, bot_id: str) -> Bot | None:
+        """TTL 快取查 Bot，預設 60 秒。"""
+        now = time.monotonic()
+        cached = self._bot_cache.get(bot_id)
+        if cached is not None:
+            bot, ts = cached
+            if now - ts < self._cache_ttl:
+                return bot
+        bot = await self._bot_repository.find_by_id(bot_id)
+        if bot is not None:
+            self._bot_cache[bot_id] = (bot, now)
+        return bot
 
     async def execute(self, events: list[LineTextMessageEvent]) -> None:
         """舊端點：使用預設租戶設定處理 Webhook 事件。"""
@@ -53,15 +76,54 @@ class HandleWebhookUseCase:
                 event.reply_token, result.answer, message_id
             )
 
+    @staticmethod
+    def _parse_text_events(body_text: str) -> list[LineTextMessageEvent]:
+        """從 LINE Webhook body 解析文字訊息事件。"""
+        data = json.loads(body_text)
+        events: list[LineTextMessageEvent] = []
+        for event_data in data.get("events", []):
+            if (
+                event_data.get("type") == "message"
+                and event_data.get("message", {}).get("type") == "text"
+            ):
+                events.append(
+                    LineTextMessageEvent(
+                        reply_token=event_data["replyToken"],
+                        user_id=event_data["source"]["userId"],
+                        message_text=event_data["message"]["text"],
+                        timestamp=event_data["timestamp"],
+                    )
+                )
+        return events
+
+    @staticmethod
+    def _parse_postback_events(body_text: str) -> list[LinePostbackEvent]:
+        """從 LINE Webhook body 解析 postback 事件。"""
+        data = json.loads(body_text)
+        events: list[LinePostbackEvent] = []
+        for event_data in data.get("events", []):
+            if event_data.get("type") == "postback":
+                events.append(
+                    LinePostbackEvent(
+                        reply_token=event_data["replyToken"],
+                        user_id=event_data["source"]["userId"],
+                        postback_data=event_data["postback"]["data"],
+                        timestamp=event_data["timestamp"],
+                    )
+                )
+        return events
+
     async def execute_for_bot(
         self,
         bot_id: str,
         body_text: str,
         signature: str,
-        events: list[LineTextMessageEvent],
     ) -> None:
-        """新端點：根據 Bot ID 路由到正確租戶處理 Webhook 事件。"""
-        bot = await self._bot_repository.find_by_id(bot_id)
+        """新端點：根據 Bot ID 路由到正確租戶處理 Webhook 事件。
+
+        驗簽 → 解析事件 → 處理（確保簽名驗證在 JSON parse 之前）。
+        """
+        bot = await self._get_bot_cached(bot_id)
         if bot is None:
             raise ValueError(f"Bot not found: {bot_id}")
 
@@ -75,8 +137,12 @@ class HandleWebhookUseCase:
             bot.line_channel_access_token or "",
         )
 
+        # E5: 先驗簽，再 parse events
         if not await line_service.verify_signature(body_text, signature):
             raise ValueError("Invalid LINE webhook signature")
+
+        events = self._parse_text_events(body_text)
+        postback_events = self._parse_postback_events(body_text)
 
         for event in events:
             if not event.message_text:
@@ -92,6 +158,9 @@ class HandleWebhookUseCase:
             await line_service.reply_with_quick_reply(
                 event.reply_token, result.answer, message_id
             )
+
+        for pb_event in postback_events:
+            await self.handle_postback(pb_event, bot.tenant_id, line_service)
 
     async def handle_postback(
         self,

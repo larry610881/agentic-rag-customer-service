@@ -9,7 +9,7 @@ import type {
   FeedbackResponse,
   FeedbackStats,
   ModelCostStat,
-  RetrievalQualityRecord,
+  RetrievalQualityResponse,
   SubmitFeedbackRequest,
   TagCount,
 } from "@/types/feedback";
@@ -61,7 +61,7 @@ export function useFeedbackList(limit = 50, offset = 0) {
   const tenantId = useAuthStore((s) => s.tenantId);
 
   return useQuery({
-    queryKey: queryKeys.feedback.list(tenantId ?? ""),
+    queryKey: [...queryKeys.feedback.list(tenantId ?? ""), limit, offset],
     queryFn: () =>
       apiFetch<FeedbackResponse[]>(
         `${API_ENDPOINTS.feedback.list}?limit=${limit}&offset=${offset}`,
@@ -104,15 +104,15 @@ export function useTopIssues(days = 30, limit = 10) {
   });
 }
 
-export function useRetrievalQuality(days = 30, limit = 20) {
+export function useRetrievalQuality(days = 30, limit = 20, offset = 0) {
   const token = useAuthStore((s) => s.token);
   const tenantId = useAuthStore((s) => s.tenantId);
 
   return useQuery({
-    queryKey: queryKeys.feedback.retrievalQuality(tenantId ?? "", days),
+    queryKey: [...queryKeys.feedback.retrievalQuality(tenantId ?? "", days), limit, offset],
     queryFn: () =>
-      apiFetch<RetrievalQualityRecord[]>(
-        `${API_ENDPOINTS.feedback.retrievalQuality}?days=${days}&limit=${limit}`,
+      apiFetch<RetrievalQualityResponse>(
+        `${API_ENDPOINTS.feedback.retrievalQuality}?days=${days}&limit=${limit}&offset=${offset}`,
         {},
         token ?? undefined,
       ),

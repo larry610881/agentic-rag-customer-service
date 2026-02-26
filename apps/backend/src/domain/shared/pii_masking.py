@@ -13,7 +13,7 @@ def mask_user_id(user_id: str | None) -> str:
 
 
 def mask_pii_in_text(text: str | None) -> str:
-    """遮蔽文本中的 PII（email, phone, LINE user ID）。"""
+    """遮蔽文本中的 PII（email, phone, LINE user ID, 信用卡, 身分證, IP）。"""
     if not text:
         return ""
     # Mask email addresses
@@ -26,4 +26,18 @@ def mask_pii_in_text(text: str | None) -> str:
     text = re.sub(r"09\d{8}", "09***", text)
     # Mask LINE user IDs (U + 32 hex)
     text = re.sub(r"U[0-9a-f]{32}", "U***", text)
+    # Mask credit card numbers (4 groups of 4 digits)
+    text = re.sub(
+        r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b",
+        "****-****-****-****",
+        text,
+    )
+    # Mask Taiwan national ID (letter + 1/2 + 8 digits)
+    text = re.sub(r"\b[A-Z][12]\d{8}\b", "A1***", text)
+    # Mask IPv4 addresses
+    text = re.sub(
+        r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b",
+        "***.***.***.***",
+        text,
+    )
     return text

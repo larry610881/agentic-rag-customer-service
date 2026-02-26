@@ -27,6 +27,7 @@ from src.domain.shared.exceptions import (
     EntityNotFoundError,
     UnsupportedFileTypeError,
 )
+from src.infrastructure.logging.error_handler import safe_background_task
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 
 router = APIRouter(
@@ -147,9 +148,11 @@ async def upload_document(
 
     # Trigger async processing
     background_tasks.add_task(
+        safe_background_task,
         process_use_case.execute,
         result.document.id.value,
         result.task.id.value,
+        task_name="process_document",
     )
 
     doc = result.document

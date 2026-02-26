@@ -65,17 +65,9 @@ def bot_configured_with_line(context, bot_id):
 def receive_webhook_at_path(context, path):
     bot_id = path.rsplit("/", 1)[-1]
     body_text = '{"events":[{"type":"message","replyToken":"tk","source":{"userId":"U1"},"message":{"type":"text","text":"hi"},"timestamp":1}]}'
-    events = [
-        LineTextMessageEvent(
-            reply_token="tk",
-            user_id="U1",
-            message_text="hi",
-            timestamp=1,
-        )
-    ]
     _run(
         context["use_case"].execute_for_bot(
-            bot_id, body_text, "sig", events
+            bot_id, body_text, "sig"
         )
     )
 

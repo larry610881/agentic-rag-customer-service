@@ -27,6 +27,9 @@ import type { FeedbackResponse, Rating } from "@/types/feedback";
 interface FeedbackBrowserTableProps {
   data: FeedbackResponse[] | undefined;
   isLoading: boolean;
+  total?: number;
+  page: number;
+  onPageChange: (page: number) => void;
 }
 
 const PAGE_SIZE = 10;
@@ -34,9 +37,11 @@ const PAGE_SIZE = 10;
 export function FeedbackBrowserTable({
   data,
   isLoading,
+  total,
+  page,
+  onPageChange,
 }: FeedbackBrowserTableProps) {
   const [ratingFilter, setRatingFilter] = useState<"all" | Rating>("all");
-  const [page, setPage] = useState(0);
 
   if (isLoading) {
     return (
@@ -56,8 +61,8 @@ export function FeedbackBrowserTable({
       ? (data ?? [])
       : (data ?? []).filter((f) => f.rating === ratingFilter);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const serverTotal = total ?? filtered.length;
+  const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
 
   return (
     <Card>
@@ -67,7 +72,7 @@ export function FeedbackBrowserTable({
           value={ratingFilter}
           onValueChange={(v) => {
             setRatingFilter(v as "all" | Rating);
-            setPage(0);
+            onPageChange(0);
           }}
         >
           <SelectTrigger className="w-36">
@@ -99,7 +104,7 @@ export function FeedbackBrowserTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paged.map((fb) => (
+                {filtered.map((fb) => (
                   <TableRow key={fb.id}>
                     <TableCell className="whitespace-nowrap text-sm">
                       {new Date(fb.created_at).toLocaleDateString("zh-TW")}
@@ -139,14 +144,14 @@ export function FeedbackBrowserTable({
             </Table>
             <div className="mt-4 flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                共 {filtered.length} 筆
+                共 {serverTotal} 筆
               </p>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   disabled={page === 0}
-                  onClick={() => setPage((p) => p - 1)}
+                  onClick={() => onPageChange(page - 1)}
                 >
                   上一頁
                 </Button>
@@ -154,7 +159,7 @@ export function FeedbackBrowserTable({
                   variant="outline"
                   size="sm"
                   disabled={page >= totalPages - 1}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => onPageChange(page + 1)}
                 >
                   下一頁
                 </Button>
