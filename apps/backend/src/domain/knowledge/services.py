@@ -14,5 +14,9 @@ class FileParserService(ABC):
 class TextSplitterService(ABC):
     @abstractmethod
     def split(
-        self, text: str, document_id: str, tenant_id: str
+        self,
+        text: str,
+        document_id: str,
+        tenant_id: str,
+        content_type: str = "",
     ) -> list[Chunk]: ...

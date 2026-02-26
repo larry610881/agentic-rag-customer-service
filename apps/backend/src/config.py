@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     # Text Splitter
     chunk_size: int = 500
     chunk_overlap: int = 100
+    chunk_strategy: str = "auto"  # "auto" | "recursive" | "csv_row"
 
     # LINE
     line_channel_secret: str = ""

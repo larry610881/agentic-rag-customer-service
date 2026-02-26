@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-26 (E5 Redis Cache 統一完成, 200 backend + 117 frontend tests green)
+> 最後更新：2026-02-26 (E6 Content-Aware Chunking 完成, 207 backend + 117 frontend tests green)
 
 ---
 
@@ -1003,6 +1003,48 @@
 
 ---
 
+## Enterprise Sprint E6：Content-Aware Chunking Strategy
+
+**Goal**：根據檔案 content_type 自動路由到最佳分塊策略，CSV 資料以行為單位切割保持記錄完整性
+
+### E6.1 Domain ABC 擴充
+- ✅ `TextSplitterService.split()` 新增 `content_type: str = ""` 可選參數
+- ✅ 向後相容：既有呼叫不受影響
+
+### E6.2 CSV Row-Based Splitter
+- ✅ 新增 `CSVRowTextSplitterService`（row-based splitting + header 保留）
+- ✅ 處理邊界情況：超長行、空 CSV、只有 header
+- ✅ metadata 包含 `content_type`, `row_start`, `row_end`
+
+### E6.3 RecursiveTextSplitter 改進
+- ✅ 加入中文友善分隔符（。！？；）
+- ✅ `split()` 新增 `content_type` 參數 + metadata 擴充
+
+### E6.4 Content-Aware Router（Strategy + Composite Pattern）
+- ✅ 新增 `ContentAwareTextSplitterService`
+- ✅ 根據 `content_type` 路由到對應策略（text/csv → CSV, 其餘 → Recursive）
+- ✅ Open/Closed Principle：新增策略只需註冊，不修改既有代碼
+
+### E6.5 Application Use Case 更新
+- ✅ `ProcessDocumentUseCase.split()` 傳入 `content_type=document.content_type`
+- ✅ Qdrant payload 擴充 `content_type` + 合併 chunk metadata
+
+### E6.6 Config + Container
+- ✅ Config 新增 `chunk_strategy: str = "auto"`（auto / recursive / csv_row）
+- ✅ Container Selector：auto → ContentAwareRouter, recursive → Recursive, csv_row → CSV
+
+### E6.7 BDD 測試
+- ✅ `csv_chunking.feature`：4 scenarios（行完整性 / header 保留 / 超長行 / 空 CSV）
+- ✅ `content_aware_chunking.feature`：3 scenarios（CSV 路由 / default 路由 / fallback）
+- ✅ 既有測試零改動，向後相容驗證通過
+
+### E6 驗證
+- ✅ 全量測試：Backend 207 passed（200 + 7 新增）+ Frontend 117 passed（不受影響）
+- ✅ Lint：所有新增/修改檔案 ruff clean
+- ✅ 5 NEW + 5 MODIFY files
+
+---
+
 ## 已知邊緣問題（Edge Cases）
 
 > 以下為已識別的邊緣問題。E3-E11（除 E7）已在 E3 Sprint 批次修復。
@@ -1029,7 +1071,7 @@
 
 | Issue | 標題 | Labels | 來源 |
 |-------|------|--------|------|
-| [#6](https://github.com/larry610881/agentic-rag-customer-service/issues/6) | Hybrid Search + Reranking | `rag`, `enhancement` | S3.4, S3.5 |
+| [#6](https://github.com/larry610881/agentic-rag-customer-service/issues/6) | Content-Aware Chunking Strategy | `rag`, `enhancement` | S3.4, E6 |
 | [#7](https://github.com/larry610881/agentic-rag-customer-service/issues/7) | Integration Test 補債 | `test` | S1.1, S1.2, S1.4 |
 | [#8](https://github.com/larry610881/agentic-rag-customer-service/issues/8) | Embedding 429 Rate Limit | `bug`, `rag` | Edge E1 |
 | [#9](https://github.com/larry610881/agentic-rag-customer-service/issues/9) | API Rate Limiting + 用戶身份 | `enhancement` | Edge E7 |
@@ -1060,3 +1102,4 @@
 | **E3 Edge Case Batch Fix** | **✅ 完成** | **100%** | **8 fixes (E3-E6,E8-E11), 196 backend + 117 frontend tests** |
 | **E4 EventBus 清理** | **✅ 完成** | **100%** | **5 files 刪除 + 1 file 編輯, 192 backend + 117 frontend tests** |
 | **E5 Redis Cache 統一** | **✅ 完成** | **100%** | **10 NEW + 10 MODIFY files, 200 backend + 117 frontend tests, 3 commits** |
+| **E6 Content-Aware Chunking** | **✅ 完成** | **100%** | **5 NEW + 5 MODIFY files, 207 backend + 117 frontend tests** |

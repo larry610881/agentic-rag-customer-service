@@ -58,6 +58,7 @@ class ProcessDocumentUseCase:
                 document.content,
                 document_id,
                 document.tenant_id,
+                content_type=document.content_type,
             )
             log.info("document.split.done", chunk_count=len(chunks))
 
@@ -93,6 +94,12 @@ class ProcessDocumentUseCase:
                     "document_id": document_id,
                     "content": c.content,
                     "chunk_index": c.chunk_index,
+                    "content_type": document.content_type,
+                    **{
+                        k: v
+                        for k, v in c.metadata.items()
+                        if k not in ("document_id", "tenant_id")
+                    },
                 }
                 for c in chunks
             ]

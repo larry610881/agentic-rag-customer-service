@@ -161,6 +161,12 @@ from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
 from src.infrastructure.sentiment.keyword_sentiment_service import (
     KeywordSentimentService,
 )
+from src.infrastructure.text_splitter.content_aware_text_splitter_service import (
+    ContentAwareTextSplitterService,
+)
+from src.infrastructure.text_splitter.csv_row_text_splitter_service import (
+    CSVRowTextSplitterService,
+)
 from src.infrastructure.text_splitter.recursive_text_splitter_service import (
     RecursiveTextSplitterService,
 )
@@ -279,10 +285,27 @@ class Container(containers.DeclarativeContainer):
 
     file_parser_service = providers.Singleton(DefaultFileParserService)
 
-    text_splitter_service = providers.Singleton(
+    _csv_splitter = providers.Singleton(
+        CSVRowTextSplitterService,
+        chunk_size=providers.Callable(lambda cfg: cfg.chunk_size, config),
+        chunk_overlap=providers.Callable(lambda cfg: cfg.chunk_overlap, config),
+    )
+
+    _recursive_splitter = providers.Singleton(
         RecursiveTextSplitterService,
         chunk_size=providers.Callable(lambda cfg: cfg.chunk_size, config),
         chunk_overlap=providers.Callable(lambda cfg: cfg.chunk_overlap, config),
+    )
+
+    text_splitter_service = providers.Selector(
+        providers.Callable(lambda cfg: cfg.chunk_strategy, config),
+        auto=providers.Singleton(
+            ContentAwareTextSplitterService,
+            strategies=providers.Dict({"text/csv": _csv_splitter}),
+            default=_recursive_splitter,
+        ),
+        recursive=_recursive_splitter,
+        csv_row=_csv_splitter,
     )
 
     _static_embedding_service = providers.Selector(
