@@ -44,7 +44,7 @@
     "Stop": [{
       "hooks": [{
         "type": "prompt",
-        "prompt": "檢查 $ARGUMENTS，確認：1. 所有當前 Sprint 任務完成 2. 測試通過 3. 已 commit 4. SPRINT_TODOLIST.md 已更新（若有任務狀態變更，需同步更新 todolist 並 commit）5. 若本次 session 完成了非 trivial 任務（跨 2+ DDD 層、跨前後端、4+ 檔案、新增 BDD scenario、引入新設計模式，滿足任一即算），檢查學習筆記是否已追加至 docs/architecture-journal.md。回傳 {\"ok\": true} 或 {\"ok\": false, \"reason\": \"原因\"}",
+        "prompt": "檢查 $ARGUMENTS，確認：1. 所有當前 Sprint 任務完成 2. 測試通過 3. 已 commit 4. SPRINT_TODOLIST.md 已更新（若有任務狀態變更，需同步更新 todolist 並 commit）5. 若本次 session 完成了非 trivial 功能開發任務（必須同時滿足：(a) 修改了 src/ 下的程式碼，且 (b) 跨 2+ DDD 層 或 跨前後端 或 新增 BDD scenario），檢查學習筆記是否已追加至 docs/architecture-journal.md。注意：純文件整理、config 修改、todolist 更新、hook 設定等不算非 trivial。回傳 {\"ok\": true} 或 {\"ok\": false, \"reason\": \"原因\"}",
         "timeout": 30
       }]
     }]
