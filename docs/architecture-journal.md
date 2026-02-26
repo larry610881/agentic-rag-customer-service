@@ -38,8 +38,8 @@ Integration Test Infrastructure、asyncpg Event Loop Affinity、pytest Fixture L
 
 - **BDD-first 完整流程**：先寫 3 個 `.feature` 檔（14 scenarios），再寫 step definitions，再寫 conftest infra。Feature 覆蓋 Tenant CRUD（5）+ KB CRUD（5）+ Document CRUD（4），含認證、隔離、錯誤處理
 - **DI Container Override 策略正確**：只 override 必要的 4 個 provider（db_session、process_document、vector_store、cache_service），其餘走真實 DI 路徑。這確保了 JWT、Router、UseCase、Repository 全部是真實實作
-- **TRUNCATE vs Rollback 選擇**：選用 TRUNCATE CASCADE 而非 transaction rollback，因為 pytest-bdd sync step + `_run()` 模式無法跨 event loop 共享 transaction。TRUNCATE 更簡單可靠
-- **Shared Event Loop 解決跨 loop 問題**：`_test_loop` fixture 提供每個 test 共享的 event loop，確保 TRUNCATE、API 請求、session 操作都在同一 loop，避免 asyncpg connection-closed-mid-operation 錯誤
+- **Fresh Event Loop + drop_all/create_all 策略**：每次 `_run()` 建立全新 event loop，避免 asyncpg 跨 loop 問題。每個測試前 drop_all + create_all 重建全部表格，比 TRUNCATE 更健壯（處理 schema corruption）
+- **pg_terminate_backend + poll loop 解決 deadlock**：`pg_terminate_backend()` 是非同步的（發送 SIGTERM 後立即返回），dying connection 仍持有鎖。加入 `pg_stat_activity` poll loop 等待連線真正關閉後再執行 DDL，消除 AccessExclusiveLock deadlock
 
 ### 潛在隱憂
 
@@ -47,14 +47,15 @@ Integration Test Infrastructure、asyncpg Event Loop Affinity、pytest Fixture L
 |------|---------|--------|
 | DI Factory sessions 未顯式 close（依賴 GC cleanup）| 在 Repository 或 middleware 層加 session lifecycle 管理（`async with session_factory() as session:`） | 中 |
 | pytest-asyncio 完全停用（`-p no:asyncio`）| 目前所有測試都用 `_run()` 所以安全，但未來若需 async fixtures 需重新啟用 | 低 |
-| `gc.collect()` 強制 GC 是 workaround 而非根因修復 | 根因是 session 未 close，修復 session lifecycle 後可移除 gc.collect() | 中 |
+| 每測試 drop_all/create_all 有效能開銷 | 14 scenarios 耗時 ~13s（可接受），若未來 > 50 scenarios 可考慮改回 TRUNCATE + 更精確的連線管理 | 低 |
 | Coverage fail_under 暫降至 70 | Integration test 到位後調回 80 | 低 |
 
 ### 延伸學習
 
-- **asyncpg Event Loop Affinity**：asyncpg 連線綁定創建時的 event loop。NullPool 確保每次 `engine.begin()` 都建新連線，但若舊連線的 GC cleanup 在新 loop 的 `_run()` 執行期間觸發，會導致 `ConnectionDoesNotExistError`。根本解法是讓所有連線共用同一個 loop（`_test_loop` 模式），或確保舊連線在 loop 關閉前被顯式 close
+- **asyncpg Event Loop Affinity**：asyncpg 連線綁定創建時的 event loop。NullPool 確保每次 `engine.begin()` 都建新連線。用 fresh loop per `_run()` call 最安全——每個 loop 只用一次，不存在跨 loop 問題
+- **pg_terminate_backend 是非同步操作**：PostgreSQL 文件明確指出此函數「sends a signal」而非「waits for termination」。在測試基礎設施中，必須 poll `pg_stat_activity` 確認 connection count = 0 後才能安全執行 DDL（DROP TABLE 需要 AccessExclusiveLock）
 - **Factory vs Scoped Provider 在 DI 測試中的差異**：`providers.Factory` 每次建新實例但不管理生命周期（caller 負責 close）。`providers.Resource` 支援 `init` + `shutdown` lifecycle。若 session 改用 Resource provider，DI 容器能自動管理 session close
-- 若想深入：搜尋「SQLAlchemy async session lifecycle」、「dependency-injector Resource provider」、「pytest-asyncio strict vs auto mode」
+- 若想深入：搜尋「pg_terminate_backend async behavior」、「SQLAlchemy NullPool testing」、「pytest fixture scope vs event loop lifecycle」
 
 ---
 
