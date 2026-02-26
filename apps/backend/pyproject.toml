@@ -78,6 +78,7 @@ omit = [
     "src/infrastructure/db/engine.py",
     "src/infrastructure/db/base.py",
     "src/infrastructure/db/models/*",
+    "src/infrastructure/db/repositories/*",
     "src/infrastructure/db/health_repository.py",
     "src/infrastructure/logging/*",
     "src/infrastructure/auth/*",
@@ -91,6 +92,7 @@ omit = [
     "src/infrastructure/langgraph/tools.py",
     "src/infrastructure/tools/*",
     "src/infrastructure/line/*",
+    "src/interfaces/*",
     "src/container.py",
     "src/main.py",
 ]
