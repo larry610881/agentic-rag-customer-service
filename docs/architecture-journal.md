@@ -42,12 +42,12 @@ CacheService Abstraction、Graceful Degradation、Encryption at Rest、Strategy 
 
 ### 潛在隱憂
 
-| 隱憂 | 建議改善 | 優先級 |
-|------|---------|--------|
-| 無 cache invalidation — Bot/Provider 設定更新後需等 TTL 過期 | 未來在 update use case 加 `cache.delete(key)` 實現即時失效 | 中 |
-| InMemoryCacheService TTL 用 `time.monotonic()` 判斷，精度依賴 CPU 排程 | 生產環境用 Redis 的 `SETEX` 原子指令，InMemory 僅限測試 | 低 |
-| Redis Singleton 在多 worker 下共享同一連線，高併發可能瓶頸 | 未來可改用 `ConnectionPool` 或 Redis Cluster | 低 |
-| Factory 快取 key 是 `llm_config:default`（單一 key），未來若支援多租戶 provider 需加 tenant_id prefix | 當前單 provider 設計足夠，多租戶 provider 時再擴展 | 低 |
+| 隱憂 | 建議改善 | 狀態 |
+|------|---------|------|
+| ~~無 cache invalidation~~ | Update/Delete Use Case 已加 `cache.delete(key)` | **已解決** |
+| ~~InMemoryCacheService TTL=0 語義模糊~~ | `set(ttl<=0)` 直接不存，語義明確 | **已解決** |
+| Redis `from_url()` 預設已帶 ConnectionPool (max=10) | 多 worker 時調 `max_connections`，部署 prod 再處理 | **不適用**（現階段） |
+| Factory 快取 key 是 `llm_config:default`（單一 key） | 所有租戶共用系統級 API key，單 key 設計正確 | **不適用** |
 
 ### 延伸學習
 
