@@ -89,6 +89,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     yield
     logger.info("app.shutdown")
+    # Close Redis connection
+    try:
+        container = app.container  # type: ignore[attr-defined]
+        redis_client = container.redis_client()
+        await redis_client.aclose()
+    except Exception:
+        pass
     await engine.dispose()
 
 

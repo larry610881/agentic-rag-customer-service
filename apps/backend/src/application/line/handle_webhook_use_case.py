@@ -1,13 +1,14 @@
 """LINE Webhook 處理 Use Case"""
 
+import dataclasses
 import json
-import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from src.domain.agent.services import AgentService
-from src.domain.bot.entity import Bot
+from src.domain.bot.entity import Bot, BotLLMParams
 from src.domain.bot.repository import BotRepository
+from src.domain.bot.value_objects import BotId
 from src.domain.conversation.feedback_entity import Feedback
 from src.domain.conversation.feedback_repository import FeedbackRepository
 from src.domain.conversation.feedback_value_objects import (
@@ -17,9 +18,29 @@ from src.domain.conversation.feedback_value_objects import (
 )
 from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
+from src.domain.shared.cache_service import CacheService
 from src.infrastructure.logging.setup import get_logger
 
 logger = get_logger(__name__)
+
+
+def _bot_to_json(bot: Bot) -> str:
+    """Bot dataclass → JSON str（處理 BotId 和 datetime）"""
+    d = dataclasses.asdict(bot)
+    d["id"] = bot.id.value
+    d["created_at"] = bot.created_at.isoformat()
+    d["updated_at"] = bot.updated_at.isoformat()
+    return json.dumps(d, ensure_ascii=False)
+
+
+def _bot_from_json(raw: str) -> Bot:
+    """JSON str → Bot dataclass"""
+    d = json.loads(raw)
+    d["id"] = BotId(value=d["id"])
+    d["llm_params"] = BotLLMParams(**d["llm_params"])
+    d["created_at"] = datetime.fromisoformat(d["created_at"])
+    d["updated_at"] = datetime.fromisoformat(d["updated_at"])
+    return Bot(**d)
 
 
 class HandleWebhookUseCase:
@@ -32,7 +53,8 @@ class HandleWebhookUseCase:
         default_tenant_id: str = "",
         default_kb_id: str = "",
         feedback_repository: FeedbackRepository | None = None,
-        cache_ttl: float = 60.0,
+        cache_service: CacheService | None = None,
+        cache_ttl: int = 120,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -41,20 +63,22 @@ class HandleWebhookUseCase:
         self._default_tenant_id = default_tenant_id
         self._default_kb_id = default_kb_id
         self._feedback_repo = feedback_repository
-        self._bot_cache: dict[str, tuple[Bot, float]] = {}
+        self._cache_service = cache_service
         self._cache_ttl = cache_ttl
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
-        """TTL 快取查 Bot，預設 60 秒。"""
-        now = time.monotonic()
-        cached = self._bot_cache.get(bot_id)
-        if cached is not None:
-            bot, ts = cached
-            if now - ts < self._cache_ttl:
-                return bot
+        """Redis 快取查 Bot，預設 120 秒 TTL。"""
+        cache_key = f"bot:{bot_id}"
+        if self._cache_service is not None:
+            cached = await self._cache_service.get(cache_key)
+            if cached is not None:
+                return _bot_from_json(cached)
+
         bot = await self._bot_repository.find_by_id(bot_id)
-        if bot is not None:
-            self._bot_cache[bot_id] = (bot, now)
+        if bot is not None and self._cache_service is not None:
+            await self._cache_service.set(
+                cache_key, _bot_to_json(bot), ttl_seconds=self._cache_ttl
+            )
         return bot
 
     async def execute(self, events: list[LineTextMessageEvent]) -> None:

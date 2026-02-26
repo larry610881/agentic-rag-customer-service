@@ -10,13 +10,17 @@ from src.application.conversation.get_feedback_stats_use_case import (
     GetFeedbackStatsUseCase,
 )
 from src.domain.conversation.feedback_repository import FeedbackRepository
+from src.infrastructure.cache.in_memory_cache_service import InMemoryCacheService
 
 scenarios("unit/conversation/feedback_stats_cache.feature")
 
 
 def _run(coro):
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(coro)
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 @pytest.fixture
@@ -28,8 +32,11 @@ def _setup_stats_use_case(context, tenant_id, cache_ttl):
     mock_repo = AsyncMock(spec=FeedbackRepository)
     mock_repo.count_by_tenant_and_rating = AsyncMock(return_value=10)
 
+    cache_service = InMemoryCacheService()
+
     context["use_case"] = GetFeedbackStatsUseCase(
         feedback_repository=mock_repo,
+        cache_service=cache_service,
         cache_ttl=cache_ttl,
     )
     context["mock_repo"] = mock_repo
@@ -38,12 +45,12 @@ def _setup_stats_use_case(context, tenant_id, cache_ttl):
 
 @given(parsers.parse('租戶 "{tenant_id}" 有回饋資料且快取 TTL 為 60 秒'))
 def setup_with_long_ttl(context, tenant_id):
-    _setup_stats_use_case(context, tenant_id, cache_ttl=60.0)
+    _setup_stats_use_case(context, tenant_id, cache_ttl=60)
 
 
 @given(parsers.parse('租戶 "{tenant_id}" 有回饋資料且快取 TTL 為 0 秒'))
 def setup_with_zero_ttl(context, tenant_id):
-    _setup_stats_use_case(context, tenant_id, cache_ttl=0.0)
+    _setup_stats_use_case(context, tenant_id, cache_ttl=0)
 
 
 @when("連續兩次查詢回饋統計")

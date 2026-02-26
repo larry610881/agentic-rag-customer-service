@@ -1,3 +1,4 @@
+import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
 from src.application.agent.send_message_use_case import SendMessageUseCase
@@ -83,6 +84,7 @@ from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.config import Settings
 from src.domain.agent.team_supervisor import TeamSupervisor
 from src.infrastructure.auth.jwt_service import JWTService
+from src.infrastructure.cache.redis_cache_service import RedisCacheService
 from src.infrastructure.conversation import (
     FullHistoryStrategy,
     RAGHistoryStrategy,
@@ -188,6 +190,17 @@ class Container(containers.DeclarativeContainer):
     config = providers.Singleton(Settings)
 
     # --- Infrastructure ---
+
+    redis_client = providers.Singleton(
+        aioredis.Redis.from_url,
+        url=providers.Callable(lambda cfg: cfg.redis_url, config),
+        decode_responses=False,
+    )
+
+    cache_service = providers.Singleton(
+        RedisCacheService,
+        redis_client=redis_client,
+    )
 
     db_session = providers.Factory(async_session_factory)
 
@@ -366,6 +379,10 @@ class Container(containers.DeclarativeContainer):
         provider_setting_repository=provider_setting_repository,
         encryption_service=encryption_service,
         fallback_service=_static_embedding_service,
+        cache_service=cache_service,
+        cache_ttl=providers.Callable(
+            lambda cfg: cfg.cache_provider_config_ttl, config
+        ),
     )
 
     embedding_service = providers.Singleton(
@@ -486,6 +503,10 @@ class Container(containers.DeclarativeContainer):
         provider_setting_repository=provider_setting_repository,
         encryption_service=encryption_service,
         fallback_service=_static_llm_service,
+        cache_service=cache_service,
+        cache_ttl=providers.Callable(
+            lambda cfg: cfg.cache_provider_config_ttl, config
+        ),
     )
 
     llm_service = providers.Singleton(
@@ -588,6 +609,10 @@ class Container(containers.DeclarativeContainer):
     get_feedback_stats_use_case = providers.Factory(
         GetFeedbackStatsUseCase,
         feedback_repository=feedback_repository,
+        cache_service=cache_service,
+        cache_ttl=providers.Callable(
+            lambda cfg: cfg.cache_feedback_stats_ttl, config
+        ),
     )
 
     list_feedback_use_case = providers.Factory(
@@ -694,6 +719,10 @@ class Container(containers.DeclarativeContainer):
         summary_recent=providers.Factory(
             SummaryRecentStrategy,
             llm_service=llm_service,
+            cache_service=cache_service,
+            cache_ttl=providers.Callable(
+                lambda cfg: cfg.cache_summary_ttl, config
+            ),
         ),
         rag_history=providers.Factory(RAGHistoryStrategy),
     )
@@ -795,4 +824,8 @@ class Container(containers.DeclarativeContainer):
             lambda cfg: cfg.line_default_kb_id, config
         ),
         feedback_repository=feedback_repository,
+        cache_service=cache_service,
+        cache_ttl=providers.Callable(
+            lambda cfg: cfg.cache_bot_ttl, config
+        ),
     )

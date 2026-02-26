@@ -7,6 +7,7 @@ from src.domain.conversation.history_strategy import (
     HistoryStrategyConfig,
 )
 from src.domain.rag.services import LLMService
+from src.domain.shared.cache_service import CacheService
 
 _DEFAULT_CONFIG = HistoryStrategyConfig()
 
@@ -26,9 +27,15 @@ def _format_messages(messages: list[Message]) -> str:
 
 
 class SummaryRecentStrategy(ConversationHistoryStrategy):
-    def __init__(self, llm_service: LLMService) -> None:
+    def __init__(
+        self,
+        llm_service: LLMService,
+        cache_service: CacheService | None = None,
+        cache_ttl: int = 3600,
+    ) -> None:
         self._llm_service = llm_service
-        self._cache: dict[str, str] = {}
+        self._cache_service = cache_service
+        self._cache_ttl = cache_ttl
 
     @property
     def name(self) -> str:
@@ -75,9 +82,12 @@ class SummaryRecentStrategy(ConversationHistoryStrategy):
         )
 
     async def _summarize(self, messages: list[Message]) -> str:
-        cache_key = f"{len(messages)}:{messages[-1].id.value}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        cache_key = f"conv_summary:{len(messages)}:{messages[-1].id.value}"
+
+        if self._cache_service is not None:
+            cached = await self._cache_service.get(cache_key)
+            if cached is not None:
+                return cached
 
         conversation_text = _format_messages(messages)
         result = await self._llm_service.generate(
@@ -86,5 +96,9 @@ class SummaryRecentStrategy(ConversationHistoryStrategy):
             conversation_text,
             max_tokens=200,
         )
-        self._cache[cache_key] = result.text
+
+        if self._cache_service is not None:
+            await self._cache_service.set(
+                cache_key, result.text, ttl_seconds=self._cache_ttl
+            )
         return result.text

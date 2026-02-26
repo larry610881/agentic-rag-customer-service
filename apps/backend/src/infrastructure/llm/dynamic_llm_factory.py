@@ -1,3 +1,4 @@
+import json
 from collections.abc import AsyncIterator
 
 from src.domain.platform.repository import ProviderSettingRepository
@@ -5,6 +6,7 @@ from src.domain.platform.services import EncryptionService
 from src.domain.platform.value_objects import ProviderName, ProviderType
 from src.domain.rag.services import LLMService
 from src.domain.rag.value_objects import LLMResult
+from src.domain.shared.cache_service import CacheService
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -27,6 +29,30 @@ _DEFAULT_MODELS: dict[str, str] = {
 }
 
 
+def _build_llm_service_from_config(config: dict) -> LLMService:
+    """Build LLM service from config dict (provider_name, api_key, model, base_url)."""
+    provider_name = config["provider_name"]
+    api_key = config["api_key"]
+    model = config["model"]
+    base_url = config.get("base_url", "")
+
+    if provider_name == ProviderName.ANTHROPIC.value:
+        from src.infrastructure.llm.anthropic_llm_service import (
+            AnthropicLLMService,
+        )
+        return AnthropicLLMService(
+            api_key=api_key, model=model, max_tokens=1024
+        )
+
+    from src.infrastructure.llm.openai_llm_service import OpenAILLMService
+    return OpenAILLMService(
+        api_key=api_key,
+        model=model,
+        max_tokens=1024,
+        base_url=base_url,
+    )
+
+
 class DynamicLLMServiceFactory:
     """Resolves LLM service: DB-first, .env fallback."""
 
@@ -35,12 +61,28 @@ class DynamicLLMServiceFactory:
         provider_setting_repository: ProviderSettingRepository,
         encryption_service: EncryptionService,
         fallback_service: LLMService,
+        cache_service: CacheService | None = None,
+        cache_ttl: int = 300,
     ) -> None:
         self._repository = provider_setting_repository
         self._encryption = encryption_service
         self._fallback = fallback_service
+        self._cache_service = cache_service
+        self._cache_ttl = cache_ttl
 
     async def get_service(self) -> LLMService:
+        cache_key = "llm_config:default"
+
+        # Try cache first
+        if self._cache_service is not None:
+            cached = await self._cache_service.get(cache_key)
+            if cached is not None:
+                try:
+                    config = json.loads(self._encryption.decrypt(cached))
+                    return _build_llm_service_from_config(config)
+                except Exception:
+                    logger.warning("dynamic_llm.cache_decrypt_failed")
+
         try:
             settings = await self._repository.find_all_by_type(ProviderType.LLM)
             enabled = [s for s in settings if s.is_enabled]
@@ -64,24 +106,24 @@ class DynamicLLMServiceFactory:
                 setting.provider_name.value, ""
             )
 
-            if setting.provider_name == ProviderName.ANTHROPIC:
-                from src.infrastructure.llm.anthropic_llm_service import (
-                    AnthropicLLMService,
-                )
-                return AnthropicLLMService(
-                    api_key=api_key, model=model, max_tokens=1024
-                )
-
             if setting.provider_name == ProviderName.FAKE:
                 return self._fallback
 
-            from src.infrastructure.llm.openai_llm_service import OpenAILLMService
-            return OpenAILLMService(
-                api_key=api_key,
-                model=model,
-                max_tokens=1024,
-                base_url=base_url,
-            )
+            config = {
+                "provider_name": setting.provider_name.value,
+                "api_key": api_key,
+                "model": model,
+                "base_url": base_url,
+            }
+
+            # Cache encrypted config
+            if self._cache_service is not None:
+                encrypted = self._encryption.encrypt(json.dumps(config))
+                await self._cache_service.set(
+                    cache_key, encrypted, ttl_seconds=self._cache_ttl
+                )
+
+            return _build_llm_service_from_config(config)
         except Exception:
             logger.exception("dynamic_llm.error")
             return self._fallback

@@ -1,10 +1,11 @@
 """回饋統計 Use Case"""
 
-import time
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
 
 from src.domain.conversation.feedback_repository import FeedbackRepository
 from src.domain.conversation.feedback_value_objects import Rating
+from src.domain.shared.cache_service import CacheService
 
 
 @dataclass(frozen=True)
@@ -19,19 +20,20 @@ class GetFeedbackStatsUseCase:
     def __init__(
         self,
         feedback_repository: FeedbackRepository,
-        cache_ttl: float = 60.0,
+        cache_service: CacheService | None = None,
+        cache_ttl: int = 60,
     ):
         self._feedback_repo = feedback_repository
-        self._cache: dict[str, tuple[FeedbackStats, float]] = {}
+        self._cache_service = cache_service
         self._cache_ttl = cache_ttl
 
     async def execute(self, tenant_id: str) -> FeedbackStats:
-        now = time.monotonic()
-        cached = self._cache.get(tenant_id)
-        if cached is not None:
-            stats, ts = cached
-            if now - ts < self._cache_ttl:
-                return stats
+        cache_key = f"feedback_stats:{tenant_id}"
+        if self._cache_service is not None:
+            cached = await self._cache_service.get(cache_key)
+            if cached is not None:
+                d = json.loads(cached)
+                return FeedbackStats(**d)
 
         total = await self._feedback_repo.count_by_tenant_and_rating(
             tenant_id
@@ -51,5 +53,10 @@ class GetFeedbackStatsUseCase:
             thumbs_down=thumbs_down,
             satisfaction_rate=satisfaction_rate,
         )
-        self._cache[tenant_id] = (stats, now)
+        if self._cache_service is not None:
+            await self._cache_service.set(
+                cache_key,
+                json.dumps(asdict(stats)),
+                ttl_seconds=self._cache_ttl,
+            )
         return stats

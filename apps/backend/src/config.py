@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     # Encryption
     encryption_master_key: str = ""
 
+    # Cache TTL (seconds)
+    cache_bot_ttl: int = 120
+    cache_feedback_stats_ttl: int = 60
+    cache_summary_ttl: int = 3600
+    cache_provider_config_ttl: int = 300
+
     # Data Retention
     data_retention_months: int = 6
     data_retention_enabled: bool = False

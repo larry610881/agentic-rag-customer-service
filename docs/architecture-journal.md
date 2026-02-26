@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [E5 — Redis Cache 統一遷移](#e5--redis-cache-統一遷移)
 - [E4 — EventBus 死代碼移除 + Redis Cache 規劃](#e4--eventbus-死代碼移除--redis-cache-規劃)
 - [E3 — 邊緣問題批次修復（Edge Case Batch Fix）](#e3--邊緣問題批次修復edge-case-batch-fix)
 - [E2 完整版 — 企業級回饋分析系統](#e2-完整版--企業級回饋分析系統)
@@ -20,6 +21,39 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## E5 — Redis Cache 統一遷移
+
+**日期**：2026-02-26 | **範圍**：5 個快取遷移至 Redis | **影響**：10 new + 10 modified files
+
+### 本次相關主題
+
+CacheService Abstraction、Graceful Degradation、Encryption at Rest、Strategy Pattern for Cache Backend
+
+### 做得好的地方
+
+- **Domain-level ABC（`CacheService`）放在 `domain/shared/`**：遵循 DDD 依賴方向——Application/Infrastructure 層依賴 Domain 介面，Redis 實作放 Infrastructure。跨 Bounded Context 的 Bot、Feedback、Summary、Factory 都能共用同一介面
+- **靜默降級設計（Graceful Degradation）**：`RedisCacheService` 所有操作 try/except `RedisError` → log warning + 回傳 None/no-op。Redis 斷線時等同「無快取」模式，業務邏輯完全不受影響
+- **InMemoryCacheService 測試替身**：200 個 Unit Test 全用 InMemory 實作，無需 Docker Redis。測試速度 1.88s 全通過
+- **Factory 快取加密**：Dynamic LLM/Embedding Factory 的 config 含 API key，存 Redis 前經 `EncryptionService.encrypt()`（AES-256-GCM）加密，讀取時解密。複用既有加密基礎設施，零新增加密邏輯
+- **Optional 注入模式**：所有 consumer 的 `cache_service` 參數都是 `CacheService | None = None`，保持向後相容。無 Redis 時自動降級為無快取模式
+
+### 潛在隱憂
+
+| 隱憂 | 建議改善 | 優先級 |
+|------|---------|--------|
+| 無 cache invalidation — Bot/Provider 設定更新後需等 TTL 過期 | 未來在 update use case 加 `cache.delete(key)` 實現即時失效 | 中 |
+| InMemoryCacheService TTL 用 `time.monotonic()` 判斷，精度依賴 CPU 排程 | 生產環境用 Redis 的 `SETEX` 原子指令，InMemory 僅限測試 | 低 |
+| Redis Singleton 在多 worker 下共享同一連線，高併發可能瓶頸 | 未來可改用 `ConnectionPool` 或 Redis Cluster | 低 |
+| Factory 快取 key 是 `llm_config:default`（單一 key），未來若支援多租戶 provider 需加 tenant_id prefix | 當前單 provider 設計足夠，多租戶 provider 時再擴展 | 低 |
+
+### 延伸學習
+
+- **Cache-Aside Pattern**：本次所有快取都採用 Cache-Aside（Lazy Loading）——先查 cache，miss 時查 DB/計算，再寫 cache。優點是簡單、只快取被請求的資料。缺點是首次請求必定 miss（cold start）。若要預熱可考慮 Write-Through 或 Read-Through 模式
+- **Encryption at Rest for Cache**：即使 Redis 部署在 VPC 內，明文儲存 API key 仍有風險（Redis 無原生加密、RDB/AOF 備份可能洩漏）。AES-256-GCM 加密 + 隨機 nonce 確保每次加密結果不同，防止 pattern analysis
+- 若想深入：搜尋「Redis security best practices」、「Cache-Aside vs Read-Through vs Write-Behind」、Martin Fowler 的「Two Hard Things」（Cache Invalidation）
 
 ---
 
