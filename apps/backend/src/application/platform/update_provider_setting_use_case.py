@@ -5,7 +5,8 @@ from typing import Any
 from src.domain.platform.entity import ProviderSetting
 from src.domain.platform.repository import ProviderSettingRepository
 from src.domain.platform.services import EncryptionService
-from src.domain.platform.value_objects import ModelConfig
+from src.domain.platform.value_objects import ModelConfig, ProviderType
+from src.domain.shared.cache_service import CacheService
 from src.domain.shared.exceptions import EntityNotFoundError
 
 
@@ -20,14 +21,22 @@ class UpdateProviderSettingCommand:
     extra_config: dict[str, Any] | None = None
 
 
+_PROVIDER_TYPE_CACHE_KEYS = {
+    ProviderType.LLM: "llm_config:default",
+    ProviderType.EMBEDDING: "embedding_config:default",
+}
+
+
 class UpdateProviderSettingUseCase:
     def __init__(
         self,
         provider_setting_repository: ProviderSettingRepository,
         encryption_service: EncryptionService,
+        cache_service: CacheService | None = None,
     ) -> None:
         self._repository = provider_setting_repository
         self._encryption = encryption_service
+        self._cache_service = cache_service
 
     async def execute(
         self, command: UpdateProviderSettingCommand
@@ -58,4 +67,8 @@ class UpdateProviderSettingUseCase:
 
         setting.updated_at = datetime.now(timezone.utc)
         await self._repository.save(setting)
+        if self._cache_service is not None:
+            cache_key = _PROVIDER_TYPE_CACHE_KEYS.get(setting.provider_type)
+            if cache_key:
+                await self._cache_service.delete(cache_key)
         return setting

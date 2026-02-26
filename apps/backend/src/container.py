@@ -745,11 +745,13 @@ class Container(containers.DeclarativeContainer):
     update_bot_use_case = providers.Factory(
         UpdateBotUseCase,
         bot_repository=bot_repository,
+        cache_service=cache_service,
     )
 
     delete_bot_use_case = providers.Factory(
         DeleteBotUseCase,
         bot_repository=bot_repository,
+        cache_service=cache_service,
     )
 
     send_message_use_case = providers.Factory(
@@ -772,11 +774,13 @@ class Container(containers.DeclarativeContainer):
         UpdateProviderSettingUseCase,
         provider_setting_repository=provider_setting_repository,
         encryption_service=encryption_service,
+        cache_service=cache_service,
     )
 
     delete_provider_setting_use_case = providers.Factory(
         DeleteProviderSettingUseCase,
         provider_setting_repository=provider_setting_repository,
+        cache_service=cache_service,
     )
 
     list_provider_settings_use_case = providers.Factory(

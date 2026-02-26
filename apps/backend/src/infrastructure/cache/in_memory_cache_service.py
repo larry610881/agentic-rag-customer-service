@@ -22,6 +22,8 @@ class InMemoryCacheService(CacheService):
     async def set(
         self, key: str, value: str, ttl_seconds: int | None = None
     ) -> None:
+        if ttl_seconds is not None and ttl_seconds <= 0:
+            return  # TTL=0 means "don't cache"
         expires_at = (
             time.monotonic() + ttl_seconds if ttl_seconds is not None else None
         )

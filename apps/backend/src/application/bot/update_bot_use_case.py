@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 
 from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
+from src.domain.shared.cache_service import CacheService
 from src.domain.shared.exceptions import EntityNotFoundError
 
 _UNSET = object()
@@ -30,8 +31,13 @@ class UpdateBotCommand:
 
 
 class UpdateBotUseCase:
-    def __init__(self, bot_repository: BotRepository) -> None:
+    def __init__(
+        self,
+        bot_repository: BotRepository,
+        cache_service: CacheService | None = None,
+    ) -> None:
         self._bot_repo = bot_repository
+        self._cache_service = cache_service
 
     @staticmethod
     def _apply_updates(bot: Bot, command: UpdateBotCommand) -> None:
@@ -73,4 +79,6 @@ class UpdateBotUseCase:
         self._apply_updates(bot, command)
 
         await self._bot_repo.save(bot)
+        if self._cache_service is not None:
+            await self._cache_service.delete(f"bot:{command.bot_id}")
         return bot
