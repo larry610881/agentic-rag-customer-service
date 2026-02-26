@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
@@ -29,6 +29,15 @@ class DocumentModel(Base):
         String(50), nullable=False, default="pending"
     )
     chunk_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    avg_chunk_length: Mapped[int] = mapped_column(nullable=False, default=0)
+    min_chunk_length: Mapped[int] = mapped_column(nullable=False, default=0)
+    max_chunk_length: Mapped[int] = mapped_column(nullable=False, default=0)
+    quality_score: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0
+    )
+    quality_issues: Mapped[str] = mapped_column(
+        Text, nullable=False, default=""
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

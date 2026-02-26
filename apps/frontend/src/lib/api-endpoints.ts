@@ -15,6 +15,12 @@ export const API_ENDPOINTS = {
     upload: (kbId: string) => `/api/v1/knowledge-bases/${kbId}/documents`,
     delete: (kbId: string, docId: string) =>
       `/api/v1/knowledge-bases/${kbId}/documents/${docId}`,
+    chunks: (kbId: string, docId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/documents/${docId}/chunks`,
+    reprocess: (kbId: string, docId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/documents/${docId}/reprocess`,
+    qualityStats: (kbId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/documents/quality-stats`,
   },
   tasks: {
     detail: (id: string) => `/api/v1/tasks/${id}`,

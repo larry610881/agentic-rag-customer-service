@@ -10,7 +10,7 @@ from src.infrastructure.logging import get_logger
 logger = get_logger(__name__)
 
 
-class ProcessDocumentUseCase:
+class ReprocessDocumentUseCase:
     def __init__(
         self,
         document_repository: DocumentRepository,
@@ -28,53 +28,55 @@ class ProcessDocumentUseCase:
         self._vector_store = vector_store
 
     async def execute(
-        self, document_id: str, task_id: str
+        self,
+        document_id: str,
+        *,
+        chunk_size: int | None = None,
+        chunk_overlap: int | None = None,
+        chunk_strategy: str | None = None,
     ) -> None:
-        log = logger.bind(document_id=document_id, task_id=task_id)
+        log = logger.bind(document_id=document_id)
+        log.info("document.reprocess.start")
+
+        document = await self._doc_repo.find_by_id(document_id)
+        if document is None:
+            raise ValueError(f"Document '{document_id}' not found")
+
+        # Mark as processing
+        await self._doc_repo.update_status(document_id, "processing")
+
         try:
-            log.info("document.process.start")
+            # Delete old chunks from DB
+            await self._chunk_repo.delete_by_document(document_id)
 
-            # Update task → processing
-            await self._task_repo.update_status(
-                task_id, "processing", progress=0
+            # Delete old vectors from Qdrant
+            collection = f"kb_{document.kb_id}"
+            await self._vector_store.delete(
+                collection, {"document_id": document_id}
             )
 
-            # Fetch document
-            document = await self._doc_repo.find_by_id(document_id)
-            if document is None:
-                raise ValueError(
-                    f"Document '{document_id}' not found"
-                )
-
-            log = log.bind(tenant_id=document.tenant_id, kb_id=document.kb_id)
-
-            # Update doc → processing
-            await self._doc_repo.update_status(
-                document_id, "processing"
-            )
-
-            # Split text into chunks
+            # Re-split with (potentially overridden) parameters
             chunks = self._splitter.split(
                 document.content,
                 document_id,
                 document.tenant_id,
                 content_type=document.content_type,
             )
-            log.info("document.split.done", chunk_count=len(chunks))
+            log.info("document.reprocess.split", chunk_count=len(chunks))
 
-            # Empty chunks early return
             if not chunks:
-                log.warning("document.process.empty")
                 await self._doc_repo.update_status(
                     document_id, "processed", chunk_count=0
                 )
-                await self._task_repo.update_status(task_id, "completed", progress=100)
+                await self._doc_repo.update_quality(
+                    document_id, 0.0, 0, 0, 0, []
+                )
                 return
 
-            # Save chunks to DB
+            # Save new chunks
             await self._chunk_repo.save_batch(chunks)
 
-            # Calculate chunk quality
+            # Calculate quality
             quality = ChunkQualityService.calculate(chunks)
             await self._doc_repo.update_quality(
                 document_id,
@@ -84,25 +86,14 @@ class ProcessDocumentUseCase:
                 max_chunk_length=quality.max_chunk_length,
                 quality_issues=list(quality.issues),
             )
-            log.info(
-                "document.quality.calculated",
-                quality_score=quality.score,
-                issues=quality.issues,
-            )
 
-            # Embed chunks
+            # Embed and upsert vectors
             texts = [c.content for c in chunks]
             vectors = await self._embedding.embed_texts(texts)
-            log.info("document.embed.done", vector_count=len(vectors))
 
-            # Ensure Qdrant collection exists
-            collection = f"kb_{document.kb_id}"
             vector_size = len(vectors[0]) if vectors else 1536
-            await self._vector_store.ensure_collection(
-                collection, vector_size
-            )
+            await self._vector_store.ensure_collection(collection, vector_size)
 
-            # Upsert vectors with tenant_id in payload
             chunk_ids = [c.id.value for c in chunks]
             payloads = [
                 {
@@ -111,45 +102,24 @@ class ProcessDocumentUseCase:
                     "content": c.content,
                     "chunk_index": c.chunk_index,
                     "content_type": document.content_type,
-                    **{
-                        k: v
-                        for k, v in c.metadata.items()
-                        if k not in ("document_id", "tenant_id")
-                    },
                 }
                 for c in chunks
             ]
             await self._vector_store.upsert(
                 collection, chunk_ids, vectors, payloads
             )
-            log.info(
-                "document.upsert.done",
-                collection=collection,
-                point_count=len(chunk_ids),
-            )
 
-            # Update doc → processed
+            # Mark as processed
             await self._doc_repo.update_status(
                 document_id, "processed", chunk_count=len(chunks)
             )
-
-            # Update task → completed
-            await self._task_repo.update_status(
-                task_id, "completed", progress=100
+            log.info(
+                "document.reprocess.done",
+                quality_score=quality.score,
+                chunk_count=len(chunks),
             )
-
-            log.info("document.process.done")
 
         except Exception as e:
-            log.exception("document.process.failed", error=str(e))
-            # Update task → failed
-            await self._task_repo.update_status(
-                task_id,
-                "failed",
-                error_message=str(e),
-            )
-            # Update document → failed
-            try:
-                await self._doc_repo.update_status(document_id, "failed")
-            except Exception:
-                log.exception("document.status_update.failed")
+            log.exception("document.reprocess.failed", error=str(e))
+            await self._doc_repo.update_status(document_id, "failed")
+            raise

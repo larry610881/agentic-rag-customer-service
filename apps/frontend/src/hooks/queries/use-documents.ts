@@ -98,3 +98,34 @@ export function useUploadDocument() {
     },
   });
 }
+
+export function useReprocessDocument() {
+  const token = useAuthStore((s) => s.token);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      knowledgeBaseId: string;
+      docId: string;
+      params: {
+        chunk_size?: number;
+        chunk_overlap?: number;
+        chunk_strategy?: string;
+      };
+    }) => {
+      return apiFetch(
+        API_ENDPOINTS.documents.reprocess(data.knowledgeBaseId, data.docId),
+        {
+          method: "POST",
+          body: JSON.stringify(data.params),
+        },
+        token ?? undefined,
+      );
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.documents.all(variables.knowledgeBaseId),
+      });
+    },
+  });
+}

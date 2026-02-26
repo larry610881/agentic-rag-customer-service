@@ -44,6 +44,12 @@ from src.application.knowledge.create_knowledge_base_use_case import (
 from src.application.knowledge.delete_document_use_case import (
     DeleteDocumentUseCase,
 )
+from src.application.knowledge.get_document_chunks_use_case import (
+    GetDocumentChunksUseCase,
+)
+from src.application.knowledge.get_document_quality_stats_use_case import (
+    GetDocumentQualityStatsUseCase,
+)
 from src.application.knowledge.get_processing_task_use_case import (
     GetProcessingTaskUseCase,
 )
@@ -55,6 +61,9 @@ from src.application.knowledge.list_knowledge_bases_use_case import (
 )
 from src.application.knowledge.process_document_use_case import (
     ProcessDocumentUseCase,
+)
+from src.application.knowledge.reprocess_document_use_case import (
+    ReprocessDocumentUseCase,
 )
 from src.application.knowledge.upload_document_use_case import (
     UploadDocumentUseCase,
@@ -685,6 +694,28 @@ class Container(containers.DeclarativeContainer):
     get_processing_task_use_case = providers.Factory(
         GetProcessingTaskUseCase,
         processing_task_repository=processing_task_repository,
+    )
+
+    get_document_chunks_use_case = providers.Factory(
+        GetDocumentChunksUseCase,
+        chunk_repository=chunk_repository,
+    )
+
+    reprocess_document_use_case = providers.Factory(
+        ReprocessDocumentUseCase,
+        document_repository=document_repository,
+        chunk_repository=chunk_repository,
+        processing_task_repository=processing_task_repository,
+        text_splitter_service=text_splitter_service,
+        embedding_service=embedding_service,
+        vector_store=vector_store,
+    )
+
+    get_document_quality_stats_use_case = providers.Factory(
+        GetDocumentQualityStatsUseCase,
+        document_repository=document_repository,
+        chunk_repository=chunk_repository,
+        feedback_repository=feedback_repository,
     )
 
     query_rag_use_case = providers.Factory(

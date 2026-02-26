@@ -4,11 +4,13 @@ import { useParams } from "next/navigation";
 import { DocumentList } from "@/features/knowledge/components/document-list";
 import { UploadDropzone } from "@/features/knowledge/components/upload-dropzone";
 import { useDocuments, useDeleteDocument } from "@/hooks/queries/use-documents";
+import { useDocumentQualityStats } from "@/hooks/queries/use-document-quality-stats";
 
 export default function KnowledgeBaseDetailPage() {
   const params = useParams<{ id: string }>();
 
   const { data: documents, isLoading, error } = useDocuments(params.id);
+  const { data: qualityStats } = useDocumentQualityStats(params.id);
   const deleteDocument = useDeleteDocument();
 
   const handleDelete = (docId: string) => {
@@ -27,7 +29,9 @@ export default function KnowledgeBaseDetailPage() {
       )}
       {documents && (
         <DocumentList
+          kbId={params.id}
           documents={documents}
+          qualityStats={qualityStats}
           onDelete={handleDelete}
           isDeleting={deleteDocument.isPending}
         />

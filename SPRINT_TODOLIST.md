@@ -1075,6 +1075,7 @@
 | ~~[#7](https://github.com/larry610881/agentic-rag-customer-service/issues/7)~~ | ~~Integration Test 補債~~ | ~~`test`~~ | ~~S1.1, S1.2, S1.4~~ ✅ CLOSED |
 | ~~[#8](https://github.com/larry610881/agentic-rag-customer-service/issues/8)~~ | ~~Embedding 429 Rate Limit~~ | ~~`bug`, `rag`~~ | ~~Edge E1~~ ✅ CLOSED |
 | ~~[#9](https://github.com/larry610881/agentic-rag-customer-service/issues/9)~~ | ~~API Rate Limiting + 用戶身份~~ | ~~`enhancement`~~ | ~~Edge E7~~ ✅ CLOSED |
+| ~~[#15](https://github.com/larry610881/agentic-rag-customer-service/issues/15)~~ | ~~Chunk Quality Monitoring~~ | ~~`enhancement`~~ | ~~E6 延伸~~ ✅ CLOSED |
 | [#10](https://github.com/larry610881/agentic-rag-customer-service/issues/10) | MCP 整合 | `enhancement`, `blocked` | S7P1 |
 | [#11](https://github.com/larry610881/agentic-rag-customer-service/issues/11) | 生產部署 + 壓力測試 | `infra` | S7.3, S7.6 |
 | [#12](https://github.com/larry610881/agentic-rag-customer-service/issues/12) | CI Pipeline 驗收 | `infra` | S0.4 |
@@ -1105,3 +1106,4 @@
 | **E6 Content-Aware Chunking** | **✅ 完成** | **100%** | **5 NEW + 5 MODIFY files, 207 backend + 117 frontend tests** |
 | **Issue #7 Integration Test 補債** | **✅ 完成** | **100%** | **9 NEW + 3 MODIFY, 14 integration scenarios, conftest deadlock fix, coverage omit 修正, 82.90% unit coverage** |
 | **Claude Code 配置最佳實踐修正** | **✅ 完成** | **100%** | **CLAUDE.md 358→101 行, ddd-architecture 合併入 python-standards, Learning Review 外移至 rule, settings.local.json 清除 tokens + 精簡權限, -374 行淨刪除** |
+| **Issue #15 Chunk Quality Monitoring** | **✅ 完成** | **100%** | **~10 NEW + ~15 MODIFY files, 品質指標+Chunk 預覽+建議+回饋關聯, 239 backend + 130 frontend tests, 82.47% coverage** |

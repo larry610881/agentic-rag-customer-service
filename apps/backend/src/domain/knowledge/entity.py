@@ -34,6 +34,11 @@ class Document:
     content: str = ""
     status: str = "pending"
     chunk_count: int = 0
+    avg_chunk_length: int = 0
+    min_chunk_length: int = 0
+    max_chunk_length: int = 0
+    quality_score: float = 0.0
+    quality_issues: list[str] = field(default_factory=list)
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

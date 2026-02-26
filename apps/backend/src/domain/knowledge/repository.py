@@ -39,6 +39,17 @@ class DocumentRepository(ABC):
     @abstractmethod
     async def delete(self, doc_id: str) -> None: ...
 
+    @abstractmethod
+    async def update_quality(
+        self,
+        doc_id: str,
+        quality_score: float,
+        avg_chunk_length: int,
+        min_chunk_length: int,
+        max_chunk_length: int,
+        quality_issues: list[str],
+    ) -> None: ...
+
 
 class ChunkRepository(ABC):
     @abstractmethod
@@ -49,6 +60,19 @@ class ChunkRepository(ABC):
 
     @abstractmethod
     async def delete_by_document(self, document_id: str) -> None: ...
+
+    @abstractmethod
+    async def find_by_document_paginated(
+        self, document_id: str, limit: int = 20, offset: int = 0
+    ) -> list[Chunk]: ...
+
+    @abstractmethod
+    async def count_by_document(self, document_id: str) -> int: ...
+
+    @abstractmethod
+    async def find_chunk_ids_by_documents(
+        self, document_ids: list[str]
+    ) -> dict[str, list[str]]: ...
 
 
 class ProcessingTaskRepository(ABC):

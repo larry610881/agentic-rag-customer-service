@@ -1,4 +1,6 @@
-from sqlalchemy import delete, select
+from collections import defaultdict
+
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.knowledge.entity import Chunk
@@ -51,3 +53,40 @@ class SQLAlchemyChunkRepository(ChunkRepository):
         )
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def find_by_document_paginated(
+        self, document_id: str, limit: int = 20, offset: int = 0
+    ) -> list[Chunk]:
+        stmt = (
+            select(ChunkModel)
+            .where(ChunkModel.document_id == document_id)
+            .order_by(ChunkModel.chunk_index)
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def count_by_document(self, document_id: str) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(ChunkModel)
+            .where(ChunkModel.document_id == document_id)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
+
+    async def find_chunk_ids_by_documents(
+        self, document_ids: list[str]
+    ) -> dict[str, list[str]]:
+        if not document_ids:
+            return {}
+        stmt = (
+            select(ChunkModel.id, ChunkModel.document_id)
+            .where(ChunkModel.document_id.in_(document_ids))
+        )
+        result = await self._session.execute(stmt)
+        mapping: dict[str, list[str]] = defaultdict(list)
+        for chunk_id, doc_id in result.all():
+            mapping[doc_id].append(chunk_id)
+        return dict(mapping)

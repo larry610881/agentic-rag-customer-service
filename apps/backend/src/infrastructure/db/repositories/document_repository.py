@@ -23,6 +23,13 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             content=model.content,
             status=model.status,
             chunk_count=model.chunk_count,
+            avg_chunk_length=model.avg_chunk_length,
+            min_chunk_length=model.min_chunk_length,
+            max_chunk_length=model.max_chunk_length,
+            quality_score=model.quality_score,
+            quality_issues=(
+                model.quality_issues.split(",") if model.quality_issues else []
+            ),
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -76,6 +83,30 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             update(DocumentModel)
             .where(DocumentModel.id == doc_id)
             .values(**values)
+        )
+        await self._session.execute(stmt)
+        await self._session.commit()
+
+    async def update_quality(
+        self,
+        doc_id: str,
+        quality_score: float,
+        avg_chunk_length: int,
+        min_chunk_length: int,
+        max_chunk_length: int,
+        quality_issues: list[str],
+    ) -> None:
+        stmt = (
+            update(DocumentModel)
+            .where(DocumentModel.id == doc_id)
+            .values(
+                quality_score=quality_score,
+                avg_chunk_length=avg_chunk_length,
+                min_chunk_length=min_chunk_length,
+                max_chunk_length=max_chunk_length,
+                quality_issues=",".join(quality_issues),
+                updated_at=datetime.now(timezone.utc),
+            )
         )
         await self._session.execute(stmt)
         await self._session.commit()

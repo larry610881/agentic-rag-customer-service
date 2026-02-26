@@ -77,6 +77,37 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "ON conversations (tenant_id, bot_id)"
             )
         )
+        # Document quality metrics columns
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS "
+                "avg_chunk_length INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS "
+                "min_chunk_length INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS "
+                "max_chunk_length INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS "
+                "quality_score FLOAT NOT NULL DEFAULT 0.0"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS "
+                "quality_issues TEXT NOT NULL DEFAULT ''"
+            )
+        )
         # One-time cleanup: remove orphan messages then unbound conversations
         await conn.execute(
             sqlalchemy.text(

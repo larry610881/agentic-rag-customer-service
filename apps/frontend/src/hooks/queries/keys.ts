@@ -7,6 +7,10 @@ export const queryKeys = {
   },
   documents: {
     all: (kbId: string) => ["documents", kbId] as const,
+    chunks: (kbId: string, docId: string) =>
+      ["documents", kbId, docId, "chunks"] as const,
+    qualityStats: (kbId: string) =>
+      ["documents", kbId, "quality-stats"] as const,
   },
   tasks: {
     detail: (id: string) => ["tasks", id] as const,
