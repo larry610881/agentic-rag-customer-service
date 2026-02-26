@@ -132,7 +132,6 @@ from src.infrastructure.embedding.fake_embedding_service import (
 from src.infrastructure.embedding.openai_embedding_service import (
     OpenAIEmbeddingService,
 )
-from src.infrastructure.events.in_memory_event_bus import InMemoryEventBus
 from src.infrastructure.file_parser.default_file_parser_service import (
     DefaultFileParserService,
 )
@@ -610,10 +609,6 @@ class Container(containers.DeclarativeContainer):
         top_k=config.provided.rag_top_k,
         score_threshold=config.provided.rag_score_threshold,
     )
-
-    # --- Event Bus ---
-
-    event_bus = providers.Singleton(InMemoryEventBus)
 
     # --- Agent Service ---
 

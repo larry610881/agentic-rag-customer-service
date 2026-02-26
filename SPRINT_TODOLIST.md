@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-26 (E3 邊緣問題批次修復完成, 196 backend + 117 frontend tests green)
+> 最後更新：2026-02-26 (E4 EventBus 清理完成 + E5 Redis Cache 規劃, 192 backend + 117 frontend tests green)
 
 ---
 
@@ -379,10 +379,10 @@
 ### 7.0 Phase 1 Foundation — Multi-Agent 2-Tier 架構
 - ✅ Domain：`WorkerContext` 擴展（user_role, user_permissions, mcp_tools）
 - ✅ Domain：`TeamSupervisor` ABC（extends AgentWorker，團隊級 sequential dispatch）
-- ✅ Domain：`DomainEvent` 基類 + `EventBus` ABC（shared/events.py）
-- ✅ Domain：具體事件 — `OrderRefunded`, `NegativeSentimentDetected`, `CampaignCompleted`
+- ✅ ~~Domain：`DomainEvent` 基類 + `EventBus` ABC（shared/events.py）~~ — 已移除（零使用死代碼）
+- ✅ ~~Domain：具體事件 — `OrderRefunded`, `NegativeSentimentDetected`, `CampaignCompleted`~~ — 已移除（零使用死代碼）
 - ✅ Infrastructure：`MetaSupervisorService`（頂層路由，依 user_role dispatch 到 TeamSupervisor）
-- ✅ Infrastructure：`InMemoryEventBus`（記憶體內 Event Bus，開發/測試用）
+- ✅ ~~Infrastructure：`InMemoryEventBus`（記憶體內 Event Bus，開發/測試用）~~ — 已移除（零使用死代碼）
 - ✅ Container DI：fake mode 改用 `MetaSupervisorService` + `CustomerTeamSupervisor`
 - ✅ BDD Feature：4 個新功能檔（team_supervisor_routing, meta_supervisor_routing, worker_context_expansion, domain_events）
 - ✅ BDD Step Definitions：4 個新測試檔，14 scenarios 全部通過
@@ -938,6 +938,36 @@
 
 ---
 
+## Enterprise Sprint E4：EventBus 清理 + 死代碼移除
+
+**Goal**：移除 E3 後盤點發現的零使用死代碼
+
+### E4.1 EventBus 死代碼移除
+- ✅ 刪除 `src/domain/shared/events.py`（DomainEvent 基類 + 3 Event + EventBus ABC）
+- ✅ 刪除 `src/infrastructure/events/` 整個目錄（InMemoryEventBus + __init__.py）
+- ✅ 刪除 `tests/features/unit/agent/domain_events.feature`（4 BDD scenarios）
+- ✅ 刪除 `tests/unit/agent/test_domain_events_steps.py`（step definitions）
+- ✅ 修改 `src/container.py`（移除 import + event_bus provider）
+- ✅ 全量測試：Backend 192 passed（196 - 4 EventBus scenarios）+ Frontend 117 passed（不受影響）
+
+---
+
+## Enterprise Sprint E5：Redis Cache 統一（規劃中）
+
+**Goal**：將所有 in-memory cache 遷移至 Redis，支援多 Worker 部署
+
+| # | 子任務 | 現況 | 遷移目標 | 狀態 |
+|---|--------|------|----------|------|
+| E5.1 | `RedisCacheService` ABC + 實作 | 不存在 | `infrastructure/cache/redis_cache_service.py` | ⬜ |
+| E5.2 | Bot 查詢快取 | `handle_webhook_use_case.py` dict TTL 60s | Redis TTL | ⬜ |
+| E5.3 | 回饋統計快取 | `get_feedback_stats_use_case.py` dict TTL 60s | Redis TTL | ⬜ |
+| E5.4 | 對話摘要快取 | `summary_recent_strategy.py` dict 無 TTL | Redis + TTL（防記憶體無限成長） | ⬜ |
+| E5.5 | Dynamic LLM Factory 快取 | `dynamic_llm_factory.py` 每次查 DB | Redis TTL | ⬜ |
+| E5.6 | Dynamic Embedding Factory 快取 | `dynamic_embedding_factory.py` 每次查 DB | Redis TTL | ⬜ |
+| E5.7 | Container DI | 無 Redis client | 統一注入 `redis.asyncio.Redis` | ⬜ |
+
+---
+
 ## 已知邊緣問題（Edge Cases）
 
 > 以下為已識別的邊緣問題。E3-E11（除 E7）已在 E3 Sprint 批次修復。
@@ -977,3 +1007,5 @@
 | **E2 Feedback System (MVP)** | **✅ 完成** | **100%** | **39 files, 1604 insertions, 164 backend + 101 frontend tests** |
 | **E2 Feedback System (完整版)** | **✅ 完成** | **100%** | **E2.5-E2.9, 182 backend + 117 frontend tests** |
 | **E3 Edge Case Batch Fix** | **✅ 完成** | **100%** | **8 fixes (E3-E6,E8-E11), 196 backend + 117 frontend tests** |
+| **E4 EventBus 清理** | **✅ 完成** | **100%** | **5 files 刪除 + 1 file 編輯, 192 backend + 117 frontend tests** |
+| **E5 Redis Cache 統一** | **⬜ 規劃中** | **0%** | **7 子任務，待排期實作** |

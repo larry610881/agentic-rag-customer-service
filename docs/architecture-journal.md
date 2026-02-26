@@ -207,7 +207,7 @@
 | 模式 | 用在哪裡 |
 |------|---------|
 | Supervisor Pattern | `MetaSupervisorService` → `TeamSupervisor` → `AgentWorker` 三層調度 |
-| Domain Events | `OrderRefunded`, `NegativeSentimentDetected` — 跨聚合通訊 |
+| ~~Domain Events~~ | ~~`OrderRefunded`, `NegativeSentimentDetected` — 跨聚合通訊~~ — 已在 E3 後清理移除（零使用） |
 | State Machine | `RefundStep` enum 驅動多步驟工作流 |
 | Aggregate Root | `Bot` 聚合管理 KB 綁定 + LLM 參數 + 工具選擇 |
 
