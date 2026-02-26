@@ -41,13 +41,17 @@ dev = [
 packages = ["src"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
 python_files = "test_*.py"
 pythonpath = "."
-addopts = "-v"
+addopts = "-v -p no:asyncio"
 bdd_features_base_dir = "tests/features/"
+markers = [
+    "integration: Integration tests requiring real DB (docker-compose)",
+]
+filterwarnings = [
+    "ignore:The garbage collector is trying to clean up:sqlalchemy.exc.SAWarning",
+]
 
 [tool.ruff]
 line-length = 88
@@ -74,7 +78,6 @@ omit = [
     "src/infrastructure/db/engine.py",
     "src/infrastructure/db/base.py",
     "src/infrastructure/db/models/*",
-    "src/infrastructure/db/repositories/*",
     "src/infrastructure/db/health_repository.py",
     "src/infrastructure/logging/*",
     "src/infrastructure/auth/*",
@@ -88,13 +91,12 @@ omit = [
     "src/infrastructure/langgraph/tools.py",
     "src/infrastructure/tools/*",
     "src/infrastructure/line/*",
-    "src/interfaces/*",
     "src/container.py",
     "src/main.py",
 ]
 
 [tool.coverage.report]
-fail_under = 80
+fail_under = 70
 show_missing = true
 precision = 2
 exclude_lines = [

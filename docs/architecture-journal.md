@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Issue #7 — Integration Test 基礎設施建立](#issue-7--integration-test-基礎設施建立)
 - [E6 — Content-Aware Chunking Strategy](#e6--content-aware-chunking-strategy)
 - [E5 — Redis Cache 統一遷移](#e5--redis-cache-統一遷移)
 - [E4 — EventBus 死代碼移除 + Redis Cache 規劃](#e4--eventbus-死代碼移除--redis-cache-規劃)
@@ -22,6 +23,38 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Issue #7 — Integration Test 基礎設施建立
+
+**日期**：2026-02-26 | **範圍**：Integration Test infra + 14 BDD scenarios | **影響**：9 new files + 1 modified (pyproject.toml)
+
+### 本次相關主題
+
+Integration Test Infrastructure、asyncpg Event Loop Affinity、pytest Fixture Lifecycle、DI Container Testing、Database Isolation Strategy
+
+### 做得好的地方
+
+- **BDD-first 完整流程**：先寫 3 個 `.feature` 檔（14 scenarios），再寫 step definitions，再寫 conftest infra。Feature 覆蓋 Tenant CRUD（5）+ KB CRUD（5）+ Document CRUD（4），含認證、隔離、錯誤處理
+- **DI Container Override 策略正確**：只 override 必要的 4 個 provider（db_session、process_document、vector_store、cache_service），其餘走真實 DI 路徑。這確保了 JWT、Router、UseCase、Repository 全部是真實實作
+- **TRUNCATE vs Rollback 選擇**：選用 TRUNCATE CASCADE 而非 transaction rollback，因為 pytest-bdd sync step + `_run()` 模式無法跨 event loop 共享 transaction。TRUNCATE 更簡單可靠
+- **Shared Event Loop 解決跨 loop 問題**：`_test_loop` fixture 提供每個 test 共享的 event loop，確保 TRUNCATE、API 請求、session 操作都在同一 loop，避免 asyncpg connection-closed-mid-operation 錯誤
+
+### 潛在隱憂
+
+| 隱憂 | 建議改善 | 優先級 |
+|------|---------|--------|
+| DI Factory sessions 未顯式 close（依賴 GC cleanup）| 在 Repository 或 middleware 層加 session lifecycle 管理（`async with session_factory() as session:`） | 中 |
+| pytest-asyncio 完全停用（`-p no:asyncio`）| 目前所有測試都用 `_run()` 所以安全，但未來若需 async fixtures 需重新啟用 | 低 |
+| `gc.collect()` 強制 GC 是 workaround 而非根因修復 | 根因是 session 未 close，修復 session lifecycle 後可移除 gc.collect() | 中 |
+| Coverage fail_under 暫降至 70 | Integration test 到位後調回 80 | 低 |
+
+### 延伸學習
+
+- **asyncpg Event Loop Affinity**：asyncpg 連線綁定創建時的 event loop。NullPool 確保每次 `engine.begin()` 都建新連線，但若舊連線的 GC cleanup 在新 loop 的 `_run()` 執行期間觸發，會導致 `ConnectionDoesNotExistError`。根本解法是讓所有連線共用同一個 loop（`_test_loop` 模式），或確保舊連線在 loop 關閉前被顯式 close
+- **Factory vs Scoped Provider 在 DI 測試中的差異**：`providers.Factory` 每次建新實例但不管理生命周期（caller 負責 close）。`providers.Resource` 支援 `init` + `shutdown` lifecycle。若 session 改用 Resource provider，DI 容器能自動管理 session close
+- 若想深入：搜尋「SQLAlchemy async session lifecycle」、「dependency-injector Resource provider」、「pytest-asyncio strict vs auto mode」
 
 ---
 

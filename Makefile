@@ -25,7 +25,8 @@ install:
 test: test-backend test-frontend
 
 test-backend:
-	cd apps/backend && uv run python -m pytest tests/ -v --tb=short
+	cd apps/backend && uv run python -m pytest tests/unit/ -v --tb=short
+	cd apps/backend && uv run python -m pytest tests/integration/ -v --tb=short -p no:asyncio
 
 test-frontend:
 	cd apps/frontend && npx vitest run --passWithNoTests

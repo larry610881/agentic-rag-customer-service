@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-26 (E6 Content-Aware Chunking 完成, 207 backend + 117 frontend tests green)
+> 最後更新：2026-02-26 (Issue #7 Integration Test 補債完成, 221 backend + 117 frontend tests green)
 
 ---
 
@@ -61,7 +61,7 @@
 - ✅ Infrastructure：`SQLAlchemyTenantRepository`
 - ✅ Interfaces：`POST /api/v1/tenants` + `GET /api/v1/tenants/{id}` + `GET /api/v1/tenants`
 - ✅ Unit Test：AsyncMock Repository，覆蓋 happy path + error paths
-- ⬜ Integration Test：httpx.AsyncClient + 真實 DB
+- ✅ Integration Test：httpx.AsyncClient + 真實 DB（Issue #7, 14 scenarios）
 - ✅ 驗收：API 可建立/查詢租戶
 
 ### 1.2 知識庫 CRUD
@@ -1072,7 +1072,7 @@
 | Issue | 標題 | Labels | 來源 |
 |-------|------|--------|------|
 | [#6](https://github.com/larry610881/agentic-rag-customer-service/issues/6) | Content-Aware Chunking Strategy | `rag`, `enhancement` | S3.4, E6 |
-| [#7](https://github.com/larry610881/agentic-rag-customer-service/issues/7) | Integration Test 補債 | `test` | S1.1, S1.2, S1.4 |
+| ~~[#7](https://github.com/larry610881/agentic-rag-customer-service/issues/7)~~ | ~~Integration Test 補債~~ | ~~`test`~~ | ~~S1.1, S1.2, S1.4~~ ✅ CLOSED |
 | [#8](https://github.com/larry610881/agentic-rag-customer-service/issues/8) | Embedding 429 Rate Limit | `bug`, `rag` | Edge E1 |
 | [#9](https://github.com/larry610881/agentic-rag-customer-service/issues/9) | API Rate Limiting + 用戶身份 | `enhancement` | Edge E7 |
 | [#10](https://github.com/larry610881/agentic-rag-customer-service/issues/10) | MCP 整合 | `enhancement`, `blocked` | S7P1 |
@@ -1086,7 +1086,7 @@
 | Sprint | 狀態 | 完成率 | 備註 |
 |--------|------|--------|------|
 | S0 基礎建設 | ✅ 完成 | 99% | CI 驗收（⬜）為 GitHub 端設定，非程式碼 |
-| S1 租戶+知識 | ✅ 完成 | 90% | Unit 完成，Integration Test 待後續 |
+| S1 租戶+知識 | ✅ 完成 | 100% | Unit + Integration Test 完成（Issue #7） |
 | S2 文件+向量化 | ✅ 完成 | 100% | 29 scenarios, 83.71% coverage, 51 chunks |
 | S3 RAG 查詢 | ✅ 完成 | 100% | 17 scenarios (6+5+6), 82% coverage |
 | S4 Agent 框架 | ✅ 完成 | 100% | 非 RAG 工具已在 E0 移除 |
@@ -1103,3 +1103,4 @@
 | **E4 EventBus 清理** | **✅ 完成** | **100%** | **5 files 刪除 + 1 file 編輯, 192 backend + 117 frontend tests** |
 | **E5 Redis Cache 統一** | **✅ 完成** | **100%** | **10 NEW + 10 MODIFY files, 200 backend + 117 frontend tests, 3 commits** |
 | **E6 Content-Aware Chunking** | **✅ 完成** | **100%** | **5 NEW + 5 MODIFY files, 207 backend + 117 frontend tests** |
+| **Issue #7 Integration Test 補債** | **✅ 完成** | **100%** | **9 NEW + 3 MODIFY files, 14 BDD scenarios, 221 backend + 117 frontend tests** |
