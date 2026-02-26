@@ -3,16 +3,14 @@
 Key design decisions:
 - ``-p no:asyncio`` in pyproject.toml addopts prevents pytest-asyncio
   from interfering with our manually managed event loops.
-- Each test gets a **shared event loop** (``_test_loop``) so that all
-  asyncpg connections created during the test belong to the same loop.
-  When the loop closes at test teardown, connections are cleaned up.
+- Each ``_run()`` call creates a **fresh** event loop — no cross-loop
+  connection issues with asyncpg.
+- Per-test: terminate zombie connections → drop_all → create_all gives a
+  pristine schema every time (more robust than TRUNCATE).
 - NullPool ensures every engine.begin() is a brand-new TCP connection.
-- ``gc.collect()`` before TRUNCATE flushes dangling connections from the
-  previous test before creating new ones.
 """
 
 import asyncio
-import gc
 from unittest.mock import AsyncMock
 
 import pytest
@@ -45,16 +43,9 @@ ADMIN_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/agentic_ra
 TEST_DB_NAME = "agentic_rag_test"
 TEST_DB_URL = f"postgresql+asyncpg://postgres:postgres@localhost:5432/{TEST_DB_NAME}"
 
-# Per-test event loop — set by ``_test_loop`` fixture, used by ``_run()``.
-_current_loop: asyncio.AbstractEventLoop | None = None
-
 
 def _run(coro):
-    """Run async code in the per-test event loop (or a fresh ephemeral one)."""
-    loop = _current_loop
-    if loop is not None and not loop.is_closed():
-        return loop.run_until_complete(coro)
-    # Fallback: create ephemeral loop (used by session-scoped fixtures)
+    """Run async code in a fresh event loop (avoids cross-loop issues)."""
     loop = asyncio.new_event_loop()
     try:
         return loop.run_until_complete(coro)
@@ -63,12 +54,18 @@ def _run(coro):
 
 
 # ---------------------------------------------------------------------------
-# Session-scoped: create / drop test database
+# Connection management helpers
 # ---------------------------------------------------------------------------
 
 
-async def _force_drop_db():
-    """Terminate all connections then drop the test DB."""
+async def _terminate_test_connections():
+    """Kill all connections to the test DB and wait until they are gone.
+
+    ``pg_terminate_backend`` sends SIGTERM but returns immediately.  We poll
+    ``pg_stat_activity`` until the count reaches 0 so that subsequent DDL
+    (like ``DROP TABLE`` / ``CREATE TABLE``) does not deadlock against a
+    dying connection that still holds locks.
+    """
     admin = create_async_engine(ADMIN_DB_URL, isolation_level="AUTOCOMMIT")
     async with admin.connect() as conn:
         await conn.execute(
@@ -79,13 +76,37 @@ async def _force_drop_db():
                 "AND pid <> pg_backend_pid()"
             )
         )
+        # Wait until all connections are actually closed (up to 5 s)
+        for _ in range(50):
+            result = await conn.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    f"WHERE datname = '{TEST_DB_NAME}'"
+                )
+            )
+            if result.scalar() == 0:
+                break
+            await asyncio.sleep(0.1)
+    await admin.dispose()
+
+
+async def _force_drop_db():
+    """Terminate all connections then drop the test DB."""
+    await _terminate_test_connections()
+    admin = create_async_engine(ADMIN_DB_URL, isolation_level="AUTOCOMMIT")
+    async with admin.connect() as conn:
         await conn.execute(text(f"DROP DATABASE IF EXISTS {TEST_DB_NAME}"))
     await admin.dispose()
 
 
+# ---------------------------------------------------------------------------
+# Session-scoped: create / drop test database
+# ---------------------------------------------------------------------------
+
+
 @pytest.fixture(scope="session")
-def test_engine():
-    """Create test DB + tables once per session, drop on teardown."""
+def _test_db():
+    """Create test DB once per session, drop on teardown."""
 
     async def _setup():
         await _force_drop_db()
@@ -98,55 +119,50 @@ def test_engine():
         eng = create_async_engine(TEST_DB_URL, poolclass=NullPool)
         async with eng.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        return eng
+        await eng.dispose()
 
-    engine = _run(_setup())
-    yield engine
+    _run(_setup())
+    yield
 
-    async def _teardown():
-        await engine.dispose()
-        await _force_drop_db()
-
-    _run(_teardown())
+    _run(_force_drop_db())
 
 
 # ---------------------------------------------------------------------------
-# Per-test: shared event loop + TRUNCATE for isolation
+# Per-test: kill zombie connections + drop/create all tables
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
-def _test_loop():
-    """Provide a shared event loop for each test.
+def _clean_db(_test_db):
+    """Terminate zombie connections and recreate all tables before each test.
 
-    All ``_run()`` calls during the test share this loop, ensuring all
-    asyncpg connections belong to the same loop. When the fixture tears
-    down, the loop is closed and all connections are cleaned up.
+    drop_all + create_all is more robust than TRUNCATE — it handles schema
+    corruption and guarantees a pristine state regardless of what the
+    previous test did.
     """
-    global _current_loop
 
-    # Force GC to flush dangling connections from previous test
-    gc.collect()
+    async def _reset():
+        await _terminate_test_connections()
+        eng = create_async_engine(TEST_DB_URL, poolclass=NullPool)
+        async with eng.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+        await eng.dispose()
 
-    loop = asyncio.new_event_loop()
-    _current_loop = loop
-    yield loop
-    _current_loop = None
-    loop.close()
+    _run(_reset())
 
 
-@pytest.fixture(autouse=True)
-def clean_tables(test_engine, _test_loop):
-    """TRUNCATE all tables before each test scenario."""
+# ---------------------------------------------------------------------------
+# Per-test engine (function-scoped)
+# ---------------------------------------------------------------------------
 
-    async def _truncate():
-        table_names = [t.name for t in reversed(Base.metadata.sorted_tables)]
-        if table_names:
-            sql = f"TRUNCATE TABLE {', '.join(table_names)} CASCADE"
-            async with test_engine.begin() as conn:
-                await conn.execute(text(sql))
 
-    _run(_truncate())
+@pytest.fixture
+def test_engine(_test_db):
+    """Per-test NullPool engine: yield engine, dispose on teardown."""
+    engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
+    yield engine
+    _run(engine.dispose())
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +207,7 @@ def app(test_engine):
 
 
 class APIHelper:
-    """Synchronous HTTP helper — uses the per-test shared event loop."""
+    """Synchronous HTTP helper — each call gets a fresh event loop."""
 
     def __init__(self, fastapi_app):
         self._app = fastapi_app
