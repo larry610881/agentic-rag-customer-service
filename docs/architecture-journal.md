@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Issue #15 隱憂修復 — Reprocess Task Tracking + Cross-BC JOIN](#issue-15-隱憂修復--reprocess-task-tracking--cross-bc-join)
 - [Issue #15 — Chunk Quality Monitoring 品質指標 + 回饋關聯](#issue-15--chunk-quality-monitoring-品質指標--回饋關聯)
 - [Issue #9 — API Rate Limiting + User Auth 身份體系](#issue-9--api-rate-limiting--user-auth-身份體系)
 - [Issue #8 — Embedding 429 Rate Limit + Adaptive Batch Size](#issue-8--embedding-429-rate-limit--adaptive-batch-size)
@@ -30,6 +31,35 @@
 
 ---
 
+## Issue #15 隱憂修復 — Reprocess Task Tracking + Cross-BC JOIN
+
+**來源**：Issue #15 架構筆記標記的隱憂修復
+**日期**：2026-02-27
+**範圍**：8 files modified, 跨 Domain/Application/Infrastructure/Interfaces 4 層
+
+**本次相關主題**：Background Task 追蹤模式、`safe_background_task` kwargs 陷阱、SQL IN clause vs JOIN 效能、N+1 查詢盤點
+
+### 做得好的地方
+
+- **沿用既有兩階段模式**：Upload 已有 `begin_upload()` → `ProcessDocumentUseCase.execute(task_id)` 的兩階段追蹤。Reprocess 完全複用此模式（`begin_reprocess()` → `execute(doc_id, task_id)`），無新概念引入，維護成本零增加
+- **functools.partial 正確解決 kwargs 被吞問題**：`safe_background_task` 的 `**context` 參數會吃掉所有 kwargs。用 `functools.partial` 預先綁定 kwargs 到 callable 中，乾淨且不需修改 `safe_background_task` 簽名
+- **JOIN 替代 IN clause 是正確的 DB 優化方向**：`find_chunk_ids_by_kb(kb_id)` 用 `JOIN chunks ON documents WHERE documents.kb_id = :kb_id`，讓 DB 引擎用 index nested loop join，而非應用層先撈 doc_ids 再塞 IN clause。KB 內文件越多，效能差距越大
+- **失敗時不再 raise**：背景任務的 exception 本來就不會回傳給 HTTP response，之前的 `raise` 只會被 `safe_background_task` 再次捕捉。現在直接在 Use Case 內處理（update task status → log），語義更清晰
+
+### 潛在隱憂
+
+- **N+1 盤點發現 3 處真正的 N+1**：Bot Repository `find_all_by_tenant()` 每個 bot 各查一次 KB IDs（最嚴重）、Feedback Repository `get_negative_with_context()` 每筆 feedback 查 2 次 message、Conversation Repository `save()` 每個 message 逐筆 lookup → 建議：P0 先修 Bot N+1（影響前端 Bot 管理頁）→ 優先級：中
+- **`find_chunk_ids_by_documents()` 已無呼叫者但仍保留**：目前被 `find_chunk_ids_by_kb()` 取代，但 abstract method 仍在 Domain 層。若長期無使用者可考慮 deprecate → 優先級：低
+- **Reprocess 背景任務無 retry 機制**：失敗後只記錄 `failed` 狀態，使用者需手動重試。若未來需要自動重試可考慮 Celery / ARQ task queue → 優先級：低
+
+### 延伸學習
+
+- **IN clause vs JOIN 的選擇**：IN clause 適合「已知少量 ID 清單」的場景（如 batch get by IDs）；JOIN 適合「由關聯條件篩選」的場景（如 kb_id 對應的所有 chunks）。經驗法則：如果 ID 清單來自另一張表的查詢結果，就應該用 JOIN 讓 DB 一次搞定，而非應用層先撈 ID 再塞 IN
+- **Bulk IN Pattern**：當確實需要 IN clause 時（如批次查詢 N 個使用者），應一次收集所有 ID 後發一次 `WHERE id IN (all_ids)` 查詢，再在 Python 端 group by。這是解決 N+1 的標準手段，比 JOIN 簡單但 ID 數量有上限（MySQL ~65535 placeholders、PostgreSQL 無硬限但效能退化）
+- 若想深入：搜尋「SQLAlchemy selectinload vs subqueryload」、「PostgreSQL IN clause performance limit」、「Django select_related vs prefetch_related」（概念相同）
+
+---
+
 ## Issue #15 — Chunk Quality Monitoring 品質指標 + 回饋關聯
 
 **來源**：E6 延伸 / GitHub Issue #15
@@ -47,8 +77,8 @@
 ### 潛在隱憂
 
 - **quality_issues 存為 comma-separated string**：目前 Document.quality_issues 在 DB 是 Text 欄位（逗號分隔），若未來 issue 類型增多或需要結構化查詢，可能需遷移至 JSON 欄位 → 建議：現階段可接受（issue 類型固定 3 種），若超過 5 種考慮改 JSON → 優先級：低
-- **Reprocess 無任務追蹤**：目前 `POST /{doc_id}/reprocess` 直接在 background task 中執行，無 ProcessingTask 記錄，前端無法顯示重新處理進度 → 建議：可沿用既有 ProcessingTask 機制 → 優先級：中
-- **Cross-BC 查詢 N+1 風險**：`GetDocumentQualityStatsUseCase` 的 `find_chunk_ids_by_documents` 是批次查詢（單次 SQL），但若文件數量極大（>1000），`IN` 子句可能效能不佳 → 建議：加分頁或改為 JOIN 查詢 → 優先級：低
+- ~~**Reprocess 無任務追蹤**~~ → **已修復**（2026-02-27）：新增 `begin_reprocess()` + `execute(task_id)` 兩階段追蹤，沿用 Upload 既有模式
+- ~~**Cross-BC 查詢 N+1 風險**~~ → **已修復**（2026-02-27）：新增 `find_chunk_ids_by_kb()` 用 JOIN 取代 IN clause
 
 ### 延伸學習
 
