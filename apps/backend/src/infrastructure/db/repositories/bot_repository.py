@@ -47,12 +47,20 @@ class SQLAlchemyBotRepository(BotRepository):
             updated_at=model.updated_at,
         )
 
-    async def _get_kb_ids(self, bot_id: str) -> list[str]:
-        stmt = select(BotKnowledgeBaseModel.knowledge_base_id).where(
-            BotKnowledgeBaseModel.bot_id == bot_id
-        )
+    async def _get_all_kb_ids(
+        self, bot_ids: list[str]
+    ) -> dict[str, list[str]]:
+        if not bot_ids:
+            return {}
+        stmt = select(
+            BotKnowledgeBaseModel.bot_id,
+            BotKnowledgeBaseModel.knowledge_base_id,
+        ).where(BotKnowledgeBaseModel.bot_id.in_(bot_ids))
         result = await self._session.execute(stmt)
-        return list(result.scalars().all())
+        kb_map: dict[str, list[str]] = {bid: [] for bid in bot_ids}
+        for row in result.all():
+            kb_map[row.bot_id].append(row.knowledge_base_id)
+        return kb_map
 
     async def _sync_kb_ids(
         self, bot_id: str, kb_ids: list[str]
@@ -120,8 +128,8 @@ class SQLAlchemyBotRepository(BotRepository):
         model = result.scalar_one_or_none()
         if model is None:
             return None
-        kb_ids = await self._get_kb_ids(bot_id)
-        return self._to_entity(model, kb_ids)
+        kb_map = await self._get_all_kb_ids([bot_id])
+        return self._to_entity(model, kb_map.get(bot_id, []))
 
     async def find_all_by_tenant(self, tenant_id: str) -> list[Bot]:
         stmt = (
@@ -130,11 +138,14 @@ class SQLAlchemyBotRepository(BotRepository):
             .order_by(BotModel.created_at)
         )
         result = await self._session.execute(stmt)
-        bots = []
-        for model in result.scalars().all():
-            kb_ids = await self._get_kb_ids(model.id)
-            bots.append(self._to_entity(model, kb_ids))
-        return bots
+        models = list(result.scalars().all())
+        if not models:
+            return []
+        kb_map = await self._get_all_kb_ids([m.id for m in models])
+        return [
+            self._to_entity(m, kb_map.get(m.id, []))
+            for m in models
+        ]
 
     async def delete(self, bot_id: str) -> None:
         await self._session.execute(

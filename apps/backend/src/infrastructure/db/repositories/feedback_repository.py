@@ -1,6 +1,7 @@
 """SQLAlchemy Feedback Repository 實作"""
 
 import json
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, func, select
@@ -208,6 +209,8 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
         self, tenant_id: str, days: int = 30, limit: int = 20, offset: int = 0
     ) -> list[RetrievalQualityRecord]:
         since = datetime.now(timezone.utc) - timedelta(days=days)
+
+        # Step 1: Fetch feedback rows
         stmt = (
             select(
                 FeedbackModel.message_id,
@@ -227,30 +230,55 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
         result = await self._session.execute(stmt)
         feedback_rows = result.all()
 
-        records: list[RetrievalQualityRecord] = []
-        for row in feedback_rows:
-            # Get assistant message
-            asst_stmt = select(MessageModel).where(
-                MessageModel.id == row.message_id
-            )
-            asst_result = await self._session.execute(asst_stmt)
-            asst_msg = asst_result.scalar_one_or_none()
-            if asst_msg is None:
-                continue
+        if not feedback_rows:
+            return []
 
-            # Get preceding user message
+        # Step 2: Bulk fetch all assistant messages
+        message_ids = [row.message_id for row in feedback_rows]
+        asst_stmt = select(MessageModel).where(
+            MessageModel.id.in_(message_ids)
+        )
+        asst_result = await self._session.execute(asst_stmt)
+        asst_map = {
+            m.id: m for m in asst_result.scalars().all()
+        }
+
+        # Step 3: Bulk fetch user messages for related conversations
+        conversation_ids = list({
+            m.conversation_id for m in asst_map.values()
+        })
+        if conversation_ids:
             user_stmt = (
                 select(MessageModel)
                 .where(
-                    MessageModel.conversation_id == asst_msg.conversation_id,
+                    MessageModel.conversation_id.in_(conversation_ids),
                     MessageModel.role == "user",
-                    MessageModel.created_at < asst_msg.created_at,
                 )
-                .order_by(MessageModel.created_at.desc())
-                .limit(1)
+                .order_by(
+                    MessageModel.conversation_id,
+                    MessageModel.created_at.desc(),
+                )
             )
             user_result = await self._session.execute(user_stmt)
-            user_msg = user_result.scalar_one_or_none()
+            user_by_conv: dict[str, list[MessageModel]] = defaultdict(list)
+            for u in user_result.scalars().all():
+                user_by_conv[u.conversation_id].append(u)
+        else:
+            user_by_conv = {}
+
+        # Step 4: Assemble records (Python-side matching)
+        records: list[RetrievalQualityRecord] = []
+        for row in feedback_rows:
+            asst_msg = asst_map.get(row.message_id)
+            if asst_msg is None:
+                continue
+
+            # Find nearest preceding user message in same conversation
+            user_msg = None
+            for u in user_by_conv.get(asst_msg.conversation_id, []):
+                if u.created_at < asst_msg.created_at:
+                    user_msg = u
+                    break  # already sorted desc, first match is nearest
 
             retrieved = (
                 json.loads(asst_msg.retrieved_chunks)

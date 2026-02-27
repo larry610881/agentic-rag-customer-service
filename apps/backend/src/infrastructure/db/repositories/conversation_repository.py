@@ -29,26 +29,36 @@ class SQLAlchemyConversationRepository(ConversationRepository):
             )
             self._session.add(model)
 
-        for msg in conversation.messages:
-            existing_msg = await self._session.get(MessageModel, msg.id.value)
-            if existing_msg is None:
-                msg_model = MessageModel(
-                    id=msg.id.value,
-                    conversation_id=msg.conversation_id,
-                    role=msg.role,
-                    content=msg.content,
-                    tool_calls_json=json.dumps(
-                        msg.tool_calls, ensure_ascii=False
-                    ),
-                    latency_ms=msg.latency_ms,
-                    retrieved_chunks=(
-                        json.dumps(msg.retrieved_chunks, ensure_ascii=False)
-                        if msg.retrieved_chunks is not None
-                        else None
-                    ),
-                    created_at=msg.created_at,
-                )
-                self._session.add(msg_model)
+        if conversation.messages:
+            # Bulk check: fetch all existing message IDs in one query
+            msg_ids = [msg.id.value for msg in conversation.messages]
+            stmt = select(MessageModel.id).where(
+                MessageModel.id.in_(msg_ids)
+            )
+            result = await self._session.execute(stmt)
+            existing_ids = set(result.scalars().all())
+
+            for msg in conversation.messages:
+                if msg.id.value not in existing_ids:
+                    msg_model = MessageModel(
+                        id=msg.id.value,
+                        conversation_id=msg.conversation_id,
+                        role=msg.role,
+                        content=msg.content,
+                        tool_calls_json=json.dumps(
+                            msg.tool_calls, ensure_ascii=False
+                        ),
+                        latency_ms=msg.latency_ms,
+                        retrieved_chunks=(
+                            json.dumps(
+                                msg.retrieved_chunks, ensure_ascii=False
+                            )
+                            if msg.retrieved_chunks is not None
+                            else None
+                        ),
+                        created_at=msg.created_at,
+                    )
+                    self._session.add(msg_model)
 
         await self._session.commit()
 
