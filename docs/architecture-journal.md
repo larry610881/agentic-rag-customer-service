@@ -49,7 +49,7 @@
 ### 潛在隱憂
 
 - **N+1 盤點發現 3 處真正的 N+1**：Bot Repository `find_all_by_tenant()` 每個 bot 各查一次 KB IDs（最嚴重）、Feedback Repository `get_negative_with_context()` 每筆 feedback 查 2 次 message、Conversation Repository `save()` 每個 message 逐筆 lookup → 建議：P0 先修 Bot N+1（影響前端 Bot 管理頁）→ 優先級：中
-- **`find_chunk_ids_by_documents()` 已無呼叫者但仍保留**：目前被 `find_chunk_ids_by_kb()` 取代，但 abstract method 仍在 Domain 層。若長期無使用者可考慮 deprecate → 優先級：低
+- ~~**`find_chunk_ids_by_documents()` 已無呼叫者**~~ → **已刪除**（2026-02-27）：被 `find_chunk_ids_by_kb()` 取代，無呼叫者即為重構遺留物，直接移除
 - **Reprocess 背景任務無 retry 機制**：失敗後只記錄 `failed` 狀態，使用者需手動重試。若未來需要自動重試可考慮 Celery / ARQ task queue → 優先級：低
 
 ### 延伸學習

@@ -77,21 +77,6 @@ class SQLAlchemyChunkRepository(ChunkRepository):
         result = await self._session.execute(stmt)
         return result.scalar_one()
 
-    async def find_chunk_ids_by_documents(
-        self, document_ids: list[str]
-    ) -> dict[str, list[str]]:
-        if not document_ids:
-            return {}
-        stmt = (
-            select(ChunkModel.id, ChunkModel.document_id)
-            .where(ChunkModel.document_id.in_(document_ids))
-        )
-        result = await self._session.execute(stmt)
-        mapping: dict[str, list[str]] = defaultdict(list)
-        for chunk_id, doc_id in result.all():
-            mapping[doc_id].append(chunk_id)
-        return dict(mapping)
-
     async def find_chunk_ids_by_kb(
         self, kb_id: str
     ) -> dict[str, list[str]]:
