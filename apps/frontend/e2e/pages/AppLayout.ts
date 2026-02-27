@@ -9,10 +9,10 @@ export class AppLayout {
 
   constructor(private page: Page) {
     this.sidebar = page.locator('aside');
-    this.chatNavLink = page.getByRole('link', { name: 'Chat' });
-    this.knowledgeNavLink = page.getByRole('link', { name: 'Knowledge' });
-    this.tenantSelector = page.getByLabel('Select tenant');
-    this.logoutButton = page.getByRole('button', { name: 'Logout' });
+    this.chatNavLink = page.getByRole('link', { name: '對話' });
+    this.knowledgeNavLink = page.getByRole('link', { name: '知識庫' });
+    this.tenantSelector = page.getByLabel('選擇租戶');
+    this.logoutButton = page.getByRole('button', { name: '登出' });
   }
 
   async navigateToChat() {

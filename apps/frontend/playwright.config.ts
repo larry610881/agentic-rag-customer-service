@@ -25,8 +25,15 @@ export default defineConfig({
     },
     {
       name: "features",
-      testMatch: /^(?!.*\/auth\/)(?!.*\/demo\/).*\.feature\.spec\.js$/,
+      testMatch:
+        /^(?!.*\/auth\/)(?!.*\/demo\/)(?!.*\/journeys\/).*\.feature\.spec\.js$/,
       dependencies: ["auth"],
+    },
+    {
+      name: "journeys",
+      testMatch: "**/journeys/*.feature.spec.js",
+      dependencies: ["auth"],
+      timeout: 120000,
     },
     {
       name: "demo",

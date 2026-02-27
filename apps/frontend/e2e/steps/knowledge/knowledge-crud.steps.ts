@@ -14,15 +14,14 @@ When(
 
 Then("應顯示文件管理頁面", async ({ page }) => {
   await expect(
-    page.getByRole("heading", { name: "Documents" }),
+    page.getByRole("heading", { name: "文件管理" }),
   ).toBeVisible({ timeout: 10000 });
 });
 
 Then("應顯示文件列表", async ({ page }) => {
   // Accept either a document table or the empty-state message
-  // (mock data uses static IDs that won't match dynamic KB UUIDs)
   const tableOrEmpty = page.locator(
-    'table, :text("No documents uploaded yet.")',
+    'table, :text("尚未上傳任何文件。")',
   );
   await expect(tableOrEmpty.first()).toBeVisible({ timeout: 10000 });
 });

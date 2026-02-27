@@ -11,16 +11,16 @@ export class KnowledgePage {
   readonly createSubmitButton: Locator;
 
   constructor(private page: Page) {
-    this.heading = page.getByRole("heading", { name: "Knowledge Bases" });
+    this.heading = page.getByRole("heading", { name: "知識庫管理" });
     this.kbList = page.locator(".grid").first();
     this.kbCards = page.getByRole("link");
     this.createKbButton = page.getByRole("button", {
-      name: "Create Knowledge Base",
+      name: "建立知識庫",
     });
     this.createDialog = page.getByRole("dialog");
-    this.kbNameInput = page.getByLabel("Name");
-    this.kbDescriptionInput = page.getByLabel("Description");
-    this.createSubmitButton = page.getByRole("button", { name: "Create" });
+    this.kbNameInput = page.getByLabel("名稱");
+    this.kbDescriptionInput = page.getByLabel("描述");
+    this.createSubmitButton = page.getByRole("button", { name: "建立" });
   }
 
   async goto() {

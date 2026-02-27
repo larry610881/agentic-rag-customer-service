@@ -4,6 +4,9 @@ import { ChatPage } from "../pages/ChatPage";
 import { KnowledgePage } from "../pages/KnowledgePage";
 import { KnowledgeDetailPage } from "../pages/KnowledgeDetailPage";
 import { AppLayout } from "../pages/AppLayout";
+import { BotPage } from "../pages/BotPage";
+import { FeedbackPage } from "../pages/FeedbackPage";
+import { SettingsPage } from "../pages/SettingsPage";
 
 export const test = base.extend<{
   loginPage: LoginPage;
@@ -11,6 +14,9 @@ export const test = base.extend<{
   knowledgePage: KnowledgePage;
   knowledgeDetailPage: KnowledgeDetailPage;
   appLayout: AppLayout;
+  botPage: BotPage;
+  feedbackPage: FeedbackPage;
+  settingsPage: SettingsPage;
 }>({
   loginPage: async ({ page }, use) => {
     await use(new LoginPage(page));
@@ -26,6 +32,15 @@ export const test = base.extend<{
   },
   appLayout: async ({ page }, use) => {
     await use(new AppLayout(page));
+  },
+  botPage: async ({ page }, use) => {
+    await use(new BotPage(page));
+  },
+  feedbackPage: async ({ page }, use) => {
+    await use(new FeedbackPage(page));
+  },
+  settingsPage: async ({ page }, use) => {
+    await use(new SettingsPage(page));
   },
 });
 

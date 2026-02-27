@@ -9,12 +9,12 @@ export class KnowledgeDetailPage {
   readonly chooseFileButton: Locator;
 
   constructor(private page: Page) {
-    this.heading = page.getByRole('heading', { name: 'Documents' });
+    this.heading = page.getByRole('heading', { name: '文件管理' });
     this.documentList = page.locator('table');
-    this.uploadDropzone = page.getByRole('region', { name: 'Upload dropzone' });
+    this.uploadDropzone = page.getByRole('region', { name: '上傳區域' });
     this.documentRows = page.locator('table tbody tr');
-    this.processingStatus = page.getByText('Processing document');
-    this.chooseFileButton = page.getByText('Choose File');
+    this.processingStatus = page.getByText('處理中');
+    this.chooseFileButton = page.getByText('選擇檔案');
   }
 
   async goto(kbId: string) {

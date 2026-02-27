@@ -64,6 +64,39 @@ async function globalSetup() {
     }
   }
 
+  // Ensure at least one active bot exists (for chat tests J3, J5)
+  const botsRes = await context.get(`${API_BASE}/api/v1/bots`, { headers });
+  const bots: Array<{ name: string }> = await botsRes.json();
+  if (bots.length === 0) {
+    // Re-fetch KBs to get their IDs
+    const freshKbRes = await context.get(
+      `${API_BASE}/api/v1/knowledge-bases`,
+      { headers },
+    );
+    const freshKbs: Array<{ id: string; name: string }> =
+      await freshKbRes.json();
+    const kbIds = freshKbs.map((kb) => kb.id);
+
+    const botRes = await context.post(`${API_BASE}/api/v1/bots`, {
+      data: {
+        name: "E2E 測試機器人",
+        description: "E2E 自動化測試用機器人",
+        knowledge_base_ids: kbIds,
+        is_active: true,
+      },
+      headers,
+    });
+    if (botRes.ok()) {
+      console.log("[E2E Setup] Created bot: E2E 測試機器人");
+    } else {
+      console.warn(
+        `[E2E Setup] Bot creation returned ${botRes.status()}`,
+      );
+    }
+  } else {
+    console.log(`[E2E Setup] Bot already exists (${bots.length} bots), skipping.`);
+  }
+
   // Ensure "Other Store" tenant exists (for tenant-isolation test)
   const tenantsRes = await context.get(`${API_BASE}/api/v1/tenants`, {
     headers,
@@ -77,6 +110,35 @@ async function globalSetup() {
       headers,
     });
     console.log("[E2E Setup] Created tenant: Other Store");
+  }
+
+  // Register a tenant admin user for journey tests (J4-J8)
+  // Extract tenant_id from the JWT (sub claim = tenant_id for tenant_access tokens)
+  const jwtPayload = JSON.parse(
+    Buffer.from(access_token.split(".")[1], "base64").toString(),
+  );
+  const demoStoreTenantId = jwtPayload.sub;
+
+  const registerRes = await context.post(`${API_BASE}/api/v1/auth/register`, {
+    data: {
+      email: "admin@demo.com",
+      password: "password123",
+      role: "tenant_admin",
+      tenant_id: demoStoreTenantId,
+    },
+    headers,
+  });
+  if (registerRes.ok()) {
+    console.log("[E2E Setup] Registered tenant admin: admin@demo.com");
+  } else if (
+    registerRes.status() === 409 ||
+    registerRes.status() === 400
+  ) {
+    console.log("[E2E Setup] Tenant admin already exists, skipping.");
+  } else {
+    console.warn(
+      `[E2E Setup] Tenant admin registration returned ${registerRes.status()}`,
+    );
   }
 
   await context.dispose();

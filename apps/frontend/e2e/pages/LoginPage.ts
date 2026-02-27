@@ -8,10 +8,10 @@ export class LoginPage {
   readonly validationErrors: Locator;
 
   constructor(private page: Page) {
-    this.usernameInput = page.getByLabel('Username');
-    this.passwordInput = page.getByLabel('Password');
-    this.submitButton = page.getByRole('button', { name: 'Sign in' });
-    this.errorMessage = page.getByText('Login failed. Please check your credentials.');
+    this.usernameInput = page.getByLabel('使用者名稱');
+    this.passwordInput = page.getByLabel('密碼');
+    this.submitButton = page.getByRole('button', { name: '登入' });
+    this.errorMessage = page.getByText('登入失敗，請確認帳號密碼是否正確。');
     this.validationErrors = page.locator('.text-destructive');
   }
 

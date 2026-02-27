@@ -7,7 +7,7 @@ Given(
     await knowledgePage.goto();
     await knowledgePage.clickKnowledgeBase(kbName);
     await expect(
-      page.getByRole("heading", { name: "Documents" }),
+      page.getByRole("heading", { name: "文件管理" }),
     ).toBeVisible({ timeout: 10000 });
   },
 );
@@ -20,6 +20,6 @@ Then("應顯示文件上傳區域", async ({ knowledgeDetailPage }) => {
 
 Then("應顯示文件列表或空狀態", async ({ page }) => {
   const table = page.locator("table");
-  const emptyState = page.getByText("No documents uploaded yet.");
+  const emptyState = page.getByText("尚未上傳任何文件。");
   await expect(table.or(emptyState)).toBeVisible({ timeout: 10000 });
 });

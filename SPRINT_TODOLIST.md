@@ -308,6 +308,23 @@
 - ✅ Step Definitions：7 個 steps 檔案 + fixtures.ts
 - ✅ 驗收：Playwright E2E 10/10 scenarios 全部通過
 
+### 5.9.1 E2E User Journey Tests（雙角色覆蓋全功能）
+- ✅ 8 個 journey feature files（12 scenarios）— `e2e/features/journeys/`
+- ✅ J1: 系統管理員平台環境建置（providers → KB → KB detail → bots）
+- ✅ J2: 系統管理員租戶隔離驗證（KB 隔離 + 切換復原）
+- ✅ J3: 系統管理員儀表板全頁巡覽（chat → KB → bots → feedback → providers）
+- ✅ J4: 租戶管理員知識庫文件管理（KB list → document detail, user_access token）
+- ✅ J5: 租戶管理員 AI 對話（FakeLLM — 發送+回覆 + 多輪對話, 2 scenarios）
+- ✅ J6: 租戶管理員回饋分析（統計摘要 → 趨勢 → Token 成本 → 差評瀏覽器）
+- ✅ J7: 租戶管理員 Bot 管理（列表 + 卡片資訊）
+- ✅ J8: 認證流程完整驗證（空白驗證 + 錯誤憑證 + 系統/租戶管理員登入, 4 scenarios）
+- ✅ 新增 Page Objects：BotPage, FeedbackPage, SettingsPage
+- ✅ 新增 steps：tenant-admin-auth（user_access token）, navigation
+- ✅ global-setup.ts：seed bot + tenant admin user
+- ✅ POM 全面中文化（LoginPage, AppLayout, KnowledgePage, KnowledgeDetailPage, ChatPage）
+- ✅ ChatPage.goto() 自動選擇 bot（bot selection screen 處理）
+- ✅ 驗收：16/16 auth+journey tests 通過（4 auth + 12 journeys）
+
 ### 5.10 測試與品質
 - ✅ 後端：65 BDD scenarios 通過（60 既有 + 5 LINE Bot 新增）
 - ✅ 後端覆蓋率：82.47% > 80%
@@ -1109,3 +1126,4 @@
 | **Issue #15 Chunk Quality Monitoring** | **✅ 完成** | **100%** | **~10 NEW + ~15 MODIFY files, 品質指標+Chunk 預覽+建議+回饋關聯, 239 backend + 130 frontend tests, 82.47% coverage** |
 | **Issue #15 隱憂修復** | **✅ 完成** | **100%** | **Reprocess ProcessingTask 追蹤 + Cross-BC JOIN 優化 + kwargs bug fix, 8 files, 241 backend tests, 2 新 BDD scenarios** |
 | **N+1 查詢優化** | **✅ 完成** | **100%** | **3 Repos 修正: Bot(N+1→2), Feedback(2N+1→3), Conversation(N+1→2), 241 tests pass** |
+| **Frontend E2E User Journeys** | **✅ 完成** | **100%** | **8 journeys (12 scenarios), 雙角色覆蓋 11 頁面, 16/16 auth+journey tests pass** |

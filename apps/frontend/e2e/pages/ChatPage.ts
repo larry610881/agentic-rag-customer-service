@@ -7,8 +7,8 @@ export class ChatPage {
   readonly thoughtPanel: Locator;
 
   constructor(private page: Page) {
-    this.messageInput = page.getByLabel("Message input");
-    this.sendButton = page.getByRole("button", { name: /^Send$|^Sending/ });
+    this.messageInput = page.getByLabel("訊息輸入");
+    this.sendButton = page.getByRole("button", { name: /^傳送$|^傳送中/ });
     this.assistantMessages = page.locator(
       ".bg-muted.text-muted-foreground .whitespace-pre-wrap",
     );
@@ -16,18 +16,34 @@ export class ChatPage {
   }
 
   get streamingIndicator() {
-    return this.page.getByRole("button", { name: "Sending..." });
+    return this.page.getByRole("button", { name: "傳送中..." });
   }
 
   async goto() {
     await this.page.goto("/chat");
+    // If bot selection screen appears, click the first bot card
+    const botCard = this.page.getByText("E2E 測試機器人").first();
+    const inputVisible = await this.messageInput
+      .isVisible()
+      .catch(() => false);
+    if (!inputVisible) {
+      try {
+        await botCard.waitFor({ state: "visible", timeout: 10000 });
+        await botCard.click();
+      } catch {
+        // Bot card not found, message input may already be visible
+      }
+    }
     await this.messageInput.waitFor({ state: "visible", timeout: 30000 });
   }
 
   async sendMessage(text: string) {
     await this.messageInput.fill(text);
     // Wait for Send button to be enabled — signals KB auto-selection is complete
-    const sendBtn = this.page.getByRole("button", { name: "Send", exact: true });
+    const sendBtn = this.page.getByRole("button", {
+      name: "傳送",
+      exact: true,
+    });
     await expect(sendBtn).toBeEnabled({ timeout: 15000 });
     await sendBtn.click();
   }
@@ -39,7 +55,7 @@ export class ChatPage {
     });
     // Wait for send button to be re-enabled (streaming finished)
     await expect(
-      this.page.getByRole("button", { name: "Send", exact: true }),
+      this.page.getByRole("button", { name: "傳送", exact: true }),
     ).toBeVisible({ timeout: 10000 });
   }
 
