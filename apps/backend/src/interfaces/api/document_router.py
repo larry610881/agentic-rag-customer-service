@@ -1,3 +1,5 @@
+import functools
+
 from dependency_injector.wiring import Provide, inject
 from fastapi import (
     APIRouter,
@@ -255,8 +257,15 @@ class ReprocessRequest(BaseModel):
     chunk_strategy: str | None = None
 
 
+class ReprocessDocumentResponse(BaseModel):
+    status: str
+    document_id: str
+    task_id: str
+
+
 @router.post(
     "/{doc_id}/reprocess",
+    response_model=ReprocessDocumentResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
 @inject
@@ -269,14 +278,22 @@ async def reprocess_document(
     use_case: ReprocessDocumentUseCase = Depends(
         Provide[Container.reprocess_document_use_case]
     ),
-) -> dict:
-    background_tasks.add_task(
-        safe_background_task,
+) -> ReprocessDocumentResponse:
+    task = await use_case.begin_reprocess(doc_id, tenant.tenant_id)
+
+    execute_fn = functools.partial(
         use_case.execute,
         doc_id,
+        task.id.value,
         chunk_size=body.chunk_size,
         chunk_overlap=body.chunk_overlap,
         chunk_strategy=body.chunk_strategy,
+    )
+    background_tasks.add_task(
+        safe_background_task,
+        execute_fn,
         task_name="reprocess_document",
     )
-    return {"status": "accepted", "document_id": doc_id}
+    return ReprocessDocumentResponse(
+        status="accepted", document_id=doc_id, task_id=task.id.value
+    )

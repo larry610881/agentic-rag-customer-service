@@ -15,7 +15,7 @@ from src.application.knowledge.process_document_use_case import (
 from src.application.knowledge.reprocess_document_use_case import (
     ReprocessDocumentUseCase,
 )
-from src.domain.knowledge.entity import Chunk, Document
+from src.domain.knowledge.entity import Chunk, Document, ProcessingTask
 from src.domain.knowledge.services import ChunkQualityService
 from src.domain.knowledge.value_objects import ChunkId, DocumentId
 
@@ -273,6 +273,9 @@ def processed_doc(context):
     mock_splitter.split.return_value = new_chunks
 
     mock_task_repo = AsyncMock()
+    mock_task_repo.save = AsyncMock()
+    mock_task_repo.update_status = AsyncMock()
+
     mock_embedding = AsyncMock()
     mock_embedding.embed_texts = AsyncMock(
         return_value=[[0.1] * 1536 for _ in range(4)]
@@ -293,13 +296,15 @@ def processed_doc(context):
     )
     context["mock_doc_repo"] = mock_doc_repo
     context["mock_chunk_repo"] = mock_chunk_repo
+    context["mock_task_repo"] = mock_task_repo
     context["mock_vector_store"] = mock_vector_store
     context["doc_id"] = "doc-reprocess"
+    context["task_id"] = "task-reprocess-1"
 
 
 @when("執行重新處理")
 def do_reprocess(context):
-    _run(context["reprocess_use_case"].execute(context["doc_id"]))
+    _run(context["reprocess_use_case"].execute(context["doc_id"], context["task_id"]))
 
 
 @then("舊 chunks 應被刪除")
@@ -317,3 +322,88 @@ def new_chunks_created(context):
 @then("品質分數應已重新計算")
 def quality_recalculated(context):
     context["mock_doc_repo"].update_quality.assert_called_once()
+
+
+# --- Begin Reprocess (ProcessingTask creation) ---
+
+
+@when("開始重新處理")
+def begin_reprocess(context):
+    context["task"] = _run(
+        context["reprocess_use_case"].begin_reprocess(
+            context["doc_id"], "tenant-001"
+        )
+    )
+
+
+@then("應回傳 ProcessingTask 且狀態為 pending")
+def task_is_pending(context):
+    task = context["task"]
+    assert isinstance(task, ProcessingTask)
+    assert task.status == "pending"
+    assert task.document_id == context["doc_id"]
+    context["mock_task_repo"].save.assert_called_once()
+
+
+# --- Reprocess Failure ---
+
+
+@given("一個已處理的文件（處理會失敗）")
+def processed_doc_will_fail(context):
+    doc = Document(
+        id=DocumentId(value="doc-fail"),
+        kb_id="kb-001",
+        tenant_id="tenant-001",
+        filename="fail.txt",
+        content_type="text/plain",
+        content="Content that will fail. " * 20,
+        status="processed",
+        chunk_count=3,
+    )
+    mock_doc_repo = AsyncMock()
+    mock_doc_repo.find_by_id = AsyncMock(return_value=doc)
+    mock_doc_repo.update_status = AsyncMock()
+
+    mock_chunk_repo = AsyncMock()
+    mock_chunk_repo.delete_by_document = AsyncMock(
+        side_effect=RuntimeError("DB connection lost")
+    )
+
+    mock_splitter = MagicMock()
+
+    mock_task_repo = AsyncMock()
+    mock_task_repo.save = AsyncMock()
+    mock_task_repo.update_status = AsyncMock()
+
+    mock_embedding = AsyncMock()
+    mock_vector_store = AsyncMock()
+
+    context["reprocess_use_case"] = ReprocessDocumentUseCase(
+        document_repository=mock_doc_repo,
+        chunk_repository=mock_chunk_repo,
+        processing_task_repository=mock_task_repo,
+        text_splitter_service=mock_splitter,
+        embedding_service=mock_embedding,
+        vector_store=mock_vector_store,
+    )
+    context["mock_task_repo"] = mock_task_repo
+    context["doc_id"] = "doc-fail"
+    context["task_id"] = "task-fail-1"
+
+
+@when("執行重新處理（會失敗）")
+def do_reprocess_fail(context):
+    _run(
+        context["reprocess_use_case"].execute(
+            context["doc_id"], context["task_id"]
+        )
+    )
+
+
+@then("ProcessingTask 狀態應更新為 failed")
+def task_status_is_failed(context):
+    calls = context["mock_task_repo"].update_status.call_args_list
+    last_call = calls[-1]
+    assert last_call[0][0] == context["task_id"]
+    assert last_call[0][1] == "failed"
+    assert last_call[1].get("error_message") is not None

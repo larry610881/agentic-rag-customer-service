@@ -34,8 +34,8 @@ class GetDocumentQualityStatsUseCase:
         doc_ids = [d.id.value for d in documents]
         doc_map = {d.id.value: d for d in documents}
 
-        # 2. Get chunk_id → document_id mapping
-        chunk_to_doc = await self._chunk_repo.find_chunk_ids_by_documents(doc_ids)
+        # 2. Get chunk_id → document_id mapping (JOIN instead of IN clause)
+        chunk_to_doc = await self._chunk_repo.find_chunk_ids_by_kb(kb_id)
         # Invert: chunk_id → document_id
         chunk_id_to_doc_id: dict[str, str] = {}
         for doc_id, chunk_ids in chunk_to_doc.items():

@@ -55,3 +55,13 @@ Feature: 文件分塊品質指標
     Then 舊 chunks 應被刪除
     And 新 chunks 應被建立
     And 品質分數應已重新計算
+
+  Scenario: 重新處理時建立 ProcessingTask
+    Given 一個已處理的文件
+    When 開始重新處理
+    Then 應回傳 ProcessingTask 且狀態為 pending
+
+  Scenario: 重新處理失敗時 task 狀態為 failed
+    Given 一個已處理的文件（處理會失敗）
+    When 執行重新處理（會失敗）
+    Then ProcessingTask 狀態應更新為 failed

@@ -1,9 +1,11 @@
+from src.domain.knowledge.entity import ProcessingTask
 from src.domain.knowledge.repository import (
     ChunkRepository,
     DocumentRepository,
     ProcessingTaskRepository,
 )
 from src.domain.knowledge.services import ChunkQualityService, TextSplitterService
+from src.domain.knowledge.value_objects import ProcessingTaskId
 from src.domain.rag.services import EmbeddingService, VectorStore
 from src.infrastructure.logging import get_logger
 
@@ -27,15 +29,28 @@ class ReprocessDocumentUseCase:
         self._embedding = embedding_service
         self._vector_store = vector_store
 
+    async def begin_reprocess(
+        self, document_id: str, tenant_id: str
+    ) -> ProcessingTask:
+        task = ProcessingTask(
+            id=ProcessingTaskId(),
+            document_id=document_id,
+            tenant_id=tenant_id,
+            status="pending",
+        )
+        await self._task_repo.save(task)
+        return task
+
     async def execute(
         self,
         document_id: str,
+        task_id: str,
         *,
         chunk_size: int | None = None,
         chunk_overlap: int | None = None,
         chunk_strategy: str | None = None,
     ) -> None:
-        log = logger.bind(document_id=document_id)
+        log = logger.bind(document_id=document_id, task_id=task_id)
         log.info("document.reprocess.start")
 
         document = await self._doc_repo.find_by_id(document_id)
@@ -44,6 +59,7 @@ class ReprocessDocumentUseCase:
 
         # Mark as processing
         await self._doc_repo.update_status(document_id, "processing")
+        await self._task_repo.update_status(task_id, "processing", progress=0)
 
         try:
             # Delete old chunks from DB
@@ -70,6 +86,9 @@ class ReprocessDocumentUseCase:
                 )
                 await self._doc_repo.update_quality(
                     document_id, 0.0, 0, 0, 0, []
+                )
+                await self._task_repo.update_status(
+                    task_id, "completed", progress=100
                 )
                 return
 
@@ -113,6 +132,9 @@ class ReprocessDocumentUseCase:
             await self._doc_repo.update_status(
                 document_id, "processed", chunk_count=len(chunks)
             )
+            await self._task_repo.update_status(
+                task_id, "completed", progress=100
+            )
             log.info(
                 "document.reprocess.done",
                 quality_score=quality.score,
@@ -122,4 +144,6 @@ class ReprocessDocumentUseCase:
         except Exception as e:
             log.exception("document.reprocess.failed", error=str(e))
             await self._doc_repo.update_status(document_id, "failed")
-            raise
+            await self._task_repo.update_status(
+                task_id, "failed", error_message=str(e)
+            )

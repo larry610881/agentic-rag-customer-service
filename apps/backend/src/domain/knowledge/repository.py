@@ -74,6 +74,11 @@ class ChunkRepository(ABC):
         self, document_ids: list[str]
     ) -> dict[str, list[str]]: ...
 
+    @abstractmethod
+    async def find_chunk_ids_by_kb(
+        self, kb_id: str
+    ) -> dict[str, list[str]]: ...
+
 
 class ProcessingTaskRepository(ABC):
     @abstractmethod

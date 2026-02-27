@@ -7,6 +7,7 @@ from src.domain.knowledge.entity import Chunk
 from src.domain.knowledge.repository import ChunkRepository
 from src.domain.knowledge.value_objects import ChunkId
 from src.infrastructure.db.models.chunk_model import ChunkModel
+from src.infrastructure.db.models.document_model import DocumentModel
 
 
 class SQLAlchemyChunkRepository(ChunkRepository):
@@ -84,6 +85,20 @@ class SQLAlchemyChunkRepository(ChunkRepository):
         stmt = (
             select(ChunkModel.id, ChunkModel.document_id)
             .where(ChunkModel.document_id.in_(document_ids))
+        )
+        result = await self._session.execute(stmt)
+        mapping: dict[str, list[str]] = defaultdict(list)
+        for chunk_id, doc_id in result.all():
+            mapping[doc_id].append(chunk_id)
+        return dict(mapping)
+
+    async def find_chunk_ids_by_kb(
+        self, kb_id: str
+    ) -> dict[str, list[str]]:
+        stmt = (
+            select(ChunkModel.id, ChunkModel.document_id)
+            .join(DocumentModel, ChunkModel.document_id == DocumentModel.id)
+            .where(DocumentModel.kb_id == kb_id)
         )
         result = await self._session.execute(stmt)
         mapping: dict[str, list[str]] = defaultdict(list)

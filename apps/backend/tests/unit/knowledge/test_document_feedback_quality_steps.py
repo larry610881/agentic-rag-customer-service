@@ -46,7 +46,7 @@ def doc_with_negative_feedback(context, filename):
     mock_doc_repo.find_all_by_kb = AsyncMock(return_value=[doc])
 
     mock_chunk_repo = AsyncMock()
-    mock_chunk_repo.find_chunk_ids_by_documents = AsyncMock(
+    mock_chunk_repo.find_chunk_ids_by_kb = AsyncMock(
         return_value={"doc-faq": ["chunk-faq-1", "chunk-faq-2"]}
     )
 
@@ -89,7 +89,7 @@ def doc_without_negative_feedback(context, filename):
     mock_doc_repo.find_all_by_kb = AsyncMock(return_value=[doc])
 
     mock_chunk_repo = AsyncMock()
-    mock_chunk_repo.find_chunk_ids_by_documents = AsyncMock(
+    mock_chunk_repo.find_chunk_ids_by_kb = AsyncMock(
         return_value={"doc-guide": ["chunk-guide-1"]}
     )
 
