@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from redis.asyncio import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from src.domain.ratelimit.repository import RateLimitConfigRepository
-
 logger = logging.getLogger(__name__)
 
 
@@ -28,11 +26,11 @@ _FALLBACK = ResolvedRateLimitConfig(
 class RateLimitConfigLoader:
     def __init__(
         self,
-        rate_limit_config_repository: RateLimitConfigRepository,
+        rate_limit_config_repo_factory,  # Callable — creates a fresh repo each call
         redis_client: Redis,
         cache_ttl: int = 60,
     ) -> None:
-        self._repo = rate_limit_config_repository
+        self._repo_factory = rate_limit_config_repo_factory
         self._redis = redis_client
         self._cache_ttl = cache_ttl
 
@@ -52,13 +50,14 @@ class RateLimitConfigLoader:
             pass
 
         # Try DB: tenant-specific first, then default
+        repo = self._repo_factory()
         config = None
         if tenant_id:
-            config = await self._repo.find_by_tenant_and_group(
+            config = await repo.find_by_tenant_and_group(
                 tenant_id, endpoint_group
             )
         if config is None:
-            config = await self._repo.find_by_tenant_and_group(
+            config = await repo.find_by_tenant_and_group(
                 None, endpoint_group
             )
 

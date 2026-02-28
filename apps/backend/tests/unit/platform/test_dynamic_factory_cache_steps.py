@@ -67,7 +67,7 @@ def llm_db_with_cache(context):
     fallback = AsyncMock()
 
     context["factory"] = DynamicLLMServiceFactory(
-        provider_setting_repository=mock_repo,
+        provider_setting_repo_factory=lambda: mock_repo,
         encryption_service=encryption,
         fallback_service=fallback,
         cache_service=cache_service,
@@ -103,7 +103,7 @@ def embedding_db_with_cache(context):
     fallback = AsyncMock()
 
     context["factory"] = DynamicEmbeddingServiceFactory(
-        provider_setting_repository=mock_repo,
+        provider_setting_repo_factory=lambda: mock_repo,
         encryption_service=encryption,
         fallback_service=fallback,
         cache_service=cache_service,

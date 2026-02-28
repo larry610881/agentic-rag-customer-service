@@ -92,7 +92,7 @@ def db_all_disabled(context, mock_repo, mock_encryption):
 @when("工廠解析 LLM 服務")
 def resolve_service(context, fallback_service):
     factory = DynamicLLMServiceFactory(
-        provider_setting_repository=context["repo"],
+        provider_setting_repo_factory=lambda: context["repo"],
         encryption_service=context["encryption"],
         fallback_service=fallback_service,
     )

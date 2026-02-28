@@ -1,6 +1,5 @@
 import json
 
-from src.domain.platform.repository import ProviderSettingRepository
 from src.domain.platform.services import EncryptionService
 from src.domain.platform.value_objects import ProviderName, ProviderType
 from src.domain.rag.services import EmbeddingService
@@ -39,13 +38,13 @@ class DynamicEmbeddingServiceFactory:
 
     def __init__(
         self,
-        provider_setting_repository: ProviderSettingRepository,
+        provider_setting_repo_factory,  # Callable — creates a fresh repo each call
         encryption_service: EncryptionService,
         fallback_service: EmbeddingService,
         cache_service: CacheService | None = None,
         cache_ttl: int = 300,
     ) -> None:
-        self._repository = provider_setting_repository
+        self._repo_factory = provider_setting_repo_factory
         self._encryption = encryption_service
         self._fallback = fallback_service
         self._cache_service = cache_service
@@ -65,7 +64,8 @@ class DynamicEmbeddingServiceFactory:
                     logger.warning("dynamic_embedding.cache_decrypt_failed")
 
         try:
-            settings = await self._repository.find_all_by_type(
+            repo = self._repo_factory()
+            settings = await repo.find_all_by_type(
                 ProviderType.EMBEDDING
             )
             enabled = [s for s in settings if s.is_enabled]

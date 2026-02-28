@@ -84,7 +84,7 @@ def db_has_enabled_embedding(context, mock_repo, mock_encryption):
 @when("工廠解析 Embedding 服務")
 def resolve_embedding_service(context, fallback_service):
     factory = DynamicEmbeddingServiceFactory(
-        provider_setting_repository=context["repo"],
+        provider_setting_repo_factory=lambda: context["repo"],
         encryption_service=context["encryption"],
         fallback_service=fallback_service,
     )
@@ -154,7 +154,7 @@ def db_has_fake_embedding(context, mock_repo, mock_encryption):
 @when("Proxy 呼叫 embed_texts")
 def proxy_call_embed_texts(context, fallback_service):
     factory = DynamicEmbeddingServiceFactory(
-        provider_setting_repository=context["repo"],
+        provider_setting_repo_factory=lambda: context["repo"],
         encryption_service=context["encryption"],
         fallback_service=fallback_service,
     )
@@ -175,7 +175,7 @@ def verify_embed_texts(context):
 @when("Proxy 呼叫 embed_query")
 def proxy_call_embed_query(context, fallback_service):
     factory = DynamicEmbeddingServiceFactory(
-        provider_setting_repository=context["repo"],
+        provider_setting_repo_factory=lambda: context["repo"],
         encryption_service=context["encryption"],
         fallback_service=fallback_service,
     )

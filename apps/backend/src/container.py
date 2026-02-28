@@ -110,7 +110,6 @@ from src.infrastructure.conversation import (
     SummaryRecentStrategy,
 )
 from src.infrastructure.crypto.aes_encryption_service import AESEncryptionService
-from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.health_repository import HealthRepository
 from src.infrastructure.db.repositories.bot_repository import (
     SQLAlchemyBotRepository,
@@ -148,6 +147,7 @@ from src.infrastructure.db.repositories.usage_repository import (
 from src.infrastructure.db.repositories.user_repository import (
     SQLAlchemyUserRepository,
 )
+from src.infrastructure.db.session_middleware import get_tracked_session
 from src.infrastructure.embedding.dynamic_embedding_factory import (
     DynamicEmbeddingServiceFactory,
     DynamicEmbeddingServiceProxy,
@@ -233,7 +233,7 @@ class Container(containers.DeclarativeContainer):
         redis_client=redis_client,
     )
 
-    db_session = providers.Factory(async_session_factory)
+    db_session = providers.Factory(get_tracked_session)
 
     jwt_service = providers.Singleton(
         JWTService,
@@ -457,7 +457,7 @@ class Container(containers.DeclarativeContainer):
 
     _embedding_factory = providers.Singleton(
         DynamicEmbeddingServiceFactory,
-        provider_setting_repository=provider_setting_repository,
+        provider_setting_repo_factory=provider_setting_repository.provider,
         encryption_service=encryption_service,
         fallback_service=_static_embedding_service,
         cache_service=cache_service,
@@ -581,7 +581,7 @@ class Container(containers.DeclarativeContainer):
 
     _llm_factory = providers.Singleton(
         DynamicLLMServiceFactory,
-        provider_setting_repository=provider_setting_repository,
+        provider_setting_repo_factory=provider_setting_repository.provider,
         encryption_service=encryption_service,
         fallback_service=_static_llm_service,
         cache_service=cache_service,

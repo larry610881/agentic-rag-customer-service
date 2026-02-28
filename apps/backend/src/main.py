@@ -132,7 +132,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await engine.dispose()
 
 
-def create_app() -> FastAPI:
+def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     container = Container()
 
     application = FastAPI(
@@ -143,29 +143,32 @@ def create_app() -> FastAPI:
 
     application.container = container  # type: ignore[attr-defined]
 
+    from src.infrastructure.db.session_middleware import SessionCleanupMiddleware
     from src.interfaces.api.middleware import RequestIDMiddleware
 
     application.add_middleware(RequestIDMiddleware)
+    application.add_middleware(SessionCleanupMiddleware)
 
     # Rate Limit Middleware (runs after CORS, before route handlers)
-    from src.infrastructure.ratelimit.config_loader import RateLimitConfigLoader
-    from src.infrastructure.ratelimit.redis_rate_limiter import RedisRateLimiter
-    from src.interfaces.api.rate_limit_middleware import RateLimitMiddleware
+    if not skip_rate_limit:
+        from src.infrastructure.ratelimit.config_loader import RateLimitConfigLoader
+        from src.infrastructure.ratelimit.redis_rate_limiter import RedisRateLimiter
+        from src.interfaces.api.rate_limit_middleware import RateLimitMiddleware
 
-    rate_limiter = RedisRateLimiter(redis_client=container.redis_client())
-    config_loader = RateLimitConfigLoader(
-        rate_limit_config_repository=container.rate_limit_config_repository(),
-        redis_client=container.redis_client(),
-        cache_ttl=settings.rate_limit_config_cache_ttl,
-    )
-    application.add_middleware(
-        RateLimitMiddleware,
-        rate_limiter=rate_limiter,
-        config_loader=config_loader,
-        jwt_secret_key=settings.jwt_secret_key,
-        jwt_algorithm=settings.jwt_algorithm,
-        global_rpm=settings.rate_limit_global_rpm,
-    )
+        rate_limiter = RedisRateLimiter(redis_client=container.redis_client())
+        config_loader = RateLimitConfigLoader(
+            rate_limit_config_repo_factory=container.rate_limit_config_repository.provider,
+            redis_client=container.redis_client(),
+            cache_ttl=settings.rate_limit_config_cache_ttl,
+        )
+        application.add_middleware(
+            RateLimitMiddleware,
+            rate_limiter=rate_limiter,
+            config_loader=config_loader,
+            jwt_secret_key=settings.jwt_secret_key,
+            jwt_algorithm=settings.jwt_algorithm,
+            global_rpm=settings.rate_limit_global_rpm,
+        )
 
     application.add_middleware(
         CORSMiddleware,
