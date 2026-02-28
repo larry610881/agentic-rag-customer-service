@@ -147,7 +147,6 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     from src.interfaces.api.middleware import RequestIDMiddleware
 
     application.add_middleware(RequestIDMiddleware)
-    application.add_middleware(SessionCleanupMiddleware)
 
     # Rate Limit Middleware (runs after CORS, before route handlers)
     if not skip_rate_limit:
@@ -177,6 +176,12 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # SessionCleanupMiddleware MUST be the last add_middleware call.
+    # Last added = outermost in ASGI chain = executes after all inner
+    # middleware finish. This guarantees every AsyncSession created
+    # during the request (including by RateLimitMiddleware) is closed.
+    application.add_middleware(SessionCleanupMiddleware)
 
     @application.exception_handler(EntityNotFoundError)
     async def entity_not_found_handler(
