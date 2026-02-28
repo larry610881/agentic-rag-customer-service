@@ -1127,3 +1127,4 @@
 | **Issue #15 隱憂修復** | **✅ 完成** | **100%** | **Reprocess ProcessingTask 追蹤 + Cross-BC JOIN 優化 + kwargs bug fix, 8 files, 241 backend tests, 2 新 BDD scenarios** |
 | **N+1 查詢優化** | **✅ 完成** | **100%** | **3 Repos 修正: Bot(N+1→2), Feedback(2N+1→3), Conversation(N+1→2), 241 tests pass** |
 | **Frontend E2E User Journeys** | **✅ 完成** | **100%** | **8 journeys (12 scenarios), 雙角色覆蓋 11 頁面, 16/16 auth+journey tests pass** |
+| **PostgreSQL 連線洩漏修復** | **✅ 完成** | **100%** | **1 NEW + 6 MODIFY files: ContextVar ASGI SessionCleanupMiddleware + Singleton provider delegation + RateLimitConfigLoader repo_factory, 241 tests pass** |
