@@ -63,6 +63,14 @@ paths:
 - 過大的 Use Case class（超過 200 行，考慮拆分）
 - Domain Event 未被訂閱處理
 
+## AsyncSession 生命週期紅線
+
+- ❌ 禁止裸建 `AsyncSession` 而不管理生命週期（`async_session_factory()` 無 close = 連線洩漏）
+- ✅ 生產程式碼：必須透過 `get_tracked_session()` 建立（`SessionCleanupMiddleware` 在請求結束後自動 close）
+- ✅ 測試程式碼：`AsyncMock(spec=AsyncSession)` 不受此限
+- ❌ Singleton / 長生命週期物件禁止持有 session 實例 — 改用 `repo_factory` callable（透過 `.provider` delegation）
+- ❌ 禁止在應用啟動時急切解析 Repository（`container.xxx_repository()`）— 改傳 `container.xxx_repository.provider`
+
 ## Unit Test 紅線（違反即修正）
 
 以下行為在 `tests/unit/` 目錄下**一律禁止**：
