@@ -1,7 +1,5 @@
-"use client";
-
 import { useState } from "react";
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -133,7 +131,7 @@ export function FeedbackBrowserTable({
                     </TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" asChild>
-                        <Link href={`/feedback/${fb.conversation_id}`}>
+                        <Link to={`/feedback/${fb.conversation_id}`}>
                           <ExternalLink className="h-4 w-4" />
                         </Link>
                       </Button>

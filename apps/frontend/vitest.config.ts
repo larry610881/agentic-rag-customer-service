@@ -17,12 +17,19 @@ export default defineConfig({
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     coverage: {
       provider: "v8",
-      reporter: ["text", "lcov"],
+      reporter: ["text", "json", "html"],
       include: ["src/**/*.{ts,tsx}"],
       exclude: [
         "src/test/**",
         "src/**/*.d.ts",
-        "src/app/layout.tsx",
+        "src/**/*.test.{ts,tsx}",
+        "src/**/*.integration.test.{ts,tsx}",
+        "src/main.tsx",
+        "src/App.tsx",
+        "src/pages/**",
+        "src/**/index.ts",
+        "src/constants/**",
+        "src/types/**",
       ],
       thresholds: {
         statements: 80,

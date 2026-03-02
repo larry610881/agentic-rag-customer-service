@@ -181,8 +181,7 @@ const itemVariants = {
 
 ## framer-motion 慣例
 
-1. 使用 framer-motion 的元件檔案頂部必須加 `'use client'`
-2. 退場動畫使用 `AnimatePresence`，`exit` 時間 = `animate` 的 **70%**
-3. 列表動畫使用 `variants` + `staggerChildren`，避免逐一設定
-4. `layoutId` 用於跨元件的共享佈局動畫
-5. 避免在大量 DOM 元素上套用 motion（超過 50 個時改用 CSS animation）
+1. 退場動畫使用 `AnimatePresence`，`exit` 時間 = `animate` 的 **70%**
+2. 列表動畫使用 `variants` + `staggerChildren`，避免逐一設定
+3. `layoutId` 用於跨元件的共享佈局動畫
+4. 避免在大量 DOM 元素上套用 motion（超過 50 個時改用 CSS animation）

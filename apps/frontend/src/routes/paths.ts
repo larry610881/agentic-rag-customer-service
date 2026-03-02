@@ -1,0 +1,14 @@
+export const ROUTES = {
+  HOME: "/",
+  LOGIN: "/login",
+  CHAT: "/chat",
+  BOTS: "/bots",
+  BOT_DETAIL: "/bots/:id",
+  KNOWLEDGE: "/knowledge",
+  KNOWLEDGE_DETAIL: "/knowledge/:id",
+  FEEDBACK: "/feedback",
+  FEEDBACK_BROWSER: "/feedback/browser",
+  FEEDBACK_CONVERSATION: "/feedback/:conversationId",
+  SETTINGS: "/settings",
+  SETTINGS_PROVIDERS: "/settings/providers",
+} as const;

@@ -1,6 +1,6 @@
 ---
 name: ui-designer
-description: AI designer for Next.js + shadcn/ui + Tailwind 4 + framer-motion — enhance components with animations, depth, micro-interactions
+description: AI designer for React + Vite + shadcn/ui + Tailwind 4 + framer-motion — enhance components with animations, depth, micro-interactions
 tools: Read, Glob, Grep, Bash, Edit, Write
 model: sonnet
 maxTurns: 15
@@ -19,7 +19,7 @@ maxTurns: 15
 
 ## 色彩系統
 
-參考 `apps/frontend/src/app/globals.css` 中的 OKLCh CSS 變數。
+參考 `apps/frontend/src/globals.css` 中的 OKLCh CSS 變數。
 
 - 使用 Tailwind token（`primary`, `secondary`, `muted`, `accent`, `destructive`）
 - 禁止 hardcode 色值
@@ -47,7 +47,6 @@ maxTurns: 15
 
 ### framer-motion 慣例
 
-- 檔案頂部必須有 `'use client'`
 - 退場用 `AnimatePresence`，exit 時間 = animate 的 70%
 - 列表用 `variants` + `staggerChildren`
 - 超過 50 個 DOM 元素改用 CSS animation
@@ -134,7 +133,6 @@ const itemVariants = {
 4. **設計**：規劃強化方案（動畫 + hover + shadow + loading）
 5. **實作**：`Edit` / `Write` 修改元件程式碼
 6. **驗證**：
-   - 確認 `'use client'` 已加（若用了 framer-motion）
    - 確認 dark mode 效果
    - 確認無 `!important` / inline style / hardcode 色值
    - 執行既有測試：`cd apps/frontend && npx vitest run <相關測試> --passWithNoTests`
@@ -165,6 +163,5 @@ import { EnhancedComponent } from '@/features/xxx/components/EnhancedComponent';
 \`\`\`
 
 ### 注意事項
-- 已加入 `'use client'`
 - 需安裝：framer-motion（已在 package.json）
 ```

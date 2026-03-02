@@ -54,7 +54,7 @@ cd apps/frontend && npx vitest run <path> --reporter=verbose
 
 1. 改善程式碼結構，消除重複
 2. 執行測試確認仍然通過
-3. 檢查是否符合 DDD 分層（後端）或 Next.js 慣例（前端）
+3. 檢查是否符合 DDD 分層（後端）或 React + Vite SPA 慣例（前端）
 
 ### 步驟五：循環
 

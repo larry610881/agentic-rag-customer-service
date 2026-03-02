@@ -59,8 +59,7 @@
 依據分析結果進行修改：
 
 1. **Import framer-motion**：在檔案頂部加入 `import { motion, AnimatePresence } from 'framer-motion'`
-2. **加入 `'use client'`**：若檔案尚未有，在第一行加入
-3. **入場動畫**：根據元件類型選擇 slide-up / blur-fade / scale-in
+2. **入場動畫**：根據元件類型選擇 slide-up / blur-fade / scale-in
 4. **Hover 效果**：卡片 → `hover:scale-[1.02] hover:shadow-md`；按鈕 → `active:scale-95`
 5. **Shadow 層次**：依據元件在頁面中的視覺層級分配 shadow level
 6. **Loading 狀態**：若元件有 data fetching，加入 Skeleton 或 Spinner
@@ -68,8 +67,7 @@
 
 ### 步驟五：驗證
 
-1. 確認 `'use client'` 已加（若用了 framer-motion / hooks）
-2. 確認 dark mode 效果正常（shadow + border、色彩 token）
+1. 確認 dark mode 效果正常（shadow + border、色彩 token）
 3. 確認無 `!important`、inline style、hardcode 色值
 4. 執行既有測試確認無破壞：
    ```bash

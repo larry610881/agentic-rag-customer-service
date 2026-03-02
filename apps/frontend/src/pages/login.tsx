@@ -1,19 +1,18 @@
-"use client";
-
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import { LoginForm } from "@/features/auth/components/login-form";
 import { useAuthStore } from "@/stores/use-auth-store";
+import { ROUTES } from "@/routes/paths";
 
 export default function LoginPage() {
   const token = useAuthStore((s) => s.token);
-  const router = useRouter();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (token) {
-      router.replace("/chat");
+      navigate(ROUTES.CHAT, { replace: true });
     }
-  }, [token, router]);
+  }, [token, navigate]);
 
   if (token) {
     return null;

@@ -1,5 +1,3 @@
-"use client";
-
 import { Badge } from "@/components/ui/badge";
 import type { ToolCallInfo } from "@/types/chat";
 

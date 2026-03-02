@@ -1,5 +1,3 @@
-"use client";
-
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
 import { KnowledgeBaseCard } from "@/features/knowledge/components/knowledge-base-card";
 import { Skeleton } from "@/components/ui/skeleton";

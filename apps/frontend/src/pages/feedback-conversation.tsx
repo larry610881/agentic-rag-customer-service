@@ -1,7 +1,4 @@
-"use client";
-
-import { use } from "react";
-import Link from "next/link";
+import { Link, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useConversation } from "@/hooks/queries/use-conversations";
@@ -10,15 +7,12 @@ import {
   useUpdateFeedbackTags,
 } from "@/hooks/queries/use-feedback";
 import { ConversationReplay } from "@/features/feedback/components/conversation-replay";
+import { ROUTES } from "@/routes/paths";
 
-export default function FeedbackConversationPage({
-  params,
-}: {
-  params: Promise<{ conversationId: string }>;
-}) {
-  const { conversationId } = use(params);
-  const conversation = useConversation(conversationId);
-  const feedbacks = useFeedbackByConversation(conversationId);
+export default function FeedbackConversationPage() {
+  const { conversationId } = useParams<{ conversationId: string }>();
+  const conversation = useConversation(conversationId!);
+  const feedbacks = useFeedbackByConversation(conversationId!);
   const updateTags = useUpdateFeedbackTags();
 
   const messages = conversation.data?.messages.map((m) => ({
@@ -33,7 +27,7 @@ export default function FeedbackConversationPage({
     <div className="h-full overflow-auto flex flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/feedback/browser">
+          <Link to={ROUTES.FEEDBACK_BROWSER}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>

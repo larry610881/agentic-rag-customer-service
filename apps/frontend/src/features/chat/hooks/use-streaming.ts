@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback } from "react";
 import { fetchSSE, type SSEEvent } from "@/lib/sse-client";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
@@ -7,7 +5,7 @@ import { useAuthStore } from "@/stores/use-auth-store";
 import { useChatStore } from "@/stores/use-chat-store";
 import type { Source, ToolCallInfo } from "@/types/chat";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const TOOL_HINTS: Record<string, string> = {
   rag_query: "\u{1f50d} 正在查詢知識庫",

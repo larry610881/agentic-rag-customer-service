@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@/components/ui/button";
 import { TenantSelector } from "@/features/auth/components/tenant-selector";
 import { useAuthStore } from "@/stores/use-auth-store";

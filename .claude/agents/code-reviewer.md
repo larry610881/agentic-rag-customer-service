@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-description: Review frontend Next.js + TypeScript code for quality, patterns, accessibility, and test coverage
+description: Review frontend React + Vite SPA TypeScript code for quality, patterns, accessibility, and test coverage
 tools: Read, Glob, Grep, Bash
 model: sonnet
 maxTurns: 15
@@ -9,7 +9,7 @@ maxTurns: 15
 # Frontend Code Reviewer
 
 ## 你的任務
-審查前端 Next.js + TypeScript 程式碼的品質，僅限前端（`apps/frontend/`）。
+審查前端 React + Vite SPA TypeScript 程式碼的品質，僅限前端（`apps/frontend/`）。
 
 ## 審查流程
 
@@ -30,11 +30,11 @@ maxTurns: 15
 - 型別定義是否精確
 - Props type 是否獨立定義
 
-### Next.js App Router 最佳實踐
-- Server Component vs Client Component 是否正確區分
-- `'use client'` 是否只加在需要的地方
-- 資料獲取是否使用適當的模式（Server Components / TanStack Query）
-- `NEXT_PUBLIC_` 環境變數是否正確使用
+### React Router + Vite 最佳實踐
+- 路由是否使用 `ROUTES` 常數而非硬編碼字串
+- 頁面是否透過 `React.lazy()` lazy-load
+- 資料獲取是否使用 TanStack Query
+- `VITE_` 環境變數是否正確使用
 
 ### React 最佳實踐
 - 元件是否遵循單一職責原則

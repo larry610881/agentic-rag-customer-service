@@ -9,7 +9,7 @@ maxTurns: 15
 # Full-Stack Security Reviewer
 
 ## 你的任務
-檢查全棧應用（Python FastAPI + Next.js + RAG）的安全漏洞，按嚴重度分級回報。
+檢查全棧應用（Python FastAPI + React Vite SPA + RAG）的安全漏洞，按嚴重度分級回報。
 
 ## 檢查項目
 

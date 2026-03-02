@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef } from "react";
 import { useChatStore } from "@/stores/use-chat-store";
 import { MessageBubble } from "@/features/chat/components/message-bubble";

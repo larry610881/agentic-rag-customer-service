@@ -1,5 +1,3 @@
-"use client";
-
 import { useBots } from "@/hooks/queries/use-bots";
 import { BotCard } from "@/features/bot/components/bot-card";
 import { Skeleton } from "@/components/ui/skeleton";

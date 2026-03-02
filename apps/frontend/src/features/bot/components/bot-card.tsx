@@ -1,6 +1,4 @@
-"use client";
-
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -17,7 +15,7 @@ interface BotCardProps {
 
 export function BotCard({ bot }: BotCardProps) {
   return (
-    <Link href={`/bots/${bot.id}`}>
+    <Link to={`/bots/${bot.id}`}>
       <Card className="transition-colors hover:bg-muted/50">
         <CardHeader>
           <div className="flex items-center justify-between">

@@ -1,5 +1,3 @@
-"use client";
-
 import { ThumbsUp, ThumbsDown, MessageSquare, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";

@@ -1,5 +1,3 @@
-"use client";
-
 import { KnowledgeBaseList } from "@/features/knowledge/components/knowledge-base-list";
 import { CreateKbDialog } from "@/features/knowledge/components/create-kb-dialog";
 

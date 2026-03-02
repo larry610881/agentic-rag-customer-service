@@ -13,7 +13,7 @@ export default defineConfig({
   retries: 1,
   workers: 1,
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: "http://localhost:5173",
     trace: "on-first-retry",
     screenshot: "on",
     video: "on",
@@ -44,7 +44,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run dev",
-    port: 3000,
+    port: 5173,
     reuseExistingServer: !process.env.CI,
   },
 });

@@ -1,5 +1,3 @@
-"use client";
-
 import { useDocumentChunks } from "@/hooks/queries/use-document-chunks";
 import type { ChunkPreviewItem } from "@/types/knowledge";
 

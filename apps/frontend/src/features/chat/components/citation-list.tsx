@@ -1,5 +1,3 @@
-"use client";
-
 import { CitationCard } from "@/features/chat/components/citation-card";
 import type { Source } from "@/types/chat";
 

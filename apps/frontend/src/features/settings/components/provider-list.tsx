@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import { Plug, Plus, Trash2, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";

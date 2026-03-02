@@ -1,5 +1,3 @@
-"use client";
-
 import { MessageList } from "@/features/chat/components/message-list";
 import { ChatInput } from "@/features/chat/components/chat-input";
 import { ConversationList } from "@/features/chat/components/conversation-list";

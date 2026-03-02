@@ -1,36 +1,49 @@
-# Frontend — Next.js 15 App Router
+# Frontend — React + Vite SPA
 
 ## 架構概覽
 
 ```
 src/
-├── app/                   # Next.js App Router
-│   ├── layout.tsx         # Root layout
-│   ├── page.tsx           # Home / Login
-│   ├── (auth)/            # 認證相關頁面
-│   │   └── login/
-│   ├── (dashboard)/       # 需認證的頁面
-│   │   ├── chat/          # AI 對話頁面
-│   │   ├── knowledge/     # 知識庫管理
-│   │   └── settings/      # 系統設定
-│   └── api/               # API Routes（BFF）
+├── App.tsx                # React Router 路由定義
+├── main.tsx               # React 入口（createRoot + BrowserRouter）
+├── globals.css            # Tailwind CSS + shadcn/ui 主題
+├── routes/
+│   └── paths.ts           # 路由常數集中管理
+├── pages/                 # 頁面元件（lazy-loaded）
+│   ├── login.tsx
+│   ├── chat.tsx
+│   ├── bots.tsx
+│   ├── bot-detail.tsx
+│   ├── knowledge.tsx
+│   ├── knowledge-detail.tsx
+│   ├── feedback.tsx
+│   ├── feedback-browser.tsx
+│   ├── feedback-conversation.tsx
+│   └── settings-providers.tsx
 ├── components/            # 共用 UI 元件
+│   ├── layout/            # AppShell, Sidebar, Header, ProtectedRoute
 │   └── ui/                # shadcn/ui 元件（禁止修改）
 ├── features/              # 功能模組
 │   ├── chat/              # AI 對話
 │   │   ├── components/    # ChatInput, MessageBubble, ConversationList
-│   │   ├── hooks/         # useConversation, useMessages
+│   │   ├── hooks/         # useStreaming
 │   │   └── types.ts
 │   ├── knowledge/         # 知識庫
-│   │   ├── components/    # DocumentList, UploadForm
+│   │   ├── components/    # DocumentList, UploadDropzone
 │   │   └── hooks/
+│   ├── feedback/          # 回饋分析
+│   │   └── components/
+│   ├── bot/               # 機器人管理
+│   │   └── components/
+│   ├── settings/          # 系統設定
+│   │   └── components/
 │   └── auth/              # 認證
 │       ├── components/    # LoginForm
 │       └── hooks/
 ├── hooks/                 # 共用 hooks
 │   └── queries/           # TanStack Query hooks
 ├── lib/                   # 工具函式
-│   ├── api-client.ts      # Axios 或 fetch 封裝
+│   ├── api-client.ts      # fetch 封裝
 │   └── utils.ts           # cn() 等工具
 ├── stores/                # Zustand stores
 ├── constants/             # 常數定義
@@ -43,13 +56,13 @@ src/
         └── server.ts
 ```
 
-## Next.js App Router 慣例
+## Vite SPA 慣例
 
-- **Server Components** 為預設，需要互動性才加 `'use client'`
-- **頁面**放 `src/app/{route}/page.tsx`
-- **Layout** 放 `src/app/{route}/layout.tsx`
-- **環境變數**使用 `NEXT_PUBLIC_` 前綴（Client-side 可見）
-- **API Route** 放 `src/app/api/{route}/route.ts`
+- **純 Client-side SPA**，無 SSR / SSG
+- **路由**：React Router v6，定義在 `src/App.tsx`，常數在 `src/routes/paths.ts`
+- **頁面**放 `src/pages/`，使用 `React.lazy()` 做 code-splitting
+- **佈局**：`ProtectedRoute`（auth guard） + `AppShell`（sidebar + header + Outlet）
+- **環境變數**使用 `VITE_` 前綴，透過 `import.meta.env.VITE_*` 存取
 
 ## shadcn/ui 慣例
 
@@ -61,8 +74,9 @@ src/
 ## 常用指令
 
 ```bash
-npm run dev                # 開發伺服器（http://localhost:3000）
-npm run build              # 建置
+npm run dev                # 開發伺服器（http://localhost:5173）
+npm run build              # 建置（產出 dist/ 靜態檔）
+npm run preview            # 預覽 build 產出
 npm run test               # Vitest 全部測試
 npm run test:coverage      # 覆蓋率報告
 npm run test:e2e           # E2E BDD 測試（bddgen + Playwright）
@@ -103,7 +117,7 @@ e2e/
 ## 程式碼風格
 
 - **Functional Components only**，禁止 Class Components
-- **named exports**（非 default export）
+- **named exports**（非 default export）— 頁面元件除外（需 default export for lazy loading）
 - **禁止 `any`**，使用 `unknown` 或精確型別
 - **Tailwind CSS**：className 按邏輯分組
 - **Zustand**：一個 feature 一個 store

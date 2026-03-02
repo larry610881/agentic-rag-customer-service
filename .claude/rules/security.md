@@ -10,7 +10,7 @@ paths:
 - **禁止硬編碼** 任何密鑰、token、密碼、API key 於程式碼中
 - 環境變數透過 `.env` 檔案管理，**不可提交至版控**
 - 後端環境變數在 `apps/backend/.env`
-- 前端環境變數使用 `NEXT_PUBLIC_` 前綴，在 `apps/frontend/.env.local`
+- 前端環境變數使用 `VITE_` 前綴，在 `apps/frontend/.env.local`
 
 ## 後端安全
 

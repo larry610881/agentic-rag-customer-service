@@ -1,6 +1,6 @@
 ---
 name: build-error-resolver
-description: Resolve Python + Next.js build errors, import failures, type errors, dependency conflicts, LangGraph/Qdrant issues
+description: Resolve Python + React/Vite build errors, import failures, type errors, dependency conflicts, LangGraph/Qdrant issues
 tools: Read, Glob, Grep, Bash, Edit
 model: haiku
 maxTurns: 12
@@ -9,7 +9,7 @@ maxTurns: 12
 # Build Error Resolver
 
 ## 你的任務
-快速診斷並修復後端（Python）和前端（Next.js）的建置錯誤。只修錯誤本身，不做架構變更。
+快速診斷並修復後端（Python）和前端（React + Vite SPA）的建置錯誤。只修錯誤本身，不做架構變更。
 
 ## 診斷流程
 
@@ -18,7 +18,7 @@ maxTurns: 12
 | 來源 | 特徵 | 工作目錄 |
 |------|------|---------|
 | 後端 Python | `ModuleNotFoundError`、`mypy`、`uv` | `apps/backend/` |
-| 前端 Next.js | `Cannot find module`、`tsc`、`eslint` | `apps/frontend/` |
+| 前端 Vite SPA | `Cannot find module`、`tsc`、`eslint` | `apps/frontend/` |
 | LangGraph | `langgraph` 相關 import/runtime | `apps/backend/` |
 | Qdrant | `qdrant_client` 連線/查詢錯誤 | `apps/backend/` |
 
@@ -57,18 +57,18 @@ cd apps/frontend && npx tsc --noEmit 2>&1
 
 | 錯誤模式 | 診斷方向 |
 |----------|---------|
-| `Cannot find module '@/...'` | 檢查 `tsconfig.json` paths + `next.config.js` |
+| `Cannot find module '@/...'` | 檢查 `tsconfig.json` paths + `vite.config.ts` alias |
 | `Type 'X' is not assignable` | 檢查型別定義、props interface |
 
-**Next.js 建置錯誤：**
+**Vite 建置錯誤：**
 ```bash
 cd apps/frontend && npm run build 2>&1
 ```
 
 | 錯誤模式 | 診斷方向 |
 |----------|---------|
-| `'use client'` 相關 | Server/Client Component 邊界問題 |
-| `window is not defined` | Server Component 中使用 browser API |
+| `import.meta.env` 相關 | 環境變數須使用 `VITE_` 前綴 |
+| React Router 相關 | 檢查 `App.tsx` 路由定義與 `paths.ts` |
 
 **測試環境錯誤：**
 

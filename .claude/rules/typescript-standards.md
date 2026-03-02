@@ -37,13 +37,12 @@ export const UserProfile = ({ userId, onEdit }: UserProfileProps) => {
 | 自訂 Hook | camelCase + use 前綴 | `useConversation` |
 | 事件處理 | handle 前綴 | `handleSubmit` |
 
-## Next.js App Router 慣例
+## React + Vite SPA 慣例
 
-- 頁面放 `src/app/{route}/page.tsx`
-- Layout 放 `src/app/{route}/layout.tsx`
-- Server Components 為預設，需要互動性才加 `'use client'`
-- API Route 放 `src/app/api/{route}/route.ts`
-- 環境變數使用 `NEXT_PUBLIC_` 前綴（Client-side 可見）
+- 路由定義在 `src/App.tsx`（React Router v6），常數在 `src/routes/paths.ts`
+- 頁面放 `src/pages/`，使用 `React.lazy()` code-splitting（需 default export）
+- 佈局：`ProtectedRoute`（auth guard）+ `AppShell`（sidebar + header + Outlet）
+- 環境變數使用 `VITE_` 前綴，透過 `import.meta.env.VITE_*` 存取
 
 ## 前端測試金字塔（60:30:10）
 
@@ -163,11 +162,12 @@ describe('ChatPage 整合測試', () => {
 });
 ```
 
-## test-utils.tsx 範例（App Router Provider 包裝）
+## test-utils.tsx 範例（Router + QueryClient Provider 包裝）
 
 ```tsx
 // src/test/test-utils.tsx
 import { render, type RenderOptions } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const createTestQueryClient = () =>
@@ -183,9 +183,11 @@ export const renderWithProviders = (
 ) => {
   const queryClient = createTestQueryClient();
   return render(
-    <QueryClientProvider client={queryClient}>
-      {ui}
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        {ui}
+      </QueryClientProvider>
+    </MemoryRouter>,
     options
   );
 };

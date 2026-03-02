@@ -1,5 +1,3 @@
-"use client";
-
 import { AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/use-chat-store";

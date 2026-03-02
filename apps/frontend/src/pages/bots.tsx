@@ -1,5 +1,3 @@
-"use client";
-
 import { BotList } from "@/features/bot/components/bot-list";
 import { CreateBotDialog } from "@/features/bot/components/create-bot-dialog";
 

@@ -1,22 +1,20 @@
-"use client";
-
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { BotDetailForm } from "@/features/bot/components/bot-detail-form";
 import { useBot, useUpdateBot, useDeleteBot } from "@/hooks/queries/use-bots";
+import { ROUTES } from "@/routes/paths";
 
 export default function BotDetailPage() {
-  const params = useParams<{ id: string }>();
-  const router = useRouter();
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
 
-  const { data: bot, isLoading, isError } = useBot(params.id);
+  const { data: bot, isLoading, isError } = useBot(id!);
   const updateBot = useUpdateBot();
   const deleteBot = useDeleteBot();
 
   const handleDelete = () => {
-    deleteBot.mutate(params.id, {
+    deleteBot.mutate(id!, {
       onSuccess: () => {
-        router.push("/bots");
+        navigate(ROUTES.BOTS);
       },
     });
   };
@@ -40,7 +38,7 @@ export default function BotDetailPage() {
   return (
     <div className="h-full overflow-auto flex flex-col gap-6 p-6">
       <div className="flex items-center gap-2">
-        <Link href="/bots" className="text-sm text-muted-foreground hover:underline">
+        <Link to="/bots" className="text-sm text-muted-foreground hover:underline">
           機器人
         </Link>
         <span className="text-sm text-muted-foreground">/</span>
@@ -49,7 +47,7 @@ export default function BotDetailPage() {
       <h2 className="text-2xl font-semibold">{bot.name}</h2>
       <BotDetailForm
         bot={bot}
-        onSave={(data) => updateBot.mutate({ botId: params.id, data })}
+        onSave={(data) => updateBot.mutate({ botId: id!, data })}
         onDelete={handleDelete}
         isSaving={updateBot.isPending}
         isDeleting={deleteBot.isPending}

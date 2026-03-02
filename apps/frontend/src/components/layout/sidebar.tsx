@@ -1,7 +1,4 @@
-"use client";
-
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, useLocation } from "react-router-dom";
 import {
   MessageSquare,
   Bot,
@@ -25,7 +22,7 @@ const navItems = [
 ];
 
 export function Sidebar() {
-  const pathname = usePathname();
+  const { pathname } = useLocation();
   const isCollapsed = useSidebarStore((s) => s.isCollapsed);
   const toggle = useSidebarStore((s) => s.toggle);
 
@@ -66,7 +63,7 @@ export function Sidebar() {
               )}
               asChild
             >
-              <Link href={item.href}>
+              <Link to={item.href}>
                 <item.icon className="h-4 w-4 shrink-0" />
                 {!isCollapsed && <span className="ml-2">{item.label}</span>}
               </Link>

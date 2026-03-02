@@ -1,5 +1,3 @@
-"use client";
-
 import { Bot as BotIcon } from "lucide-react";
 import {
   Card,

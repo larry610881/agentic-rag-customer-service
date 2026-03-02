@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useState, type DragEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { useUploadDocument } from "@/hooks/queries/use-documents";
