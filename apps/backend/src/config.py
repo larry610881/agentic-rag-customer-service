@@ -31,10 +31,12 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     qwen_api_key: str = ""
     google_api_key: str = ""
+    deepseek_api_key: str = ""
     openrouter_api_key: str = ""
 
     # Embedding (independent from LLM)
-    embedding_provider: str = "fake"  # "fake" | "openai" | "qwen" | "google"
+    # "fake" | "openai" | "deepseek" | "qwen" | "google"
+    embedding_provider: str = "fake"
     embedding_api_key: str = ""  # dedicated key; falls back to provider key
     embedding_model: str = "text-embedding-3-small"
     embedding_vector_size: int = 1536
@@ -50,7 +52,7 @@ class Settings(BaseSettings):
     embedding_min_batch_size: int = 10
 
     # LLM (independent from Embedding)
-    # "fake" | "openai" | "anthropic" | "qwen" | "google" | "openrouter"
+    # "fake" | "openai" | "deepseek" | "anthropic" | "qwen" | "google" | "openrouter"
     llm_provider: str = "fake"
     llm_api_key: str = ""  # dedicated key; falls back to provider key
     llm_model: str = ""
@@ -133,6 +135,8 @@ class Settings(BaseSettings):
         """Resolve embedding API key: dedicated > provider-specific > legacy."""
         if self.embedding_api_key:
             return self.embedding_api_key
+        if self.embedding_provider == "deepseek":
+            return self.deepseek_api_key
         if self.embedding_provider == "qwen":
             return self.qwen_api_key
         if self.embedding_provider == "google":
@@ -146,6 +150,8 @@ class Settings(BaseSettings):
         """Resolve LLM API key: dedicated > provider-specific > legacy."""
         if self.llm_api_key:
             return self.llm_api_key
+        if self.llm_provider == "deepseek":
+            return self.deepseek_api_key
         if self.llm_provider == "qwen":
             return self.qwen_api_key
         if self.llm_provider == "google":

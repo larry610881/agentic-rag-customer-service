@@ -29,8 +29,6 @@ const formSchema = z.object({
   provider_type: z.string().min(1, "請選擇類型"),
   provider_name: z.string().min(1, "請選擇供應商"),
   display_name: z.string().min(1, "請輸入顯示名稱"),
-  api_key: z.string(),
-  base_url: z.string(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -65,8 +63,6 @@ export function ProviderFormDialog({
       provider_type: defaultType || "llm",
       provider_name: "",
       display_name: "",
-      api_key: "",
-      base_url: "",
     },
   });
 
@@ -76,16 +72,12 @@ export function ProviderFormDialog({
         provider_type: editingSetting.provider_type,
         provider_name: editingSetting.provider_name,
         display_name: editingSetting.display_name,
-        api_key: "",
-        base_url: editingSetting.base_url,
       });
     } else {
       reset({
         provider_type: defaultType || "llm",
         provider_name: "",
         display_name: "",
-        api_key: "",
-        base_url: "",
       });
     }
   }, [editingSetting, defaultType, reset]);
@@ -97,8 +89,6 @@ export function ProviderFormDialog({
           id: editingSetting.id,
           data: {
             display_name: values.display_name,
-            api_key: values.api_key || undefined,
-            base_url: values.base_url || undefined,
           },
         },
         {
@@ -111,8 +101,7 @@ export function ProviderFormDialog({
           provider_type: values.provider_type,
           provider_name: values.provider_name,
           display_name: values.display_name,
-          api_key: values.api_key,
-          base_url: values.base_url || undefined,
+          api_key: "",
         },
         {
           onSuccess: () => onOpenChange(false),
@@ -191,7 +180,7 @@ export function ProviderFormDialog({
             <Label htmlFor="display_name">顯示名稱</Label>
             <Input
               id="display_name"
-              placeholder="例：OpenAI GPT-4o"
+              placeholder="例：DeepSeek V3"
               {...register("display_name")}
             />
             {errors.display_name && (
@@ -201,26 +190,9 @@ export function ProviderFormDialog({
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="api_key">
-              API Key {isEditing && "(留空則不更新)"}
-            </Label>
-            <Input
-              id="api_key"
-              type="password"
-              placeholder={isEditing ? "••••••••" : "sk-..."}
-              {...register("api_key")}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="base_url">Base URL (選填)</Label>
-            <Input
-              id="base_url"
-              placeholder="https://api.openai.com/v1"
-              {...register("base_url")}
-            />
-          </div>
+          <p className="text-xs text-muted-foreground">
+            API Key 由伺服器環境變數 (.env) 管理，無需在此填寫。
+          </p>
 
           <div className="flex justify-end gap-2">
             <Button

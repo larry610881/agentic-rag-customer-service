@@ -1,6 +1,7 @@
 import json
 from collections.abc import AsyncIterator
 
+from src.config import Settings
 from src.domain.platform.services import EncryptionService
 from src.domain.platform.value_objects import ProviderName, ProviderType
 from src.domain.rag.services import LLMService
@@ -13,6 +14,7 @@ logger = get_logger(__name__)
 # Default base URLs per provider
 _DEFAULT_BASE_URLS: dict[str, str] = {
     ProviderName.OPENAI.value: "https://api.openai.com/v1",
+    ProviderName.DEEPSEEK.value: "https://api.deepseek.com/v1",
     ProviderName.QWEN.value: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     ProviderName.GOOGLE.value: "https://generativelanguage.googleapis.com/v1beta/openai",
     ProviderName.OPENROUTER.value: "https://openrouter.ai/api/v1",
@@ -22,9 +24,20 @@ _DEFAULT_BASE_URLS: dict[str, str] = {
 _DEFAULT_MODELS: dict[str, str] = {
     ProviderName.ANTHROPIC.value: "claude-sonnet-4-20250514",
     ProviderName.OPENAI.value: "gpt-4o",
+    ProviderName.DEEPSEEK.value: "deepseek-chat",
     ProviderName.QWEN.value: "qwen-plus",
     ProviderName.GOOGLE.value: "gemini-2.5-flash-lite",
     ProviderName.OPENROUTER.value: "openai/gpt-4o",
+}
+
+# Map provider_name -> Settings attribute for .env fallback API key
+_ENV_KEY_MAP: dict[str, str] = {
+    ProviderName.OPENAI.value: "effective_openai_api_key",
+    ProviderName.DEEPSEEK.value: "deepseek_api_key",
+    ProviderName.ANTHROPIC.value: "anthropic_api_key",
+    ProviderName.GOOGLE.value: "google_api_key",
+    ProviderName.QWEN.value: "qwen_api_key",
+    ProviderName.OPENROUTER.value: "openrouter_api_key",
 }
 
 
@@ -91,7 +104,14 @@ class DynamicLLMServiceFactory:
                 return self._fallback
 
             setting = enabled[0]
-            api_key = self._encryption.decrypt(setting.api_key_encrypted)
+
+            # Resolve API key: DB-encrypted first, then .env fallback
+            if setting.api_key_encrypted:
+                api_key = self._encryption.decrypt(setting.api_key_encrypted)
+            else:
+                cfg = Settings()
+                attr = _ENV_KEY_MAP.get(setting.provider_name.value, "")
+                api_key = getattr(cfg, attr, "") if attr else ""
 
             # Find default model
             default_model = next(

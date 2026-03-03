@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plug, Plus, Trash2, Wifi, WifiOff } from "lucide-react";
+import { Plug, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   useProviderSettings,
   useDeleteProviderSetting,
-  useTestProviderConnection,
 } from "@/hooks/queries/use-provider-settings";
 import type { ProviderSetting } from "@/types/provider-setting";
 import { ProviderFormDialog } from "./provider-form-dialog";
@@ -19,7 +18,6 @@ interface ProviderListProps {
 export function ProviderList({ type }: ProviderListProps) {
   const { data: providers, isLoading } = useProviderSettings(type);
   const deleteMutation = useDeleteProviderSetting();
-  const testMutation = useTestProviderConnection();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSetting, setEditingSetting] =
     useState<ProviderSetting | null>(null);
@@ -80,12 +78,6 @@ export function ProviderList({ type }: ProviderListProps) {
               setDialogOpen(true);
             }}
             onDelete={() => deleteMutation.mutate(provider.id)}
-            onTest={() => testMutation.mutate(provider.id)}
-            testResult={
-              testMutation.variables === provider.id
-                ? testMutation
-                : undefined
-            }
           />
         ))}
       </div>
@@ -104,19 +96,12 @@ interface ProviderCardProps {
   provider: ProviderSetting;
   onEdit: () => void;
   onDelete: () => void;
-  onTest: () => void;
-  testResult?: {
-    isPending: boolean;
-    data?: { success: boolean; latency_ms: number; error: string };
-  };
 }
 
 function ProviderCard({
   provider,
   onEdit,
   onDelete,
-  onTest,
-  testResult,
 }: ProviderCardProps) {
   return (
     <Card
@@ -136,43 +121,17 @@ function ProviderCard({
       </CardHeader>
       <CardContent>
         <div className="mb-3 space-y-1 text-sm text-muted-foreground">
-          <p>
-            API Key: {provider.has_api_key ? "••••••••" : "未設定"}
-          </p>
           {provider.models.length > 0 && (
             <p>
               模型:{" "}
               {provider.models.map((m) => m.display_name).join(", ")}
             </p>
           )}
+          <p className="text-xs">API Key 由 .env 管理</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={onEdit}>
             編輯
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onTest}
-            disabled={testResult?.isPending}
-          >
-            {testResult?.isPending ? (
-              "測試中..."
-            ) : testResult?.data ? (
-              testResult.data.success ? (
-                <>
-                  <Wifi className="mr-1 h-3 w-3 text-green-500" />
-                  {testResult.data.latency_ms}ms
-                </>
-              ) : (
-                <>
-                  <WifiOff className="mr-1 h-3 w-3 text-red-500" />
-                  失敗
-                </>
-              )
-            ) : (
-              "測試連線"
-            )}
           </Button>
           <Button
             variant="ghost"

@@ -114,9 +114,6 @@ from src.infrastructure.db.health_repository import HealthRepository
 from src.infrastructure.db.repositories.bot_repository import (
     SQLAlchemyBotRepository,
 )
-from src.infrastructure.db.repositories.chunk_repository import (
-    SQLAlchemyChunkRepository,
-)
 from src.infrastructure.db.repositories.conversation_repository import (
     SQLAlchemyConversationRepository,
 )
@@ -266,11 +263,6 @@ class Container(containers.DeclarativeContainer):
 
     document_repository = providers.Factory(
         SQLAlchemyDocumentRepository,
-        session=db_session,
-    )
-
-    chunk_repository = providers.Factory(
-        SQLAlchemyChunkRepository,
         session=db_session,
     )
 
@@ -453,6 +445,38 @@ class Container(containers.DeclarativeContainer):
                 lambda cfg: cfg.embedding_min_batch_size, config
             ),
         ),
+        deepseek=providers.Factory(
+            OpenAIEmbeddingService,
+            api_key=providers.Callable(
+                lambda cfg: cfg.effective_embedding_api_key, config
+            ),
+            model=providers.Callable(
+                lambda cfg: cfg.embedding_model, config
+            ),
+            base_url=providers.Callable(
+                lambda cfg: cfg.embedding_base_url
+                or "https://api.deepseek.com/v1",
+                config,
+            ),
+            batch_size=providers.Callable(
+                lambda cfg: cfg.embedding_batch_size, config
+            ),
+            max_retries=providers.Callable(
+                lambda cfg: cfg.embedding_max_retries, config
+            ),
+            timeout=providers.Callable(
+                lambda cfg: cfg.embedding_timeout, config
+            ),
+            batch_delay=providers.Callable(
+                lambda cfg: cfg.embedding_batch_delay, config
+            ),
+            retry_after_multiplier=providers.Callable(
+                lambda cfg: cfg.embedding_retry_after_multiplier, config
+            ),
+            min_batch_size=providers.Callable(
+                lambda cfg: cfg.embedding_min_batch_size, config
+            ),
+        ),
     )
 
     _embedding_factory = providers.Singleton(
@@ -515,6 +539,25 @@ class Container(containers.DeclarativeContainer):
             ),
             base_url=providers.Callable(
                 lambda cfg: cfg.llm_base_url or "https://api.openai.com/v1",
+                config,
+            ),
+        ),
+        deepseek=providers.Factory(
+            OpenAILLMService,
+            api_key=providers.Callable(
+                lambda cfg: cfg.effective_llm_api_key, config
+            ),
+            model=providers.Callable(
+                lambda cfg: cfg.llm_model or "deepseek-chat", config
+            ),
+            max_tokens=providers.Callable(
+                lambda cfg: cfg.llm_max_tokens, config
+            ),
+            pricing=providers.Callable(
+                lambda cfg: cfg.llm_pricing, config
+            ),
+            base_url=providers.Callable(
+                lambda cfg: cfg.llm_base_url or "https://api.deepseek.com/v1",
                 config,
             ),
         ),
@@ -669,7 +712,6 @@ class Container(containers.DeclarativeContainer):
     delete_document_use_case = providers.Factory(
         DeleteDocumentUseCase,
         document_repository=document_repository,
-        chunk_repository=chunk_repository,
         vector_store=vector_store,
     )
 
@@ -684,7 +726,6 @@ class Container(containers.DeclarativeContainer):
     process_document_use_case = providers.Factory(
         ProcessDocumentUseCase,
         document_repository=document_repository,
-        chunk_repository=chunk_repository,
         processing_task_repository=processing_task_repository,
         text_splitter_service=text_splitter_service,
         embedding_service=embedding_service,
@@ -698,13 +739,12 @@ class Container(containers.DeclarativeContainer):
 
     get_document_chunks_use_case = providers.Factory(
         GetDocumentChunksUseCase,
-        chunk_repository=chunk_repository,
+        document_repository=document_repository,
     )
 
     reprocess_document_use_case = providers.Factory(
         ReprocessDocumentUseCase,
         document_repository=document_repository,
-        chunk_repository=chunk_repository,
         processing_task_repository=processing_task_repository,
         text_splitter_service=text_splitter_service,
         embedding_service=embedding_service,
@@ -714,7 +754,6 @@ class Container(containers.DeclarativeContainer):
     get_document_quality_stats_use_case = providers.Factory(
         GetDocumentQualityStatsUseCase,
         document_repository=document_repository,
-        chunk_repository=chunk_repository,
         feedback_repository=feedback_repository,
     )
 
@@ -823,6 +862,11 @@ class Container(containers.DeclarativeContainer):
             rag_tool=rag_tool,
         ),
         openai=providers.Factory(
+            LangGraphAgentService,
+            llm_service=llm_service,
+            rag_tool=rag_tool,
+        ),
+        deepseek=providers.Factory(
             LangGraphAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,

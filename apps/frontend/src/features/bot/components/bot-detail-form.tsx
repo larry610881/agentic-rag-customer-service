@@ -15,6 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
+import { useProviderSettings } from "@/hooks/queries/use-provider-settings";
+import { PROVIDER_MODELS } from "@/lib/provider-models";
 import type { Bot, UpdateBotRequest } from "@/types/bot";
 
 const AVAILABLE_TOOLS = [
@@ -57,6 +59,7 @@ export function BotDetailForm({
   isDeleting,
 }: BotDetailFormProps) {
   const { data: knowledgeBases } = useKnowledgeBases();
+  const { data: llmProviders } = useProviderSettings("llm");
 
   const {
     register,
@@ -299,6 +302,57 @@ export function BotDetailForm({
             placeholder="輸入此機器人的自訂系統提示詞..."
           />
         </div>
+      </section>
+
+      <Separator />
+
+      {/* LLM 供應商 */}
+      <section className="flex flex-col gap-4">
+        <h3 className="text-lg font-semibold">LLM 供應商</h3>
+        <p className="text-sm text-muted-foreground">
+          目前啟用的 LLM 供應商及可用模型（由系統設定頁管理）。
+        </p>
+        {llmProviders && llmProviders.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {llmProviders
+              .filter((p) => p.is_enabled)
+              .map((provider) => {
+                const models =
+                  PROVIDER_MODELS[provider.provider_name]?.llm ?? [];
+                return (
+                  <div
+                    key={provider.id}
+                    className="rounded-lg border bg-muted/30 p-3"
+                  >
+                    <p className="font-medium">{provider.display_name}</p>
+                    {models.length > 0 ? (
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {models.map((m) => (
+                          <span
+                            key={m.id}
+                            className="inline-flex items-center gap-1 rounded-md bg-background px-2 py-1 text-xs"
+                          >
+                            {m.name}
+                            <span className="text-muted-foreground">
+                              {m.price}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        無預設模型清單
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            尚未啟用任何 LLM 供應商。請至系統設定頁新增。
+          </p>
+        )}
       </section>
 
       <Separator />

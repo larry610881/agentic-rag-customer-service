@@ -42,7 +42,7 @@ class CreateProviderSettingRequest(BaseModel):
     provider_type: str
     provider_name: str
     display_name: str
-    api_key: str
+    api_key: str = ""
     base_url: str = ""
     models: list[ModelConfigSchema] = []
     extra_config: dict[str, Any] = {}

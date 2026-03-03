@@ -22,7 +22,7 @@ export interface CreateProviderSettingRequest {
   provider_type: string;
   provider_name: string;
   display_name: string;
-  api_key: string;
+  api_key?: string;
   base_url?: string;
   models?: ModelConfig[];
   extra_config?: Record<string, unknown>;
@@ -44,10 +44,11 @@ export interface ConnectionResult {
 }
 
 export const PROVIDER_NAMES = [
+  { value: "deepseek", label: "DeepSeek" },
   { value: "openai", label: "OpenAI" },
+  { value: "google", label: "Google" },
   { value: "anthropic", label: "Anthropic" },
   { value: "qwen", label: "Qwen" },
-  { value: "google", label: "Google" },
   { value: "openrouter", label: "OpenRouter" },
   { value: "fake", label: "Fake (Dev)" },
 ] as const;

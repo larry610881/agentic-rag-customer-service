@@ -1,5 +1,6 @@
 import json
 
+from src.config import Settings
 from src.domain.platform.services import EncryptionService
 from src.domain.platform.value_objects import ProviderName, ProviderType
 from src.domain.rag.services import EmbeddingService
@@ -10,6 +11,7 @@ logger = get_logger(__name__)
 
 _DEFAULT_BASE_URLS: dict[str, str] = {
     ProviderName.OPENAI.value: "https://api.openai.com/v1",
+    ProviderName.DEEPSEEK.value: "https://api.deepseek.com/v1",
     ProviderName.QWEN.value: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     ProviderName.GOOGLE.value: "https://generativelanguage.googleapis.com/v1beta/openai",
 }
@@ -18,6 +20,16 @@ _DEFAULT_MODELS: dict[str, str] = {
     ProviderName.OPENAI.value: "text-embedding-3-small",
     ProviderName.QWEN.value: "text-embedding-v3",
     ProviderName.GOOGLE.value: "text-embedding-004",
+}
+
+# Map provider_name -> Settings attribute for .env fallback API key
+_ENV_KEY_MAP: dict[str, str] = {
+    ProviderName.OPENAI.value: "effective_openai_api_key",
+    ProviderName.DEEPSEEK.value: "deepseek_api_key",
+    ProviderName.ANTHROPIC.value: "anthropic_api_key",
+    ProviderName.GOOGLE.value: "google_api_key",
+    ProviderName.QWEN.value: "qwen_api_key",
+    ProviderName.OPENROUTER.value: "openrouter_api_key",
 }
 
 
@@ -77,7 +89,14 @@ class DynamicEmbeddingServiceFactory:
                 return self._fallback
 
             setting = enabled[0]
-            api_key = self._encryption.decrypt(setting.api_key_encrypted)
+
+            # Resolve API key: DB-encrypted first, then .env fallback
+            if setting.api_key_encrypted:
+                api_key = self._encryption.decrypt(setting.api_key_encrypted)
+            else:
+                cfg = Settings()
+                attr = _ENV_KEY_MAP.get(setting.provider_name.value, "")
+                api_key = getattr(cfg, attr, "") if attr else ""
 
             default_model = next(
                 (m.model_id for m in setting.models if m.is_default),

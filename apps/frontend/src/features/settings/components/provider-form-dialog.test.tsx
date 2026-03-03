@@ -15,7 +15,9 @@ describe("ProviderFormDialog", () => {
 
     expect(screen.getByText("新增供應商設定")).toBeInTheDocument();
     expect(screen.getByLabelText("顯示名稱")).toBeInTheDocument();
-    expect(screen.getByLabelText(/API Key/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/API Key 由伺服器環境變數/),
+    ).toBeInTheDocument();
   });
 
   it("should render edit form when editing setting provided", () => {

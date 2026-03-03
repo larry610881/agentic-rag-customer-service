@@ -16,6 +16,7 @@ class ProviderType(str, Enum):
 class ProviderName(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    DEEPSEEK = "deepseek"
     QWEN = "qwen"
     GOOGLE = "google"
     OPENROUTER = "openrouter"
