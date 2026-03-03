@@ -118,3 +118,30 @@ export function useEnabledModels() {
     enabled: !!token,
   });
 }
+
+export type ModelRegistryEntry = {
+  model_id: string;
+  display_name: string;
+  price: string;
+};
+
+export type ModelRegistry = Record<
+  string,
+  Record<string, ModelRegistryEntry[]>
+>;
+
+export function useModelRegistry() {
+  const token = useAuthStore((s) => s.token);
+
+  return useQuery({
+    queryKey: queryKeys.providerSettings.modelRegistry,
+    queryFn: () =>
+      apiFetch<ModelRegistry>(
+        API_ENDPOINTS.providerSettings.modelRegistry,
+        {},
+        token ?? undefined,
+      ),
+    enabled: !!token,
+    staleTime: 1000 * 60 * 30, // 30 min — registry rarely changes
+  });
+}

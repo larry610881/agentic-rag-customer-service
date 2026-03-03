@@ -7,6 +7,7 @@ import {
   useProviderSettings,
   useCreateProviderSetting,
   useUpdateProviderSetting,
+  useModelRegistry,
 } from "@/hooks/queries/use-provider-settings";
 import type { ProviderSetting } from "@/types/provider-setting";
 import { PROVIDER_LABELS, PROVIDER_ORDER } from "@/types/provider-setting";
@@ -17,6 +18,7 @@ interface ProviderListProps {
 
 export function ProviderList({ type }: ProviderListProps) {
   const { data: settings, isLoading } = useProviderSettings(type);
+  const { data: registry } = useModelRegistry();
   const createMutation = useCreateProviderSetting();
   const updateMutation = useUpdateProviderSetting();
 
@@ -143,6 +145,33 @@ export function ProviderList({ type }: ProviderListProps) {
                               {m.model_id}
                             </span>
                           </div>
+                        </div>
+                        <span className="shrink-0 text-muted-foreground">
+                          {m.price}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : !setting &&
+                registry?.[providerName]?.[type]?.length ? (
+                <>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    啟用後可用模型
+                  </p>
+                  <div className="space-y-1">
+                    {registry[providerName][type].map((m) => (
+                      <div
+                        key={m.model_id}
+                        className="flex items-center justify-between rounded-md border bg-muted/10 px-2.5 py-1.5 text-xs opacity-60"
+                      >
+                        <div>
+                          <span className="font-medium">
+                            {m.display_name}
+                          </span>
+                          <span className="ml-1.5 font-mono text-muted-foreground">
+                            {m.model_id}
+                          </span>
                         </div>
                         <span className="shrink-0 text-muted-foreground">
                           {m.price}

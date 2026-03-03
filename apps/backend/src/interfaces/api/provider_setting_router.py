@@ -90,6 +90,12 @@ class ConnectionResultResponse(BaseModel):
     error: str = ""
 
 
+@router.get("/model-registry")
+async def get_model_registry() -> dict[str, dict[str, list[dict]]]:
+    from src.domain.platform.model_registry import DEFAULT_MODELS
+    return DEFAULT_MODELS
+
+
 def _to_response(setting) -> ProviderSettingResponse:
     return ProviderSettingResponse(
         id=setting.id.value,

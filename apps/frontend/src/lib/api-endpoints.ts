@@ -67,5 +67,6 @@ export const API_ENDPOINTS = {
     testConnection: (id: string) =>
       `/api/v1/settings/providers/${id}/test-connection`,
     enabledModels: "/api/v1/settings/providers/enabled-models",
+    modelRegistry: "/api/v1/settings/providers/model-registry",
   },
 } as const;
