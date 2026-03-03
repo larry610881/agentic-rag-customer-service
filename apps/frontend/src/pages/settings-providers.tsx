@@ -2,10 +2,12 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ProviderList } from "@/features/settings/components/provider-list";
+import { ApiKeyList } from "@/features/settings/components/api-key-list";
 
 const tabs = [
   { value: "llm", label: "LLM" },
   { value: "embedding", label: "Embedding" },
+  { value: "api-key", label: "API Key" },
 ] as const;
 
 export default function ProvidersSettingsPage() {
@@ -16,7 +18,7 @@ export default function ProvidersSettingsPage() {
       <div>
         <h1 className="text-2xl font-bold">供應商設定</h1>
         <p className="text-muted-foreground">
-          啟用或停用 LLM / Embedding 供應商。API Key 由伺服器 .env 環境變數管理。
+          管理 LLM / Embedding 供應商與 API Key。
         </p>
       </div>
 
@@ -37,7 +39,11 @@ export default function ProvidersSettingsPage() {
         ))}
       </div>
 
-      <ProviderList type={activeTab} />
+      {activeTab === "api-key" ? (
+        <ApiKeyList />
+      ) : (
+        <ProviderList type={activeTab} />
+      )}
     </div>
   );
 }
