@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -25,6 +27,10 @@ export function ProviderList({ type }: ProviderListProps) {
 
   // Track which provider is showing the "cannot disable" warning
   const [disableWarning, setDisableWarning] = useState<string | null>(null);
+  // API key draft per provider (only held in memory, never displayed back)
+  const [apiKeyDrafts, setApiKeyDrafts] = useState<Record<string, string>>({});
+  // Flash "已更新" after successful key save
+  const [keySaved, setKeySaved] = useState<string | null>(null);
 
   const findSetting = (providerName: string): ProviderSetting | undefined =>
     settings?.find(
@@ -82,6 +88,21 @@ export function ProviderList({ type }: ProviderListProps) {
       id: setting.id,
       data: { models: updatedModels },
     });
+  }
+
+  function handleSaveApiKey(setting: ProviderSetting) {
+    const key = apiKeyDrafts[setting.id]?.trim();
+    if (!key) return;
+    updateMutation.mutate(
+      { id: setting.id, data: { api_key: key } },
+      {
+        onSuccess: () => {
+          setApiKeyDrafts((prev) => ({ ...prev, [setting.id]: "" }));
+          setKeySaved(setting.id);
+          setTimeout(() => setKeySaved(null), 2000);
+        },
+      },
+    );
   }
 
   if (isLoading) {
@@ -246,9 +267,61 @@ export function ProviderList({ type }: ProviderListProps) {
                   {setting ? "無可用模型" : "未啟用"}
                 </p>
               )}
-              <p className="mt-3 text-[11px] text-muted-foreground">
-                API Key 由伺服器 .env 管理
-              </p>
+              {/* API Key 管理 */}
+              {setting ? (
+                <div className="mt-3 flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      API Key
+                    </Label>
+                    {keySaved === setting.id ? (
+                      <Badge
+                        variant="outline"
+                        className="border-green-500 text-green-600 text-[10px]"
+                      >
+                        已更新
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] ${setting.has_api_key ? "border-green-500 text-green-600" : ""}`}
+                      >
+                        {setting.has_api_key ? "已設定" : "未設定"}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Input
+                      type="password"
+                      placeholder="輸入新的 API Key"
+                      value={apiKeyDrafts[setting.id] ?? ""}
+                      onChange={(e) =>
+                        setApiKeyDrafts((prev) => ({
+                          ...prev,
+                          [setting.id]: e.target.value,
+                        }))
+                      }
+                      className="h-7 text-xs"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 shrink-0 px-2.5 text-xs"
+                      disabled={
+                        !apiKeyDrafts[setting.id]?.trim() || isBusy
+                      }
+                      onClick={() => handleSaveApiKey(setting)}
+                    >
+                      更新
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  啟用後可設定 API Key
+                </p>
+              )}
             </CardContent>
           </Card>
         );
