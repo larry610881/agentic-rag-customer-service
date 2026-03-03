@@ -1,3 +1,5 @@
+import { useAuthStore } from "@/stores/use-auth-store";
+
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export class ApiError extends Error {
@@ -24,6 +26,9 @@ export async function apiFetch<T>(
   }
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) {
+    if (res.status === 401) {
+      useAuthStore.getState().logout();
+    }
     const body = await res.text();
     throw new ApiError(res.status, body);
   }
