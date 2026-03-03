@@ -30,13 +30,14 @@ DEFAULT_MODELS: dict[str, dict[str, list[dict]]] = {
     },
     "google": {
         "llm": [
+            {"model_id": "gemini-3.1-pro-preview", "display_name": "Gemini 3.1 Pro", "price": "$2/$12"},
+            {"model_id": "gemini-3-flash-preview", "display_name": "Gemini 3 Flash", "price": "$0.50/$3"},
+            {"model_id": "gemini-2.5-pro", "display_name": "Gemini 2.5 Pro", "price": "$1.25/$10"},
             {"model_id": "gemini-2.5-flash", "display_name": "Gemini 2.5 Flash", "price": "$0.30/$2.50"},
             {"model_id": "gemini-2.5-flash-lite", "display_name": "Gemini 2.5 Flash Lite", "price": "$0.10/$0.40"},
-            {"model_id": "gemini-2.5-pro", "display_name": "Gemini 2.5 Pro", "price": "$1.25/$10"},
         ],
         "embedding": [
             {"model_id": "gemini-embedding-001", "display_name": "Gemini Embedding", "price": "$0.15"},
-            {"model_id": "text-embedding-004", "display_name": "Text Embedding 004", "price": "Free"},
         ],
     },
     "anthropic": {
