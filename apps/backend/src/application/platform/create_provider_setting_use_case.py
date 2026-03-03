@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from src.domain.platform.entity import ProviderSetting
@@ -11,6 +12,7 @@ from src.domain.platform.value_objects import (
     ProviderSettingId,
     ProviderType,
 )
+from src.domain.shared.cache_service import CacheService
 from src.domain.shared.exceptions import DuplicateEntityError
 
 
@@ -25,14 +27,22 @@ class CreateProviderSettingCommand:
     extra_config: dict[str, Any] = field(default_factory=dict)
 
 
+_PROVIDER_TYPE_CACHE_KEYS = {
+    ProviderType.LLM: "llm_config:default",
+    ProviderType.EMBEDDING: "embedding_config:default",
+}
+
+
 class CreateProviderSettingUseCase:
     def __init__(
         self,
         provider_setting_repository: ProviderSettingRepository,
         encryption_service: EncryptionService,
+        cache_service: CacheService | None = None,
     ) -> None:
         self._repository = provider_setting_repository
         self._encryption = encryption_service
+        self._cache_service = cache_service
 
     async def execute(
         self, command: CreateProviderSettingCommand
@@ -73,6 +83,17 @@ class CreateProviderSettingUseCase:
             else ""
         )
 
+        # Embedding provider 互斥：建立新的時停用其他已啟用的
+        if provider_type == ProviderType.EMBEDDING:
+            all_embedding = await self._repository.find_all_by_type(
+                ProviderType.EMBEDDING
+            )
+            for other in all_embedding:
+                if other.is_enabled:
+                    other.is_enabled = False
+                    other.updated_at = datetime.now(timezone.utc)
+                    await self._repository.save(other)
+
         setting = ProviderSetting(
             id=ProviderSettingId(),
             provider_type=provider_type,
@@ -86,4 +107,8 @@ class CreateProviderSettingUseCase:
         )
 
         await self._repository.save(setting)
+        if self._cache_service is not None:
+            cache_key = _PROVIDER_TYPE_CACHE_KEYS.get(provider_type)
+            if cache_key:
+                await self._cache_service.delete(cache_key)
         return setting

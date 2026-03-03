@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,9 @@ export function ProviderList({ type }: ProviderListProps) {
   const createMutation = useCreateProviderSetting();
   const updateMutation = useUpdateProviderSetting();
 
+  // Track which provider is showing the "cannot disable" warning
+  const [disableWarning, setDisableWarning] = useState<string | null>(null);
+
   const findSetting = (providerName: string): ProviderSetting | undefined =>
     settings?.find(
       (s) =>
@@ -38,7 +42,16 @@ export function ProviderList({ type }: ProviderListProps) {
         provider_name: providerName,
         display_name: PROVIDER_LABELS[providerName] ?? providerName,
       });
+    } else if (
+      currentSetting.is_enabled &&
+      type === "embedding" &&
+      currentSetting.models.some((m) => m.is_default)
+    ) {
+      // Prevent disabling embedding provider when a model is selected
+      setDisableWarning(providerName);
+      setTimeout(() => setDisableWarning(null), 3000);
     } else {
+      setDisableWarning(null);
       updateMutation.mutate({
         id: currentSetting.id,
         data: { is_enabled: !currentSetting.is_enabled },
@@ -50,6 +63,21 @@ export function ProviderList({ type }: ProviderListProps) {
     const updatedModels = setting.models.map((m) =>
       m.model_id === modelId ? { ...m, is_enabled: !m.is_enabled } : m,
     );
+    updateMutation.mutate({
+      id: setting.id,
+      data: { models: updatedModels },
+    });
+  }
+
+  function handleDefaultModelChange(
+    setting: ProviderSetting,
+    modelId: string,
+  ) {
+    const updatedModels = setting.models.map((m) => ({
+      ...m,
+      is_default: m.model_id === modelId,
+      is_enabled: m.model_id === modelId ? true : m.is_enabled,
+    }));
     updateMutation.mutate({
       id: setting.id,
       data: { models: updatedModels },
@@ -92,27 +120,41 @@ export function ProviderList({ type }: ProviderListProps) {
                 <CardTitle className="text-base">
                   {PROVIDER_LABELS[providerName] ?? providerName}
                 </CardTitle>
-                <div className="flex items-center gap-2">
-                  <Label
-                    htmlFor={switchId}
-                    className="text-xs text-muted-foreground"
-                  >
-                    {isEnabled ? "啟用" : "停用"}
-                  </Label>
-                  <Switch
-                    id={switchId}
-                    checked={isEnabled}
-                    onCheckedChange={() =>
-                      handleToggle(providerName, setting)
-                    }
-                    disabled={isBusy}
-                    aria-label={`${isEnabled ? "停用" : "啟用"} ${PROVIDER_LABELS[providerName] ?? providerName}`}
-                  />
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-2">
+                    <Label
+                      htmlFor={switchId}
+                      className="text-xs text-muted-foreground"
+                    >
+                      {isEnabled ? "啟用" : "停用"}
+                    </Label>
+                    <Switch
+                      id={switchId}
+                      checked={isEnabled}
+                      onCheckedChange={() =>
+                        handleToggle(providerName, setting)
+                      }
+                      disabled={isBusy}
+                      aria-label={`${isEnabled ? "停用" : "啟用"} ${PROVIDER_LABELS[providerName] ?? providerName}`}
+                    />
+                  </div>
+                  {disableWarning === providerName && (
+                    <p className="text-[11px] font-medium text-destructive">
+                      有模型使用中，無法停用
+                    </p>
+                  )}
                 </div>
               </div>
-              <Badge variant="outline" className="w-fit">
-                {type.toUpperCase()}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="w-fit">
+                  {type.toUpperCase()}
+                </Badge>
+                {type === "embedding" && isEnabled && (
+                  <Badge variant="default" className="w-fit">
+                    目前使用中
+                  </Badge>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {setting && setting.models.length > 0 ? (
@@ -127,16 +169,49 @@ export function ProviderList({ type }: ProviderListProps) {
                         className="flex items-center justify-between rounded-md border bg-muted/30 px-2.5 py-1.5 text-xs"
                       >
                         <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={m.is_enabled}
-                            onChange={() =>
-                              handleModelToggle(setting, m.model_id)
-                            }
-                            disabled={!isEnabled || isBusy}
-                            className="rounded border-input"
-                            aria-label={`啟用模型 ${m.display_name}`}
-                          />
+                          {type === "embedding" ? (
+                            <>
+                              <input
+                                type="checkbox"
+                                checked={m.is_enabled}
+                                onChange={() =>
+                                  handleModelToggle(setting, m.model_id)
+                                }
+                                disabled={
+                                  !isEnabled || isBusy || m.is_default
+                                }
+                                className="rounded border-input"
+                                aria-label={`啟用模型 ${m.display_name}`}
+                              />
+                              <input
+                                type="radio"
+                                name={`embedding-model-${setting.id}`}
+                                checked={m.is_default}
+                                onChange={() =>
+                                  handleDefaultModelChange(
+                                    setting,
+                                    m.model_id,
+                                  )
+                                }
+                                disabled={
+                                  !isEnabled || isBusy || !m.is_enabled
+                                }
+                                className="border-input"
+                                aria-label={`選用模型 ${m.display_name}`}
+                              />
+                            </>
+                          ) : (
+                            <input
+                              type="checkbox"
+                              checked={m.is_enabled}
+                              onChange={() =>
+                                handleModelToggle(setting, m.model_id)
+                              }
+                              disabled={!isEnabled || isBusy}
+                              className="rounded border-input"
+                              aria-label={`啟用模型 ${m.display_name}`}
+                            />
+                          )}
                           <div>
                             <span className="font-medium">
                               {m.display_name}

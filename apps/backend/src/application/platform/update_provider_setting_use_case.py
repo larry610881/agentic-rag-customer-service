@@ -49,6 +49,16 @@ class UpdateProviderSettingUseCase:
             setting.display_name = command.display_name
         if command.is_enabled is not None:
             setting.is_enabled = command.is_enabled
+            # Embedding provider 互斥：啟用一個時停用其他
+            if command.is_enabled and setting.provider_type == ProviderType.EMBEDDING:
+                all_embedding = await self._repository.find_all_by_type(
+                    ProviderType.EMBEDDING
+                )
+                for other in all_embedding:
+                    if other.id != setting.id and other.is_enabled:
+                        other.is_enabled = False
+                        other.updated_at = datetime.now(timezone.utc)
+                        await self._repository.save(other)
         if command.api_key is not None:
             setting.api_key_encrypted = self._encryption.encrypt(command.api_key)
         if command.base_url is not None:

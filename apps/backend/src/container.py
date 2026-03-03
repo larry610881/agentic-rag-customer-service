@@ -951,6 +951,7 @@ class Container(containers.DeclarativeContainer):
         CreateProviderSettingUseCase,
         provider_setting_repository=provider_setting_repository,
         encryption_service=encryption_service,
+        cache_service=cache_service,
     )
 
     update_provider_setting_use_case = providers.Factory(
