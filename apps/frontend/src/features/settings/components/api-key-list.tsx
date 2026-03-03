@@ -11,26 +11,49 @@ import {
 import type { ProviderSetting } from "@/types/provider-setting";
 import { PROVIDER_LABELS } from "@/types/provider-setting";
 
+/** Group settings by provider_name — same vendor shares one key. */
+function groupByProvider(settings: ProviderSetting[]) {
+  const map = new Map<string, ProviderSetting[]>();
+  for (const s of settings) {
+    const group = map.get(s.provider_name) ?? [];
+    group.push(s);
+    map.set(s.provider_name, group);
+  }
+  return map;
+}
+
 export function ApiKeyList() {
   const { data: settings, isLoading } = useProviderSettings();
   const updateMutation = useUpdateProviderSetting();
 
+  // Keyed by provider_name (not setting id)
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<string | null>(null);
+  const [savingProvider, setSavingProvider] = useState<string | null>(null);
 
-  function handleSave(setting: ProviderSetting) {
-    const key = drafts[setting.id]?.trim();
+  async function handleSave(providerName: string, group: ProviderSetting[]) {
+    const key = drafts[providerName]?.trim();
     if (!key) return;
-    updateMutation.mutate(
-      { id: setting.id, data: { api_key: key } },
-      {
-        onSuccess: () => {
-          setDrafts((prev) => ({ ...prev, [setting.id]: "" }));
-          setSaved(setting.id);
-          setTimeout(() => setSaved(null), 2000);
+
+    setSavingProvider(providerName);
+    // Update all settings for this provider (LLM + Embedding) with the same key
+    let remaining = group.length;
+    for (const setting of group) {
+      updateMutation.mutate(
+        { id: setting.id, data: { api_key: key } },
+        {
+          onSettled: () => {
+            remaining -= 1;
+            if (remaining <= 0) {
+              setDrafts((prev) => ({ ...prev, [providerName]: "" }));
+              setSavingProvider(null);
+              setSaved(providerName);
+              setTimeout(() => setSaved(null), 2000);
+            }
+          },
         },
-      },
-    );
+      );
+    }
   }
 
   if (isLoading) {
@@ -43,10 +66,10 @@ export function ApiKeyList() {
     );
   }
 
-  // Only show providers that have been created (enabled at least once)
   const providers = settings?.filter(Boolean) ?? [];
+  const grouped = groupByProvider(providers);
 
-  if (providers.length === 0) {
+  if (grouped.size === 0) {
     return (
       <p className="text-sm text-muted-foreground">
         尚未啟用任何供應商。請先在 LLM 或 Embedding 頁籤啟用供應商。
@@ -56,23 +79,22 @@ export function ApiKeyList() {
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {providers.map((setting) => {
-        const isBusy =
-          updateMutation.isPending &&
-          updateMutation.variables?.id === setting.id;
+      {[...grouped.entries()].map(([providerName, group]) => {
+        const hasKey = group.some((s) => s.has_api_key);
+        const types = group.map((s) => s.provider_type.toUpperCase());
+        const isBusy = savingProvider === providerName;
 
         return (
           <Card
-            key={setting.id}
+            key={providerName}
             className="transition-all duration-200 hover:shadow-md"
           >
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">
-                  {PROVIDER_LABELS[setting.provider_name] ??
-                    setting.display_name}
+                  {PROVIDER_LABELS[providerName] ?? providerName}
                 </CardTitle>
-                {saved === setting.id ? (
+                {saved === providerName ? (
                   <Badge
                     variant="outline"
                     className="border-green-500 text-green-600"
@@ -83,29 +105,35 @@ export function ApiKeyList() {
                   <Badge
                     variant="outline"
                     className={
-                      setting.has_api_key
-                        ? "border-green-500 text-green-600"
-                        : ""
+                      hasKey ? "border-green-500 text-green-600" : ""
                     }
                   >
-                    {setting.has_api_key ? "已設定" : "未設定"}
+                    {hasKey ? "已設定" : "未設定"}
                   </Badge>
                 )}
               </div>
-              <Badge variant="outline" className="w-fit text-[10px]">
-                {setting.provider_type.toUpperCase()}
-              </Badge>
+              <div className="flex gap-1.5">
+                {types.map((t) => (
+                  <Badge
+                    key={t}
+                    variant="outline"
+                    className="w-fit text-[10px]"
+                  >
+                    {t}
+                  </Badge>
+                ))}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="flex gap-2">
                 <Input
                   type="password"
                   placeholder="輸入新的 API Key"
-                  value={drafts[setting.id] ?? ""}
+                  value={drafts[providerName] ?? ""}
                   onChange={(e) =>
                     setDrafts((prev) => ({
                       ...prev,
-                      [setting.id]: e.target.value,
+                      [providerName]: e.target.value,
                     }))
                   }
                   className="h-8 text-sm"
@@ -114,14 +142,15 @@ export function ApiKeyList() {
                   type="button"
                   size="sm"
                   className="h-8 shrink-0"
-                  disabled={!drafts[setting.id]?.trim() || isBusy}
-                  onClick={() => handleSave(setting)}
+                  disabled={!drafts[providerName]?.trim() || isBusy}
+                  onClick={() => handleSave(providerName, group)}
                 >
                   {isBusy ? "更新中..." : "更新"}
                 </Button>
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Key 以 AES-256 加密儲存，不會明文顯示。
+                同一供應商的 LLM 與 Embedding 共用此 Key，以 AES-256
+                加密儲存。
               </p>
             </CardContent>
           </Card>
