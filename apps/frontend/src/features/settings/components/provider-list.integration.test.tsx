@@ -14,7 +14,7 @@ describe("ProviderList integration", () => {
   });
 
   it("should show pre-defined provider cards with switches", async () => {
-    renderWithProviders(<ProviderList type="llm" />);
+    renderWithProviders(<ProviderList />);
 
     // Loading skeletons appear first
     const skeletons = document.querySelectorAll("[data-slot='skeleton']");
@@ -33,16 +33,5 @@ describe("ProviderList integration", () => {
     // LLM badges
     const llmBadges = screen.getAllByText("LLM");
     expect(llmBadges.length).toBe(4);
-  });
-
-  it("should show embedding provider cards", async () => {
-    renderWithProviders(<ProviderList type="embedding" />);
-
-    // All providers shown for embedding type
-    expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
-
-    // EMBEDDING badges
-    const embeddingBadges = screen.getAllByText("EMBEDDING");
-    expect(embeddingBadges.length).toBe(4);
   });
 });

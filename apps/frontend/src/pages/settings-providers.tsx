@@ -6,7 +6,6 @@ import { ApiKeyList } from "@/features/settings/components/api-key-list";
 
 const tabs = [
   { value: "llm", label: "LLM" },
-  { value: "embedding", label: "Embedding" },
   { value: "api-key", label: "API Key" },
 ] as const;
 
@@ -18,7 +17,8 @@ export default function ProvidersSettingsPage() {
       <div>
         <h1 className="text-2xl font-bold">供應商設定</h1>
         <p className="text-muted-foreground">
-          管理 LLM / Embedding 供應商與 API Key。
+          管理 LLM 供應商與 API Key。Embedding 統一使用 OpenAI
+          text-embedding-3-small。
         </p>
       </div>
 
@@ -42,7 +42,7 @@ export default function ProvidersSettingsPage() {
       {activeTab === "api-key" ? (
         <ApiKeyList />
       ) : (
-        <ProviderList type={activeTab} />
+        <ProviderList />
       )}
     </div>
   );

@@ -68,33 +68,6 @@ class UpdateProviderSettingUseCase:
         if command.extra_config is not None:
             setting.extra_config = command.extra_config
 
-        # Embedding 模型互斥：當設定 is_default 時，清除其他 embedding provider 的 is_default
-        if (
-            command.models is not None
-            and setting.provider_type == ProviderType.EMBEDDING
-            and any(m.is_default for m in setting.models)
-        ):
-            all_embedding = await self._repository.find_all_by_type(
-                ProviderType.EMBEDDING
-            )
-            for other in all_embedding:
-                if other.id != setting.id and any(
-                    m.is_default for m in other.models
-                ):
-                    other.models = [
-                        ModelConfig(
-                            model_id=m.model_id,
-                            display_name=m.display_name,
-                            is_default=False,
-                            is_enabled=m.is_enabled,
-                            price=m.price,
-                            description=m.description,
-                        )
-                        for m in other.models
-                    ]
-                    other.updated_at = datetime.now(timezone.utc)
-                    await self._repository.save(other)
-
         setting.updated_at = datetime.now(timezone.utc)
         await self._repository.save(setting)
         if self._cache_service is not None:

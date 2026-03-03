@@ -343,6 +343,8 @@ class Container(containers.DeclarativeContainer):
         csv_row=_csv_splitter,
     )
 
+    # Embedding is fixed to OpenAI text-embedding-3-small (1536 dim).
+    # Static fallback used when DB has no API key.
     _static_embedding_service = providers.Selector(
         providers.Callable(
             lambda cfg: cfg.embedding_provider, config
@@ -358,109 +360,8 @@ class Container(containers.DeclarativeContainer):
             api_key=providers.Callable(
                 lambda cfg: cfg.effective_embedding_api_key, config
             ),
-            model=providers.Callable(
-                lambda cfg: cfg.embedding_model, config
-            ),
-            base_url=providers.Callable(
-                lambda cfg: cfg.embedding_base_url or "https://api.openai.com/v1",
-                config,
-            ),
-            batch_size=providers.Callable(
-                lambda cfg: cfg.embedding_batch_size, config
-            ),
-            max_retries=providers.Callable(
-                lambda cfg: cfg.embedding_max_retries, config
-            ),
-            timeout=providers.Callable(
-                lambda cfg: cfg.embedding_timeout, config
-            ),
-            batch_delay=providers.Callable(
-                lambda cfg: cfg.embedding_batch_delay, config
-            ),
-            retry_after_multiplier=providers.Callable(
-                lambda cfg: cfg.embedding_retry_after_multiplier, config
-            ),
-            min_batch_size=providers.Callable(
-                lambda cfg: cfg.embedding_min_batch_size, config
-            ),
-        ),
-        qwen=providers.Factory(
-            OpenAIEmbeddingService,
-            api_key=providers.Callable(
-                lambda cfg: cfg.effective_embedding_api_key, config
-            ),
-            model=providers.Callable(
-                lambda cfg: cfg.embedding_model, config
-            ),
-            base_url=providers.Callable(
-                lambda cfg: cfg.embedding_base_url
-                or "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                config,
-            ),
-            batch_size=providers.Callable(
-                lambda cfg: cfg.embedding_batch_size, config
-            ),
-            max_retries=providers.Callable(
-                lambda cfg: cfg.embedding_max_retries, config
-            ),
-            timeout=providers.Callable(
-                lambda cfg: cfg.embedding_timeout, config
-            ),
-            batch_delay=providers.Callable(
-                lambda cfg: cfg.embedding_batch_delay, config
-            ),
-            retry_after_multiplier=providers.Callable(
-                lambda cfg: cfg.embedding_retry_after_multiplier, config
-            ),
-            min_batch_size=providers.Callable(
-                lambda cfg: cfg.embedding_min_batch_size, config
-            ),
-        ),
-        google=providers.Factory(
-            OpenAIEmbeddingService,
-            api_key=providers.Callable(
-                lambda cfg: cfg.effective_embedding_api_key, config
-            ),
-            model=providers.Callable(
-                lambda cfg: cfg.embedding_model, config
-            ),
-            base_url=providers.Callable(
-                lambda cfg: cfg.embedding_base_url
-                or "https://generativelanguage.googleapis.com/v1beta/openai",
-                config,
-            ),
-            batch_size=providers.Callable(
-                lambda cfg: cfg.embedding_batch_size, config
-            ),
-            max_retries=providers.Callable(
-                lambda cfg: cfg.embedding_max_retries, config
-            ),
-            timeout=providers.Callable(
-                lambda cfg: cfg.embedding_timeout, config
-            ),
-            batch_delay=providers.Callable(
-                lambda cfg: cfg.embedding_batch_delay, config
-            ),
-            retry_after_multiplier=providers.Callable(
-                lambda cfg: cfg.embedding_retry_after_multiplier, config
-            ),
-            min_batch_size=providers.Callable(
-                lambda cfg: cfg.embedding_min_batch_size, config
-            ),
-        ),
-        deepseek=providers.Factory(
-            OpenAIEmbeddingService,
-            api_key=providers.Callable(
-                lambda cfg: cfg.effective_embedding_api_key, config
-            ),
-            model=providers.Callable(
-                lambda cfg: cfg.embedding_model, config
-            ),
-            base_url=providers.Callable(
-                lambda cfg: cfg.embedding_base_url
-                or "https://api.deepseek.com/v1",
-                config,
-            ),
+            model="text-embedding-3-small",
+            base_url="https://api.openai.com/v1",
             batch_size=providers.Callable(
                 lambda cfg: cfg.embedding_batch_size, config
             ),

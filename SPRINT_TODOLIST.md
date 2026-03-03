@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-03-03 (Provider Settings 模型 DB 化 + 個別模型啟用 + Bot 模型選擇)
+> 最後更新：2026-03-03 (Embedding 全站單一模型 + API Key 管理頁籤 + 401 自動登出)
 
 ---
 
@@ -1131,3 +1131,4 @@
 | **Frontend Framework Migration** | **✅ 完成** | **100%** | **Next.js 16 → React + Vite SPA, 92 files (+1728/-5393), React Router v6, 150 tests pass** |
 | **DeepSeek Provider + Provider Settings 簡化** | **✅ 完成** | **100%** | **~15 files: DeepSeek enum + .env fallback + Dynamic Factory + Pre-defined Card UI + Switch toggle, 241 backend + 151 frontend tests** |
 | **Provider Settings 模型 DB 化 + Bot 模型選擇** | **✅ 完成** | **100%** | **~25 files: ModelConfig VO 擴充 + model_registry + ListEnabledModelsUseCase + Bot llm_provider/llm_model + 前端 provider-models.ts 刪除 + 模型 checkbox + Bot 模型下拉, 248 backend + 149 frontend tests, 7 新 BDD scenarios** |
+| **Embedding 全站單一模型 + API Key 管理 + UX 修正** | **✅ 完成** | **100%** | **~8 files: Embedding model 互斥(backend) + radio UI(frontend) + API Key 獨立頁籤 + 按供應商合併 + Bot 模型下拉分組 + 401 自動登出, 7 commits** |

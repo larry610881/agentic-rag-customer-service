@@ -80,23 +80,16 @@ def llm_db_with_cache(context):
 @given("DB 中有啟用的 Embedding 供應商設定且快取已啟用")
 def embedding_db_with_cache(context):
     mock_repo = AsyncMock()
+    # Embedding factory now resolves API key from OpenAI LLM provider
     setting = ProviderSetting(
         id=ProviderSettingId(value="s2"),
-        provider_type=ProviderType.EMBEDDING,
+        provider_type=ProviderType.LLM,
         provider_name=ProviderName.OPENAI,
-        display_name="OpenAI Embedding",
+        display_name="OpenAI LLM",
         is_enabled=True,
         api_key_encrypted="sk-embed-test",
-        base_url="https://api.openai.com/v1",
-        models=[
-            ModelConfig(
-                model_id="text-embedding-3-small",
-                display_name="Ada v3 Small",
-                is_default=True,
-            )
-        ],
     )
-    mock_repo.find_all_by_type = AsyncMock(return_value=[setting])
+    mock_repo.find_by_type_and_name = AsyncMock(return_value=setting)
 
     encryption = _make_encryption()
     cache_service = InMemoryCacheService()
@@ -127,4 +120,8 @@ def resolve_embedding_twice(context):
 
 @then("DB 查詢應只執行一次")
 def verify_single_db_call(context):
-    assert context["mock_repo"].find_all_by_type.call_count == 1
+    if context["factory_type"] == "llm":
+        assert context["mock_repo"].find_all_by_type.call_count == 1
+    else:
+        # Embedding factory uses find_by_type_and_name (called once, cached)
+        assert context["mock_repo"].find_by_type_and_name.call_count == 1

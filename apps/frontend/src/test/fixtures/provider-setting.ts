@@ -23,28 +23,6 @@ export const mockProviderSettings: ProviderSetting[] = [
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
   },
-  {
-    id: "ps-002",
-    provider_type: "embedding",
-    provider_name: "openai",
-    display_name: "OpenAI Embedding",
-    is_enabled: true,
-    has_api_key: true,
-    base_url: "",
-    models: [
-      {
-        model_id: "text-embedding-3-small",
-        display_name: "Embedding v3 Small",
-        is_default: true,
-        is_enabled: true,
-        price: "$0.02",
-        description: "Small embedding model",
-      },
-    ],
-    extra_config: {},
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-  },
 ];
 
 export const mockProviderSetting = mockProviderSettings[0];

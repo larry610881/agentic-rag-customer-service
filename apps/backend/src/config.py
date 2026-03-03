@@ -34,21 +34,18 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     openrouter_api_key: str = ""
 
-    # Embedding (independent from LLM)
-    # "fake" | "openai" | "deepseek" | "qwen" | "google"
-    embedding_provider: str = "fake"
-    embedding_api_key: str = ""  # dedicated key; falls back to provider key
-    embedding_model: str = "text-embedding-3-small"
-    embedding_vector_size: int = 1536
-    embedding_base_url: str = ""
+    # Embedding — fixed to OpenAI text-embedding-3-small (1536 dim)
+    # Only api_key and tuning params are configurable; model/provider are hardcoded.
+    embedding_provider: str = "openai"  # used by static fallback service
+    embedding_api_key: str = ""  # dedicated key; falls back to openai_api_key
+    embedding_model: str = "text-embedding-3-small"  # ignored; kept for .env compat
+    embedding_vector_size: int = 1536  # used by FakeEmbeddingService only
+    embedding_base_url: str = ""  # ignored; kept for .env compat
     embedding_batch_size: int = 50
     embedding_max_retries: int = 5
     embedding_timeout: float = 120.0
-    # seconds between batches (rate limit protection)
     embedding_batch_delay: float = 1.0
-    # multiplier for Retry-After header value on 429 responses
     embedding_retry_after_multiplier: float = 1.0
-    # minimum batch size when adaptive reduction kicks in
     embedding_min_batch_size: int = 10
 
     # LLM (independent from Embedding)
@@ -132,18 +129,8 @@ class Settings(BaseSettings):
 
     @property
     def effective_embedding_api_key(self) -> str:
-        """Resolve embedding API key: dedicated > provider-specific > legacy."""
-        if self.embedding_api_key:
-            return self.embedding_api_key
-        if self.embedding_provider == "deepseek":
-            return self.deepseek_api_key
-        if self.embedding_provider == "qwen":
-            return self.qwen_api_key
-        if self.embedding_provider == "google":
-            return self.google_api_key
-        if self.embedding_provider == "openai":
-            return self.effective_openai_api_key
-        return ""
+        """Resolve embedding API key: dedicated > OpenAI key."""
+        return self.embedding_api_key or self.effective_openai_api_key
 
     @property
     def effective_llm_api_key(self) -> str:

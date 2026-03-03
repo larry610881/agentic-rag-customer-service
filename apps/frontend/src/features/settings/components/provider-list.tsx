@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,23 +12,16 @@ import {
 import type { ProviderSetting } from "@/types/provider-setting";
 import { PROVIDER_LABELS, PROVIDER_ORDER } from "@/types/provider-setting";
 
-interface ProviderListProps {
-  type: string;
-}
-
-export function ProviderList({ type }: ProviderListProps) {
-  const { data: settings, isLoading } = useProviderSettings(type);
+export function ProviderList() {
+  const { data: settings, isLoading } = useProviderSettings("llm");
   const { data: registry } = useModelRegistry();
   const createMutation = useCreateProviderSetting();
   const updateMutation = useUpdateProviderSetting();
 
-  // Track which provider is showing the "cannot disable" warning
-  const [disableWarning, setDisableWarning] = useState<string | null>(null);
-
   const findSetting = (providerName: string): ProviderSetting | undefined =>
     settings?.find(
       (s) =>
-        s.provider_name === providerName && s.provider_type === type,
+        s.provider_name === providerName && s.provider_type === "llm",
     );
 
   function handleToggle(
@@ -38,20 +30,11 @@ export function ProviderList({ type }: ProviderListProps) {
   ) {
     if (!currentSetting) {
       createMutation.mutate({
-        provider_type: type,
+        provider_type: "llm",
         provider_name: providerName,
         display_name: PROVIDER_LABELS[providerName] ?? providerName,
       });
-    } else if (
-      currentSetting.is_enabled &&
-      type === "embedding" &&
-      currentSetting.models.some((m) => m.is_default)
-    ) {
-      // Prevent disabling embedding provider when a model is selected
-      setDisableWarning(providerName);
-      setTimeout(() => setDisableWarning(null), 3000);
     } else {
-      setDisableWarning(null);
       updateMutation.mutate({
         id: currentSetting.id,
         data: { is_enabled: !currentSetting.is_enabled },
@@ -63,21 +46,6 @@ export function ProviderList({ type }: ProviderListProps) {
     const updatedModels = setting.models.map((m) =>
       m.model_id === modelId ? { ...m, is_enabled: !m.is_enabled } : m,
     );
-    updateMutation.mutate({
-      id: setting.id,
-      data: { models: updatedModels },
-    });
-  }
-
-  function handleDefaultModelChange(
-    setting: ProviderSetting,
-    modelId: string,
-  ) {
-    const updatedModels = setting.models.map((m) => ({
-      ...m,
-      is_default: m.model_id === modelId,
-      is_enabled: m.model_id === modelId ? true : m.is_enabled,
-    }));
     updateMutation.mutate({
       id: setting.id,
       data: { models: updatedModels },
@@ -106,11 +74,11 @@ export function ProviderList({ type }: ProviderListProps) {
             (createMutation.variables as { provider_name?: string })
               ?.provider_name === providerName);
 
-        const switchId = `toggle-${providerName}-${type}`;
+        const switchId = `toggle-${providerName}-llm`;
 
         return (
           <Card
-            key={`${providerName}-${type}`}
+            key={providerName}
             className={`transition-all duration-200 hover:shadow-md ${
               !isEnabled ? "opacity-50" : ""
             }`}
@@ -120,43 +88,27 @@ export function ProviderList({ type }: ProviderListProps) {
                 <CardTitle className="text-base">
                   {PROVIDER_LABELS[providerName] ?? providerName}
                 </CardTitle>
-                <div className="flex flex-col items-end gap-1">
-                  <div className="flex items-center gap-2">
-                    <Label
-                      htmlFor={switchId}
-                      className="text-xs text-muted-foreground"
-                    >
-                      {isEnabled ? "啟用" : "停用"}
-                    </Label>
-                    <Switch
-                      id={switchId}
-                      checked={isEnabled}
-                      onCheckedChange={() =>
-                        handleToggle(providerName, setting)
-                      }
-                      disabled={isBusy}
-                      aria-label={`${isEnabled ? "停用" : "啟用"} ${PROVIDER_LABELS[providerName] ?? providerName}`}
-                    />
-                  </div>
-                  {disableWarning === providerName && (
-                    <p className="text-[11px] font-medium text-destructive">
-                      有模型使用中，無法停用
-                    </p>
-                  )}
+                <div className="flex items-center gap-2">
+                  <Label
+                    htmlFor={switchId}
+                    className="text-xs text-muted-foreground"
+                  >
+                    {isEnabled ? "啟用" : "停用"}
+                  </Label>
+                  <Switch
+                    id={switchId}
+                    checked={isEnabled}
+                    onCheckedChange={() =>
+                      handleToggle(providerName, setting)
+                    }
+                    disabled={isBusy}
+                    aria-label={`${isEnabled ? "停用" : "啟用"} ${PROVIDER_LABELS[providerName] ?? providerName}`}
+                  />
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="w-fit">
-                  {type.toUpperCase()}
-                </Badge>
-                {type === "embedding" &&
-                  isEnabled &&
-                  setting?.models.some((m) => m.is_default) && (
-                    <Badge variant="default" className="w-fit">
-                      目前使用中
-                    </Badge>
-                  )}
-              </div>
+              <Badge variant="outline" className="w-fit">
+                LLM
+              </Badge>
             </CardHeader>
             <CardContent>
               {setting && setting.models.length > 0 ? (
@@ -171,33 +123,16 @@ export function ProviderList({ type }: ProviderListProps) {
                         className="flex items-center justify-between rounded-md border bg-muted/30 px-2.5 py-1.5 text-xs"
                       >
                         <div className="flex items-center gap-2">
-                          {type === "embedding" ? (
-                            <input
-                              type="radio"
-                              name="embedding-active-model"
-                              checked={m.is_default}
-                              onChange={() =>
-                                handleDefaultModelChange(
-                                  setting,
-                                  m.model_id,
-                                )
-                              }
-                              disabled={!isEnabled || isBusy}
-                              className="border-input"
-                              aria-label={`選用模型 ${m.display_name}`}
-                            />
-                          ) : (
-                            <input
-                              type="checkbox"
-                              checked={m.is_enabled}
-                              onChange={() =>
-                                handleModelToggle(setting, m.model_id)
-                              }
-                              disabled={!isEnabled || isBusy}
-                              className="rounded border-input"
-                              aria-label={`啟用模型 ${m.display_name}`}
-                            />
-                          )}
+                          <input
+                            type="checkbox"
+                            checked={m.is_enabled}
+                            onChange={() =>
+                              handleModelToggle(setting, m.model_id)
+                            }
+                            disabled={!isEnabled || isBusy}
+                            className="rounded border-input"
+                            aria-label={`啟用模型 ${m.display_name}`}
+                          />
                           <div>
                             <span className="font-medium">
                               {m.display_name}
@@ -215,13 +150,13 @@ export function ProviderList({ type }: ProviderListProps) {
                   </div>
                 </>
               ) : !setting &&
-                registry?.[providerName]?.[type]?.length ? (
+                registry?.[providerName]?.llm?.length ? (
                 <>
                   <p className="mb-2 text-xs font-medium text-muted-foreground">
                     啟用後可用模型
                   </p>
                   <div className="space-y-1">
-                    {registry[providerName][type].map((m) => (
+                    {registry[providerName].llm.map((m) => (
                       <div
                         key={m.model_id}
                         className="flex items-center justify-between rounded-md border bg-muted/10 px-2.5 py-1.5 text-xs opacity-60"

@@ -1,3 +1,8 @@
+"""Embedding is fixed to OpenAI text-embedding-3-small (1536 dim).
+
+API key resolution: DB (OpenAI LLM provider) → .env fallback.
+"""
+
 import json
 
 from src.config import Settings
@@ -9,44 +14,24 @@ from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
 
-_DEFAULT_BASE_URLS: dict[str, str] = {
-    ProviderName.OPENAI.value: "https://api.openai.com/v1",
-    ProviderName.DEEPSEEK.value: "https://api.deepseek.com/v1",
-    ProviderName.QWEN.value: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    ProviderName.GOOGLE.value: "https://generativelanguage.googleapis.com/v1beta/openai",
-}
-
-_DEFAULT_MODELS: dict[str, str] = {
-    ProviderName.OPENAI.value: "text-embedding-3-small",
-    ProviderName.QWEN.value: "text-embedding-v3",
-    ProviderName.GOOGLE.value: "text-embedding-004",
-}
-
-# Map provider_name -> Settings attribute for .env fallback API key
-_ENV_KEY_MAP: dict[str, str] = {
-    ProviderName.OPENAI.value: "effective_openai_api_key",
-    ProviderName.DEEPSEEK.value: "deepseek_api_key",
-    ProviderName.ANTHROPIC.value: "anthropic_api_key",
-    ProviderName.GOOGLE.value: "google_api_key",
-    ProviderName.QWEN.value: "qwen_api_key",
-    ProviderName.OPENROUTER.value: "openrouter_api_key",
-}
+_FIXED_MODEL = "text-embedding-3-small"
+_FIXED_BASE_URL = "https://api.openai.com/v1"
 
 
-def _build_embedding_service_from_config(config: dict) -> EmbeddingService:
-    """Build Embedding service from config dict."""
+def _build_embedding_service(api_key: str) -> EmbeddingService:
+    """Build OpenAI embedding service with fixed model."""
     from src.infrastructure.embedding.openai_embedding_service import (
         OpenAIEmbeddingService,
     )
     return OpenAIEmbeddingService(
-        api_key=config["api_key"],
-        model=config["model"],
-        base_url=config.get("base_url", "https://api.openai.com/v1"),
+        api_key=api_key,
+        model=_FIXED_MODEL,
+        base_url=_FIXED_BASE_URL,
     )
 
 
 class DynamicEmbeddingServiceFactory:
-    """Resolves Embedding service: DB-first, .env fallback."""
+    """Resolves Embedding service: OpenAI API key from DB or .env."""
 
     def __init__(
         self,
@@ -71,54 +56,20 @@ class DynamicEmbeddingServiceFactory:
             if cached is not None:
                 try:
                     config = json.loads(self._encryption.decrypt(cached))
-                    return _build_embedding_service_from_config(config)
+                    return _build_embedding_service(config["api_key"])
                 except Exception:
                     logger.warning("dynamic_embedding.cache_decrypt_failed")
 
         try:
-            repo = self._repo_factory()
-            settings = await repo.find_all_by_type(
-                ProviderType.EMBEDDING
-            )
-            enabled = [s for s in settings if s.is_enabled]
-            if not enabled:
+            api_key = await self._resolve_api_key()
+            if not api_key:
                 logger.debug(
                     "dynamic_embedding.fallback",
-                    reason="no_enabled_db_settings",
+                    reason="no_api_key",
                 )
                 return self._fallback
 
-            setting = enabled[0]
-
-            # Resolve API key: DB-encrypted first, then .env fallback
-            if setting.api_key_encrypted:
-                api_key = self._encryption.decrypt(setting.api_key_encrypted)
-            else:
-                cfg = Settings()
-                attr = _ENV_KEY_MAP.get(setting.provider_name.value, "")
-                api_key = getattr(cfg, attr, "") if attr else ""
-
-            default_model = next(
-                (m.model_id for m in setting.models if m.is_default),
-                setting.models[0].model_id if setting.models else None,
-            )
-            model = default_model or _DEFAULT_MODELS.get(
-                setting.provider_name.value, "text-embedding-3-small"
-            )
-
-            base_url = setting.base_url or _DEFAULT_BASE_URLS.get(
-                setting.provider_name.value, "https://api.openai.com/v1"
-            )
-
-            if setting.provider_name == ProviderName.FAKE:
-                return self._fallback
-
-            config = {
-                "provider_name": setting.provider_name.value,
-                "api_key": api_key,
-                "model": model,
-                "base_url": base_url,
-            }
+            config = {"api_key": api_key}
 
             # Cache encrypted config
             if self._cache_service is not None:
@@ -127,10 +78,32 @@ class DynamicEmbeddingServiceFactory:
                     cache_key, encrypted, ttl_seconds=self._cache_ttl
                 )
 
-            return _build_embedding_service_from_config(config)
+            return _build_embedding_service(api_key)
         except Exception:
             logger.exception("dynamic_embedding.error")
             return self._fallback
+
+    async def _resolve_api_key(self) -> str:
+        """Resolve OpenAI API key: DB (OpenAI LLM provider) → .env."""
+        repo = self._repo_factory()
+
+        # Try OpenAI LLM provider's key from DB
+        setting = await repo.find_by_type_and_name(
+            ProviderType.LLM, ProviderName.OPENAI
+        )
+        if setting and setting.api_key_encrypted:
+            return self._encryption.decrypt(setting.api_key_encrypted)
+
+        # Try OpenAI Embedding provider's key from DB (legacy records)
+        setting = await repo.find_by_type_and_name(
+            ProviderType.EMBEDDING, ProviderName.OPENAI
+        )
+        if setting and setting.api_key_encrypted:
+            return self._encryption.decrypt(setting.api_key_encrypted)
+
+        # .env fallback
+        cfg = Settings()
+        return cfg.effective_embedding_api_key or cfg.effective_openai_api_key
 
 
 class DynamicEmbeddingServiceProxy(EmbeddingService):

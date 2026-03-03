@@ -1,14 +1,17 @@
-"""Dynamic Embedding Factory BDD Step Definitions"""
+"""Dynamic Embedding Factory BDD Step Definitions
+
+Embedding is fixed to OpenAI text-embedding-3-small.
+API key resolution: DB (OpenAI LLM) → DB (OpenAI Embedding legacy) → .env.
+"""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from src.domain.platform.entity import ProviderSetting
 from src.domain.platform.value_objects import (
-    ModelConfig,
     ProviderName,
     ProviderSettingId,
     ProviderType,
@@ -55,28 +58,20 @@ def fallback_service():
     return svc
 
 
-# --- DB 有啟用設定 ---
+# --- DB 有 OpenAI LLM 設定含 API key ---
 
 
-@given("DB 中有一個啟用的 Embedding 供應商設定")
-def db_has_enabled_embedding(context, mock_repo, mock_encryption):
+@given("DB 中有 OpenAI LLM 供應商設定含 API key")
+def db_has_openai_llm(context, mock_repo, mock_encryption):
     setting = ProviderSetting(
-        id=ProviderSettingId(value="e1"),
-        provider_type=ProviderType.EMBEDDING,
+        id=ProviderSettingId(value="s1"),
+        provider_type=ProviderType.LLM,
         provider_name=ProviderName.OPENAI,
-        display_name="OpenAI Embedding",
+        display_name="OpenAI LLM",
         is_enabled=True,
         api_key_encrypted="enc:sk-embed",
-        base_url="https://api.openai.com/v1",
-        models=[
-            ModelConfig(
-                model_id="text-embedding-3-small",
-                display_name="Small",
-                is_default=True,
-            )
-        ],
     )
-    mock_repo.find_all_by_type = AsyncMock(return_value=[setting])
+    mock_repo.find_by_type_and_name = AsyncMock(return_value=setting)
     context["repo"] = mock_repo
     context["encryption"] = mock_encryption
 
@@ -92,9 +87,12 @@ def resolve_embedding_service(context, fallback_service):
     context["fallback"] = fallback_service
 
 
-@then("應回傳 DB 來源的 Embedding 服務")
-def db_embedding_returned(context):
-    assert context["result"] is not context["fallback"]
+@then("應回傳 OpenAI Embedding 服務")
+def openai_embedding_returned(context):
+    from src.infrastructure.embedding.openai_embedding_service import (
+        OpenAIEmbeddingService,
+    )
+    assert isinstance(context["result"], OpenAIEmbeddingService)
 
 
 @then("應回傳 fallback 的 Embedding 服務")
@@ -102,50 +100,56 @@ def fallback_embedding_returned(context):
     assert context["result"] is context["fallback"]
 
 
-# --- DB 無設定 ---
+# --- DB 無設定且 .env 也無 key ---
 
 
-@given("DB 中沒有任何 Embedding 供應商設定")
-def db_has_no_embedding(context, mock_repo, mock_encryption):
-    mock_repo.find_all_by_type = AsyncMock(return_value=[])
+@given("DB 中沒有任何供應商設定且 .env 無 OpenAI key")
+def db_empty_env_empty(context, mock_repo, mock_encryption):
+    mock_repo.find_by_type_and_name = AsyncMock(return_value=None)
     context["repo"] = mock_repo
     context["encryption"] = mock_encryption
+    # Patch Settings to return empty keys
+    context["settings_patch"] = patch(
+        "src.infrastructure.embedding.dynamic_embedding_factory.Settings",
+        return_value=MagicMock(
+            effective_embedding_api_key="",
+            effective_openai_api_key="",
+        ),
+    )
+    context["settings_patch"].start()
 
 
-# --- DB 全停用 ---
+@pytest.fixture(autouse=True)
+def cleanup_patches(context):
+    yield
+    if "settings_patch" in context:
+        context["settings_patch"].stop()
 
 
-@given("DB 中的 Embedding 供應商設定全部停用")
-def db_embedding_all_disabled(context, mock_repo, mock_encryption):
+# --- DB 有設定但無 API key ---
+
+
+@given("DB 中有供應商設定但無 API key 且 .env 無 OpenAI key")
+def db_has_setting_no_key(context, mock_repo, mock_encryption):
     setting = ProviderSetting(
-        id=ProviderSettingId(value="e1"),
-        provider_type=ProviderType.EMBEDDING,
+        id=ProviderSettingId(value="s1"),
+        provider_type=ProviderType.LLM,
         provider_name=ProviderName.OPENAI,
         display_name="OpenAI",
-        is_enabled=False,
-        api_key_encrypted="enc:key",
-    )
-    mock_repo.find_all_by_type = AsyncMock(return_value=[setting])
-    context["repo"] = mock_repo
-    context["encryption"] = mock_encryption
-
-
-# --- Fake provider ---
-
-
-@given("DB 中有一個啟用的 Fake Embedding 供應商設定")
-def db_has_fake_embedding(context, mock_repo, mock_encryption):
-    setting = ProviderSetting(
-        id=ProviderSettingId(value="e2"),
-        provider_type=ProviderType.EMBEDDING,
-        provider_name=ProviderName.FAKE,
-        display_name="Fake Embedding",
         is_enabled=True,
-        api_key_encrypted="enc:fake-key",
+        api_key_encrypted="",
     )
-    mock_repo.find_all_by_type = AsyncMock(return_value=[setting])
+    mock_repo.find_by_type_and_name = AsyncMock(return_value=setting)
     context["repo"] = mock_repo
     context["encryption"] = mock_encryption
+    context["settings_patch"] = patch(
+        "src.infrastructure.embedding.dynamic_embedding_factory.Settings",
+        return_value=MagicMock(
+            effective_embedding_api_key="",
+            effective_openai_api_key="",
+        ),
+    )
+    context["settings_patch"].start()
 
 
 # --- Proxy embed_texts ---

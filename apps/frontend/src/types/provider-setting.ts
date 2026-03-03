@@ -63,11 +63,6 @@ export const PROVIDER_NAMES = [
   { value: "fake", label: "Fake (Dev)" },
 ] as const;
 
-export const PROVIDER_TYPES = [
-  { value: "llm", label: "LLM" },
-  { value: "embedding", label: "Embedding" },
-] as const;
-
 export const PROVIDER_LABELS: Record<string, string> = {
   deepseek: "DeepSeek",
   openai: "OpenAI",

@@ -23,7 +23,7 @@ import {
   useUpdateProviderSetting,
 } from "@/hooks/queries/use-provider-settings";
 import type { ProviderSetting } from "@/types/provider-setting";
-import { PROVIDER_NAMES, PROVIDER_TYPES } from "@/types/provider-setting";
+import { PROVIDER_NAMES } from "@/types/provider-setting";
 
 const formSchema = z.object({
   provider_type: z.string().min(1, "請選擇類型"),
@@ -126,30 +126,7 @@ export function ProviderFormDialog({
           aria-label="供應商設定表單"
         >
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="provider_type">類型</Label>
-              <Select
-                value={providerType}
-                onValueChange={(v) => setValue("provider_type", v)}
-                disabled={isEditing}
-              >
-                <SelectTrigger id="provider_type">
-                  <SelectValue placeholder="選擇類型" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROVIDER_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.provider_type && (
-                <p className="text-sm text-destructive">
-                  {errors.provider_type.message}
-                </p>
-              )}
-            </div>
+            <input type="hidden" {...register("provider_type")} />
             <div className="space-y-2">
               <Label htmlFor="provider_name">供應商</Label>
               <Select
