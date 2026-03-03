@@ -116,12 +116,17 @@ class AnthropicLLMService(LLMService):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
+        usage_collector: dict | None = None,
     ) -> AsyncIterator[str]:
+        import json as json_mod
+
         body = self._build_body(
             system_prompt, user_message, context,
             temperature=temperature, max_tokens=max_tokens,
         )
         body["stream"] = True
+        input_tokens = 0
+        output_tokens = 0
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream(
                 "POST",
@@ -136,11 +141,31 @@ class AnthropicLLMService(LLMService):
                     payload = line[6:]
                     if payload == "[DONE]":
                         break
-                    import json
-
-                    event = json.loads(payload)
-                    if event.get("type") == "content_block_delta":
+                    event = json_mod.loads(payload)
+                    # Capture usage from message_start
+                    if event.get("type") == "message_start":
+                        msg = event.get("message", {})
+                        u = msg.get("usage", {})
+                        input_tokens = u.get("input_tokens", 0)
+                    # Capture usage from message_delta
+                    elif event.get("type") == "message_delta":
+                        u = event.get("usage", {})
+                        output_tokens = u.get("output_tokens", 0)
+                    elif event.get("type") == "content_block_delta":
                         delta = event.get("delta", {})
                         text = delta.get("text", "")
                         if text:
                             yield text
+        # Write final usage to collector
+        if usage_collector is not None and (input_tokens or output_tokens):
+            usage = calculate_usage(
+                model=self._model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                pricing=self._pricing,
+            )
+            usage_collector["model"] = usage.model
+            usage_collector["input_tokens"] = usage.input_tokens
+            usage_collector["output_tokens"] = usage.output_tokens
+            usage_collector["total_tokens"] = usage.total_tokens
+            usage_collector["estimated_cost"] = usage.estimated_cost

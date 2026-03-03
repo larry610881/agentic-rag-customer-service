@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/test-utils";
 import { BotDetailForm } from "@/features/bot/components/bot-detail-form";
 import { mockBot } from "@/test/fixtures/bot";
@@ -32,7 +33,8 @@ describe("BotDetailForm", () => {
     expect(nameInput).toHaveValue("Customer Service Bot");
   });
 
-  it("should render LLM parameter inputs", () => {
+  it("should render LLM parameter inputs in LLM tab", async () => {
+    const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
         bot={mockBot}
@@ -42,12 +44,14 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
+    await user.click(screen.getByRole("tab", { name: "LLM 參數" }));
     expect(screen.getByLabelText("溫度（0-1）")).toHaveValue(0.3);
     expect(screen.getByLabelText("最大 Token 數（128-4096）")).toHaveValue(1024);
     expect(screen.getByLabelText("歷史訊息數（0-35）")).toHaveValue(10);
   });
 
-  it("should render system prompt textarea", () => {
+  it("should render system prompt textarea in prompt tab", async () => {
+    const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
         bot={mockBot}
@@ -57,12 +61,14 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
+    await user.click(screen.getByRole("tab", { name: "系統提示詞" }));
     expect(screen.getByLabelText("自訂系統提示詞")).toHaveValue(
       "You are a helpful customer service bot.",
     );
   });
 
-  it("should render LINE channel fields", () => {
+  it("should render LINE channel fields in LINE tab", async () => {
+    const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
         bot={mockBot}
@@ -72,11 +78,12 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
+    await user.click(screen.getByRole("tab", { name: "LINE 頻道" }));
     expect(screen.getByLabelText("頻道密鑰")).toBeInTheDocument();
     expect(screen.getByLabelText("存取權杖")).toBeInTheDocument();
   });
 
-  it("should render enabled tools checkboxes", () => {
+  it("should render enabled tools checkboxes in knowledge tab", () => {
     renderWithProviders(
       <BotDetailForm
         bot={mockBot}

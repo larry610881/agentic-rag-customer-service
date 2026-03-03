@@ -23,6 +23,7 @@ export interface FeedbackResponse {
   comment: string | null;
   tags: string[];
   created_at: string;
+  bot_name: string | null;
 }
 
 export interface FeedbackStats {

@@ -35,6 +35,7 @@ class FakeLLMService(LLMService):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
+        usage_collector: dict | None = None,
     ) -> AsyncIterator[str]:
         result = await self.generate(system_prompt, user_message, context)
         for char in result.text:

@@ -69,4 +69,5 @@ class LLMService(ABC):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
+        usage_collector: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]: ...  # pragma: no cover

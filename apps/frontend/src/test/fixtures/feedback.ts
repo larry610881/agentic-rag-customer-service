@@ -18,6 +18,7 @@ export const mockFeedback: FeedbackResponse = {
   comment: null,
   tags: [],
   created_at: "2024-03-01T10:00:00Z",
+  bot_name: null,
 };
 
 export const mockFeedbackList: FeedbackResponse[] = [
@@ -33,6 +34,7 @@ export const mockFeedbackList: FeedbackResponse[] = [
     comment: "答案不正確",
     tags: ["答案不正確"],
     created_at: "2024-03-01T10:05:00Z",
+    bot_name: "客服機器人",
   },
 ];
 

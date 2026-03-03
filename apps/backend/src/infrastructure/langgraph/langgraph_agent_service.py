@@ -136,6 +136,49 @@ class LangGraphAgentService(AgentService):
             parts.append(f"[工具結果]\n{tool_json}")
         return "\n\n".join(parts)
 
+    @staticmethod
+    def _extract_stream_sources(
+        tool_name: str,
+        tool_result: dict[str, Any],
+    ) -> list[dict[str, Any]] | None:
+        """Extract sources from RAG tool result for streaming."""
+        if tool_name != "rag_query" or not isinstance(tool_result, dict):
+            return None
+        raw = tool_result.get("sources", [])
+        sources = [
+            {
+                "document_name": s.get("document_name", ""),
+                "content_snippet": s.get("content_snippet", ""),
+                "score": s.get("score", 0.0),
+            }
+            for s in raw
+        ]
+        return sources if sources else None
+
+    @staticmethod
+    def _merge_usage(
+        stream_usage: dict[str, Any],
+        routing_usage: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Merge routing and streaming usage dicts."""
+        if not stream_usage and not routing_usage:
+            return None
+        combined = dict(stream_usage) if stream_usage else {}
+        if routing_usage:
+            for key in ("input_tokens", "output_tokens", "total_tokens"):
+                combined[key] = (
+                    combined.get(key, 0) + routing_usage.get(key, 0)
+                )
+            combined["estimated_cost"] = (
+                combined.get("estimated_cost", 0.0)
+                + routing_usage.get("estimated_cost", 0.0)
+            )
+            if not combined.get("model"):
+                combined["model"] = routing_usage.get(
+                    "model", "unknown"
+                )
+        return combined
+
     async def _stream_direct(
         self,
         user_message: str,
@@ -167,10 +210,51 @@ class LangGraphAgentService(AgentService):
             ctx_parts.append(f"[對話歷史]\n{history_context}")
         context = "\n\n".join(ctx_parts)
 
+        usage_collector: dict[str, Any] = {}
         async for token in self._llm_service.generate_stream(
-            sys_prompt, user_message, context, **llm_kw
+            sys_prompt, user_message, context,
+            usage_collector=usage_collector, **llm_kw,
         ):
             yield {"type": "token", "content": token}
+
+        if usage_collector:
+            yield {"type": "usage", **usage_collector}
+
+    async def _run_routing_phase(
+        self,
+        initial_state: dict[str, Any],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Phase 1: run routing graph, yield tool_calls events."""
+        async for update in self._compiled_routing.astream(
+            initial_state, stream_mode="updates"
+        ):
+            for node_name, node_output in update.items():
+                if node_name == "router":
+                    tool_name = node_output.get("current_tool", "")
+                    acc = node_output.get("accumulated_usage", {})
+                    yield {
+                        "type": "_routing_result",
+                        "tool_name": tool_name,
+                        "routing_usage": dict(acc) if acc else {},
+                    }
+                    yield {
+                        "type": "tool_calls",
+                        "tool_calls": [
+                            {
+                                "tool_name": tool_name,
+                                "reasoning": node_output.get(
+                                    "tool_reasoning", ""
+                                ),
+                            },
+                        ],
+                    }
+                elif node_name == "rag_tool":
+                    yield {
+                        "type": "_tool_result",
+                        "tool_result": node_output.get(
+                            "tool_result", {}
+                        ),
+                    }
 
     async def process_message_stream(
         self,
@@ -222,56 +306,27 @@ class LangGraphAgentService(AgentService):
         # Phase 1: route + tool
         tool_name = ""
         tool_result: dict[str, Any] = {}
+        routing_usage: dict[str, Any] = {}
 
-        async for update in self._compiled_routing.astream(
-            initial_state, stream_mode="updates"
-        ):
-            for node_name, node_output in update.items():
-                if node_name == "router":
-                    tool_name = node_output.get(
-                        "current_tool", ""
-                    )
-                    yield {
-                        "type": "tool_calls",
-                        "tool_calls": [
-                            {
-                                "tool_name": tool_name,
-                                "reasoning": node_output.get(
-                                    "tool_reasoning", ""
-                                ),
-                            },
-                        ],
-                    }
-                elif node_name == "rag_tool":
-                    tool_result = node_output.get(
-                        "tool_result", {}
-                    )
+        async for evt in self._run_routing_phase(initial_state):
+            if evt["type"] == "_routing_result":
+                tool_name = evt["tool_name"]
+                routing_usage = evt["routing_usage"]
+            elif evt["type"] == "_tool_result":
+                tool_result = evt["tool_result"]
+            else:
+                yield evt
 
         # Extract & yield sources
-        if tool_name == "rag_query" and isinstance(
-            tool_result, dict
-        ):
-            raw_sources = tool_result.get("sources", [])
-            sources = [
-                {
-                    "document_name": s.get("document_name", ""),
-                    "content_snippet": s.get(
-                        "content_snippet", ""
-                    ),
-                    "score": s.get("score", 0.0),
-                }
-                for s in raw_sources
-            ]
-            if sources:
-                yield {"type": "sources", "sources": sources}
+        sources = self._extract_stream_sources(tool_name, tool_result)
+        if sources:
+            yield {"type": "sources", "sources": sources}
 
         # Phase 2: Stream LLM response
         context = self._build_respond_context(
-            initial_state.get("history_context") or "",
-            tool_result,
+            history_context, tool_result,
         )
-
-        custom_prompt = initial_state.get("system_prompt") or ""
+        custom_prompt = system_prompt or ""
         sys_prompt = (
             custom_prompt
             if custom_prompt.strip()
@@ -287,7 +342,14 @@ class LangGraphAgentService(AgentService):
             context_len=len(context),
         )
 
+        stream_usage: dict[str, Any] = {}
         async for token in self._llm_service.generate_stream(
-            sys_prompt, user_message, context, **llm_kw
+            sys_prompt, user_message, context,
+            usage_collector=stream_usage, **llm_kw,
         ):
             yield {"type": "token", "content": token}
+
+        # Merge routing + streaming usage and yield
+        combined = self._merge_usage(stream_usage, routing_usage)
+        if combined:
+            yield {"type": "usage", **combined}

@@ -30,6 +30,8 @@ from src.application.conversation.submit_feedback_use_case import (
     SubmitFeedbackUseCase,
 )
 from src.container import Container
+from src.domain.bot.repository import BotRepository
+from src.domain.conversation.repository import ConversationRepository
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 
 router = APIRouter(
@@ -59,6 +61,7 @@ class FeedbackResponse(BaseModel):
     comment: str | None
     tags: list[str]
     created_at: datetime
+    bot_name: str | None = None
 
 
 class FeedbackStatsResponse(BaseModel):
@@ -155,10 +158,32 @@ async def list_feedback(
     use_case: ListFeedbackUseCase = Depends(
         Provide[Container.list_feedback_use_case]
     ),
+    conversation_repo: ConversationRepository = Depends(
+        Provide[Container.conversation_repository]
+    ),
+    bot_repo: BotRepository = Depends(
+        Provide[Container.bot_repository]
+    ),
 ) -> list[FeedbackResponse]:
     feedbacks = await use_case.execute(
         tenant.tenant_id, limit=limit, offset=offset
     )
+
+    # Enrich with bot_name via conversation → bot lookup
+    conv_ids = {f.conversation_id for f in feedbacks}
+    conv_bot_map: dict[str, str | None] = {}
+    for cid in conv_ids:
+        conv = await conversation_repo.find_by_id(cid)
+        if conv and conv.bot_id:
+            conv_bot_map[cid] = conv.bot_id
+
+    bot_ids = {bid for bid in conv_bot_map.values() if bid}
+    bot_name_map: dict[str, str] = {}
+    for bid in bot_ids:
+        bot = await bot_repo.find_by_id(bid)
+        if bot:
+            bot_name_map[bid] = bot.name
+
     return [
         FeedbackResponse(
             id=f.id.value,
@@ -171,6 +196,9 @@ async def list_feedback(
             comment=f.comment,
             tags=f.tags,
             created_at=f.created_at,
+            bot_name=bot_name_map.get(conv_bot_map.get(f.conversation_id, ""))
+            if f.conversation_id in conv_bot_map
+            else None,
         )
         for f in feedbacks
     ]

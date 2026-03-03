@@ -119,8 +119,10 @@ class QueryRAGUseCase:
             r.payload["content"] for r in results
         )
 
+        usage_collector: dict = {}
         async for token in self._llm_service.generate_stream(
-            RAG_SYSTEM_PROMPT, command.query, context
+            RAG_SYSTEM_PROMPT, command.query, context,
+            usage_collector=usage_collector,
         ):
             yield {"type": "token", "content": token}
 
@@ -134,4 +136,8 @@ class QueryRAGUseCase:
             for r in results
         ]
         yield {"type": "sources", "sources": [s.to_dict() for s in sources]}
+
+        if usage_collector:
+            yield {"type": "usage", **usage_collector}
+
         yield {"type": "done"}

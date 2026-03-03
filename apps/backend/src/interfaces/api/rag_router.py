@@ -117,8 +117,12 @@ async def query_rag_stream(
     use_case: QueryRAGUseCase = Depends(
         Provide[Container.query_rag_use_case]
     ),
+    record_usage: RecordUsageUseCase = Depends(
+        Provide[Container.record_usage_use_case]
+    ),
 ) -> StreamingResponse:
     async def event_generator():
+        usage_data: dict | None = None
         try:
             async for event in use_case.execute_stream(
                 QueryRAGCommand(
@@ -128,6 +132,9 @@ async def query_rag_stream(
                     top_k=request.top_k,
                 )
             ):
+                if event.get("type") == "usage":
+                    usage_data = event
+                    continue
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except NoRelevantKnowledgeError:
             no_result = {
@@ -139,6 +146,30 @@ async def query_rag_stream(
         except EntityNotFoundError as e:
             error_event = {"type": "error", "message": e.message}
             yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+
+        # Record usage after stream completes
+        if usage_data:
+            from src.domain.rag.value_objects import TokenUsage
+
+            usage = TokenUsage(
+                model=usage_data.get("model", "unknown"),
+                input_tokens=usage_data.get("input_tokens", 0),
+                output_tokens=usage_data.get("output_tokens", 0),
+                total_tokens=usage_data.get("total_tokens", 0),
+                estimated_cost=usage_data.get("estimated_cost", 0.0),
+            )
+            try:
+                await record_usage.execute(
+                    tenant_id=tenant.tenant_id,
+                    request_type="rag",
+                    usage=usage,
+                )
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).exception(
+                    "rag.query.stream.record_usage_error"
+                )
 
     return StreamingResponse(
         event_generator(),

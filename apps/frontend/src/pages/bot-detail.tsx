@@ -2,6 +2,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { BotDetailForm } from "@/features/bot/components/bot-detail-form";
 import { useBot, useUpdateBot, useDeleteBot } from "@/hooks/queries/use-bots";
 import { ROUTES } from "@/routes/paths";
+import type { UpdateBotRequest } from "@/types/bot";
 
 export default function BotDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -10,6 +11,10 @@ export default function BotDetailPage() {
   const { data: bot, isLoading, isError } = useBot(id!);
   const updateBot = useUpdateBot();
   const deleteBot = useDeleteBot();
+
+  const handleSave = async (data: UpdateBotRequest) => {
+    await updateBot.mutateAsync({ botId: id!, data });
+  };
 
   const handleDelete = () => {
     deleteBot.mutate(id!, {
@@ -47,7 +52,7 @@ export default function BotDetailPage() {
       <h2 className="text-2xl font-semibold">{bot.name}</h2>
       <BotDetailForm
         bot={bot}
-        onSave={(data) => updateBot.mutate({ botId: id!, data })}
+        onSave={handleSave}
         onDelete={handleDelete}
         isSaving={updateBot.isPending}
         isDeleting={deleteBot.isPending}

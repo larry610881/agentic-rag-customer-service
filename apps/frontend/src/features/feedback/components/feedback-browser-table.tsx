@@ -94,6 +94,7 @@ export function FeedbackBrowserTable({
               <TableHeader>
                 <TableRow>
                   <TableHead>時間</TableHead>
+                  <TableHead>機器人</TableHead>
                   <TableHead>評分</TableHead>
                   <TableHead>通路</TableHead>
                   <TableHead>留言</TableHead>
@@ -106,6 +107,9 @@ export function FeedbackBrowserTable({
                   <TableRow key={fb.id}>
                     <TableCell className="whitespace-nowrap text-sm">
                       {new Date(fb.created_at).toLocaleDateString("zh-TW")}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {fb.bot_name ?? "-"}
                     </TableCell>
                     <TableCell>
                       <Badge

@@ -124,7 +124,10 @@ class OpenAILLMService(LLMService):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
+        usage_collector: dict | None = None,
     ) -> AsyncIterator[str]:
+        import json as json_mod
+
         messages = self._build_messages(system_prompt, user_message, context)
         body: dict = {
             "model": self._model,
@@ -132,6 +135,8 @@ class OpenAILLMService(LLMService):
             "messages": messages,
             "stream": True,
         }
+        if usage_collector is not None:
+            body["stream_options"] = {"include_usage": True}
         if temperature is not None:
             body["temperature"] = temperature
         if frequency_penalty is not None and "googleapis.com" not in self._base_url:
@@ -150,10 +155,23 @@ class OpenAILLMService(LLMService):
                     payload = line[6:]
                     if payload == "[DONE]":
                         break
-                    import json
-
-                    event = json.loads(payload)
-                    delta = event["choices"][0].get("delta", {})
+                    event = json_mod.loads(payload)
+                    # Capture usage from final chunk (stream_options)
+                    if usage_collector is not None and event.get("usage"):
+                        u = event["usage"]
+                        usage = calculate_usage(
+                            model=self._model,
+                            input_tokens=u.get("prompt_tokens", 0),
+                            output_tokens=u.get("completion_tokens", 0),
+                            pricing=self._pricing,
+                        )
+                        usage_collector["model"] = usage.model
+                        usage_collector["input_tokens"] = usage.input_tokens
+                        usage_collector["output_tokens"] = usage.output_tokens
+                        usage_collector["total_tokens"] = usage.total_tokens
+                        usage_collector["estimated_cost"] = usage.estimated_cost
+                    choices = event.get("choices", [])
+                    delta = choices[0].get("delta", {}) if choices else {}
                     content = delta.get("content", "")
                     if content:
                         yield content
