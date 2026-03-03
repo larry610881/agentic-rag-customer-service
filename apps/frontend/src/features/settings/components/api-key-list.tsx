@@ -26,33 +26,36 @@ export function ApiKeyList() {
   const { data: settings, isLoading } = useProviderSettings();
   const updateMutation = useUpdateProviderSetting();
 
-  // Keyed by provider_name (not setting id)
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<string | null>(null);
   const [savingProvider, setSavingProvider] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSave(providerName: string, group: ProviderSetting[]) {
     const key = drafts[providerName]?.trim();
     if (!key) return;
 
     setSavingProvider(providerName);
-    // Update all settings for this provider (LLM + Embedding) with the same key
-    let remaining = group.length;
-    for (const setting of group) {
-      updateMutation.mutate(
-        { id: setting.id, data: { api_key: key } },
-        {
-          onSettled: () => {
-            remaining -= 1;
-            if (remaining <= 0) {
-              setDrafts((prev) => ({ ...prev, [providerName]: "" }));
-              setSavingProvider(null);
-              setSaved(providerName);
-              setTimeout(() => setSaved(null), 2000);
-            }
-          },
-        },
+    setError(null);
+
+    try {
+      // Use mutateAsync + Promise.all to properly await all mutations
+      await Promise.all(
+        group.map((setting) =>
+          updateMutation.mutateAsync({
+            id: setting.id,
+            data: { api_key: key },
+          }),
+        ),
       );
+      setDrafts((prev) => ({ ...prev, [providerName]: "" }));
+      setSaved(providerName);
+      setTimeout(() => setSaved(null), 2500);
+    } catch {
+      setError(providerName);
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setSavingProvider(null);
     }
   }
 
@@ -72,7 +75,7 @@ export function ApiKeyList() {
   if (grouped.size === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        尚未啟用任何供應商。請先在 LLM 或 Embedding 頁籤啟用供應商。
+        尚未啟用任何供應商。請先在 LLM 頁籤啟用供應商。
       </p>
     );
   }
@@ -83,6 +86,8 @@ export function ApiKeyList() {
         const hasKey = group.some((s) => s.has_api_key);
         const types = group.map((s) => s.provider_type.toUpperCase());
         const isBusy = savingProvider === providerName;
+        const isSaved = saved === providerName;
+        const isError = error === providerName;
 
         return (
           <Card
@@ -94,12 +99,19 @@ export function ApiKeyList() {
                 <CardTitle className="text-base">
                   {PROVIDER_LABELS[providerName] ?? providerName}
                 </CardTitle>
-                {saved === providerName ? (
+                {isSaved ? (
                   <Badge
                     variant="outline"
                     className="border-green-500 text-green-600"
                   >
-                    已更新
+                    ✓ 已更新
+                  </Badge>
+                ) : isError ? (
+                  <Badge
+                    variant="outline"
+                    className="border-destructive text-destructive"
+                  >
+                    更新失敗
                   </Badge>
                 ) : (
                   <Badge
@@ -136,6 +148,7 @@ export function ApiKeyList() {
                       [providerName]: e.target.value,
                     }))
                   }
+                  disabled={isBusy}
                   className="h-8 text-sm"
                 />
                 <Button
@@ -145,7 +158,14 @@ export function ApiKeyList() {
                   disabled={!drafts[providerName]?.trim() || isBusy}
                   onClick={() => handleSave(providerName, group)}
                 >
-                  {isBusy ? "更新中..." : "更新"}
+                  {isBusy ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      儲存中
+                    </span>
+                  ) : (
+                    "更新"
+                  )}
                 </Button>
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
