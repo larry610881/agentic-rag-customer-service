@@ -17,7 +17,7 @@ export default function ProvidersSettingsPage() {
       <div>
         <h1 className="text-2xl font-bold">供應商設定</h1>
         <p className="text-muted-foreground">
-          管理 LLM 與 Embedding 供應商的 API 金鑰與模型設定
+          啟用或停用 LLM / Embedding 供應商。API Key 由伺服器 .env 環境變數管理。
         </p>
       </div>
 

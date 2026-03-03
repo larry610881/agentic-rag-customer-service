@@ -306,39 +306,67 @@ export function BotDetailForm({
 
       <Separator />
 
-      {/* LLM 供應商 */}
+      {/* LLM 供應商與模型 */}
       <section className="flex flex-col gap-4">
-        <h3 className="text-lg font-semibold">LLM 供應商</h3>
+        <h3 className="text-lg font-semibold">LLM 供應商與模型</h3>
         <p className="text-sm text-muted-foreground">
-          目前啟用的 LLM 供應商及可用模型（由系統設定頁管理）。
+          目前已啟用的 LLM 供應商及可選模型。供應商管理請至「系統設定 &gt; 供應商設定」。
         </p>
-        {llmProviders && llmProviders.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {llmProviders
-              .filter((p) => p.is_enabled)
-              .map((provider) => {
+        {(() => {
+          const enabled = llmProviders?.filter((p) => p.is_enabled) ?? [];
+          if (enabled.length === 0) {
+            return (
+              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                尚未啟用任何 LLM 供應商。請至系統設定頁新增。
+              </div>
+            );
+          }
+          return (
+            <div className="flex flex-col gap-3">
+              {enabled.map((provider) => {
                 const models =
                   PROVIDER_MODELS[provider.provider_name]?.llm ?? [];
                 return (
                   <div
                     key={provider.id}
-                    className="rounded-lg border bg-muted/30 p-3"
+                    className="rounded-lg border p-3"
                   >
-                    <p className="font-medium">{provider.display_name}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">
+                        {provider.display_name}
+                      </span>
+                      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                        啟用中
+                      </span>
+                    </div>
                     {models.length > 0 ? (
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        {models.map((m) => (
-                          <span
-                            key={m.id}
-                            className="inline-flex items-center gap-1 rounded-md bg-background px-2 py-1 text-xs"
-                          >
-                            {m.name}
-                            <span className="text-muted-foreground">
-                              {m.price}
-                            </span>
-                          </span>
-                        ))}
-                      </div>
+                      <table className="mt-2 w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs text-muted-foreground">
+                            <th className="pb-1 font-medium">模型</th>
+                            <th className="pb-1 text-right font-medium">
+                              價格 (per 1M tokens)
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {models.map((m) => (
+                            <tr key={m.id} className="border-t">
+                              <td className="py-1.5">
+                                <span className="font-mono text-xs">
+                                  {m.id}
+                                </span>
+                                <span className="ml-2 text-xs text-muted-foreground">
+                                  {m.name}
+                                </span>
+                              </td>
+                              <td className="py-1.5 text-right text-xs text-muted-foreground">
+                                {m.price}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     ) : (
                       <p className="mt-1 text-xs text-muted-foreground">
                         無預設模型清單
@@ -347,12 +375,9 @@ export function BotDetailForm({
                   </div>
                 );
               })}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            尚未啟用任何 LLM 供應商。請至系統設定頁新增。
-          </p>
-        )}
+            </div>
+          );
+        })()}
       </section>
 
       <Separator />

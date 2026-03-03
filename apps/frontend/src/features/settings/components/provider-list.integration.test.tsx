@@ -30,6 +30,10 @@ describe("ProviderList integration", () => {
     expect(screen.getByText("llm")).toBeInTheDocument();
     expect(screen.getByText("embedding")).toBeInTheDocument();
 
+    // Should show enable/disable switch for each provider
+    const switches = screen.getAllByRole("switch");
+    expect(switches.length).toBe(2);
+
     // Should show .env managed hint
     const envTexts = screen.getAllByText("API Key 由 .env 管理");
     expect(envTexts.length).toBe(2);
