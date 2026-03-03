@@ -8,48 +8,64 @@ describe("ProviderList", () => {
   it("should render loading skeletons initially", () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
     renderWithProviders(<ProviderList />);
-    // Skeleton elements are rendered during loading
-    expect(document.querySelectorAll("[data-slot='skeleton']").length).toBeGreaterThanOrEqual(0);
+    expect(
+      document.querySelectorAll("[data-slot='skeleton']").length,
+    ).toBeGreaterThanOrEqual(0);
   });
 
-  it("should render provider cards after loading", async () => {
+  it("should show all pre-defined provider cards", async () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
     renderWithProviders(<ProviderList />);
 
+    // Pre-defined providers always appear (no need to "add")
     await waitFor(() => {
-      expect(screen.getByText("OpenAI GPT-4o")).toBeInTheDocument();
+      expect(screen.getByText("DeepSeek")).toBeInTheDocument();
     });
-    expect(screen.getByText("OpenAI Embedding")).toBeInTheDocument();
+    expect(screen.getByText("Anthropic Claude")).toBeInTheDocument();
+
+    // Google Gemini appears twice (LLM + Embedding)
+    const googleCards = screen.getAllByText("Google Gemini");
+    expect(googleCards.length).toBe(2);
+
+    // OpenAI appears for both LLM and Embedding
+    const openaiCards = screen.getAllByText("OpenAI");
+    expect(openaiCards.length).toBe(2);
   });
 
-  it("should filter by type when type prop is set", async () => {
+  it("should filter to LLM only when type=llm", async () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
     renderWithProviders(<ProviderList type="llm" />);
 
     await waitFor(() => {
-      expect(screen.getByText("OpenAI GPT-4o")).toBeInTheDocument();
+      expect(screen.getByText("DeepSeek")).toBeInTheDocument();
     });
-    expect(screen.queryByText("OpenAI Embedding")).not.toBeInTheDocument();
+
+    // Only LLM badges
+    const llmBadges = screen.getAllByText("LLM");
+    expect(llmBadges.length).toBe(4);
+    expect(screen.queryByText("EMBEDDING")).not.toBeInTheDocument();
   });
 
-  it("should show add provider button", async () => {
+  it("should show enable/disable switches on each card", async () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
     renderWithProviders(<ProviderList />);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /新增供應商/ }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("DeepSeek")).toBeInTheDocument();
     });
+
+    const switches = screen.getAllByRole("switch");
+    // 4 LLM providers + 2 Embedding providers = 6
+    expect(switches.length).toBe(6);
   });
 
-  it("should show enabled/disabled badges", async () => {
+  it("should display model names and pricing", async () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
-    renderWithProviders(<ProviderList />);
+    renderWithProviders(<ProviderList type="llm" />);
 
     await waitFor(() => {
-      const badges = screen.getAllByText("啟用");
-      expect(badges.length).toBeGreaterThan(0);
+      expect(screen.getByText("DeepSeek V3")).toBeInTheDocument();
     });
+    expect(screen.getByText("$0.14/$0.28")).toBeInTheDocument();
   });
 });

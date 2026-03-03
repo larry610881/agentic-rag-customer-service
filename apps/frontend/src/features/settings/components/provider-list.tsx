@@ -1,205 +1,200 @@
-import { useState } from "react";
-import { Plug, Plus, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   useProviderSettings,
-  useDeleteProviderSetting,
+  useCreateProviderSetting,
   useUpdateProviderSetting,
 } from "@/hooks/queries/use-provider-settings";
 import type { ProviderSetting } from "@/types/provider-setting";
-import { PROVIDER_MODELS } from "@/lib/provider-models";
-import { ProviderFormDialog } from "./provider-form-dialog";
+import {
+  PROVIDER_MODELS,
+  PROVIDER_LABELS,
+  PROVIDER_ORDER,
+} from "@/lib/provider-models";
 
 interface ProviderListProps {
   type?: string;
 }
 
-export function ProviderList({ type }: ProviderListProps) {
-  const { data: providers, isLoading } = useProviderSettings(type);
-  const deleteMutation = useDeleteProviderSetting();
-  const updateMutation = useUpdateProviderSetting();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingSetting, setEditingSetting] =
-    useState<ProviderSetting | null>(null);
+/** Pre-defined card: one per (provider, type) that has models */
+interface PreDefinedCard {
+  providerName: string;
+  providerType: "llm" | "embedding";
+  label: string;
+  models: { id: string; name: string; price: string }[];
+}
 
-  const handleToggleEnabled = (provider: ProviderSetting) => {
-    updateMutation.mutate({
-      id: provider.id,
-      data: { is_enabled: !provider.is_enabled },
-    });
+function buildPreDefinedCards(typeFilter?: string): PreDefinedCard[] {
+  const cards: PreDefinedCard[] = [];
+  for (const name of PROVIDER_ORDER) {
+    const group = PROVIDER_MODELS[name];
+    if (!group) continue;
+    const label = PROVIDER_LABELS[name] ?? name;
+
+    if ((!typeFilter || typeFilter === "llm") && group.llm.length > 0) {
+      cards.push({
+        providerName: name,
+        providerType: "llm",
+        label: `${label}`,
+        models: group.llm,
+      });
+    }
+    if (
+      (!typeFilter || typeFilter === "embedding") &&
+      group.embedding.length > 0
+    ) {
+      cards.push({
+        providerName: name,
+        providerType: "embedding",
+        label: `${label}`,
+        models: group.embedding,
+      });
+    }
+  }
+  return cards;
+}
+
+export function ProviderList({ type }: ProviderListProps) {
+  const { data: dbSettings, isLoading } = useProviderSettings();
+  const createMutation = useCreateProviderSetting();
+  const updateMutation = useUpdateProviderSetting();
+
+  const cards = buildPreDefinedCards(type);
+
+  /** Find matching DB record for a pre-defined card */
+  const findSetting = (
+    providerName: string,
+    providerType: string,
+  ): ProviderSetting | undefined =>
+    dbSettings?.find(
+      (s) =>
+        s.provider_name === providerName &&
+        s.provider_type === providerType,
+    );
+
+  const handleToggle = (card: PreDefinedCard, current: boolean) => {
+    const existing = findSetting(card.providerName, card.providerType);
+
+    if (existing) {
+      // Toggle existing record
+      updateMutation.mutate({
+        id: existing.id,
+        data: { is_enabled: !current },
+      });
+    } else {
+      // First time enable → create record
+      createMutation.mutate({
+        provider_type: card.providerType,
+        provider_name: card.providerName,
+        display_name: `${card.label} (${card.providerType.toUpperCase()})`,
+        api_key: "",
+      });
+    }
   };
 
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-48 rounded-lg" />
+        {[1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-56 rounded-lg" />
         ))}
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">
-          {type === "llm" ? "LLM" : type === "embedding" ? "Embedding" : "全部"}
-          供應商
-        </h2>
-        <Button
-          size="sm"
-          onClick={() => {
-            setEditingSetting(null);
-            setDialogOpen(true);
-          }}
-        >
-          <Plus className="mr-1 h-4 w-4" />
-          新增供應商
-        </Button>
-      </div>
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {cards.map((card) => {
+        const setting = findSetting(card.providerName, card.providerType);
+        const isEnabled = setting?.is_enabled ?? false;
+        const isBusy =
+          (updateMutation.isPending &&
+            updateMutation.variables?.id === setting?.id) ||
+          (createMutation.isPending &&
+            (createMutation.variables as { provider_name?: string })
+              ?.provider_name === card.providerName);
 
-      {(!providers || providers.length === 0) && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-muted-foreground">
-          <Plug className="mb-2 h-8 w-8" />
-          <p>尚未設定供應商</p>
-          <Button
-            variant="link"
-            size="sm"
-            onClick={() => {
-              setEditingSetting(null);
-              setDialogOpen(true);
-            }}
-          >
-            立即新增
-          </Button>
-        </div>
-      )}
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {providers?.map((provider) => (
+        return (
           <ProviderCard
-            key={provider.id}
-            provider={provider}
-            onToggleEnabled={() => handleToggleEnabled(provider)}
-            isToggling={
-              updateMutation.isPending &&
-              updateMutation.variables?.id === provider.id
-            }
-            onEdit={() => {
-              setEditingSetting(provider);
-              setDialogOpen(true);
-            }}
-            onDelete={() => deleteMutation.mutate(provider.id)}
+            key={`${card.providerName}-${card.providerType}`}
+            card={card}
+            isEnabled={isEnabled}
+            isBusy={isBusy}
+            onToggle={() => handleToggle(card, isEnabled)}
           />
-        ))}
-      </div>
-
-      <ProviderFormDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        editingSetting={editingSetting}
-        defaultType={type}
-      />
+        );
+      })}
     </div>
   );
 }
 
 interface ProviderCardProps {
-  provider: ProviderSetting;
-  onToggleEnabled: () => void;
-  isToggling: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
+  card: PreDefinedCard;
+  isEnabled: boolean;
+  isBusy: boolean;
+  onToggle: () => void;
 }
 
 function ProviderCard({
-  provider,
-  onToggleEnabled,
-  isToggling,
-  onEdit,
-  onDelete,
+  card,
+  isEnabled,
+  isBusy,
+  onToggle,
 }: ProviderCardProps) {
-  const providerType = provider.provider_type as "llm" | "embedding";
-  const modelGroup = PROVIDER_MODELS[provider.provider_name];
-  const models = modelGroup?.[providerType] ?? [];
+  const switchId = `toggle-${card.providerName}-${card.providerType}`;
 
   return (
     <Card
       className={`transition-all duration-200 hover:shadow-md ${
-        !provider.is_enabled ? "opacity-60" : ""
+        !isEnabled ? "opacity-50" : ""
       }`}
     >
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">{provider.display_name}</CardTitle>
+          <CardTitle className="text-base">{card.label}</CardTitle>
           <div className="flex items-center gap-2">
-            <Label
-              htmlFor={`toggle-${provider.id}`}
-              className="text-xs text-muted-foreground"
-            >
-              {provider.is_enabled ? "啟用" : "停用"}
+            <Label htmlFor={switchId} className="text-xs text-muted-foreground">
+              {isEnabled ? "啟用" : "停用"}
             </Label>
             <Switch
-              id={`toggle-${provider.id}`}
-              checked={provider.is_enabled}
-              onCheckedChange={onToggleEnabled}
-              disabled={isToggling}
-              aria-label={`${provider.is_enabled ? "停用" : "啟用"} ${provider.display_name}`}
+              id={switchId}
+              checked={isEnabled}
+              onCheckedChange={onToggle}
+              disabled={isBusy}
+              aria-label={`${isEnabled ? "停用" : "啟用"} ${card.label}`}
             />
           </div>
         </div>
-        <div className="flex gap-1">
-          <Badge variant="outline">{provider.provider_type}</Badge>
-          <Badge variant="outline">{provider.provider_name}</Badge>
-        </div>
+        <Badge variant="outline" className="w-fit">
+          {card.providerType.toUpperCase()}
+        </Badge>
       </CardHeader>
       <CardContent>
-        {/* 模型清單 + 價格 */}
-        {models.length > 0 ? (
-          <div className="mb-3 space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">
-              可用模型
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {models.map((m) => (
-                <span
-                  key={m.id}
-                  className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-xs"
-                >
-                  {m.name}
-                  <span className="text-muted-foreground">{m.price}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <p className="mb-3 text-xs text-muted-foreground">
-            無預設模型清單
-          </p>
-        )}
-
-        <p className="mb-3 text-xs text-muted-foreground">
-          API Key 由 .env 管理
+        <p className="mb-2 text-xs font-medium text-muted-foreground">
+          可用模型
         </p>
-
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={onEdit}>
-            編輯
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onDelete}
-            className="ml-auto text-destructive hover:text-destructive"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+        <div className="space-y-1">
+          {card.models.map((m) => (
+            <div
+              key={m.id}
+              className="flex items-center justify-between rounded-md border bg-muted/30 px-2.5 py-1.5 text-xs"
+            >
+              <div>
+                <span className="font-medium">{m.name}</span>
+                <span className="ml-1.5 font-mono text-muted-foreground">
+                  {m.id}
+                </span>
+              </div>
+              <span className="shrink-0 text-muted-foreground">{m.price}</span>
+            </div>
+          ))}
         </div>
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          API Key 由伺服器 .env 管理
+        </p>
       </CardContent>
     </Card>
   );

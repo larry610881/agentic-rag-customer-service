@@ -13,45 +13,54 @@ describe("ProviderList integration", () => {
     });
   });
 
-  it("should fetch and display providers from MSW", async () => {
+  it("should show pre-defined provider cards with switches", async () => {
     renderWithProviders(<ProviderList />);
 
     // Loading skeletons appear first
     const skeletons = document.querySelectorAll("[data-slot='skeleton']");
     expect(skeletons.length).toBeGreaterThan(0);
 
-    // After loading, display provider data
-    expect(
-      await screen.findByText("OpenAI GPT-4o"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("OpenAI Embedding")).toBeInTheDocument();
+    // After loading, all pre-defined providers are visible
+    expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
+    expect(screen.getByText("Anthropic Claude")).toBeInTheDocument();
 
-    // Should show provider type badges
-    expect(screen.getByText("llm")).toBeInTheDocument();
-    expect(screen.getByText("embedding")).toBeInTheDocument();
+    // OpenAI appears twice (LLM + Embedding)
+    const openaiCards = screen.getAllByText("OpenAI");
+    expect(openaiCards.length).toBe(2);
 
-    // Should show enable/disable switch for each provider
+    // Each card has a switch for enable/disable
     const switches = screen.getAllByRole("switch");
-    expect(switches.length).toBe(2);
+    expect(switches.length).toBeGreaterThanOrEqual(6); // 4 LLM + 2 Embedding
 
-    // Should show .env managed hint
-    const envTexts = screen.getAllByText("API Key 由 .env 管理");
-    expect(envTexts.length).toBe(2);
-
-    // Should show action buttons for each provider
-    const editButtons = screen.getAllByRole("button", { name: "編輯" });
-    expect(editButtons.length).toBe(2);
+    // LLM and Embedding badges
+    const llmBadges = screen.getAllByText("LLM");
+    expect(llmBadges.length).toBe(4);
+    const embeddingBadges = screen.getAllByText("EMBEDDING");
+    expect(embeddingBadges.length).toBe(2);
   });
 
-  it("should filter providers by type when type prop is set", async () => {
+  it("should filter to LLM cards only", async () => {
     renderWithProviders(<ProviderList type="llm" />);
 
-    // After loading, should show filtered provider
-    expect(
-      await screen.findByText("OpenAI GPT-4o"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
 
-    // Should display "LLM" in the heading (text may include whitespace)
-    expect(screen.getByText(/LLM/)).toBeInTheDocument();
+    // Only LLM badges, no EMBEDDING
+    const llmBadges = screen.getAllByText("LLM");
+    expect(llmBadges.length).toBe(4);
+    expect(screen.queryByText("EMBEDDING")).not.toBeInTheDocument();
+  });
+
+  it("should show model names and pricing", async () => {
+    renderWithProviders(<ProviderList type="llm" />);
+
+    // Wait for render
+    await screen.findByText("DeepSeek");
+
+    // DeepSeek models
+    expect(screen.getByText("DeepSeek V3")).toBeInTheDocument();
+    expect(screen.getByText("$0.14/$0.28")).toBeInTheDocument();
+
+    // OpenAI models
+    expect(screen.getByText("GPT-4o")).toBeInTheDocument();
   });
 });

@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-02-26 (Claude Code 配置最佳實踐修正完成, CLAUDE.md 瘦身 72%)
+> 最後更新：2026-03-03 (DeepSeek Provider 集成 + Provider Settings 兩層開關簡化)
 
 ---
 
@@ -1128,3 +1128,5 @@
 | **N+1 查詢優化** | **✅ 完成** | **100%** | **3 Repos 修正: Bot(N+1→2), Feedback(2N+1→3), Conversation(N+1→2), 241 tests pass** |
 | **Frontend E2E User Journeys** | **✅ 完成** | **100%** | **8 journeys (12 scenarios), 雙角色覆蓋 11 頁面, 16/16 auth+journey tests pass** |
 | **PostgreSQL 連線洩漏修復** | **✅ 完成** | **100%** | **1 NEW + 6 MODIFY files: ContextVar ASGI SessionCleanupMiddleware + Singleton provider delegation + RateLimitConfigLoader repo_factory, 241 tests pass** |
+| **Frontend Framework Migration** | **✅ 完成** | **100%** | **Next.js 16 → React + Vite SPA, 92 files (+1728/-5393), React Router v6, 150 tests pass** |
+| **DeepSeek Provider + Provider Settings 簡化** | **✅ 完成** | **100%** | **~15 files: DeepSeek enum + .env fallback + Dynamic Factory + Pre-defined Card UI + Switch toggle, 241 backend + 151 frontend tests** |

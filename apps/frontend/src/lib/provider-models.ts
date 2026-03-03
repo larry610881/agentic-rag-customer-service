@@ -9,6 +9,17 @@ export interface ProviderModelGroup {
   embedding: ProviderModelOption[];
 }
 
+/** Display labels for providers */
+export const PROVIDER_LABELS: Record<string, string> = {
+  deepseek: "DeepSeek",
+  openai: "OpenAI",
+  google: "Google Gemini",
+  anthropic: "Anthropic Claude",
+};
+
+/** Pre-defined provider list order (shown on settings page) */
+export const PROVIDER_ORDER = ["deepseek", "openai", "google", "anthropic"] as const;
+
 export const PROVIDER_MODELS: Record<string, ProviderModelGroup> = {
   deepseek: {
     llm: [
