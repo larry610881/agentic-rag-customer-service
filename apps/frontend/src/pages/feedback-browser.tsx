@@ -13,7 +13,7 @@ export default function FeedbackBrowserPage() {
   const { data, isLoading } = useFeedbackList(PAGE_SIZE, page * PAGE_SIZE);
 
   return (
-    <div className="h-full overflow-auto flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" asChild>
           <Link to={ROUTES.FEEDBACK}>
