@@ -59,6 +59,22 @@ export const mockDocuments: DocumentResponse[] = [
     created_at: "2024-01-06T00:00:00Z",
     updated_at: "2024-01-06T00:00:00Z",
   },
+  {
+    id: "doc-3",
+    kb_id: "kb-1",
+    tenant_id: "tenant-1",
+    filename: "broken-data.csv",
+    content_type: "text/csv",
+    status: "failed",
+    chunk_count: 0,
+    avg_chunk_length: 0,
+    min_chunk_length: 0,
+    max_chunk_length: 0,
+    quality_score: 0.0,
+    quality_issues: [],
+    created_at: "2024-01-07T00:00:00Z",
+    updated_at: "2024-01-07T00:00:00Z",
+  },
 ];
 
 export const mockUploadResponse: UploadDocumentResponse = {

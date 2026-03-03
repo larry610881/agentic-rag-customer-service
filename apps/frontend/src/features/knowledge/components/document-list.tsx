@@ -157,13 +157,20 @@ export function DocumentList({ kbId, documents, qualityStats, onDelete, isDeleti
                 </td>
                 {onDelete && (
                   <td className="border-b px-4 py-2 space-x-1">
-                    {doc.status === "processed" && (
+                    {(doc.status === "processed" ||
+                      doc.status === "failed") && (
                       <Button
-                        variant="outline"
+                        variant={
+                          doc.status === "failed"
+                            ? "secondary"
+                            : "outline"
+                        }
                         size="sm"
                         onClick={() => setReprocessTarget(doc)}
                       >
-                        重新處理
+                        {doc.status === "failed"
+                          ? "重試"
+                          : "重新處理"}
                       </Button>
                     )}
                     <Button

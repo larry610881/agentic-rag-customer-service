@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.tenant.entity import Tenant
 from src.domain.tenant.repository import TenantRepository
 from src.domain.tenant.value_objects import TenantId
+from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.tenant_model import TenantModel
 
 
@@ -21,15 +22,15 @@ class SQLAlchemyTenantRepository(TenantRepository):
         )
 
     async def save(self, tenant: Tenant) -> None:
-        model = TenantModel(
-            id=tenant.id.value,
-            name=tenant.name,
-            plan=tenant.plan,
-            created_at=tenant.created_at,
-            updated_at=tenant.updated_at,
-        )
-        self._session.add(model)
-        await self._session.commit()
+        async with atomic(self._session):
+            model = TenantModel(
+                id=tenant.id.value,
+                name=tenant.name,
+                plan=tenant.plan,
+                created_at=tenant.created_at,
+                updated_at=tenant.updated_at,
+            )
+            self._session.add(model)
 
     async def find_by_id(self, tenant_id: str) -> Tenant | None:
         stmt = select(TenantModel).where(TenantModel.id == tenant_id)

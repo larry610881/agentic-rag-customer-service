@@ -1,9 +1,15 @@
 from src.domain.knowledge.repository import (
-    ChunkRepository,
     DocumentRepository,
     ProcessingTaskRepository,
 )
-from src.domain.knowledge.services import ChunkQualityService, TextSplitterService
+from src.domain.knowledge.services import (
+    ChunkDeduplicationService,
+    ChunkFilterService,
+    ChunkQualityService,
+    LanguageDetectionService,
+    TextPreprocessor,
+    TextSplitterService,
+)
 from src.domain.rag.services import EmbeddingService, VectorStore
 from src.infrastructure.logging import get_logger
 
@@ -14,18 +20,18 @@ class ProcessDocumentUseCase:
     def __init__(
         self,
         document_repository: DocumentRepository,
-        chunk_repository: ChunkRepository,
         processing_task_repository: ProcessingTaskRepository,
         text_splitter_service: TextSplitterService,
         embedding_service: EmbeddingService,
         vector_store: VectorStore,
+        language_detection_service: LanguageDetectionService,
     ) -> None:
         self._doc_repo = document_repository
-        self._chunk_repo = chunk_repository
         self._task_repo = processing_task_repository
         self._splitter = text_splitter_service
         self._embedding = embedding_service
         self._vector_store = vector_store
+        self._language_detector = language_detection_service
 
     async def execute(
         self, document_id: str, task_id: str
@@ -53,9 +59,18 @@ class ProcessDocumentUseCase:
                 document_id, "processing"
             )
 
+            # Pre-process: normalize + boilerplate removal
+            preprocessed = TextPreprocessor.preprocess(
+                document.content, document.content_type
+            )
+
+            # Detect language
+            language = self._language_detector.detect(preprocessed)
+            log.info("document.language.detected", language=language)
+
             # Split text into chunks
             chunks = self._splitter.split(
-                document.content,
+                preprocessed,
                 document_id,
                 document.tenant_id,
                 content_type=document.content_type,
@@ -71,10 +86,7 @@ class ProcessDocumentUseCase:
                 await self._task_repo.update_status(task_id, "completed", progress=100)
                 return
 
-            # Save chunks to DB
-            await self._chunk_repo.save_batch(chunks)
-
-            # Calculate chunk quality
+            # Calculate chunk quality (before filtering, for full picture)
             quality = ChunkQualityService.calculate(chunks)
             await self._doc_repo.update_quality(
                 document_id,
@@ -89,6 +101,37 @@ class ProcessDocumentUseCase:
                 quality_score=quality.score,
                 issues=quality.issues,
             )
+
+            # Filter low-quality chunks
+            filter_result = ChunkFilterService.filter(chunks)
+            if filter_result.rejected_count:
+                log.info(
+                    "document.chunks.filtered",
+                    rejected=filter_result.rejected_count,
+                )
+            chunks = filter_result.accepted
+
+            # Deduplicate
+            pre_dedup = len(chunks)
+            chunks = ChunkDeduplicationService.deduplicate(chunks)
+            if len(chunks) < pre_dedup:
+                log.info(
+                    "document.chunks.deduplicated",
+                    before=pre_dedup,
+                    after=len(chunks),
+                )
+
+            # Empty after filtering/dedup
+            if not chunks:
+                log.warning("document.process.empty_after_filter")
+                await self._doc_repo.update_status(
+                    document_id, "processed", chunk_count=0
+                )
+                await self._task_repo.update_status(task_id, "completed", progress=100)
+                return
+
+            # Save chunks to DB
+            await self._doc_repo.save_chunks(chunks)
 
             # Embed chunks
             texts = [c.content for c in chunks]
@@ -111,6 +154,7 @@ class ProcessDocumentUseCase:
                     "content": c.content,
                     "chunk_index": c.chunk_index,
                     "content_type": document.content_type,
+                    "language": language,
                     **{
                         k: v
                         for k, v in c.metadata.items()

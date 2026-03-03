@@ -22,6 +22,8 @@ class KnowledgeBaseRepository(ABC):
 
 
 class DocumentRepository(ABC):
+    # --- Document methods ---
+
     @abstractmethod
     async def save(self, document: Document) -> None: ...
 
@@ -50,24 +52,21 @@ class DocumentRepository(ABC):
         quality_issues: list[str],
     ) -> None: ...
 
-
-class ChunkRepository(ABC):
-    @abstractmethod
-    async def save_batch(self, chunks: list[Chunk]) -> None: ...
+    # --- Chunk methods (aggregate internal Entity) ---
 
     @abstractmethod
-    async def find_by_document(self, document_id: str) -> list[Chunk]: ...
+    async def save_chunks(self, chunks: list[Chunk]) -> None: ...
 
     @abstractmethod
-    async def delete_by_document(self, document_id: str) -> None: ...
+    async def delete_chunks_by_document(self, document_id: str) -> None: ...
 
     @abstractmethod
-    async def find_by_document_paginated(
+    async def find_chunks_by_document_paginated(
         self, document_id: str, limit: int = 20, offset: int = 0
     ) -> list[Chunk]: ...
 
     @abstractmethod
-    async def count_by_document(self, document_id: str) -> int: ...
+    async def count_chunks_by_document(self, document_id: str) -> int: ...
 
     @abstractmethod
     async def find_chunk_ids_by_kb(

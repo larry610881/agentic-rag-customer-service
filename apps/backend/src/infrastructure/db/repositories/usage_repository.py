@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.usage.entity import UsageRecord
 from src.domain.usage.repository import UsageRepository
 from src.domain.usage.value_objects import ModelCostStat, UsageSummary
+from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
 
 
@@ -16,20 +17,20 @@ class SQLAlchemyUsageRepository(UsageRepository):
         self._session = session
 
     async def save(self, record: UsageRecord) -> None:
-        model = UsageRecordModel(
-            id=record.id,
-            tenant_id=record.tenant_id,
-            request_type=record.request_type,
-            model=record.model,
-            input_tokens=record.input_tokens,
-            output_tokens=record.output_tokens,
-            total_tokens=record.total_tokens,
-            estimated_cost=record.estimated_cost,
-            message_id=record.message_id,
-            created_at=record.created_at,
-        )
-        self._session.add(model)
-        await self._session.commit()
+        async with atomic(self._session):
+            model = UsageRecordModel(
+                id=record.id,
+                tenant_id=record.tenant_id,
+                request_type=record.request_type,
+                model=record.model,
+                input_tokens=record.input_tokens,
+                output_tokens=record.output_tokens,
+                total_tokens=record.total_tokens,
+                estimated_cost=record.estimated_cost,
+                message_id=record.message_id,
+                created_at=record.created_at,
+            )
+            self._session.add(model)
 
     async def find_by_tenant(
         self,

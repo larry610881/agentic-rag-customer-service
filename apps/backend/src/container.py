@@ -170,6 +170,9 @@ from src.infrastructure.langgraph.meta_supervisor_service import (
 from src.infrastructure.langgraph.tools import RAGQueryTool
 from src.infrastructure.langgraph.workers.fake_main_worker import FakeMainWorker
 from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWorker
+from src.infrastructure.language_detection import (
+    LangdetectLanguageDetectionService,
+)
 from src.infrastructure.line.line_messaging_service import HttpxLineMessagingService
 from src.infrastructure.line.line_messaging_service_factory import (
     HttpxLineMessagingServiceFactory,
@@ -320,6 +323,10 @@ class Container(containers.DeclarativeContainer):
 
     file_parser_service = providers.Singleton(DefaultFileParserService)
 
+    language_detection_service = providers.Singleton(
+        LangdetectLanguageDetectionService,
+    )
+
     _csv_splitter = providers.Singleton(
         CSVRowTextSplitterService,
         chunk_size=providers.Callable(lambda cfg: cfg.chunk_size, config),
@@ -336,15 +343,50 @@ class Container(containers.DeclarativeContainer):
         providers.Callable(lambda cfg: cfg.chunk_strategy, config),
         auto=providers.Singleton(
             ContentAwareTextSplitterService,
-            strategies=providers.Dict({"text/csv": _csv_splitter}),
+            strategies=providers.Dict({
+                "text/csv": _csv_splitter,
+                "application/vnd.openxmlformats-officedocument"
+                ".spreadsheetml.sheet": _csv_splitter,
+                "application/vnd.ms-excel": _csv_splitter,
+            }),
             default=_recursive_splitter,
         ),
         recursive=_recursive_splitter,
         csv_row=_csv_splitter,
     )
 
-    # Embedding is fixed to OpenAI text-embedding-3-small (1536 dim).
-    # Static fallback used when DB has no API key.
+    # Static fallback embedding (model/base_url/key all from .env)
+    _real_embedding_service = providers.Factory(
+        OpenAIEmbeddingService,
+        api_key=providers.Callable(
+            lambda cfg: cfg.effective_embedding_api_key, config
+        ),
+        model=providers.Callable(
+            lambda cfg: cfg.effective_embedding_model, config
+        ),
+        base_url=providers.Callable(
+            lambda cfg: cfg.effective_embedding_base_url, config
+        ),
+        batch_size=providers.Callable(
+            lambda cfg: cfg.embedding_batch_size, config
+        ),
+        max_retries=providers.Callable(
+            lambda cfg: cfg.embedding_max_retries, config
+        ),
+        timeout=providers.Callable(
+            lambda cfg: cfg.embedding_timeout, config
+        ),
+        batch_delay=providers.Callable(
+            lambda cfg: cfg.embedding_batch_delay, config
+        ),
+        retry_after_multiplier=providers.Callable(
+            lambda cfg: cfg.embedding_retry_after_multiplier, config
+        ),
+        min_batch_size=providers.Callable(
+            lambda cfg: cfg.embedding_min_batch_size, config
+        ),
+    )
+
     _static_embedding_service = providers.Selector(
         providers.Callable(
             lambda cfg: cfg.embedding_provider, config
@@ -355,32 +397,8 @@ class Container(containers.DeclarativeContainer):
                 lambda cfg: cfg.embedding_vector_size, config
             ),
         ),
-        openai=providers.Factory(
-            OpenAIEmbeddingService,
-            api_key=providers.Callable(
-                lambda cfg: cfg.effective_embedding_api_key, config
-            ),
-            model="text-embedding-3-small",
-            base_url="https://api.openai.com/v1",
-            batch_size=providers.Callable(
-                lambda cfg: cfg.embedding_batch_size, config
-            ),
-            max_retries=providers.Callable(
-                lambda cfg: cfg.embedding_max_retries, config
-            ),
-            timeout=providers.Callable(
-                lambda cfg: cfg.embedding_timeout, config
-            ),
-            batch_delay=providers.Callable(
-                lambda cfg: cfg.embedding_batch_delay, config
-            ),
-            retry_after_multiplier=providers.Callable(
-                lambda cfg: cfg.embedding_retry_after_multiplier, config
-            ),
-            min_batch_size=providers.Callable(
-                lambda cfg: cfg.embedding_min_batch_size, config
-            ),
-        ),
+        openai=_real_embedding_service,
+        google=_real_embedding_service,
     )
 
     _embedding_factory = providers.Singleton(
@@ -634,6 +652,7 @@ class Container(containers.DeclarativeContainer):
         text_splitter_service=text_splitter_service,
         embedding_service=embedding_service,
         vector_store=vector_store,
+        language_detection_service=language_detection_service,
     )
 
     get_processing_task_use_case = providers.Factory(
@@ -653,6 +672,7 @@ class Container(containers.DeclarativeContainer):
         text_splitter_service=text_splitter_service,
         embedding_service=embedding_service,
         vector_store=vector_store,
+        language_detection_service=language_detection_service,
     )
 
     get_document_quality_stats_use_case = providers.Factory(

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.knowledge.entity import ProcessingTask
 from src.domain.knowledge.repository import ProcessingTaskRepository
 from src.domain.knowledge.value_objects import ProcessingTaskId
+from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.processing_task_model import (
     ProcessingTaskModel,
 )
@@ -28,18 +29,18 @@ class SQLAlchemyProcessingTaskRepository(ProcessingTaskRepository):
         )
 
     async def save(self, task: ProcessingTask) -> None:
-        model = ProcessingTaskModel(
-            id=task.id.value,
-            document_id=task.document_id,
-            tenant_id=task.tenant_id,
-            status=task.status,
-            progress=task.progress,
-            error_message=task.error_message,
-            created_at=task.created_at,
-            updated_at=task.updated_at,
-        )
-        self._session.add(model)
-        await self._session.commit()
+        async with atomic(self._session):
+            model = ProcessingTaskModel(
+                id=task.id.value,
+                document_id=task.document_id,
+                tenant_id=task.tenant_id,
+                status=task.status,
+                progress=task.progress,
+                error_message=task.error_message,
+                created_at=task.created_at,
+                updated_at=task.updated_at,
+            )
+            self._session.add(model)
 
     async def find_by_id(
         self, task_id: str
@@ -66,10 +67,10 @@ class SQLAlchemyProcessingTaskRepository(ProcessingTaskRepository):
             values["progress"] = progress
         if error_message is not None:
             values["error_message"] = error_message
-        stmt = (
-            update(ProcessingTaskModel)
-            .where(ProcessingTaskModel.id == task_id)
-            .values(**values)
-        )
-        await self._session.execute(stmt)
-        await self._session.commit()
+        async with atomic(self._session):
+            stmt = (
+                update(ProcessingTaskModel)
+                .where(ProcessingTaskModel.id == task_id)
+                .values(**values)
+            )
+            await self._session.execute(stmt)

@@ -1,7 +1,7 @@
-"""Per-request AsyncSession lifecycle management via ContextVar + ASGI middleware.
+"""Per-request shared AsyncSession lifecycle via ContextVar + ASGI middleware.
 
-Solves the "idle in transaction" connection leak: every AsyncSession created
-during a request is tracked and closed when the request finishes.
+Each request gets at most one AsyncSession (singleton per request).
+On teardown the middleware rolls back any open transaction and closes the session.
 """
 
 from __future__ import annotations
@@ -13,28 +13,28 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from src.infrastructure.db.engine import async_session_factory
 
-_request_sessions: ContextVar[list[AsyncSession]] = ContextVar("_request_sessions")
+_request_session: ContextVar[AsyncSession | None] = ContextVar(
+    "_request_session", default=None
+)
 
 
 def get_tracked_session() -> AsyncSession:
-    """Create an AsyncSession and register it for per-request cleanup."""
+    """Return the per-request shared session, creating on first call."""
+    session = _request_session.get()
+    if session is not None:
+        return session
     session = async_session_factory()
-    try:
-        sessions = _request_sessions.get()
-    except LookupError:
-        sessions = []
-        _request_sessions.set(sessions)
-    sessions.append(session)
+    _request_session.set(session)
     return session
 
 
 class SessionCleanupMiddleware:
-    """Pure ASGI middleware — closes all tracked sessions after each request.
+    """Pure ASGI middleware — closes the shared session after each request.
 
     Correctly handles:
-    - Normal requests (sessions closed after response is sent)
-    - BackgroundTasks (run within ASGI scope; sessions closed after tasks complete)
-    - SSE StreamingResponse (sessions stay alive during stream; closed when done)
+    - Normal requests (session closed after response is sent)
+    - BackgroundTasks (run within ASGI scope; session closed after tasks complete)
+    - SSE StreamingResponse (session stays alive during stream; closed when done)
 
     Uses pure ASGI instead of BaseHTTPMiddleware to avoid breaking SSE streams.
     """
@@ -47,14 +47,16 @@ class SessionCleanupMiddleware:
             await self.app(scope, receive, send)
             return
 
-        sessions: list[AsyncSession] = []
-        token = _request_sessions.set(sessions)
+        token = _request_session.set(None)
         try:
             await self.app(scope, receive, send)
         finally:
-            _request_sessions.reset(token)
-            for session in sessions:
+            session = _request_session.get()
+            _request_session.reset(token)
+            if session is not None:
                 try:
+                    if session.in_transaction():
+                        await session.rollback()
                     await session.close()
                 except Exception:
                     pass

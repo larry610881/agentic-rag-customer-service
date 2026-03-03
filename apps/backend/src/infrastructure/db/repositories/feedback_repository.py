@@ -19,6 +19,7 @@ from src.domain.conversation.feedback_value_objects import (
     FeedbackId,
     Rating,
 )
+from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.feedback_model import FeedbackModel
 from src.infrastructure.db.models.message_model import MessageModel
 
@@ -42,33 +43,33 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
         )
 
     async def save(self, feedback: Feedback) -> None:
-        model = FeedbackModel(
-            id=feedback.id.value,
-            tenant_id=feedback.tenant_id,
-            conversation_id=feedback.conversation_id,
-            message_id=feedback.message_id,
-            user_id=feedback.user_id,
-            channel=feedback.channel.value,
-            rating=feedback.rating.value,
-            comment=feedback.comment,
-            tags=json.dumps(feedback.tags, ensure_ascii=False),
-            created_at=feedback.created_at,
-        )
-        self._session.add(model)
-        await self._session.commit()
+        async with atomic(self._session):
+            model = FeedbackModel(
+                id=feedback.id.value,
+                tenant_id=feedback.tenant_id,
+                conversation_id=feedback.conversation_id,
+                message_id=feedback.message_id,
+                user_id=feedback.user_id,
+                channel=feedback.channel.value,
+                rating=feedback.rating.value,
+                comment=feedback.comment,
+                tags=json.dumps(feedback.tags, ensure_ascii=False),
+                created_at=feedback.created_at,
+            )
+            self._session.add(model)
 
     async def update(self, feedback: Feedback) -> None:
-        stmt = select(FeedbackModel).where(
-            FeedbackModel.id == feedback.id.value
-        )
-        result = await self._session.execute(stmt)
-        model = result.scalar_one_or_none()
-        if model is None:
-            return
-        model.rating = feedback.rating.value
-        model.comment = feedback.comment
-        model.tags = json.dumps(feedback.tags, ensure_ascii=False)
-        await self._session.commit()
+        async with atomic(self._session):
+            stmt = select(FeedbackModel).where(
+                FeedbackModel.id == feedback.id.value
+            )
+            result = await self._session.execute(stmt)
+            model = result.scalar_one_or_none()
+            if model is None:
+                return
+            model.rating = feedback.rating.value
+            model.comment = feedback.comment
+            model.tags = json.dumps(feedback.tags, ensure_ascii=False)
 
     async def find_by_message_id(self, message_id: str) -> Feedback | None:
         stmt = select(FeedbackModel).where(
@@ -116,17 +117,17 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
     async def update_tags(
         self, message_id: str, tags: list[str]
     ) -> None:
-        stmt = select(FeedbackModel).where(
-            FeedbackModel.message_id == message_id
-        )
-        result = await self._session.execute(stmt)
-        model = result.scalar_one_or_none()
-        if model is None:
-            return
-        existing_tags: list[str] = json.loads(model.tags)
-        merged = list(dict.fromkeys(existing_tags + tags))
-        model.tags = json.dumps(merged, ensure_ascii=False)
-        await self._session.commit()
+        async with atomic(self._session):
+            stmt = select(FeedbackModel).where(
+                FeedbackModel.message_id == message_id
+            )
+            result = await self._session.execute(stmt)
+            model = result.scalar_one_or_none()
+            if model is None:
+                return
+            existing_tags: list[str] = json.loads(model.tags)
+            merged = list(dict.fromkeys(existing_tags + tags))
+            model.tags = json.dumps(merged, ensure_ascii=False)
 
     async def get_daily_trend(
         self, tenant_id: str, days: int = 30
@@ -316,13 +317,13 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
     async def delete_before_date(
         self, tenant_id: str, before: datetime
     ) -> int:
-        stmt = (
-            delete(FeedbackModel)
-            .where(
-                FeedbackModel.tenant_id == tenant_id,
-                FeedbackModel.created_at < before,
+        async with atomic(self._session):
+            stmt = (
+                delete(FeedbackModel)
+                .where(
+                    FeedbackModel.tenant_id == tenant_id,
+                    FeedbackModel.created_at < before,
+                )
             )
-        )
-        result = await self._session.execute(stmt)
-        await self._session.commit()
-        return result.rowcount
+            result = await self._session.execute(stmt)
+            return result.rowcount

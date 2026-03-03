@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.auth.entity import User
 from src.domain.auth.repository import UserRepository
 from src.domain.auth.value_objects import Email, Role, UserId
+from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.user_model import UserModel
 
 
@@ -25,25 +26,25 @@ class SQLAlchemyUserRepository(UserRepository):
         )
 
     async def save(self, user: User) -> None:
-        existing = await self._session.get(UserModel, user.id.value)
-        if existing:
-            existing.tenant_id = user.tenant_id
-            existing.email = user.email.value
-            existing.hashed_password = user.hashed_password
-            existing.role = user.role.value
-            existing.updated_at = datetime.now(timezone.utc)
-        else:
-            model = UserModel(
-                id=user.id.value,
-                tenant_id=user.tenant_id,
-                email=user.email.value,
-                hashed_password=user.hashed_password,
-                role=user.role.value,
-                created_at=user.created_at,
-                updated_at=user.updated_at,
-            )
-            self._session.add(model)
-        await self._session.commit()
+        async with atomic(self._session):
+            existing = await self._session.get(UserModel, user.id.value)
+            if existing:
+                existing.tenant_id = user.tenant_id
+                existing.email = user.email.value
+                existing.hashed_password = user.hashed_password
+                existing.role = user.role.value
+                existing.updated_at = datetime.now(timezone.utc)
+            else:
+                model = UserModel(
+                    id=user.id.value,
+                    tenant_id=user.tenant_id,
+                    email=user.email.value,
+                    hashed_password=user.hashed_password,
+                    role=user.role.value,
+                    created_at=user.created_at,
+                    updated_at=user.updated_at,
+                )
+                self._session.add(model)
 
     async def find_by_id(self, user_id: str) -> User | None:
         model = await self._session.get(UserModel, user_id)

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from src.domain.conversation.feedback_repository import FeedbackRepository
-from src.domain.knowledge.repository import ChunkRepository, DocumentRepository
+from src.domain.knowledge.repository import DocumentRepository
 
 
 @dataclass
@@ -16,11 +16,9 @@ class GetDocumentQualityStatsUseCase:
     def __init__(
         self,
         document_repository: DocumentRepository,
-        chunk_repository: ChunkRepository,
         feedback_repository: FeedbackRepository,
     ) -> None:
         self._doc_repo = document_repository
-        self._chunk_repo = chunk_repository
         self._feedback_repo = feedback_repository
 
     async def execute(
@@ -35,7 +33,7 @@ class GetDocumentQualityStatsUseCase:
         doc_map = {d.id.value: d for d in documents}
 
         # 2. Get chunk_id → document_id mapping (JOIN instead of IN clause)
-        chunk_to_doc = await self._chunk_repo.find_chunk_ids_by_kb(kb_id)
+        chunk_to_doc = await self._doc_repo.find_chunk_ids_by_kb(kb_id)
         # Invert: chunk_id → document_id
         chunk_id_to_doc_id: dict[str, str] = {}
         for doc_id, chunk_ids in chunk_to_doc.items():

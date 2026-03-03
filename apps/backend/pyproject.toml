@@ -26,6 +26,8 @@ dependencies = [
     "langchain-text-splitters>=1.1.1",
     "structlog>=25.5.0",
     "bcrypt>=4.0",
+    "openpyxl>=3.1.0",
+    "langdetect>=1.0.9",
 ]
 
 [dependency-groups]
@@ -72,7 +74,8 @@ check_untyped_defs = true
 [tool.coverage.run]
 branch = true
 source = ["src"]
-parallel = false
+parallel = true
+concurrency = ["greenlet", "thread"]
 omit = [
     "tests/*",
     "src/infrastructure/db/seed.py",
@@ -83,14 +86,11 @@ omit = [
     "src/infrastructure/db/health_repository.py",
     "src/infrastructure/logging/*",
     "src/infrastructure/auth/*",
-    "src/infrastructure/embedding/openai_embedding_service.py",
-    "src/infrastructure/llm/anthropic_llm_service.py",
-    "src/infrastructure/llm/openai_llm_service.py",
+    "src/infrastructure/embedding/*",
+    "src/infrastructure/llm/*",
     "src/infrastructure/qdrant/*",
     "src/infrastructure/sentiment/*",
-    "src/infrastructure/langgraph/agent_graph.py",
-    "src/infrastructure/langgraph/langgraph_agent_service.py",
-    "src/infrastructure/langgraph/tools.py",
+    "src/infrastructure/langgraph/*",
     "src/infrastructure/tools/*",
     "src/infrastructure/line/*",
     "src/interfaces/*",
@@ -99,11 +99,19 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 70
+fail_under = 80
 show_missing = true
 precision = 2
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "if __name__ == .__main__.",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
 ]
+
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]

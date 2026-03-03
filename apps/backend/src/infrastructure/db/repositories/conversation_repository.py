@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.conversation.entity import Conversation, Message
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.conversation.value_objects import ConversationId, MessageId
+from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.conversation_model import ConversationModel
 from src.infrastructure.db.models.message_model import MessageModel
 
@@ -17,50 +18,49 @@ class SQLAlchemyConversationRepository(ConversationRepository):
         self._session = session
 
     async def save(self, conversation: Conversation) -> None:
-        existing = await self._session.get(
-            ConversationModel, conversation.id.value
-        )
-        if existing is None:
-            model = ConversationModel(
-                id=conversation.id.value,
-                tenant_id=conversation.tenant_id,
-                bot_id=conversation.bot_id,
-                created_at=conversation.created_at,
+        async with atomic(self._session):
+            existing = await self._session.get(
+                ConversationModel, conversation.id.value
             )
-            self._session.add(model)
+            if existing is None:
+                model = ConversationModel(
+                    id=conversation.id.value,
+                    tenant_id=conversation.tenant_id,
+                    bot_id=conversation.bot_id,
+                    created_at=conversation.created_at,
+                )
+                self._session.add(model)
 
-        if conversation.messages:
-            # Bulk check: fetch all existing message IDs in one query
-            msg_ids = [msg.id.value for msg in conversation.messages]
-            stmt = select(MessageModel.id).where(
-                MessageModel.id.in_(msg_ids)
-            )
-            result = await self._session.execute(stmt)
-            existing_ids = set(result.scalars().all())
+            if conversation.messages:
+                # Bulk check: fetch all existing message IDs in one query
+                msg_ids = [msg.id.value for msg in conversation.messages]
+                stmt = select(MessageModel.id).where(
+                    MessageModel.id.in_(msg_ids)
+                )
+                result = await self._session.execute(stmt)
+                existing_ids = set(result.scalars().all())
 
-            for msg in conversation.messages:
-                if msg.id.value not in existing_ids:
-                    msg_model = MessageModel(
-                        id=msg.id.value,
-                        conversation_id=msg.conversation_id,
-                        role=msg.role,
-                        content=msg.content,
-                        tool_calls_json=json.dumps(
-                            msg.tool_calls, ensure_ascii=False
-                        ),
-                        latency_ms=msg.latency_ms,
-                        retrieved_chunks=(
-                            json.dumps(
-                                msg.retrieved_chunks, ensure_ascii=False
-                            )
-                            if msg.retrieved_chunks is not None
-                            else None
-                        ),
-                        created_at=msg.created_at,
-                    )
-                    self._session.add(msg_model)
-
-        await self._session.commit()
+                for msg in conversation.messages:
+                    if msg.id.value not in existing_ids:
+                        msg_model = MessageModel(
+                            id=msg.id.value,
+                            conversation_id=msg.conversation_id,
+                            role=msg.role,
+                            content=msg.content,
+                            tool_calls_json=json.dumps(
+                                msg.tool_calls, ensure_ascii=False
+                            ),
+                            latency_ms=msg.latency_ms,
+                            retrieved_chunks=(
+                                json.dumps(
+                                    msg.retrieved_chunks, ensure_ascii=False
+                                )
+                                if msg.retrieved_chunks is not None
+                                else None
+                            ),
+                            created_at=msg.created_at,
+                        )
+                        self._session.add(msg_model)
 
     async def find_by_id(
         self, conversation_id: str

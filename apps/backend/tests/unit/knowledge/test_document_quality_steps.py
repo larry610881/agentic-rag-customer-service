@@ -141,6 +141,7 @@ def pending_doc_with_quality(context):
     mock_doc_repo.find_by_id = AsyncMock(return_value=doc)
     mock_doc_repo.update_status = AsyncMock()
     mock_doc_repo.update_quality = AsyncMock()
+    mock_doc_repo.save_chunks = AsyncMock()
 
     chunks = [
         Chunk(
@@ -155,9 +156,6 @@ def pending_doc_with_quality(context):
     mock_splitter = MagicMock()
     mock_splitter.split.return_value = chunks
 
-    mock_chunk_repo = AsyncMock()
-    mock_chunk_repo.save_batch = AsyncMock()
-
     mock_task_repo = AsyncMock()
     mock_task_repo.update_status = AsyncMock()
 
@@ -170,13 +168,16 @@ def pending_doc_with_quality(context):
     mock_vector_store.ensure_collection = AsyncMock()
     mock_vector_store.upsert = AsyncMock()
 
+    mock_language_detector = MagicMock()
+    mock_language_detector.detect.return_value = "en"
+
     context["use_case"] = ProcessDocumentUseCase(
         document_repository=mock_doc_repo,
-        chunk_repository=mock_chunk_repo,
         processing_task_repository=mock_task_repo,
         text_splitter_service=mock_splitter,
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,
+        language_detection_service=mock_language_detector,
     )
     context["mock_doc_repo"] = mock_doc_repo
     context["doc_id"] = "doc-q1"
@@ -210,12 +211,12 @@ def doc_with_n_chunks(context, count):
         )
         for i in range(count)
     ]
-    mock_chunk_repo = AsyncMock()
-    mock_chunk_repo.find_by_document_paginated = AsyncMock(return_value=chunks[:2])
-    mock_chunk_repo.count_by_document = AsyncMock(return_value=count)
+    mock_doc_repo = AsyncMock()
+    mock_doc_repo.find_chunks_by_document_paginated = AsyncMock(return_value=chunks[:2])
+    mock_doc_repo.count_chunks_by_document = AsyncMock(return_value=count)
 
     context["chunk_use_case"] = GetDocumentChunksUseCase(
-        chunk_repository=mock_chunk_repo
+        document_repository=mock_doc_repo
     )
     context["doc_id"] = "doc-page"
     context["total_count"] = count
@@ -254,10 +255,8 @@ def processed_doc(context):
     mock_doc_repo.find_by_id = AsyncMock(return_value=doc)
     mock_doc_repo.update_status = AsyncMock()
     mock_doc_repo.update_quality = AsyncMock()
-
-    mock_chunk_repo = AsyncMock()
-    mock_chunk_repo.delete_by_document = AsyncMock()
-    mock_chunk_repo.save_batch = AsyncMock()
+    mock_doc_repo.delete_chunks_by_document = AsyncMock()
+    mock_doc_repo.save_chunks = AsyncMock()
 
     new_chunks = [
         Chunk(
@@ -286,16 +285,18 @@ def processed_doc(context):
     mock_vector_store.ensure_collection = AsyncMock()
     mock_vector_store.upsert = AsyncMock()
 
+    mock_language_detector = MagicMock()
+    mock_language_detector.detect.return_value = "en"
+
     context["reprocess_use_case"] = ReprocessDocumentUseCase(
         document_repository=mock_doc_repo,
-        chunk_repository=mock_chunk_repo,
         processing_task_repository=mock_task_repo,
         text_splitter_service=mock_splitter,
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,
+        language_detection_service=mock_language_detector,
     )
     context["mock_doc_repo"] = mock_doc_repo
-    context["mock_chunk_repo"] = mock_chunk_repo
     context["mock_task_repo"] = mock_task_repo
     context["mock_vector_store"] = mock_vector_store
     context["doc_id"] = "doc-reprocess"
@@ -309,13 +310,13 @@ def do_reprocess(context):
 
 @then("舊 chunks 應被刪除")
 def old_chunks_deleted(context):
-    context["mock_chunk_repo"].delete_by_document.assert_called_once_with("doc-reprocess")
+    context["mock_doc_repo"].delete_chunks_by_document.assert_called_once_with("doc-reprocess")
 
 
 @then("新 chunks 應被建立")
 def new_chunks_created(context):
-    context["mock_chunk_repo"].save_batch.assert_called_once()
-    saved_chunks = context["mock_chunk_repo"].save_batch.call_args[0][0]
+    context["mock_doc_repo"].save_chunks.assert_called_once()
+    saved_chunks = context["mock_doc_repo"].save_chunks.call_args[0][0]
     assert len(saved_chunks) == 4
 
 
@@ -363,9 +364,7 @@ def processed_doc_will_fail(context):
     mock_doc_repo = AsyncMock()
     mock_doc_repo.find_by_id = AsyncMock(return_value=doc)
     mock_doc_repo.update_status = AsyncMock()
-
-    mock_chunk_repo = AsyncMock()
-    mock_chunk_repo.delete_by_document = AsyncMock(
+    mock_doc_repo.delete_chunks_by_document = AsyncMock(
         side_effect=RuntimeError("DB connection lost")
     )
 
@@ -378,13 +377,16 @@ def processed_doc_will_fail(context):
     mock_embedding = AsyncMock()
     mock_vector_store = AsyncMock()
 
+    mock_language_detector = MagicMock()
+    mock_language_detector.detect.return_value = "en"
+
     context["reprocess_use_case"] = ReprocessDocumentUseCase(
         document_repository=mock_doc_repo,
-        chunk_repository=mock_chunk_repo,
         processing_task_repository=mock_task_repo,
         text_splitter_service=mock_splitter,
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,
+        language_detection_service=mock_language_detector,
     )
     context["mock_task_repo"] = mock_task_repo
     context["doc_id"] = "doc-fail"

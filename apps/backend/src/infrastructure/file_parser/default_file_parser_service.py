@@ -10,12 +10,24 @@ from src.domain.shared.exceptions import UnsupportedFileTypeError
 
 
 class _HTMLTextExtractor(HTMLParser):
+    _SKIP_TAGS = frozenset({"nav", "footer", "aside", "header", "script", "style"})
+
     def __init__(self) -> None:
         super().__init__()
         self._texts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._SKIP_TAGS:
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._SKIP_TAGS and self._skip_depth > 0:
+            self._skip_depth -= 1
 
     def handle_data(self, data: str) -> None:
-        self._texts.append(data)
+        if self._skip_depth == 0:
+            self._texts.append(data)
 
     def get_text(self) -> str:
         return " ".join(self._texts).strip()
@@ -36,6 +48,9 @@ class DefaultFileParserService(FileParserService):
             ".wordprocessingml.document": self._parse_docx,
             "application/rtf": self._parse_rtf,
             "text/rtf": self._parse_rtf,
+            "application/vnd.openxmlformats-officedocument"
+            ".spreadsheetml.sheet": self._parse_xlsx,
+            "application/vnd.ms-excel": self._parse_xlsx,
         }
 
     def supported_types(self) -> set[str]:
@@ -105,6 +120,23 @@ class DefaultFileParserService(FileParserService):
         doc = Document(io.BytesIO(raw_bytes))
         paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
         return "\n".join(paragraphs)
+
+    def _parse_xlsx(self, raw_bytes: bytes) -> str:
+        from openpyxl import load_workbook
+
+        wb = load_workbook(io.BytesIO(raw_bytes), read_only=True, data_only=True)
+        sheets: list[str] = []
+        for name in wb.sheetnames:
+            ws = wb[name]
+            rows: list[str] = []
+            for row in ws.iter_rows(values_only=True):
+                cells = [str(c) if c is not None else "" for c in row]
+                if any(cells):
+                    rows.append(", ".join(cells))
+            if rows:
+                sheets.append(f"[Sheet: {name}]\n" + "\n".join(rows))
+        wb.close()
+        return "\n\n".join(sheets)
 
     def _parse_rtf(self, raw_bytes: bytes) -> str:
         from striprtf.striprtf import rtf_to_text

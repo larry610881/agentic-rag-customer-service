@@ -59,7 +59,7 @@ describe("DocumentList", () => {
     const onDelete = vi.fn();
     renderWithProviders(<DocumentList kbId="kb-1" documents={mockDocuments} onDelete={onDelete} />);
     const deleteButtons = screen.getAllByRole("button", { name: "刪除" });
-    expect(deleteButtons).toHaveLength(2);
+    expect(deleteButtons).toHaveLength(3);
   });
 
   it("does not show delete buttons when onDelete is not provided", () => {

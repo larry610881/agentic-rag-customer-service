@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.ratelimit.entity import RateLimitConfig
 from src.domain.ratelimit.repository import RateLimitConfigRepository
 from src.domain.ratelimit.value_objects import EndpointGroup, RateLimitConfigId
+from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.rate_limit_config_model import (
     RateLimitConfigModel,
 )
@@ -28,29 +29,29 @@ class SQLAlchemyRateLimitConfigRepository(RateLimitConfigRepository):
         )
 
     async def save(self, config: RateLimitConfig) -> None:
-        existing = await self._session.get(RateLimitConfigModel, config.id.value)
-        if existing:
-            existing.tenant_id = config.tenant_id
-            existing.endpoint_group = config.endpoint_group.value
-            existing.requests_per_minute = config.requests_per_minute
-            existing.burst_size = config.burst_size
-            existing.per_user_requests_per_minute = (
-                config.per_user_requests_per_minute
-            )
-            existing.updated_at = datetime.now(timezone.utc)
-        else:
-            model = RateLimitConfigModel(
-                id=config.id.value,
-                tenant_id=config.tenant_id,
-                endpoint_group=config.endpoint_group.value,
-                requests_per_minute=config.requests_per_minute,
-                burst_size=config.burst_size,
-                per_user_requests_per_minute=config.per_user_requests_per_minute,
-                created_at=config.created_at,
-                updated_at=config.updated_at,
-            )
-            self._session.add(model)
-        await self._session.commit()
+        async with atomic(self._session):
+            existing = await self._session.get(RateLimitConfigModel, config.id.value)
+            if existing:
+                existing.tenant_id = config.tenant_id
+                existing.endpoint_group = config.endpoint_group.value
+                existing.requests_per_minute = config.requests_per_minute
+                existing.burst_size = config.burst_size
+                existing.per_user_requests_per_minute = (
+                    config.per_user_requests_per_minute
+                )
+                existing.updated_at = datetime.now(timezone.utc)
+            else:
+                model = RateLimitConfigModel(
+                    id=config.id.value,
+                    tenant_id=config.tenant_id,
+                    endpoint_group=config.endpoint_group.value,
+                    requests_per_minute=config.requests_per_minute,
+                    burst_size=config.burst_size,
+                    per_user_requests_per_minute=config.per_user_requests_per_minute,
+                    created_at=config.created_at,
+                    updated_at=config.updated_at,
+                )
+                self._session.add(model)
 
     async def find_by_tenant_and_group(
         self, tenant_id: str | None, endpoint_group: str
@@ -88,9 +89,9 @@ class SQLAlchemyRateLimitConfigRepository(RateLimitConfigRepository):
         return [self._to_entity(m) for m in result.scalars().all()]
 
     async def delete(self, config_id: str) -> None:
-        await self._session.execute(
-            delete(RateLimitConfigModel).where(
-                RateLimitConfigModel.id == config_id
+        async with atomic(self._session):
+            await self._session.execute(
+                delete(RateLimitConfigModel).where(
+                    RateLimitConfigModel.id == config_id
+                )
             )
-        )
-        await self._session.commit()

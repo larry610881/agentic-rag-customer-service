@@ -38,13 +38,7 @@ def context():
 @pytest.fixture
 def mock_doc_repo():
     repo = AsyncMock()
-    return repo
-
-
-@pytest.fixture
-def mock_chunk_repo():
-    repo = AsyncMock()
-    repo.save_batch = AsyncMock()
+    repo.save_chunks = AsyncMock()
     return repo
 
 
@@ -76,21 +70,28 @@ def mock_vector_store():
 
 
 @pytest.fixture
+def mock_language_detector():
+    detector = MagicMock()
+    detector.detect.return_value = "en"
+    return detector
+
+
+@pytest.fixture
 def process_use_case(
     mock_doc_repo,
-    mock_chunk_repo,
     mock_task_repo,
     mock_splitter,
     mock_embedding,
     mock_vector_store,
+    mock_language_detector,
 ):
     return ProcessDocumentUseCase(
         document_repository=mock_doc_repo,
-        chunk_repository=mock_chunk_repo,
         processing_task_repository=mock_task_repo,
         text_splitter_service=mock_splitter,
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,
+        language_detection_service=mock_language_detector,
     )
 
 
@@ -118,7 +119,7 @@ def pending_document(
             id=ChunkId(),
             document_id="doc-001",
             tenant_id="tenant-001",
-            content=f"chunk {i}",
+            content=f"This is chunk number {i} with enough content to pass quality filter.",
             chunk_index=i,
         )
         for i in range(3)

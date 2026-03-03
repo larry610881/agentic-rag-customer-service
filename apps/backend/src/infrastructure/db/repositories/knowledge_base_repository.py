@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.knowledge.entity import KnowledgeBase
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.knowledge.value_objects import KnowledgeBaseId
+from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.knowledge_base_model import KnowledgeBaseModel
 
 
@@ -23,17 +24,17 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
         )
 
     async def save(self, knowledge_base: KnowledgeBase) -> None:
-        model = KnowledgeBaseModel(
-            id=knowledge_base.id.value,
-            tenant_id=knowledge_base.tenant_id,
-            name=knowledge_base.name,
-            description=knowledge_base.description,
-            kb_type=knowledge_base.kb_type,
-            created_at=knowledge_base.created_at,
-            updated_at=knowledge_base.updated_at,
-        )
-        self._session.add(model)
-        await self._session.commit()
+        async with atomic(self._session):
+            model = KnowledgeBaseModel(
+                id=knowledge_base.id.value,
+                tenant_id=knowledge_base.tenant_id,
+                name=knowledge_base.name,
+                description=knowledge_base.description,
+                kb_type=knowledge_base.kb_type,
+                created_at=knowledge_base.created_at,
+                updated_at=knowledge_base.updated_at,
+            )
+            self._session.add(model)
 
     async def find_by_id(self, kb_id: str) -> KnowledgeBase | None:
         stmt = select(KnowledgeBaseModel).where(KnowledgeBaseModel.id == kb_id)

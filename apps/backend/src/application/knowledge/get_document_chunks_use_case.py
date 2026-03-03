@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from src.domain.knowledge.repository import ChunkRepository
+from src.domain.knowledge.repository import DocumentRepository
 from src.domain.knowledge.services import ChunkQualityService
 
 
@@ -19,16 +19,16 @@ class ChunkPreviewResult:
 
 
 class GetDocumentChunksUseCase:
-    def __init__(self, chunk_repository: ChunkRepository) -> None:
-        self._chunk_repo = chunk_repository
+    def __init__(self, document_repository: DocumentRepository) -> None:
+        self._doc_repo = document_repository
 
     async def execute(
         self, document_id: str, limit: int = 20, offset: int = 0
     ) -> ChunkPreviewResult:
-        chunks = await self._chunk_repo.find_by_document_paginated(
+        chunks = await self._doc_repo.find_chunks_by_document_paginated(
             document_id, limit=limit, offset=offset
         )
-        total = await self._chunk_repo.count_by_document(document_id)
+        total = await self._doc_repo.count_chunks_by_document(document_id)
 
         items: list[ChunkPreviewItem] = []
         for chunk in chunks:

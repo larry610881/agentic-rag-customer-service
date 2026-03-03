@@ -44,9 +44,7 @@ def doc_with_negative_feedback(context, filename):
     )
     mock_doc_repo = AsyncMock()
     mock_doc_repo.find_all_by_kb = AsyncMock(return_value=[doc])
-
-    mock_chunk_repo = AsyncMock()
-    mock_chunk_repo.find_chunk_ids_by_kb = AsyncMock(
+    mock_doc_repo.find_chunk_ids_by_kb = AsyncMock(
         return_value={"doc-faq": ["chunk-faq-1", "chunk-faq-2"]}
     )
 
@@ -65,7 +63,6 @@ def doc_with_negative_feedback(context, filename):
 
     context["use_case"] = GetDocumentQualityStatsUseCase(
         document_repository=mock_doc_repo,
-        chunk_repository=mock_chunk_repo,
         feedback_repository=mock_feedback_repo,
     )
     context["kb_id"] = "kb-001"
@@ -87,9 +84,7 @@ def doc_without_negative_feedback(context, filename):
     )
     mock_doc_repo = AsyncMock()
     mock_doc_repo.find_all_by_kb = AsyncMock(return_value=[doc])
-
-    mock_chunk_repo = AsyncMock()
-    mock_chunk_repo.find_chunk_ids_by_kb = AsyncMock(
+    mock_doc_repo.find_chunk_ids_by_kb = AsyncMock(
         return_value={"doc-guide": ["chunk-guide-1"]}
     )
 
@@ -98,7 +93,6 @@ def doc_without_negative_feedback(context, filename):
 
     context["use_case"] = GetDocumentQualityStatsUseCase(
         document_repository=mock_doc_repo,
-        chunk_repository=mock_chunk_repo,
         feedback_repository=mock_feedback_repo,
     )
     context["kb_id"] = "kb-001"

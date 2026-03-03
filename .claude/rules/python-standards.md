@@ -42,9 +42,11 @@ paths:
 ## 聚合根邊界規則
 
 1. **一個聚合根對應一個 Repository** — `TenantRepository` 管理 `Tenant` 聚合
-2. **聚合外部只能透過 ID 引用** — 不可持有其他聚合的 Entity 實例
-3. **跨聚合操作透過 Application Service 或 Domain Event** — 禁止直接操作其他聚合的 Repository
-4. **聚合內的 Entity 只能透過聚合根存取** — 禁止直接查詢聚合內部 Entity
+2. **一個聚合根 Repository 可管理多張表**（聚合根 + 內部 Entity）— 範例：`DocumentRepository` 管理 documents + chunks 兩張表
+3. **聚合外部只能透過 ID 引用** — 不可持有其他聚合的 Entity 實例
+4. **跨聚合操作透過 Application Service 或 Domain Event** — 禁止直接操作其他聚合的 Repository
+5. **聚合內的 Entity 只能透過聚合根存取** — 禁止直接查詢聚合內部 Entity
+6. **聚合內 Entity 的寫入只能透過聚合根 Repository** — 禁止為內部 Entity 建立獨立的 Repository
 
 ## 違規掃描規則
 
@@ -65,8 +67,10 @@ paths:
 
 ## AsyncSession 生命週期紅線
 
-- ❌ 禁止裸建 `AsyncSession` 而不管理生命週期（`async_session_factory()` 無 close = 連線洩漏）
-- ✅ 生產程式碼：必須透過 `get_tracked_session()` 建立（`SessionCleanupMiddleware` 在請求結束後自動 close）
+- 每個 request 共享一個 session（`get_tracked_session()` 回傳 singleton per request）
+- ✅ 寫入方法必須包在 `async with atomic(self._session):` 內（SAVEPOINT + commit）
+- ❌ 禁止手動 `session.commit()` — 由 `atomic()` 管理
+- ❌ 禁止裸建 `AsyncSession` — 必須透過 `get_tracked_session()`
 - ✅ 測試程式碼：`AsyncMock(spec=AsyncSession)` 不受此限
 - ❌ Singleton / 長生命週期物件禁止持有 session 實例 — 改用 `repo_factory` callable（透過 `.provider` delegation）
 - ❌ 禁止在應用啟動時急切解析 Repository（`container.xxx_repository()`）— 改傳 `container.xxx_repository.provider`

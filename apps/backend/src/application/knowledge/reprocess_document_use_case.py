@@ -1,10 +1,16 @@
 from src.domain.knowledge.entity import ProcessingTask
 from src.domain.knowledge.repository import (
-    ChunkRepository,
     DocumentRepository,
     ProcessingTaskRepository,
 )
-from src.domain.knowledge.services import ChunkQualityService, TextSplitterService
+from src.domain.knowledge.services import (
+    ChunkDeduplicationService,
+    ChunkFilterService,
+    ChunkQualityService,
+    LanguageDetectionService,
+    TextPreprocessor,
+    TextSplitterService,
+)
 from src.domain.knowledge.value_objects import ProcessingTaskId
 from src.domain.rag.services import EmbeddingService, VectorStore
 from src.infrastructure.logging import get_logger
@@ -16,18 +22,18 @@ class ReprocessDocumentUseCase:
     def __init__(
         self,
         document_repository: DocumentRepository,
-        chunk_repository: ChunkRepository,
         processing_task_repository: ProcessingTaskRepository,
         text_splitter_service: TextSplitterService,
         embedding_service: EmbeddingService,
         vector_store: VectorStore,
+        language_detection_service: LanguageDetectionService,
     ) -> None:
         self._doc_repo = document_repository
-        self._chunk_repo = chunk_repository
         self._task_repo = processing_task_repository
         self._splitter = text_splitter_service
         self._embedding = embedding_service
         self._vector_store = vector_store
+        self._language_detector = language_detection_service
 
     async def begin_reprocess(
         self, document_id: str, tenant_id: str
@@ -63,7 +69,7 @@ class ReprocessDocumentUseCase:
 
         try:
             # Delete old chunks from DB
-            await self._chunk_repo.delete_by_document(document_id)
+            await self._doc_repo.delete_chunks_by_document(document_id)
 
             # Delete old vectors from Qdrant
             collection = f"kb_{document.kb_id}"
@@ -71,9 +77,18 @@ class ReprocessDocumentUseCase:
                 collection, {"document_id": document_id}
             )
 
+            # Pre-process: normalize + boilerplate removal
+            preprocessed = TextPreprocessor.preprocess(
+                document.content, document.content_type
+            )
+
+            # Detect language
+            language = self._language_detector.detect(preprocessed)
+            log.info("document.language.detected", language=language)
+
             # Re-split with (potentially overridden) parameters
             chunks = self._splitter.split(
-                document.content,
+                preprocessed,
                 document_id,
                 document.tenant_id,
                 content_type=document.content_type,
@@ -92,10 +107,7 @@ class ReprocessDocumentUseCase:
                 )
                 return
 
-            # Save new chunks
-            await self._chunk_repo.save_batch(chunks)
-
-            # Calculate quality
+            # Calculate quality (before filtering)
             quality = ChunkQualityService.calculate(chunks)
             await self._doc_repo.update_quality(
                 document_id,
@@ -105,6 +117,38 @@ class ReprocessDocumentUseCase:
                 max_chunk_length=quality.max_chunk_length,
                 quality_issues=list(quality.issues),
             )
+
+            # Filter low-quality chunks
+            filter_result = ChunkFilterService.filter(chunks)
+            if filter_result.rejected_count:
+                log.info(
+                    "document.chunks.filtered",
+                    rejected=filter_result.rejected_count,
+                )
+            chunks = filter_result.accepted
+
+            # Deduplicate
+            pre_dedup = len(chunks)
+            chunks = ChunkDeduplicationService.deduplicate(chunks)
+            if len(chunks) < pre_dedup:
+                log.info(
+                    "document.chunks.deduplicated",
+                    before=pre_dedup,
+                    after=len(chunks),
+                )
+
+            # Empty after filtering/dedup
+            if not chunks:
+                await self._doc_repo.update_status(
+                    document_id, "processed", chunk_count=0
+                )
+                await self._task_repo.update_status(
+                    task_id, "completed", progress=100
+                )
+                return
+
+            # Save new chunks
+            await self._doc_repo.save_chunks(chunks)
 
             # Embed and upsert vectors
             texts = [c.content for c in chunks]
@@ -121,6 +165,7 @@ class ReprocessDocumentUseCase:
                     "content": c.content,
                     "chunk_index": c.chunk_index,
                     "content_type": document.content_type,
+                    "language": language,
                 }
                 for c in chunks
             ]

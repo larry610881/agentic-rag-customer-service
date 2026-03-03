@@ -35,8 +35,10 @@ from src.infrastructure.db.models import (  # noqa: F401
     MessageModel,
     ProcessingTaskModel,
     ProviderSettingModel,
+    RateLimitConfigModel,
     TenantModel,
     UsageRecordModel,
+    UserModel,
 )
 
 ADMIN_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/agentic_rag"
@@ -175,7 +177,7 @@ def app(test_engine):
     """Fresh FastAPI app per test with Container overridden for test DB."""
     from src.main import create_app
 
-    application = create_app()
+    application = create_app(skip_rate_limit=True)
     container = application.container
 
     # DB session → test engine (NullPool = fresh connection per session)

@@ -24,9 +24,16 @@ install:
 # ─── Test ────────────────────────────────────────────────────
 test: test-backend test-frontend
 
-test-backend:
-	cd apps/backend && uv run python -m pytest tests/unit/ -v --tb=short
+test-backend: test-backend-unit test-backend-integration test-backend-e2e
+
+test-backend-unit:
+	cd apps/backend && uv run python -m pytest tests/unit/ -v --tb=short --cov=src --cov-report=term-missing
+
+test-backend-integration:
 	cd apps/backend && uv run python -m pytest tests/integration/ -v --tb=short -p no:asyncio
+
+test-backend-e2e:
+	@if [ -d apps/backend/tests/e2e ]; then cd apps/backend && uv run python -m pytest tests/e2e/ -v --tb=short -p no:asyncio; fi
 
 test-frontend:
 	cd apps/frontend && npx vitest run --passWithNoTests

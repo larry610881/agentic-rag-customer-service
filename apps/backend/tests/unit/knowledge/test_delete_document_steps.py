@@ -36,13 +36,6 @@ def mock_doc_repo():
 
 
 @pytest.fixture
-def mock_chunk_repo():
-    repo = AsyncMock()
-    repo.delete_by_document = AsyncMock()
-    return repo
-
-
-@pytest.fixture
 def mock_vector_store():
     store = AsyncMock()
     store.delete = AsyncMock()
@@ -50,10 +43,9 @@ def mock_vector_store():
 
 
 @pytest.fixture
-def delete_use_case(mock_doc_repo, mock_chunk_repo, mock_vector_store):
+def delete_use_case(mock_doc_repo, mock_vector_store):
     return DeleteDocumentUseCase(
         document_repository=mock_doc_repo,
-        chunk_repository=mock_chunk_repo,
         vector_store=mock_vector_store,
     )
 
@@ -107,8 +99,10 @@ def vectors_deleted(context, mock_vector_store):
 
 
 @then("對應的文字分塊應從資料庫移除")
-def chunks_deleted(context, mock_chunk_repo):
-    mock_chunk_repo.delete_by_document.assert_called_once_with("doc-001")
+def chunks_deleted(context, mock_doc_repo):
+    # Chunks are now deleted internally by document_repo.delete()
+    # Just verify delete was called (it handles chunks internally)
+    mock_doc_repo.delete.assert_called_once_with("doc-001")
 
 
 @then("應拋出 EntityNotFoundError")

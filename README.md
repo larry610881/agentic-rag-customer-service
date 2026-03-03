@@ -25,6 +25,7 @@
 - [指令一覽](#-指令一覽)
 - [專案結構](#-專案結構)
 - [測試策略](#-測試策略)
+  - [E2E 測試執行與影片錄製](#e2e-測試執行與影片錄製)
 - [文件](#-文件)
 - [授權](#-授權)
 
@@ -221,6 +222,80 @@ agentic-rag-customer-service/
 | 比例 | 覆蓋率門檻 |
 |------|-----------|
 | Unit 60% : Integration 30% : E2E 10% | **80%** |
+
+### E2E 測試執行與影片錄製
+
+#### 前置安裝
+
+```bash
+# 1. 安裝 Playwright 瀏覽器（首次使用時）
+cd apps/frontend
+npx playwright install --with-deps chromium
+
+# 2. 安裝 ffmpeg（合併影片用）
+# Ubuntu / Debian
+sudo apt install -y ffmpeg
+
+# macOS
+brew install ffmpeg
+
+# 無 sudo 權限（下載靜態二進位檔）
+curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o /tmp/ffmpeg.tar.xz
+mkdir -p ~/bin
+tar -xf /tmp/ffmpeg.tar.xz -C /tmp
+cp /tmp/ffmpeg-*-amd64-static/ffmpeg ~/bin/ffmpeg
+chmod +x ~/bin/ffmpeg
+# 確認安裝：~/bin/ffmpeg -version
+```
+
+#### 執行 E2E 測試（含影片錄製）
+
+```bash
+cd apps/frontend
+
+# 1. 從 Feature 檔案產生 spec
+npx bddgen
+
+# 2. 執行全部 E2E 測試（影片自動錄製，設定於 playwright.config.ts video: "on"）
+npx playwright test
+
+# 僅執行 auth + journey 測試
+npx playwright test --project=auth --project=journeys
+
+# 僅執行 journey 測試
+npx playwright test --project=journeys
+```
+
+影片會存放在 `apps/frontend/test-results/<測試名稱>/video.webm`。
+
+#### 合併所有影片為單一 MP4
+
+```bash
+cd apps/frontend
+
+# 1. 產生影片清單檔
+find test-results -name "video.webm" -not -path "*retry*" | sort | \
+  sed 's/^/file /' > /tmp/ffmpeg_concat.txt
+
+# 2. 合併為 MP4
+ffmpeg -y -f concat -safe 0 -i /tmp/ffmpeg_concat.txt \
+  -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p \
+  -movflags +faststart e2e-all-tests.mp4
+
+# 產出：apps/frontend/e2e-all-tests.mp4
+```
+
+> **提示**：`-not -path "*retry*"` 會排除 retry 影片，僅保留每個測試的首次執行。若要包含 retry 影片，移除該條件即可。
+
+#### 檢視測試報告
+
+```bash
+# HTML 互動式報告（含影片嵌入 + 截圖 + Trace）
+npx playwright show-report
+
+# 檢視單一失敗測試的操作軌跡
+npx playwright show-trace test-results/<測試目錄>/trace.zip
+```
 
 ---
 
