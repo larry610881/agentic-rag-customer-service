@@ -31,6 +31,7 @@ export const PROVIDER_MODELS: Record<string, ProviderModelGroup> = {
   openai: {
     llm: [
       { id: "gpt-5.2", name: "GPT-5.2", price: "$1.75/$14" },
+      { id: "gpt-5", name: "GPT-5", price: "$1.25/$10" },
       { id: "gpt-5-mini", name: "GPT-5 Mini", price: "$0.25/$2" },
       { id: "gpt-5-nano", name: "GPT-5 Nano", price: "$0.05/$0.40" },
       { id: "gpt-4.1", name: "GPT-4.1", price: "$2/$8" },
