@@ -10,10 +10,13 @@ import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PROVIDER_LABELS } from "@/types/provider-setting";
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import type { Bot, UpdateBotRequest } from "@/types/bot";
@@ -350,13 +353,30 @@ export function BotDetailForm({
                   </SelectTrigger>
                   <SelectContent>
                     {enabledModels && enabledModels.length > 0 ? (
-                      enabledModels.map((m) => (
-                        <SelectItem
-                          key={`${m.provider_name}:${m.model_id}`}
-                          value={`${m.provider_name}:${m.model_id}`}
-                        >
-                          {m.display_name} ({m.price})
-                        </SelectItem>
+                      Object.entries(
+                        enabledModels.reduce<
+                          Record<
+                            string,
+                            typeof enabledModels
+                          >
+                        >((groups, m) => {
+                          (groups[m.provider_name] ??= []).push(m);
+                          return groups;
+                        }, {}),
+                      ).map(([provider, models]) => (
+                        <SelectGroup key={provider}>
+                          <SelectLabel>
+                            {PROVIDER_LABELS[provider] ?? provider}
+                          </SelectLabel>
+                          {models.map((m) => (
+                            <SelectItem
+                              key={`${m.provider_name}:${m.model_id}`}
+                              value={`${m.provider_name}:${m.model_id}`}
+                            >
+                              {m.display_name} ({m.price})
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
                       ))
                     ) : (
                       <SelectItem value="__none__" disabled>
