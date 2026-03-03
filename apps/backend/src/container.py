@@ -197,6 +197,9 @@ from src.infrastructure.text_splitter.csv_row_text_splitter_service import (
 from src.infrastructure.text_splitter.recursive_text_splitter_service import (
     RecursiveTextSplitterService,
 )
+from src.infrastructure.text_splitter.sql_dump_text_splitter_service import (
+    SqlDumpTextSplitterService,
+)
 
 
 class Container(containers.DeclarativeContainer):
@@ -339,6 +342,12 @@ class Container(containers.DeclarativeContainer):
         chunk_overlap=providers.Callable(lambda cfg: cfg.chunk_overlap, config),
     )
 
+    _sql_splitter = providers.Singleton(
+        SqlDumpTextSplitterService,
+        chunk_size=providers.Callable(lambda cfg: cfg.chunk_size, config),
+        chunk_overlap=providers.Callable(lambda cfg: cfg.chunk_overlap, config),
+    )
+
     text_splitter_service = providers.Selector(
         providers.Callable(lambda cfg: cfg.chunk_strategy, config),
         auto=providers.Singleton(
@@ -348,6 +357,7 @@ class Container(containers.DeclarativeContainer):
                 "application/vnd.openxmlformats-officedocument"
                 ".spreadsheetml.sheet": _csv_splitter,
                 "application/vnd.ms-excel": _csv_splitter,
+                "application/sql": _sql_splitter,
             }),
             default=_recursive_splitter,
         ),

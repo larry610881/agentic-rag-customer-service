@@ -50,6 +50,15 @@ _CSV_TYPES = frozenset({
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel",
 })
+_SQL_TYPES = frozenset({"application/sql"})
+
+_SQL_LINE_COMMENT_RE = re.compile(r"^\s*--.*$", re.MULTILINE)
+_SQL_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_SQL_SET_RE = re.compile(r"^\s*SET\s+.+?;\s*$", re.MULTILINE | re.IGNORECASE)
+_SQL_LOCK_RE = re.compile(
+    r"^\s*(LOCK\s+TABLES|UNLOCK\s+TABLES)\s*.*?;\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
 
 
 class TextPreprocessor:
@@ -60,6 +69,8 @@ class TextPreprocessor:
         text = cls._remove_boilerplate(text, content_type)
         if content_type in _CSV_TYPES:
             text = CSVCleaningService.clean(text)
+        elif content_type in _SQL_TYPES:
+            text = SQLCleaningService.clean(text)
         text = cls._normalize(text)
         return text
 
@@ -189,6 +200,24 @@ class CSVCleaningService:
             cleaned = [_HTML_TAG_RE.sub("", cell).strip() for cell in row]
             out_lines.append(", ".join(cleaned))
         return "\n".join(out_lines)
+
+
+class SQLCleaningService:
+    """Pure-function Domain Service: clean SQL dump before splitting.
+
+    - Remove single-line comments (--)
+    - Remove multi-line comments (/* */)
+    - Remove SET statements
+    - Remove LOCK TABLES / UNLOCK TABLES statements
+    """
+
+    @classmethod
+    def clean(cls, text: str) -> str:
+        text = _SQL_BLOCK_COMMENT_RE.sub("", text)
+        text = _SQL_LINE_COMMENT_RE.sub("", text)
+        text = _SQL_SET_RE.sub("", text)
+        text = _SQL_LOCK_RE.sub("", text)
+        return text
 
 
 @dataclass(frozen=True)
