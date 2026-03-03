@@ -64,8 +64,8 @@ describe("ProviderList", () => {
     renderWithProviders(<ProviderList type="llm" />);
 
     await waitFor(() => {
-      expect(screen.getByText("DeepSeek V3")).toBeInTheDocument();
+      expect(screen.getByText("DeepSeek V3.2")).toBeInTheDocument();
     });
-    expect(screen.getByText("$0.14/$0.28")).toBeInTheDocument();
+    expect(screen.getByText("$0.28/$0.42")).toBeInTheDocument();
   });
 });

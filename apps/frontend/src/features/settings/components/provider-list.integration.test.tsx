@@ -57,10 +57,10 @@ describe("ProviderList integration", () => {
     await screen.findByText("DeepSeek");
 
     // DeepSeek models
-    expect(screen.getByText("DeepSeek V3")).toBeInTheDocument();
-    expect(screen.getByText("$0.14/$0.28")).toBeInTheDocument();
+    expect(screen.getByText("DeepSeek V3.2")).toBeInTheDocument();
+    expect(screen.getByText("$0.28/$0.42")).toBeInTheDocument();
 
     // OpenAI models
-    expect(screen.getByText("GPT-4o")).toBeInTheDocument();
+    expect(screen.getByText("GPT-5.2")).toBeInTheDocument();
   });
 });
