@@ -59,6 +59,9 @@ class UpdateProviderSettingUseCase:
                     model_id=m["model_id"],
                     display_name=m["display_name"],
                     is_default=m.get("is_default", False),
+                    is_enabled=m.get("is_enabled", True),
+                    price=m.get("price", ""),
+                    description=m.get("description", ""),
                 )
                 for m in command.models
             ]

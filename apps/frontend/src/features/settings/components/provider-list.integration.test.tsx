@@ -14,7 +14,7 @@ describe("ProviderList integration", () => {
   });
 
   it("should show pre-defined provider cards with switches", async () => {
-    renderWithProviders(<ProviderList />);
+    renderWithProviders(<ProviderList type="llm" />);
 
     // Loading skeletons appear first
     const skeletons = document.querySelectorAll("[data-slot='skeleton']");
@@ -23,44 +23,26 @@ describe("ProviderList integration", () => {
     // After loading, all pre-defined providers are visible
     expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
     expect(screen.getByText("Anthropic Claude")).toBeInTheDocument();
-
-    // OpenAI appears twice (LLM + Embedding)
-    const openaiCards = screen.getAllByText("OpenAI");
-    expect(openaiCards.length).toBe(2);
+    expect(screen.getByText("OpenAI")).toBeInTheDocument();
+    expect(screen.getByText("Google Gemini")).toBeInTheDocument();
 
     // Each card has a switch for enable/disable
     const switches = screen.getAllByRole("switch");
-    expect(switches.length).toBeGreaterThanOrEqual(6); // 4 LLM + 2 Embedding
+    expect(switches.length).toBe(4); // 4 providers in PROVIDER_ORDER
 
-    // LLM and Embedding badges
+    // LLM badges
     const llmBadges = screen.getAllByText("LLM");
     expect(llmBadges.length).toBe(4);
-    const embeddingBadges = screen.getAllByText("EMBEDDING");
-    expect(embeddingBadges.length).toBe(2);
   });
 
-  it("should filter to LLM cards only", async () => {
-    renderWithProviders(<ProviderList type="llm" />);
+  it("should show embedding provider cards", async () => {
+    renderWithProviders(<ProviderList type="embedding" />);
 
+    // All providers shown for embedding type
     expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
 
-    // Only LLM badges, no EMBEDDING
-    const llmBadges = screen.getAllByText("LLM");
-    expect(llmBadges.length).toBe(4);
-    expect(screen.queryByText("EMBEDDING")).not.toBeInTheDocument();
-  });
-
-  it("should show model names and pricing", async () => {
-    renderWithProviders(<ProviderList type="llm" />);
-
-    // Wait for render
-    await screen.findByText("DeepSeek");
-
-    // DeepSeek models
-    expect(screen.getByText("DeepSeek V3.2")).toBeInTheDocument();
-    expect(screen.getByText("$0.28/$0.42")).toBeInTheDocument();
-
-    // OpenAI models
-    expect(screen.getByText("GPT-5.2")).toBeInTheDocument();
+    // EMBEDDING badges
+    const embeddingBadges = screen.getAllByText("EMBEDDING");
+    expect(embeddingBadges.length).toBe(4);
   });
 });

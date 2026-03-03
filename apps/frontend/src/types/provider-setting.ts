@@ -2,6 +2,16 @@ export interface ModelConfig {
   model_id: string;
   display_name: string;
   is_default: boolean;
+  is_enabled: boolean;
+  price: string;
+  description: string;
+}
+
+export interface EnabledModel {
+  provider_name: string;
+  model_id: string;
+  display_name: string;
+  price: string;
 }
 
 export interface ProviderSetting {
@@ -57,3 +67,12 @@ export const PROVIDER_TYPES = [
   { value: "llm", label: "LLM" },
   { value: "embedding", label: "Embedding" },
 ] as const;
+
+export const PROVIDER_LABELS: Record<string, string> = {
+  deepseek: "DeepSeek",
+  openai: "OpenAI",
+  google: "Google Gemini",
+  anthropic: "Anthropic Claude",
+};
+
+export const PROVIDER_ORDER = ["deepseek", "openai", "google", "anthropic"];

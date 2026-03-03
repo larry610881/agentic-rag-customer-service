@@ -7,32 +7,26 @@ import { ProviderList } from "./provider-list";
 describe("ProviderList", () => {
   it("should render loading skeletons initially", () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
-    renderWithProviders(<ProviderList />);
+    renderWithProviders(<ProviderList type="llm" />);
     expect(
       document.querySelectorAll("[data-slot='skeleton']").length,
     ).toBeGreaterThanOrEqual(0);
   });
 
-  it("should show all pre-defined provider cards", async () => {
+  it("should show all pre-defined provider cards for LLM type", async () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
-    renderWithProviders(<ProviderList />);
+    renderWithProviders(<ProviderList type="llm" />);
 
-    // Pre-defined providers always appear (no need to "add")
+    // Pre-defined providers always appear
     await waitFor(() => {
       expect(screen.getByText("DeepSeek")).toBeInTheDocument();
     });
     expect(screen.getByText("Anthropic Claude")).toBeInTheDocument();
-
-    // Google Gemini appears twice (LLM + Embedding)
-    const googleCards = screen.getAllByText("Google Gemini");
-    expect(googleCards.length).toBe(2);
-
-    // OpenAI appears for both LLM and Embedding
-    const openaiCards = screen.getAllByText("OpenAI");
-    expect(openaiCards.length).toBe(2);
+    expect(screen.getByText("Google Gemini")).toBeInTheDocument();
+    expect(screen.getByText("OpenAI")).toBeInTheDocument();
   });
 
-  it("should filter to LLM only when type=llm", async () => {
+  it("should show LLM badges when type=llm", async () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
     renderWithProviders(<ProviderList type="llm" />);
 
@@ -48,24 +42,14 @@ describe("ProviderList", () => {
 
   it("should show enable/disable switches on each card", async () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
-    renderWithProviders(<ProviderList />);
+    renderWithProviders(<ProviderList type="llm" />);
 
     await waitFor(() => {
       expect(screen.getByText("DeepSeek")).toBeInTheDocument();
     });
 
     const switches = screen.getAllByRole("switch");
-    // 4 LLM providers + 2 Embedding providers = 6
-    expect(switches.length).toBe(6);
-  });
-
-  it("should display model names and pricing", async () => {
-    useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
-    renderWithProviders(<ProviderList type="llm" />);
-
-    await waitFor(() => {
-      expect(screen.getByText("DeepSeek V3.2")).toBeInTheDocument();
-    });
-    expect(screen.getByText("$0.28/$0.42")).toBeInTheDocument();
+    // 4 providers in PROVIDER_ORDER
+    expect(switches.length).toBe(4);
   });
 });

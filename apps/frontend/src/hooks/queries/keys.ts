@@ -46,5 +46,6 @@ export const queryKeys = {
     all: ["provider-settings"] as const,
     byType: (type: string) =>
       ["provider-settings", type] as const,
+    enabledModels: ["provider-settings", "enabled-models"] as const,
   },
 };

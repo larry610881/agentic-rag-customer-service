@@ -34,6 +34,8 @@ class BotModel(Base):
     enabled_tools: Mapped[list] = mapped_column(
         JSON, nullable=False, default=lambda: ["rag_query"]
     )
+    llm_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="")
+    llm_model: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     line_channel_secret: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )

@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/use-auth-store";
 import type {
   ConnectionResult,
   CreateProviderSettingRequest,
+  EnabledModel,
   ProviderSetting,
   UpdateProviderSettingRequest,
 } from "@/types/provider-setting";
@@ -100,5 +101,20 @@ export function useTestProviderConnection() {
         { method: "POST" },
         token ?? undefined,
       ),
+  });
+}
+
+export function useEnabledModels() {
+  const token = useAuthStore((s) => s.token);
+
+  return useQuery({
+    queryKey: queryKeys.providerSettings.enabledModels,
+    queryFn: () =>
+      apiFetch<EnabledModel[]>(
+        API_ENDPOINTS.providerSettings.enabledModels,
+        {},
+        token ?? undefined,
+      ),
+    enabled: !!token,
   });
 }

@@ -67,6 +67,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         await conn.execute(
             sqlalchemy.text(
+                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS "
+                "llm_provider VARCHAR(50) NOT NULL DEFAULT ''"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS "
+                "llm_model VARCHAR(100) NOT NULL DEFAULT ''"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
                 "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS "
                 "bot_id VARCHAR(36) DEFAULT NULL"
             )
@@ -156,7 +168,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
 
         rate_limiter = RedisRateLimiter(redis_client=container.redis_client())
         config_loader = RateLimitConfigLoader(
-            rate_limit_config_repo_factory=container.rate_limit_config_repository.provider,
+            rate_limit_config_repo_factory=container.rate_limit_config_repository,
             redis_client=container.redis_client(),
             cache_ttl=settings.rate_limit_config_cache_ttl,
         )

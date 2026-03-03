@@ -78,6 +78,9 @@ from src.application.platform.delete_provider_setting_use_case import (
 from src.application.platform.get_provider_setting_use_case import (
     GetProviderSettingUseCase,
 )
+from src.application.platform.list_enabled_models_use_case import (
+    ListEnabledModelsUseCase,
+)
 from src.application.platform.list_provider_settings_use_case import (
     ListProviderSettingsUseCase,
 )
@@ -965,6 +968,11 @@ class Container(containers.DeclarativeContainer):
 
     list_provider_settings_use_case = providers.Factory(
         ListProviderSettingsUseCase,
+        provider_setting_repository=provider_setting_repository,
+    )
+
+    list_enabled_models_use_case = providers.Factory(
+        ListEnabledModelsUseCase,
         provider_setting_repository=provider_setting_repository,
     )
 

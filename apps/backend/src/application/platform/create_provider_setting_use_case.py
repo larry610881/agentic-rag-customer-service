@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.domain.platform.entity import ProviderSetting
+from src.domain.platform.model_registry import DEFAULT_MODELS
 from src.domain.platform.repository import ProviderSettingRepository
 from src.domain.platform.services import EncryptionService
 from src.domain.platform.value_objects import (
@@ -49,13 +50,21 @@ class CreateProviderSettingUseCase:
                 f"{command.provider_type}+{command.provider_name}",
             )
 
+        raw_models = command.models
+        if not raw_models:
+            registry = DEFAULT_MODELS.get(command.provider_name, {})
+            raw_models = registry.get(command.provider_type, [])
+
         models = [
             ModelConfig(
                 model_id=m["model_id"],
                 display_name=m["display_name"],
                 is_default=m.get("is_default", False),
+                is_enabled=m.get("is_enabled", True),
+                price=m.get("price", ""),
+                description=m.get("description", ""),
             )
-            for m in command.models
+            for m in raw_models
         ]
 
         encrypted_key = (

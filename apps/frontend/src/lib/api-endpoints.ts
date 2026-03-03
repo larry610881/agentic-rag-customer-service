@@ -66,5 +66,6 @@ export const API_ENDPOINTS = {
     delete: (id: string) => `/api/v1/settings/providers/${id}`,
     testConnection: (id: string) =>
       `/api/v1/settings/providers/${id}/test-connection`,
+    enabledModels: "/api/v1/settings/providers/enabled-models",
   },
 } as const;

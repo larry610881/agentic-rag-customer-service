@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-03-03 (DeepSeek Provider 集成 + Provider Settings 兩層開關簡化)
+> 最後更新：2026-03-03 (Provider Settings 模型 DB 化 + 個別模型啟用 + Bot 模型選擇)
 
 ---
 
@@ -1130,3 +1130,4 @@
 | **PostgreSQL 連線洩漏修復** | **✅ 完成** | **100%** | **1 NEW + 6 MODIFY files: ContextVar ASGI SessionCleanupMiddleware + Singleton provider delegation + RateLimitConfigLoader repo_factory, 241 tests pass** |
 | **Frontend Framework Migration** | **✅ 完成** | **100%** | **Next.js 16 → React + Vite SPA, 92 files (+1728/-5393), React Router v6, 150 tests pass** |
 | **DeepSeek Provider + Provider Settings 簡化** | **✅ 完成** | **100%** | **~15 files: DeepSeek enum + .env fallback + Dynamic Factory + Pre-defined Card UI + Switch toggle, 241 backend + 151 frontend tests** |
+| **Provider Settings 模型 DB 化 + Bot 模型選擇** | **✅ 完成** | **100%** | **~25 files: ModelConfig VO 擴充 + model_registry + ListEnabledModelsUseCase + Bot llm_provider/llm_model + 前端 provider-models.ts 刪除 + 模型 checkbox + Bot 模型下拉, 248 backend + 149 frontend tests, 7 新 BDD scenarios** |

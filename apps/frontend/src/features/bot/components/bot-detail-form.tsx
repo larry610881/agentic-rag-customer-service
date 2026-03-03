@@ -15,8 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
-import { useProviderSettings } from "@/hooks/queries/use-provider-settings";
-import { PROVIDER_MODELS } from "@/lib/provider-models";
+import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import type { Bot, UpdateBotRequest } from "@/types/bot";
 
 const AVAILABLE_TOOLS = [
@@ -30,6 +29,8 @@ const botFormSchema = z.object({
   system_prompt: z.string().optional(),
   knowledge_base_ids: z.array(z.string()),
   enabled_tools: z.array(z.string()),
+  llm_provider: z.string().optional(),
+  llm_model: z.string().optional(),
   temperature: z.coerce.number().min(0).max(1),
   max_tokens: z.coerce.number().int().min(128).max(4096),
   history_limit: z.coerce.number().int().min(0).max(35),
@@ -59,13 +60,14 @@ export function BotDetailForm({
   isDeleting,
 }: BotDetailFormProps) {
   const { data: knowledgeBases } = useKnowledgeBases();
-  const { data: llmProviders } = useProviderSettings("llm");
+  const { data: enabledModels } = useEnabledModels();
 
   const {
     register,
     handleSubmit,
     control,
     reset,
+    setValue,
     watch,
     formState: { errors },
   } = useForm<BotFormValues>({
@@ -77,6 +79,8 @@ export function BotDetailForm({
       system_prompt: bot.system_prompt,
       knowledge_base_ids: bot.knowledge_base_ids,
       enabled_tools: bot.enabled_tools,
+      llm_provider: bot.llm_provider,
+      llm_model: bot.llm_model,
       temperature: bot.temperature,
       max_tokens: bot.max_tokens,
       history_limit: bot.history_limit,
@@ -99,6 +103,8 @@ export function BotDetailForm({
       system_prompt: bot.system_prompt,
       knowledge_base_ids: bot.knowledge_base_ids,
       enabled_tools: bot.enabled_tools,
+      llm_provider: bot.llm_provider,
+      llm_model: bot.llm_model,
       temperature: bot.temperature,
       max_tokens: bot.max_tokens,
       history_limit: bot.history_limit,
@@ -114,6 +120,12 @@ export function BotDetailForm({
   const onSubmit = (data: BotFormValues) => {
     onSave(data);
   };
+
+  /** Build the combined select value from provider + model */
+  const currentModelValue =
+    bot.llm_provider && bot.llm_model
+      ? `${bot.llm_provider}:${bot.llm_model}`
+      : "";
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
@@ -306,78 +318,57 @@ export function BotDetailForm({
 
       <Separator />
 
-      {/* LLM 供應商與模型 */}
+      {/* LLM 模型選擇 */}
       <section className="flex flex-col gap-4">
-        <h3 className="text-lg font-semibold">LLM 供應商與模型</h3>
+        <h3 className="text-lg font-semibold">LLM 模型</h3>
         <p className="text-sm text-muted-foreground">
-          目前已啟用的 LLM 供應商及可選模型。供應商管理請至「系統設定 &gt; 供應商設定」。
+          選擇此機器人使用的 LLM 模型。可用模型由「系統設定 &gt; 供應商設定」管理。
         </p>
-        {(() => {
-          const enabled = llmProviders?.filter((p) => p.is_enabled) ?? [];
-          if (enabled.length === 0) {
-            return (
-              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-                尚未啟用任何 LLM 供應商。請至系統設定頁新增。
-              </div>
-            );
-          }
-          return (
-            <div className="flex flex-col gap-3">
-              {enabled.map((provider) => {
-                const models =
-                  PROVIDER_MODELS[provider.provider_name]?.llm ?? [];
-                return (
-                  <div
-                    key={provider.id}
-                    className="rounded-lg border p-3"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">
-                        {provider.display_name}
-                      </span>
-                      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                        啟用中
-                      </span>
-                    </div>
-                    {models.length > 0 ? (
-                      <table className="mt-2 w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-xs text-muted-foreground">
-                            <th className="pb-1 font-medium">模型</th>
-                            <th className="pb-1 text-right font-medium">
-                              價格 (per 1M tokens)
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {models.map((m) => (
-                            <tr key={m.id} className="border-t">
-                              <td className="py-1.5">
-                                <span className="font-mono text-xs">
-                                  {m.id}
-                                </span>
-                                <span className="ml-2 text-xs text-muted-foreground">
-                                  {m.name}
-                                </span>
-                              </td>
-                              <td className="py-1.5 text-right text-xs text-muted-foreground">
-                                {m.price}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="bot-llm-model">模型</Label>
+          <Controller
+            name="llm_model"
+            control={control}
+            render={({ field }) => {
+              const selectValue =
+                watch("llm_provider") && field.value
+                  ? `${watch("llm_provider")}:${field.value}`
+                  : currentModelValue;
+
+              return (
+                <Select
+                  value={selectValue || undefined}
+                  onValueChange={(v) => {
+                    const [provider, ...modelParts] = v.split(":");
+                    const model = modelParts.join(":");
+                    setValue("llm_provider", provider);
+                    field.onChange(model);
+                  }}
+                >
+                  <SelectTrigger id="bot-llm-model">
+                    <SelectValue placeholder="請選擇模型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {enabledModels && enabledModels.length > 0 ? (
+                      enabledModels.map((m) => (
+                        <SelectItem
+                          key={`${m.provider_name}:${m.model_id}`}
+                          value={`${m.provider_name}:${m.model_id}`}
+                        >
+                          {m.display_name} ({m.price})
+                        </SelectItem>
+                      ))
                     ) : (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        無預設模型清單
-                      </p>
+                      <SelectItem value="__none__" disabled>
+                        尚未啟用任何模型
+                      </SelectItem>
                     )}
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })()}
+                  </SelectContent>
+                </Select>
+              );
+            }}
+          />
+        </div>
       </section>
 
       <Separator />

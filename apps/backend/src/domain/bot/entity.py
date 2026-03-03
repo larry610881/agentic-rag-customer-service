@@ -26,6 +26,8 @@ class Bot:
     knowledge_base_ids: list[str] = field(default_factory=list)
     llm_params: BotLLMParams = field(default_factory=BotLLMParams)
     enabled_tools: list[str] = field(default_factory=lambda: ["rag_query"])
+    llm_provider: str = ""
+    llm_model: str = ""
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     created_at: datetime = field(

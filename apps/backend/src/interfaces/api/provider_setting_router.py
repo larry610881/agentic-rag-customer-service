@@ -13,6 +13,9 @@ from src.application.platform.create_provider_setting_use_case import (
 from src.application.platform.delete_provider_setting_use_case import (
     DeleteProviderSettingUseCase,
 )
+from src.application.platform.list_enabled_models_use_case import (
+    ListEnabledModelsUseCase,
+)
 from src.application.platform.get_provider_setting_use_case import (
     GetProviderSettingUseCase,
 )
@@ -36,6 +39,9 @@ class ModelConfigSchema(BaseModel):
     model_id: str
     display_name: str
     is_default: bool = False
+    is_enabled: bool = True
+    price: str = ""
+    description: str = ""
 
 
 class CreateProviderSettingRequest(BaseModel):
@@ -71,6 +77,13 @@ class ProviderSettingResponse(BaseModel):
     updated_at: str
 
 
+class EnabledModelResponse(BaseModel):
+    provider_name: str
+    model_id: str
+    display_name: str
+    price: str
+
+
 class ConnectionResultResponse(BaseModel):
     success: bool
     latency_ms: int
@@ -91,6 +104,9 @@ def _to_response(setting) -> ProviderSettingResponse:
                 model_id=m.model_id,
                 display_name=m.display_name,
                 is_default=m.is_default,
+                is_enabled=m.is_enabled,
+                price=m.price,
+                description=m.description,
             )
             for m in setting.models
         ],
@@ -142,6 +158,25 @@ async def list_provider_settings(
 ) -> list[ProviderSettingResponse]:
     settings = await use_case.execute(provider_type=type)
     return [_to_response(s) for s in settings]
+
+
+@router.get("/enabled-models", response_model=list[EnabledModelResponse])
+@inject
+async def list_enabled_models(
+    use_case: ListEnabledModelsUseCase = Depends(
+        Provide[Container.list_enabled_models_use_case]
+    ),
+) -> list[EnabledModelResponse]:
+    models = await use_case.execute()
+    return [
+        EnabledModelResponse(
+            provider_name=m.provider_name,
+            model_id=m.model_id,
+            display_name=m.display_name,
+            price=m.price,
+        )
+        for m in models
+    ]
 
 
 @router.get("/{setting_id}", response_model=ProviderSettingResponse)

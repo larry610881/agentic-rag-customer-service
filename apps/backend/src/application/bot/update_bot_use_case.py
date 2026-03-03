@@ -26,6 +26,8 @@ class UpdateBotCommand:
     rag_top_k: object = _UNSET
     rag_score_threshold: object = _UNSET
     enabled_tools: object = _UNSET
+    llm_provider: object = _UNSET
+    llm_model: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
 
@@ -45,6 +47,7 @@ class UpdateBotUseCase:
         _DIRECT_FIELDS = (
             "name", "description", "is_active",
             "system_prompt",
+            "llm_provider", "llm_model",
             "line_channel_secret", "line_channel_access_token",
         )
         for field in _DIRECT_FIELDS:

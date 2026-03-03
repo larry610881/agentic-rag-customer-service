@@ -22,6 +22,8 @@ class CreateBotCommand:
     rag_top_k: int = 5
     rag_score_threshold: float = 0.3
     enabled_tools: list[str] = field(default_factory=lambda: ["rag_query"])
+    llm_provider: str = ""
+    llm_model: str = ""
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -48,6 +50,8 @@ class CreateBotUseCase:
                 rag_score_threshold=command.rag_score_threshold,
             ),
             enabled_tools=list(command.enabled_tools),
+            llm_provider=command.llm_provider,
+            llm_model=command.llm_model,
             line_channel_secret=command.line_channel_secret,
             line_channel_access_token=command.line_channel_access_token,
         )

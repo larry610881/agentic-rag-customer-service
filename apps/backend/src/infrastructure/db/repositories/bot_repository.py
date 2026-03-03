@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.bot.entity import Bot, BotLLMParams
 from src.domain.bot.repository import BotRepository
 from src.domain.bot.value_objects import BotId
+from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.bot_knowledge_base_model import (
     BotKnowledgeBaseModel,
 )
@@ -41,6 +42,8 @@ class SQLAlchemyBotRepository(BotRepository):
                 if model.enabled_tools is not None
                 else ["rag_query"]
             ),
+            llm_provider=model.llm_provider or "",
+            llm_model=model.llm_model or "",
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
             created_at=model.created_at,
@@ -79,48 +82,52 @@ class SQLAlchemyBotRepository(BotRepository):
             )
 
     async def save(self, bot: Bot) -> None:
-        existing = await self._session.get(BotModel, bot.id.value)
-        if existing:
-            existing.name = bot.name
-            existing.description = bot.description
-            existing.is_active = bot.is_active
-            existing.system_prompt = bot.system_prompt
-            existing.enabled_tools = bot.enabled_tools
-            existing.line_channel_secret = bot.line_channel_secret
-            existing.line_channel_access_token = bot.line_channel_access_token
-            existing.temperature = bot.llm_params.temperature
-            existing.max_tokens = bot.llm_params.max_tokens
-            existing.history_limit = bot.llm_params.history_limit
-            existing.frequency_penalty = bot.llm_params.frequency_penalty
-            existing.reasoning_effort = bot.llm_params.reasoning_effort
-            existing.rag_top_k = bot.llm_params.rag_top_k
-            existing.rag_score_threshold = bot.llm_params.rag_score_threshold
-            existing.updated_at = datetime.now(timezone.utc)
-        else:
-            model = BotModel(
-                id=bot.id.value,
-                tenant_id=bot.tenant_id,
-                name=bot.name,
-                description=bot.description,
-                is_active=bot.is_active,
-                system_prompt=bot.system_prompt,
-                enabled_tools=bot.enabled_tools,
-                line_channel_secret=bot.line_channel_secret,
-                line_channel_access_token=bot.line_channel_access_token,
-                temperature=bot.llm_params.temperature,
-                max_tokens=bot.llm_params.max_tokens,
-                history_limit=bot.llm_params.history_limit,
-                frequency_penalty=bot.llm_params.frequency_penalty,
-                reasoning_effort=bot.llm_params.reasoning_effort,
-                rag_top_k=bot.llm_params.rag_top_k,
-                rag_score_threshold=bot.llm_params.rag_score_threshold,
-                created_at=bot.created_at,
-                updated_at=bot.updated_at,
-            )
-            self._session.add(model)
+        async with atomic(self._session):
+            existing = await self._session.get(BotModel, bot.id.value)
+            if existing:
+                existing.name = bot.name
+                existing.description = bot.description
+                existing.is_active = bot.is_active
+                existing.system_prompt = bot.system_prompt
+                existing.enabled_tools = bot.enabled_tools
+                existing.llm_provider = bot.llm_provider
+                existing.llm_model = bot.llm_model
+                existing.line_channel_secret = bot.line_channel_secret
+                existing.line_channel_access_token = bot.line_channel_access_token
+                existing.temperature = bot.llm_params.temperature
+                existing.max_tokens = bot.llm_params.max_tokens
+                existing.history_limit = bot.llm_params.history_limit
+                existing.frequency_penalty = bot.llm_params.frequency_penalty
+                existing.reasoning_effort = bot.llm_params.reasoning_effort
+                existing.rag_top_k = bot.llm_params.rag_top_k
+                existing.rag_score_threshold = bot.llm_params.rag_score_threshold
+                existing.updated_at = datetime.now(timezone.utc)
+            else:
+                model = BotModel(
+                    id=bot.id.value,
+                    tenant_id=bot.tenant_id,
+                    name=bot.name,
+                    description=bot.description,
+                    is_active=bot.is_active,
+                    system_prompt=bot.system_prompt,
+                    enabled_tools=bot.enabled_tools,
+                    llm_provider=bot.llm_provider,
+                    llm_model=bot.llm_model,
+                    line_channel_secret=bot.line_channel_secret,
+                    line_channel_access_token=bot.line_channel_access_token,
+                    temperature=bot.llm_params.temperature,
+                    max_tokens=bot.llm_params.max_tokens,
+                    history_limit=bot.llm_params.history_limit,
+                    frequency_penalty=bot.llm_params.frequency_penalty,
+                    reasoning_effort=bot.llm_params.reasoning_effort,
+                    rag_top_k=bot.llm_params.rag_top_k,
+                    rag_score_threshold=bot.llm_params.rag_score_threshold,
+                    created_at=bot.created_at,
+                    updated_at=bot.updated_at,
+                )
+                self._session.add(model)
 
-        await self._sync_kb_ids(bot.id.value, bot.knowledge_base_ids)
-        await self._session.commit()
+            await self._sync_kb_ids(bot.id.value, bot.knowledge_base_ids)
 
     async def find_by_id(self, bot_id: str) -> Bot | None:
         stmt = select(BotModel).where(BotModel.id == bot_id)
@@ -148,12 +155,12 @@ class SQLAlchemyBotRepository(BotRepository):
         ]
 
     async def delete(self, bot_id: str) -> None:
-        await self._session.execute(
-            delete(BotKnowledgeBaseModel).where(
-                BotKnowledgeBaseModel.bot_id == bot_id
+        async with atomic(self._session):
+            await self._session.execute(
+                delete(BotKnowledgeBaseModel).where(
+                    BotKnowledgeBaseModel.bot_id == bot_id
+                )
             )
-        )
-        await self._session.execute(
-            delete(BotModel).where(BotModel.id == bot_id)
-        )
-        await self._session.commit()
+            await self._session.execute(
+                delete(BotModel).where(BotModel.id == bot_id)
+            )

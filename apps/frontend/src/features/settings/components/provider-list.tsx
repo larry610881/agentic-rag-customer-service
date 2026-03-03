@@ -9,91 +9,50 @@ import {
   useUpdateProviderSetting,
 } from "@/hooks/queries/use-provider-settings";
 import type { ProviderSetting } from "@/types/provider-setting";
-import {
-  PROVIDER_MODELS,
-  PROVIDER_LABELS,
-  PROVIDER_ORDER,
-} from "@/lib/provider-models";
+import { PROVIDER_LABELS, PROVIDER_ORDER } from "@/types/provider-setting";
 
 interface ProviderListProps {
-  type?: string;
-}
-
-/** Pre-defined card: one per (provider, type) that has models */
-interface PreDefinedCard {
-  providerName: string;
-  providerType: "llm" | "embedding";
-  label: string;
-  models: { id: string; name: string; price: string }[];
-}
-
-function buildPreDefinedCards(typeFilter?: string): PreDefinedCard[] {
-  const cards: PreDefinedCard[] = [];
-  for (const name of PROVIDER_ORDER) {
-    const group = PROVIDER_MODELS[name];
-    if (!group) continue;
-    const label = PROVIDER_LABELS[name] ?? name;
-
-    if ((!typeFilter || typeFilter === "llm") && group.llm.length > 0) {
-      cards.push({
-        providerName: name,
-        providerType: "llm",
-        label: `${label}`,
-        models: group.llm,
-      });
-    }
-    if (
-      (!typeFilter || typeFilter === "embedding") &&
-      group.embedding.length > 0
-    ) {
-      cards.push({
-        providerName: name,
-        providerType: "embedding",
-        label: `${label}`,
-        models: group.embedding,
-      });
-    }
-  }
-  return cards;
+  type: string;
 }
 
 export function ProviderList({ type }: ProviderListProps) {
-  const { data: dbSettings, isLoading } = useProviderSettings();
+  const { data: settings, isLoading } = useProviderSettings(type);
   const createMutation = useCreateProviderSetting();
   const updateMutation = useUpdateProviderSetting();
 
-  const cards = buildPreDefinedCards(type);
-
-  /** Find matching DB record for a pre-defined card */
-  const findSetting = (
-    providerName: string,
-    providerType: string,
-  ): ProviderSetting | undefined =>
-    dbSettings?.find(
+  const findSetting = (providerName: string): ProviderSetting | undefined =>
+    settings?.find(
       (s) =>
-        s.provider_name === providerName &&
-        s.provider_type === providerType,
+        s.provider_name === providerName && s.provider_type === type,
     );
 
-  const handleToggle = (card: PreDefinedCard, current: boolean) => {
-    const existing = findSetting(card.providerName, card.providerType);
-
-    if (existing) {
-      // Toggle existing record
-      updateMutation.mutate({
-        id: existing.id,
-        data: { is_enabled: !current },
+  function handleToggle(
+    providerName: string,
+    currentSetting: ProviderSetting | undefined,
+  ) {
+    if (!currentSetting) {
+      createMutation.mutate({
+        provider_type: type,
+        provider_name: providerName,
+        display_name: PROVIDER_LABELS[providerName] ?? providerName,
       });
     } else {
-      // First time enable → create record
-      createMutation.mutate({
-        provider_type: card.providerType,
-        provider_name: card.providerName,
-        display_name: `${card.label} (${card.providerType.toUpperCase()})`,
-        api_key: "",
+      updateMutation.mutate({
+        id: currentSetting.id,
+        data: { is_enabled: !currentSetting.is_enabled },
       });
     }
-  };
+  }
+
+  function handleModelToggle(setting: ProviderSetting, modelId: string) {
+    const updatedModels = setting.models.map((m) =>
+      m.model_id === modelId ? { ...m, is_enabled: !m.is_enabled } : m,
+    );
+    updateMutation.mutate({
+      id: setting.id,
+      data: { models: updatedModels },
+    });
+  }
 
   if (isLoading) {
     return (
@@ -107,95 +66,103 @@ export function ProviderList({ type }: ProviderListProps) {
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {cards.map((card) => {
-        const setting = findSetting(card.providerName, card.providerType);
+      {PROVIDER_ORDER.map((providerName) => {
+        const setting = findSetting(providerName);
         const isEnabled = setting?.is_enabled ?? false;
         const isBusy =
           (updateMutation.isPending &&
             updateMutation.variables?.id === setting?.id) ||
           (createMutation.isPending &&
             (createMutation.variables as { provider_name?: string })
-              ?.provider_name === card.providerName);
+              ?.provider_name === providerName);
+
+        const switchId = `toggle-${providerName}-${type}`;
 
         return (
-          <ProviderCard
-            key={`${card.providerName}-${card.providerType}`}
-            card={card}
-            isEnabled={isEnabled}
-            isBusy={isBusy}
-            onToggle={() => handleToggle(card, isEnabled)}
-          />
+          <Card
+            key={`${providerName}-${type}`}
+            className={`transition-all duration-200 hover:shadow-md ${
+              !isEnabled ? "opacity-50" : ""
+            }`}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">
+                  {PROVIDER_LABELS[providerName] ?? providerName}
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Label
+                    htmlFor={switchId}
+                    className="text-xs text-muted-foreground"
+                  >
+                    {isEnabled ? "啟用" : "停用"}
+                  </Label>
+                  <Switch
+                    id={switchId}
+                    checked={isEnabled}
+                    onCheckedChange={() =>
+                      handleToggle(providerName, setting)
+                    }
+                    disabled={isBusy}
+                    aria-label={`${isEnabled ? "停用" : "啟用"} ${PROVIDER_LABELS[providerName] ?? providerName}`}
+                  />
+                </div>
+              </div>
+              <Badge variant="outline" className="w-fit">
+                {type.toUpperCase()}
+              </Badge>
+            </CardHeader>
+            <CardContent>
+              {setting && setting.models.length > 0 ? (
+                <>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    可用模型
+                  </p>
+                  <div className="space-y-1">
+                    {setting.models.map((m) => (
+                      <div
+                        key={m.model_id}
+                        className="flex items-center justify-between rounded-md border bg-muted/30 px-2.5 py-1.5 text-xs"
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={m.is_enabled}
+                            onChange={() =>
+                              handleModelToggle(setting, m.model_id)
+                            }
+                            disabled={!isEnabled || isBusy}
+                            className="rounded border-input"
+                            aria-label={`啟用模型 ${m.display_name}`}
+                          />
+                          <div>
+                            <span className="font-medium">
+                              {m.display_name}
+                            </span>
+                            <span className="ml-1.5 font-mono text-muted-foreground">
+                              {m.model_id}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="shrink-0 text-muted-foreground">
+                          {m.price}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {setting ? "無可用模型" : "未啟用"}
+                </p>
+              )}
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                API Key 由伺服器 .env 管理
+              </p>
+            </CardContent>
+          </Card>
         );
       })}
     </div>
-  );
-}
-
-interface ProviderCardProps {
-  card: PreDefinedCard;
-  isEnabled: boolean;
-  isBusy: boolean;
-  onToggle: () => void;
-}
-
-function ProviderCard({
-  card,
-  isEnabled,
-  isBusy,
-  onToggle,
-}: ProviderCardProps) {
-  const switchId = `toggle-${card.providerName}-${card.providerType}`;
-
-  return (
-    <Card
-      className={`transition-all duration-200 hover:shadow-md ${
-        !isEnabled ? "opacity-50" : ""
-      }`}
-    >
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">{card.label}</CardTitle>
-          <div className="flex items-center gap-2">
-            <Label htmlFor={switchId} className="text-xs text-muted-foreground">
-              {isEnabled ? "啟用" : "停用"}
-            </Label>
-            <Switch
-              id={switchId}
-              checked={isEnabled}
-              onCheckedChange={onToggle}
-              disabled={isBusy}
-              aria-label={`${isEnabled ? "停用" : "啟用"} ${card.label}`}
-            />
-          </div>
-        </div>
-        <Badge variant="outline" className="w-fit">
-          {card.providerType.toUpperCase()}
-        </Badge>
-      </CardHeader>
-      <CardContent>
-        <p className="mb-2 text-xs font-medium text-muted-foreground">
-          可用模型
-        </p>
-        <div className="space-y-1">
-          {card.models.map((m) => (
-            <div
-              key={m.id}
-              className="flex items-center justify-between rounded-md border bg-muted/30 px-2.5 py-1.5 text-xs"
-            >
-              <div>
-                <span className="font-medium">{m.name}</span>
-                <span className="ml-1.5 font-mono text-muted-foreground">
-                  {m.id}
-                </span>
-              </div>
-              <span className="shrink-0 text-muted-foreground">{m.price}</span>
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          API Key 由伺服器 .env 管理
-        </p>
-      </CardContent>
-    </Card>
   );
 }

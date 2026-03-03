@@ -33,6 +33,8 @@ class CreateBotRequest(BaseModel):
     rag_top_k: int = 5
     rag_score_threshold: float = 0.3
     enabled_tools: list[str] = ["rag_query"]
+    llm_provider: str = ""
+    llm_model: str = ""
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -51,6 +53,8 @@ class UpdateBotRequest(BaseModel):
     rag_top_k: int | None = None
     rag_score_threshold: float | None = None
     enabled_tools: list[str] | None = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -71,6 +75,8 @@ class BotResponse(BaseModel):
     rag_top_k: int
     rag_score_threshold: float
     enabled_tools: list[str]
+    llm_provider: str
+    llm_model: str
     line_channel_secret: str | None
     line_channel_access_token: str | None
     created_at: str
@@ -94,6 +100,8 @@ def _to_response(bot) -> BotResponse:
         rag_top_k=bot.llm_params.rag_top_k,
         rag_score_threshold=bot.llm_params.rag_score_threshold,
         enabled_tools=bot.enabled_tools,
+        llm_provider=bot.llm_provider,
+        llm_model=bot.llm_model,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
         created_at=bot.created_at.isoformat(),
@@ -130,6 +138,8 @@ async def create_bot(
             rag_top_k=body.rag_top_k,
             rag_score_threshold=body.rag_score_threshold,
             enabled_tools=body.enabled_tools,
+            llm_provider=body.llm_provider,
+            llm_model=body.llm_model,
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
         )

@@ -28,3 +28,6 @@ class ModelConfig:
     model_id: str
     display_name: str
     is_default: bool = False
+    is_enabled: bool = True
+    price: str = ""
+    description: str = ""

@@ -4,13 +4,12 @@ import { cn } from "@/lib/utils";
 import { ProviderList } from "@/features/settings/components/provider-list";
 
 const tabs = [
-  { value: undefined, label: "全部" },
   { value: "llm", label: "LLM" },
   { value: "embedding", label: "Embedding" },
 ] as const;
 
 export default function ProvidersSettingsPage() {
-  const [activeTab, setActiveTab] = useState<string | undefined>(undefined);
+  const [activeTab, setActiveTab] = useState<string>("llm");
 
   return (
     <div className="space-y-6 p-6">

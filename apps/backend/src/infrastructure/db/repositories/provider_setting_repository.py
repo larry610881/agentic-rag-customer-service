@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.platform.entity import ProviderSetting
+from src.domain.platform.model_registry import DEFAULT_MODELS
 from src.domain.platform.repository import ProviderSettingRepository
 from src.domain.platform.value_objects import (
     ModelConfig,
@@ -9,6 +10,7 @@ from src.domain.platform.value_objects import (
     ProviderSettingId,
     ProviderType,
 )
+from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.provider_setting_model import (
     ProviderSettingModel,
 )
@@ -19,13 +21,21 @@ class SQLAlchemyProviderSettingRepository(ProviderSettingRepository):
         self._session = session
 
     def _to_entity(self, model: ProviderSettingModel) -> ProviderSetting:
+        raw_models = model.models or []
+        if not raw_models:
+            # Backfill from registry for records created before model DB migration
+            registry = DEFAULT_MODELS.get(model.provider_name, {})
+            raw_models = registry.get(model.provider_type, [])
         models = [
             ModelConfig(
                 model_id=m["model_id"],
                 display_name=m["display_name"],
                 is_default=m.get("is_default", False),
+                is_enabled=m.get("is_enabled", True),
+                price=m.get("price", ""),
+                description=m.get("description", ""),
             )
-            for m in (model.models or [])
+            for m in raw_models
         ]
         return ProviderSetting(
             id=ProviderSettingId(value=model.id),
@@ -42,42 +52,45 @@ class SQLAlchemyProviderSettingRepository(ProviderSettingRepository):
         )
 
     async def save(self, setting: ProviderSetting) -> None:
-        models_data = [
-            {
-                "model_id": m.model_id,
-                "display_name": m.display_name,
-                "is_default": m.is_default,
-            }
-            for m in setting.models
-        ]
+        async with atomic(self._session):
+            models_data = [
+                {
+                    "model_id": m.model_id,
+                    "display_name": m.display_name,
+                    "is_default": m.is_default,
+                    "is_enabled": m.is_enabled,
+                    "price": m.price,
+                    "description": m.description,
+                }
+                for m in setting.models
+            ]
 
-        existing = await self._session.get(ProviderSettingModel, setting.id.value)
-        if existing:
-            existing.provider_type = setting.provider_type.value
-            existing.provider_name = setting.provider_name.value
-            existing.display_name = setting.display_name
-            existing.is_enabled = setting.is_enabled
-            existing.api_key_encrypted = setting.api_key_encrypted
-            existing.base_url = setting.base_url
-            existing.models = models_data
-            existing.extra_config = setting.extra_config
-            existing.updated_at = setting.updated_at
-        else:
-            model = ProviderSettingModel(
-                id=setting.id.value,
-                provider_type=setting.provider_type.value,
-                provider_name=setting.provider_name.value,
-                display_name=setting.display_name,
-                is_enabled=setting.is_enabled,
-                api_key_encrypted=setting.api_key_encrypted,
-                base_url=setting.base_url,
-                models=models_data,
-                extra_config=setting.extra_config,
-                created_at=setting.created_at,
-                updated_at=setting.updated_at,
-            )
-            self._session.add(model)
-        await self._session.commit()
+            existing = await self._session.get(ProviderSettingModel, setting.id.value)
+            if existing:
+                existing.provider_type = setting.provider_type.value
+                existing.provider_name = setting.provider_name.value
+                existing.display_name = setting.display_name
+                existing.is_enabled = setting.is_enabled
+                existing.api_key_encrypted = setting.api_key_encrypted
+                existing.base_url = setting.base_url
+                existing.models = models_data
+                existing.extra_config = setting.extra_config
+                existing.updated_at = setting.updated_at
+            else:
+                model = ProviderSettingModel(
+                    id=setting.id.value,
+                    provider_type=setting.provider_type.value,
+                    provider_name=setting.provider_name.value,
+                    display_name=setting.display_name,
+                    is_enabled=setting.is_enabled,
+                    api_key_encrypted=setting.api_key_encrypted,
+                    base_url=setting.base_url,
+                    models=models_data,
+                    extra_config=setting.extra_config,
+                    created_at=setting.created_at,
+                    updated_at=setting.updated_at,
+                )
+                self._session.add(model)
 
     async def find_by_id(self, setting_id: str) -> ProviderSetting | None:
         stmt = select(ProviderSettingModel).where(
@@ -118,7 +131,7 @@ class SQLAlchemyProviderSettingRepository(ProviderSettingRepository):
         return [self._to_entity(m) for m in result.scalars().all()]
 
     async def delete(self, setting_id: str) -> None:
-        existing = await self._session.get(ProviderSettingModel, setting_id)
-        if existing:
-            await self._session.delete(existing)
-            await self._session.commit()
+        async with atomic(self._session):
+            existing = await self._session.get(ProviderSettingModel, setting_id)
+            if existing:
+                await self._session.delete(existing)

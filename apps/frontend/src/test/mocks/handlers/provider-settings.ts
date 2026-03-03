@@ -63,6 +63,21 @@ export const providerSettingHandlers = [
       });
     },
   ),
+  http.get(`${API_BASE}/api/v1/settings/providers/enabled-models`, () => {
+    const enabledModels = mockProviderSettings
+      .filter((p) => p.is_enabled && p.provider_type === "llm")
+      .flatMap((p) =>
+        p.models
+          .filter((m) => m.is_enabled)
+          .map((m) => ({
+            provider_name: p.provider_name,
+            model_id: m.model_id,
+            display_name: m.display_name,
+            price: m.price,
+          })),
+      );
+    return HttpResponse.json(enabledModels);
+  }),
   http.delete(`${API_BASE}/api/v1/settings/providers/:id`, () => {
     return new HttpResponse(null, { status: 204 });
   }),
