@@ -184,6 +184,7 @@ class DynamicLLMServiceProxy(LLMService):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
+        usage_collector: dict | None = None,
     ) -> AsyncIterator[str]:
         service = await self._factory.get_service()
         async for token in service.generate_stream(
@@ -193,5 +194,6 @@ class DynamicLLMServiceProxy(LLMService):
             temperature=temperature,
             max_tokens=max_tokens,
             frequency_penalty=frequency_penalty,
+            usage_collector=usage_collector,
         ):
             yield token
