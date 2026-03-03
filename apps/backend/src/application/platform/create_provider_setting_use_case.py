@@ -83,17 +83,6 @@ class CreateProviderSettingUseCase:
             else ""
         )
 
-        # Embedding provider 互斥：建立新的時停用其他已啟用的
-        if provider_type == ProviderType.EMBEDDING:
-            all_embedding = await self._repository.find_all_by_type(
-                ProviderType.EMBEDDING
-            )
-            for other in all_embedding:
-                if other.is_enabled:
-                    other.is_enabled = False
-                    other.updated_at = datetime.now(timezone.utc)
-                    await self._repository.save(other)
-
         setting = ProviderSetting(
             id=ProviderSettingId(),
             provider_type=provider_type,

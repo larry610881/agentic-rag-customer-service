@@ -49,16 +49,6 @@ class UpdateProviderSettingUseCase:
             setting.display_name = command.display_name
         if command.is_enabled is not None:
             setting.is_enabled = command.is_enabled
-            # Embedding provider 互斥：啟用一個時停用其他
-            if command.is_enabled and setting.provider_type == ProviderType.EMBEDDING:
-                all_embedding = await self._repository.find_all_by_type(
-                    ProviderType.EMBEDDING
-                )
-                for other in all_embedding:
-                    if other.id != setting.id and other.is_enabled:
-                        other.is_enabled = False
-                        other.updated_at = datetime.now(timezone.utc)
-                        await self._repository.save(other)
         if command.api_key is not None:
             setting.api_key_encrypted = self._encryption.encrypt(command.api_key)
         if command.base_url is not None:
@@ -77,6 +67,33 @@ class UpdateProviderSettingUseCase:
             ]
         if command.extra_config is not None:
             setting.extra_config = command.extra_config
+
+        # Embedding 模型互斥：當設定 is_default 時，清除其他 embedding provider 的 is_default
+        if (
+            command.models is not None
+            and setting.provider_type == ProviderType.EMBEDDING
+            and any(m.is_default for m in setting.models)
+        ):
+            all_embedding = await self._repository.find_all_by_type(
+                ProviderType.EMBEDDING
+            )
+            for other in all_embedding:
+                if other.id != setting.id and any(
+                    m.is_default for m in other.models
+                ):
+                    other.models = [
+                        ModelConfig(
+                            model_id=m.model_id,
+                            display_name=m.display_name,
+                            is_default=False,
+                            is_enabled=m.is_enabled,
+                            price=m.price,
+                            description=m.description,
+                        )
+                        for m in other.models
+                    ]
+                    other.updated_at = datetime.now(timezone.utc)
+                    await self._repository.save(other)
 
         setting.updated_at = datetime.now(timezone.utc)
         await self._repository.save(setting)

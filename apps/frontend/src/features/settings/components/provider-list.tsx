@@ -149,11 +149,13 @@ export function ProviderList({ type }: ProviderListProps) {
                 <Badge variant="outline" className="w-fit">
                   {type.toUpperCase()}
                 </Badge>
-                {type === "embedding" && isEnabled && (
-                  <Badge variant="default" className="w-fit">
-                    目前使用中
-                  </Badge>
-                )}
+                {type === "embedding" &&
+                  isEnabled &&
+                  setting?.models.some((m) => m.is_default) && (
+                    <Badge variant="default" className="w-fit">
+                      目前使用中
+                    </Badge>
+                  )}
               </div>
             </CardHeader>
             <CardContent>
@@ -170,36 +172,20 @@ export function ProviderList({ type }: ProviderListProps) {
                       >
                         <div className="flex items-center gap-2">
                           {type === "embedding" ? (
-                            <>
-                              <input
-                                type="checkbox"
-                                checked={m.is_enabled}
-                                onChange={() =>
-                                  handleModelToggle(setting, m.model_id)
-                                }
-                                disabled={
-                                  !isEnabled || isBusy || m.is_default
-                                }
-                                className="rounded border-input"
-                                aria-label={`啟用模型 ${m.display_name}`}
-                              />
-                              <input
-                                type="radio"
-                                name={`embedding-model-${setting.id}`}
-                                checked={m.is_default}
-                                onChange={() =>
-                                  handleDefaultModelChange(
-                                    setting,
-                                    m.model_id,
-                                  )
-                                }
-                                disabled={
-                                  !isEnabled || isBusy || !m.is_enabled
-                                }
-                                className="border-input"
-                                aria-label={`選用模型 ${m.display_name}`}
-                              />
-                            </>
+                            <input
+                              type="radio"
+                              name="embedding-active-model"
+                              checked={m.is_default}
+                              onChange={() =>
+                                handleDefaultModelChange(
+                                  setting,
+                                  m.model_id,
+                                )
+                              }
+                              disabled={!isEnabled || isBusy}
+                              className="border-input"
+                              aria-label={`選用模型 ${m.display_name}`}
+                            />
                           ) : (
                             <input
                               type="checkbox"
