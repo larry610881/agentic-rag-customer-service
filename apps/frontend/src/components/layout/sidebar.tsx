@@ -8,6 +8,7 @@ import {
   ScrollText,
   ChevronsLeft,
   ChevronsRight,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,11 +24,10 @@ const tenantNavItems = [
   { href: "/settings", label: "設定", icon: Settings },
 ];
 
-const systemAdminNavItems = [
+const systemAdminOverviewItems = [
   { href: "/admin/knowledge-bases", label: "所有知識庫", icon: BookOpen },
   { href: "/admin/bots", label: "所有機器人", icon: Bot },
   { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
-  { href: "/settings", label: "設定", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -36,7 +36,7 @@ export function Sidebar() {
   const toggle = useSidebarStore((s) => s.toggle);
   const role = useAuthStore((s) => s.role);
 
-  const navItems = role === "system_admin" ? systemAdminNavItems : tenantNavItems;
+  const isSystemAdmin = role === "system_admin";
 
   return (
     <aside
@@ -63,37 +63,60 @@ export function Sidebar() {
         </Button>
       </div>
       <nav className="flex flex-1 flex-col gap-1 p-2">
-        {navItems.map((item) => {
-          const isActive = pathname?.startsWith(item.href);
-          const button = (
-            <Button
-              key={item.href}
-              variant={isActive ? "secondary" : "ghost"}
-              className={cn(
-                isCollapsed ? "justify-center px-0" : "justify-start",
-                isActive && "bg-sidebar-accent",
-              )}
-              asChild
-            >
-              <Link to={item.href}>
-                <item.icon className="h-4 w-4 shrink-0" />
-                {!isCollapsed && <span className="ml-2">{item.label}</span>}
-              </Link>
-            </Button>
-          );
-
-          if (isCollapsed) {
-            return (
-              <Tooltip key={item.href}>
-                <TooltipTrigger asChild>{button}</TooltipTrigger>
-                <TooltipContent side="right">{item.label}</TooltipContent>
-              </Tooltip>
-            );
-          }
-
-          return button;
-        })}
+        {isSystemAdmin && (
+          <>
+            {!isCollapsed && (
+              <div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+                <Shield className="h-3 w-3" />
+                系統管理
+              </div>
+            )}
+            {systemAdminOverviewItems.map((item) => renderNavItem(item, pathname, isCollapsed))}
+            <div className="my-1 border-t" />
+          </>
+        )}
+        {!isCollapsed && isSystemAdmin && (
+          <div className="px-3 pb-1 pt-1 text-xs font-medium text-muted-foreground">
+            一般功能
+          </div>
+        )}
+        {tenantNavItems.map((item) => renderNavItem(item, pathname, isCollapsed))}
       </nav>
     </aside>
   );
+}
+
+function renderNavItem(
+  item: { href: string; label: string; icon: React.ComponentType<{ className?: string }> },
+  pathname: string,
+  isCollapsed: boolean,
+) {
+  const isActive = pathname?.startsWith(item.href);
+  const button = (
+    <Button
+      key={item.href}
+      variant={isActive ? "secondary" : "ghost"}
+      className={cn(
+        isCollapsed ? "justify-center px-0" : "justify-start",
+        isActive && "bg-sidebar-accent",
+      )}
+      asChild
+    >
+      <Link to={item.href}>
+        <item.icon className="h-4 w-4 shrink-0" />
+        {!isCollapsed && <span className="ml-2">{item.label}</span>}
+      </Link>
+    </Button>
+  );
+
+  if (isCollapsed) {
+    return (
+      <Tooltip key={item.href}>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent side="right">{item.label}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return button;
 }
