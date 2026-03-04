@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     data_retention_months: int = 6
     data_retention_enabled: bool = False
 
+    # CORS
+    cors_origins: str = "http://localhost:3000"  # comma-separated allowed origins
+
     # App
     app_env: str = "development"
     app_version: str = "0.1.0"
