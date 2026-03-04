@@ -1,6 +1,6 @@
 import { useAuthStore } from "@/stores/use-auth-store";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/+$/, "");
 
 export class ApiError extends Error {
   constructor(
