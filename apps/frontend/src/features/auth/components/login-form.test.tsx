@@ -11,7 +11,7 @@ describe("LoginForm", () => {
 
   it("should render login form fields", () => {
     renderWithProviders(<LoginForm />);
-    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("帳號")).toBeInTheDocument();
     expect(screen.getByLabelText("密碼")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "登入" })).toBeInTheDocument();
   });
@@ -20,18 +20,17 @@ describe("LoginForm", () => {
     const user = userEvent.setup();
     renderWithProviders(<LoginForm />);
     await user.click(screen.getByRole("button", { name: "登入" }));
-    expect(await screen.findByText("請輸入 Email")).toBeInTheDocument();
+    expect(await screen.findByText("請輸入帳號")).toBeInTheDocument();
     expect(await screen.findByText("請輸入密碼")).toBeInTheDocument();
   });
 
   it("should submit form with valid data and set token", async () => {
     const user = userEvent.setup();
     renderWithProviders(<LoginForm />);
-    await user.type(screen.getByLabelText("Email"), "admin@system.com");
-    await user.type(screen.getByLabelText("密碼"), "password");
+    await user.type(screen.getByLabelText("帳號"), "shop@demo.com");
+    await user.type(screen.getByLabelText("密碼"), "shop123");
     await user.click(screen.getByRole("button", { name: "登入" }));
 
-    // 登入成功後，auth store 應有 token
     await waitFor(() => {
       expect(useAuthStore.getState().token).toBe("mock-jwt-token-123");
     });

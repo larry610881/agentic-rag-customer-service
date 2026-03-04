@@ -11,6 +11,7 @@ from src.application.auth.register_user_use_case import (
     RegisterUserCommand,
     RegisterUserUseCase,
 )
+from src.config import settings
 from src.container import Container
 from src.domain.tenant.repository import TenantRepository
 from src.infrastructure.auth.jwt_service import JWTService
@@ -23,7 +24,7 @@ class TokenRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str
+    account: str
     password: str
 
 
@@ -37,11 +38,6 @@ class RegisterRequest(BaseModel):
     password: str
     role: str = "user"
     tenant_id: str | None = None
-
-
-class UserLoginRequest(BaseModel):
-    email: str
-    password: str
 
 
 class UserResponse(BaseModel):
@@ -70,13 +66,24 @@ async def login(
     tenant_repo: TenantRepository = Depends(
         Provide[Container.tenant_repository]
     ),
+    use_case: LoginUseCase = Depends(Provide[Container.login_use_case]),
 ) -> TokenResponse:
-    """Dev-only login: username = tenant name, password = any non-empty."""
-    tenant = await tenant_repo.find_by_name(body.username)
-    if tenant is None:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = jwt_service.create_tenant_token(tenant.id.value)
-    return TokenResponse(access_token=token)
+    """Unified login: dev mode uses tenant name, production uses email/password."""
+    if settings.app_env == "development":
+        # Dev mode: account = tenant name, password not verified
+        tenant = await tenant_repo.find_by_name(body.account)
+        if tenant is None:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        token = jwt_service.create_tenant_token(tenant.id.value)
+        return TokenResponse(access_token=token)
+
+    # Production: account = email, password verified via bcrypt
+    command = LoginCommand(email=body.account, password=body.password)
+    try:
+        result = await use_case.execute(command)
+    except AuthenticationError:
+        raise HTTPException(status_code=401, detail="Invalid credentials") from None
+    return TokenResponse(access_token=result.access_token)
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)
@@ -101,18 +108,3 @@ async def register(
         role=user.role.value,
         tenant_id=user.tenant_id,
     )
-
-
-@router.post("/user-login", response_model=TokenResponse)
-@inject
-async def user_login(
-    body: UserLoginRequest,
-    use_case: LoginUseCase = Depends(Provide[Container.login_use_case]),
-) -> TokenResponse:
-    """Login with email/password, returns JWT with user_id + tenant_id + role."""
-    command = LoginCommand(email=body.email, password=body.password)
-    try:
-        result = await use_case.execute(command)
-    except AuthenticationError:
-        raise HTTPException(status_code=401, detail="Invalid credentials") from None
-    return TokenResponse(access_token=result.access_token)

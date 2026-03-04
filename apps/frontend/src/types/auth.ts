@@ -11,6 +11,6 @@ export interface Tenant {
 }
 
 export interface LoginRequest {
-  email: string;
+  account: string;
   password: string;
 }
