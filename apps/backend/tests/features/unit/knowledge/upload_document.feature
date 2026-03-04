@@ -27,6 +27,6 @@ Feature: Upload Document
     When 上傳文件到不存在的知識庫
     Then 拋出 EntityNotFoundError
 
-  Scenario: 檔案解析透過 asyncio.to_thread 執行
+  Scenario: 上傳時不執行解析，只存 raw bytes
     When 上傳一個 TXT 文件 "async-test.txt" 到知識庫
-    Then 檔案解析是透過 asyncio.to_thread 執行
+    Then 上傳時不執行解析

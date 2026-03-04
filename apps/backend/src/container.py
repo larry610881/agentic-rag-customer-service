@@ -667,7 +667,6 @@ class Container(containers.DeclarativeContainer):
         knowledge_base_repository=kb_repository,
         document_repository=document_repository,
         processing_task_repository=processing_task_repository,
-        file_parser_service=file_parser_service,
     )
 
     process_document_use_case = providers.Factory(
@@ -678,6 +677,7 @@ class Container(containers.DeclarativeContainer):
         embedding_service=embedding_service,
         vector_store=vector_store,
         language_detection_service=language_detection_service,
+        file_parser_service=file_parser_service,
     )
 
     get_processing_task_use_case = providers.Factory(
@@ -698,6 +698,7 @@ class Container(containers.DeclarativeContainer):
         embedding_service=embedding_service,
         vector_store=vector_store,
         language_detection_service=language_detection_service,
+        file_parser_service=file_parser_service,
     )
 
     get_document_quality_stats_use_case = providers.Factory(

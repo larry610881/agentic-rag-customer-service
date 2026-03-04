@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 from src.domain.knowledge.repository import (
@@ -8,6 +9,7 @@ from src.domain.knowledge.services import (
     ChunkDeduplicationService,
     ChunkFilterService,
     ChunkQualityService,
+    FileParserService,
     LanguageDetectionService,
     TextPreprocessor,
     TextSplitterService,
@@ -27,6 +29,7 @@ class ProcessDocumentUseCase:
         embedding_service: EmbeddingService,
         vector_store: VectorStore,
         language_detection_service: LanguageDetectionService,
+        file_parser_service: FileParserService,
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
@@ -34,6 +37,7 @@ class ProcessDocumentUseCase:
         self._embedding = embedding_service
         self._vector_store = vector_store
         self._language_detector = language_detection_service
+        self._file_parser = file_parser_service
 
     async def execute(
         self, document_id: str, task_id: str
@@ -66,10 +70,26 @@ class ProcessDocumentUseCase:
                 document_id, "processing"
             )
 
+            # Parse raw content → text (moved from upload for async processing)
+            if document.raw_content:
+                t0 = time.perf_counter()
+                content = await asyncio.to_thread(
+                    self._file_parser.parse,
+                    document.raw_content,
+                    document.content_type,
+                )
+                parse_ms = round((time.perf_counter() - t0) * 1000)
+                log.info("document.parse.done", duration_ms=parse_ms)
+                await self._doc_repo.update_content(document_id, content)
+            else:
+                # Fallback for legacy documents without raw_content
+                content = document.content
+                parse_ms = 0
+
             # Pre-process: normalize + boilerplate removal
             t0 = time.perf_counter()
             preprocessed = TextPreprocessor.preprocess(
-                document.content, document.content_type
+                content, document.content_type
             )
 
             # Detect language
@@ -205,6 +225,7 @@ class ProcessDocumentUseCase:
             log.info(
                 "document.process.done",
                 total_ms=total_ms,
+                parse_ms=parse_ms,
                 preprocess_ms=preprocess_ms,
                 split_ms=split_ms,
                 save_ms=save_ms,

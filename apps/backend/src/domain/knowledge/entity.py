@@ -32,6 +32,7 @@ class Document:
     filename: str = ""
     content_type: str = ""
     content: str = ""
+    raw_content: bytes = b""
     status: str = "pending"
     chunk_count: int = 0
     avg_chunk_length: int = 0

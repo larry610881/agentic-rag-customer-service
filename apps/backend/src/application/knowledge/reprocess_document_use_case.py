@@ -1,3 +1,5 @@
+import asyncio
+
 from src.domain.knowledge.entity import ProcessingTask
 from src.domain.knowledge.repository import (
     DocumentRepository,
@@ -7,6 +9,7 @@ from src.domain.knowledge.services import (
     ChunkDeduplicationService,
     ChunkFilterService,
     ChunkQualityService,
+    FileParserService,
     LanguageDetectionService,
     TextPreprocessor,
     TextSplitterService,
@@ -27,6 +30,7 @@ class ReprocessDocumentUseCase:
         embedding_service: EmbeddingService,
         vector_store: VectorStore,
         language_detection_service: LanguageDetectionService,
+        file_parser_service: FileParserService,
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
@@ -34,6 +38,7 @@ class ReprocessDocumentUseCase:
         self._embedding = embedding_service
         self._vector_store = vector_store
         self._language_detector = language_detection_service
+        self._file_parser = file_parser_service
 
     async def begin_reprocess(
         self, document_id: str, tenant_id: str
@@ -77,9 +82,21 @@ class ReprocessDocumentUseCase:
                 collection, {"document_id": document_id}
             )
 
+            # Re-parse from raw_content if available, else fallback to existing content
+            if document.raw_content:
+                content = await asyncio.to_thread(
+                    self._file_parser.parse,
+                    document.raw_content,
+                    document.content_type,
+                )
+                await self._doc_repo.update_content(document_id, content)
+                log.info("document.reparse.done")
+            else:
+                content = document.content
+
             # Pre-process: normalize + boilerplate removal
             preprocessed = TextPreprocessor.preprocess(
-                document.content, document.content_type
+                content, document.content_type
             )
 
             # Detect language

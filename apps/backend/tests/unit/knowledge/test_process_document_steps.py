@@ -39,6 +39,7 @@ def context():
 def mock_doc_repo():
     repo = AsyncMock()
     repo.save_chunks = AsyncMock()
+    repo.update_content = AsyncMock()
     return repo
 
 
@@ -77,6 +78,14 @@ def mock_language_detector():
 
 
 @pytest.fixture
+def mock_file_parser():
+    parser = MagicMock()
+    parser.parse.return_value = "parsed content from raw bytes"
+    parser.supported_types.return_value = {"text/plain", "application/pdf"}
+    return parser
+
+
+@pytest.fixture
 def process_use_case(
     mock_doc_repo,
     mock_task_repo,
@@ -84,6 +93,7 @@ def process_use_case(
     mock_embedding,
     mock_vector_store,
     mock_language_detector,
+    mock_file_parser,
 ):
     return ProcessDocumentUseCase(
         document_repository=mock_doc_repo,
@@ -92,6 +102,7 @@ def process_use_case(
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,
         language_detection_service=mock_language_detector,
+        file_parser_service=mock_file_parser,
     )
 
 
@@ -101,18 +112,22 @@ def pending_document(
     mock_doc_repo,
     mock_splitter,
     mock_embedding,
+    mock_file_parser,
 ):
+    raw_text = "This is a long enough text for splitting. " * 20
     doc = Document(
         id=DocumentId(value="doc-001"),
         kb_id="kb-001",
         tenant_id="tenant-001",
         filename="test.txt",
         content_type="text/plain",
-        content="This is a long enough text for splitting. " * 20,
+        content="",
+        raw_content=raw_text.encode("utf-8"),
         status="pending",
     )
     mock_doc_repo.find_by_id = AsyncMock(return_value=doc)
     mock_doc_repo.update_status = AsyncMock()
+    mock_file_parser.parse.return_value = raw_text
 
     chunks = [
         Chunk(

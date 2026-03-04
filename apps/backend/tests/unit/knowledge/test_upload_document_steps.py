@@ -1,7 +1,7 @@
 """文件上傳 BDD Step Definitions"""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
@@ -51,26 +51,6 @@ def mock_task_repo():
 
 
 @pytest.fixture
-def mock_file_parser():
-    parser = MagicMock()
-    parser.supported_types.return_value = {
-        "text/plain",
-        "text/markdown",
-        "text/csv",
-        "application/json",
-        "text/xml",
-        "application/xml",
-        "text/html",
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/rtf",
-        "text/rtf",
-    }
-    parser.parse.return_value = "parsed content"
-    return parser
-
-
-@pytest.fixture
 def kb_id():
     return "kb-test-123"
 
@@ -81,12 +61,11 @@ def tenant_id():
 
 
 @pytest.fixture
-def upload_use_case(mock_kb_repo, mock_doc_repo, mock_task_repo, mock_file_parser):
+def upload_use_case(mock_kb_repo, mock_doc_repo, mock_task_repo):
     return UploadDocumentUseCase(
         knowledge_base_repository=mock_kb_repo,
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
-        file_parser_service=mock_file_parser,
     )
 
 
@@ -198,7 +177,8 @@ def raises_not_found(context):
     assert isinstance(context["error"], EntityNotFoundError)
 
 
-@then("檔案解析是透過 asyncio.to_thread 執行")
-def verify_to_thread(context, mock_file_parser):
-    # asyncio.to_thread 會在背景執行緒呼叫 parse，驗證 parse 有被正確調用
-    mock_file_parser.parse.assert_called_once()
+@then("上傳時不執行解析")
+def verify_no_parse(context):
+    doc = context["result"].document
+    assert doc.content == ""
+    assert doc.raw_content != b""

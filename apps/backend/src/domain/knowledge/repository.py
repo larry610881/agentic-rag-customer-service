@@ -42,6 +42,11 @@ class DocumentRepository(ABC):
     ) -> None: ...
 
     @abstractmethod
+    async def update_content(
+        self, doc_id: str, content: str
+    ) -> None: ...
+
+    @abstractmethod
     async def delete(self, doc_id: str) -> None: ...
 
     @abstractmethod

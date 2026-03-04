@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from src.domain.knowledge.entity import Chunk, Document
 from src.domain.knowledge.repository import DocumentRepository
@@ -24,6 +25,7 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             filename=model.filename,
             content_type=model.content_type,
             content=model.content,
+            raw_content=model.raw_content or b"",
             status=model.status,
             chunk_count=model.chunk_count,
             avg_chunk_length=model.avg_chunk_length,
@@ -58,6 +60,7 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
                 filename=document.filename,
                 content_type=document.content_type,
                 content=document.content,
+                raw_content=document.raw_content or None,
                 status=document.status,
                 chunk_count=document.chunk_count,
                 created_at=document.created_at,
@@ -90,6 +93,20 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
                 update(DocumentModel)
                 .where(DocumentModel.id == doc_id)
                 .values(**values)
+            )
+            await self._session.execute(stmt)
+
+    async def update_content(
+        self, doc_id: str, content: str
+    ) -> None:
+        async with atomic(self._session):
+            stmt = (
+                update(DocumentModel)
+                .where(DocumentModel.id == doc_id)
+                .values(
+                    content=content,
+                    updated_at=datetime.now(timezone.utc),
+                )
             )
             await self._session.execute(stmt)
 
@@ -128,6 +145,7 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
     async def find_all_by_kb(self, kb_id: str) -> list[Document]:
         stmt = (
             select(DocumentModel)
+            .options(defer(DocumentModel.raw_content))
             .where(DocumentModel.kb_id == kb_id)
             .order_by(DocumentModel.created_at)
         )

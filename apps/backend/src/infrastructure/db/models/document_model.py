@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Index, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
@@ -25,6 +25,9 @@ class DocumentModel(Base):
     filename: Mapped[str] = mapped_column(String(500), nullable=False)
     content_type: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    raw_content: Mapped[bytes | None] = mapped_column(
+        LargeBinary, nullable=True, default=None
+    )
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="pending"
     )

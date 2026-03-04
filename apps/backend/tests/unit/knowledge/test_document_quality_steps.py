@@ -128,19 +128,22 @@ def quality_issues_contain(context, issue):
 
 @given("一個待處理的文件和處理任務（含品質計算）")
 def pending_doc_with_quality(context):
+    raw_text = "Test content for quality. " * 20
     doc = Document(
         id=DocumentId(value="doc-q1"),
         kb_id="kb-001",
         tenant_id="tenant-001",
         filename="test.txt",
         content_type="text/plain",
-        content="Test content for quality. " * 20,
+        content="",
+        raw_content=raw_text.encode("utf-8"),
         status="pending",
     )
     mock_doc_repo = AsyncMock()
     mock_doc_repo.find_by_id = AsyncMock(return_value=doc)
     mock_doc_repo.update_status = AsyncMock()
     mock_doc_repo.update_quality = AsyncMock()
+    mock_doc_repo.update_content = AsyncMock()
     mock_doc_repo.save_chunks = AsyncMock()
 
     chunks = [
@@ -171,6 +174,9 @@ def pending_doc_with_quality(context):
     mock_language_detector = MagicMock()
     mock_language_detector.detect.return_value = "en"
 
+    mock_file_parser = MagicMock()
+    mock_file_parser.parse.return_value = raw_text
+
     context["use_case"] = ProcessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
@@ -178,6 +184,7 @@ def pending_doc_with_quality(context):
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,
         language_detection_service=mock_language_detector,
+        file_parser_service=mock_file_parser,
     )
     context["mock_doc_repo"] = mock_doc_repo
     context["doc_id"] = "doc-q1"
@@ -255,6 +262,7 @@ def processed_doc(context):
     mock_doc_repo.find_by_id = AsyncMock(return_value=doc)
     mock_doc_repo.update_status = AsyncMock()
     mock_doc_repo.update_quality = AsyncMock()
+    mock_doc_repo.update_content = AsyncMock()
     mock_doc_repo.delete_chunks_by_document = AsyncMock()
     mock_doc_repo.save_chunks = AsyncMock()
 
@@ -288,6 +296,9 @@ def processed_doc(context):
     mock_language_detector = MagicMock()
     mock_language_detector.detect.return_value = "en"
 
+    mock_file_parser = MagicMock()
+    mock_file_parser.parse.return_value = "Content for reprocessing. " * 20
+
     context["reprocess_use_case"] = ReprocessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
@@ -295,6 +306,7 @@ def processed_doc(context):
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,
         language_detection_service=mock_language_detector,
+        file_parser_service=mock_file_parser,
     )
     context["mock_doc_repo"] = mock_doc_repo
     context["mock_task_repo"] = mock_task_repo
@@ -380,6 +392,8 @@ def processed_doc_will_fail(context):
     mock_language_detector = MagicMock()
     mock_language_detector.detect.return_value = "en"
 
+    mock_file_parser = MagicMock()
+
     context["reprocess_use_case"] = ReprocessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
@@ -387,6 +401,7 @@ def processed_doc_will_fail(context):
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,
         language_detection_service=mock_language_detector,
+        file_parser_service=mock_file_parser,
     )
     context["mock_task_repo"] = mock_task_repo
     context["doc_id"] = "doc-fail"
