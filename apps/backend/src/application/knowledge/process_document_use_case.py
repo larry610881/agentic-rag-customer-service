@@ -1,3 +1,5 @@
+import time
+
 from src.domain.knowledge.repository import (
     DocumentRepository,
     ProcessingTaskRepository,
@@ -38,6 +40,7 @@ class ProcessDocumentUseCase:
     ) -> None:
         log = logger.bind(document_id=document_id, task_id=task_id)
         try:
+            t_total = time.perf_counter()
             log.info("document.process.start")
 
             # Update task → processing
@@ -52,7 +55,11 @@ class ProcessDocumentUseCase:
                     f"Document '{document_id}' not found"
                 )
 
-            log = log.bind(tenant_id=document.tenant_id, kb_id=document.kb_id)
+            log = log.bind(
+                tenant_id=document.tenant_id,
+                kb_id=document.kb_id,
+                filename=document.filename,
+            )
 
             # Update doc → processing
             await self._doc_repo.update_status(
@@ -60,22 +67,26 @@ class ProcessDocumentUseCase:
             )
 
             # Pre-process: normalize + boilerplate removal
+            t0 = time.perf_counter()
             preprocessed = TextPreprocessor.preprocess(
                 document.content, document.content_type
             )
 
             # Detect language
             language = self._language_detector.detect(preprocessed)
-            log.info("document.language.detected", language=language)
+            preprocess_ms = round((time.perf_counter() - t0) * 1000)
+            log.info("document.preprocess.done", language=language, duration_ms=preprocess_ms)
 
             # Split text into chunks
+            t0 = time.perf_counter()
             chunks = self._splitter.split(
                 preprocessed,
                 document_id,
                 document.tenant_id,
                 content_type=document.content_type,
             )
-            log.info("document.split.done", chunk_count=len(chunks))
+            split_ms = round((time.perf_counter() - t0) * 1000)
+            log.info("document.split.done", chunk_count=len(chunks), duration_ms=split_ms)
 
             # Empty chunks early return
             if not chunks:
@@ -131,12 +142,17 @@ class ProcessDocumentUseCase:
                 return
 
             # Save chunks to DB
+            t0 = time.perf_counter()
             await self._doc_repo.save_chunks(chunks)
+            save_ms = round((time.perf_counter() - t0) * 1000)
+            log.info("document.chunks.saved", chunk_count=len(chunks), duration_ms=save_ms)
 
             # Embed chunks
+            t0 = time.perf_counter()
             texts = [c.content for c in chunks]
             vectors = await self._embedding.embed_texts(texts)
-            log.info("document.embed.done", vector_count=len(vectors))
+            embed_ms = round((time.perf_counter() - t0) * 1000)
+            log.info("document.embed.done", vector_count=len(vectors), duration_ms=embed_ms)
 
             # Ensure Qdrant collection exists
             collection = f"kb_{document.kb_id}"
@@ -146,6 +162,7 @@ class ProcessDocumentUseCase:
             )
 
             # Upsert vectors with tenant_id in payload
+            t0 = time.perf_counter()
             chunk_ids = [c.id.value for c in chunks]
             payloads = [
                 {
@@ -166,10 +183,12 @@ class ProcessDocumentUseCase:
             await self._vector_store.upsert(
                 collection, chunk_ids, vectors, payloads
             )
+            upsert_ms = round((time.perf_counter() - t0) * 1000)
             log.info(
                 "document.upsert.done",
                 collection=collection,
                 point_count=len(chunk_ids),
+                duration_ms=upsert_ms,
             )
 
             # Update doc → processed
@@ -182,7 +201,17 @@ class ProcessDocumentUseCase:
                 task_id, "completed", progress=100
             )
 
-            log.info("document.process.done")
+            total_ms = round((time.perf_counter() - t_total) * 1000)
+            log.info(
+                "document.process.done",
+                total_ms=total_ms,
+                preprocess_ms=preprocess_ms,
+                split_ms=split_ms,
+                save_ms=save_ms,
+                embed_ms=embed_ms,
+                upsert_ms=upsert_ms,
+                chunk_count=len(chunks),
+            )
 
         except Exception as e:
             log.exception("document.process.failed", error=str(e))
