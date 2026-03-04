@@ -108,9 +108,11 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
             global_rpm=settings.rate_limit_global_rpm,
         )
 
+    cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    print(f"[startup] CORS origins: {cors_origins!r}", flush=True)
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
