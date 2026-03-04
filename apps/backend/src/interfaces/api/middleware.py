@@ -45,17 +45,18 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             elapsed_ms=elapsed_ms,
         )
 
-        # Fire-and-forget: persist request log asynchronously
-        asyncio.create_task(
-            write_request_log(
-                request_id=request_id,
-                method=request.method,
-                path=request.url.path,
-                status_code=response.status_code,
-                elapsed_ms=elapsed_ms,
-                trace_steps=trace_steps,
+        # Fire-and-forget: persist request log (skip log viewer itself)
+        if not request.url.path.startswith("/api/v1/logs"):
+            asyncio.create_task(
+                write_request_log(
+                    request_id=request_id,
+                    method=request.method,
+                    path=request.url.path,
+                    status_code=response.status_code,
+                    elapsed_ms=elapsed_ms,
+                    trace_steps=trace_steps,
+                )
             )
-        )
 
         response.headers["X-Request-ID"] = request_id
         return response

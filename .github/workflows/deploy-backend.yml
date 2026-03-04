@@ -71,3 +71,5 @@ jobs:
             --cpu-boost
             --min-instances=0
             --max-instances=5
+            --vpc-connector=db-connector
+            --vpc-egress=private-ranges-only
