@@ -89,6 +89,7 @@ class Settings(BaseSettings):
     bcrypt_rounds: int = 12
 
     # Rate Limiting
+    rate_limit_enabled: bool = True
     rate_limit_global_rpm: int = 1000
     rate_limit_config_cache_ttl: int = 60
 

@@ -93,7 +93,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     # 2. init_trace() buffer is ready to capture rate limit steps
 
     # Rate Limit Middleware (innermost, runs just before route handlers)
-    if not skip_rate_limit:
+    if not skip_rate_limit and settings.rate_limit_enabled:
         from src.infrastructure.ratelimit.config_loader import RateLimitConfigLoader
         from src.infrastructure.ratelimit.redis_rate_limiter import RedisRateLimiter
         from src.interfaces.api.rate_limit_middleware import RateLimitMiddleware
