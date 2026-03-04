@@ -53,6 +53,11 @@ async def seed() -> None:
     engine = create_async_engine(settings.database_url, echo=True)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+    # 0. Drop all tables (testing phase — reset schema on every seed)
+    print("=== Dropping all tables ===")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
     # 1. Create tables
     print("=== Creating tables ===")
     async with engine.begin() as conn:
