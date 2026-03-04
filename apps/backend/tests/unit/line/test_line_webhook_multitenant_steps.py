@@ -70,7 +70,7 @@ def bot_with_line_channel(context, bot_id, tenant_id):
         knowledge_base_ids=["kb-default"],
     )
     mock_bot_repo = AsyncMock()
-    mock_bot_repo.find_by_id = AsyncMock(return_value=bot)
+    mock_bot_repo.find_by_short_code = AsyncMock(return_value=bot)
     context["mock_bot_repo"] = mock_bot_repo
     context["bot_id"] = bot_id
     context["bot"] = bot
@@ -141,7 +141,7 @@ def bot_without_line_channel(context, bot_id, tenant_id):
         knowledge_base_ids=["kb-default"],
     )
     mock_bot_repo = AsyncMock()
-    mock_bot_repo.find_by_id = AsyncMock(return_value=bot)
+    mock_bot_repo.find_by_short_code = AsyncMock(return_value=bot)
     context["mock_bot_repo"] = mock_bot_repo
     context["bot_id"] = bot_id
 
@@ -158,7 +158,7 @@ def verify_channel_not_configured_error(context):
 @given(parsers.parse('Bot "{bot_id}" 不存在於系統中'))
 def bot_not_found(context, bot_id):
     mock_bot_repo = AsyncMock()
-    mock_bot_repo.find_by_id = AsyncMock(return_value=None)
+    mock_bot_repo.find_by_short_code = AsyncMock(return_value=None)
     context["mock_bot_repo"] = mock_bot_repo
     context["bot_id"] = bot_id
 
@@ -182,7 +182,7 @@ def bot_with_specific_secret(context, bot_id, secret):
         knowledge_base_ids=["kb-verify"],
     )
     mock_bot_repo = AsyncMock()
-    mock_bot_repo.find_by_id = AsyncMock(return_value=bot)
+    mock_bot_repo.find_by_short_code = AsyncMock(return_value=bot)
     context["mock_bot_repo"] = mock_bot_repo
     context["bot_id"] = bot_id
     context["bot"] = bot
@@ -232,7 +232,7 @@ def bot_with_kb_and_prompt(context, bot_id, tenant_id, kb_ids, prompt):
         system_prompt=prompt,
     )
     mock_bot_repo = AsyncMock()
-    mock_bot_repo.find_by_id = AsyncMock(return_value=bot)
+    mock_bot_repo.find_by_short_code = AsyncMock(return_value=bot)
     context["mock_bot_repo"] = mock_bot_repo
     context["bot_id"] = bot_id
     context["bot"] = bot

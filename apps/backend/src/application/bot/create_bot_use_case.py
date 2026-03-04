@@ -24,6 +24,7 @@ class CreateBotCommand:
     enabled_tools: list[str] = field(default_factory=lambda: ["rag_query"])
     llm_provider: str = ""
     llm_model: str = ""
+    show_sources: bool = True
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -52,6 +53,7 @@ class CreateBotUseCase:
             enabled_tools=list(command.enabled_tools),
             llm_provider=command.llm_provider,
             llm_model=command.llm_model,
+            show_sources=command.show_sources,
             line_channel_secret=command.line_channel_secret,
             line_channel_access_token=command.line_channel_access_token,
         )

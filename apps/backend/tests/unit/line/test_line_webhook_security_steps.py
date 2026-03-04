@@ -43,7 +43,7 @@ def bot_with_failing_signature(context, bot_id):
         knowledge_base_ids=["kb-sec"],
     )
     mock_bot_repo = AsyncMock()
-    mock_bot_repo.find_by_id = AsyncMock(return_value=bot)
+    mock_bot_repo.find_by_short_code = AsyncMock(return_value=bot)
 
     mock_line_service = AsyncMock()
     mock_line_service.verify_signature = AsyncMock(return_value=False)
@@ -105,7 +105,7 @@ def bot_with_passing_signature(context, bot_id):
         knowledge_base_ids=["kb-sec"],
     )
     mock_bot_repo = AsyncMock()
-    mock_bot_repo.find_by_id = AsyncMock(return_value=bot)
+    mock_bot_repo.find_by_short_code = AsyncMock(return_value=bot)
 
     mock_line_service = AsyncMock()
     mock_line_service.verify_signature = AsyncMock(return_value=True)

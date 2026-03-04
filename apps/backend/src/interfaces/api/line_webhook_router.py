@@ -90,10 +90,10 @@ async def line_webhook(
     return {"status": "ok"}
 
 
-@router.post("/line/{bot_id}")
+@router.post("/line/{bot_short_code}")
 @inject
 async def line_webhook_multitenant(
-    bot_id: str,
+    bot_short_code: str,
     request: Request,
     background_tasks: BackgroundTasks,
     x_line_signature: str = Header(...),
@@ -104,12 +104,11 @@ async def line_webhook_multitenant(
     body = await request.body()
     body_text = body.decode("utf-8")
 
-    # E5: 不在 router 解析事件，交由 Use Case 先驗簽再 parse
     background_tasks.add_task(
         safe_background_task,
-        use_case.execute_for_bot, bot_id, body_text, x_line_signature,
+        use_case.execute_for_bot, bot_short_code, body_text, x_line_signature,
         task_name="execute_for_bot",
-        bot_id=bot_id,
+        bot_short_code=bot_short_code,
     )
 
     return {"status": "ok"}

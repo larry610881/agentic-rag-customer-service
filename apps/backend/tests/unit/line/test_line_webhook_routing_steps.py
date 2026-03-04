@@ -40,7 +40,7 @@ def bot_configured_with_line(context, bot_id):
         knowledge_base_ids=["kb-route"],
     )
     mock_bot_repo = AsyncMock()
-    mock_bot_repo.find_by_id = AsyncMock(return_value=bot)
+    mock_bot_repo.find_by_short_code = AsyncMock(return_value=bot)
 
     mock_line_service = AsyncMock()
     mock_line_service.verify_signature = AsyncMock(return_value=True)
@@ -74,7 +74,7 @@ def receive_webhook_at_path(context, path):
 
 @then(parsers.parse('應呼叫 execute_for_bot 並傳入 Bot ID "{bot_id}"'))
 def verify_execute_for_bot_called(context, bot_id):
-    context["mock_bot_repo"].find_by_id.assert_called_once_with(bot_id)
+    context["mock_bot_repo"].find_by_short_code.assert_called_once_with(bot_id)
 
 
 # --- Scenario: 舊端點仍使用預設設定呼叫 execute ---

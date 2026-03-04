@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,6 +54,7 @@ const botFormSchema = z.object({
   reasoning_effort: z.enum(["low", "medium", "high"]),
   rag_top_k: z.coerce.number().int().min(1).max(20),
   rag_score_threshold: z.coerce.number().min(0).max(1),
+  show_sources: z.boolean(),
   line_channel_secret: z.string().nullable().optional(),
   line_channel_access_token: z.string().nullable().optional(),
 });
@@ -73,6 +75,29 @@ const TAB_KEYS = {
   LLM: "llm",
   LINE: "line",
 } as const;
+
+function WebhookCopyButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(url);
+    toast.success("已複製 Webhook URL");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [url]);
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      onClick={handleCopy}
+      aria-label="複製 Webhook URL"
+    >
+      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+    </Button>
+  );
+}
 
 export function BotDetailForm({
   bot,
@@ -111,6 +136,7 @@ export function BotDetailForm({
       reasoning_effort: bot.reasoning_effort,
       rag_top_k: bot.rag_top_k,
       rag_score_threshold: bot.rag_score_threshold,
+      show_sources: bot.show_sources,
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     },
@@ -135,6 +161,7 @@ export function BotDetailForm({
       reasoning_effort: bot.reasoning_effort,
       rag_top_k: bot.rag_top_k,
       rag_score_threshold: bot.rag_score_threshold,
+      show_sources: bot.show_sources,
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     });
@@ -352,6 +379,29 @@ export function BotDetailForm({
               </div>
             </section>
           )}
+
+          {/* 回覆顯示設定 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">回覆顯示</h3>
+            <Controller
+              name="show_sources"
+              control={control}
+              render={({ field }) => (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={field.value}
+                    onChange={(e) => field.onChange(e.target.checked)}
+                    className="rounded border-input"
+                  />
+                  顯示資料來源
+                </label>
+              )}
+            />
+            <p className="text-sm text-muted-foreground">
+              關閉後，對話回覆將不會顯示「參考來源」區塊。
+            </p>
+          </section>
         </TabsContent>
 
         {/* Tab 2: 系統提示詞 */}
@@ -534,7 +584,29 @@ export function BotDetailForm({
         </TabsContent>
 
         {/* Tab 4: LINE 頻道 */}
-        <TabsContent value={TAB_KEYS.LINE} className="flex flex-col gap-4 pt-4">
+        <TabsContent value={TAB_KEYS.LINE} className="flex flex-col gap-6 pt-4">
+          {/* Webhook URL */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">Webhook URL</h3>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  readOnly
+                  value={`${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/v1/webhook/line/${bot.short_code}`}
+                  className="font-mono text-sm"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <WebhookCopyButton
+                  url={`${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/v1/webhook/line/${bot.short_code}`}
+                />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                將此 URL 貼至 LINE Developer Console 的 Webhook URL 設定。
+              </p>
+            </div>
+          </section>
+
+          {/* LINE 頻道密鑰 */}
           <section className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold">LINE 頻道</h3>
             <div className="grid gap-4 sm:grid-cols-2">

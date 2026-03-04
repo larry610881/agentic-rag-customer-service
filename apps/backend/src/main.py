@@ -79,6 +79,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         await conn.execute(
             sqlalchemy.text(
+                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS "
+                "show_sources BOOLEAN NOT NULL DEFAULT TRUE"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
                 "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS "
                 "bot_id VARCHAR(36) DEFAULT NULL"
             )
@@ -87,6 +93,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             sqlalchemy.text(
                 "CREATE INDEX IF NOT EXISTS ix_conversations_tenant_bot "
                 "ON conversations (tenant_id, bot_id)"
+            )
+        )
+        # Bot short_code column
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS "
+                "short_code VARCHAR(16)"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "UPDATE bots SET short_code = LEFT(REPLACE(id, '-', ''), 8) "
+                "WHERE short_code IS NULL"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE bots ALTER COLUMN short_code SET NOT NULL"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_bots_short_code "
+                "ON bots (short_code)"
             )
         )
         # Document quality metrics columns

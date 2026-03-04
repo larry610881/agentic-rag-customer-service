@@ -51,6 +51,7 @@ apps/frontend/e2e/.auth/
 apps/frontend/e2e/reports/
 apps/frontend/playwright-report/
 apps/frontend/test-results/
+*.mp4
 
 # Docker
 *.log

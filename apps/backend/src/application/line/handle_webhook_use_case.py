@@ -8,7 +8,7 @@ from uuid import uuid4
 from src.domain.agent.services import AgentService
 from src.domain.bot.entity import Bot, BotLLMParams
 from src.domain.bot.repository import BotRepository
-from src.domain.bot.value_objects import BotId
+from src.domain.bot.value_objects import BotId, BotShortCode
 from src.domain.conversation.feedback_entity import Feedback
 from src.domain.conversation.feedback_repository import FeedbackRepository
 from src.domain.conversation.feedback_value_objects import (
@@ -25,9 +25,10 @@ logger = get_logger(__name__)
 
 
 def _bot_to_json(bot: Bot) -> str:
-    """Bot dataclass → JSON str（處理 BotId 和 datetime）"""
+    """Bot dataclass → JSON str（處理 BotId、BotShortCode 和 datetime）"""
     d = dataclasses.asdict(bot)
     d["id"] = bot.id.value
+    d["short_code"] = bot.short_code.value
     d["created_at"] = bot.created_at.isoformat()
     d["updated_at"] = bot.updated_at.isoformat()
     return json.dumps(d, ensure_ascii=False)
@@ -37,6 +38,7 @@ def _bot_from_json(raw: str) -> Bot:
     """JSON str → Bot dataclass"""
     d = json.loads(raw)
     d["id"] = BotId(value=d["id"])
+    d["short_code"] = BotShortCode(value=d["short_code"])
     d["llm_params"] = BotLLMParams(**d["llm_params"])
     d["created_at"] = datetime.fromisoformat(d["created_at"])
     d["updated_at"] = datetime.fromisoformat(d["updated_at"])
@@ -67,7 +69,7 @@ class HandleWebhookUseCase:
         self._cache_ttl = cache_ttl
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
-        """Redis 快取查 Bot，預設 120 秒 TTL。"""
+        """Redis 快取查 Bot（by ID），預設 120 秒 TTL。"""
         cache_key = f"bot:{bot_id}"
         if self._cache_service is not None:
             cached = await self._cache_service.get(cache_key)
@@ -75,6 +77,21 @@ class HandleWebhookUseCase:
                 return _bot_from_json(cached)
 
         bot = await self._bot_repository.find_by_id(bot_id)
+        if bot is not None and self._cache_service is not None:
+            await self._cache_service.set(
+                cache_key, _bot_to_json(bot), ttl_seconds=self._cache_ttl
+            )
+        return bot
+
+    async def _get_bot_by_short_code_cached(self, short_code: str) -> Bot | None:
+        """Redis 快取查 Bot（by short_code），預設 120 秒 TTL。"""
+        cache_key = f"bot:sc:{short_code}"
+        if self._cache_service is not None:
+            cached = await self._cache_service.get(cache_key)
+            if cached is not None:
+                return _bot_from_json(cached)
+
+        bot = await self._bot_repository.find_by_short_code(short_code)
         if bot is not None and self._cache_service is not None:
             await self._cache_service.set(
                 cache_key, _bot_to_json(bot), ttl_seconds=self._cache_ttl
@@ -138,21 +155,21 @@ class HandleWebhookUseCase:
 
     async def execute_for_bot(
         self,
-        bot_id: str,
+        short_code: str,
         body_text: str,
         signature: str,
     ) -> None:
-        """新端點：根據 Bot ID 路由到正確租戶處理 Webhook 事件。
+        """根據 Bot short_code 路由到正確租戶處理 Webhook 事件。
 
         驗簽 → 解析事件 → 處理（確保簽名驗證在 JSON parse 之前）。
         """
-        bot = await self._get_bot_cached(bot_id)
+        bot = await self._get_bot_by_short_code_cached(short_code)
         if bot is None:
-            raise ValueError(f"Bot not found: {bot_id}")
+            raise ValueError(f"Bot not found: {short_code}")
 
         if not bot.line_channel_secret:
             raise ValueError(
-                f"Bot {bot_id} has no LINE channel secret configured"
+                f"Bot {short_code} has no LINE channel secret configured"
             )
 
         line_service = self._line_service_factory.create(

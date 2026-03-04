@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from src.domain.bot.value_objects import BotId
+from src.domain.bot.value_objects import BotId, BotShortCode
 
 
 @dataclass
@@ -18,6 +18,7 @@ class BotLLMParams:
 @dataclass
 class Bot:
     id: BotId = field(default_factory=BotId)
+    short_code: BotShortCode = field(default_factory=BotShortCode)
     tenant_id: str = ""
     name: str = ""
     description: str = ""
@@ -28,6 +29,7 @@ class Bot:
     enabled_tools: list[str] = field(default_factory=lambda: ["rag_query"])
     llm_provider: str = ""
     llm_model: str = ""
+    show_sources: bool = True
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     created_at: datetime = field(

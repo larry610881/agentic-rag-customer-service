@@ -22,6 +22,9 @@ class BotModel(Base):
     __tablename__ = "bots"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    short_code: Mapped[str] = mapped_column(
+        String(16), unique=True, nullable=False
+    )
     tenant_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("tenants.id", ondelete="CASCADE"),
@@ -36,6 +39,9 @@ class BotModel(Base):
     )
     llm_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="")
     llm_model: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    show_sources: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
     line_channel_secret: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )

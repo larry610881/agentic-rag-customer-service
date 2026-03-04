@@ -36,7 +36,7 @@ def _build_cached_use_case(context, bot_id, cache_ttl):
         knowledge_base_ids=["kb-cache"],
     )
     mock_bot_repo = AsyncMock()
-    mock_bot_repo.find_by_id = AsyncMock(return_value=bot)
+    mock_bot_repo.find_by_short_code = AsyncMock(return_value=bot)
 
     mock_line_service = AsyncMock()
     mock_line_service.verify_signature = AsyncMock(return_value=True)
@@ -85,9 +85,9 @@ def process_webhook_twice(context):
 
 @then("Bot Repository 應只查詢一次")
 def verify_single_db_call(context):
-    assert context["mock_bot_repo"].find_by_id.call_count == 1
+    assert context["mock_bot_repo"].find_by_short_code.call_count == 1
 
 
 @then("Bot Repository 應查詢兩次")
 def verify_double_db_call(context):
-    assert context["mock_bot_repo"].find_by_id.call_count == 2
+    assert context["mock_bot_repo"].find_by_short_code.call_count == 2

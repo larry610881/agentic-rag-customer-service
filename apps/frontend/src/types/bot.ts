@@ -1,5 +1,6 @@
 export interface Bot {
   id: string;
+  short_code: string;
   tenant_id: string;
   name: string;
   description: string;
@@ -16,6 +17,7 @@ export interface Bot {
   enabled_tools: string[];
   llm_provider: string;
   llm_model: string;
+  show_sources: boolean;
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
   created_at: string;
@@ -38,6 +40,7 @@ export interface CreateBotRequest {
   enabled_tools?: string[];
   llm_provider?: string;
   llm_model?: string;
+  show_sources?: boolean;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }
@@ -58,6 +61,7 @@ export interface UpdateBotRequest {
   enabled_tools?: string[];
   llm_provider?: string;
   llm_model?: string;
+  show_sources?: boolean;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }

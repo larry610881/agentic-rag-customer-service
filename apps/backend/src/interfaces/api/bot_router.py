@@ -35,6 +35,7 @@ class CreateBotRequest(BaseModel):
     enabled_tools: list[str] = ["rag_query"]
     llm_provider: str = ""
     llm_model: str = ""
+    show_sources: bool = True
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -55,12 +56,14 @@ class UpdateBotRequest(BaseModel):
     enabled_tools: list[str] | None = None
     llm_provider: str | None = None
     llm_model: str | None = None
+    show_sources: bool | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
 
 class BotResponse(BaseModel):
     id: str
+    short_code: str
     tenant_id: str
     name: str
     description: str
@@ -77,6 +80,7 @@ class BotResponse(BaseModel):
     enabled_tools: list[str]
     llm_provider: str
     llm_model: str
+    show_sources: bool
     line_channel_secret: str | None
     line_channel_access_token: str | None
     created_at: str
@@ -86,6 +90,7 @@ class BotResponse(BaseModel):
 def _to_response(bot) -> BotResponse:
     return BotResponse(
         id=bot.id.value,
+        short_code=bot.short_code.value,
         tenant_id=bot.tenant_id,
         name=bot.name,
         description=bot.description,
@@ -102,6 +107,7 @@ def _to_response(bot) -> BotResponse:
         enabled_tools=bot.enabled_tools,
         llm_provider=bot.llm_provider,
         llm_model=bot.llm_model,
+        show_sources=bot.show_sources,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
         created_at=bot.created_at.isoformat(),
@@ -140,6 +146,7 @@ async def create_bot(
             enabled_tools=body.enabled_tools,
             llm_provider=body.llm_provider,
             llm_model=body.llm_model,
+            show_sources=body.show_sources,
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
         )

@@ -28,6 +28,7 @@ class UpdateBotCommand:
     enabled_tools: object = _UNSET
     llm_provider: object = _UNSET
     llm_model: object = _UNSET
+    show_sources: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
 
@@ -47,7 +48,7 @@ class UpdateBotUseCase:
         _DIRECT_FIELDS = (
             "name", "description", "is_active",
             "system_prompt",
-            "llm_provider", "llm_model",
+            "llm_provider", "llm_model", "show_sources",
             "line_channel_secret", "line_channel_access_token",
         )
         for field in _DIRECT_FIELDS:

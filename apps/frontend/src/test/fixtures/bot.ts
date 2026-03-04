@@ -3,6 +3,7 @@ import type { Bot } from "@/types/bot";
 export const mockBots: Bot[] = [
   {
     id: "bot-1",
+    short_code: "xK9b2mZq",
     tenant_id: "tenant-1",
     name: "Customer Service Bot",
     description: "Handles customer inquiries",
@@ -19,6 +20,7 @@ export const mockBots: Bot[] = [
     reasoning_effort: "medium",
     rag_top_k: 5,
     rag_score_threshold: 0.3,
+    show_sources: true,
     line_channel_secret: null,
     line_channel_access_token: null,
     created_at: "2024-01-01T00:00:00Z",
@@ -26,6 +28,7 @@ export const mockBots: Bot[] = [
   },
   {
     id: "bot-2",
+    short_code: "aB3cD4eF",
     tenant_id: "tenant-1",
     name: "FAQ Bot",
     description: "Answers frequently asked questions",
@@ -42,6 +45,7 @@ export const mockBots: Bot[] = [
     reasoning_effort: "low",
     rag_top_k: 5,
     rag_score_threshold: 0.3,
+    show_sources: true,
     line_channel_secret: null,
     line_channel_access_token: null,
     created_at: "2024-02-01T00:00:00Z",

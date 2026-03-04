@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.bot.entity import Bot, BotLLMParams
 from src.domain.bot.repository import BotRepository
-from src.domain.bot.value_objects import BotId
+from src.domain.bot.value_objects import BotId, BotShortCode
 from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.bot_knowledge_base_model import (
     BotKnowledgeBaseModel,
@@ -22,6 +22,7 @@ class SQLAlchemyBotRepository(BotRepository):
     ) -> Bot:
         return Bot(
             id=BotId(value=model.id),
+            short_code=BotShortCode(value=model.short_code),
             tenant_id=model.tenant_id,
             name=model.name,
             description=model.description,
@@ -44,6 +45,7 @@ class SQLAlchemyBotRepository(BotRepository):
             ),
             llm_provider=model.llm_provider or "",
             llm_model=model.llm_model or "",
+            show_sources=model.show_sources,
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
             created_at=model.created_at,
@@ -92,6 +94,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.enabled_tools = bot.enabled_tools
                 existing.llm_provider = bot.llm_provider
                 existing.llm_model = bot.llm_model
+                existing.show_sources = bot.show_sources
                 existing.line_channel_secret = bot.line_channel_secret
                 existing.line_channel_access_token = bot.line_channel_access_token
                 existing.temperature = bot.llm_params.temperature
@@ -105,6 +108,7 @@ class SQLAlchemyBotRepository(BotRepository):
             else:
                 model = BotModel(
                     id=bot.id.value,
+                    short_code=bot.short_code.value,
                     tenant_id=bot.tenant_id,
                     name=bot.name,
                     description=bot.description,
@@ -113,6 +117,7 @@ class SQLAlchemyBotRepository(BotRepository):
                     enabled_tools=bot.enabled_tools,
                     llm_provider=bot.llm_provider,
                     llm_model=bot.llm_model,
+                    show_sources=bot.show_sources,
                     line_channel_secret=bot.line_channel_secret,
                     line_channel_access_token=bot.line_channel_access_token,
                     temperature=bot.llm_params.temperature,
@@ -137,6 +142,15 @@ class SQLAlchemyBotRepository(BotRepository):
             return None
         kb_map = await self._get_all_kb_ids([bot_id])
         return self._to_entity(model, kb_map.get(bot_id, []))
+
+    async def find_by_short_code(self, short_code: str) -> Bot | None:
+        stmt = select(BotModel).where(BotModel.short_code == short_code)
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        kb_map = await self._get_all_kb_ids([model.id])
+        return self._to_entity(model, kb_map.get(model.id, []))
 
     async def find_all_by_tenant(self, tenant_id: str) -> list[Bot]:
         stmt = (

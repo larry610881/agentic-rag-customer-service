@@ -54,6 +54,7 @@ class SendMessageUseCase:
             "enabled_tools": None,
             "rag_top_k": None,
             "rag_score_threshold": None,
+            "show_sources": True,
         }
         if not (command.bot_id and self._bot_repo):
             return cfg
@@ -83,6 +84,7 @@ class SendMessageUseCase:
         )
         cfg["rag_top_k"] = bot.llm_params.rag_top_k
         cfg["rag_score_threshold"] = bot.llm_params.rag_score_threshold
+        cfg["show_sources"] = bot.show_sources
         return cfg
 
     async def _resolve_history(
@@ -208,6 +210,9 @@ class SendMessageUseCase:
                 tool_calls = event.get("tool_calls", [])
             elif event["type"] == "sources":
                 sources_list = event.get("sources", [])
+            # Suppress sources event when bot has show_sources=False
+            if event["type"] == "sources" and not bot_cfg["show_sources"]:
+                continue
             yield event
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
