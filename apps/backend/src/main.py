@@ -85,9 +85,14 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     from src.infrastructure.db.session_middleware import SessionCleanupMiddleware
     from src.interfaces.api.middleware import RequestIDMiddleware
 
-    application.add_middleware(RequestIDMiddleware)
+    # Middleware order: last added = outermost in ASGI chain.
+    # Execution: SessionCleanup → RequestID → CORS → RateLimit → Route
+    #
+    # RequestID must run before RateLimit so that:
+    # 1. request_id is set before any trace logging
+    # 2. init_trace() buffer is ready to capture rate limit steps
 
-    # Rate Limit Middleware (runs after CORS, before route handlers)
+    # Rate Limit Middleware (innermost, runs just before route handlers)
     if not skip_rate_limit:
         from src.infrastructure.ratelimit.config_loader import RateLimitConfigLoader
         from src.infrastructure.ratelimit.redis_rate_limiter import RedisRateLimiter
@@ -117,6 +122,9 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # RequestID + trace init/flush (runs before CORS & RateLimit)
+    application.add_middleware(RequestIDMiddleware)
 
     # SessionCleanupMiddleware MUST be the last add_middleware call.
     # Last added = outermost in ASGI chain = executes after all inner

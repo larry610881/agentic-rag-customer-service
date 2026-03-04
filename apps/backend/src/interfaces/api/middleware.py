@@ -24,13 +24,12 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             "X-Request-ID", uuid.uuid4().hex[:12]
         )
         structlog.contextvars.clear_contextvars()
-        structlog.contextvars.bind_contextvars(request_id=request_id)
-
-        logger.info(
-            "http.request",
-            method=request.method,
-            path=request.url.path,
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            api=f"{request.method} {request.url.path}",
         )
+
+        logger.info("http.request")
 
         init_trace()
         start = time.perf_counter()
@@ -40,8 +39,6 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
         logger.info(
             "http.response",
-            method=request.method,
-            path=request.url.path,
             status_code=response.status_code,
             elapsed_ms=elapsed_ms,
         )
