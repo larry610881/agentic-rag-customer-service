@@ -10,7 +10,7 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  SERVICE_NAME: agentic-rag-backend
+  SERVICE_NAME: agentic-rag
   REGION: asia-east1
 
 jobs:
