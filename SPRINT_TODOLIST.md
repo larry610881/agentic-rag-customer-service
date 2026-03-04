@@ -1132,3 +1132,4 @@
 | **DeepSeek Provider + Provider Settings 簡化** | **✅ 完成** | **100%** | **~15 files: DeepSeek enum + .env fallback + Dynamic Factory + Pre-defined Card UI + Switch toggle, 241 backend + 151 frontend tests** |
 | **Provider Settings 模型 DB 化 + Bot 模型選擇** | **✅ 完成** | **100%** | **~25 files: ModelConfig VO 擴充 + model_registry + ListEnabledModelsUseCase + Bot llm_provider/llm_model + 前端 provider-models.ts 刪除 + 模型 checkbox + Bot 模型下拉, 248 backend + 149 frontend tests, 7 新 BDD scenarios** |
 | **Embedding 全站單一模型 + API Key 管理 + UX 修正** | **✅ 完成** | **100%** | **~8 files: Embedding model 互斥(backend) + radio UI(frontend) + API Key 獨立頁籤 + 按供應商合併 + Bot 模型下拉分組 + 401 自動登出, 7 commits** |
+| **Request Log Viewer 系統日誌** | **✅ 完成** | **100%** | **6 NEW + 9 MODIFY files: request_logs 表 + 異步寫入 + 查詢 API + 前端 Log Viewer 頁面（trace steps 展開 + 篩選 + 分頁）** |
