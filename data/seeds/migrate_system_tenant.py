@@ -31,20 +31,20 @@ async def migrate() -> None:
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
-        # 1. 檢查是否已有 System tenant
-        result = await session.execute(
-            text("SELECT id FROM tenants WHERE name = :name"),
-            {"name": "System"},
-        )
-        existing = result.scalar_one_or_none()
+        async with session.begin():
+            # 1. 檢查是否已有 System tenant
+            result = await session.execute(
+                text("SELECT id FROM tenants WHERE name = :name"),
+                {"name": "System"},
+            )
+            existing = result.scalar_one_or_none()
 
-        if existing:
-            system_tenant_id = existing
-            print(f"System Tenant 已存在: {system_tenant_id}")
-        else:
-            system_tenant_id = str(uuid4())
-            now = datetime.now(timezone.utc)
-            async with session.begin():
+            if existing:
+                system_tenant_id = existing
+                print(f"System Tenant 已存在: {system_tenant_id}")
+            else:
+                system_tenant_id = str(uuid4())
+                now = datetime.now(timezone.utc)
                 await session.execute(
                     text("""
                         INSERT INTO tenants (id, name, plan, created_at, updated_at)
@@ -58,10 +58,9 @@ async def migrate() -> None:
                         "updated_at": now,
                     },
                 )
-            print(f"System Tenant 已建立: {system_tenant_id}")
+                print(f"System Tenant 已建立: {system_tenant_id}")
 
-        # 2. 將所有 system_admin 的 tenant_id 指向 System Tenant
-        async with session.begin():
+            # 2. 將所有 system_admin 的 tenant_id 指向 System Tenant
             result = await session.execute(
                 text("""
                     UPDATE users
@@ -70,10 +69,9 @@ async def migrate() -> None:
                 """),
                 {"tenant_id": system_tenant_id},
             )
-        updated = result.rowcount
-        print(f"已更新 {updated} 個 system_admin 的 tenant_id")
+            print(f"已更新 {result.rowcount} 個 system_admin 的 tenant_id")
 
-        # 3. 驗證
+        # 3. 驗證（新 transaction）
         result = await session.execute(
             text("SELECT id, email, tenant_id FROM users WHERE role = 'system_admin'")
         )
