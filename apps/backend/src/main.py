@@ -44,34 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log_level=settings.effective_log_level,
         enabled_modules=settings.enabled_modules,
     )
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-            # Lightweight migration: add columns if missing
-            for stmt in [
-                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS enabled_tools JSON NOT NULL DEFAULT ('[]')",
-                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS rag_top_k INTEGER NOT NULL DEFAULT 5",
-                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS rag_score_threshold FLOAT NOT NULL DEFAULT 0.3",
-                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS llm_provider VARCHAR(50) NOT NULL DEFAULT ''",
-                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS llm_model VARCHAR(100) NOT NULL DEFAULT ''",
-                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS show_sources BOOLEAN NOT NULL DEFAULT TRUE",
-                "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS bot_id VARCHAR(36) DEFAULT NULL",
-                "CREATE INDEX IF NOT EXISTS ix_conversations_tenant_bot ON conversations (tenant_id, bot_id)",
-                "ALTER TABLE bots ADD COLUMN IF NOT EXISTS short_code VARCHAR(16)",
-                "UPDATE bots SET short_code = LEFT(REPLACE(id, '-', ''), 8) WHERE short_code IS NULL",
-                "ALTER TABLE bots ALTER COLUMN short_code SET NOT NULL",
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_bots_short_code ON bots (short_code)",
-                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS avg_chunk_length INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS min_chunk_length INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS max_chunk_length INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS quality_score FLOAT NOT NULL DEFAULT 0.0",
-                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS quality_issues TEXT NOT NULL DEFAULT ''",
-                "DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE bot_id IS NULL)",
-                "DELETE FROM conversations WHERE bot_id IS NULL",
-            ]:
-                await conn.execute(sqlalchemy.text(stmt))
-    except Exception:
-        logger.exception("db.startup_migration_failed")
+    # DB migration 已移至獨立腳本（data/seeds/），啟動時不做 DDL 操作
     yield
     logger.info("app.shutdown")
     # Close Redis connection
