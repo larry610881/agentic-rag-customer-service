@@ -6,12 +6,15 @@ On teardown the middleware rolls back any open transaction and closes the sessio
 
 from __future__ import annotations
 
+import logging
 from contextvars import ContextVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from src.infrastructure.db.engine import async_session_factory
+
+_logger = logging.getLogger(__name__)
 
 _request_session: ContextVar[AsyncSession | None] = ContextVar(
     "_request_session", default=None
@@ -37,6 +40,10 @@ class SessionCleanupMiddleware:
     - SSE StreamingResponse (session stays alive during stream; closed when done)
 
     Uses pure ASGI instead of BaseHTTPMiddleware to avoid breaking SSE streams.
+
+    Cleanup strategy: rollback and close are in SEPARATE try/except blocks
+    so that a rollback failure never prevents close() from running.
+    This prevents connection pool leaks on DB errors (FK violation, etc.).
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -54,9 +61,20 @@ class SessionCleanupMiddleware:
             session = _request_session.get()
             _request_session.reset(token)
             if session is not None:
+                # Rollback and close in SEPARATE try/except to prevent
+                # connection leaks when rollback fails.
                 try:
                     if session.in_transaction():
                         await session.rollback()
+                except Exception:
+                    _logger.warning("session rollback failed", exc_info=True)
+                try:
                     await session.close()
                 except Exception:
-                    pass
+                    _logger.warning("session close failed", exc_info=True)
+                    # Last resort: invalidate the underlying connection
+                    # so it doesn't stay checked out in the pool forever.
+                    try:
+                        await session.invalidate()
+                    except Exception:
+                        pass

@@ -15,6 +15,7 @@ engine = create_async_engine(
     max_overflow=10 if _is_cloud else 30,
     pool_pre_ping=True,
     pool_recycle=300,
+    pool_timeout=10,  # Fail fast instead of waiting 30s for a connection
 )
 
 
