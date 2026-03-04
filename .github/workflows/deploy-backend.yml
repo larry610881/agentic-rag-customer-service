@@ -62,6 +62,7 @@ jobs:
             JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
             ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
             CORS_ORIGINS=${{ vars.CORS_ORIGINS }}
+            RATE_LIMIT_ENABLED=${{ vars.RATE_LIMIT_ENABLED || 'true' }}
             APP_ENV=production
             LOG_LEVEL=INFO
           flags: |
