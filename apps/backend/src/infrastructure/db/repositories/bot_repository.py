@@ -152,6 +152,21 @@ class SQLAlchemyBotRepository(BotRepository):
         kb_map = await self._get_all_kb_ids([model.id])
         return self._to_entity(model, kb_map.get(model.id, []))
 
+    async def find_all(self) -> list[Bot]:
+        stmt = (
+            select(BotModel)
+            .order_by(BotModel.created_at)
+        )
+        result = await self._session.execute(stmt)
+        models = list(result.scalars().all())
+        if not models:
+            return []
+        kb_map = await self._get_all_kb_ids([m.id for m in models])
+        return [
+            self._to_entity(m, kb_map.get(m.id, []))
+            for m in models
+        ]
+
     async def find_all_by_tenant(self, tenant_id: str) -> list[Bot]:
         stmt = (
             select(BotModel)

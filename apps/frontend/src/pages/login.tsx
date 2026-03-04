@@ -6,13 +6,15 @@ import { ROUTES } from "@/routes/paths";
 
 export default function LoginPage() {
   const token = useAuthStore((s) => s.token);
+  const role = useAuthStore((s) => s.role);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (token) {
-      navigate(ROUTES.CHAT, { replace: true });
+      const dest = role === "system_admin" ? ROUTES.ADMIN_KNOWLEDGE_BASES : ROUTES.CHAT;
+      navigate(dest, { replace: true });
     }
-  }, [token, navigate]);
+  }, [token, role, navigate]);
 
   if (token) {
     return null;

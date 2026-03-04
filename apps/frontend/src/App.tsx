@@ -17,6 +17,10 @@ const FeedbackConversationPage = lazy(
 );
 const ProvidersSettingsPage = lazy(() => import("@/pages/settings-providers"));
 const AdminLogsPage = lazy(() => import("@/pages/admin-logs"));
+const AdminKnowledgeBasesPage = lazy(
+  () => import("@/pages/admin-knowledge-bases"),
+);
+const AdminBotsPage = lazy(() => import("@/pages/admin-bots"));
 
 function PageFallback() {
   return (
@@ -62,6 +66,14 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_LOGS}
               element={<AdminLogsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_KNOWLEDGE_BASES}
+              element={<AdminKnowledgeBasesPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_BOTS}
+              element={<AdminBotsPage />}
             />
           </Route>
         </Route>

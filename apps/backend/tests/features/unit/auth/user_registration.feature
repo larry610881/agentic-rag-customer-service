@@ -12,13 +12,19 @@ Feature: 使用者註冊 (User Registration)
         And 使用者角色應為 "user"
         And 使用者租戶應為 "tenant-001"
 
-    Scenario: 成功註冊系統管理員
+    Scenario: 成功註冊系統管理員（需指定 System Tenant）
         Given 系統中尚未有 email 為 "admin@example.com" 的使用者
-        When 我以 email "admin@example.com" 密碼 "AdminPass456" 角色 "system_admin" 無租戶 註冊
+        And 存在租戶 "system-tenant-001"
+        When 我以 email "admin@example.com" 密碼 "AdminPass456" 角色 "system_admin" 租戶 "system-tenant-001" 註冊
         Then 使用者應成功建立
         And 使用者 email 應為 "admin@example.com"
         And 使用者角色應為 "system_admin"
-        And 使用者租戶應為空
+        And 使用者租戶應為 "system-tenant-001"
+
+    Scenario: system_admin 缺少 tenant_id 註冊失敗
+        Given 系統中尚未有 email 為 "admin2@example.com" 的使用者
+        When 我以 email "admin2@example.com" 密碼 "AdminPass789" 角色 "system_admin" 無租戶 註冊
+        Then 應拋出缺少租戶錯誤
 
     Scenario: 重複 email 註冊失敗
         Given 系統中已有 email 為 "existing@example.com" 的使用者

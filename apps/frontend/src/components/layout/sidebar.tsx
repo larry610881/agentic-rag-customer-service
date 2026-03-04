@@ -13,20 +13,30 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSidebarStore } from "@/stores/use-sidebar-store";
+import { useAuthStore } from "@/stores/use-auth-store";
 
-const navItems = [
+const tenantNavItems = [
   { href: "/chat", label: "對話", icon: MessageSquare },
   { href: "/bots", label: "機器人", icon: Bot },
   { href: "/knowledge", label: "知識庫", icon: BookOpen },
   { href: "/feedback", label: "回饋分析", icon: BarChart3 },
   { href: "/settings", label: "設定", icon: Settings },
+];
+
+const systemAdminNavItems = [
+  { href: "/admin/knowledge-bases", label: "所有知識庫", icon: BookOpen },
+  { href: "/admin/bots", label: "所有機器人", icon: Bot },
   { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
+  { href: "/settings", label: "設定", icon: Settings },
 ];
 
 export function Sidebar() {
   const { pathname } = useLocation();
   const isCollapsed = useSidebarStore((s) => s.isCollapsed);
   const toggle = useSidebarStore((s) => s.toggle);
+  const role = useAuthStore((s) => s.role);
+
+  const navItems = role === "system_admin" ? systemAdminNavItems : tenantNavItems;
 
   return (
     <aside

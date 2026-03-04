@@ -6,6 +6,9 @@ from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseCommand,
     CreateKnowledgeBaseUseCase,
 )
+from src.application.knowledge.list_all_knowledge_bases_use_case import (
+    ListAllKnowledgeBasesUseCase,
+)
 from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
 )
@@ -66,8 +69,14 @@ async def list_knowledge_bases(
     use_case: ListKnowledgeBasesUseCase = Depends(
         Provide[Container.list_knowledge_bases_use_case]
     ),
+    list_all_use_case: ListAllKnowledgeBasesUseCase = Depends(
+        Provide[Container.list_all_knowledge_bases_use_case]
+    ),
 ) -> list[KnowledgeBaseResponse]:
-    kbs = await use_case.execute(tenant.tenant_id)
+    if tenant.role == "system_admin":
+        kbs = await list_all_use_case.execute()
+    else:
+        kbs = await use_case.execute(tenant.tenant_id)
     return [
         KnowledgeBaseResponse(
             id=kb.id.value,

@@ -76,6 +76,7 @@ async def seed() -> None:
     print("\n=== Seeding data ===")
     pwd_service = BcryptPasswordService(rounds=settings.bcrypt_rounds)
 
+    system_tenant_id = str(uuid4())
     tenant_id = str(uuid4())
     system_admin_id = str(uuid4())
     tenant_admin_id = str(uuid4())
@@ -91,6 +92,18 @@ async def seed() -> None:
                 VALUES (:id, :name, :plan, :created_at, :updated_at)
                 ON CONFLICT (id) DO NOTHING
             """), {
+                "id": system_tenant_id,
+                "name": "System",
+                "plan": "enterprise",
+                "created_at": now,
+                "updated_at": now,
+            })
+
+            await session.execute(text("""
+                INSERT INTO tenants (id, name, plan, created_at, updated_at)
+                VALUES (:id, :name, :plan, :created_at, :updated_at)
+                ON CONFLICT (id) DO NOTHING
+            """), {
                 "id": tenant_id,
                 "name": "Demo Shop",
                 "plan": "starter",
@@ -100,10 +113,11 @@ async def seed() -> None:
 
             await session.execute(text("""
                 INSERT INTO users (id, tenant_id, email, hashed_password, role, created_at, updated_at)
-                VALUES (:id, NULL, :email, :hashed_password, :role, :created_at, :updated_at)
+                VALUES (:id, :tenant_id, :email, :hashed_password, :role, :created_at, :updated_at)
                 ON CONFLICT (id) DO NOTHING
             """), {
                 "id": system_admin_id,
+                "tenant_id": system_tenant_id,
                 "email": "admin@system.com",
                 "hashed_password": system_password,
                 "role": "system_admin",
@@ -128,9 +142,10 @@ async def seed() -> None:
     await engine.dispose()
 
     print("\n=== Seed 完成 ===")
-    print(f"Tenant:       Demo Shop ({tenant_id})")
-    print(f"System Admin: admin@system.com / admin123")
-    print(f"Tenant Admin: shop@demo.com / shop123")
+    print(f"System Tenant: System ({system_tenant_id})")
+    print(f"Demo Tenant:   Demo Shop ({tenant_id})")
+    print(f"System Admin:  admin@system.com / admin123 (tenant: {system_tenant_id})")
+    print(f"Tenant Admin:  shop@demo.com / shop123 (tenant: {tenant_id})")
 
 
 if __name__ == "__main__":

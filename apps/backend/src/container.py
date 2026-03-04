@@ -8,6 +8,7 @@ from src.application.auth.register_user_use_case import RegisterUserUseCase
 from src.application.bot.create_bot_use_case import CreateBotUseCase
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
+from src.application.bot.list_all_bots_use_case import ListAllBotsUseCase
 from src.application.bot.list_bots_use_case import ListBotsUseCase
 from src.application.bot.update_bot_use_case import UpdateBotUseCase
 from src.application.conversation.get_conversation_use_case import (
@@ -40,6 +41,9 @@ from src.application.conversation.submit_feedback_use_case import (
 from src.application.health.health_check_use_case import HealthCheckUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
+)
+from src.application.knowledge.list_all_knowledge_bases_use_case import (
+    ListAllKnowledgeBasesUseCase,
 )
 from src.application.knowledge.delete_document_use_case import (
     DeleteDocumentUseCase,
@@ -642,6 +646,11 @@ class Container(containers.DeclarativeContainer):
         knowledge_base_repository=kb_repository,
     )
 
+    list_all_knowledge_bases_use_case = providers.Factory(
+        ListAllKnowledgeBasesUseCase,
+        knowledge_base_repository=kb_repository,
+    )
+
     list_documents_use_case = providers.Factory(
         ListDocumentsUseCase,
         document_repository=document_repository,
@@ -854,6 +863,11 @@ class Container(containers.DeclarativeContainer):
 
     list_bots_use_case = providers.Factory(
         ListBotsUseCase,
+        bot_repository=bot_repository,
+    )
+
+    list_all_bots_use_case = providers.Factory(
+        ListAllBotsUseCase,
         bot_repository=bot_repository,
     )
 

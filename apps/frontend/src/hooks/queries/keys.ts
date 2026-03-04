@@ -53,4 +53,8 @@ export const queryKeys = {
     all: (filters?: object) => ["logs", filters ?? {}] as const,
     detail: (requestId: string) => ["logs", "detail", requestId] as const,
   },
+  admin: {
+    knowledgeBases: ["admin", "knowledge-bases"] as const,
+    bots: ["admin", "bots"] as const,
+  },
 };

@@ -8,6 +8,7 @@ from src.application.bot.create_bot_use_case import (
     CreateBotCommand,
     CreateBotUseCase,
 )
+from src.application.bot.list_all_bots_use_case import ListAllBotsUseCase
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.bot.list_bots_use_case import ListBotsUseCase
@@ -161,8 +162,14 @@ async def list_bots(
     use_case: ListBotsUseCase = Depends(
         Provide[Container.list_bots_use_case]
     ),
+    list_all_use_case: ListAllBotsUseCase = Depends(
+        Provide[Container.list_all_bots_use_case]
+    ),
 ) -> list[BotResponse]:
-    bots = await use_case.execute(tenant.tenant_id)
+    if tenant.role == "system_admin":
+        bots = await list_all_use_case.execute()
+    else:
+        bots = await use_case.execute(tenant.tenant_id)
     return [_to_response(b) for b in bots]
 
 

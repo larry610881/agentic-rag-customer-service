@@ -42,6 +42,14 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
         model = result.scalar_one_or_none()
         return self._to_entity(model) if model else None
 
+    async def find_all(self) -> list[KnowledgeBase]:
+        stmt = (
+            select(KnowledgeBaseModel)
+            .order_by(KnowledgeBaseModel.created_at)
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
     async def find_all_by_tenant(self, tenant_id: str) -> list[KnowledgeBase]:
         stmt = (
             select(KnowledgeBaseModel)

@@ -12,13 +12,6 @@ class TenantRequiredError(DomainException):
         )
 
 
-class TenantForbiddenError(DomainException):
-    def __init__(self) -> None:
-        super().__init__(
-            "system_admin must not have a tenant_id"
-        )
-
-
 @dataclass
 class User:
     id: UserId = field(default_factory=UserId)
@@ -37,7 +30,5 @@ class User:
         self._validate_tenant_role()
 
     def _validate_tenant_role(self) -> None:
-        if self.role == Role.SYSTEM_ADMIN and self.tenant_id is not None:
-            raise TenantForbiddenError()
-        if self.role in (Role.TENANT_ADMIN, Role.USER) and not self.tenant_id:
+        if not self.tenant_id:
             raise TenantRequiredError(self.role.value)

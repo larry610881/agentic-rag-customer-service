@@ -12,4 +12,6 @@ export const ROUTES = {
   SETTINGS: "/settings",
   SETTINGS_PROVIDERS: "/settings/providers",
   ADMIN_LOGS: "/admin/logs",
+  ADMIN_KNOWLEDGE_BASES: "/admin/knowledge-bases",
+  ADMIN_BOTS: "/admin/bots",
 } as const;
