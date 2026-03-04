@@ -11,8 +11,8 @@ _is_cloud = bool(settings.database_url_override)
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
-    pool_size=5 if _is_cloud else 20,
-    max_overflow=10 if _is_cloud else 30,
+    pool_size=50 if _is_cloud else 20,
+    max_overflow=50 if _is_cloud else 30,
     pool_pre_ping=True,
     pool_recycle=300,
     pool_timeout=10,  # Fail fast instead of waiting 30s for a connection
