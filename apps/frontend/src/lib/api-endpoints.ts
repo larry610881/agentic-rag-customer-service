@@ -1,6 +1,6 @@
 export const API_ENDPOINTS = {
   auth: {
-    login: "/api/v1/auth/login",
+    login: "/api/v1/auth/user-login",
   },
   tenants: {
     list: "/api/v1/tenants",

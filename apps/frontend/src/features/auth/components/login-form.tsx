@@ -15,7 +15,7 @@ import {
 import { useLogin } from "@/hooks/queries/use-auth";
 
 const loginSchema = z.object({
-  username: z.string().min(1, "請輸入使用者名稱"),
+  email: z.string().min(1, "請輸入 Email"),
   password: z.string().min(1, "請輸入密碼"),
 });
 
@@ -50,15 +50,15 @@ export function LoginForm() {
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="username">使用者名稱</Label>
+            <Label htmlFor="email">Email</Label>
             <Input
-              id="username"
-              type="text"
-              placeholder="請輸入使用者名稱"
-              {...register("username")}
+              id="email"
+              type="email"
+              placeholder="請輸入 Email"
+              {...register("email")}
             />
-            {errors.username && (
-              <p className="text-sm text-destructive">{errors.username.message}</p>
+            {errors.email && (
+              <p className="text-sm text-destructive">{errors.email.message}</p>
             )}
           </div>
           <div className="flex flex-col gap-2">

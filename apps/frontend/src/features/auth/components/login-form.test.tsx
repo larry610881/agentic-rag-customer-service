@@ -11,7 +11,7 @@ describe("LoginForm", () => {
 
   it("should render login form fields", () => {
     renderWithProviders(<LoginForm />);
-    expect(screen.getByLabelText("使用者名稱")).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("密碼")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "登入" })).toBeInTheDocument();
   });
@@ -20,14 +20,14 @@ describe("LoginForm", () => {
     const user = userEvent.setup();
     renderWithProviders(<LoginForm />);
     await user.click(screen.getByRole("button", { name: "登入" }));
-    expect(await screen.findByText("請輸入使用者名稱")).toBeInTheDocument();
+    expect(await screen.findByText("請輸入 Email")).toBeInTheDocument();
     expect(await screen.findByText("請輸入密碼")).toBeInTheDocument();
   });
 
   it("should submit form with valid data and set token", async () => {
     const user = userEvent.setup();
     renderWithProviders(<LoginForm />);
-    await user.type(screen.getByLabelText("使用者名稱"), "admin");
+    await user.type(screen.getByLabelText("Email"), "admin@system.com");
     await user.type(screen.getByLabelText("密碼"), "password");
     await user.click(screen.getByRole("button", { name: "登入" }));
 

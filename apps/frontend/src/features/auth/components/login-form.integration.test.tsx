@@ -13,7 +13,7 @@ describe("LoginForm integration", () => {
     const user = userEvent.setup();
     renderWithProviders(<LoginForm />);
 
-    await user.type(screen.getByLabelText("使用者名稱"), "admin");
+    await user.type(screen.getByLabelText("Email"), "admin@system.com");
     await user.type(screen.getByLabelText("密碼"), "password");
     await user.click(screen.getByRole("button", { name: "登入" }));
 
