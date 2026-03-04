@@ -49,6 +49,15 @@ async def check() -> None:
             for row in rows:
                 print(f"  [{row.status}] {row.filename} ({row.id})")
 
+        r = await session.execute(text(
+            "SELECT document_id, error_message FROM processing_tasks WHERE status = 'failed'"
+        ))
+        rows = r.all()
+        if rows:
+            print(f"\n=== 失敗原因 ===")
+            for row in rows:
+                print(f"  {row.document_id[:8]}... -> {row.error_message}")
+
     await engine.dispose()
 
 
