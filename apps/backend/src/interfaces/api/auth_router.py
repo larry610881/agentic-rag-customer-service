@@ -15,6 +15,7 @@ from src.config import settings
 from src.container import Container
 from src.domain.tenant.repository import TenantRepository
 from src.infrastructure.auth.jwt_service import JWTService
+from src.infrastructure.logging.trace import trace_step
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -70,17 +71,19 @@ async def login(
 ) -> TokenResponse:
     """Unified login: dev mode uses tenant name, production uses email/password."""
     if settings.app_env == "development":
-        # Dev mode: account = tenant name, password not verified
-        tenant = await tenant_repo.find_by_name(body.account)
+        with trace_step("find_by_name"):
+            tenant = await tenant_repo.find_by_name(body.account)
         if tenant is None:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        token = jwt_service.create_tenant_token(tenant.id.value)
+        with trace_step("create_tenant_token"):
+            token = jwt_service.create_tenant_token(tenant.id.value)
         return TokenResponse(access_token=token)
 
     # Production: account = email, password verified via bcrypt
     command = LoginCommand(email=body.account, password=body.password)
     try:
-        result = await use_case.execute(command)
+        with trace_step("login_use_case"):
+            result = await use_case.execute(command)
     except AuthenticationError:
         raise HTTPException(status_code=401, detail="Invalid credentials") from None
     return TokenResponse(access_token=result.access_token)

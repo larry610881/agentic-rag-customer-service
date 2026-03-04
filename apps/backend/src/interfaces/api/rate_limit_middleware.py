@@ -1,5 +1,7 @@
 import logging
+import time
 
+import structlog
 from jose import JWTError, jwt
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -9,6 +11,7 @@ from src.domain.ratelimit.rate_limiter_service import RateLimiterService
 from src.infrastructure.ratelimit.config_loader import RateLimitConfigLoader
 
 logger = logging.getLogger(__name__)
+_trace = structlog.get_logger("trace")
 
 ENDPOINT_GROUP_MAP: dict[str, str | None] = {
     "/api/v1/webhook": "webhook",
@@ -63,7 +66,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         user_id = identity.get("user_id")
         client_ip = identity.get("client_ip", "unknown")
 
+        t0 = time.perf_counter()
         config = await self._config_loader.get_config(tenant_id, endpoint_group)
+        _trace.info("trace.step", step="rate_limit_config", elapsed_ms=round((time.perf_counter() - t0) * 1000, 1))
 
         # Multi-layer checks: global → tenant/IP → user
         checks = []
@@ -89,6 +94,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Execute checks — strictest wins
         min_remaining = float("inf")
+        t0 = time.perf_counter()
         for key, limit in checks:
             result = await self._rate_limiter.check_rate_limit(
                 key, limit, WINDOW_SECONDS
@@ -110,6 +116,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     },
                 )
             min_remaining = min(min_remaining, result.remaining)
+
+        _trace.info("trace.step", step="rate_limit_redis", elapsed_ms=round((time.perf_counter() - t0) * 1000, 1))
 
         response = await call_next(request)
         if min_remaining != float("inf"):
