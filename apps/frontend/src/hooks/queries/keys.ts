@@ -49,4 +49,8 @@ export const queryKeys = {
     enabledModels: ["provider-settings", "enabled-models"] as const,
     modelRegistry: ["provider-settings", "model-registry"] as const,
   },
+  logs: {
+    all: (filters?: object) => ["logs", filters ?? {}] as const,
+    detail: (requestId: string) => ["logs", "detail", requestId] as const,
+  },
 };

@@ -32,6 +32,7 @@ try:
         ProcessingTaskModel,
         ProviderSettingModel,
         RateLimitConfigModel,
+        RequestLogModel,
         TenantModel,
         UsageRecordModel,
         UserModel,
@@ -160,8 +161,10 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
 
     # Health is always loaded
     from src.interfaces.api.health_router import router as health_router
+    from src.interfaces.api.log_router import router as log_router
 
     application.include_router(health_router)
+    application.include_router(log_router)
 
     # API module: tenant management, knowledge, bot, reports, etc.
     if "api" in modules:

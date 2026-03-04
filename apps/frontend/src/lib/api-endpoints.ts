@@ -69,4 +69,8 @@ export const API_ENDPOINTS = {
     enabledModels: "/api/v1/settings/providers/enabled-models",
     modelRegistry: "/api/v1/settings/providers/model-registry",
   },
+  logs: {
+    list: "/api/v1/logs",
+    detail: (requestId: string) => `/api/v1/logs/${requestId}`,
+  },
 } as const;

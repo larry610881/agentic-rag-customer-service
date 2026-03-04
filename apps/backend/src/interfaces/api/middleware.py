@@ -1,5 +1,6 @@
 """HTTP middleware: request-id tracking + structured logging."""
 
+import asyncio
 import time
 import uuid
 
@@ -9,6 +10,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from src.infrastructure.logging import get_logger
+from src.infrastructure.logging.request_log_writer import write_request_log
 from src.infrastructure.logging.trace import flush_trace, init_trace
 
 logger = get_logger(__name__)
@@ -35,12 +37,24 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         start = time.perf_counter()
         response = await call_next(request)
         elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
-        flush_trace(elapsed_ms)
+        trace_steps = flush_trace(elapsed_ms)
 
         logger.info(
             "http.response",
             status_code=response.status_code,
             elapsed_ms=elapsed_ms,
+        )
+
+        # Fire-and-forget: persist request log asynchronously
+        asyncio.create_task(
+            write_request_log(
+                request_id=request_id,
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                elapsed_ms=elapsed_ms,
+                trace_steps=trace_steps,
+            )
         )
 
         response.headers["X-Request-ID"] = request_id

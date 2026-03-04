@@ -11,4 +11,5 @@ export const ROUTES = {
   FEEDBACK_CONVERSATION: "/feedback/:conversationId",
   SETTINGS: "/settings",
   SETTINGS_PROVIDERS: "/settings/providers",
+  ADMIN_LOGS: "/admin/logs",
 } as const;

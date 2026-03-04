@@ -5,6 +5,7 @@ import {
   BookOpen,
   BarChart3,
   Settings,
+  ScrollText,
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/knowledge", label: "知識庫", icon: BookOpen },
   { href: "/feedback", label: "回饋分析", icon: BarChart3 },
   { href: "/settings", label: "設定", icon: Settings },
+  { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
 ];
 
 export function Sidebar() {

@@ -16,6 +16,7 @@ const FeedbackConversationPage = lazy(
   () => import("@/pages/feedback-conversation"),
 );
 const ProvidersSettingsPage = lazy(() => import("@/pages/settings-providers"));
+const AdminLogsPage = lazy(() => import("@/pages/admin-logs"));
 
 function PageFallback() {
   return (
@@ -57,6 +58,10 @@ export function App() {
             <Route
               path={ROUTES.SETTINGS_PROVIDERS}
               element={<ProvidersSettingsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_LOGS}
+              element={<AdminLogsPage />}
             />
           </Route>
         </Route>
