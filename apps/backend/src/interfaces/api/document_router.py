@@ -48,6 +48,31 @@ router = APIRouter(
 
 MAX_FILE_SIZE = 32 * 1024 * 1024  # 32 MB (Cloud Run max)
 
+# Fallback mapping: browsers often send application/octet-stream for these
+_EXT_TO_CONTENT_TYPE: dict[str, str] = {
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".xml": "text/xml",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".rtf": "application/rtf",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+    ".sql": "application/sql",
+}
+
+
+def _resolve_content_type(browser_type: str, filename: str) -> str:
+    """Use file extension to resolve content_type when browser sends a generic MIME."""
+    if browser_type not in ("application/octet-stream", ""):
+        return browser_type
+    ext = ("." + filename.rsplit(".", 1)[-1]).lower() if "." in filename else ""
+    return _EXT_TO_CONTENT_TYPE.get(ext, browser_type)
+
 
 class DocumentResponse(BaseModel):
     id: str
@@ -175,7 +200,10 @@ async def upload_document(
             detail=f"File size exceeds {MAX_FILE_SIZE // (1024 * 1024)}MB limit",
         )
 
-    content_type = file.content_type or "application/octet-stream"
+    content_type = _resolve_content_type(
+        file.content_type or "application/octet-stream",
+        file.filename or "unnamed",
+    )
 
     try:
         result = await use_case.execute(
