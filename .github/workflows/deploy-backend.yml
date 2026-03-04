@@ -66,5 +66,8 @@ jobs:
           flags: |
             --allow-unauthenticated
             --port=8000
+            --memory=1Gi
+            --cpu=1
+            --startup-cpu-boost
             --min-instances=0
             --max-instances=5
