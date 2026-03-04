@@ -10,15 +10,19 @@ class Settings(BaseSettings):
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "agentic_rag"
+    database_url_override: str = ""  # e.g. postgresql+asyncpg://user:pass@host/db?ssl=require
 
     # Redis
     redis_host: str = "localhost"
     redis_port: int = 6379
+    redis_url_override: str = ""  # e.g. rediss://default:xxx@xxx.upstash.io:6379
 
     # Qdrant
     qdrant_host: str = "localhost"
     qdrant_rest_port: int = 6333
     qdrant_grpc_port: int = 6334
+    qdrant_api_key: str = ""
+    qdrant_url: str = ""  # e.g. https://xxx.cloud.qdrant.io:6333
 
     # JWT
     jwt_secret_key: str = "dev-secret-key-change-in-production"
@@ -112,6 +116,8 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        if self.database_url_override:
+            return self.database_url_override
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
@@ -119,6 +125,8 @@ class Settings(BaseSettings):
 
     @property
     def redis_url(self) -> str:
+        if self.redis_url_override:
+            return self.redis_url_override
         return f"redis://{self.redis_host}:{self.redis_port}"
 
     @property

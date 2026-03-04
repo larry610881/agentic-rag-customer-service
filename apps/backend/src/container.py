@@ -435,6 +435,12 @@ class Container(containers.DeclarativeContainer):
         port=providers.Callable(
             lambda cfg: cfg.qdrant_rest_port, config
         ),
+        api_key=providers.Callable(
+            lambda cfg: cfg.qdrant_api_key, config
+        ),
+        url=providers.Callable(
+            lambda cfg: cfg.qdrant_url, config
+        ),
     )
 
     _static_llm_service = providers.Selector(
