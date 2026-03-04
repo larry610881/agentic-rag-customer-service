@@ -56,7 +56,7 @@ async def main() -> None:
                 "WHERE status IN ('processing', 'failed')"
             ))
             await session.execute(text(
-                "UPDATE processing_tasks SET status = 'pending', error_message = NULL "
+                "UPDATE processing_tasks SET status = 'pending', error_message = '' "
                 "WHERE status IN ('processing', 'failed')"
             ))
     print("已重置所有卡住的文件和任務為 pending")
