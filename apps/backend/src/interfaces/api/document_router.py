@@ -46,7 +46,7 @@ router = APIRouter(
     tags=["documents"],
 )
 
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+MAX_FILE_SIZE = 32 * 1024 * 1024  # 32 MB (Cloud Run max)
 
 
 class DocumentResponse(BaseModel):
