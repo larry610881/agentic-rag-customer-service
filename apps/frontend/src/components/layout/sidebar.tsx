@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   MessageSquare,
@@ -9,6 +10,9 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Shield,
+  ChevronDown,
+  ChevronRight,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,18 +20,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useSidebarStore } from "@/stores/use-sidebar-store";
 import { useAuthStore } from "@/stores/use-auth-store";
 
-const tenantNavItems = [
+const generalNavItems = [
   { href: "/chat", label: "對話", icon: MessageSquare },
   { href: "/bots", label: "機器人", icon: Bot },
   { href: "/knowledge", label: "知識庫", icon: BookOpen },
   { href: "/feedback", label: "回饋分析", icon: BarChart3 },
-  { href: "/settings", label: "設定", icon: Settings },
 ];
 
-const systemAdminOverviewItems = [
+const systemAdminItems = [
   { href: "/admin/knowledge-bases", label: "所有知識庫", icon: BookOpen },
   { href: "/admin/bots", label: "所有機器人", icon: Bot },
   { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
+  { href: "/settings", label: "設定", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -35,6 +39,8 @@ export function Sidebar() {
   const isCollapsed = useSidebarStore((s) => s.isCollapsed);
   const toggle = useSidebarStore((s) => s.toggle);
   const role = useAuthStore((s) => s.role);
+  const [adminOpen, setAdminOpen] = useState(true);
+  const [generalOpen, setGeneralOpen] = useState(true);
 
   const isSystemAdmin = role === "system_admin";
 
@@ -63,26 +69,76 @@ export function Sidebar() {
         </Button>
       </div>
       <nav className="flex flex-1 flex-col gap-1 p-2">
-        {isSystemAdmin && (
+        {isSystemAdmin ? (
           <>
-            {!isCollapsed && (
-              <div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
-                <Shield className="h-3 w-3" />
-                系統管理
-              </div>
-            )}
-            {systemAdminOverviewItems.map((item) => renderNavItem(item, pathname, isCollapsed))}
+            <NavSection
+              label="系統管理"
+              icon={Shield}
+              open={adminOpen}
+              onToggle={() => setAdminOpen(!adminOpen)}
+              isCollapsed={isCollapsed}
+            />
+            {adminOpen && systemAdminItems.map((item) => renderNavItem(item, pathname, isCollapsed))}
             <div className="my-1 border-t" />
+            <NavSection
+              label="一般功能"
+              icon={Layers}
+              open={generalOpen}
+              onToggle={() => setGeneralOpen(!generalOpen)}
+              isCollapsed={isCollapsed}
+            />
+            {generalOpen && generalNavItems.map((item) => renderNavItem(item, pathname, isCollapsed))}
+          </>
+        ) : (
+          <>
+            {[...generalNavItems, { href: "/settings", label: "設定", icon: Settings }].map(
+              (item) => renderNavItem(item, pathname, isCollapsed),
+            )}
           </>
         )}
-        {!isCollapsed && isSystemAdmin && (
-          <div className="px-3 pb-1 pt-1 text-xs font-medium text-muted-foreground">
-            一般功能
-          </div>
-        )}
-        {tenantNavItems.map((item) => renderNavItem(item, pathname, isCollapsed))}
       </nav>
     </aside>
+  );
+}
+
+function NavSection({
+  label,
+  icon: Icon,
+  open,
+  onToggle,
+  isCollapsed,
+}: {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  open: boolean;
+  onToggle: () => void;
+  isCollapsed: boolean;
+}) {
+  if (isCollapsed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={onToggle}
+            className="flex h-8 w-full items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors duration-150"
+          >
+            <Icon className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <button
+      onClick={onToggle}
+      className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors duration-150"
+    >
+      <Icon className="h-3 w-3" />
+      {label}
+      {open ? <ChevronDown className="ml-auto h-3 w-3" /> : <ChevronRight className="ml-auto h-3 w-3" />}
+    </button>
   );
 }
 
