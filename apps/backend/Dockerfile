@@ -16,6 +16,7 @@ RUN uv sync --frozen --no-dev --no-editable
 # Copy application code
 COPY . .
 
+ENV PORT=8000
 EXPOSE 8000
 
-CMD [".venv/bin/uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD .venv/bin/uvicorn src.main:app --host 0.0.0.0 --port $PORT --workers 1
