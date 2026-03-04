@@ -1,33 +1,47 @@
+from __future__ import annotations
+
+import sys
+import traceback
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-import sqlalchemy
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+# Early startup banner — printed before any heavy imports so Cloud Run
+# logs always contain at least this line even when the process crashes.
+print("[startup] importing modules ...", flush=True)
 
-from src.config import settings
-from src.container import Container
-from src.domain.shared.exceptions import DomainException, EntityNotFoundError
-from src.infrastructure.db.base import Base
-from src.infrastructure.db.engine import engine
-from src.infrastructure.db.models import (  # noqa: F401
-    BotKnowledgeBaseModel,
-    BotModel,
-    ChunkModel,
-    ConversationModel,
-    DocumentModel,
-    FeedbackModel,
-    KnowledgeBaseModel,
-    MessageModel,
-    ProcessingTaskModel,
-    ProviderSettingModel,
-    RateLimitConfigModel,
-    TenantModel,
-    UsageRecordModel,
-    UserModel,
-)
-from src.infrastructure.logging import get_logger, setup_logging
+try:
+    import sqlalchemy
+    from fastapi import FastAPI, Request
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+
+    from src.config import settings
+    from src.container import Container
+    from src.domain.shared.exceptions import DomainException, EntityNotFoundError
+    from src.infrastructure.db.base import Base
+    from src.infrastructure.db.engine import engine
+    from src.infrastructure.db.models import (  # noqa: F401
+        BotKnowledgeBaseModel,
+        BotModel,
+        ChunkModel,
+        ConversationModel,
+        DocumentModel,
+        FeedbackModel,
+        KnowledgeBaseModel,
+        MessageModel,
+        ProcessingTaskModel,
+        ProviderSettingModel,
+        RateLimitConfigModel,
+        TenantModel,
+        UsageRecordModel,
+        UserModel,
+    )
+    from src.infrastructure.logging import get_logger, setup_logging
+
+    print("[startup] imports OK", flush=True)
+except Exception:
+    traceback.print_exc()
+    sys.exit(1)
 
 logger = get_logger(__name__)
 
@@ -192,4 +206,9 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     return application
 
 
-app = create_app()
+try:
+    app = create_app()
+    print("[startup] app created OK — ready to serve", flush=True)
+except Exception:
+    traceback.print_exc()
+    sys.exit(1)

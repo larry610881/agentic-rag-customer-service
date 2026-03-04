@@ -62,7 +62,7 @@ jobs:
             ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
             CORS_ORIGINS=${{ vars.CORS_ORIGINS }}
             APP_ENV=production
-            LOG_LEVEL=WARNING
+            LOG_LEVEL=INFO
           flags: |
             --allow-unauthenticated
             --port=8000
