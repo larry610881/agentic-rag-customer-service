@@ -9,6 +9,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from src.infrastructure.logging import get_logger
+from src.infrastructure.logging.trace import flush_trace, init_trace
 
 logger = get_logger(__name__)
 
@@ -31,9 +32,11 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             path=request.url.path,
         )
 
+        init_trace()
         start = time.perf_counter()
         response = await call_next(request)
         elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
+        flush_trace(elapsed_ms)
 
         logger.info(
             "http.response",

@@ -117,6 +117,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     debug: bool = False
 
+    # Trace logging: 0 = always log, >0 = only when request exceeds this ms
+    trace_threshold_ms: int = 0
+
     @property
     def database_url(self) -> str:
         if self.database_url_override:

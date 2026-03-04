@@ -1,17 +1,15 @@
 import logging
-import time
 
-import structlog
 from jose import JWTError, jwt
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from src.domain.ratelimit.rate_limiter_service import RateLimiterService
+from src.infrastructure.logging.trace import trace_step
 from src.infrastructure.ratelimit.config_loader import RateLimitConfigLoader
 
 logger = logging.getLogger(__name__)
-_trace = structlog.get_logger("trace")
 
 ENDPOINT_GROUP_MAP: dict[str, str | None] = {
     "/api/v1/webhook": "webhook",
@@ -66,9 +64,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         user_id = identity.get("user_id")
         client_ip = identity.get("client_ip", "unknown")
 
-        t0 = time.perf_counter()
-        config = await self._config_loader.get_config(tenant_id, endpoint_group)
-        _trace.info("trace.step", step="rate_limit_config", elapsed_ms=round((time.perf_counter() - t0) * 1000, 1))
+        with trace_step("rate_limit_config"):
+            config = await self._config_loader.get_config(tenant_id, endpoint_group)
 
         # Multi-layer checks: global → tenant/IP → user
         checks = []
@@ -94,30 +91,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Execute checks — strictest wins
         min_remaining = float("inf")
-        t0 = time.perf_counter()
-        for key, limit in checks:
-            result = await self._rate_limiter.check_rate_limit(
-                key, limit, WINDOW_SECONDS
-            )
-            if not result.allowed:
-                retry_after = result.retry_after or 1
-                return JSONResponse(
-                    status_code=429,
-                    content={
-                        "detail": (
-                            "Rate limit exceeded."
-                            f" Try again in {retry_after} seconds."
-                        )
-                    },
-                    headers={
-                        "Retry-After": str(retry_after),
-                        "X-RateLimit-Limit": str(limit),
-                        "X-RateLimit-Remaining": "0",
-                    },
+        with trace_step("rate_limit_redis"):
+            for key, limit in checks:
+                result = await self._rate_limiter.check_rate_limit(
+                    key, limit, WINDOW_SECONDS
                 )
-            min_remaining = min(min_remaining, result.remaining)
-
-        _trace.info("trace.step", step="rate_limit_redis", elapsed_ms=round((time.perf_counter() - t0) * 1000, 1))
+                if not result.allowed:
+                    retry_after = result.retry_after or 1
+                    return JSONResponse(
+                        status_code=429,
+                        content={
+                            "detail": (
+                                "Rate limit exceeded."
+                                f" Try again in {retry_after} seconds."
+                            )
+                        },
+                        headers={
+                            "Retry-After": str(retry_after),
+                            "X-RateLimit-Limit": str(limit),
+                            "X-RateLimit-Remaining": "0",
+                        },
+                    )
+                min_remaining = min(min_remaining, result.remaining)
 
         response = await call_next(request)
         if min_remaining != float("inf"):
