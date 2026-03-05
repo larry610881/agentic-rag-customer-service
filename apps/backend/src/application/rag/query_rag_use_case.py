@@ -1,12 +1,16 @@
 """RAG 查詢用例"""
 
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
+from src.infrastructure.logging import get_logger
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.rag.services import EmbeddingService, LLMService, VectorStore
 from src.domain.rag.value_objects import RAGResponse, Source
 from src.domain.shared.exceptions import EntityNotFoundError, NoRelevantKnowledgeError
+
+logger = get_logger(__name__)
 
 RAG_SYSTEM_PROMPT = (
     "你是一個專業的電商客服助手。根據提供的知識庫內容回答使用者的問題。"
@@ -39,6 +43,7 @@ class QueryRAGUseCase:
         self._llm_service = llm_service
 
     async def execute(self, command: QueryRAGCommand) -> RAGResponse:
+        t_total = time.perf_counter()
         effective_kb_ids = command.kb_ids or [command.kb_id]
 
         # Validate all KBs exist
@@ -47,9 +52,12 @@ class QueryRAGUseCase:
             if kb is None:
                 raise EntityNotFoundError("KnowledgeBase", kid)
 
+        t0 = time.perf_counter()
         query_vector = await self._embedding_service.embed_query(command.query)
+        embed_ms = int((time.perf_counter() - t0) * 1000)
 
         # Search across all KBs and merge results
+        t0 = time.perf_counter()
         all_results = []
         for kid in effective_kb_ids:
             results = await self._vector_store.search(
@@ -60,20 +68,40 @@ class QueryRAGUseCase:
                 filters={"tenant_id": command.tenant_id},
             )
             all_results.extend(results)
+        search_ms = int((time.perf_counter() - t0) * 1000)
 
         # Sort by score descending, take top_k
         all_results.sort(key=lambda r: r.score, reverse=True)
         results = all_results[: command.top_k]
 
         if not results:
+            logger.info(
+                "rag.query.no_results",
+                embed_ms=embed_ms,
+                search_ms=search_ms,
+                kb_count=len(effective_kb_ids),
+            )
             raise NoRelevantKnowledgeError(command.query)
 
         context = "\n---\n".join(
             r.payload["content"] for r in results
         )
 
+        t0 = time.perf_counter()
         llm_result = await self._llm_service.generate(
             RAG_SYSTEM_PROMPT, command.query, context
+        )
+        llm_ms = int((time.perf_counter() - t0) * 1000)
+        total_ms = int((time.perf_counter() - t_total) * 1000)
+
+        logger.info(
+            "rag.query.done",
+            total_ms=total_ms,
+            embed_ms=embed_ms,
+            search_ms=search_ms,
+            llm_ms=llm_ms,
+            kb_count=len(effective_kb_ids),
+            result_count=len(results),
         )
 
         sources = [

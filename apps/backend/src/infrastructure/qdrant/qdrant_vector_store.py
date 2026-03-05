@@ -117,6 +117,8 @@ class QdrantVectorStore(VectorStore):
             ]
             query_filter = Filter(must=conditions)
 
+        import time
+        t0 = time.perf_counter()
         response = await self._client.query_points(
             collection_name=collection,
             query=query_vector,
@@ -125,7 +127,13 @@ class QdrantVectorStore(VectorStore):
             query_filter=query_filter,
         )
         points = response.points
-        logger.info("qdrant.search", collection=collection, result_count=len(points))
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        logger.info(
+            "qdrant.search",
+            collection=collection,
+            result_count=len(points),
+            latency_ms=elapsed_ms,
+        )
         return [
             SearchResult(
                 id=str(p.id),
