@@ -1136,3 +1136,4 @@
 | **簡化 LLM Provider + tool_calls debug 控制** | **✅ 完成** | **100%** | **7 files: container 靜態 7-branch→Factory, config 移除 llm_api_key/llm_model/llm_base_url/effective_llm_api_key, ProviderName.FAKE→MOCK, LLM_PROVIDER 預設 dynamic, tool_calls reasoning 僅 debug 模式顯示, 290 tests pass** |
 | **Streaming UX 分段 Hint + 寒暄路由修復** | **✅ 完成** | **100%** | **後端: status 事件（rag_done/llm_generating）+ 寒暄關鍵字路由優先於 single-tool 捷徑, 前端: STATUS_HINTS mapping + 🏃 RunnerDots 動畫, 290 backend + 148 frontend tests pass** |
 | **RAG Pipeline 效能 Trace** | **✅ 完成** | **100%** | **2 files: QueryRAGUseCase 分段計時（embed_ms/search_ms/llm_ms）+ QdrantVectorStore.search latency_ms, 方便診斷自建 Qdrant 慢查詢瓶頸, 290 tests pass** |
+| **RAG Tool 重構 — 消除重複 LLM 呼叫** | **✅ 完成** | **100%** | **2 files: 新增 retrieve() 方法（embed+search only）, RAGQueryTool 改用 retrieve() 回傳 chunks, 消除 routing phase 內的 LLM 呼叫, UX hint 時間對齊, 290 tests pass** |
