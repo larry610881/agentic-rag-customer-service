@@ -212,13 +212,17 @@ class SendMessageUseCase:
                 tool_calls = event.get("tool_calls", [])
             elif event["type"] == "sources":
                 sources_list = event.get("sources", [])
-            # Strip reasoning from tool_calls when not in debug mode
+            # Non-debug: hide "direct" tool_calls entirely, strip reasoning for others
             if event["type"] == "tool_calls" and not self._debug:
+                tcs = event.get("tool_calls", [])
+                # "direct" means no tool used — nothing to show
+                if all(tc.get("tool_name") == "direct" for tc in tcs):
+                    continue
                 event = {
                     "type": "tool_calls",
                     "tool_calls": [
                         {"tool_name": tc.get("tool_name", ""), "reasoning": ""}
-                        for tc in event.get("tool_calls", [])
+                        for tc in tcs
                     ],
                 }
             # Suppress sources event when bot has show_sources=False
