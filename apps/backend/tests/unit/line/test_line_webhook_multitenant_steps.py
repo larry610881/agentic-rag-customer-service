@@ -118,9 +118,12 @@ def verify_agent_tenant(context, tenant_id):
 
 @then(parsers.parse('系統應透過 Bot 的 LINE 服務回覆 "{answer}"'))
 def verify_bot_line_reply(context, answer):
-    context["mock_line_service"].reply_with_quick_reply.assert_called_once()
-    call_args = context["mock_line_service"].reply_with_quick_reply.call_args[0]
-    assert call_args[0] == "token-mt-001"
+    # reply_text 先回「查詢中」
+    context["mock_line_service"].reply_text.assert_called_once()
+    # push_with_quick_reply 送完整回覆
+    context["mock_line_service"].push_with_quick_reply.assert_called_once()
+    call_args = context["mock_line_service"].push_with_quick_reply.call_args[0]
+    assert call_args[0] == "U-mt-user"  # user_id (push 用 user_id)
     assert call_args[1] == answer
 
 

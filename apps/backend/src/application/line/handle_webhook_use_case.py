@@ -188,7 +188,12 @@ class HandleWebhookUseCase:
         for event in events:
             if not event.message_text:
                 continue
+
+            # 1) 立即 reply「查詢中…」（免費，用戶秒收到）
+            await line_service.reply_text(event.reply_token, "查詢中，請稍候…")
             t0 = time.monotonic()
+
+            # 2) 處理訊息（RAG + LLM）
             llm_params: dict = {
                 "temperature": bot.llm_params.temperature,
                 "max_tokens": bot.llm_params.max_tokens,
@@ -210,9 +215,10 @@ class HandleWebhookUseCase:
             )
             t1 = time.monotonic()
 
+            # 3) Push 完整回覆 + 回饋按鈕（計入月額度）
             message_id = str(uuid4())
-            await line_service.reply_with_quick_reply(
-                event.reply_token, result.answer, message_id
+            await line_service.push_with_quick_reply(
+                event.user_id, result.answer, message_id
             )
             t2 = time.monotonic()
 
@@ -223,7 +229,7 @@ class HandleWebhookUseCase:
                 llm_provider=bot.llm_provider or "(default)",
                 llm_model=bot.llm_model or "(default)",
                 process_message_ms=round((t1 - t0) * 1000),
-                reply_ms=round((t2 - t1) * 1000),
+                push_ms=round((t2 - t1) * 1000),
                 total_ms=round((t2 - t0) * 1000),
                 answer_len=len(result.answer),
             )

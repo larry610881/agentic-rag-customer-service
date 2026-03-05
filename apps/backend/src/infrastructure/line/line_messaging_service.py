@@ -17,14 +17,42 @@ class HttpxLineMessagingService(LineMessagingService):
         self._channel_secret = channel_secret
         self._channel_access_token = channel_access_token
 
+    def _auth_headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._channel_access_token}",
+            "Content-Type": "application/json",
+        }
+
+    @staticmethod
+    def _feedback_quick_reply(message_id: str) -> dict:
+        return {
+            "items": [
+                {
+                    "type": "action",
+                    "action": {
+                        "type": "postback",
+                        "label": "\U0001f44d \u6709\u5e6b\u52a9",
+                        "data": f"feedback:{message_id}:thumbs_up",
+                        "displayText": "\U0001f44d",
+                    },
+                },
+                {
+                    "type": "action",
+                    "action": {
+                        "type": "postback",
+                        "label": "\U0001f44e \u6c92\u5e6b\u52a9",
+                        "data": f"feedback:{message_id}:thumbs_down",
+                        "displayText": "\U0001f44e",
+                    },
+                },
+            ]
+        }
+
     async def reply_text(self, reply_token: str, text: str) -> None:
         async with httpx.AsyncClient() as client:
             await client.post(
                 "https://api.line.me/v2/bot/message/reply",
-                headers={
-                    "Authorization": f"Bearer {self._channel_access_token}",
-                    "Content-Type": "application/json",
-                },
+                headers=self._auth_headers(),
                 json={
                     "replyToken": reply_token,
                     "messages": [{"type": "text", "text": text}],
@@ -37,45 +65,44 @@ class HttpxLineMessagingService(LineMessagingService):
         async with httpx.AsyncClient() as client:
             await client.post(
                 "https://api.line.me/v2/bot/message/reply",
-                headers={
-                    "Authorization": f"Bearer {self._channel_access_token}",
-                    "Content-Type": "application/json",
-                },
+                headers=self._auth_headers(),
                 json={
                     "replyToken": reply_token,
                     "messages": [
                         {
                             "type": "text",
                             "text": text,
-                            "quickReply": {
-                                "items": [
-                                    {
-                                        "type": "action",
-                                        "action": {
-                                            "type": "postback",
-                                            "label": "\U0001f44d \u6709\u5e6b\u52a9",
-                                            "data": f"feedback:{message_id}:thumbs_up",
-                                            "displayText": "\U0001f44d",
-                                        },
-                                    },
-                                    {
-                                        "type": "action",
-                                        "action": {
-                                            "type": "postback",
-                                            "label": "\U0001f44e \u6c92\u5e6b\u52a9",
-                                            "data": (
-                                                f"feedback:{message_id}"
-                                                ":thumbs_down"
-                                            ),
-                                            "displayText": "\U0001f44e",
-                                        },
-                                    },
-                                ]
-                            },
+                            "quickReply": self._feedback_quick_reply(message_id),
                         }
                     ],
                 },
             )
+
+    async def push_with_quick_reply(
+        self, user_id: str, text: str, message_id: str
+    ) -> None:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.line.me/v2/bot/message/push",
+                headers=self._auth_headers(),
+                json={
+                    "to": user_id,
+                    "messages": [
+                        {
+                            "type": "text",
+                            "text": text,
+                            "quickReply": self._feedback_quick_reply(message_id),
+                        }
+                    ],
+                },
+            )
+            if resp.status_code >= 400:
+                logger.warning(
+                    "line.push.failed",
+                    user_id=user_id,
+                    status_code=resp.status_code,
+                    body=resp.text[:200],
+                )
 
     async def reply_with_reason_options(
         self, reply_token: str, message_id: str
@@ -89,10 +116,7 @@ class HttpxLineMessagingService(LineMessagingService):
         async with httpx.AsyncClient() as client:
             await client.post(
                 "https://api.line.me/v2/bot/message/reply",
-                headers={
-                    "Authorization": f"Bearer {self._channel_access_token}",
-                    "Content-Type": "application/json",
-                },
+                headers=self._auth_headers(),
                 json={
                     "replyToken": reply_token,
                     "messages": [

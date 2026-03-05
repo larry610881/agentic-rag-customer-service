@@ -18,6 +18,11 @@ class LineMessagingService(ABC):
     ) -> None: ...
 
     @abstractmethod
+    async def push_with_quick_reply(
+        self, user_id: str, text: str, message_id: str
+    ) -> None: ...
+
+    @abstractmethod
     async def show_loading(self, user_id: str, seconds: int = 20) -> None: ...
 
     @abstractmethod
