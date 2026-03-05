@@ -7,6 +7,9 @@ import hmac
 import httpx
 
 from src.domain.line.services import LineMessagingService
+from src.infrastructure.logging.setup import get_logger
+
+logger = get_logger(__name__)
 
 
 class HttpxLineMessagingService(LineMessagingService):
@@ -120,15 +123,30 @@ class HttpxLineMessagingService(LineMessagingService):
             )
 
     async def show_loading(self, user_id: str, seconds: int = 20) -> None:
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                "https://api.line.me/v2/bot/chat/loading",
-                headers={
-                    "Authorization": f"Bearer {self._channel_access_token}",
-                    "Content-Type": "application/json",
-                },
-                json={"chatId": user_id, "loadingSeconds": seconds},
-            )
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "https://api.line.me/v2/bot/chat/loading",
+                    headers={
+                        "Authorization": f"Bearer {self._channel_access_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"chatId": user_id, "loadingSeconds": seconds},
+                )
+                logger.info(
+                    "line.show_loading",
+                    user_id=user_id,
+                    status_code=resp.status_code,
+                )
+                if resp.status_code >= 400:
+                    logger.warning(
+                        "line.show_loading.failed",
+                        user_id=user_id,
+                        status_code=resp.status_code,
+                        body=resp.text[:200],
+                    )
+        except Exception:
+            logger.exception("line.show_loading.error", user_id=user_id)
 
     async def verify_signature(self, body: str, signature: str) -> bool:
         hash_value = hmac.new(

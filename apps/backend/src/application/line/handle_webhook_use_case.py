@@ -3,6 +3,7 @@
 import asyncio
 import dataclasses
 import json
+import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -191,9 +192,12 @@ class HandleWebhookUseCase:
         for event in events:
             if not event.message_text:
                 continue
+            t_start = time.monotonic()
             asyncio.create_task(
                 line_service.show_loading(event.user_id)
             )
+
+            t0 = time.monotonic()
             result = await self._agent_service.process_message(
                 tenant_id=bot.tenant_id,
                 kb_id=bot.knowledge_base_ids[0] if bot.knowledge_base_ids else "",
@@ -202,9 +206,22 @@ class HandleWebhookUseCase:
                 system_prompt=bot.system_prompt or None,
                 enabled_tools=bot.enabled_tools,
             )
+            t1 = time.monotonic()
+
             message_id = str(uuid4())
             await line_service.reply_with_quick_reply(
                 event.reply_token, result.answer, message_id
+            )
+            t2 = time.monotonic()
+
+            logger.info(
+                "line.webhook.timing",
+                user_id=event.user_id,
+                short_code=short_code,
+                process_message_ms=round((t1 - t0) * 1000),
+                reply_ms=round((t2 - t1) * 1000),
+                total_ms=round((t2 - t_start) * 1000),
+                answer_len=len(result.answer),
             )
 
         for pb_event in postback_events:
