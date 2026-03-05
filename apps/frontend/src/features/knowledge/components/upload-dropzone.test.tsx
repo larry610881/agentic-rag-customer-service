@@ -56,7 +56,7 @@ describe("UploadDropzone", () => {
     await user.upload(input, file);
 
     await waitFor(() => {
-      expect(screen.getByText("bad-file.docx: 上傳失敗")).toBeInTheDocument();
+      expect(screen.getByText("bad-file.docx：上傳失敗")).toBeInTheDocument();
     });
   });
 
@@ -80,11 +80,11 @@ describe("UploadDropzone", () => {
     await user.upload(input, files);
 
     await waitFor(() => {
-      expect(screen.getByText("fail1.docx: 上傳失敗")).toBeInTheDocument();
-      expect(screen.getByText("fail2.pdf: 上傳失敗")).toBeInTheDocument();
+      expect(screen.getByText("fail1.docx：上傳失敗")).toBeInTheDocument();
+      expect(screen.getByText("fail2.pdf：上傳失敗")).toBeInTheDocument();
     });
 
     // 成功的檔案不應出現在錯誤列表
-    expect(screen.queryByText("good.txt: 上傳失敗")).not.toBeInTheDocument();
+    expect(screen.queryByText("good.txt：上傳失敗")).not.toBeInTheDocument();
   });
 });
