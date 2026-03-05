@@ -1,6 +1,5 @@
 """LINE Webhook 處理 Use Case"""
 
-import asyncio
 import dataclasses
 import json
 import time
@@ -107,9 +106,6 @@ class HandleWebhookUseCase:
         for event in events:
             if not event.message_text:
                 continue
-            asyncio.create_task(
-                self._default_line_service.show_loading(event.user_id)
-            )
             result = await self._agent_service.process_message(
                 tenant_id=self._default_tenant_id,
                 kb_id=self._default_kb_id,
@@ -192,11 +188,6 @@ class HandleWebhookUseCase:
         for event in events:
             if not event.message_text:
                 continue
-            t_start = time.monotonic()
-            asyncio.create_task(
-                line_service.show_loading(event.user_id)
-            )
-
             t0 = time.monotonic()
             result = await self._agent_service.process_message(
                 tenant_id=bot.tenant_id,
@@ -220,7 +211,7 @@ class HandleWebhookUseCase:
                 short_code=short_code,
                 process_message_ms=round((t1 - t0) * 1000),
                 reply_ms=round((t2 - t1) * 1000),
-                total_ms=round((t2 - t_start) * 1000),
+                total_ms=round((t2 - t0) * 1000),
                 answer_len=len(result.answer),
             )
 
