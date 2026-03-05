@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { apiFetch } from "@/lib/api-client";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { queryKeys } from "@/hooks/queries/keys";
@@ -54,9 +55,13 @@ export function useDeleteKnowledgeBase() {
         token ?? undefined,
       ),
     onSuccess: () => {
+      toast.success("知識庫已刪除");
       queryClient.invalidateQueries({
         queryKey: queryKeys.knowledgeBases.all(tenantId ?? ""),
       });
+    },
+    onError: () => {
+      toast.error("刪除知識庫失敗");
     },
   });
 }
