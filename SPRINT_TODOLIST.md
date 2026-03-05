@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-03-05 (RAG Tool 重構 + OpenAI 模型清單更新 + 效能 Trace)
+> 最後更新：2026-03-05 (LINE Loading Animation + webhook 效能最佳化)
 
 ---
 
@@ -1139,3 +1139,4 @@
 | **RAG Tool 重構 — 消除重複 LLM 呼叫** | **✅ 完成** | **100%** | **2 files: 新增 retrieve() 方法（embed+search only）, RAGQueryTool 改用 retrieve() 回傳 chunks, 消除 routing phase 內的 LLM 呼叫, UX hint 時間對齊, 290 tests pass** |
 | **OpenAI 模型清單更新** | **✅ 完成** | **100%** | **1 file: model_registry.py 移除 GPT-4.1/o3/o4-mini, 新增 GPT-5.1, 保留 GPT-5 系列 5 個模型** |
 | **Streaming LLM token 用量 log** | **✅ 完成** | **100%** | **1 file: openai_llm_service.py generate_stream() 補上 llm.openai.stream.done 事件記錄 input/output tokens + latency_ms** |
+| **LINE Loading Animation + Webhook 效能** | **✅ 完成** | **100%** | **5 NEW/MODIFY files: Domain show_loading ABC + Infrastructure LINE API + Application fire-and-forget + enabled_tools 跳過 LLM 分類, 2 BDD scenarios, 省 ~1-1.8s, 292 tests pass** |
