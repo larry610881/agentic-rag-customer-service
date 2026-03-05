@@ -1,4 +1,4 @@
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.knowledge.entity import KnowledgeBase
@@ -14,15 +14,30 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    def _to_entity(self, model: KnowledgeBaseModel) -> KnowledgeBase:
+    @staticmethod
+    def _to_entity(
+        model: KnowledgeBaseModel, document_count: int = 0
+    ) -> KnowledgeBase:
         return KnowledgeBase(
             id=KnowledgeBaseId(value=model.id),
             tenant_id=model.tenant_id,
             name=model.name,
             description=model.description,
             kb_type=model.kb_type,
+            document_count=document_count,
             created_at=model.created_at,
             updated_at=model.updated_at,
+        )
+
+    @staticmethod
+    def _doc_count_subquery():
+        return (
+            select(
+                DocumentModel.kb_id,
+                func.count().label("doc_count"),
+            )
+            .group_by(DocumentModel.kb_id)
+            .subquery()
         )
 
     async def save(self, knowledge_base: KnowledgeBase) -> None:
@@ -39,22 +54,42 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             self._session.add(model)
 
     async def find_by_id(self, kb_id: str) -> KnowledgeBase | None:
-        stmt = select(KnowledgeBaseModel).where(KnowledgeBaseModel.id == kb_id)
+        doc_sub = self._doc_count_subquery()
+        stmt = (
+            select(
+                KnowledgeBaseModel,
+                func.coalesce(doc_sub.c.doc_count, 0),
+            )
+            .outerjoin(doc_sub, KnowledgeBaseModel.id == doc_sub.c.kb_id)
+            .where(KnowledgeBaseModel.id == kb_id)
+        )
         result = await self._session.execute(stmt)
-        model = result.scalar_one_or_none()
-        return self._to_entity(model) if model else None
+        row = result.one_or_none()
+        if row is None:
+            return None
+        return self._to_entity(row[0], int(row[1]))
 
     async def find_all(self) -> list[KnowledgeBase]:
+        doc_sub = self._doc_count_subquery()
         stmt = (
-            select(KnowledgeBaseModel)
+            select(
+                KnowledgeBaseModel,
+                func.coalesce(doc_sub.c.doc_count, 0),
+            )
+            .outerjoin(doc_sub, KnowledgeBaseModel.id == doc_sub.c.kb_id)
             .order_by(KnowledgeBaseModel.created_at)
         )
         result = await self._session.execute(stmt)
-        return [self._to_entity(m) for m in result.scalars().all()]
+        return [self._to_entity(row[0], int(row[1])) for row in result.all()]
 
     async def find_all_by_tenant(self, tenant_id: str) -> list[KnowledgeBase]:
+        doc_sub = self._doc_count_subquery()
         stmt = (
-            select(KnowledgeBaseModel)
+            select(
+                KnowledgeBaseModel,
+                func.coalesce(doc_sub.c.doc_count, 0),
+            )
+            .outerjoin(doc_sub, KnowledgeBaseModel.id == doc_sub.c.kb_id)
             .where(
                 KnowledgeBaseModel.tenant_id == tenant_id,
                 KnowledgeBaseModel.kb_type == "user",
@@ -62,11 +97,16 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             .order_by(KnowledgeBaseModel.created_at)
         )
         result = await self._session.execute(stmt)
-        return [self._to_entity(m) for m in result.scalars().all()]
+        return [self._to_entity(row[0], int(row[1])) for row in result.all()]
 
     async def find_system_kbs(self, tenant_id: str) -> list[KnowledgeBase]:
+        doc_sub = self._doc_count_subquery()
         stmt = (
-            select(KnowledgeBaseModel)
+            select(
+                KnowledgeBaseModel,
+                func.coalesce(doc_sub.c.doc_count, 0),
+            )
+            .outerjoin(doc_sub, KnowledgeBaseModel.id == doc_sub.c.kb_id)
             .where(
                 KnowledgeBaseModel.tenant_id == tenant_id,
                 KnowledgeBaseModel.kb_type == "system",
@@ -74,7 +114,7 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             .order_by(KnowledgeBaseModel.created_at)
         )
         result = await self._session.execute(stmt)
-        return [self._to_entity(m) for m in result.scalars().all()]
+        return [self._to_entity(row[0], int(row[1])) for row in result.all()]
 
     async def delete(self, kb_id: str) -> None:
         async with atomic(self._session):
