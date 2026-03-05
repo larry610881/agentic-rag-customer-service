@@ -1133,3 +1133,4 @@
 | **Provider Settings 模型 DB 化 + Bot 模型選擇** | **✅ 完成** | **100%** | **~25 files: ModelConfig VO 擴充 + model_registry + ListEnabledModelsUseCase + Bot llm_provider/llm_model + 前端 provider-models.ts 刪除 + 模型 checkbox + Bot 模型下拉, 248 backend + 149 frontend tests, 7 新 BDD scenarios** |
 | **Embedding 全站單一模型 + API Key 管理 + UX 修正** | **✅ 完成** | **100%** | **~8 files: Embedding model 互斥(backend) + radio UI(frontend) + API Key 獨立頁籤 + 按供應商合併 + Bot 模型下拉分組 + 401 自動登出, 7 commits** |
 | **Request Log Viewer 系統日誌** | **✅ 完成** | **100%** | **6 NEW + 9 MODIFY files: request_logs 表 + 異步寫入 + 查詢 API + 前端 Log Viewer 頁面（trace steps 展開 + 篩選 + 分頁）** |
+| **簡化 LLM Provider + tool_calls debug 控制** | **✅ 完成** | **100%** | **7 files: container 靜態 7-branch→Factory, config 移除 llm_api_key/llm_model/llm_base_url/effective_llm_api_key, ProviderName.FAKE→MOCK, LLM_PROVIDER 預設 dynamic, tool_calls reasoning 僅 debug 模式顯示, 290 tests pass** |
