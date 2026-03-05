@@ -13,6 +13,14 @@ from src.infrastructure.logging import get_logger
 logger = get_logger(__name__)
 
 
+# Models that require max_completion_tokens instead of max_tokens
+_NEW_PARAM_PREFIXES = ("o1", "o3", "gpt-5")
+
+
+def _needs_max_completion_tokens(model: str) -> bool:
+    return any(model.startswith(p) for p in _NEW_PARAM_PREFIXES)
+
+
 class OpenAILLMService(LLMService):
     def __init__(
         self,
@@ -67,9 +75,15 @@ class OpenAILLMService(LLMService):
         start = time.perf_counter()
 
         messages = self._build_messages(system_prompt, user_message, context)
+        resolved_max = max_tokens if max_tokens is not None else self._max_tokens
+        tok_key = (
+            "max_completion_tokens"
+            if _needs_max_completion_tokens(self._model)
+            else "max_tokens"
+        )
         body: dict = {
             "model": self._model,
-            "max_tokens": max_tokens if max_tokens is not None else self._max_tokens,
+            tok_key: resolved_max,
             "messages": messages,
         }
         if temperature is not None:
@@ -130,9 +144,15 @@ class OpenAILLMService(LLMService):
 
         start = time.perf_counter()
         messages = self._build_messages(system_prompt, user_message, context)
+        resolved_max = max_tokens if max_tokens is not None else self._max_tokens
+        tok_key = (
+            "max_completion_tokens"
+            if _needs_max_completion_tokens(self._model)
+            else "max_tokens"
+        )
         body: dict = {
             "model": self._model,
-            "max_tokens": max_tokens if max_tokens is not None else self._max_tokens,
+            tok_key: resolved_max,
             "messages": messages,
             "stream": True,
         }
