@@ -137,6 +137,18 @@ def _make_router_node(
         msg = state["user_message"]
         bot_tools = state.get("enabled_tools") or []
 
+        # 寒暄優先：簡單招呼不需查知識庫
+        kw_result = _keyword_route(msg)
+        if kw_result:
+            logger.info(
+                "agent.router.keyword",
+                message=msg,
+                tool=kw_result["current_tool"],
+                reasoning=kw_result["tool_reasoning"],
+            )
+            return kw_result
+
+        # 單工具捷徑：只有一個工具時跳過 LLM 分類
         if len(bot_tools) == 1:
             tool = bot_tools[0]
             logger.info(
@@ -148,16 +160,6 @@ def _make_router_node(
                 "current_tool": tool,
                 "tool_reasoning": f"機器人僅啟用 {tool}",
             }
-
-        kw_result = _keyword_route(msg)
-        if kw_result:
-            logger.info(
-                "agent.router.keyword",
-                message=msg,
-                tool=kw_result["current_tool"],
-                reasoning=kw_result["tool_reasoning"],
-            )
-            return kw_result
 
         return await _llm_route(
             llm_service, state, msg, bot_tools
