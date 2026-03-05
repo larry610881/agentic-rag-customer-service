@@ -29,6 +29,14 @@ class QueryRAGCommand:
     kb_ids: list[str] | None = None
 
 
+@dataclass(frozen=True)
+class RetrieveResult:
+    """embed + search 結果（不含 LLM 生成），供 Agent tool 使用"""
+
+    chunks: list[str]
+    sources: list[Source]
+
+
 class QueryRAGUseCase:
     def __init__(
         self,
@@ -121,6 +129,70 @@ class QueryRAGUseCase:
             tenant_id=command.tenant_id,
             knowledge_base_id=effective_kb_ids[0],
             usage=llm_result.usage,
+        )
+
+    async def retrieve(self, command: QueryRAGCommand) -> RetrieveResult:
+        """只做 embed + search，不呼叫 LLM。供 Agent tool 使用。"""
+        t_total = time.perf_counter()
+        effective_kb_ids = command.kb_ids or [command.kb_id]
+
+        for kid in effective_kb_ids:
+            kb = await self._kb_repo.find_by_id(kid)
+            if kb is None:
+                raise EntityNotFoundError("KnowledgeBase", kid)
+
+        t0 = time.perf_counter()
+        query_vector = await self._embedding_service.embed_query(command.query)
+        embed_ms = int((time.perf_counter() - t0) * 1000)
+
+        t0 = time.perf_counter()
+        all_results = []
+        for kid in effective_kb_ids:
+            results = await self._vector_store.search(
+                collection=f"kb_{kid}",
+                query_vector=query_vector,
+                limit=command.top_k,
+                score_threshold=command.score_threshold,
+                filters={"tenant_id": command.tenant_id},
+            )
+            all_results.extend(results)
+        search_ms = int((time.perf_counter() - t0) * 1000)
+
+        all_results.sort(key=lambda r: r.score, reverse=True)
+        results = all_results[: command.top_k]
+
+        if not results:
+            logger.info(
+                "rag.retrieve.no_results",
+                embed_ms=embed_ms,
+                search_ms=search_ms,
+                kb_count=len(effective_kb_ids),
+            )
+            raise NoRelevantKnowledgeError(command.query)
+
+        total_ms = int((time.perf_counter() - t_total) * 1000)
+        logger.info(
+            "rag.retrieve.done",
+            total_ms=total_ms,
+            embed_ms=embed_ms,
+            search_ms=search_ms,
+            kb_count=len(effective_kb_ids),
+            result_count=len(results),
+        )
+
+        sources = [
+            Source(
+                document_name=r.payload.get("document_name", ""),
+                content_snippet=r.payload["content"][:200],
+                score=r.score,
+                chunk_id=r.id,
+            )
+            for r in results
+        ]
+
+        return RetrieveResult(
+            chunks=[r.payload["content"] for r in results],
+            sources=sources,
         )
 
     async def execute_stream(

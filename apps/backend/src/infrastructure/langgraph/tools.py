@@ -33,7 +33,7 @@ class RAGQueryTool:
         score_threshold: float | None = None,
     ) -> dict[str, Any]:
         try:
-            result = await self._use_case.execute(
+            result = await self._use_case.retrieve(
                 QueryRAGCommand(
                     tenant_id=tenant_id,
                     kb_id=kb_id,
@@ -49,12 +49,12 @@ class RAGQueryTool:
             )
             return {
                 "success": True,
-                "answer": result.answer,
+                "context": "\n---\n".join(result.chunks),
                 "sources": [s.to_dict() for s in result.sources],
             }
         except NoRelevantKnowledgeError:
             return {
                 "success": True,
-                "answer": "知識庫中沒有找到相關資訊。",
+                "context": "",
                 "sources": [],
             }
