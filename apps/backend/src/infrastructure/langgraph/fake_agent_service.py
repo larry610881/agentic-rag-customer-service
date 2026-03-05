@@ -27,9 +27,15 @@ class FakeAgentService(AgentService):
         user_message: str,
         history: list[Message] | None = None,
         *,
+        kb_ids: list[str] | None = None,
+        system_prompt: str | None = None,
+        llm_params: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         history_context: str = "",
         router_context: str = "",
+        enabled_tools: list[str] | None = None,
+        rag_top_k: int | None = None,
+        rag_score_threshold: float | None = None,
     ) -> AgentResponse:
         return await self._supervisor.process_message(
             tenant_id, kb_id, user_message, history, metadata=metadata
@@ -41,8 +47,19 @@ class FakeAgentService(AgentService):
         kb_id: str,
         user_message: str,
         history: list[Message] | None = None,
-    ) -> AsyncIterator[str]:
+        *,
+        kb_ids: list[str] | None = None,
+        system_prompt: str | None = None,
+        llm_params: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        history_context: str = "",
+        router_context: str = "",
+        enabled_tools: list[str] | None = None,
+        rag_top_k: int | None = None,
+        rag_score_threshold: float | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         async for chunk in self._supervisor.process_message_stream(
-            tenant_id, kb_id, user_message, history
+            tenant_id, kb_id, user_message, history,
+            metadata=metadata,
         ):
             yield chunk
