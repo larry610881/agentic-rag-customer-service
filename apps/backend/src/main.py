@@ -59,17 +59,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log_level=settings.effective_log_level,
         enabled_modules=settings.enabled_modules,
     )
-    # Lightweight auto-migrations (safe to re-run, non-blocking)
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(
-                sqlalchemy.text(
-                    "ALTER TABLE documents ADD COLUMN IF NOT EXISTS raw_content BYTEA"
-                )
-            )
-        logger.info("app.migrations.done")
-    except Exception:
-        logger.exception("app.migrations.failed")
     yield
     logger.info("app.shutdown")
     # Close Redis connection
