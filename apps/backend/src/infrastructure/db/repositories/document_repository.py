@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, inspect as sa_inspect, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
@@ -25,7 +25,7 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             filename=model.filename,
             content_type=model.content_type,
             content=model.content,
-            raw_content=model.raw_content or b"",
+            raw_content=model.raw_content or b"" if "raw_content" not in sa_inspect(model).unloaded else b"",
             status=model.status,
             chunk_count=model.chunk_count,
             avg_chunk_length=model.avg_chunk_length,
