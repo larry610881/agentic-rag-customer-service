@@ -174,6 +174,7 @@ class OpenAILLMService(LLMService):
                         elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
                         logger.info(
                             "llm.openai.stream.done",
+                            model=self._model,
                             latency_ms=elapsed_ms,
                             input_tokens=usage.input_tokens,
                             output_tokens=usage.output_tokens,
