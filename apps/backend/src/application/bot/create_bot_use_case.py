@@ -21,7 +21,7 @@ class CreateBotCommand:
     reasoning_effort: str = "medium"
     rag_top_k: int = 5
     rag_score_threshold: float = 0.3
-    enabled_tools: list[str] = field(default_factory=list)
+    enabled_tools: list[str] = field(default_factory=lambda: ["rag_query"])
     llm_provider: str = ""
     llm_model: str = ""
     show_sources: bool = True

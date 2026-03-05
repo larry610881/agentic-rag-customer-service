@@ -29,9 +29,6 @@ class SendMessageCommand:
 
 
 class SendMessageUseCase:
-    # Tools only available in debug mode
-    _DEBUG_ONLY_TOOLS = {"rag_query"}
-
     def __init__(
         self,
         agent_service: AgentService,
@@ -82,10 +79,11 @@ class SendMessageUseCase:
             "frequency_penalty": bot.llm_params.frequency_penalty,
         }
         cfg["history_limit"] = bot.llm_params.history_limit
-        tools = bot.enabled_tools if bot.enabled_tools is not None else None
-        if tools is not None and not self._debug:
-            tools = [t for t in tools if t not in self._DEBUG_ONLY_TOOLS]
-        cfg["enabled_tools"] = tools
+        cfg["enabled_tools"] = (
+            bot.enabled_tools
+            if bot.enabled_tools is not None
+            else None
+        )
         cfg["rag_top_k"] = bot.llm_params.rag_top_k
         cfg["rag_score_threshold"] = bot.llm_params.rag_score_threshold
         cfg["show_sources"] = bot.show_sources
@@ -214,6 +212,9 @@ class SendMessageUseCase:
                 tool_calls = event.get("tool_calls", [])
             elif event["type"] == "sources":
                 sources_list = event.get("sources", [])
+            # Suppress tool_calls event when not in debug mode
+            if event["type"] == "tool_calls" and not self._debug:
+                continue
             # Suppress sources event when bot has show_sources=False
             if event["type"] == "sources" and not bot_cfg["show_sources"]:
                 continue

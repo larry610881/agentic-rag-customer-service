@@ -33,7 +33,7 @@ class CreateBotRequest(BaseModel):
     reasoning_effort: str = "medium"
     rag_top_k: int = 5
     rag_score_threshold: float = 0.3
-    enabled_tools: list[str] = []
+    enabled_tools: list[str] = ["rag_query"]
     llm_provider: str = ""
     llm_model: str = ""
     show_sources: bool = True
