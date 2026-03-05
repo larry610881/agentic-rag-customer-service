@@ -18,6 +18,7 @@ from src.infrastructure.langgraph.agent_graph import (
     build_agent_graph,
 )
 from src.infrastructure.langgraph.tools import RAGQueryTool
+from src.infrastructure.llm.dynamic_llm_factory import DynamicLLMServiceProxy
 
 logger = structlog.get_logger(__name__)
 
@@ -29,6 +30,7 @@ class LangGraphAgentService(AgentService):
         rag_tool: RAGQueryTool,
     ) -> None:
         self._llm_service = llm_service
+        self._rag_tool = rag_tool
         # Full graph (routing + tool + respond)
         graph = build_agent_graph(llm_service, rag_tool)
         self._compiled = graph.compile()
@@ -37,6 +39,43 @@ class LangGraphAgentService(AgentService):
             llm_service, rag_tool, include_respond=False,
         )
         self._compiled_routing = routing_graph.compile()
+
+    async def _resolve_llm(
+        self, llm_params: dict[str, Any] | None,
+    ) -> tuple[LLMService, Any, Any]:
+        """Resolve LLM service + compiled graphs for the request.
+
+        When bot has provider_name/model overrides and llm_service is a
+        DynamicLLMServiceProxy, builds temporary graphs with the
+        bot-specific service.  Otherwise returns pre-compiled defaults.
+        """
+        params = llm_params or {}
+        provider = params.get("provider_name", "")
+        model = params.get("model", "")
+
+        if not provider and not model:
+            return self._llm_service, self._compiled, self._compiled_routing
+
+        if not isinstance(self._llm_service, DynamicLLMServiceProxy):
+            return self._llm_service, self._compiled, self._compiled_routing
+
+        service = await self._llm_service.resolve_for_bot(
+            provider_name=provider, model=model,
+        )
+        logger.info(
+            "agent.llm_override",
+            provider_name=provider,
+            model=model,
+        )
+
+        full_graph = build_agent_graph(service, self._rag_tool)
+        compiled = full_graph.compile()
+        routing_graph = build_agent_graph(
+            service, self._rag_tool, include_respond=False,
+        )
+        compiled_routing = routing_graph.compile()
+
+        return service, compiled, compiled_routing
 
     async def process_message(
         self,
@@ -55,6 +94,8 @@ class LangGraphAgentService(AgentService):
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
     ) -> AgentResponse:
+        _, compiled, _ = await self._resolve_llm(llm_params)
+
         initial_state = {
             "messages": [],
             "user_message": user_message,
@@ -75,7 +116,7 @@ class LangGraphAgentService(AgentService):
             "rag_score_threshold": rag_score_threshold,
         }
 
-        result = await self._compiled.ainvoke(initial_state)
+        result = await compiled.ainvoke(initial_state)
 
         tool_name = result.get("current_tool", "")
         tool_reasoning = result.get("tool_reasoning", "")
@@ -185,8 +226,10 @@ class LangGraphAgentService(AgentService):
         system_prompt: str | None,
         llm_params: dict[str, Any] | None,
         history_context: str,
+        llm_service: LLMService | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """No tools enabled — skip routing, stream LLM directly."""
+        service = llm_service or self._llm_service
         yield {
             "type": "tool_calls",
             "tool_calls": [
@@ -211,7 +254,7 @@ class LangGraphAgentService(AgentService):
         context = "\n\n".join(ctx_parts)
 
         usage_collector: dict[str, Any] = {}
-        async for token in self._llm_service.generate_stream(
+        async for token in service.generate_stream(
             sys_prompt, user_message, context,
             usage_collector=usage_collector, **llm_kw,
         ):
@@ -223,9 +266,11 @@ class LangGraphAgentService(AgentService):
     async def _run_routing_phase(
         self,
         initial_state: dict[str, Any],
+        compiled_routing: Any = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Phase 1: run routing graph, yield tool_calls events."""
-        async for update in self._compiled_routing.astream(
+        graph = compiled_routing or self._compiled_routing
+        async for update in graph.astream(
             initial_state, stream_mode="updates"
         ):
             for node_name, node_output in update.items():
@@ -274,11 +319,15 @@ class LangGraphAgentService(AgentService):
         rag_score_threshold: float | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Streaming: route → tool → stream LLM response."""
+        llm_service, _, compiled_routing = await self._resolve_llm(
+            llm_params,
+        )
 
         if enabled_tools is not None and len(enabled_tools) == 0:
             async for evt in self._stream_direct(
                 user_message, system_prompt,
                 llm_params, history_context,
+                llm_service=llm_service,
             ):
                 yield evt
             return
@@ -303,12 +352,14 @@ class LangGraphAgentService(AgentService):
             "rag_score_threshold": rag_score_threshold,
         }
 
-        # Phase 1: route + tool
+        # Phase 1: route + tool (use bot-specific routing graph)
         tool_name = ""
         tool_result: dict[str, Any] = {}
         routing_usage: dict[str, Any] = {}
 
-        async for evt in self._run_routing_phase(initial_state):
+        async for evt in self._run_routing_phase(
+            initial_state, compiled_routing=compiled_routing,
+        ):
             if evt["type"] == "_routing_result":
                 tool_name = evt["tool_name"]
                 routing_usage = evt["routing_usage"]
@@ -327,7 +378,7 @@ class LangGraphAgentService(AgentService):
             yield {"type": "status", "status": "rag_done"}
             yield {"type": "status", "status": "llm_generating"}
 
-        # Phase 2: Stream LLM response
+        # Phase 2: Stream LLM response (use bot-specific service)
         context = self._build_respond_context(
             history_context, tool_result,
         )
@@ -348,7 +399,7 @@ class LangGraphAgentService(AgentService):
         )
 
         stream_usage: dict[str, Any] = {}
-        async for token in self._llm_service.generate_stream(
+        async for token in llm_service.generate_stream(
             sys_prompt, user_message, context,
             usage_collector=stream_usage, **llm_kw,
         ):

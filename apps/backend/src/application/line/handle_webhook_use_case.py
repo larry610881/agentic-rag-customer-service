@@ -189,6 +189,16 @@ class HandleWebhookUseCase:
             if not event.message_text:
                 continue
             t0 = time.monotonic()
+            llm_params: dict = {
+                "temperature": bot.llm_params.temperature,
+                "max_tokens": bot.llm_params.max_tokens,
+                "frequency_penalty": bot.llm_params.frequency_penalty,
+            }
+            if bot.llm_provider:
+                llm_params["provider_name"] = bot.llm_provider
+            if bot.llm_model:
+                llm_params["model"] = bot.llm_model
+
             result = await self._agent_service.process_message(
                 tenant_id=bot.tenant_id,
                 kb_id=bot.knowledge_base_ids[0] if bot.knowledge_base_ids else "",
@@ -196,6 +206,7 @@ class HandleWebhookUseCase:
                 kb_ids=bot.knowledge_base_ids,
                 system_prompt=bot.system_prompt or None,
                 enabled_tools=bot.enabled_tools,
+                llm_params=llm_params,
             )
             t1 = time.monotonic()
 
@@ -209,6 +220,8 @@ class HandleWebhookUseCase:
                 "line.webhook.timing",
                 user_id=event.user_id,
                 short_code=short_code,
+                llm_provider=bot.llm_provider or "(default)",
+                llm_model=bot.llm_model or "(default)",
                 process_message_ms=round((t1 - t0) * 1000),
                 reply_ms=round((t2 - t1) * 1000),
                 total_ms=round((t2 - t0) * 1000),

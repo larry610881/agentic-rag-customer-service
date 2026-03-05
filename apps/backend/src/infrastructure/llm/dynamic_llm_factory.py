@@ -82,8 +82,23 @@ class DynamicLLMServiceFactory:
         self._cache_service = cache_service
         self._cache_ttl = cache_ttl
 
-    async def get_service(self) -> LLMService:
-        cache_key = "llm_config:default"
+    async def get_service(
+        self,
+        provider_name: str = "",
+        model: str = "",
+    ) -> LLMService:
+        """Resolve LLM service.
+
+        When *provider_name* / *model* are given, build a service matching
+        those overrides (per-bot model selection).  Otherwise fall back to
+        the system-wide default provider.
+        """
+        has_override = bool(provider_name or model)
+        cache_key = (
+            f"llm_config:{provider_name}:{model}"
+            if has_override
+            else "llm_config:default"
+        )
 
         # Try cache first
         if self._cache_service is not None:
@@ -103,7 +118,20 @@ class DynamicLLMServiceFactory:
                 logger.debug("dynamic_llm.fallback", reason="no_enabled_db_settings")
                 return self._fallback
 
-            setting = enabled[0]
+            # Select provider: override or first enabled
+            if provider_name:
+                setting = next(
+                    (s for s in enabled if s.provider_name.value == provider_name),
+                    None,
+                )
+                if setting is None:
+                    logger.warning(
+                        "dynamic_llm.override_not_found",
+                        provider_name=provider_name,
+                    )
+                    setting = enabled[0]
+            else:
+                setting = enabled[0]
 
             # Resolve API key: DB-encrypted first, then .env fallback
             if setting.api_key_encrypted:
@@ -113,14 +141,17 @@ class DynamicLLMServiceFactory:
                 attr = _ENV_KEY_MAP.get(setting.provider_name.value, "")
                 api_key = getattr(cfg, attr, "") if attr else ""
 
-            # Find default model
-            default_model = next(
-                (m.model_id for m in setting.models if m.is_default),
-                setting.models[0].model_id if setting.models else None,
-            )
-            model = default_model or _DEFAULT_MODELS.get(
-                setting.provider_name.value, ""
-            )
+            # Resolve model: override → DB default → hardcoded default
+            if model:
+                resolved_model = model
+            else:
+                default_model = next(
+                    (m.model_id for m in setting.models if m.is_default),
+                    setting.models[0].model_id if setting.models else None,
+                )
+                resolved_model = default_model or _DEFAULT_MODELS.get(
+                    setting.provider_name.value, ""
+                )
 
             base_url = setting.base_url or _DEFAULT_BASE_URLS.get(
                 setting.provider_name.value, ""
@@ -132,7 +163,7 @@ class DynamicLLMServiceFactory:
             config = {
                 "provider_name": setting.provider_name.value,
                 "api_key": api_key,
-                "model": model,
+                "model": resolved_model,
                 "base_url": base_url,
             }
 
@@ -141,6 +172,13 @@ class DynamicLLMServiceFactory:
                 encrypted = self._encryption.encrypt(json.dumps(config))
                 await self._cache_service.set(
                     cache_key, encrypted, ttl_seconds=self._cache_ttl
+                )
+
+            if has_override:
+                logger.info(
+                    "dynamic_llm.override_resolved",
+                    provider=setting.provider_name.value,
+                    model=resolved_model,
                 )
 
             return _build_llm_service_from_config(config)
@@ -154,6 +192,14 @@ class DynamicLLMServiceProxy(LLMService):
 
     def __init__(self, factory: DynamicLLMServiceFactory) -> None:
         self._factory = factory
+
+    async def resolve_for_bot(
+        self, provider_name: str = "", model: str = "",
+    ) -> LLMService:
+        """Build a bot-specific LLM service using factory overrides."""
+        return await self._factory.get_service(
+            provider_name=provider_name, model=model,
+        )
 
     async def generate(
         self,

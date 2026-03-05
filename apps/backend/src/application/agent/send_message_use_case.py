@@ -73,11 +73,16 @@ class SendMessageUseCase:
         if not cfg["kb_id"] and cfg["kb_ids"]:
             cfg["kb_id"] = cfg["kb_ids"][0]
         cfg["system_prompt"] = bot.system_prompt or None
-        cfg["llm_params"] = {
+        llm_params: dict = {
             "temperature": bot.llm_params.temperature,
             "max_tokens": bot.llm_params.max_tokens,
             "frequency_penalty": bot.llm_params.frequency_penalty,
         }
+        if bot.llm_provider:
+            llm_params["provider_name"] = bot.llm_provider
+        if bot.llm_model:
+            llm_params["model"] = bot.llm_model
+        cfg["llm_params"] = llm_params
         cfg["history_limit"] = bot.llm_params.history_limit
         cfg["enabled_tools"] = (
             bot.enabled_tools
