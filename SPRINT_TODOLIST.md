@@ -1138,3 +1138,4 @@
 | **RAG Pipeline 效能 Trace** | **✅ 完成** | **100%** | **2 files: QueryRAGUseCase 分段計時（embed_ms/search_ms/llm_ms）+ QdrantVectorStore.search latency_ms, 方便診斷自建 Qdrant 慢查詢瓶頸, 290 tests pass** |
 | **RAG Tool 重構 — 消除重複 LLM 呼叫** | **✅ 完成** | **100%** | **2 files: 新增 retrieve() 方法（embed+search only）, RAGQueryTool 改用 retrieve() 回傳 chunks, 消除 routing phase 內的 LLM 呼叫, UX hint 時間對齊, 290 tests pass** |
 | **OpenAI 模型清單更新** | **✅ 完成** | **100%** | **1 file: model_registry.py 移除 GPT-4.1/o3/o4-mini, 新增 GPT-5.1, 保留 GPT-5 系列 5 個模型** |
+| **Streaming LLM token 用量 log** | **✅ 完成** | **100%** | **1 file: openai_llm_service.py generate_stream() 補上 llm.openai.stream.done 事件記錄 input/output tokens + latency_ms** |
