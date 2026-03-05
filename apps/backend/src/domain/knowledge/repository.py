@@ -23,6 +23,9 @@ class KnowledgeBaseRepository(ABC):
         self, tenant_id: str
     ) -> list[KnowledgeBase]: ...
 
+    @abstractmethod
+    async def delete(self, kb_id: str) -> None: ...
+
 
 class DocumentRepository(ABC):
     # --- Document methods ---

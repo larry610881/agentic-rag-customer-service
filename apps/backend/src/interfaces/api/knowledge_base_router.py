@@ -1,10 +1,13 @@
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseCommand,
     CreateKnowledgeBaseUseCase,
+)
+from src.application.knowledge.delete_knowledge_base_use_case import (
+    DeleteKnowledgeBaseUseCase,
 )
 from src.application.knowledge.list_all_knowledge_bases_use_case import (
     ListAllKnowledgeBasesUseCase,
@@ -13,6 +16,7 @@ from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
 )
 from src.container import Container
+from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 
 router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["knowledge-bases"])
@@ -88,3 +92,21 @@ async def list_knowledge_bases(
         )
         for kb in kbs
     ]
+
+
+@router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def delete_knowledge_base(
+    kb_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: DeleteKnowledgeBaseUseCase = Depends(
+        Provide[Container.delete_knowledge_base_use_case]
+    ),
+) -> None:
+    try:
+        await use_case.execute(kb_id)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.message,
+        ) from None

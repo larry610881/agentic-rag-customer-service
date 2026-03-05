@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Trash2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -6,7 +8,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useDeleteKnowledgeBase } from "@/hooks/queries/use-knowledge-bases";
 import type { KnowledgeBase } from "@/types/knowledge";
 
 interface KnowledgeBaseCardProps {
@@ -14,22 +28,64 @@ interface KnowledgeBaseCardProps {
 }
 
 export function KnowledgeBaseCard({ knowledgeBase }: KnowledgeBaseCardProps) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const deleteMutation = useDeleteKnowledgeBase();
+
   return (
-    <Link to={`/knowledge/${knowledgeBase.id}`}>
-      <Card className="transition-colors hover:bg-muted/50">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">{knowledgeBase.name}</CardTitle>
-            <Badge variant="secondary">{knowledgeBase.document_count} 份文件</Badge>
-          </div>
-          <CardDescription>{knowledgeBase.description}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-xs text-muted-foreground">
-            更新於 {new Date(knowledgeBase.updated_at).toLocaleDateString()}
-          </p>
-        </CardContent>
-      </Card>
-    </Link>
+    <>
+      <Link to={`/knowledge/${knowledgeBase.id}`}>
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">{knowledgeBase.name}</CardTitle>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{knowledgeBase.document_count} 份文件</Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowDeleteDialog(true);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <CardDescription>{knowledgeBase.description}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">
+              更新於 {new Date(knowledgeBase.updated_at).toLocaleDateString()}
+            </p>
+          </CardContent>
+        </Card>
+      </Link>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>刪除知識庫</AlertDialogTitle>
+            <AlertDialogDescription>
+              確定要刪除「{knowledgeBase.name}」嗎？
+              這將同時移除所有文件及向量資料，且無法復原。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                deleteMutation.mutate(knowledgeBase.id);
+                setShowDeleteDialog(false);
+              }}
+            >
+              刪除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

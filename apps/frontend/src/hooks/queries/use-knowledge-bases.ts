@@ -40,3 +40,23 @@ export function useCreateKnowledgeBase() {
     },
   });
 }
+
+export function useDeleteKnowledgeBase() {
+  const token = useAuthStore((s) => s.token);
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (kbId: string) =>
+      apiFetch<void>(
+        API_ENDPOINTS.knowledgeBases.delete(kbId),
+        { method: "DELETE" },
+        token ?? undefined,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.knowledgeBases.all(tenantId ?? ""),
+      });
+    },
+  });
+}

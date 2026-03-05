@@ -9,6 +9,7 @@ export const API_ENDPOINTS = {
   knowledgeBases: {
     list: "/api/v1/knowledge-bases",
     create: "/api/v1/knowledge-bases",
+    delete: (id: string) => `/api/v1/knowledge-bases/${id}`,
   },
   documents: {
     list: (kbId: string) => `/api/v1/knowledge-bases/${kbId}/documents`,
