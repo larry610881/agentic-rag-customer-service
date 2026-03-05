@@ -3,6 +3,7 @@
 import dataclasses
 import json
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -23,6 +24,17 @@ from src.domain.shared.cache_service import CacheService
 from src.infrastructure.logging.setup import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class WebhookContext:
+    """Phase 1 → Phase 2 的傳遞物件。"""
+
+    bot: Bot
+    short_code: str
+    line_service: LineMessagingService
+    events: list[LineTextMessageEvent] = field(default_factory=list)
+    postback_events: list[LinePostbackEvent] = field(default_factory=list)
 
 
 def _bot_to_json(bot: Bot) -> str:
@@ -154,15 +166,16 @@ class HandleWebhookUseCase:
                 )
         return events
 
-    async def execute_for_bot(
+    async def prepare_and_reply(
         self,
         short_code: str,
         body_text: str,
         signature: str,
-    ) -> None:
-        """根據 Bot short_code 路由到正確租戶處理 Webhook 事件。
+    ) -> "WebhookContext | None":
+        """Phase 1（在 endpoint handler 直接 await）：
 
-        驗簽 → 解析事件 → 處理（確保簽名驗證在 JSON parse 之前）。
+        Bot 查詢 → 驗簽 → 解析事件 → reply「查詢中」。
+        回傳 context 供 Phase 2 背景處理，若無需處理回傳 None。
         """
         bot = await self._get_bot_by_short_code_cached(short_code)
         if bot is None:
@@ -178,22 +191,37 @@ class HandleWebhookUseCase:
             bot.line_channel_access_token or "",
         )
 
-        # E5: 先驗簽，再 parse events
         if not await line_service.verify_signature(body_text, signature):
             raise ValueError("Invalid LINE webhook signature")
 
         events = self._parse_text_events(body_text)
         postback_events = self._parse_postback_events(body_text)
 
+        # 立即 reply「查詢中…」— 用戶秒收到
         for event in events:
+            if event.message_text:
+                await line_service.reply_text(
+                    event.reply_token, "查詢中，請稍候…"
+                )
+
+        return WebhookContext(
+            bot=bot,
+            short_code=short_code,
+            line_service=line_service,
+            events=events,
+            postback_events=postback_events,
+        )
+
+    async def process_and_push(self, ctx: "WebhookContext") -> None:
+        """Phase 2（background task）：RAG + LLM → push 回覆。"""
+        bot = ctx.bot
+        line_service = ctx.line_service
+
+        for event in ctx.events:
             if not event.message_text:
                 continue
-
-            # 1) 立即 reply「查詢中…」（免費，用戶秒收到）
-            await line_service.reply_text(event.reply_token, "查詢中，請稍候…")
             t0 = time.monotonic()
 
-            # 2) 處理訊息（RAG + LLM）
             llm_params: dict = {
                 "temperature": bot.llm_params.temperature,
                 "max_tokens": bot.llm_params.max_tokens,
@@ -215,7 +243,6 @@ class HandleWebhookUseCase:
             )
             t1 = time.monotonic()
 
-            # 3) Push 完整回覆 + 回饋按鈕（計入月額度）
             message_id = str(uuid4())
             await line_service.push_with_quick_reply(
                 event.user_id, result.answer, message_id
@@ -225,7 +252,7 @@ class HandleWebhookUseCase:
             logger.info(
                 "line.webhook.timing",
                 user_id=event.user_id,
-                short_code=short_code,
+                short_code=ctx.short_code,
                 llm_provider=bot.llm_provider or "(default)",
                 llm_model=bot.llm_model or "(default)",
                 process_message_ms=round((t1 - t0) * 1000),
@@ -234,8 +261,21 @@ class HandleWebhookUseCase:
                 answer_len=len(result.answer),
             )
 
-        for pb_event in postback_events:
-            await self.handle_postback(pb_event, bot.tenant_id, line_service)
+        for pb_event in ctx.postback_events:
+            await self.handle_postback(
+                pb_event, bot.tenant_id, line_service
+            )
+
+    async def execute_for_bot(
+        self,
+        short_code: str,
+        body_text: str,
+        signature: str,
+    ) -> None:
+        """舊介面相容：一次跑完 prepare + process。"""
+        ctx = await self.prepare_and_reply(short_code, body_text, signature)
+        if ctx:
+            await self.process_and_push(ctx)
 
     async def handle_postback(
         self,
