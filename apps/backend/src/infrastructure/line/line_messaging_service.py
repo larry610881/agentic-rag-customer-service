@@ -119,6 +119,17 @@ class HttpxLineMessagingService(LineMessagingService):
                 },
             )
 
+    async def show_loading(self, user_id: str, seconds: int = 20) -> None:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                "https://api.line.me/v2/bot/chat/loading",
+                headers={
+                    "Authorization": f"Bearer {self._channel_access_token}",
+                    "Content-Type": "application/json",
+                },
+                json={"chatId": user_id, "loadingSeconds": seconds},
+            )
+
     async def verify_signature(self, body: str, signature: str) -> bool:
         hash_value = hmac.new(
             self._channel_secret.encode("utf-8"),

@@ -18,6 +18,9 @@ class LineMessagingService(ABC):
     ) -> None: ...
 
     @abstractmethod
+    async def show_loading(self, user_id: str, seconds: int = 20) -> None: ...
+
+    @abstractmethod
     async def verify_signature(self, body: str, signature: str) -> bool: ...
 
 
