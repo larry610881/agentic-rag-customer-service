@@ -53,7 +53,7 @@ class Settings(BaseSettings):
 
     # LLM (independent from Embedding)
     # "mock" = FakeLLMService; anything else = DynamicLLMServiceFactory (DB-driven)
-    llm_provider: str = "mock"
+    llm_provider: str = "dynamic"
     llm_max_tokens: int = 1024
 
     # Conversation History Strategy
