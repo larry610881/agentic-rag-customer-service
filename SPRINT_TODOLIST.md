@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-03-03 (Embedding 全站單一模型 + API Key 管理頁籤 + 401 自動登出)
+> 最後更新：2026-03-05 (RAG Tool 重構 + OpenAI 模型清單更新 + 效能 Trace)
 
 ---
 
@@ -1137,3 +1137,4 @@
 | **Streaming UX 分段 Hint + 寒暄路由修復** | **✅ 完成** | **100%** | **後端: status 事件（rag_done/llm_generating）+ 寒暄關鍵字路由優先於 single-tool 捷徑, 前端: STATUS_HINTS mapping + 🏃 RunnerDots 動畫, 290 backend + 148 frontend tests pass** |
 | **RAG Pipeline 效能 Trace** | **✅ 完成** | **100%** | **2 files: QueryRAGUseCase 分段計時（embed_ms/search_ms/llm_ms）+ QdrantVectorStore.search latency_ms, 方便診斷自建 Qdrant 慢查詢瓶頸, 290 tests pass** |
 | **RAG Tool 重構 — 消除重複 LLM 呼叫** | **✅ 完成** | **100%** | **2 files: 新增 retrieve() 方法（embed+search only）, RAGQueryTool 改用 retrieve() 回傳 chunks, 消除 routing phase 內的 LLM 呼叫, UX hint 時間對齊, 290 tests pass** |
+| **OpenAI 模型清單更新** | **✅ 完成** | **100%** | **1 file: model_registry.py 移除 GPT-4.1/o3/o4-mini, 新增 GPT-5.1, 保留 GPT-5 系列 5 個模型** |
