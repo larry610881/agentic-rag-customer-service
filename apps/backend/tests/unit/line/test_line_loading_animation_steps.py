@@ -50,6 +50,9 @@ def loading_user_sends_text(ctx, user_id, text):
 @given("載入動畫測試 Agent 服務已準備回覆")
 def loading_agent_ready(ctx):
     mock_agent = AsyncMock()
+    mock_agent.process_message = AsyncMock(
+        return_value=AgentResponse(answer="查詢結果")
+    )
     ctx["mock_agent"] = mock_agent
 
 
@@ -61,18 +64,6 @@ def process_default_loading_webhook(ctx):
     mock_line_service = AsyncMock()
     ctx["mock_line_service"] = mock_line_service
 
-    call_order = []
-    mock_line_service.show_loading.side_effect = (
-        lambda *a, **kw: call_order.append("show_loading")
-    )
-
-    async def track_process(*a, **kw):
-        call_order.append("process_message")
-        return AgentResponse(answer="查詢結果")
-
-    ctx["mock_agent"].process_message = AsyncMock(side_effect=track_process)
-    ctx["call_order"] = call_order
-
     use_case = HandleWebhookUseCase(
         agent_service=ctx["mock_agent"],
         bot_repository=AsyncMock(),
@@ -81,7 +72,13 @@ def process_default_loading_webhook(ctx):
         default_tenant_id="tenant-001",
         default_kb_id="kb-001",
     )
-    _run(use_case.execute(ctx["events"]))
+
+    async def _execute_and_drain():
+        await use_case.execute(ctx["events"])
+        # Let fire-and-forget tasks complete
+        await asyncio.sleep(0)
+
+    _run(_execute_and_drain())
 
 
 @then(
@@ -93,9 +90,9 @@ def verify_loading_called_for_user(ctx, user_id):
     ctx["mock_line_service"].show_loading.assert_called_once_with(user_id)
 
 
-@then("載入動畫應在 Agent 處理訊息之前被呼叫")
-def verify_loading_order(ctx):
-    assert ctx["call_order"] == ["show_loading", "process_message"]
+@then("Agent 服務應被呼叫處理訊息")
+def verify_agent_called(ctx):
+    ctx["mock_agent"].process_message.assert_called_once()
 
 
 # --- Scenario 2: Bot 端點 ---
@@ -137,18 +134,6 @@ def process_bot_loading_webhook(ctx):
     mock_line_service.verify_signature = AsyncMock(return_value=True)
     ctx["mock_line_service"] = mock_line_service
 
-    call_order = []
-    mock_line_service.show_loading.side_effect = (
-        lambda *a, **kw: call_order.append("show_loading")
-    )
-
-    async def track_process(*a, **kw):
-        call_order.append("process_message")
-        return AgentResponse(answer="查詢結果")
-
-    ctx["mock_agent"].process_message = AsyncMock(side_effect=track_process)
-    ctx["call_order"] = call_order
-
     mock_factory = MagicMock()
     mock_factory.create = MagicMock(return_value=mock_line_service)
 
@@ -157,10 +142,14 @@ def process_bot_loading_webhook(ctx):
         bot_repository=ctx["mock_bot_repo"],
         line_service_factory=mock_factory,
     )
-    _run(
-        use_case.execute_for_bot(
+
+    async def _execute_and_drain():
+        await use_case.execute_for_bot(
             ctx["short_code"],
             ctx["bot_body_text"],
             "valid-sig",
         )
-    )
+        # Let fire-and-forget tasks complete
+        await asyncio.sleep(0)
+
+    _run(_execute_and_drain())
