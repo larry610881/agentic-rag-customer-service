@@ -126,4 +126,7 @@ class MetaSupervisorService(AgentService):
         )
         yield {"type": "token", "content": response.answer}
         if response.sources:
-            yield {"type": "sources", "sources": response.sources}
+            yield {
+                "type": "sources",
+                "sources": [s.to_dict() for s in response.sources],
+            }
