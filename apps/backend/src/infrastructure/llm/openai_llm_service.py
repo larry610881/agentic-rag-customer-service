@@ -128,6 +128,8 @@ class OpenAILLMService(LLMService):
     ) -> AsyncIterator[str]:
         import json as json_mod
 
+        log = self._log
+        start = time.perf_counter()
         messages = self._build_messages(system_prompt, user_message, context)
         body: dict = {
             "model": self._model,
@@ -170,6 +172,13 @@ class OpenAILLMService(LLMService):
                         usage_collector["output_tokens"] = usage.output_tokens
                         usage_collector["total_tokens"] = usage.total_tokens
                         usage_collector["estimated_cost"] = usage.estimated_cost
+                        elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
+                        log.info(
+                            "llm.openai.stream.done",
+                            latency_ms=elapsed_ms,
+                            input_tokens=usage.input_tokens,
+                            output_tokens=usage.output_tokens,
+                        )
                     choices = event.get("choices", [])
                     delta = choices[0].get("delta", {}) if choices else {}
                     content = delta.get("content", "")
