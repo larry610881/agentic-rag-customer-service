@@ -1,5 +1,6 @@
 """RAG 查詢用例"""
 
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -64,18 +65,20 @@ class QueryRAGUseCase:
         query_vector = await self._embedding_service.embed_query(command.query)
         embed_ms = int((time.perf_counter() - t0) * 1000)
 
-        # Search across all KBs and merge results
+        # Search across all KBs in parallel and merge results
         t0 = time.perf_counter()
-        all_results = []
-        for kid in effective_kb_ids:
-            results = await self._vector_store.search(
+        search_tasks = [
+            self._vector_store.search(
                 collection=f"kb_{kid}",
                 query_vector=query_vector,
                 limit=command.top_k,
                 score_threshold=command.score_threshold,
                 filters={"tenant_id": command.tenant_id},
             )
-            all_results.extend(results)
+            for kid in effective_kb_ids
+        ]
+        search_results = await asyncio.gather(*search_tasks)
+        all_results = [r for batch in search_results for r in batch]
         search_ms = int((time.perf_counter() - t0) * 1000)
 
         # Sort by score descending, take top_k
@@ -146,16 +149,18 @@ class QueryRAGUseCase:
         embed_ms = int((time.perf_counter() - t0) * 1000)
 
         t0 = time.perf_counter()
-        all_results = []
-        for kid in effective_kb_ids:
-            results = await self._vector_store.search(
+        search_tasks = [
+            self._vector_store.search(
                 collection=f"kb_{kid}",
                 query_vector=query_vector,
                 limit=command.top_k,
                 score_threshold=command.score_threshold,
                 filters={"tenant_id": command.tenant_id},
             )
-            all_results.extend(results)
+            for kid in effective_kb_ids
+        ]
+        search_results = await asyncio.gather(*search_tasks)
+        all_results = [r for batch in search_results for r in batch]
         search_ms = int((time.perf_counter() - t0) * 1000)
 
         all_results.sort(key=lambda r: r.score, reverse=True)

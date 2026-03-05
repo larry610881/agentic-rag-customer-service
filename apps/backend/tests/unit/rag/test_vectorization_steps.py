@@ -175,12 +175,10 @@ def do_openai_vectorize(context):
     async def _execute():
         mock_client = AsyncMock()
         mock_client.post = context["mock_post"]
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        service._client = mock_client
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            with patch("asyncio.sleep", new_callable=AsyncMock):
-                return await service.embed_texts(context["chunks"])
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            return await service.embed_texts(context["chunks"])
 
     context["vectors"] = _run(_execute())
 
@@ -238,15 +236,13 @@ def do_openai_vectorize_record_sleep(context):
     async def _execute():
         mock_client = AsyncMock()
         mock_client.post = context["mock_post"]
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        service._client = mock_client
 
         async def mock_sleep(seconds):
             sleep_values.append(seconds)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            with patch("asyncio.sleep", side_effect=mock_sleep):
-                return await service.embed_texts(context["chunks"])
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            return await service.embed_texts(context["chunks"])
 
     context["vectors"] = _run(_execute())
     context["sleep_values"] = sleep_values

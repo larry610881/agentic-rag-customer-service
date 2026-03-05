@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-03-05 (LINE Loading Animation + webhook 效能最佳化)
+> 最後更新：2026-03-05 (Qdrant gRPC + httpx 連線池 + 並行 KB 查詢)
 
 ---
 
@@ -1140,3 +1140,7 @@
 | **OpenAI 模型清單更新** | **✅ 完成** | **100%** | **1 file: model_registry.py 移除 GPT-4.1/o3/o4-mini, 新增 GPT-5.1, 保留 GPT-5 系列 5 個模型** |
 | **Streaming LLM token 用量 log** | **✅ 完成** | **100%** | **1 file: openai_llm_service.py generate_stream() 補上 llm.openai.stream.done 事件記錄 input/output tokens + latency_ms** |
 | **LINE Loading Animation + Webhook 效能** | **✅ 完成** | **100%** | **5 NEW/MODIFY files: Domain show_loading ABC + Infrastructure LINE API + Application fire-and-forget + enabled_tools 跳過 LLM 分類, 2 BDD scenarios, 省 ~1-1.8s, 292 tests pass** |
+| **Per-bot LLM 模型選擇** | **✅ 完成** | **100%** | **Bot DB 設定的 llm_provider/llm_model 注入 agent pipeline, DynamicLLMServiceProxy.resolve_for_bot() + _resolve_llm() 臨時 graph, GPT-5.1 max_completion_tokens 相容** |
+| **LINE Reply+Push 分段回覆** | **✅ 完成** | **100%** | **reply "查詢中" + push 完整回覆, Domain push_with_quick_reply ABC + HttpxLineMessagingService 實作, 兩階段拆分 prepare_and_reply/process_and_push** |
+| **Qdrant gRPC 遷移** | **✅ 完成** | **100%** | **2 files: QdrantVectorStore 加 prefer_grpc + grpc_port, Container 接入 qdrant_grpc_port, REST→gRPC 預期 2000ms→200ms** |
+| **httpx 連線池 + 並行 KB 查詢** | **✅ 完成** | **100%** | **6 files: Embedding/OpenAI/Anthropic/LINE service 持久 AsyncClient 取代 per-request 建立, RAG 多 KB asyncio.gather 並行查詢, 290 tests pass** |

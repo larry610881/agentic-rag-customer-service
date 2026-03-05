@@ -31,6 +31,7 @@ class OpenAIEmbeddingService(EmbeddingService):
         self._batch_delay = batch_delay
         self._retry_after_multiplier = retry_after_multiplier
         self._min_batch_size = min_batch_size
+        self._client = httpx.AsyncClient(timeout=self._timeout)
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -112,18 +113,16 @@ class OpenAIEmbeddingService(EmbeddingService):
         )
         start = time.perf_counter()
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    f"{self._base_url}/embeddings",
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                    json={"input": texts, "model": self._model},
-                    timeout=self._timeout,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
-                log.info("embedding.done", latency_ms=elapsed_ms)
-                return [item["embedding"] for item in data["data"]]
+            resp = await self._client.post(
+                f"{self._base_url}/embeddings",
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                json={"input": texts, "model": self._model},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
+            log.info("embedding.done", latency_ms=elapsed_ms)
+            return [item["embedding"] for item in data["data"]]
         except Exception:
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
             log.exception("embedding.failed", latency_ms=elapsed_ms)

@@ -35,6 +35,7 @@ class OpenAILLMService(LLMService):
         self._max_tokens = max_tokens
         self._base_url = base_url
         self._pricing = pricing or {}
+        self._client = httpx.AsyncClient(timeout=60.0)
 
     def _build_headers(self) -> dict[str, str]:
         return {
@@ -91,30 +92,29 @@ class OpenAILLMService(LLMService):
         if frequency_penalty is not None and "googleapis.com" not in self._base_url:
             body["frequency_penalty"] = frequency_penalty
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    f"{self._base_url}/chat/completions",
-                    headers=self._build_headers(),
-                    json=body,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                text = data["choices"][0]["message"]["content"]
-                usage_data = data.get("usage", {})
-                usage = calculate_usage(
-                    model=self._model,
-                    input_tokens=usage_data.get("prompt_tokens", 0),
-                    output_tokens=usage_data.get("completion_tokens", 0),
-                    pricing=self._pricing,
-                )
-                elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
-                log.info(
-                    "llm.openai.done",
-                    latency_ms=elapsed_ms,
-                    input_tokens=usage_data.get("prompt_tokens", 0),
-                    output_tokens=usage_data.get("completion_tokens", 0),
-                )
-                return LLMResult(text=text, usage=usage)
+            resp = await self._client.post(
+                f"{self._base_url}/chat/completions",
+                headers=self._build_headers(),
+                json=body,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            text = data["choices"][0]["message"]["content"]
+            usage_data = data.get("usage", {})
+            usage = calculate_usage(
+                model=self._model,
+                input_tokens=usage_data.get("prompt_tokens", 0),
+                output_tokens=usage_data.get("completion_tokens", 0),
+                pricing=self._pricing,
+            )
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
+            log.info(
+                "llm.openai.done",
+                latency_ms=elapsed_ms,
+                input_tokens=usage_data.get("prompt_tokens", 0),
+                output_tokens=usage_data.get("completion_tokens", 0),
+            )
+            return LLMResult(text=text, usage=usage)
         except httpx.HTTPStatusError as e:
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
             log.error(
@@ -162,13 +162,12 @@ class OpenAILLMService(LLMService):
             body["temperature"] = temperature
         if frequency_penalty is not None and "googleapis.com" not in self._base_url:
             body["frequency_penalty"] = frequency_penalty
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            async with client.stream(
-                "POST",
-                f"{self._base_url}/chat/completions",
-                headers=self._build_headers(),
-                json=body,
-            ) as resp:
+        async with self._client.stream(
+            "POST",
+            f"{self._base_url}/chat/completions",
+            headers=self._build_headers(),
+            json=body,
+        ) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if not line.startswith("data: "):
