@@ -11,6 +11,11 @@ const TOOL_HINTS: Record<string, string> = {
   rag_query: "\u{1f50d} 正在查詢知識庫",
 };
 
+const STATUS_HINTS: Record<string, string> = {
+  rag_done: "\u2705 知識庫查詢完畢！",
+  llm_generating: "\u270d\ufe0f 小助手努力打字中...",
+};
+
 export function useStreaming() {
   const token = useAuthStore((s) => s.token);
   const {
@@ -52,6 +57,13 @@ export function useStreaming() {
             const hint = TOOL_HINTS[toolName];
             if (hint) {
               setToolHint(hint);
+            }
+            break;
+          }
+          case "status": {
+            const statusHint = STATUS_HINTS[event.status as string];
+            if (statusHint) {
+              setToolHint(statusHint);
             }
             break;
           }

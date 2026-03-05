@@ -322,6 +322,11 @@ class LangGraphAgentService(AgentService):
         if sources:
             yield {"type": "sources", "sources": sources}
 
+        # Notify: RAG done, LLM generating
+        if tool_name == "rag_query":
+            yield {"type": "status", "status": "rag_done"}
+            yield {"type": "status", "status": "llm_generating"}
+
         # Phase 2: Stream LLM response
         context = self._build_respond_context(
             history_context, tool_result,
