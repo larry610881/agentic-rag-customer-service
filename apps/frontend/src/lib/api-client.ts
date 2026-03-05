@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 import { useAuthStore } from "@/stores/use-auth-store";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/+$/, "");
@@ -27,6 +29,9 @@ export async function apiFetch<T>(
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) {
     if (res.status === 401) {
+      toast.error("登入已過期，請重新登入", {
+        description: "為確保帳號安全，閒置過久將自動登出",
+      });
       useAuthStore.getState().logout();
     }
     const body = await res.text();

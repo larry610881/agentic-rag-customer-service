@@ -59,7 +59,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log_level=settings.effective_log_level,
         enabled_modules=settings.enabled_modules,
     )
-    # DB migration 已移至獨立腳本（data/seeds/），啟動時不做 DDL 操作
+    # Lightweight auto-migrations (safe to re-run)
+    async with engine.begin() as conn:
+        await conn.execute(
+            sqlalchemy.text(
+                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS raw_content BYTEA"
+            )
+        )
+    logger.info("app.migrations.done")
     yield
     logger.info("app.shutdown")
     # Close Redis connection
