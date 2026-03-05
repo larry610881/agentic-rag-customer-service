@@ -766,6 +766,7 @@ class Container(containers.DeclarativeContainer):
         conversation_repository=conversation_repository,
         bot_repository=bot_repository,
         history_strategy=history_strategy,
+        debug=providers.Callable(lambda cfg: cfg.debug, config),
     )
 
     # --- Platform: Provider Settings ---

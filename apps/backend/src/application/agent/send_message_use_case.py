@@ -29,17 +29,22 @@ class SendMessageCommand:
 
 
 class SendMessageUseCase:
+    # Tools only available in debug mode
+    _DEBUG_ONLY_TOOLS = {"rag_query"}
+
     def __init__(
         self,
         agent_service: AgentService,
         conversation_repository: ConversationRepository,
         bot_repository: BotRepository | None = None,
         history_strategy: ConversationHistoryStrategy | None = None,
+        debug: bool = False,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
         self._bot_repo = bot_repository
         self._history_strategy = history_strategy
+        self._debug = debug
 
     async def _load_bot_config(
         self, command: SendMessageCommand
@@ -77,11 +82,10 @@ class SendMessageUseCase:
             "frequency_penalty": bot.llm_params.frequency_penalty,
         }
         cfg["history_limit"] = bot.llm_params.history_limit
-        cfg["enabled_tools"] = (
-            bot.enabled_tools
-            if bot.enabled_tools is not None
-            else None
-        )
+        tools = bot.enabled_tools if bot.enabled_tools is not None else None
+        if tools is not None and not self._debug:
+            tools = [t for t in tools if t not in self._DEBUG_ONLY_TOOLS]
+        cfg["enabled_tools"] = tools
         cfg["rag_top_k"] = bot.llm_params.rag_top_k
         cfg["rag_score_threshold"] = bot.llm_params.rag_score_threshold
         cfg["show_sources"] = bot.show_sources
