@@ -15,14 +15,10 @@ DEFAULT_MODELS: dict[str, dict[str, list[dict]]] = {
     "openai": {
         "llm": [
             {"model_id": "gpt-5.2", "display_name": "GPT-5.2", "price": "$1.75/$14"},
+            {"model_id": "gpt-5.1", "display_name": "GPT-5.1", "price": "$1.25/$10"},
             {"model_id": "gpt-5", "display_name": "GPT-5", "price": "$1.25/$10"},
             {"model_id": "gpt-5-mini", "display_name": "GPT-5 Mini", "price": "$0.25/$2"},
             {"model_id": "gpt-5-nano", "display_name": "GPT-5 Nano", "price": "$0.05/$0.40"},
-            {"model_id": "gpt-4.1", "display_name": "GPT-4.1", "price": "$2/$8"},
-            {"model_id": "gpt-4.1-mini", "display_name": "GPT-4.1 Mini", "price": "$0.40/$1.60"},
-            {"model_id": "gpt-4.1-nano", "display_name": "GPT-4.1 Nano", "price": "$0.10/$0.40"},
-            {"model_id": "o3", "display_name": "o3", "price": "$2/$8"},
-            {"model_id": "o4-mini", "display_name": "o4 Mini", "price": "$1.10/$4.40"},
         ],
     },
     "google": {
