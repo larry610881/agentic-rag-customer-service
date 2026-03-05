@@ -184,13 +184,11 @@ from src.infrastructure.line.line_messaging_service import HttpxLineMessagingSer
 from src.infrastructure.line.line_messaging_service_factory import (
     HttpxLineMessagingServiceFactory,
 )
-from src.infrastructure.llm.anthropic_llm_service import AnthropicLLMService
 from src.infrastructure.llm.dynamic_llm_factory import (
     DynamicLLMServiceFactory,
     DynamicLLMServiceProxy,
 )
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
-from src.infrastructure.llm.openai_llm_service import OpenAILLMService
 from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
 from src.infrastructure.sentiment.keyword_sentiment_service import (
     KeywordSentimentService,
@@ -450,122 +448,7 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
-    _static_llm_service = providers.Selector(
-        providers.Callable(lambda cfg: cfg.llm_provider, config),
-        fake=providers.Factory(FakeLLMService),
-        anthropic=providers.Factory(
-            AnthropicLLMService,
-            api_key=providers.Callable(
-                lambda cfg: cfg.effective_llm_api_key, config
-            ),
-            model=providers.Callable(
-                lambda cfg: cfg.llm_model or "claude-sonnet-4-20250514", config
-            ),
-            max_tokens=providers.Callable(
-                lambda cfg: cfg.llm_max_tokens, config
-            ),
-            pricing=providers.Callable(
-                lambda cfg: cfg.llm_pricing, config
-            ),
-        ),
-        openai=providers.Factory(
-            OpenAILLMService,
-            api_key=providers.Callable(
-                lambda cfg: cfg.effective_llm_api_key, config
-            ),
-            model=providers.Callable(
-                lambda cfg: cfg.llm_model or "gpt-4o", config
-            ),
-            max_tokens=providers.Callable(
-                lambda cfg: cfg.llm_max_tokens, config
-            ),
-            pricing=providers.Callable(
-                lambda cfg: cfg.llm_pricing, config
-            ),
-            base_url=providers.Callable(
-                lambda cfg: cfg.llm_base_url or "https://api.openai.com/v1",
-                config,
-            ),
-        ),
-        deepseek=providers.Factory(
-            OpenAILLMService,
-            api_key=providers.Callable(
-                lambda cfg: cfg.effective_llm_api_key, config
-            ),
-            model=providers.Callable(
-                lambda cfg: cfg.llm_model or "deepseek-chat", config
-            ),
-            max_tokens=providers.Callable(
-                lambda cfg: cfg.llm_max_tokens, config
-            ),
-            pricing=providers.Callable(
-                lambda cfg: cfg.llm_pricing, config
-            ),
-            base_url=providers.Callable(
-                lambda cfg: cfg.llm_base_url or "https://api.deepseek.com/v1",
-                config,
-            ),
-        ),
-        qwen=providers.Factory(
-            OpenAILLMService,
-            api_key=providers.Callable(
-                lambda cfg: cfg.effective_llm_api_key, config
-            ),
-            model=providers.Callable(
-                lambda cfg: cfg.llm_model or "qwen-plus", config
-            ),
-            max_tokens=providers.Callable(
-                lambda cfg: cfg.llm_max_tokens, config
-            ),
-            pricing=providers.Callable(
-                lambda cfg: cfg.llm_pricing, config
-            ),
-            base_url=providers.Callable(
-                lambda cfg: cfg.llm_base_url
-                or "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                config,
-            ),
-        ),
-        google=providers.Factory(
-            OpenAILLMService,
-            api_key=providers.Callable(
-                lambda cfg: cfg.effective_llm_api_key, config
-            ),
-            model=providers.Callable(
-                lambda cfg: cfg.llm_model or "gemini-2.5-flash-lite", config
-            ),
-            max_tokens=providers.Callable(
-                lambda cfg: cfg.llm_max_tokens, config
-            ),
-            pricing=providers.Callable(
-                lambda cfg: cfg.llm_pricing, config
-            ),
-            base_url=providers.Callable(
-                lambda cfg: cfg.llm_base_url
-                or "https://generativelanguage.googleapis.com/v1beta/openai",
-                config,
-            ),
-        ),
-        openrouter=providers.Factory(
-            OpenAILLMService,
-            api_key=providers.Callable(
-                lambda cfg: cfg.effective_llm_api_key, config
-            ),
-            model=providers.Callable(
-                lambda cfg: cfg.llm_model or "openai/gpt-4o", config
-            ),
-            max_tokens=providers.Callable(
-                lambda cfg: cfg.llm_max_tokens, config
-            ),
-            pricing=providers.Callable(
-                lambda cfg: cfg.llm_pricing, config
-            ),
-            base_url=providers.Callable(
-                lambda cfg: cfg.llm_base_url or "https://openrouter.ai/api/v1",
-                config,
-            ),
-        ),
-    )
+    _static_llm_service = providers.Factory(FakeLLMService)
 
     _llm_factory = providers.Singleton(
         DynamicLLMServiceFactory,
@@ -808,40 +691,18 @@ class Container(containers.DeclarativeContainer):
     )
 
     agent_service = providers.Selector(
-        providers.Callable(lambda cfg: cfg.llm_provider, config),
-        fake=providers.Factory(
+        providers.Callable(
+            lambda cfg: "mock" if cfg.llm_provider == "mock" else "real",
+            config,
+        ),
+        mock=providers.Factory(
             MetaSupervisorService,
             teams=providers.Dict(
                 customer=customer_team,
             ),
             sentiment_service=sentiment_service,
         ),
-        anthropic=providers.Factory(
-            LangGraphAgentService,
-            llm_service=llm_service,
-            rag_tool=rag_tool,
-        ),
-        openai=providers.Factory(
-            LangGraphAgentService,
-            llm_service=llm_service,
-            rag_tool=rag_tool,
-        ),
-        deepseek=providers.Factory(
-            LangGraphAgentService,
-            llm_service=llm_service,
-            rag_tool=rag_tool,
-        ),
-        qwen=providers.Factory(
-            LangGraphAgentService,
-            llm_service=llm_service,
-            rag_tool=rag_tool,
-        ),
-        google=providers.Factory(
-            LangGraphAgentService,
-            llm_service=llm_service,
-            rag_tool=rag_tool,
-        ),
-        openrouter=providers.Factory(
+        real=providers.Factory(
             LangGraphAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,

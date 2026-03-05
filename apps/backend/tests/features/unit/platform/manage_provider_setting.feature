@@ -23,6 +23,6 @@ Feature: Manage Provider Settings
     Then 刪除操作應成功
 
   Scenario: 測試供應商連線
-    Given 一個已存在的 fake 供應商設定，ID 為 "setting-fake"
-    When 我測試設定 "setting-fake" 的連線
+    Given 一個已存在的 mock 供應商設定，ID 為 "setting-mock"
+    When 我測試設定 "setting-mock" 的連線
     Then 連線測試結果應為成功

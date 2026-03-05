@@ -52,12 +52,9 @@ class Settings(BaseSettings):
     embedding_min_batch_size: int = 10
 
     # LLM (independent from Embedding)
-    # "fake" | "openai" | "deepseek" | "anthropic" | "qwen" | "google" | "openrouter"
-    llm_provider: str = "fake"
-    llm_api_key: str = ""  # dedicated key; falls back to provider key
-    llm_model: str = ""
+    # "mock" = FakeLLMService; anything else = DynamicLLMServiceFactory (DB-driven)
+    llm_provider: str = "mock"
     llm_max_tokens: int = 1024
-    llm_base_url: str = ""
 
     # Conversation History Strategy
     # "full" | "sliding_window" | "summary_recent" | "rag_history"
@@ -167,25 +164,6 @@ class Settings(BaseSettings):
         return _defaults.get(self.embedding_provider, "https://api.openai.com/v1")
 
     @property
-    def effective_llm_api_key(self) -> str:
-        """Resolve LLM API key: dedicated > provider-specific > legacy."""
-        if self.llm_api_key:
-            return self.llm_api_key
-        if self.llm_provider == "deepseek":
-            return self.deepseek_api_key
-        if self.llm_provider == "qwen":
-            return self.qwen_api_key
-        if self.llm_provider == "google":
-            return self.google_api_key
-        if self.llm_provider == "openai":
-            return self.effective_openai_api_key
-        if self.llm_provider == "anthropic":
-            return self.anthropic_api_key
-        if self.llm_provider == "openrouter":
-            return self.openrouter_api_key
-        return ""
-
-    @property
     def enabled_modules_set(self) -> set[str]:
         """Parse enabled_modules CSV into a set."""
         return {m.strip() for m in self.enabled_modules.split(",") if m.strip()}
@@ -204,7 +182,7 @@ class Settings(BaseSettings):
         except (_json.JSONDecodeError, TypeError):
             return {}
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()

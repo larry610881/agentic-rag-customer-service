@@ -193,13 +193,13 @@ def delete_succeeded(context):
 # --- Scenario: 測試供應商連線 ---
 
 
-@given(parsers.parse('一個已存在的 fake 供應商設定，ID 為 "{setting_id}"'))
-def fake_provider_setting(context, mock_provider_repo, mock_encryption, setting_id):
+@given(parsers.parse('一個已存在的 mock 供應商設定，ID 為 "{setting_id}"'))
+def mock_provider_setting(context, mock_provider_repo, mock_encryption, setting_id):
     setting = ProviderSetting(
         id=ProviderSettingId(value=setting_id),
         provider_type=ProviderType.LLM,
-        provider_name=ProviderName.FAKE,
-        display_name="Fake",
+        provider_name=ProviderName.MOCK,
+        display_name="Mock",
         is_enabled=True,
         api_key_encrypted="enc:fake-key",
     )

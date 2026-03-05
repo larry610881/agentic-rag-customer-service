@@ -40,7 +40,7 @@ class CheckProviderConnectionUseCase:
         if setting is None:
             raise EntityNotFoundError("ProviderSetting", setting_id)
 
-        if setting.provider_name == ProviderName.FAKE:
+        if setting.provider_name == ProviderName.MOCK:
             return TestConnectionResult(success=True, latency_ms=0)
 
         api_key = self._encryption.decrypt(setting.api_key_encrypted)

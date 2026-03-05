@@ -20,7 +20,7 @@ class ProviderName(str, Enum):
     QWEN = "qwen"
     GOOGLE = "google"
     OPENROUTER = "openrouter"
-    FAKE = "fake"
+    MOCK = "mock"
 
 
 @dataclass(frozen=True)

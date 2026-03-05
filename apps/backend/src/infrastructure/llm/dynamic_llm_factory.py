@@ -126,7 +126,7 @@ class DynamicLLMServiceFactory:
                 setting.provider_name.value, ""
             )
 
-            if setting.provider_name == ProviderName.FAKE:
+            if setting.provider_name == ProviderName.MOCK:
                 return self._fallback
 
             config = {
