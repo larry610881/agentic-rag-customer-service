@@ -446,6 +446,10 @@ class Container(containers.DeclarativeContainer):
         url=providers.Callable(
             lambda cfg: cfg.qdrant_url, config
         ),
+        grpc_port=providers.Callable(
+            lambda cfg: cfg.qdrant_grpc_port, config
+        ),
+        prefer_grpc=True,
     )
 
     _static_llm_service = providers.Factory(FakeLLMService)

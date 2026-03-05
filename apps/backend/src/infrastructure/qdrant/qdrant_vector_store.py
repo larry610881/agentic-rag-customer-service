@@ -19,16 +19,36 @@ logger = get_logger(__name__)
 
 class QdrantVectorStore(VectorStore):
     def __init__(
-        self, host: str, port: int, api_key: str = "", url: str = ""
+        self,
+        host: str,
+        port: int,
+        api_key: str = "",
+        url: str = "",
+        grpc_port: int = 6334,
+        prefer_grpc: bool = False,
     ) -> None:
         if url:
             self._client = AsyncQdrantClient(
-                url=url, api_key=api_key or None
+                url=url,
+                api_key=api_key or None,
+                prefer_grpc=prefer_grpc,
+                grpc_port=grpc_port,
             )
         else:
             self._client = AsyncQdrantClient(
-                host=host, port=port, api_key=api_key or None
+                host=host,
+                port=port,
+                api_key=api_key or None,
+                prefer_grpc=prefer_grpc,
+                grpc_port=grpc_port,
             )
+        logger.info(
+            "qdrant.init",
+            host=host or url,
+            port=port,
+            grpc_port=grpc_port,
+            prefer_grpc=prefer_grpc,
+        )
 
     async def ensure_collection(
         self, collection: str, vector_size: int
