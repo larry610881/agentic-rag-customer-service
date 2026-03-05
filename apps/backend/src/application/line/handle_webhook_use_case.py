@@ -200,6 +200,7 @@ class HandleWebhookUseCase:
                 user_message=event.message_text,
                 kb_ids=bot.knowledge_base_ids,
                 system_prompt=bot.system_prompt or None,
+                enabled_tools=bot.enabled_tools,
             )
             message_id = str(uuid4())
             await line_service.reply_with_quick_reply(
