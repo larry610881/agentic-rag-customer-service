@@ -69,9 +69,13 @@ class TextPreprocessor:
         text = cls._remove_boilerplate(text, content_type)
         if content_type in _CSV_TYPES:
             text = CSVCleaningService.clean(text)
+            text = cls._normalize(text)
         elif content_type in _SQL_TYPES:
             text = SQLCleaningService.clean(text)
-        text = cls._normalize(text)
+            # Skip _normalize for SQL: it replaces tabs with spaces,
+            # breaking PostgreSQL COPY tab-delimited data format.
+        else:
+            text = cls._normalize(text)
         return text
 
     @classmethod

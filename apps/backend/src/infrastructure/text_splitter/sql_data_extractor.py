@@ -16,11 +16,12 @@ from src.infrastructure.text_splitter.sql_schema_parser import (
 # ---------------------------------------------------------------------------
 # INSERT parsing (MySQL)
 # ---------------------------------------------------------------------------
-_INSERT_RE = re.compile(
+# Header-only regex: captures table name & optional column list up to VALUES.
+# Value tuples are parsed by a stateful parser to handle ')' inside strings.
+_INSERT_HEADER_RE = re.compile(
     r"INSERT\s+INTO\s+[`\"]*(\w+)[`\"]*"
-    r"\s*\(([^)]+)\)\s*VALUES\s*"
-    r"((?:\([^)]*\)\s*,?\s*)+);",
-    re.IGNORECASE | re.DOTALL,
+    r"\s*(?:\(([^)]+)\)\s*)?VALUES\s*",
+    re.IGNORECASE,
 )
 
 # ---------------------------------------------------------------------------
@@ -52,14 +53,56 @@ class SqlDataExtractor:
         text: str,
         schemas: list[TableSchema],
     ) -> dict[str, list[dict[str, str]]]:
+        # Build schema lookup for fallback column names
+        schema_map = {s.name: s for s in schemas}
+
         result: dict[str, list[dict[str, str]]] = {}
-        for match in _INSERT_RE.finditer(text):
+        for match in _INSERT_HEADER_RE.finditer(text):
             table = match.group(1)
-            col_names = [c.strip().strip("`\"") for c in match.group(2).split(",")]
-            values_str = match.group(3)
+            col_group = match.group(2)
+            if col_group:
+                col_names = [c.strip().strip("`\"") for c in col_group.split(",")]
+            elif table in schema_map:
+                col_names = [c.name for c in schema_map[table].columns]
+            else:
+                continue
+
+            values_str = cls._extract_values_body(text, match.end())
+            if not values_str:
+                continue
             rows = cls._parse_insert_values(values_str, col_names)
             result.setdefault(table, []).extend(rows)
         return result
+
+    @staticmethod
+    def _extract_values_body(text: str, start: int) -> str:
+        """Extract everything from start up to the terminating ';'.
+
+        Respects quoted strings so a ';' inside a string is not mistaken
+        for the statement terminator.
+        """
+        i = start
+        in_quote = False
+        quote_char = ""
+        while i < len(text):
+            ch = text[i]
+            if in_quote:
+                if ch == "\\" and i + 1 < len(text):
+                    i += 2
+                    continue
+                if ch == quote_char:
+                    if i + 1 < len(text) and text[i + 1] == quote_char:
+                        i += 2
+                        continue
+                    in_quote = False
+            else:
+                if ch in ("'", '"'):
+                    in_quote = True
+                    quote_char = ch
+                elif ch == ";":
+                    return text[start:i]
+            i += 1
+        return text[start:]
 
     @classmethod
     def _parse_insert_values(

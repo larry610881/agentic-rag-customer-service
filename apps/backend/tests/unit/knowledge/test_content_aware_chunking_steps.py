@@ -21,9 +21,10 @@ def ctx():
 @given("一個 ContentAwareTextSplitterService 有 CSV 策略和 default 策略")
 def setup_router(ctx):
     csv_strategy = MagicMock(spec=TextSplitterService)
-    csv_strategy.split.return_value = []
+    # Return a non-empty list so fallback to default is not triggered
+    csv_strategy.split.return_value = [MagicMock()]
     default_strategy = MagicMock(spec=TextSplitterService)
-    default_strategy.split.return_value = []
+    default_strategy.split.return_value = [MagicMock()]
 
     ctx["csv_strategy"] = csv_strategy
     ctx["default_strategy"] = default_strategy

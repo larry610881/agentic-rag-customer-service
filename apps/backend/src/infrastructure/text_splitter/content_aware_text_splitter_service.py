@@ -25,4 +25,7 @@ class ContentAwareTextSplitterService(TextSplitterService):
         content_type: str = "",
     ) -> list[Chunk]:
         strategy = self._strategies.get(content_type, self._default)
-        return strategy.split(text, document_id, tenant_id, content_type)
+        chunks = strategy.split(text, document_id, tenant_id, content_type)
+        if not chunks and strategy is not self._default:
+            chunks = self._default.split(text, document_id, tenant_id, content_type)
+        return chunks
