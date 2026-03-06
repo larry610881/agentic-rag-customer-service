@@ -27,10 +27,16 @@ class QdrantVectorStore(VectorStore):
         grpc_port: int = 6334,
         prefer_grpc: bool = False,
     ) -> None:
+        # When using gRPC over insecure (non-TLS) connection, skip api_key
+        # to avoid qdrant-client warning + potential gRPC auth overhead.
+        effective_key = api_key or None
+        if prefer_grpc and effective_key and url and not url.startswith("https"):
+            effective_key = None
+
         if url:
             self._client = AsyncQdrantClient(
                 url=url,
-                api_key=api_key or None,
+                api_key=effective_key,
                 prefer_grpc=prefer_grpc,
                 grpc_port=grpc_port,
             )
@@ -38,16 +44,16 @@ class QdrantVectorStore(VectorStore):
             self._client = AsyncQdrantClient(
                 host=host,
                 port=port,
-                api_key=api_key or None,
+                api_key=effective_key,
                 prefer_grpc=prefer_grpc,
                 grpc_port=grpc_port,
             )
         logger.info(
             "qdrant.init",
-            host=host or url,
-            port=port,
+            url=url or f"{host}:{port}",
             grpc_port=grpc_port,
             prefer_grpc=prefer_grpc,
+            api_key_used=effective_key is not None,
         )
 
     async def ensure_collection(
