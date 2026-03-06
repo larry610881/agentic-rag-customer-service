@@ -61,13 +61,13 @@ def post_register(ctx, client, email, password):
 
 @when(
     parsers.parse(
-        '我送出 POST /api/v1/auth/user-login 帳號 "{email}" 密碼 "{password}"'
+        '我送出 POST /api/v1/auth/login 帳號 "{account}" 密碼 "{password}"'
     )
 )
-def post_user_login(ctx, client, email, password):
+def post_login(ctx, client, account, password):
     ctx["response"] = client.post(
-        "/api/v1/auth/user-login",
-        json={"email": email, "password": password},
+        "/api/v1/auth/login",
+        json={"account": account, "password": password},
     )
 
 
@@ -76,18 +76,6 @@ def post_tenant_token(ctx, client):
     ctx["response"] = client.post(
         "/api/v1/auth/token",
         json={"tenant_id": ctx["tenant_id"]},
-    )
-
-
-@when(
-    parsers.parse(
-        '我送出 POST /api/v1/auth/login 帳號 "{username}" 密碼 "{password}"'
-    )
-)
-def post_legacy_login(ctx, client, username, password):
-    ctx["response"] = client.post(
-        "/api/v1/auth/login",
-        json={"username": username, "password": password},
     )
 
 

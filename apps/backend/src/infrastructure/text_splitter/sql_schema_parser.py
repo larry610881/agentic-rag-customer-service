@@ -54,7 +54,7 @@ _PG_INDICATORS = re.compile(
 # DDL parsing patterns
 # ---------------------------------------------------------------------------
 _CREATE_TABLE_HEADER_RE = re.compile(
-    r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`\"]*(\w+)[`\"]*\s*\(",
+    r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[`\"]*\w+[`\"]*\.)?[`\"]*(\w+)[`\"]*\s*\(",
     re.IGNORECASE,
 )
 

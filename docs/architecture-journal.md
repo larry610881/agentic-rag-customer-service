@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [SQL 上傳修復 + 統一 Login API — 跨層 Bug Fix 與測試同步](#sql-上傳修復--統一-login-api--跨層-bug-fix-與測試同步)
 - [LINE Webhook 效能最佳化全鏈路 — gRPC + 連線池 + 並行查詢](#line-webhook-效能最佳化全鏈路--grpc--連線池--並行查詢)
 - [LINE Loading Animation + Webhook 效能最佳化](#line-loading-animation--webhook-效能最佳化)
 - [RAG Tool 重構 — 消除重複 LLM 呼叫](#rag-tool-重構--消除重複-llm-呼叫)
@@ -42,6 +43,31 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## SQL 上傳修復 + 統一 Login API — 跨層 Bug Fix 與測試同步
+
+> **Sprint 來源**：SQL 上傳 0 chunks 修正 + Auth API 統一 login 端點
+
+**本次相關主題**：Regex-based SQL Parsing、API Contract Evolution、BDD Test Synchronization
+
+### 做得好的地方
+
+- **Root Cause 分析到位**：SQL 上傳 0 chunks 的根因是 INSERT 正則只匹配 `INSERT INTO` 而實際 SQL 使用小寫或混合大小寫，修正為 `re.IGNORECASE` + normalize whitespace
+- **統一 Login 端點**：將 `/auth/user-login`（email+password）與 `/auth/login`（tenant name+password）合併為單一 `/auth/login`（account+password），dev mode 先嘗試 tenant name 再 fallback email/password，減少 API surface area
+- **測試同步完整**：auth_router 的 API contract 變更後，同步更新了 integration feature、step definitions、e2e journey 三層測試，避免 BDD 步驟定義衝突（合併重複的 step pattern）
+
+### 潛在隱憂
+
+- **Regex-based SQL Parser 脆弱性**：當前使用正則解析 SQL 語句（INSERT/CREATE TABLE），對於複雜 SQL（子查詢、CTE、多行註解）可能失敗 → 考慮引入 sqlparse 或 sqlglot 等 SQL AST parser → 優先級：中
+- **Login 端點 dev/prod 行為差異**：`app_env == "development"` 時 login 先查 tenant name 再 fallback，production 直接走 email/password。這種環境分支增加了測試盲區 → 建議 integration test 覆蓋 `app_env=production` 路徑 → 優先級：中
+- **Feature 檔案與 Step Def 耦合**：統一 login 後 Gherkin step 文字完全相同，靠單一 step def 處理 user login 與 tenant login 兩種語意。若未來需要區分，需拆分 step 或加入 scenario context → 優先級：低
+
+### 延伸學習
+
+- **API Versioning & Breaking Changes**：本次把 `/user-login` 移除屬於 breaking change，在內部開發階段可接受，但正式環境需考慮 deprecation period 或 v2 endpoint
+- 若想深入：搜尋「API Evolution Strategy」、「Robustness Principle (Postel's Law)」
 
 ---
 

@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     data_retention_enabled: bool = False
 
     # CORS
-    cors_origins: str = "http://localhost:3000"  # comma-separated allowed origins
+    cors_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174"  # comma-separated allowed origins
 
     # App
     app_env: str = "development"

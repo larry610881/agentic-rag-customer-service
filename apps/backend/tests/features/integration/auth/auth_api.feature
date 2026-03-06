@@ -16,18 +16,18 @@ Feature: Auth API Integration
   Scenario: 成功登入使用者
     Given 已存在租戶 "Auth Corp"
     And 已註冊使用者 "login@test.com" 密碼 "secret123" 關聯該租戶
-    When 我送出 POST /api/v1/auth/user-login 帳號 "login@test.com" 密碼 "secret123"
+    When 我送出 POST /api/v1/auth/login 帳號 "login@test.com" 密碼 "secret123"
     Then 回應狀態碼為 200
     And 回應包含 access_token
 
   Scenario: 錯誤密碼登入回傳 401
     Given 已存在租戶 "Auth Corp"
     And 已註冊使用者 "wrong@test.com" 密碼 "correct" 關聯該租戶
-    When 我送出 POST /api/v1/auth/user-login 帳號 "wrong@test.com" 密碼 "incorrect"
+    When 我送出 POST /api/v1/auth/login 帳號 "wrong@test.com" 密碼 "incorrect"
     Then 回應狀態碼為 401
 
   Scenario: 不存在的帳號登入回傳 401
-    When 我送出 POST /api/v1/auth/user-login 帳號 "nobody@test.com" 密碼 "whatever"
+    When 我送出 POST /api/v1/auth/login 帳號 "nobody@test.com" 密碼 "whatever"
     Then 回應狀態碼為 401
 
   Scenario: 成功取得 tenant token

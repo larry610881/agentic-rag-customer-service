@@ -45,8 +45,8 @@ def register_admin(ctx, client, email, password):
 @when(parsers.parse('我以 "{email}" 密碼 "{password}" 登入'))
 def login_user(ctx, client, email, password):
     ctx["response"] = client.post(
-        "/api/v1/auth/user-login",
-        json={"email": email, "password": password},
+        "/api/v1/auth/login",
+        json={"account": email, "password": password},
     )
     if ctx["response"].status_code == 200:
         ctx["user_token"] = ctx["response"].json()["access_token"]

@@ -20,3 +20,13 @@ Feature: SQL Data Extraction
     Given 一段 INSERT INTO 的值包含引號和逗號
     When 執行資料提取
     Then 應正確解析含特殊字元的值
+
+  Scenario: INSERT 值含括號字串能正確解析
+    Given 一段 INSERT INTO 的值包含括號字串
+    When 執行資料提取
+    Then 應正確解析含括號的值
+
+  Scenario: Schema-qualified 表名能正確解析
+    Given 一段包含 schema-qualified 表名的 MySQL dump
+    When 執行資料提取
+    Then 應取得正確的表名與資料列

@@ -79,15 +79,15 @@ async def login(
     if settings.app_env == "development":
         with trace_step("find_by_name"):
             tenant = await tenant_repo.find_by_name(body.account)
-        if tenant is None:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-        with trace_step("create_tenant_token"):
-            token = jwt_service.create_tenant_token(tenant.id.value)
-        with trace_step("create_tenant_refresh_token"):
-            refresh = jwt_service.create_tenant_refresh_token(tenant.id.value)
-        return TokenResponse(access_token=token, refresh_token=refresh)
+        if tenant is not None:
+            with trace_step("create_tenant_token"):
+                token = jwt_service.create_tenant_token(tenant.id.value)
+            with trace_step("create_tenant_refresh_token"):
+                refresh = jwt_service.create_tenant_refresh_token(tenant.id.value)
+            return TokenResponse(access_token=token, refresh_token=refresh)
+        # Fallback to email/password login in dev mode
 
-    # Production: account = email, password verified via bcrypt
+    # Production (or dev fallback): account = email, password verified via bcrypt
     command = LoginCommand(email=body.account, password=body.password)
     try:
         with trace_step("login_use_case"):

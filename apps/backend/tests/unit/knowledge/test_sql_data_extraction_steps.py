@@ -130,3 +130,55 @@ def verify_special_chars(ctx):
     rows = ctx["table_data"][ctx["expected_table"]]
     assert len(rows) == 1
     assert "TV" in rows[0]["name"]
+
+
+# --- Parentheses inside quoted values ---
+
+
+@given("一段 INSERT INTO 的值包含括號字串")
+def mysql_paren_in_value(ctx):
+    ctx["text"] = """
+CREATE TABLE `products` (
+  `id` INT NOT NULL,
+  `name` VARCHAR(255),
+  `description` TEXT,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB;
+
+INSERT INTO `products` (`id`, `name`, `description`)
+VALUES (1, 'T-Shirt (L)', 'cotton'),
+(2, 'Pants', 'denim');
+"""
+    ctx["dialect"] = SqlDialect.MYSQL
+    ctx["expected_table"] = "products"
+
+
+@then("應正確解析含括號的值")
+def verify_paren_values(ctx):
+    rows = ctx["table_data"][ctx["expected_table"]]
+    assert len(rows) == 2
+    assert rows[0]["name"] == "T-Shirt (L)"
+    assert rows[0]["description"] == "cotton"
+    assert rows[1]["name"] == "Pants"
+
+
+# --- Schema-qualified table names ---
+
+
+@given("一段包含 schema-qualified 表名的 MySQL dump")
+def mysql_schema_qualified(ctx):
+    ctx["text"] = """
+CREATE TABLE `mydb`.`users` (
+  `id` INT NOT NULL,
+  `name` VARCHAR(100),
+  `email` VARCHAR(200),
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB;
+
+INSERT INTO `mydb`.`users` (`id`, `name`, `email`)
+VALUES (1, 'Alice', 'alice@example.com'),
+(2, 'Bob', 'bob@example.com');
+"""
+    ctx["dialect"] = SqlDialect.MYSQL
+    ctx["expected_table"] = "users"
+    ctx["expected_count"] = 2

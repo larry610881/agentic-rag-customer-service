@@ -19,7 +19,7 @@ from src.infrastructure.text_splitter.sql_schema_parser import (
 # Header-only regex: captures table name & optional column list up to VALUES.
 # Value tuples are parsed by a stateful parser to handle ')' inside strings.
 _INSERT_HEADER_RE = re.compile(
-    r"INSERT\s+INTO\s+[`\"]*(\w+)[`\"]*"
+    r"INSERT\s+INTO\s+(?:[`\"]*\w+[`\"]*\.)?[`\"]*(\w+)[`\"]*"
     r"\s*(?:\(([^)]+)\)\s*)?VALUES\s*",
     re.IGNORECASE,
 )
@@ -28,7 +28,7 @@ _INSERT_HEADER_RE = re.compile(
 # COPY parsing (PostgreSQL)
 # ---------------------------------------------------------------------------
 _COPY_HEADER_RE = re.compile(
-    r"COPY\s+[\"]*(\w+)[\"]*\s*\(([^)]+)\)\s*FROM\s+stdin\s*;",
+    r"COPY\s+(?:[\"]*\w+[\"]*\.)?[\"]*(\w+)[\"]*\s*\(([^)]+)\)\s*FROM\s+stdin\s*;",
     re.IGNORECASE,
 )
 
@@ -121,26 +121,60 @@ class SqlDataExtractor:
 
     @staticmethod
     def _split_value_tuples(values_str: str) -> list[str]:
-        """Split (v1,v2),(v3,v4) into individual tuple strings."""
+        """Split (v1,v2),(v3,v4) into individual tuple strings.
+
+        Quote-aware: parentheses inside single/double-quoted strings
+        (e.g. ``'size (L)'``) are ignored for depth tracking.
+        """
         tuples: list[str] = []
         depth = 0
         current: list[str] = []
-        for ch in values_str:
-            if ch == "(":
-                if depth == 0:
-                    current = []
-                else:
-                    current.append(ch)
-                depth += 1
-            elif ch == ")":
-                depth -= 1
-                if depth == 0:
-                    tuples.append("".join(current))
-                else:
-                    current.append(ch)
-            else:
+        in_quote = False
+        quote_char = ""
+        i = 0
+        while i < len(values_str):
+            ch = values_str[i]
+            if in_quote:
+                if ch == "\\" and i + 1 < len(values_str):
+                    # Backslash escape — consume next char verbatim
+                    if depth > 0:
+                        current.append(ch)
+                        current.append(values_str[i + 1])
+                    i += 2
+                    continue
+                if ch == quote_char:
+                    # Doubled-quote escape (e.g. '')
+                    if i + 1 < len(values_str) and values_str[i + 1] == quote_char:
+                        if depth > 0:
+                            current.append(ch)
+                            current.append(values_str[i + 1])
+                        i += 2
+                        continue
+                    in_quote = False
                 if depth > 0:
                     current.append(ch)
+            else:
+                if ch in ("'", '"'):
+                    in_quote = True
+                    quote_char = ch
+                    if depth > 0:
+                        current.append(ch)
+                elif ch == "(":
+                    if depth == 0:
+                        current = []
+                    else:
+                        current.append(ch)
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                    if depth == 0:
+                        tuples.append("".join(current))
+                    else:
+                        current.append(ch)
+                else:
+                    if depth > 0:
+                        current.append(ch)
+            i += 1
         return tuples
 
     @staticmethod
