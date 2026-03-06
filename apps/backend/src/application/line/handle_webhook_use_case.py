@@ -118,7 +118,6 @@ class HandleWebhookUseCase:
         for event in events:
             if not event.message_text:
                 continue
-            await self._default_line_service.show_loading(event.user_id)
             result = await self._agent_service.process_message(
                 tenant_id=self._default_tenant_id,
                 kb_id=self._default_kb_id,
@@ -198,13 +197,6 @@ class HandleWebhookUseCase:
         events = self._parse_text_events(body_text)
         postback_events = self._parse_postback_events(body_text)
 
-        # 立即 reply「查詢中…」— 用戶秒收到
-        for event in events:
-            if event.message_text:
-                await line_service.reply_text(
-                    event.reply_token, "查詢中，請稍候…"
-                )
-
         return WebhookContext(
             bot=bot,
             short_code=short_code,
@@ -221,7 +213,6 @@ class HandleWebhookUseCase:
         for event in ctx.events:
             if not event.message_text:
                 continue
-            await line_service.show_loading(event.user_id)
             t0 = time.monotonic()
 
             llm_params: dict = {

@@ -62,16 +62,35 @@ Per-bot LLM 模型選擇、Qdrant REST→gRPC、httpx 連線池化、asyncio.gat
 - **asyncio.gather**：RAG 多知識庫查詢從 sequential loop 改為並行，對多 KB bot 效果顯著
 - **兩階段 webhook**：`prepare_and_reply()` 直接 await（秒回「查詢中」）+ `process_and_push()` 背景執行，LINE 使用者體感大幅改善
 
+### Qdrant gRPC 三階段除錯紀錄（驗證完成）
+
+gRPC 遷移經歷三輪修復才真正生效，完整記錄如下：
+
+| 階段 | 問題 | 修復 | 效果 |
+|------|------|------|------|
+| 1. 初版 | `prefer_grpc + grpc_port` 加入但 GCP firewall 只開 6333 | `gcloud compute firewall-rules update` 加開 6334 | 仍慢 |
+| 2. API key | gRPC + 非 TLS + API key → `UserWarning: insecure connection` + auth 開銷 | 內網 VPC 連線跳過 API key | 仍慢 |
+| 3. url vs host | `AsyncQdrantClient(url=...)` 時 `prefer_grpc` 被忽略，實際走 REST | 從 URL 解析 host，改用 `AsyncQdrantClient(host=...)` | **warm 499ms（-89%）** |
+
+**實測數據（revision 00049）**：
+- Cold start（gRPC 連線建立）：3,299ms
+- Warm request（連線已建立）：**499ms**
+- 改善前 REST baseline：4,594ms
+
+**關鍵教訓**：`qdrant-client` 的 `url` 參數只建立 REST 連線，`prefer_grpc=True` 需搭配 `host` 參數才會真正走 gRPC 通道。這在文件中並未明確說明，需靠實測驗證。
+
 ### 潛在隱憂
 
 - **httpx 持久 client 生命週期** → 若 service 被 GC 但 client 未 close，可能有 fd leak。目前 service 是 Singleton/Factory 由 DI container 管理，隨 process 存活，風險低。未來若需優雅關閉，可加 `async def close()` + FastAPI shutdown event → **優先級：低**
 - **asyncio.gather 錯誤傳播** → 若其中一個 KB 查詢失敗，`gather` 預設會傳播第一個 exception 並取消其他。目前行為合理（查詢失敗就失敗），但若未來需 partial results，需改用 `return_exceptions=True` → **優先級：低**
 - **Qdrant gRPC 連線中斷處理** → gRPC 長連線可能因網路抖動斷開，qdrant-client 內建重連機制，但需觀察生產環境是否有 `grpc._channel._InactiveRpcError` → **優先級：中**
+- **Qdrant gRPC cold start 3.3s** → 容器首次請求的 gRPC 連線建立耗時較高。可在 app startup 時 pre-warm 連線（如 health check query），或設 `min-instances=1` 避免冷啟動 → **優先級：中**
 
 ### 延伸學習
 
 - **HTTP/2 Connection Pooling**：httpx 持久 client 自動利用 HTTP/2 multiplexing（若 server 支援），單一 TCP 連線可並行多個請求
 - **gRPC vs REST 效能差異**：gRPC 使用 Protocol Buffers 二進位序列化 + HTTP/2 multiplexing，對高頻小 payload（如向量搜尋）效能提升 3-10x
+- **qdrant-client 連線模式差異**：`url` 參數 → REST only；`host` + `prefer_grpc` → 真正走 gRPC。混用時 `prefer_grpc` 會被靜默忽略，無錯誤提示
 - **若想深入**：搜尋 "qdrant grpc performance benchmark" 或 "httpx connection pool tuning"
 
 ---
