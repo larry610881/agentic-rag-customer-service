@@ -27,7 +27,7 @@ export function ChatInput() {
   };
 
   return (
-    <div className="flex gap-2 border-t bg-background p-4">
+    <div className="flex gap-2 border-t border-primary/30 bg-background/60 backdrop-blur-md p-4">
       <Textarea
         value={input}
         onChange={(e) => setInput(e.target.value)}

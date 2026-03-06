@@ -53,7 +53,7 @@ export function Sidebar() {
     >
       <div className="flex h-14 items-center justify-between border-b border-primary/20 px-3">
         {!isCollapsed && (
-          <h1 className="truncate text-lg font-semibold font-heading tracking-wider text-primary">ORION</h1>
+          <h1 className="truncate text-lg font-semibold font-heading tracking-wider text-primary">RAG 客服</h1>
         )}
         <Button
           variant="ghost"

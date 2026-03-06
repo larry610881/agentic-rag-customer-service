@@ -28,7 +28,7 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
           "max-w-[80%] rounded-lg px-4 py-2",
           isUser
             ? "bg-primary text-primary-foreground"
-            : "bg-muted text-muted-foreground",
+            : "bg-muted/80 text-foreground border border-border",
         )}
       >
         <AnimatePresence mode="wait">

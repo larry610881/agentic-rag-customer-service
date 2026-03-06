@@ -37,7 +37,7 @@ export function ConversationList() {
   };
 
   return (
-    <div className="flex h-full flex-col border-r">
+    <div className="flex h-full flex-col border-r border-primary/30">
       {botName && (
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="truncate text-sm font-medium">{botName}</span>
