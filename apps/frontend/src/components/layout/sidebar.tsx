@@ -47,18 +47,18 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "flex flex-col border-r bg-sidebar text-sidebar-foreground transition-all duration-200",
+        "flex flex-col border-r border-primary/20 bg-sidebar text-sidebar-foreground transition-all duration-200",
         isCollapsed ? "w-14" : "w-60",
       )}
     >
-      <div className="flex h-14 items-center justify-between border-b px-3">
+      <div className="flex h-14 items-center justify-between border-b border-primary/20 px-3">
         {!isCollapsed && (
-          <h1 className="truncate text-lg font-semibold">RAG 智能客服</h1>
+          <h1 className="truncate text-lg font-semibold font-heading tracking-wider text-primary">ORION</h1>
         )}
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0"
+          className="h-8 w-8 shrink-0 hover:text-primary transition-colors duration-150"
           onClick={toggle}
         >
           {isCollapsed ? (
@@ -79,7 +79,7 @@ export function Sidebar() {
               isCollapsed={isCollapsed}
             />
             {adminOpen && systemAdminItems.map((item) => renderNavItem(item, pathname, isCollapsed))}
-            <div className="my-1 border-t" />
+            <div className="my-1 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
             <NavSection
               label="一般功能"
               icon={Layers}
@@ -154,7 +154,8 @@ function renderNavItem(
       variant={isActive ? "secondary" : "ghost"}
       className={cn(
         isCollapsed ? "justify-center px-0" : "justify-start",
-        isActive && "bg-sidebar-accent",
+        isActive && "bg-sidebar-accent border-l-2 border-primary text-primary",
+        !isActive && "hover:text-primary",
       )}
       asChild
     >

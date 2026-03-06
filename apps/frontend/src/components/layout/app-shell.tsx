@@ -4,7 +4,7 @@ import { Header } from "@/components/layout/header";
 
 export function AppShell() {
   return (
-    <div className="flex h-screen">
+    <div className="relative flex h-screen">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />

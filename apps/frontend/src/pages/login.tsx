@@ -19,7 +19,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="text-center mb-8 absolute top-12">
+        <h1 className="text-4xl font-heading font-bold tracking-widest text-primary">ORION</h1>
+        <p className="text-muted-foreground mt-2 text-sm tracking-wider">智能客服平台</p>
+      </div>
       <LoginForm />
     </div>
   );

@@ -53,18 +53,23 @@ export function TopIssuesChart({ data, isLoading }: TopIssuesChartProps) {
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={data} layout="vertical">
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis type="number" fontSize={12} />
+            <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 5%)" />
+            <XAxis type="number" fontSize={12} stroke="oklch(1 0 0 / 40%)" />
             <YAxis
               type="category"
               dataKey="tag"
               width={120}
               fontSize={12}
+              stroke="oklch(1 0 0 / 40%)"
             />
-            <Tooltip formatter={(value: number) => [value, "次數"]} />
+            <Tooltip
+              formatter={(value: number) => [value, "次數"]}
+              contentStyle={{ background: 'oklch(0.14 0.02 250)', border: '1px solid oklch(0.75 0.15 195 / 20%)', borderRadius: '8px' }}
+            />
             <Bar
               dataKey="count"
-              fill="hsl(var(--primary))"
+              fill="var(--chart-hex-1)"
+              fillOpacity={0.8}
               radius={[0, 4, 4, 0]}
             />
           </BarChart>

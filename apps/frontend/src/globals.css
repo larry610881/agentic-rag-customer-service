@@ -9,6 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: "Orbitron", var(--font-geist-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -85,37 +86,44 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.10 0.02 250);
+  --foreground: oklch(0.90 0.01 250);
+  --card: oklch(0.14 0.02 250);
+  --card-foreground: oklch(0.92 0.01 250);
+  --popover: oklch(0.14 0.02 250);
+  --popover-foreground: oklch(0.92 0.01 250);
+  --primary: oklch(0.75 0.15 195);
+  --primary-foreground: oklch(0.10 0.02 250);
+  --secondary: oklch(0.20 0.03 250);
+  --secondary-foreground: oklch(0.90 0.01 250);
+  --muted: oklch(0.18 0.02 250);
+  --muted-foreground: oklch(0.60 0.02 250);
+  --accent: oklch(0.30 0.04 250);
+  --accent-foreground: oklch(0.92 0.01 250);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --border: oklch(0.75 0.15 195 / 20%);
+  --input: oklch(0.75 0.15 195 / 15%);
+  --ring: oklch(0.75 0.15 195 / 50%);
+  --chart-1: oklch(0.75 0.15 195);
+  --chart-2: oklch(0.65 0.25 330);
+  --chart-3: oklch(0.80 0.25 145);
+  --chart-4: oklch(0.80 0.18 85);
+  --chart-5: oklch(0.60 0.25 300);
+  --sidebar: oklch(0.08 0.02 250);
+  --sidebar-foreground: oklch(0.90 0.01 250);
+  --sidebar-primary: oklch(0.75 0.15 195);
+  --sidebar-primary-foreground: oklch(0.10 0.02 250);
+  --sidebar-accent: oklch(0.20 0.04 250);
+  --sidebar-accent-foreground: oklch(0.92 0.01 250);
+  --sidebar-border: oklch(0.75 0.15 195 / 15%);
+  --sidebar-ring: oklch(0.75 0.15 195 / 50%);
+
+  /* recharts hex fallback (oklch not supported in SVG) */
+  --chart-hex-1: #00d4ff;
+  --chart-hex-2: #ff00aa;
+  --chart-hex-3: #39ff14;
+  --chart-hex-4: #ffaa00;
+  --chart-hex-5: #aa44ff;
 }
 
 @layer base {
@@ -126,3 +134,26 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ORION Sci-Fi theme — HUD card glass effect */
+.dark [data-slot="card"] {
+  background: oklch(0.14 0.02 250 / 60%);
+  backdrop-filter: blur(12px);
+  border: 1px solid oklch(0.75 0.15 195 / 15%);
+  box-shadow:
+    0 0 15px oklch(0.75 0.15 195 / 8%),
+    inset 0 1px 0 oklch(1 0 0 / 5%);
+}
+
+/* Star-field gradient background */
+.dark body {
+  background:
+    radial-gradient(ellipse at 20% 50%, oklch(0.15 0.04 250 / 40%) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, oklch(0.12 0.06 280 / 30%) 0%, transparent 50%),
+    oklch(0.08 0.02 250);
+}
+
+/* Sci-fi scrollbar */
+.dark ::-webkit-scrollbar { width: 6px; }
+.dark ::-webkit-scrollbar-track { background: transparent; }
+.dark ::-webkit-scrollbar-thumb { background: oklch(0.75 0.15 195 / 30%); border-radius: 3px; }
