@@ -188,7 +188,7 @@ export function ProviderList() {
                   </span>
                   <Badge
                     variant="outline"
-                    className={`text-[10px] ${setting.has_api_key ? "border-green-500 text-green-600" : ""}`}
+                    className={`text-[10px] ${setting.has_api_key ? "border-green-500 text-green-600 dark:border-green-400 dark:text-green-400" : ""}`}
                   >
                     {setting.has_api_key ? "已設定" : "未設定"}
                   </Badge>

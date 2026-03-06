@@ -97,13 +97,13 @@
   --secondary: oklch(0.20 0.03 250);
   --secondary-foreground: oklch(0.90 0.01 250);
   --muted: oklch(0.18 0.02 250);
-  --muted-foreground: oklch(0.60 0.02 250);
+  --muted-foreground: oklch(0.68 0.02 250);
   --accent: oklch(0.30 0.04 250);
   --accent-foreground: oklch(0.92 0.01 250);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.75 0.15 195 / 35%);
-  --input: oklch(0.75 0.15 195 / 25%);
-  --ring: oklch(0.75 0.15 195 / 50%);
+  --border: oklch(0.75 0.15 195 / 45%);
+  --input: oklch(0.75 0.15 195 / 35%);
+  --ring: oklch(0.75 0.15 195 / 55%);
   --chart-1: oklch(0.75 0.15 195);
   --chart-2: oklch(0.65 0.25 330);
   --chart-3: oklch(0.80 0.25 145);
@@ -115,8 +115,8 @@
   --sidebar-primary-foreground: oklch(0.10 0.02 250);
   --sidebar-accent: oklch(0.20 0.04 250);
   --sidebar-accent-foreground: oklch(0.92 0.01 250);
-  --sidebar-border: oklch(0.75 0.15 195 / 30%);
-  --sidebar-ring: oklch(0.75 0.15 195 / 50%);
+  --sidebar-border: oklch(0.75 0.15 195 / 40%);
+  --sidebar-ring: oklch(0.75 0.15 195 / 55%);
 
   /* recharts hex fallback (oklch not supported in SVG) */
   --chart-hex-1: #00d4ff;
@@ -139,7 +139,7 @@
 .dark [data-slot="card"] {
   background: oklch(0.14 0.02 250 / 60%);
   backdrop-filter: blur(12px);
-  border: 1px solid oklch(0.75 0.15 195 / 35%);
+  border: 1px solid oklch(0.75 0.15 195 / 45%);
   box-shadow:
     0 0 15px oklch(0.75 0.15 195 / 10%),
     inset 0 1px 0 oklch(1 0 0 / 8%);
@@ -156,4 +156,4 @@
 /* Sci-fi scrollbar */
 .dark ::-webkit-scrollbar { width: 6px; }
 .dark ::-webkit-scrollbar-track { background: transparent; }
-.dark ::-webkit-scrollbar-thumb { background: oklch(0.75 0.15 195 / 30%); border-radius: 3px; }
+.dark ::-webkit-scrollbar-thumb { background: oklch(0.75 0.15 195 / 40%); border-radius: 3px; }

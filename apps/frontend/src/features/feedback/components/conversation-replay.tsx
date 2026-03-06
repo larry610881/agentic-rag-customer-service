@@ -108,9 +108,9 @@ export function ConversationReplay({
                 {fb && (
                   <span className="ml-auto">
                     {fb.rating === "thumbs_up" ? (
-                      <ThumbsUp className="h-4 w-4 text-green-600" />
+                      <ThumbsUp className="h-4 w-4 text-green-600 dark:text-green-400" />
                     ) : (
-                      <ThumbsDown className="h-4 w-4 text-red-500" />
+                      <ThumbsDown className="h-4 w-4 text-red-500 dark:text-red-400" />
                     )}
                   </span>
                 )}

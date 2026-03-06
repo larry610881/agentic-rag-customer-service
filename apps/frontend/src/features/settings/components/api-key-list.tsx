@@ -102,7 +102,7 @@ export function ApiKeyList() {
                 {isSaved ? (
                   <Badge
                     variant="outline"
-                    className="border-green-500 text-green-600"
+                    className="border-green-500 text-green-600 dark:border-green-400 dark:text-green-400"
                   >
                     ✓ 已更新
                   </Badge>
@@ -117,7 +117,7 @@ export function ApiKeyList() {
                   <Badge
                     variant="outline"
                     className={
-                      hasKey ? "border-green-500 text-green-600" : ""
+                      hasKey ? "border-green-500 text-green-600 dark:border-green-400 dark:text-green-400" : ""
                     }
                   >
                     {hasKey ? "已設定" : "未設定"}

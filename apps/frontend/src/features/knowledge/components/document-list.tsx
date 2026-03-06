@@ -36,14 +36,14 @@ function StatusCell({ status }: { status: DocumentResponse["status"] }) {
       );
     case "processing":
       return (
-        <span className="flex items-center gap-1.5 text-green-600">
+        <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
           <LoaderCircle className="h-4 w-4 animate-spin" />
           學習中
         </span>
       );
     case "processed":
       return (
-        <span className="flex items-center gap-1.5 text-green-600">
+        <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
           <CircleCheck className="h-4 w-4" />
           完成
         </span>
@@ -63,7 +63,7 @@ function QualityCell({ score, status }: { score: number; status: DocumentRespons
 
   if (score >= 0.8) {
     return (
-      <span className="flex items-center gap-1.5 text-green-600" data-testid="quality-good">
+      <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400" data-testid="quality-good">
         <ShieldCheck className="h-4 w-4" />
         {score.toFixed(1)}
       </span>
@@ -71,14 +71,14 @@ function QualityCell({ score, status }: { score: number; status: DocumentRespons
   }
   if (score >= 0.5) {
     return (
-      <span className="flex items-center gap-1.5 text-yellow-600" data-testid="quality-warning">
+      <span className="flex items-center gap-1.5 text-yellow-600 dark:text-yellow-300" data-testid="quality-warning">
         <ShieldAlert className="h-4 w-4" />
         {score.toFixed(1)}
       </span>
     );
   }
   return (
-    <span className="flex items-center gap-1.5 text-destructive" data-testid="quality-poor">
+    <span className="flex items-center gap-1.5 text-red-600 dark:text-red-400" data-testid="quality-poor">
       <ShieldX className="h-4 w-4" />
       {score.toFixed(1)}
     </span>
