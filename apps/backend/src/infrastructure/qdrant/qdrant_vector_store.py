@@ -1,4 +1,5 @@
 from typing import Any
+from urllib.parse import urlparse
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
@@ -33,14 +34,18 @@ class QdrantVectorStore(VectorStore):
         if prefer_grpc and effective_key and url and not url.startswith("https"):
             effective_key = None
 
-        if url:
+        if url and prefer_grpc:
+            # url mode + prefer_grpc: extract host from URL so qdrant-client
+            # actually connects via gRPC instead of silently using REST.
+            parsed = urlparse(url)
             self._client = AsyncQdrantClient(
-                url=url,
+                host=parsed.hostname,
+                port=parsed.port or 6333,
                 api_key=effective_key,
-                prefer_grpc=prefer_grpc,
+                prefer_grpc=True,
                 grpc_port=grpc_port,
             )
-        else:
+        elif url:
             self._client = AsyncQdrantClient(
                 host=host,
                 port=port,
