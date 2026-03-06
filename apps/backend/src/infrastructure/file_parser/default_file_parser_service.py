@@ -51,7 +51,6 @@ class DefaultFileParserService(FileParserService):
             "application/vnd.openxmlformats-officedocument"
             ".spreadsheetml.sheet": self._parse_xlsx,
             "application/vnd.ms-excel": self._parse_xlsx,
-            "application/sql": self._parse_sql,
         }
 
     def supported_types(self) -> set[str]:
@@ -143,6 +142,3 @@ class DefaultFileParserService(FileParserService):
         from striprtf.striprtf import rtf_to_text
 
         return rtf_to_text(raw_bytes.decode("utf-8"))
-
-    def _parse_sql(self, raw_bytes: bytes) -> str:
-        return raw_bytes.decode("utf-8")

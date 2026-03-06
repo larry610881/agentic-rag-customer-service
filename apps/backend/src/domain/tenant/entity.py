@@ -9,6 +9,9 @@ class Tenant:
     id: TenantId = field(default_factory=TenantId)
     name: str = ""
     plan: str = "starter"
+    allowed_agent_modes: list[str] = field(
+        default_factory=lambda: ["router"]
+    )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

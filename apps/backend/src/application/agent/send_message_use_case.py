@@ -15,6 +15,7 @@ from src.domain.conversation.history_strategy import (
 )
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.shared.exceptions import DomainException
+from src.domain.tenant.repository import TenantRepository
 
 _REFUND_METADATA_MARKER = "__refund_metadata"
 
@@ -36,12 +37,16 @@ class SendMessageUseCase:
         bot_repository: BotRepository | None = None,
         history_strategy: ConversationHistoryStrategy | None = None,
         debug: bool = False,
+        react_agent_service: AgentService | None = None,
+        tenant_repository: TenantRepository | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
         self._bot_repo = bot_repository
         self._history_strategy = history_strategy
         self._debug = debug
+        self._react_agent_service = react_agent_service
+        self._tenant_repo = tenant_repository
 
     async def _load_bot_config(
         self, command: SendMessageCommand
@@ -57,6 +62,7 @@ class SendMessageUseCase:
             "rag_top_k": None,
             "rag_score_threshold": None,
             "show_sources": True,
+            "agent_mode": "router",
         }
         if not (command.bot_id and self._bot_repo):
             return cfg
@@ -92,7 +98,28 @@ class SendMessageUseCase:
         cfg["rag_top_k"] = bot.llm_params.rag_top_k
         cfg["rag_score_threshold"] = bot.llm_params.rag_score_threshold
         cfg["show_sources"] = bot.show_sources
+        cfg["agent_mode"] = bot.agent_mode or "router"
         return cfg
+
+    async def _resolve_agent_service(
+        self, tenant_id: str, agent_mode: str
+    ) -> AgentService:
+        """Select agent service based on bot's agent_mode and tenant permissions."""
+        if agent_mode == "router":
+            return self._agent_service
+
+        # Check tenant allows the requested mode
+        if self._tenant_repo:
+            tenant = await self._tenant_repo.find_by_id(tenant_id)
+            if tenant and agent_mode not in tenant.allowed_agent_modes:
+                # Fallback to router if tenant doesn't allow the mode
+                return self._agent_service
+
+        if self._react_agent_service is None:
+            raise DomainException(
+                "ReAct agent mode is not available"
+            )
+        return self._react_agent_service
 
     async def _resolve_history(
         self,
@@ -129,8 +156,12 @@ class SendMessageUseCase:
             )
         )
 
+        agent = await self._resolve_agent_service(
+            command.tenant_id, bot_cfg["agent_mode"]
+        )
+
         t0 = time.perf_counter()
-        response = await self._agent_service.process_message(
+        response = await agent.process_message(
             tenant_id=command.tenant_id,
             kb_id=bot_cfg["kb_id"],
             user_message=command.message,
@@ -190,13 +221,17 @@ class SendMessageUseCase:
             )
         )
 
+        agent = await self._resolve_agent_service(
+            command.tenant_id, bot_cfg["agent_mode"]
+        )
+
         # Stream from agent service
         full_answer = ""
         tool_calls: list[dict[str, Any]] = []
         sources_list: list[dict[str, Any]] = []
 
         t0 = time.perf_counter()
-        async for event in self._agent_service.process_message_stream(
+        async for event in agent.process_message_stream(
             tenant_id=command.tenant_id,
             kb_id=bot_cfg["kb_id"],
             user_message=command.message,

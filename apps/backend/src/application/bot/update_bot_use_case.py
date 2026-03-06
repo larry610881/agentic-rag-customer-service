@@ -29,6 +29,10 @@ class UpdateBotCommand:
     llm_provider: object = _UNSET
     llm_model: object = _UNSET
     show_sources: object = _UNSET
+    agent_mode: object = _UNSET
+    mcp_server_url: object = _UNSET
+    mcp_enabled_tools: object = _UNSET
+    max_tool_calls: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
 
@@ -49,6 +53,7 @@ class UpdateBotUseCase:
             "name", "description", "is_active",
             "system_prompt",
             "llm_provider", "llm_model", "show_sources",
+            "agent_mode", "mcp_server_url", "max_tool_calls",
             "line_channel_secret", "line_channel_access_token",
         )
         for field in _DIRECT_FIELDS:
@@ -60,6 +65,8 @@ class UpdateBotUseCase:
             bot.knowledge_base_ids = list(command.knowledge_base_ids)  # type: ignore[arg-type]
         if command.enabled_tools is not _UNSET:
             bot.enabled_tools = list(command.enabled_tools)  # type: ignore[arg-type]
+        if command.mcp_enabled_tools is not _UNSET:
+            bot.mcp_enabled_tools = list(command.mcp_enabled_tools)  # type: ignore[arg-type]
 
         # LLM params — collect changed fields, apply once
         _LLM_FIELDS = (

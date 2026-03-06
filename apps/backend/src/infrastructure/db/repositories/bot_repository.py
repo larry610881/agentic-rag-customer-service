@@ -46,6 +46,14 @@ class SQLAlchemyBotRepository(BotRepository):
             llm_provider=model.llm_provider or "",
             llm_model=model.llm_model or "",
             show_sources=model.show_sources,
+            agent_mode=model.agent_mode or "router",
+            mcp_server_url=model.mcp_server_url,
+            mcp_enabled_tools=(
+                list(model.mcp_enabled_tools)
+                if model.mcp_enabled_tools
+                else []
+            ),
+            max_tool_calls=model.max_tool_calls,
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
             created_at=model.created_at,
@@ -95,6 +103,10 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.llm_provider = bot.llm_provider
                 existing.llm_model = bot.llm_model
                 existing.show_sources = bot.show_sources
+                existing.agent_mode = bot.agent_mode
+                existing.mcp_server_url = bot.mcp_server_url
+                existing.mcp_enabled_tools = bot.mcp_enabled_tools
+                existing.max_tool_calls = bot.max_tool_calls
                 existing.line_channel_secret = bot.line_channel_secret
                 existing.line_channel_access_token = bot.line_channel_access_token
                 existing.temperature = bot.llm_params.temperature
@@ -118,6 +130,10 @@ class SQLAlchemyBotRepository(BotRepository):
                     llm_provider=bot.llm_provider,
                     llm_model=bot.llm_model,
                     show_sources=bot.show_sources,
+                    agent_mode=bot.agent_mode,
+                    mcp_server_url=bot.mcp_server_url,
+                    mcp_enabled_tools=bot.mcp_enabled_tools,
+                    max_tool_calls=bot.max_tool_calls,
                     line_channel_secret=bot.line_channel_secret,
                     line_channel_access_token=bot.line_channel_access_token,
                     temperature=bot.llm_params.temperature,

@@ -25,6 +25,10 @@ class CreateBotCommand:
     llm_provider: str = ""
     llm_model: str = ""
     show_sources: bool = True
+    agent_mode: str = "router"
+    mcp_server_url: str | None = None
+    mcp_enabled_tools: list[str] = field(default_factory=list)
+    max_tool_calls: int = 5
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -54,6 +58,10 @@ class CreateBotUseCase:
             llm_provider=command.llm_provider,
             llm_model=command.llm_model,
             show_sources=command.show_sources,
+            agent_mode=command.agent_mode,
+            mcp_server_url=command.mcp_server_url,
+            mcp_enabled_tools=list(command.mcp_enabled_tools),
+            max_tool_calls=command.max_tool_calls,
             line_channel_secret=command.line_channel_secret,
             line_channel_access_token=command.line_channel_access_token,
         )

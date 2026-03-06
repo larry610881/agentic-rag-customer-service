@@ -20,6 +20,9 @@ from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 router = APIRouter(prefix="/api/v1/bots", tags=["bots"])
 
 
+_VALID_AGENT_MODES = {"router", "react"}
+
+
 class CreateBotRequest(BaseModel):
     name: str
     description: str = ""
@@ -37,6 +40,10 @@ class CreateBotRequest(BaseModel):
     llm_provider: str = ""
     llm_model: str = ""
     show_sources: bool = True
+    agent_mode: str = "router"
+    mcp_server_url: str | None = None
+    mcp_enabled_tools: list[str] = []
+    max_tool_calls: int = 5
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -58,6 +65,10 @@ class UpdateBotRequest(BaseModel):
     llm_provider: str | None = None
     llm_model: str | None = None
     show_sources: bool | None = None
+    agent_mode: str | None = None
+    mcp_server_url: str | None = None
+    mcp_enabled_tools: list[str] | None = None
+    max_tool_calls: int | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -82,6 +93,10 @@ class BotResponse(BaseModel):
     llm_provider: str
     llm_model: str
     show_sources: bool
+    agent_mode: str
+    mcp_server_url: str | None
+    mcp_enabled_tools: list[str]
+    max_tool_calls: int
     line_channel_secret: str | None
     line_channel_access_token: str | None
     created_at: str
@@ -109,6 +124,10 @@ def _to_response(bot) -> BotResponse:
         llm_provider=bot.llm_provider,
         llm_model=bot.llm_model,
         show_sources=bot.show_sources,
+        agent_mode=bot.agent_mode,
+        mcp_server_url=bot.mcp_server_url,
+        mcp_enabled_tools=bot.mcp_enabled_tools,
+        max_tool_calls=bot.max_tool_calls,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
         created_at=bot.created_at.isoformat(),
@@ -129,6 +148,11 @@ async def create_bot(
         Provide[Container.create_bot_use_case]
     ),
 ) -> BotResponse:
+    if body.agent_mode not in _VALID_AGENT_MODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"agent_mode must be one of {sorted(_VALID_AGENT_MODES)}",
+        )
     bot = await use_case.execute(
         CreateBotCommand(
             tenant_id=tenant.tenant_id,
@@ -148,6 +172,10 @@ async def create_bot(
             llm_provider=body.llm_provider,
             llm_model=body.llm_model,
             show_sources=body.show_sources,
+            agent_mode=body.agent_mode,
+            mcp_server_url=body.mcp_server_url,
+            mcp_enabled_tools=body.mcp_enabled_tools,
+            max_tool_calls=body.max_tool_calls,
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
         )
@@ -212,6 +240,11 @@ async def update_bot(
         Provide[Container.update_bot_use_case]
     ),
 ) -> BotResponse:
+    if body.agent_mode is not None and body.agent_mode not in _VALID_AGENT_MODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"agent_mode must be one of {sorted(_VALID_AGENT_MODES)}",
+        )
     command = _build_update_command(bot_id, body)
     try:
         bot = await use_case.execute(command)

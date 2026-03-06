@@ -30,6 +30,10 @@ class Bot:
     llm_provider: str = ""
     llm_model: str = ""
     show_sources: bool = True
+    agent_mode: str = "router"
+    mcp_server_url: str | None = None
+    mcp_enabled_tools: list[str] = field(default_factory=list)
+    max_tool_calls: int = 5
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     created_at: datetime = field(

@@ -202,8 +202,8 @@ from src.infrastructure.text_splitter.csv_row_text_splitter_service import (
 from src.infrastructure.text_splitter.recursive_text_splitter_service import (
     RecursiveTextSplitterService,
 )
-from src.infrastructure.text_splitter.sql_dump_text_splitter_service import (
-    SqlDumpTextSplitterService,
+from src.infrastructure.langgraph.react_agent_service import (
+    ReActAgentService,
 )
 
 
@@ -350,12 +350,6 @@ class Container(containers.DeclarativeContainer):
         chunk_overlap=providers.Callable(lambda cfg: cfg.chunk_overlap, config),
     )
 
-    _sql_splitter = providers.Singleton(
-        SqlDumpTextSplitterService,
-        chunk_size=providers.Callable(lambda cfg: cfg.chunk_size, config),
-        chunk_overlap=providers.Callable(lambda cfg: cfg.chunk_overlap, config),
-    )
-
     text_splitter_service = providers.Selector(
         providers.Callable(lambda cfg: cfg.chunk_strategy, config),
         auto=providers.Singleton(
@@ -365,7 +359,6 @@ class Container(containers.DeclarativeContainer):
                 "application/vnd.openxmlformats-officedocument"
                 ".spreadsheetml.sheet": _csv_splitter,
                 "application/vnd.ms-excel": _csv_splitter,
-                "application/sql": _sql_splitter,
             }),
             default=_recursive_splitter,
         ),
@@ -716,6 +709,12 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
+    react_agent_service = providers.Factory(
+        ReActAgentService,
+        llm_service=llm_service,
+        rag_tool=rag_tool,
+    )
+
     # --- Conversation History Strategy ---
 
     history_strategy = providers.Selector(
@@ -774,6 +773,8 @@ class Container(containers.DeclarativeContainer):
         bot_repository=bot_repository,
         history_strategy=history_strategy,
         debug=providers.Callable(lambda cfg: cfg.debug, config),
+        react_agent_service=react_agent_service,
+        tenant_repository=tenant_repository,
     )
 
     # --- Platform: Provider Settings ---

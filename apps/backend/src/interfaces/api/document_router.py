@@ -62,7 +62,6 @@ _EXT_TO_CONTENT_TYPE: dict[str, str] = {
     ".rtf": "application/rtf",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ".xls": "application/vnd.ms-excel",
-    ".sql": "application/sql",
 }
 
 

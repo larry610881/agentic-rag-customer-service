@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, String
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
@@ -14,6 +15,9 @@ class TenantModel(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     plan: Mapped[str] = mapped_column(String(50), nullable=False, default="starter")
+    allowed_agent_modes: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=lambda: ["router"]
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,
