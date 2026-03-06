@@ -118,6 +118,7 @@ class HandleWebhookUseCase:
         for event in events:
             if not event.message_text:
                 continue
+            await self._default_line_service.show_loading(event.user_id)
             result = await self._agent_service.process_message(
                 tenant_id=self._default_tenant_id,
                 kb_id=self._default_kb_id,
@@ -220,6 +221,7 @@ class HandleWebhookUseCase:
         for event in ctx.events:
             if not event.message_text:
                 continue
+            await line_service.show_loading(event.user_id)
             t0 = time.monotonic()
 
             llm_params: dict = {

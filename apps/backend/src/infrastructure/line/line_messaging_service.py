@@ -147,10 +147,7 @@ class HttpxLineMessagingService(LineMessagingService):
         try:
             resp = await self._client.post(
                 "https://api.line.me/v2/bot/chat/loading",
-                headers={
-                    "Authorization": f"Bearer {self._channel_access_token}",
-                    "Content-Type": "application/json",
-                },
+                headers=self._auth_headers(),
                 json={"chatId": user_id, "loadingSeconds": seconds},
             )
             logger.info(
