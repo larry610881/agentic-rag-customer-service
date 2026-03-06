@@ -95,7 +95,6 @@ async def line_webhook(
 async def line_webhook_multitenant(
     bot_short_code: str,
     request: Request,
-    background_tasks: BackgroundTasks,
     x_line_signature: str = Header(...),
     use_case: HandleWebhookUseCase = Depends(
         Provide[Container.handle_webhook_use_case]
@@ -104,18 +103,9 @@ async def line_webhook_multitenant(
     body = await request.body()
     body_text = body.decode("utf-8")
 
-    # Phase 1: bot 查詢 + 驗簽 + reply「查詢中」— 立即執行
-    ctx = await use_case.prepare_and_reply(
+    # 單階段：bot 查詢 + 驗簽 + RAG + LLM + reply（省 Push 配額）
+    await use_case.execute_for_bot(
         bot_short_code, body_text, x_line_signature,
     )
-
-    # Phase 2: RAG + LLM + push — background task
-    if ctx:
-        background_tasks.add_task(
-            safe_background_task,
-            use_case.process_and_push, ctx,
-            task_name="process_and_push",
-            bot_short_code=bot_short_code,
-        )
 
     return {"status": "ok"}

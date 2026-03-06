@@ -172,11 +172,7 @@ class HandleWebhookUseCase:
         body_text: str,
         signature: str,
     ) -> "WebhookContext | None":
-        """Phase 1（在 endpoint handler 直接 await）：
-
-        Bot 查詢 → 驗簽 → 解析事件 → reply「查詢中」。
-        回傳 context 供 Phase 2 背景處理，若無需處理回傳 None。
-        """
+        """Bot 查詢 → 驗簽 → 解析事件。回傳 context 供後續處理。"""
         bot = await self._get_bot_by_short_code_cached(short_code)
         if bot is None:
             raise ValueError(f"Bot not found: {short_code}")
@@ -206,7 +202,7 @@ class HandleWebhookUseCase:
         )
 
     async def process_and_push(self, ctx: "WebhookContext") -> None:
-        """Phase 2（background task）：RAG + LLM → push 回覆。"""
+        """RAG + LLM → reply 回覆（使用 reply token，不消耗 Push 配額）。"""
         bot = ctx.bot
         line_service = ctx.line_service
 
@@ -237,8 +233,8 @@ class HandleWebhookUseCase:
             t1 = time.monotonic()
 
             message_id = str(uuid4())
-            await line_service.push_with_quick_reply(
-                event.user_id, result.answer, message_id
+            await line_service.reply_with_quick_reply(
+                event.reply_token, result.answer, message_id
             )
             t2 = time.monotonic()
 
@@ -249,7 +245,7 @@ class HandleWebhookUseCase:
                 llm_provider=bot.llm_provider or "(default)",
                 llm_model=bot.llm_model or "(default)",
                 process_message_ms=round((t1 - t0) * 1000),
-                push_ms=round((t2 - t1) * 1000),
+                reply_ms=round((t2 - t1) * 1000),
                 total_ms=round((t2 - t0) * 1000),
                 answer_len=len(result.answer),
             )
