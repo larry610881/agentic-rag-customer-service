@@ -14,10 +14,11 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
 
 interface AuthState {
   token: string | null;
+  refreshToken: string | null;
   tenantId: string | null;
   role: string | null;
   tenants: Tenant[];
-  login: (token: string) => void;
+  login: (token: string, refreshToken: string) => void;
   logout: () => void;
   setTenantId: (tenantId: string) => void;
   setTenants: (tenants: Tenant[]) => void;
@@ -27,18 +28,21 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       token: null,
+      refreshToken: null,
       tenantId: null,
       role: null,
       tenants: [],
-      login: (token) => {
+      login: (token, refreshToken) => {
         const payload = decodeJwtPayload(token);
         set({
           token,
+          refreshToken,
           role: (payload.role as string) ?? null,
           tenantId: (payload.tenant_id as string) ?? null,
         });
       },
-      logout: () => set({ token: null, tenantId: null, role: null, tenants: [] }),
+      logout: () =>
+        set({ token: null, refreshToken: null, tenantId: null, role: null, tenants: [] }),
       setTenantId: (tenantId) => set({ tenantId }),
       setTenants: (tenants) => set({ tenants }),
     }),
@@ -46,6 +50,7 @@ export const useAuthStore = create<AuthState>()(
       name: "auth-storage",
       partialize: (state) => ({
         token: state.token,
+        refreshToken: state.refreshToken,
         tenantId: state.tenantId,
         role: state.role,
       }),

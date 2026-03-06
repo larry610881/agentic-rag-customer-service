@@ -31,7 +31,12 @@ class LoginRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 
 class RegisterRequest(BaseModel):
@@ -56,7 +61,8 @@ async def create_token(
 ) -> TokenResponse:
     """Dev-only endpoint: issue a JWT for a given tenant_id."""
     token = jwt_service.create_tenant_token(body.tenant_id)
-    return TokenResponse(access_token=token)
+    refresh = jwt_service.create_tenant_refresh_token(body.tenant_id)
+    return TokenResponse(access_token=token, refresh_token=refresh)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -77,7 +83,9 @@ async def login(
             raise HTTPException(status_code=401, detail="Invalid credentials")
         with trace_step("create_tenant_token"):
             token = jwt_service.create_tenant_token(tenant.id.value)
-        return TokenResponse(access_token=token)
+        with trace_step("create_tenant_refresh_token"):
+            refresh = jwt_service.create_tenant_refresh_token(tenant.id.value)
+        return TokenResponse(access_token=token, refresh_token=refresh)
 
     # Production: account = email, password verified via bcrypt
     command = LoginCommand(email=body.account, password=body.password)
@@ -86,7 +94,10 @@ async def login(
             result = await use_case.execute(command)
     except AuthenticationError:
         raise HTTPException(status_code=401, detail="Invalid credentials") from None
-    return TokenResponse(access_token=result.access_token)
+    return TokenResponse(
+        access_token=result.access_token,
+        refresh_token=result.refresh_token,
+    )
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)
@@ -111,3 +122,37 @@ async def register(
         role=user.role.value,
         tenant_id=user.tenant_id,
     )
+
+
+@router.post("/refresh", response_model=TokenResponse)
+@inject
+async def refresh_token(
+    body: RefreshRequest,
+    jwt_service: JWTService = Depends(Provide[Container.jwt_service]),
+) -> TokenResponse:
+    """Exchange a refresh token for a new access + refresh token pair."""
+    try:
+        payload = jwt_service.decode_token(body.refresh_token)
+    except ValueError:
+        raise HTTPException(
+            status_code=401, detail="Invalid or expired refresh token"
+        ) from None
+
+    token_type = payload.get("type")
+    if token_type not in ("refresh", "tenant_refresh"):
+        raise HTTPException(
+            status_code=401, detail="Invalid token type for refresh"
+        )
+
+    sub = payload.get("sub", "")
+
+    if token_type == "refresh":
+        role = payload.get("role", "")
+        tenant_id = payload.get("tenant_id")
+        access = jwt_service.create_user_token(sub, tenant_id, role)
+        refresh = jwt_service.create_refresh_token(sub, tenant_id, role)
+    else:
+        access = jwt_service.create_tenant_token(sub)
+        refresh = jwt_service.create_tenant_refresh_token(sub)
+
+    return TokenResponse(access_token=access, refresh_token=refresh)

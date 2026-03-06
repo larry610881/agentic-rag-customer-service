@@ -14,7 +14,7 @@ export function useLogin() {
         body: JSON.stringify(data),
       }),
     onSuccess: (data) => {
-      login(data.access_token);
+      login(data.access_token, data.refresh_token);
     },
   });
 }

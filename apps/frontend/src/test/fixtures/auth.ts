@@ -2,6 +2,7 @@ import type { Tenant, TokenResponse } from "@/types/auth";
 
 export const mockTokenResponse: TokenResponse = {
   access_token: "mock-jwt-token-123",
+  refresh_token: "mock-refresh-token-456",
   token_type: "bearer",
 };
 

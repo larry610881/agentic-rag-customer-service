@@ -9,11 +9,13 @@ class JWTService:
         self,
         secret_key: str,
         algorithm: str = "HS256",
-        access_token_expire_minutes: int = 60,
+        access_token_expire_minutes: int = 15,
+        refresh_token_expire_days: int = 7,
     ) -> None:
         self._secret_key = secret_key
         self._algorithm = algorithm
         self._access_token_expire_minutes = access_token_expire_minutes
+        self._refresh_token_expire_days = refresh_token_expire_days
 
     def create_tenant_token(self, tenant_id: str) -> str:
         expire = datetime.now(timezone.utc) + timedelta(
@@ -44,6 +46,38 @@ class JWTService:
         }
         if tenant_id is not None:
             payload["tenant_id"] = tenant_id
+        token: str = jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
+        return token
+
+    def create_refresh_token(
+        self,
+        user_id: str,
+        tenant_id: str | None,
+        role: str,
+    ) -> str:
+        expire = datetime.now(timezone.utc) + timedelta(
+            days=self._refresh_token_expire_days
+        )
+        payload: dict[str, Any] = {
+            "sub": user_id,
+            "role": role,
+            "exp": expire,
+            "type": "refresh",
+        }
+        if tenant_id is not None:
+            payload["tenant_id"] = tenant_id
+        token: str = jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
+        return token
+
+    def create_tenant_refresh_token(self, tenant_id: str) -> str:
+        expire = datetime.now(timezone.utc) + timedelta(
+            days=self._refresh_token_expire_days
+        )
+        payload = {
+            "sub": tenant_id,
+            "exp": expire,
+            "type": "tenant_refresh",
+        }
         token: str = jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
         return token
 

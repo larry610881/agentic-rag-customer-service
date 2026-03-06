@@ -19,12 +19,12 @@ describe("useAuthStore", () => {
   });
 
   it("should set token on login", () => {
-    useAuthStore.getState().login("test-token");
+    useAuthStore.getState().login("test-token", "test-refresh-token");
     expect(useAuthStore.getState().token).toBe("test-token");
   });
 
   it("should clear state on logout", () => {
-    useAuthStore.getState().login("test-token");
+    useAuthStore.getState().login("test-token", "test-refresh-token");
     useAuthStore.getState().setTenantId("tenant-1");
     useAuthStore.getState().setTenants(mockTenants);
     useAuthStore.getState().logout();

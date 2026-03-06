@@ -253,6 +253,9 @@ class Container(containers.DeclarativeContainer):
         access_token_expire_minutes=providers.Callable(
             lambda cfg: cfg.jwt_access_token_expire_minutes, config
         ),
+        refresh_token_expire_days=providers.Callable(
+            lambda cfg: cfg.jwt_refresh_token_expire_days, config
+        ),
     )
 
     password_service = providers.Singleton(

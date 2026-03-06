@@ -39,6 +39,7 @@ def mock_password_service():
 def mock_jwt_service():
     svc = MagicMock()
     svc.create_user_token = MagicMock(return_value="jwt-token-123")
+    svc.create_refresh_token = MagicMock(return_value="refresh-token-456")
     return svc
 
 
@@ -94,7 +95,13 @@ def do_login(context, use_case, mock_password_service, email, password):
 def jwt_returned(context, mock_jwt_service):
     assert context["result"] is not None
     assert context["result"].access_token == "jwt-token-123"
+    assert context["result"].refresh_token == "refresh-token-456"
     mock_jwt_service.create_user_token.assert_called_once_with(
+        user_id="user-001",
+        tenant_id="tenant-001",
+        role="user",
+    )
+    mock_jwt_service.create_refresh_token.assert_called_once_with(
         user_id="user-001",
         tenant_id="tenant-001",
         role="user",

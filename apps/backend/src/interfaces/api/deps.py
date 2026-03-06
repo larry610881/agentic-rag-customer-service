@@ -33,6 +33,12 @@ async def get_current_tenant(
 
     token_type = payload.get("type", "tenant_access")
 
+    if token_type in ("refresh", "tenant_refresh"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh tokens cannot be used to access resources",
+        )
+
     if token_type == "user_access":
         user_id = payload.get("sub")
         tenant_id = payload.get("tenant_id")

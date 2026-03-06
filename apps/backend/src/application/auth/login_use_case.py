@@ -20,6 +20,7 @@ class LoginCommand:
 @dataclass(frozen=True)
 class LoginResult:
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
 
 
@@ -53,4 +54,10 @@ class LoginUseCase:
                 tenant_id=user.tenant_id,
                 role=user.role.value,
             )
-        return LoginResult(access_token=token)
+        with trace_step("create_refresh_token"):
+            refresh = self._jwt_service.create_refresh_token(  # type: ignore[attr-defined]
+                user_id=user.id.value,
+                tenant_id=user.tenant_id,
+                role=user.role.value,
+            )
+        return LoginResult(access_token=token, refresh_token=refresh)
