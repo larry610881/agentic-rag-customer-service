@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [ReAct 補齊 + Audit 記錄 + 可觀測性 — 跨層大規模 Sprint](#react-補齊--audit-記錄--可觀測性--跨層大規模-sprint)
 - [SQL 上傳修復 + 統一 Login API — 跨層 Bug Fix 與測試同步](#sql-上傳修復--統一-login-api--跨層-bug-fix-與測試同步)
 - [LINE Webhook 效能最佳化全鏈路 — gRPC + 連線池 + 並行查詢](#line-webhook-效能最佳化全鏈路--grpc--連線池--並行查詢)
 - [LINE Loading Animation + Webhook 效能最佳化](#line-loading-animation--webhook-效能最佳化)
@@ -43,6 +44,35 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## ReAct 補齊 + Audit 記錄 + 可觀測性 — 跨層大規模 Sprint
+
+**Sprint 來源**：ReAct 品質補齊 + Audit + Observability Sprint (2026-03-08)
+**主題**：PromptAssembler、ToolRegistry、CachedMCPToolLoader、Audit Mode、RAG Tracing、RAG Evaluation、Feedback 閉環、Streaming 事件
+
+### 做得好的地方
+
+- **3 批次平行 Team 策略**：8 個 Agent 分 3 批（3+3+2）平行執行，零衝突 merge。關鍵在於批次劃分按「共同修改熱點」分析，同批次 agent 不碰相同函式
+- **PromptAssembler 分層設計**：BASE_PROMPT + MODE_PROMPT + BOT_PROMPT 三層組裝，單一函式 `assemble(bot_prompt, mode)` 取代散落各處的硬編碼 prompt，未來新增模式只需加一層
+- **CachedMCPToolLoader 雙重檢查鎖**：per-server asyncio.Lock 避免 thundering herd，cache miss 時才建 SSE 連線，TTL=5min 平衡即時性與效能
+- **Audit Mode 向下相容**：`minimal`（預設）不改變現有行為，`full` 才記錄 tool_input/output/iteration，tool_calls 結構自然擴展無需 migration
+- **RAG 三層評估架構**：L1 per-call → L2 end-to-end → L3 agent decisions，每層獨立可選，評估用 LLM 與 Bot LLM 解耦（獨立 provider/model）
+
+### 潛在隱憂
+
+- **ContextVar 生命週期管理** → RAGTracer 用 ContextVar 存 per-request buffer，若 middleware 未正確 init/flush，trace 會洩漏到下個 request。建議加入 middleware 自動管理 → **中**
+- **MCP Cache 一致性** → TTL=5min 內 MCP server 新增/移除工具不會被感知。應提供 `invalidate()` API 或 webhook 通知機制 → **低**
+- **Evaluation LLM 成本** → L2+L3 每次對話額外 2 次 LLM 呼叫，高流量場景成本可觀。eval_schedule 目前只在 Bot config 定義，尚未實作排程執行器 → **中**
+- **52 檔案單一 commit** → 大型 commit 增加 revert 難度，理想情況應按 batch 分 commit → **低**
+
+### 延伸學習
+
+- **Observability Pillar 三支柱**：本次補齊 Tracing (RAGTracer) + Evaluation，尚缺 Metrics (Prometheus 指標)。三支柱缺一不可才能真正做到可觀測性
+  - 若想深入：搜尋「OpenTelemetry Python auto-instrumentation」
+- **RAG Evaluation Framework**：本次手刻 L1/L2/L3 評估。業界有 RAGAS、DeepEval 等框架提供標準化評估維度
+  - 若想深入：搜尋「RAGAS framework context precision recall faithfulness」
 
 ---
 
