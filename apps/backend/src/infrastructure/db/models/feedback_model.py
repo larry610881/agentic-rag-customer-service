@@ -22,6 +22,9 @@ class FeedbackModel(Base):
     rating: Mapped[str] = mapped_column(String(20), nullable=False)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    retrieval_quality: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

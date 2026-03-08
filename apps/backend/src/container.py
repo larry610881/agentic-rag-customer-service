@@ -2,6 +2,9 @@ import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
 from src.application.agent.send_message_use_case import SendMessageUseCase
+from src.application.observability.rag_evaluation_use_case import (
+    RAGEvaluationUseCase,
+)
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.login_use_case import LoginUseCase
 from src.application.auth.register_user_use_case import RegisterUserUseCase
@@ -97,6 +100,7 @@ from src.application.platform.test_provider_connection_use_case import (
 from src.application.platform.update_provider_setting_use_case import (
     UpdateProviderSettingUseCase,
 )
+from src.application.agent.tool_registry import ToolRegistry
 from src.application.rag.query_rag_use_case import QueryRAGUseCase
 from src.application.ratelimit.get_rate_limits_use_case import GetRateLimitsUseCase
 from src.application.ratelimit.seed_defaults_use_case import SeedDefaultsUseCase
@@ -205,6 +209,7 @@ from src.infrastructure.text_splitter.recursive_text_splitter_service import (
 from src.infrastructure.langgraph.react_agent_service import (
     ReActAgentService,
 )
+from src.infrastructure.mcp.cached_tool_loader import CachedMCPToolLoader
 
 
 class Container(containers.DeclarativeContainer):
@@ -225,6 +230,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.bot_router",
             "src.interfaces.api.provider_setting_router",
             "src.interfaces.api.admin_router",
+            "src.interfaces.api.mcp_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -677,6 +683,10 @@ class Container(containers.DeclarativeContainer):
         score_threshold=config.provided.rag_score_threshold,
     )
 
+    tool_registry = providers.Singleton(ToolRegistry)
+
+    cached_tool_loader = providers.Singleton(CachedMCPToolLoader)
+
     # --- Agent Service ---
 
     sentiment_service = providers.Singleton(KeywordSentimentService)
@@ -713,6 +723,8 @@ class Container(containers.DeclarativeContainer):
         ReActAgentService,
         llm_service=llm_service,
         rag_tool=rag_tool,
+        tool_registry=tool_registry,
+        cached_tool_loader=cached_tool_loader,
     )
 
     # --- Conversation History Strategy ---
@@ -818,6 +830,13 @@ class Container(containers.DeclarativeContainer):
         CheckProviderConnectionUseCase,
         provider_setting_repository=provider_setting_repository,
         encryption_service=encryption_service,
+    )
+
+    # --- Observability: RAG Evaluation ---
+
+    rag_evaluation_use_case = providers.Factory(
+        RAGEvaluationUseCase,
+        llm_service=llm_service,
     )
 
     # --- LINE Bot ---

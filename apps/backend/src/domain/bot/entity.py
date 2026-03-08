@@ -34,6 +34,10 @@ class Bot:
     mcp_server_url: str | None = None
     mcp_enabled_tools: list[str] = field(default_factory=list)
     max_tool_calls: int = 5
+    audit_mode: str = "minimal"  # "minimal" | "full"
+    eval_provider: str = ""  # Eval LLM provider (independent from bot LLM)
+    eval_model: str = ""  # Eval LLM model
+    eval_depth: str = "L1"  # "L1" | "L1+L2" | "L1+L2+L3"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     created_at: datetime = field(

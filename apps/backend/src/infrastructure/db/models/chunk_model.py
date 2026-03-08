@@ -23,6 +23,9 @@ class ChunkModel(Base):
     metadata_: Mapped[dict] = mapped_column(
         "metadata", JSON, nullable=False, default=dict
     )
+    quality_flag: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )
 
     __table_args__ = (
         Index("ix_chunks_document_id", "document_id"),

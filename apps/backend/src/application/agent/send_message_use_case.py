@@ -99,6 +99,10 @@ class SendMessageUseCase:
         cfg["rag_score_threshold"] = bot.llm_params.rag_score_threshold
         cfg["show_sources"] = bot.show_sources
         cfg["agent_mode"] = bot.agent_mode or "router"
+        cfg["mcp_server_url"] = bot.mcp_server_url
+        cfg["mcp_enabled_tools"] = bot.mcp_enabled_tools
+        cfg["max_tool_calls"] = bot.max_tool_calls or 5
+        cfg["audit_mode"] = getattr(bot, "audit_mode", "minimal")
         return cfg
 
     async def _resolve_agent_service(
@@ -175,6 +179,10 @@ class SendMessageUseCase:
             enabled_tools=bot_cfg["enabled_tools"],
             rag_top_k=bot_cfg["rag_top_k"],
             rag_score_threshold=bot_cfg["rag_score_threshold"],
+            mcp_server_url=bot_cfg.get("mcp_server_url"),
+            mcp_enabled_tools=bot_cfg.get("mcp_enabled_tools"),
+            max_tool_calls=bot_cfg.get("max_tool_calls", 5),
+            audit_mode=bot_cfg.get("audit_mode", "minimal"),
         )
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
@@ -245,6 +253,10 @@ class SendMessageUseCase:
             enabled_tools=bot_cfg["enabled_tools"],
             rag_top_k=bot_cfg["rag_top_k"],
             rag_score_threshold=bot_cfg["rag_score_threshold"],
+            mcp_server_url=bot_cfg.get("mcp_server_url"),
+            mcp_enabled_tools=bot_cfg.get("mcp_enabled_tools"),
+            max_tool_calls=bot_cfg.get("max_tool_calls", 5),
+            audit_mode=bot_cfg.get("audit_mode", "minimal"),
         ):
             if event["type"] == "token":
                 full_answer += event["content"]

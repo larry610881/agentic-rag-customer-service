@@ -7,6 +7,7 @@ from typing import Any, TypedDict
 import structlog
 from langgraph.graph import END, StateGraph
 
+from src.application.agent.prompt_assembler import assemble as assemble_prompt
 from src.domain.rag.services import LLMService
 from src.infrastructure.langgraph.tools import RAGQueryTool
 
@@ -20,7 +21,7 @@ _GREETING_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-_TOOL_DESCRIPTIONS = {
+_DEFAULT_TOOL_DESCRIPTIONS = {
     "rag_query": (
         "rag_query: 查詢知識庫中的資料"
         "（任何可能在知識庫中有答案的問題都應使用此工具）"
@@ -34,10 +35,14 @@ _ROUTER_PROMPT_HEADER = (
 )
 
 
-def _build_router_prompt(enabled_tools: list[str] | None = None) -> str:
+def _build_router_prompt(
+    enabled_tools: list[str] | None = None,
+    tool_descriptions: dict[str, str] | None = None,
+) -> str:
     """根據啟用的工具動態產生路由 prompt"""
-    tools = enabled_tools if enabled_tools else list(_TOOL_DESCRIPTIONS.keys())
-    lines = [f"- {_TOOL_DESCRIPTIONS[t]}" for t in tools if t in _TOOL_DESCRIPTIONS]
+    descs = tool_descriptions or _DEFAULT_TOOL_DESCRIPTIONS
+    tools = enabled_tools if enabled_tools else list(descs.keys())
+    lines = [f"- {descs[t]}" for t in tools if t in descs]
     lines.append("- direct: 直接回答（簡單寒暄、無需工具）")
     return _ROUTER_PROMPT_HEADER + "\n".join(lines)
 
@@ -45,12 +50,6 @@ def _build_router_prompt(enabled_tools: list[str] | None = None) -> str:
 # 預設全工具 prompt（向後相容）
 ROUTER_SYSTEM_PROMPT = _build_router_prompt()
 
-RESPOND_SYSTEM_PROMPT = (
-    "你是一個專業的客服助手，用友善的語氣與用戶對話。\n"
-    "如果有提供工具結果，請根據工具結果回答用戶的問題，確保準確、完整。\n"
-    "如果沒有工具結果，或工具結果與用戶問題無關，請自然地回應用戶（例如打招呼、閒聊）。\n"
-    "不要強行引用不相關的知識庫內容。"
-)
 
 _VALID_TOOLS = {"rag_query"}
 
@@ -129,6 +128,7 @@ def _merge_usage(
 
 def _make_router_node(
     llm_service: LLMService,
+    tool_descriptions: dict[str, str] | None = None,
 ):
     """Factory for router node — captures llm_service."""
 
@@ -162,7 +162,7 @@ def _make_router_node(
             }
 
         return await _llm_route(
-            llm_service, state, msg, bot_tools
+            llm_service, state, msg, bot_tools, tool_descriptions
         )
 
     return router_node
@@ -173,10 +173,12 @@ async def _llm_route(
     state: AgentState,
     msg: str,
     bot_tools: list[str],
+    tool_descriptions: dict[str, str] | None = None,
 ) -> dict:
     """LLM intent classification sub-routine."""
     router_prompt = _build_router_prompt(
-        bot_tools if bot_tools else None
+        bot_tools if bot_tools else None,
+        tool_descriptions,
     )
     llm_kw = _extract_llm_kwargs(state)
     router_ctx = state.get("router_context") or ""
@@ -278,11 +280,7 @@ def _make_respond_node(llm_service: LLMService):
             parts.append(f"[工具結果]\n{tool_json}")
         context = "\n\n".join(parts)
         custom_prompt = state.get("system_prompt") or ""
-        sys_prompt = (
-            custom_prompt
-            if custom_prompt.strip()
-            else RESPOND_SYSTEM_PROMPT
-        )
+        sys_prompt = assemble_prompt(custom_prompt, "router")
         llm_kw = _extract_llm_kwargs(state)
         logger.info(
             "agent.respond.context",
@@ -318,15 +316,17 @@ def build_agent_graph(
     rag_tool: RAGQueryTool,
     *,
     include_respond: bool = True,
+    tool_descriptions: dict[str, str] | None = None,
 ) -> StateGraph:
     """建構 Agent StateGraph
 
     Args:
         include_respond: True=完整圖(含回答節點), False=僅路由+工具(streaming用)
+        tool_descriptions: 自定工具描述（來自 ToolRegistry），None 時用預設
     """
     graph = StateGraph(AgentState)
 
-    graph.add_node("router", _make_router_node(llm_service))
+    graph.add_node("router", _make_router_node(llm_service, tool_descriptions))
     graph.add_node("rag_tool", _make_rag_tool_node(rag_tool))
 
     graph.set_entry_point("router")

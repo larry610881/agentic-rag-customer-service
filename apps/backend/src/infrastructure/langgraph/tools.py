@@ -1,9 +1,11 @@
 """LangGraph Tool wrappers — 包裝 domain 工具服務為 LangGraph tools"""
 
+import time
 from typing import Any
 
 from src.application.rag.query_rag_use_case import QueryRAGCommand, QueryRAGUseCase
 from src.domain.shared.exceptions import NoRelevantKnowledgeError
+from src.infrastructure.observability.rag_tracer import RAGTracer
 
 
 class RAGQueryTool:
@@ -17,10 +19,12 @@ class RAGQueryTool:
         query_rag_use_case: QueryRAGUseCase,
         top_k: int = 5,
         score_threshold: float = 0.3,
+        tracer: RAGTracer | None = None,
     ) -> None:
         self._use_case = query_rag_use_case
         self._top_k = top_k
         self._score_threshold = score_threshold
+        self._tracer = tracer
 
     async def invoke(
         self,
@@ -32,6 +36,12 @@ class RAGQueryTool:
         top_k: int | None = None,
         score_threshold: float | None = None,
     ) -> dict[str, Any]:
+        t0 = time.perf_counter()
+        trace = None
+
+        if self._tracer:
+            trace = self._tracer.start_trace(query, tenant_id)
+
         try:
             result = await self._use_case.retrieve(
                 QueryRAGCommand(
@@ -47,12 +57,25 @@ class RAGQueryTool:
                     ),
                 )
             )
+
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            if trace:
+                trace.add_step(
+                    "retrieve", elapsed_ms, chunk_count=len(result.chunks)
+                )
+                trace.chunk_count = len(result.chunks)
+                trace.finish(elapsed_ms)
+
             return {
                 "success": True,
                 "context": "\n---\n".join(result.chunks),
                 "sources": [s.to_dict() for s in result.sources],
             }
         except NoRelevantKnowledgeError:
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            if trace:
+                trace.add_step("retrieve", elapsed_ms, chunk_count=0)
+                trace.finish(elapsed_ms)
             return {
                 "success": True,
                 "context": "",

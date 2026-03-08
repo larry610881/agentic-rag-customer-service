@@ -44,6 +44,13 @@ class MetaSupervisorService(AgentService):
         metadata: dict[str, Any] | None = None,
         history_context: str = "",
         router_context: str = "",
+        enabled_tools: list[str] | None = None,
+        rag_top_k: int | None = None,
+        rag_score_threshold: float | None = None,
+        mcp_server_url: str | None = None,
+        mcp_enabled_tools: list[str] | None = None,
+        max_tool_calls: int = 5,
+        audit_mode: str = "minimal",
     ) -> AgentResponse:
         sentiment_result = None
         if self._sentiment_service:
@@ -119,6 +126,10 @@ class MetaSupervisorService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
+        mcp_server_url: str | None = None,
+        mcp_enabled_tools: list[str] | None = None,
+        max_tool_calls: int = 5,
+        audit_mode: str = "minimal",
     ) -> AsyncIterator[dict[str, Any]]:
         response = await self.process_message(
             tenant_id, kb_id, user_message, history,

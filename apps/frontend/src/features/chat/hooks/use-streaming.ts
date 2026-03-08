@@ -7,13 +7,33 @@ import type { Source, ToolCallInfo } from "@/types/chat";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-const TOOL_HINTS: Record<string, string> = {
-  rag_query: "\u{1f50d} 正在查詢知識庫",
+const getToolHint = (toolName: string): string => {
+  const hints: Record<string, string> = {
+    rag_query: "\u{1f50d} 正在查詢知識庫",
+  };
+  return hints[toolName] || `\u{1f527} 正在執行 ${toolName}`;
 };
 
-const STATUS_HINTS: Record<string, string> = {
-  rag_done: "\u2705 知識庫查詢完畢！",
-  llm_generating: "\u270d\ufe0f 小助手努力打字中...",
+const getStatusHint = (status: string): string => {
+  if (status.endsWith("_executing")) {
+    const toolName = status.replace("_executing", "");
+    const toolLabels: Record<string, string> = {
+      rag_query: "知識庫",
+    };
+    const label = toolLabels[toolName] || toolName;
+    return `\u{1f50d} 正在執行 ${label}...`;
+  }
+  if (status.endsWith("_done")) {
+    const toolName = status.replace("_done", "");
+    const toolLabels: Record<string, string> = {
+      rag_query: "知識庫查詢",
+    };
+    const label = toolLabels[toolName] || toolName;
+    return `\u2705 ${label} 完成！`;
+  }
+  // Legacy status hints
+  if (status === "llm_generating") return "\u270d\ufe0f 小助手努力打字中...";
+  return "";
 };
 
 export function useStreaming() {
@@ -54,14 +74,11 @@ export function useStreaming() {
           case "tool_calls": {
             toolCalls = event.tool_calls as ToolCallInfo[];
             const toolName = toolCalls[0]?.tool_name || "";
-            const hint = TOOL_HINTS[toolName];
-            if (hint) {
-              setToolHint(hint);
-            }
+            setToolHint(getToolHint(toolName));
             break;
           }
           case "status": {
-            const statusHint = STATUS_HINTS[event.status as string];
+            const statusHint = getStatusHint(event.status as string);
             if (statusHint) {
               setToolHint(statusHint);
             }

@@ -26,6 +26,10 @@ class CreateBotCommand:
     llm_model: str = ""
     show_sources: bool = True
     agent_mode: str = "router"
+    audit_mode: str = "minimal"
+    eval_provider: str = ""
+    eval_model: str = ""
+    eval_depth: str = "L1"
     mcp_server_url: str | None = None
     mcp_enabled_tools: list[str] = field(default_factory=list)
     max_tool_calls: int = 5
@@ -59,6 +63,10 @@ class CreateBotUseCase:
             llm_model=command.llm_model,
             show_sources=command.show_sources,
             agent_mode=command.agent_mode,
+            audit_mode=command.audit_mode,
+            eval_provider=command.eval_provider,
+            eval_model=command.eval_model,
+            eval_depth=command.eval_depth,
             mcp_server_url=command.mcp_server_url,
             mcp_enabled_tools=list(command.mcp_enabled_tools),
             max_tool_calls=command.max_tool_calls,

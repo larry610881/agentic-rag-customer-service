@@ -39,6 +39,7 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
             rating=Rating(model.rating),
             comment=model.comment,
             tags=json.loads(model.tags),
+            retrieval_quality=model.retrieval_quality,
             created_at=model.created_at,
         )
 
@@ -54,6 +55,7 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
                 rating=feedback.rating.value,
                 comment=feedback.comment,
                 tags=json.dumps(feedback.tags, ensure_ascii=False),
+                retrieval_quality=feedback.retrieval_quality,
                 created_at=feedback.created_at,
             )
             self._session.add(model)
@@ -70,6 +72,7 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
             model.rating = feedback.rating.value
             model.comment = feedback.comment
             model.tags = json.dumps(feedback.tags, ensure_ascii=False)
+            model.retrieval_quality = feedback.retrieval_quality
 
     async def find_by_message_id(self, message_id: str) -> Feedback | None:
         stmt = select(FeedbackModel).where(

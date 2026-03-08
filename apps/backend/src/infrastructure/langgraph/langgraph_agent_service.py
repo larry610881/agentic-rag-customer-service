@@ -12,8 +12,8 @@ from src.domain.agent.services import AgentService
 from src.domain.conversation.entity import Message
 from src.domain.rag.services import LLMService
 from src.domain.rag.value_objects import Source, TokenUsage
+from src.application.agent.prompt_assembler import assemble as assemble_prompt
 from src.infrastructure.langgraph.agent_graph import (
-    RESPOND_SYSTEM_PROMPT,
     _extract_llm_kwargs,
     build_agent_graph,
 )
@@ -93,6 +93,10 @@ class LangGraphAgentService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
+        mcp_server_url: str | None = None,
+        mcp_enabled_tools: list[str] | None = None,
+        max_tool_calls: int = 5,
+        audit_mode: str = "minimal",
     ) -> AgentResponse:
         _, compiled, _ = await self._resolve_llm(llm_params)
 
@@ -151,11 +155,21 @@ class LangGraphAgentService(AgentService):
             else None
         )
 
+        tc_entry: dict[str, Any] = {
+            "tool_name": tool_name,
+            "reasoning": tool_reasoning,
+        }
+        if audit_mode == "full":
+            tc_entry["tool_input"] = user_message
+            tool_result_raw = result.get("tool_result", {})
+            if isinstance(tool_result_raw, dict):
+                tc_entry["tool_output"] = str(
+                    tool_result_raw.get("context", "")
+                )[:500]
+
         return AgentResponse(
             answer=answer,
-            tool_calls=[
-                {"tool_name": tool_name, "reasoning": tool_reasoning},
-            ],
+            tool_calls=[tc_entry],
             sources=sources,
             conversation_id=str(uuid4()),
             usage=usage,
@@ -237,11 +251,7 @@ class LangGraphAgentService(AgentService):
             ],
         }
         custom_prompt = system_prompt or ""
-        sys_prompt = (
-            custom_prompt
-            if custom_prompt.strip()
-            else RESPOND_SYSTEM_PROMPT
-        )
+        sys_prompt = assemble_prompt(custom_prompt, "router")
         llm_kw: dict[str, Any] = {}
         params = llm_params or {}
         for k in ("temperature", "max_tokens", "frequency_penalty"):
@@ -317,6 +327,10 @@ class LangGraphAgentService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
+        mcp_server_url: str | None = None,
+        mcp_enabled_tools: list[str] | None = None,
+        max_tool_calls: int = 5,
+        audit_mode: str = "minimal",
     ) -> AsyncIterator[dict[str, Any]]:
         """Streaming: route → tool → stream LLM response."""
         llm_service, _, compiled_routing = await self._resolve_llm(
@@ -383,11 +397,7 @@ class LangGraphAgentService(AgentService):
             history_context, tool_result,
         )
         custom_prompt = system_prompt or ""
-        sys_prompt = (
-            custom_prompt
-            if custom_prompt.strip()
-            else RESPOND_SYSTEM_PROMPT
-        )
+        sys_prompt = assemble_prompt(custom_prompt, "router")
         llm_kw = _extract_llm_kwargs(initial_state)
 
         logger.info(

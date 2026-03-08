@@ -54,6 +54,10 @@ class SQLAlchemyBotRepository(BotRepository):
                 else []
             ),
             max_tool_calls=model.max_tool_calls,
+            audit_mode=model.audit_mode or "minimal",
+            eval_provider=model.eval_provider or "",
+            eval_model=model.eval_model or "",
+            eval_depth=model.eval_depth or "L1",
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
             created_at=model.created_at,
@@ -107,6 +111,10 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.mcp_server_url = bot.mcp_server_url
                 existing.mcp_enabled_tools = bot.mcp_enabled_tools
                 existing.max_tool_calls = bot.max_tool_calls
+                existing.audit_mode = bot.audit_mode
+                existing.eval_provider = bot.eval_provider
+                existing.eval_model = bot.eval_model
+                existing.eval_depth = bot.eval_depth
                 existing.line_channel_secret = bot.line_channel_secret
                 existing.line_channel_access_token = bot.line_channel_access_token
                 existing.temperature = bot.llm_params.temperature
@@ -134,6 +142,10 @@ class SQLAlchemyBotRepository(BotRepository):
                     mcp_server_url=bot.mcp_server_url,
                     mcp_enabled_tools=bot.mcp_enabled_tools,
                     max_tool_calls=bot.max_tool_calls,
+                    audit_mode=bot.audit_mode,
+                    eval_provider=bot.eval_provider,
+                    eval_model=bot.eval_model,
+                    eval_depth=bot.eval_depth,
                     line_channel_secret=bot.line_channel_secret,
                     line_channel_access_token=bot.line_channel_access_token,
                     temperature=bot.llm_params.temperature,

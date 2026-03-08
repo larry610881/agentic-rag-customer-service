@@ -3,7 +3,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +33,8 @@ import { PROVIDER_LABELS } from "@/types/provider-setting";
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import type { Bot, UpdateBotRequest } from "@/types/bot";
+import { useDiscoverMcpTools } from "@/hooks/queries/use-mcp";
+import type { McpToolInfo } from "@/types/mcp";
 
 const AVAILABLE_TOOLS = [
   { value: "rag_query", label: "知識庫查詢" },
@@ -55,6 +57,14 @@ const botFormSchema = z.object({
   rag_top_k: z.coerce.number().int().min(1).max(20),
   rag_score_threshold: z.coerce.number().min(0).max(1),
   show_sources: z.boolean(),
+  agent_mode: z.enum(["router", "react"]),
+  audit_mode: z.enum(["minimal", "full"]),
+  eval_provider: z.string().optional(),
+  eval_model: z.string().optional(),
+  eval_depth: z.enum(["L1", "L1+L2", "L1+L2+L3"]),
+  mcp_server_url: z.string().nullable().optional(),
+  mcp_enabled_tools: z.array(z.string()),
+  max_tool_calls: z.coerce.number().int().min(1).max(20),
   line_channel_secret: z.string().nullable().optional(),
   line_channel_access_token: z.string().nullable().optional(),
 });
@@ -137,12 +147,44 @@ export function BotDetailForm({
       rag_top_k: bot.rag_top_k,
       rag_score_threshold: bot.rag_score_threshold,
       show_sources: bot.show_sources,
+      agent_mode: bot.agent_mode ?? "router",
+      audit_mode: bot.audit_mode ?? "minimal",
+      eval_provider: bot.eval_provider ?? "",
+      eval_model: bot.eval_model ?? "",
+      eval_depth: bot.eval_depth ?? "L1",
+      mcp_server_url: bot.mcp_server_url,
+      mcp_enabled_tools: bot.mcp_enabled_tools ?? [],
+      max_tool_calls: bot.max_tool_calls ?? 5,
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     },
   });
 
   const enabledTools = watch("enabled_tools") ?? [];
+  const agentMode = watch("agent_mode");
+  const mcpServerUrl = watch("mcp_server_url");
+
+  // MCP Discovery state
+  const [discoveredTools, setDiscoveredTools] = useState<McpToolInfo[]>([]);
+  const discoverMcp = useDiscoverMcpTools();
+
+  const handleDiscoverTools = useCallback(async () => {
+    if (!mcpServerUrl) {
+      toast.error("請先輸入 MCP Server URL");
+      return;
+    }
+    try {
+      const result = await discoverMcp.mutateAsync(mcpServerUrl);
+      setDiscoveredTools(result.tools);
+      // Select all tools by default
+      const allToolNames = result.tools.map((t) => t.name);
+      setValue("mcp_enabled_tools", allToolNames);
+      toast.success(`發現 ${result.tools.length} 個 Tools（${result.server_name}）`);
+    } catch {
+      toast.error("無法連線 MCP Server");
+      setDiscoveredTools([]);
+    }
+  }, [mcpServerUrl, discoverMcp, setValue]);
 
   useEffect(() => {
     reset({
@@ -162,24 +204,25 @@ export function BotDetailForm({
       rag_top_k: bot.rag_top_k,
       rag_score_threshold: bot.rag_score_threshold,
       show_sources: bot.show_sources,
+      agent_mode: bot.agent_mode ?? "router",
+      audit_mode: bot.audit_mode ?? "minimal",
+      eval_provider: bot.eval_provider ?? "",
+      eval_model: bot.eval_model ?? "",
+      eval_depth: bot.eval_depth ?? "L1",
+      mcp_server_url: bot.mcp_server_url,
+      mcp_enabled_tools: bot.mcp_enabled_tools ?? [],
+      max_tool_calls: bot.max_tool_calls ?? 5,
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     });
   }, [bot, reset]);
 
   const onSubmit = async (data: BotFormValues) => {
-    // Validation: active bot must have at least one tool enabled
-    if (data.is_active && data.enabled_tools.length === 0) {
-      toast.error("啟用中的機器人至少需要選擇一個工具");
-      setActiveTab(TAB_KEYS.KNOWLEDGE);
-      return;
-    }
-    // Validation: rag_query tool requires at least one knowledge base
-    if (
-      data.enabled_tools.includes("rag_query") &&
-      data.knowledge_base_ids.length === 0
-    ) {
-      toast.error("已啟用「知識庫查詢」工具，請至少綁定一個知識庫");
+    // rag_query is always enabled
+    data.enabled_tools = ["rag_query"];
+    // Validation: rag_query requires at least one knowledge base
+    if (data.knowledge_base_ids.length === 0) {
+      toast.error("請至少綁定一個知識庫");
       setActiveTab(TAB_KEYS.KNOWLEDGE);
       return;
     }
@@ -239,7 +282,7 @@ export function BotDetailForm({
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full">
           <TabsTrigger value={TAB_KEYS.KNOWLEDGE} className="flex-1">
-            RAG 知識庫
+            RAG / Agent
           </TabsTrigger>
           <TabsTrigger value={TAB_KEYS.PROMPT} className="flex-1">
             系統提示詞
@@ -254,6 +297,121 @@ export function BotDetailForm({
 
         {/* Tab 1: RAG 知識庫 */}
         <TabsContent value={TAB_KEYS.KNOWLEDGE} className="flex flex-col gap-6 pt-4">
+          {/* Agent 模式 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">Agent 模式</h3>
+            <p className="text-sm text-muted-foreground">
+              Router 使用純 RAG 查詢；ReAct 額外支援 MCP Tools（如資料庫查詢）。
+            </p>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-agent-mode">模式</Label>
+              <Controller
+                name="agent_mode"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="bot-agent-mode" className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="router">Router（純 RAG）</SelectItem>
+                      <SelectItem value="react">ReAct（RAG + Tools）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+          </section>
+
+          {/* Audit 模式 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">Audit 記錄模式</h3>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-audit-mode">記錄模式</Label>
+              <Controller
+                name="audit_mode"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="bot-audit-mode" className="w-64">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="minimal">Minimal（基本記錄）</SelectItem>
+                      <SelectItem value="full">Full（完整記錄含 input/output）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                Full 模式會記錄工具的輸入參數和輸出結果，適合除錯和品質分析
+              </p>
+            </div>
+          </section>
+
+          {/* RAG Evaluation 設定 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">RAG 品質評估</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-eval-provider">評估用 Provider</Label>
+                <Input
+                  id="bot-eval-provider"
+                  {...register("eval_provider")}
+                  placeholder="例: openai"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-eval-model">評估用 Model</Label>
+                <Input
+                  id="bot-eval-model"
+                  {...register("eval_model")}
+                  placeholder="例: gpt-4o-mini"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-eval-depth">評估深度</Label>
+              <Controller
+                name="eval_depth"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="bot-eval-depth">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="L1">L1 — 檢索品質（Context Precision/Recall）</SelectItem>
+                      <SelectItem value="L1+L2">L1+L2 — 加上回答品質（Faithfulness/Relevancy）</SelectItem>
+                      <SelectItem value="L1+L2+L3">L1+L2+L3 — 加上 Agent 決策品質（僅 ReAct）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+          </section>
+
+          {/* 啟用工具 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">啟用工具</h3>
+            <div className="flex flex-col gap-2">
+              {AVAILABLE_TOOLS.map((tool) => (
+                <label
+                  key={tool.value}
+                  className="flex items-center gap-2 text-sm text-muted-foreground"
+                >
+                  <input
+                    type="checkbox"
+                    checked
+                    disabled
+                    className="rounded border-input"
+                  />
+                  {tool.label}（預設啟用）
+                </label>
+              ))}
+            </div>
+          </section>
+
           {/* 知識庫綁定 */}
           <section className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold">知識庫</h3>
@@ -297,44 +455,6 @@ export function BotDetailForm({
             </div>
           </section>
 
-          {/* 啟用工具 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">啟用工具</h3>
-            <p className="text-sm text-muted-foreground">
-              選擇此機器人可使用的工具。若未選擇任何工具，機器人將直接透過 LLM 回覆。
-            </p>
-            <Controller
-              name="enabled_tools"
-              control={control}
-              render={({ field }) => (
-                <div className="flex flex-col gap-2">
-                  {AVAILABLE_TOOLS.map((tool) => (
-                    <label
-                      key={tool.value}
-                      className="flex items-center gap-2 text-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={field.value.includes(tool.value)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            field.onChange([...field.value, tool.value]);
-                          } else {
-                            field.onChange(
-                              field.value.filter((v) => v !== tool.value),
-                            );
-                          }
-                        }}
-                        className="rounded border-input"
-                      />
-                      {tool.label}
-                    </label>
-                  ))}
-                </div>
-              )}
-            />
-          </section>
-
           {/* RAG 參數 (conditional) */}
           {enabledTools.includes("rag_query") && (
             <section className="flex flex-col gap-4">
@@ -376,6 +496,106 @@ export function BotDetailForm({
                     </p>
                   )}
                 </div>
+              </div>
+            </section>
+          )}
+
+          {/* MCP 設定 (ReAct 模式才顯示) */}
+          {agentMode === "react" && (
+            <section className="flex flex-col gap-4">
+              <h3 className="text-lg font-semibold">MCP 設定</h3>
+              <p className="text-sm text-muted-foreground">
+                設定 ReAct 模式的 MCP Server 連線，探索可用的 Tools。
+              </p>
+
+              {/* URL + Discover Button */}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-mcp-server-url">MCP Server URL</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="bot-mcp-server-url"
+                    {...register("mcp_server_url")}
+                    placeholder="例如：http://localhost:9000/sse"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleDiscoverTools}
+                    disabled={discoverMcp.isPending || !mcpServerUrl}
+                  >
+                    {discoverMcp.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Search className="mr-2 h-4 w-4" />
+                    )}
+                    探索 Tools
+                  </Button>
+                </div>
+              </div>
+
+              {/* Discovered Tools Checkbox List */}
+              {discoveredTools.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <Label>可用 Tools</Label>
+                  <Controller
+                    name="mcp_enabled_tools"
+                    control={control}
+                    render={({ field }) => (
+                      <div className="flex flex-col gap-2 rounded-md border p-3">
+                        {discoveredTools.map((tool) => (
+                          <label
+                            key={tool.name}
+                            className="flex items-start gap-2 text-sm"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={field.value.includes(tool.name)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  field.onChange([...field.value, tool.name]);
+                                } else {
+                                  field.onChange(
+                                    field.value.filter((n) => n !== tool.name),
+                                  );
+                                }
+                              }}
+                              className="mt-0.5 rounded border-input"
+                            />
+                            <div>
+                              <span className="font-mono text-xs font-medium">
+                                {tool.name}
+                              </span>
+                              <span className="ml-2 text-muted-foreground">
+                                {tool.description.length > 60
+                                  ? tool.description.slice(0, 60) + "..."
+                                  : tool.description}
+                              </span>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  />
+                </div>
+              )}
+
+              {/* Max Tool Calls */}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-max-tool-calls">最大 Tool 呼叫次數（1-20）</Label>
+                <Input
+                  id="bot-max-tool-calls"
+                  type="number"
+                  min="1"
+                  max="20"
+                  className="w-32"
+                  {...register("max_tool_calls")}
+                />
+                {errors.max_tool_calls && (
+                  <p className="text-sm text-destructive">
+                    {errors.max_tool_calls.message}
+                  </p>
+                )}
               </div>
             </section>
           )}

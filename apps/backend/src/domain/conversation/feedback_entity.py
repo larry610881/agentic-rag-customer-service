@@ -21,6 +21,7 @@ class Feedback:
     rating: Rating
     comment: str | None
     tags: list[str] = field(default_factory=list)
+    retrieval_quality: str | None = None  # None | "low" | "medium" | "high"
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

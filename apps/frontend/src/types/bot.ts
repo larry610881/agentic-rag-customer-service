@@ -18,6 +18,14 @@ export interface Bot {
   llm_provider: string;
   llm_model: string;
   show_sources: boolean;
+  agent_mode: "router" | "react";
+  audit_mode: "minimal" | "full";
+  eval_provider: string;
+  eval_model: string;
+  eval_depth: "L1" | "L1+L2" | "L1+L2+L3";
+  mcp_server_url: string | null;
+  mcp_enabled_tools: string[];
+  max_tool_calls: number;
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
   created_at: string;
@@ -41,6 +49,14 @@ export interface CreateBotRequest {
   llm_provider?: string;
   llm_model?: string;
   show_sources?: boolean;
+  agent_mode?: "router" | "react";
+  audit_mode?: "minimal" | "full";
+  eval_provider?: string;
+  eval_model?: string;
+  eval_depth?: "L1" | "L1+L2" | "L1+L2+L3";
+  mcp_server_url?: string | null;
+  mcp_enabled_tools?: string[];
+  max_tool_calls?: number;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }
@@ -62,6 +78,14 @@ export interface UpdateBotRequest {
   llm_provider?: string;
   llm_model?: string;
   show_sources?: boolean;
+  agent_mode?: "router" | "react";
+  audit_mode?: "minimal" | "full";
+  eval_provider?: string;
+  eval_model?: string;
+  eval_depth?: "L1" | "L1+L2" | "L1+L2+L3";
+  mcp_server_url?: string | null;
+  mcp_enabled_tools?: string[];
+  max_tool_calls?: number;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }

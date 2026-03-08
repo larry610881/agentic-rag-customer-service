@@ -41,6 +41,10 @@ class CreateBotRequest(BaseModel):
     llm_model: str = ""
     show_sources: bool = True
     agent_mode: str = "router"
+    audit_mode: str = "minimal"
+    eval_provider: str = ""
+    eval_model: str = ""
+    eval_depth: str = "L1"
     mcp_server_url: str | None = None
     mcp_enabled_tools: list[str] = []
     max_tool_calls: int = 5
@@ -66,6 +70,10 @@ class UpdateBotRequest(BaseModel):
     llm_model: str | None = None
     show_sources: bool | None = None
     agent_mode: str | None = None
+    audit_mode: str | None = None
+    eval_provider: str | None = None
+    eval_model: str | None = None
+    eval_depth: str | None = None
     mcp_server_url: str | None = None
     mcp_enabled_tools: list[str] | None = None
     max_tool_calls: int | None = None
@@ -94,6 +102,10 @@ class BotResponse(BaseModel):
     llm_model: str
     show_sources: bool
     agent_mode: str
+    audit_mode: str
+    eval_provider: str
+    eval_model: str
+    eval_depth: str
     mcp_server_url: str | None
     mcp_enabled_tools: list[str]
     max_tool_calls: int
@@ -125,6 +137,10 @@ def _to_response(bot) -> BotResponse:
         llm_model=bot.llm_model,
         show_sources=bot.show_sources,
         agent_mode=bot.agent_mode,
+        audit_mode=bot.audit_mode,
+        eval_provider=bot.eval_provider,
+        eval_model=bot.eval_model,
+        eval_depth=bot.eval_depth,
         mcp_server_url=bot.mcp_server_url,
         mcp_enabled_tools=bot.mcp_enabled_tools,
         max_tool_calls=bot.max_tool_calls,
@@ -173,6 +189,10 @@ async def create_bot(
             llm_model=body.llm_model,
             show_sources=body.show_sources,
             agent_mode=body.agent_mode,
+            audit_mode=body.audit_mode,
+            eval_provider=body.eval_provider,
+            eval_model=body.eval_model,
+            eval_depth=body.eval_depth,
             mcp_server_url=body.mcp_server_url,
             mcp_enabled_tools=body.mcp_enabled_tools,
             max_tool_calls=body.max_tool_calls,
