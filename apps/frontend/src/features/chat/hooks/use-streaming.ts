@@ -31,7 +31,8 @@ const getStatusHint = (status: string): string => {
     const label = toolLabels[toolName] || toolName;
     return `\u2705 ${label} 完成！`;
   }
-  // Legacy status hints
+  // General status hints
+  if (status === "react_thinking") return "\u{1f9e0} AI 分析中...";
   if (status === "llm_generating") return "\u270d\ufe0f 小助手努力打字中...";
   return "";
 };

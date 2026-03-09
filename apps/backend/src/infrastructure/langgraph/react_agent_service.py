@@ -342,6 +342,9 @@ class ReActAgentService(AgentService):
             tool_count=len(tools),
         )
 
+        # Emit initial status so frontend shows "AI 分析中" immediately
+        yield {"type": "status", "status": "react_thinking"}
+
         # Stream graph execution
         tool_calls_emitted: list[dict[str, Any]] = []
         call_count = 0

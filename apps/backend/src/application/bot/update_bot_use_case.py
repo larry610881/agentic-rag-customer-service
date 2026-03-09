@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, replace
 
-from src.domain.bot.entity import Bot, McpServerConfig
+from src.domain.bot.entity import Bot, McpServerConfig, McpToolMeta
 from src.domain.bot.repository import BotRepository
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.exceptions import EntityNotFoundError
@@ -76,6 +76,14 @@ class UpdateBotUseCase:
                     url=s.get("url", ""),
                     name=s.get("name", ""),
                     enabled_tools=s.get("enabled_tools", []),
+                    tools=[
+                        McpToolMeta(
+                            name=t.get("name", ""),
+                            description=t.get("description", ""),
+                        )
+                        for t in s.get("tools", [])
+                    ],
+                    version=s.get("version", ""),
                 )
                 for s in command.mcp_servers  # type: ignore[union-attr]
             ]

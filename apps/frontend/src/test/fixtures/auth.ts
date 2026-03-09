@@ -10,13 +10,17 @@ export const mockTenants: Tenant[] = [
   {
     id: "tenant-1",
     name: "Acme Corp",
-    slug: "acme-corp",
+    plan: "pro",
+    allowed_agent_modes: ["router", "react"],
     created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
   },
   {
     id: "tenant-2",
     name: "Beta Inc",
-    slug: "beta-inc",
+    plan: "starter",
+    allowed_agent_modes: ["router"],
     created_at: "2024-02-01T00:00:00Z",
+    updated_at: "2024-02-01T00:00:00Z",
   },
 ];

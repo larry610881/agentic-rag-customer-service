@@ -33,6 +33,7 @@ import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import type { Bot, McpServerConfig, UpdateBotRequest } from "@/types/bot";
 import { useDiscoverMcpTools } from "@/hooks/queries/use-mcp";
 import type { McpToolInfo } from "@/types/mcp";
+import { useAuthStore } from "@/stores/use-auth-store";
 
 const AVAILABLE_TOOLS = [
   { value: "rag_query", label: "知識庫查詢" },
@@ -64,6 +65,8 @@ const botFormSchema = z.object({
     url: z.string(),
     name: z.string(),
     enabled_tools: z.array(z.string()),
+    tools: z.array(z.object({ name: z.string(), description: z.string() })).default([]),
+    version: z.string().default(""),
   })),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
   line_channel_secret: z.string().nullable().optional(),
@@ -120,6 +123,12 @@ export function BotDetailForm({
   const { data: knowledgeBases } = useKnowledgeBases();
   const { data: enabledModels } = useEnabledModels();
   const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.KNOWLEDGE);
+
+  // Tenant permission check for agent modes
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const tenants = useAuthStore((s) => s.tenants);
+  const currentTenant = tenants.find((t) => t.id === tenantId);
+  const allowedModes = currentTenant?.allowed_agent_modes ?? ["router"];
 
   const {
     register,
@@ -186,6 +195,8 @@ export function BotDetailForm({
         url: mcpUrlInput,
         name: result.server_name,
         enabled_tools: allToolNames,
+        tools: result.tools.map((t) => ({ name: t.name, description: t.description })),
+        version: result.version ?? "",
       };
       setValue("mcp_servers", [...mcpServers, newServer]);
       setServerToolsMap((prev) => ({ ...prev, [mcpUrlInput]: result.tools }));
@@ -215,26 +226,16 @@ export function BotDetailForm({
     }));
   }, [mcpServers, setValue]);
 
-  // Auto-discover tool metadata on mount for existing servers.
-  // First seed serverToolsMap with minimal entries from enabled_tools
-  // so that unchecking a tool doesn't make it vanish from the UI.
+  // Initialize serverToolsMap from persisted server.tools (no auto-discover).
   useEffect(() => {
     for (const server of bot.mcp_servers ?? []) {
       if (!serverToolsMap[server.url]) {
-        // Seed with minimal info to prevent checkbox-disappear bug
-        setServerToolsMap((prev) => ({
-          ...prev,
-          [server.url]: server.enabled_tools.map((name) => ({
-            name,
-            description: "",
-            parameters: [],
-          })),
-        }));
+        // Use persisted tool metadata if available, otherwise fallback to enabled_tools names
+        const toolsMeta: McpToolInfo[] = server.tools?.length
+          ? server.tools.map((t) => ({ name: t.name, description: t.description, parameters: [] }))
+          : server.enabled_tools.map((name) => ({ name, description: "", parameters: [] }));
+        setServerToolsMap((prev) => ({ ...prev, [server.url]: toolsMeta }));
       }
-      // Upgrade to richer metadata via discovery (descriptions, params)
-      discoverMcp.mutateAsync(server.url).then((result) => {
-        setServerToolsMap((prev) => ({ ...prev, [server.url]: result.tools }));
-      }).catch(() => { /* keep minimal info */ });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot.mcp_servers]);
@@ -367,7 +368,12 @@ export function BotDetailForm({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="router">Router（純 RAG）</SelectItem>
-                      <SelectItem value="react">ReAct（RAG + Tools）</SelectItem>
+                      <SelectItem
+                        value="react"
+                        disabled={!allowedModes.includes("react")}
+                      >
+                        ReAct（RAG + Tools）{!allowedModes.includes("react") && " — 租戶未啟用"}
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 )}
@@ -617,6 +623,11 @@ export function BotDetailForm({
                             <span className="font-medium text-sm">
                               {server.name}
                             </span>
+                            {server.version && (
+                              <span className="text-xs text-muted-foreground">
+                                v{server.version}
+                              </span>
+                            )}
                             <span className="text-xs text-muted-foreground font-mono">
                               {server.url}
                             </span>

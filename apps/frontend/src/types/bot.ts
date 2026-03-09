@@ -1,7 +1,14 @@
+export interface McpToolMeta {
+  name: string;
+  description: string;
+}
+
 export interface McpServerConfig {
   url: string;
   name: string;
   enabled_tools: string[];
+  tools: McpToolMeta[];
+  version: string;
 }
 
 export interface Bot {

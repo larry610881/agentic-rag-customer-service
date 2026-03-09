@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.bot.entity import Bot, BotLLMParams, McpServerConfig
+from src.domain.bot.entity import Bot, BotLLMParams, McpServerConfig, McpToolMeta
 from src.domain.bot.repository import BotRepository
 from src.domain.bot.value_objects import BotId, BotShortCode
 from src.infrastructure.db.atomic import atomic
@@ -52,6 +52,14 @@ class SQLAlchemyBotRepository(BotRepository):
                     url=s.get("url", ""),
                     name=s.get("name", ""),
                     enabled_tools=s.get("enabled_tools", []),
+                    tools=[
+                        McpToolMeta(
+                            name=t.get("name", ""),
+                            description=t.get("description", ""),
+                        )
+                        for t in s.get("tools", [])
+                    ],
+                    version=s.get("version", ""),
                 )
                 for s in (model.mcp_servers or [])
             ],
@@ -111,7 +119,13 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.show_sources = bot.show_sources
                 existing.agent_mode = bot.agent_mode
                 existing.mcp_servers = [
-                    {"url": s.url, "name": s.name, "enabled_tools": s.enabled_tools}
+                    {
+                        "url": s.url,
+                        "name": s.name,
+                        "enabled_tools": s.enabled_tools,
+                        "tools": [{"name": t.name, "description": t.description} for t in s.tools],
+                        "version": s.version,
+                    }
                     for s in bot.mcp_servers
                 ]
                 existing.max_tool_calls = bot.max_tool_calls

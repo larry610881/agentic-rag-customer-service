@@ -5,12 +5,22 @@ from src.domain.bot.value_objects import BotId, BotShortCode
 
 
 @dataclass(frozen=True)
+class McpToolMeta:
+    """MCP Tool 元資料（Value Object）"""
+
+    name: str
+    description: str = ""
+
+
+@dataclass(frozen=True)
 class McpServerConfig:
     """MCP Server 配置（Value Object）"""
 
     url: str
     name: str
     enabled_tools: list[str] = field(default_factory=list)
+    tools: list[McpToolMeta] = field(default_factory=list)
+    version: str = ""
 
 
 @dataclass

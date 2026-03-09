@@ -15,7 +15,16 @@ describe("BotDetailForm", () => {
     useAuthStore.setState({
       token: "test-token",
       tenantId: "tenant-1",
-      tenants: [],
+      tenants: [
+        {
+          id: "tenant-1",
+          name: "Test Tenant",
+          plan: "pro",
+          allowed_agent_modes: ["router", "react"],
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      ],
     });
   });
 
@@ -93,7 +102,7 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    expect(screen.getByLabelText("知識庫查詢")).toBeChecked();
+    expect(screen.getByLabelText("知識庫查詢（預設啟用）")).toBeChecked();
   });
 
   it("should render save and delete buttons", () => {

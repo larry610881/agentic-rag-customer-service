@@ -34,6 +34,7 @@ class McpToolInfo(BaseModel):
 class DiscoverResponse(BaseModel):
     server_name: str
     tools: list[McpToolInfo]
+    version: str = ""
 
 
 def _parse_json_schema_properties(
@@ -106,10 +107,16 @@ async def _do_discover(url: str) -> DiscoverResponse:
                 if init_result.serverInfo
                 else "unknown"
             )
+            server_version = (
+                init_result.serverInfo.version
+                if init_result.serverInfo
+                else ""
+            )
 
             return DiscoverResponse(
                 server_name=server_name,
                 tools=tools,
+                version=server_version,
             )
 
 

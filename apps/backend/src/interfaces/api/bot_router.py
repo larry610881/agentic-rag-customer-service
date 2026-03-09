@@ -143,7 +143,13 @@ def _to_response(bot) -> BotResponse:
         eval_model=bot.eval_model,
         eval_depth=bot.eval_depth,
         mcp_servers=[
-            {"url": s.url, "name": s.name, "enabled_tools": s.enabled_tools}
+            {
+                "url": s.url,
+                "name": s.name,
+                "enabled_tools": s.enabled_tools,
+                "tools": [{"name": t.name, "description": t.description} for t in s.tools],
+                "version": s.version,
+            }
             for s in bot.mcp_servers
         ],
         max_tool_calls=bot.max_tool_calls,

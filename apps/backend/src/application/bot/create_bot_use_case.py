@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from src.domain.bot.entity import Bot, BotLLMParams, McpServerConfig
+from src.domain.bot.entity import Bot, BotLLMParams, McpServerConfig, McpToolMeta
 from src.domain.bot.repository import BotRepository
 
 
@@ -71,6 +71,14 @@ class CreateBotUseCase:
                     url=s.get("url", ""),
                     name=s.get("name", ""),
                     enabled_tools=s.get("enabled_tools", []),
+                    tools=[
+                        McpToolMeta(
+                            name=t.get("name", ""),
+                            description=t.get("description", ""),
+                        )
+                        for t in s.get("tools", [])
+                    ],
+                    version=s.get("version", ""),
                 )
                 for s in command.mcp_servers
             ],

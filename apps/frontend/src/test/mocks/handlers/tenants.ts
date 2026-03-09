@@ -13,8 +13,10 @@ export const tenantHandlers = [
       {
         id: "tenant-new",
         name: body.name,
-        slug: body.slug,
+        plan: body.plan || "starter",
+        allowed_agent_modes: ["router"],
         created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       },
       { status: 201 },
     );

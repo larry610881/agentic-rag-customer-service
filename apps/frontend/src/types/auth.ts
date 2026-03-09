@@ -7,8 +7,10 @@ export interface TokenResponse {
 export interface Tenant {
   id: string;
   name: string;
-  slug: string;
+  plan: string;
+  allowed_agent_modes: string[];
   created_at: string;
+  updated_at: string;
 }
 
 export interface LoginRequest {
