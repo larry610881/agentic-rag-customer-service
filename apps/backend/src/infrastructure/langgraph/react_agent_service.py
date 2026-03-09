@@ -5,6 +5,7 @@
 """
 
 from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack
 from typing import Any
 from uuid import uuid4
 
@@ -136,39 +137,49 @@ class ReActAgentService(AgentService):
 
         return ChatOpenAI(**kwargs)
 
-    async def _load_mcp_tools(
-        self,
+    @staticmethod
+    async def _load_mcp_tools_with_stack(
+        stack: AsyncExitStack,
         server_url: str,
         enabled_tools: list[str] | None = None,
     ) -> list[BaseTool]:
-        """Connect to MCP Server and load tools as LangChain BaseTools."""
+        """Connect to MCP Server, keep session alive via exit stack.
+
+        The session is kept open until the exit stack is closed,
+        so that tool objects can call the MCP server during agent execution.
+        """
         try:
             from langchain_mcp_adapters.tools import load_mcp_tools
             from mcp import ClientSession
             from mcp.client.streamable_http import streamablehttp_client
 
-            async with streamablehttp_client(server_url) as (read, write, _):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    all_tools = await load_mcp_tools(session)
+            # Enter streamable HTTP context — kept alive by stack
+            read, write, _ = await stack.enter_async_context(
+                streamablehttp_client(server_url)
+            )
+            session = await stack.enter_async_context(
+                ClientSession(read, write)
+            )
+            await session.initialize()
+            all_tools = await load_mcp_tools(session)
 
-                    if enabled_tools:
-                        filtered = [
-                            t for t in all_tools if t.name in enabled_tools
-                        ]
-                        logger.info(
-                            "react.mcp_tools_loaded",
-                            total=len(all_tools),
-                            filtered=len(filtered),
-                            enabled=enabled_tools,
-                        )
-                        return filtered
+            if enabled_tools:
+                filtered = [
+                    t for t in all_tools if t.name in enabled_tools
+                ]
+                logger.info(
+                    "react.mcp_tools_loaded",
+                    total=len(all_tools),
+                    filtered=len(filtered),
+                    enabled=enabled_tools,
+                )
+                return filtered
 
-                    logger.info(
-                        "react.mcp_tools_loaded",
-                        total=len(all_tools),
-                    )
-                    return all_tools
+            logger.info(
+                "react.mcp_tools_loaded",
+                total=len(all_tools),
+            )
+            return all_tools
 
         except Exception as exc:
             logger.warning(
@@ -237,53 +248,49 @@ class ReActAgentService(AgentService):
         max_tool_calls: int = 5,
         audit_mode: str = "minimal",
     ) -> AgentResponse:
-        # 1. Build RAG tool
-        rag_lc_tool = self._build_rag_lc_tool(
-            tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold
-        )
-        tools: list[BaseTool] = [rag_lc_tool]
-
-        # 2. Load MCP tools from all configured servers
-        for server in (mcp_servers or []):
-            if self._cached_tool_loader:
-                mcp_tools = await self._cached_tool_loader.load_tools(
-                    server["url"], server.get("enabled_tools")
-                )
-            else:
-                mcp_tools = await self._load_mcp_tools(
-                    server["url"], server.get("enabled_tools")
-                )
-            tools.extend(mcp_tools)
-
-        # 3. Resolve LLM
-        llm = await self._resolve_llm_model(llm_params)
-
-        # 4. Build and execute ReAct graph
-        assembled_prompt = system_prompt or assemble_prompt("", "react")
-        graph = self._build_react_graph(
-            tools, assembled_prompt, llm, max_tool_calls
-        )
-
-        # Build input messages
-        input_messages: list = []
-        if history_context:
-            input_messages.append(
-                SystemMessage(content=f"[對話歷史]\n{history_context}")
+        async with AsyncExitStack() as stack:
+            # 1. Build RAG tool
+            rag_lc_tool = self._build_rag_lc_tool(
+                tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold
             )
-        input_messages.append(HumanMessage(content=user_message))
+            tools: list[BaseTool] = [rag_lc_tool]
 
-        logger.info(
-            "react.process_message",
-            tenant_id=tenant_id,
-            tool_count=len(tools),
-            tool_names=[t.name for t in tools],
-            mcp_server_count=len(mcp_servers or []),
-        )
+            # 2. Load MCP tools — sessions kept alive by stack
+            for server in (mcp_servers or []):
+                mcp_tools = await self._load_mcp_tools_with_stack(
+                    stack, server["url"], server.get("enabled_tools")
+                )
+                tools.extend(mcp_tools)
 
-        result = await graph.ainvoke({"messages": input_messages})
+            # 3. Resolve LLM
+            llm = await self._resolve_llm_model(llm_params)
 
-        # 5. Parse response
-        return self._parse_response(result, audit_mode=audit_mode)
+            # 4. Build and execute ReAct graph
+            assembled_prompt = system_prompt or assemble_prompt("", "react")
+            graph = self._build_react_graph(
+                tools, assembled_prompt, llm, max_tool_calls
+            )
+
+            # Build input messages
+            input_messages: list = []
+            if history_context:
+                input_messages.append(
+                    SystemMessage(content=f"[對話歷史]\n{history_context}")
+                )
+            input_messages.append(HumanMessage(content=user_message))
+
+            logger.info(
+                "react.process_message",
+                tenant_id=tenant_id,
+                tool_count=len(tools),
+                tool_names=[t.name for t in tools],
+                mcp_server_count=len(mcp_servers or []),
+            )
+
+            result = await graph.ainvoke({"messages": input_messages})
+
+            # 5. Parse response
+            return self._parse_response(result, audit_mode=audit_mode)
 
     async def process_message_stream(
         self,
@@ -306,121 +313,118 @@ class ReActAgentService(AgentService):
         audit_mode: str = "minimal",
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream version — runs the same ReAct loop, yields events."""
-        # Build tools
-        rag_lc_tool = self._build_rag_lc_tool(
-            tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold
-        )
-        tools: list[BaseTool] = [rag_lc_tool]
-
-        for server in (mcp_servers or []):
-            if self._cached_tool_loader:
-                mcp_tools = await self._cached_tool_loader.load_tools(
-                    server["url"], server.get("enabled_tools")
-                )
-            else:
-                mcp_tools = await self._load_mcp_tools(
-                    server["url"], server.get("enabled_tools")
-                )
-            tools.extend(mcp_tools)
-
-        llm = await self._resolve_llm_model(llm_params)
-        assembled_prompt = system_prompt or assemble_prompt("", "react")
-        graph = self._build_react_graph(
-            tools, assembled_prompt, llm, max_tool_calls
-        )
-
-        input_messages: list = []
-        if history_context:
-            input_messages.append(
-                SystemMessage(content=f"[對話歷史]\n{history_context}")
+        async with AsyncExitStack() as stack:
+            # Build tools
+            rag_lc_tool = self._build_rag_lc_tool(
+                tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold
             )
-        input_messages.append(HumanMessage(content=user_message))
+            tools: list[BaseTool] = [rag_lc_tool]
 
-        logger.info(
-            "react.process_message_stream",
-            tenant_id=tenant_id,
-            tool_count=len(tools),
-        )
+            # Load MCP tools — sessions kept alive by stack
+            for server in (mcp_servers or []):
+                mcp_tools = await self._load_mcp_tools_with_stack(
+                    stack, server["url"], server.get("enabled_tools")
+                )
+                tools.extend(mcp_tools)
 
-        # Emit initial status so frontend shows "AI 分析中" immediately
-        yield {"type": "status", "status": "react_thinking"}
+            llm = await self._resolve_llm_model(llm_params)
+            assembled_prompt = system_prompt or assemble_prompt("", "react")
+            graph = self._build_react_graph(
+                tools, assembled_prompt, llm, max_tool_calls
+            )
 
-        # Stream graph execution
-        tool_calls_emitted: list[dict[str, Any]] = []
-        call_count = 0
+            input_messages: list = []
+            if history_context:
+                input_messages.append(
+                    SystemMessage(content=f"[對話歷史]\n{history_context}")
+                )
+            input_messages.append(HumanMessage(content=user_message))
 
-        async for event in graph.astream(
-            {"messages": input_messages}, stream_mode="updates"
-        ):
-            for node_name, node_output in event.items():
-                if node_name == "agent":
-                    messages = node_output.get("messages", [])
-                    for msg in messages:
-                        if isinstance(msg, AIMessage):
-                            if msg.tool_calls:
-                                call_count += 1
-                                if audit_mode != "off":
-                                    tc_list = []
-                                    for tc in msg.tool_calls:
-                                        entry: dict[str, Any] = {
-                                            "tool_name": tc["name"],
-                                            "reasoning": "",
+            logger.info(
+                "react.process_message_stream",
+                tenant_id=tenant_id,
+                tool_count=len(tools),
+            )
+
+            # Emit initial status so frontend shows "AI 分析中" immediately
+            yield {"type": "status", "status": "react_thinking"}
+
+            # Stream graph execution
+            tool_calls_emitted: list[dict[str, Any]] = []
+            call_count = 0
+
+            async for event in graph.astream(
+                {"messages": input_messages}, stream_mode="updates"
+            ):
+                for node_name, node_output in event.items():
+                    if node_name == "agent":
+                        messages = node_output.get("messages", [])
+                        for msg in messages:
+                            if isinstance(msg, AIMessage):
+                                if msg.tool_calls:
+                                    call_count += 1
+                                    if audit_mode != "off":
+                                        tc_list = []
+                                        for tc in msg.tool_calls:
+                                            entry: dict[str, Any] = {
+                                                "tool_name": tc["name"],
+                                                "reasoning": "",
+                                            }
+                                            if audit_mode == "full":
+                                                entry["tool_input"] = tc.get("args", {})
+                                                entry["iteration"] = call_count
+                                            tc_list.append(entry)
+                                        tool_calls_emitted.extend(tc_list)
+                                        yield {
+                                            "type": "tool_calls",
+                                            "tool_calls": tc_list,
                                         }
-                                        if audit_mode == "full":
-                                            entry["tool_input"] = tc.get("args", {})
-                                            entry["iteration"] = call_count
-                                        tc_list.append(entry)
-                                    tool_calls_emitted.extend(tc_list)
+                                        # Yield executing status for each tool
+                                        for tc in msg.tool_calls:
+                                            yield {
+                                                "type": "status",
+                                                "status": f"{tc['name']}_executing",
+                                            }
+                                elif msg.content:
+                                    content = (
+                                        msg.content
+                                        if isinstance(msg.content, str)
+                                        else str(msg.content)
+                                    )
                                     yield {
-                                        "type": "tool_calls",
-                                        "tool_calls": tc_list,
+                                        "type": "token",
+                                        "content": content,
                                     }
-                                    # Yield executing status for each tool
-                                    for tc in msg.tool_calls:
-                                        yield {
-                                            "type": "status",
-                                            "status": f"{tc['name']}_executing",
-                                        }
-                            elif msg.content:
-                                content = (
-                                    msg.content
-                                    if isinstance(msg.content, str)
-                                    else str(msg.content)
-                                )
+
+                    elif node_name == "tools":
+                        # Tools node completed — yield done status
+                        messages = node_output.get("messages", [])
+                        for msg in messages:
+                            if hasattr(msg, "name") and msg.name:
                                 yield {
-                                    "type": "token",
-                                    "content": content,
+                                    "type": "status",
+                                    "status": f"{msg.name}_done",
                                 }
+                            # Extract sources from ToolMessage if available
+                            if hasattr(msg, "content") and msg.content:
+                                try:
+                                    import json
+                                    content = (
+                                        json.loads(msg.content)
+                                        if isinstance(msg.content, str)
+                                        else msg.content
+                                    )
+                                    if isinstance(content, dict) and "sources" in content:
+                                        sources = content["sources"]
+                                        if sources:
+                                            yield {
+                                                "type": "sources",
+                                                "sources": sources,
+                                            }
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
 
-                elif node_name == "tools":
-                    # Tools node completed — yield done status
-                    messages = node_output.get("messages", [])
-                    for msg in messages:
-                        if hasattr(msg, "name") and msg.name:
-                            yield {
-                                "type": "status",
-                                "status": f"{msg.name}_done",
-                            }
-                        # Extract sources from ToolMessage if available
-                        if hasattr(msg, "content") and msg.content:
-                            try:
-                                import json
-                                content = (
-                                    json.loads(msg.content)
-                                    if isinstance(msg.content, str)
-                                    else msg.content
-                                )
-                                if isinstance(content, dict) and "sources" in content:
-                                    sources = content["sources"]
-                                    if sources:
-                                        yield {
-                                            "type": "sources",
-                                            "sources": sources,
-                                        }
-                            except (json.JSONDecodeError, TypeError):
-                                pass
-
-        yield {"type": "done"}
+            yield {"type": "done"}
 
     @staticmethod
     def _parse_response(
