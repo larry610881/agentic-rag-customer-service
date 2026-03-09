@@ -3,6 +3,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from src.infrastructure.db.session_middleware import independent_session_scope
 from src.infrastructure.logging.setup import get_logger
 
 logger = get_logger(__name__)
@@ -16,6 +17,9 @@ async def safe_background_task(
 ) -> None:
     """包裝 async callable，捕捉例外並記錄 structured log。
 
+    使用 independent_session_scope() 確保 background task 建立獨立的
+    DB session，不佔用 request 的 connection pool slot。
+
     用法::
 
         background_tasks.add_task(
@@ -25,11 +29,12 @@ async def safe_background_task(
         )
     """
     resolved_name = task_name or getattr(coro_fn, "__qualname__", str(coro_fn))
-    try:
-        await coro_fn(*args)
-    except Exception:
-        logger.exception(
-            "background_task_failed",
-            task_name=resolved_name,
-            **context,
-        )
+    async with independent_session_scope():
+        try:
+            await coro_fn(*args)
+        except Exception:
+            logger.exception(
+                "background_task_failed",
+                task_name=resolved_name,
+                **context,
+            )
