@@ -165,6 +165,9 @@ from src.infrastructure.db.repositories.usage_repository import (
 from src.infrastructure.db.repositories.user_repository import (
     SQLAlchemyUserRepository,
 )
+from src.infrastructure.db.engine import (
+    async_session_factory as _async_session_factory,
+)
 from src.infrastructure.db.session_middleware import get_tracked_session
 from src.infrastructure.embedding.dynamic_embedding_factory import (
     DynamicEmbeddingServiceFactory,
@@ -260,6 +263,7 @@ class Container(containers.DeclarativeContainer):
     )
 
     db_session = providers.Factory(get_tracked_session)
+    trace_session_factory = providers.Object(_async_session_factory)
 
     jwt_service = providers.Singleton(
         JWTService,
@@ -802,6 +806,7 @@ class Container(containers.DeclarativeContainer):
         react_agent_service=react_agent_service,
         tenant_repository=tenant_repository,
         system_prompt_config_repository=system_prompt_config_repository,
+        trace_session_factory=trace_session_factory,
     )
 
     # --- Platform: Provider Settings ---

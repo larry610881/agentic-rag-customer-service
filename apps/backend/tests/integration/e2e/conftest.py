@@ -35,6 +35,9 @@ def e2e_app(test_engine):
         test_engine, class_=AsyncSession, expire_on_commit=False
     )
     container.db_session.override(providers.Factory(test_session_factory))
+    container.trace_session_factory.override(
+        providers.Object(test_session_factory)
+    )
 
     # Qdrant vector_store → mock returning SearchResult objects
     mock_vector = AsyncMock()
@@ -67,6 +70,7 @@ def e2e_app(test_engine):
     yield application
 
     container.db_session.reset_override()
+    container.trace_session_factory.reset_override()
     container.vector_store.reset_override()
     container.embedding_service.reset_override()
     container.cache_service.reset_override()

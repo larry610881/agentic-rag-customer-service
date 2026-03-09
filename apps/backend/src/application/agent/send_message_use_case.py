@@ -47,6 +47,7 @@ class SendMessageUseCase:
         react_agent_service: AgentService | None = None,
         tenant_repository: TenantRepository | None = None,
         system_prompt_config_repository: SystemPromptConfigRepository | None = None,
+        trace_session_factory: Any | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -55,6 +56,7 @@ class SendMessageUseCase:
         self._debug = debug
         self._react_agent_service = react_agent_service
         self._tenant_repo = tenant_repository
+        self._trace_session_factory = trace_session_factory
         self._sys_prompt_repo = system_prompt_config_repository
 
     async def _load_bot_config(
@@ -359,6 +361,15 @@ class SendMessageUseCase:
         )
         await self._conversation_repo.save(conversation)
 
+        await self._persist_trace(
+            tenant_id=command.tenant_id,
+            query=command.message,
+            tool_calls=tool_calls,
+            latency_ms=latency_ms,
+            chunk_count=len(retrieved_chunks) if retrieved_chunks else 0,
+            message_id=None,
+        )
+
         yield {
             "type": "conversation_id",
             "conversation_id": conversation.id.value,
@@ -377,8 +388,8 @@ class SendMessageUseCase:
 
         return Conversation(tenant_id=command.tenant_id, bot_id=command.bot_id)
 
-    @staticmethod
     async def _persist_trace(
+        self,
         tenant_id: str,
         query: str,
         tool_calls: list[dict[str, Any]],
@@ -386,10 +397,21 @@ class SendMessageUseCase:
         chunk_count: int,
         message_id: str | None = None,
     ) -> None:
-        """Save RAG trace to DB (fire-and-forget, never raises)."""
+        """Save RAG trace to DB (fire-and-forget, never raises).
+
+        Uses injected session factory so E2E tests write to test DB,
+        not production.
+        """
         try:
-            from src.infrastructure.db.engine import async_session_factory
             from src.infrastructure.db.models.rag_trace_model import RAGTraceModel
+
+            session_factory = self._trace_session_factory
+            if session_factory is None:
+                from src.infrastructure.db.engine import (
+                    async_session_factory,
+                )
+
+                session_factory = async_session_factory
 
             trace_id = str(uuid4())
             row = RAGTraceModel(
@@ -402,7 +424,7 @@ class SendMessageUseCase:
                 total_ms=float(latency_ms),
                 chunk_count=chunk_count,
             )
-            async with async_session_factory() as session:
+            async with session_factory() as session:
                 session.add(row)
                 await session.commit()
         except Exception:
