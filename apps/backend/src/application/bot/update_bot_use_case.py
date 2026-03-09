@@ -36,6 +36,9 @@ class UpdateBotCommand:
     eval_depth: object = _UNSET
     mcp_servers: object = _UNSET
     max_tool_calls: object = _UNSET
+    base_prompt: object = _UNSET
+    router_prompt: object = _UNSET
+    react_prompt: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
 
@@ -59,6 +62,7 @@ class UpdateBotUseCase:
             "agent_mode", "audit_mode",
             "eval_provider", "eval_model", "eval_depth",
             "max_tool_calls",
+            "base_prompt", "router_prompt", "react_prompt",
             "line_channel_secret", "line_channel_access_token",
         )
         for field in _DIRECT_FIELDS:

@@ -56,6 +56,9 @@ class Bot:
     eval_provider: str = ""  # Eval LLM provider (independent from bot LLM)
     eval_model: str = ""  # Eval LLM model
     eval_depth: str = "L1"  # "L1" | "L1+L2" | "L1+L2+L3"
+    base_prompt: str = ""       # 空 = 用系統預設
+    router_prompt: str = ""     # 空 = 用系統預設
+    react_prompt: str = ""      # 空 = 用系統預設
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     created_at: datetime = field(

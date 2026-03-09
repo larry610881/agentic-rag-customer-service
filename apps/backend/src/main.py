@@ -31,8 +31,11 @@ try:
         MessageModel,
         ProcessingTaskModel,
         ProviderSettingModel,
+        RAGEvalModel,
+        RAGTraceModel,
         RateLimitConfigModel,
         RequestLogModel,
+        SystemPromptConfigModel,
         TenantModel,
         UsageRecordModel,
         UserModel,
@@ -198,6 +201,16 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         application.include_router(provider_setting_router)
         application.include_router(feedback_router)
         application.include_router(admin_router)
+
+        from src.interfaces.api.mcp_router import router as mcp_router
+        from src.interfaces.api.system_prompt_router import router as system_prompt_router
+
+        application.include_router(mcp_router)
+        application.include_router(system_prompt_router)
+
+        from src.interfaces.api.observability_router import router as observability_router
+
+        application.include_router(observability_router)
 
     # Webhook module: LINE Bot
     if "webhook" in modules:

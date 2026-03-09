@@ -1,53 +1,34 @@
 """System Prompt 分層組裝器
 
-統一管理 Agent 系統提示詞的分層結構：
-- BASE_PROMPT: 共用品牌聲音 + 行為準則
-- ROUTER_MODE_PROMPT: Router 模式專用指令
-- REACT_MODE_PROMPT: ReAct 模式推理策略
+組裝 Agent 系統提示詞：base_prompt + mode_prompt + bot 自定義指令。
+所有 prompt 內容來自 DB（system_prompt_configs 表），由 seed 腳本初始化。
 """
 
-BASE_PROMPT = (
-    "你是一個專業的客服助手，用友善且專業的語氣與用戶對話。\n"
-    "行為準則：\n"
-    "1. 回答必須基於提供的工具結果或知識庫內容，不可自行編造或幻覺。\n"
-    "2. 如果沒有相關資訊，誠實告知用戶，不要強行引用不相關的內容。\n"
-    "3. 回答應簡潔完整，避免冗餘但不遺漏重要資訊。\n"
-    "4. 保持一致的品牌語調，親切但專業。"
-)
 
-ROUTER_MODE_PROMPT = (
-    "如果有提供工具結果，請根據工具結果回答用戶的問題，確保準確、完整。\n"
-    "如果沒有工具結果，或工具結果與用戶問題無關，請自然地回應用戶（例如打招呼、閒聊）。"
-)
-
-REACT_MODE_PROMPT = (
-    "推理策略：\n"
-    "1. 你擁有多個工具可以查詢即時資料（課程、商品、知識庫等）。"
-    "收到用戶問題後，優先考慮是否需要呼叫工具取得最新資訊。\n"
-    "2. 涉及課程、商品、價格、名額、時間、講師等具體資訊時，"
-    "必須使用工具查詢，不可憑記憶回答。\n"
-    "3. 每次只呼叫必要的工具，避免重複查詢相同內容。\n"
-    "4. 綜合所有工具結果後，生成最終回答。"
-    "若工具結果不足以回答問題，誠實告知用戶。"
-)
-
-
-def assemble(bot_prompt: str | None = None, mode: str = "router") -> str:
+def assemble(
+    bot_prompt: str | None = None,
+    mode: str = "router",
+    base_prompt: str = "",
+    mode_prompt: str = "",
+) -> str:
     """組裝完整的系統提示詞。
 
     Args:
         bot_prompt: Bot 自定義系統提示詞（可選）
-        mode: Agent 模式 ("router" | "react")
+        mode: Agent 模式 ("router" | "react")（未使用，保留向下相容）
+        base_prompt: 基礎 prompt（來自 DB）
+        mode_prompt: 模式 prompt（來自 DB）
 
     Returns:
         組裝後的完整系統提示詞
     """
-    parts: list[str] = [BASE_PROMPT]
+    parts: list[str] = []
 
-    if mode == "react":
-        parts.append(REACT_MODE_PROMPT)
-    else:
-        parts.append(ROUTER_MODE_PROMPT)
+    if base_prompt:
+        parts.append(base_prompt)
+
+    if mode_prompt:
+        parts.append(mode_prompt)
 
     if bot_prompt and bot_prompt.strip():
         parts.append(f"[自定義指令]\n{bot_prompt.strip()}")

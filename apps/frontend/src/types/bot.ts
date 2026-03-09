@@ -38,6 +38,9 @@ export interface Bot {
   eval_depth: "off" | "L1" | "L1+L2" | "L1+L2+L3";
   mcp_servers: McpServerConfig[];
   max_tool_calls: number;
+  base_prompt: string;
+  router_prompt: string;
+  react_prompt: string;
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
   created_at: string;
@@ -68,6 +71,9 @@ export interface CreateBotRequest {
   eval_depth?: "off" | "L1" | "L1+L2" | "L1+L2+L3";
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
+  base_prompt?: string;
+  router_prompt?: string;
+  react_prompt?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }
@@ -96,6 +102,9 @@ export interface UpdateBotRequest {
   eval_depth?: "off" | "L1" | "L1+L2" | "L1+L2+L3";
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
+  base_prompt?: string;
+  router_prompt?: string;
+  react_prompt?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }

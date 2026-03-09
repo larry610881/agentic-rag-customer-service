@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import structlog
 
+from src.application.agent.prompt_assembler import assemble as assemble_prompt
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.bot.repository import BotRepository
@@ -17,6 +18,7 @@ from src.domain.conversation.history_strategy import (
     HistoryStrategyConfig,
 )
 from src.domain.conversation.repository import ConversationRepository
+from src.domain.platform.repository import SystemPromptConfigRepository
 from src.domain.shared.exceptions import DomainException
 from src.domain.tenant.repository import TenantRepository
 
@@ -44,6 +46,7 @@ class SendMessageUseCase:
         debug: bool = False,
         react_agent_service: AgentService | None = None,
         tenant_repository: TenantRepository | None = None,
+        system_prompt_config_repository: SystemPromptConfigRepository | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -52,6 +55,7 @@ class SendMessageUseCase:
         self._debug = debug
         self._react_agent_service = react_agent_service
         self._tenant_repo = tenant_repository
+        self._sys_prompt_repo = system_prompt_config_repository
 
     async def _load_bot_config(
         self, command: SendMessageCommand
@@ -70,9 +74,22 @@ class SendMessageUseCase:
             "agent_mode": "router",
         }
         if not (command.bot_id and self._bot_repo):
+            # No bot — still resolve system prompts from DB
+            if self._sys_prompt_repo:
+                sys_cfg = await self._sys_prompt_repo.get()
+                cfg["system_prompt"] = assemble_prompt(
+                    base_prompt=sys_cfg.base_prompt,
+                    mode_prompt=sys_cfg.router_mode_prompt,
+                )
             return cfg
         bot = await self._bot_repo.find_by_id(command.bot_id)
         if bot is None:
+            if self._sys_prompt_repo:
+                sys_cfg = await self._sys_prompt_repo.get()
+                cfg["system_prompt"] = assemble_prompt(
+                    base_prompt=sys_cfg.base_prompt,
+                    mode_prompt=sys_cfg.router_mode_prompt,
+                )
             return cfg
         if bot.tenant_id != command.tenant_id:
             msg = (
@@ -113,6 +130,27 @@ class SendMessageUseCase:
         cfg["eval_depth"] = getattr(bot, "eval_depth", "off")
         cfg["eval_provider"] = getattr(bot, "eval_provider", "")
         cfg["eval_model"] = getattr(bot, "eval_model", "")
+
+        # Resolve prompt overrides: Bot → SystemPromptConfig → Seed
+        base_prompt = ""
+        mode_prompt = ""
+        if self._sys_prompt_repo:
+            sys_cfg = await self._sys_prompt_repo.get()
+            base_prompt = bot.base_prompt or sys_cfg.base_prompt
+            mode = cfg["agent_mode"]
+            if mode == "react":
+                mode_prompt = bot.react_prompt or sys_cfg.react_mode_prompt
+            else:
+                mode_prompt = bot.router_prompt or sys_cfg.router_mode_prompt
+
+        # Pre-assemble the full system prompt (agent services use it directly)
+        cfg["system_prompt"] = assemble_prompt(
+            bot_prompt=bot.system_prompt,
+            mode=cfg["agent_mode"],
+            base_prompt=base_prompt,
+            mode_prompt=mode_prompt,
+        )
+
         return cfg
 
     async def _resolve_agent_service(

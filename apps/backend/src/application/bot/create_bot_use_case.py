@@ -32,6 +32,9 @@ class CreateBotCommand:
     eval_depth: str = "L1"
     mcp_servers: list[dict] = field(default_factory=list)
     max_tool_calls: int = 5
+    base_prompt: str = ""
+    router_prompt: str = ""
+    react_prompt: str = ""
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -83,6 +86,9 @@ class CreateBotUseCase:
                 for s in command.mcp_servers
             ],
             max_tool_calls=command.max_tool_calls,
+            base_prompt=command.base_prompt,
+            router_prompt=command.router_prompt,
+            react_prompt=command.react_prompt,
             line_channel_secret=command.line_channel_secret,
             line_channel_access_token=command.line_channel_access_token,
         )

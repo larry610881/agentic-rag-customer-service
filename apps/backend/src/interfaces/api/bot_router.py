@@ -51,6 +51,9 @@ class CreateBotRequest(BaseModel):
     eval_depth: str = "L1"
     mcp_servers: list[dict[str, Any]] = []
     max_tool_calls: int = 5
+    base_prompt: str = ""
+    router_prompt: str = ""
+    react_prompt: str = ""
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -79,6 +82,9 @@ class UpdateBotRequest(BaseModel):
     eval_depth: str | None = None
     mcp_servers: list[dict[str, Any]] | None = None
     max_tool_calls: int | None = None
+    base_prompt: str | None = None
+    router_prompt: str | None = None
+    react_prompt: str | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -110,6 +116,9 @@ class BotResponse(BaseModel):
     eval_depth: str
     mcp_servers: list[dict[str, Any]]
     max_tool_calls: int
+    base_prompt: str
+    router_prompt: str
+    react_prompt: str
     line_channel_secret: str | None
     line_channel_access_token: str | None
     created_at: str
@@ -153,6 +162,9 @@ def _to_response(bot) -> BotResponse:
             for s in bot.mcp_servers
         ],
         max_tool_calls=bot.max_tool_calls,
+        base_prompt=bot.base_prompt,
+        router_prompt=bot.router_prompt,
+        react_prompt=bot.react_prompt,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
         created_at=bot.created_at.isoformat(),
@@ -214,6 +226,9 @@ async def create_bot(
             eval_depth=body.eval_depth,
             mcp_servers=body.mcp_servers,
             max_tool_calls=body.max_tool_calls,
+            base_prompt=body.base_prompt,
+            router_prompt=body.router_prompt,
+            react_prompt=body.react_prompt,
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
         )

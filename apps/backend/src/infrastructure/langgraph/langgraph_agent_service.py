@@ -255,8 +255,7 @@ class LangGraphAgentService(AgentService):
                 {"tool_name": "direct", "reasoning": "無啟用工具"}
             ],
         }
-        custom_prompt = system_prompt or ""
-        sys_prompt = assemble_prompt(custom_prompt, "router")
+        sys_prompt = system_prompt or assemble_prompt("", "router")
         llm_kw: dict[str, Any] = {}
         params = llm_params or {}
         for k in ("temperature", "max_tokens", "frequency_penalty"):
@@ -400,8 +399,7 @@ class LangGraphAgentService(AgentService):
         context = self._build_respond_context(
             history_context, tool_result,
         )
-        custom_prompt = system_prompt or ""
-        sys_prompt = assemble_prompt(custom_prompt, "router")
+        sys_prompt = system_prompt or assemble_prompt("", "router")
         llm_kw = _extract_llm_kwargs(initial_state)
 
         logger.info(

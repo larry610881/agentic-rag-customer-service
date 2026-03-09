@@ -279,8 +279,7 @@ def _make_respond_node(llm_service: LLMService):
             )
             parts.append(f"[工具結果]\n{tool_json}")
         context = "\n\n".join(parts)
-        custom_prompt = state.get("system_prompt") or ""
-        sys_prompt = assemble_prompt(custom_prompt, "router")
+        sys_prompt = state.get("system_prompt") or assemble_prompt("", "router")
         llm_kw = _extract_llm_kwargs(state)
         logger.info(
             "agent.respond.context",

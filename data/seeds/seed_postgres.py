@@ -17,6 +17,11 @@ backend_src = Path(__file__).resolve().parent.parent.parent / "apps" / "backend"
 sys.path.insert(0, str(backend_src))
 
 from src.config import Settings  # noqa: E402
+from src.domain.platform.prompt_defaults import (  # noqa: E402
+    SEED_BASE_PROMPT,
+    SEED_REACT_MODE_PROMPT,
+    SEED_ROUTER_MODE_PROMPT,
+)
 from src.infrastructure.auth.bcrypt_password_service import BcryptPasswordService  # noqa: E402
 from src.infrastructure.db.base import Base  # noqa: E402
 from src.infrastructure.db.models import *  # noqa: E402, F401, F403 — register all models
@@ -46,6 +51,10 @@ MIGRATIONS = [
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS quality_score FLOAT NOT NULL DEFAULT 0.0",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS quality_issues TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS raw_content BYTEA",
+    # System Prompt Config: bots 3 override columns
+    "ALTER TABLE bots ADD COLUMN IF NOT EXISTS base_prompt TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE bots ADD COLUMN IF NOT EXISTS router_prompt TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE bots ADD COLUMN IF NOT EXISTS react_prompt TEXT NOT NULL DEFAULT ''",
 ]
 
 
@@ -89,25 +98,27 @@ async def seed() -> None:
     async with async_session() as session:
         async with session.begin():
             await session.execute(text("""
-                INSERT INTO tenants (id, name, plan, created_at, updated_at)
-                VALUES (:id, :name, :plan, :created_at, :updated_at)
+                INSERT INTO tenants (id, name, plan, allowed_agent_modes, created_at, updated_at)
+                VALUES (:id, :name, :plan, :allowed_agent_modes, :created_at, :updated_at)
                 ON CONFLICT (id) DO NOTHING
             """), {
                 "id": system_tenant_id,
                 "name": "System",
                 "plan": "enterprise",
+                "allowed_agent_modes": '["router", "react"]',
                 "created_at": now,
                 "updated_at": now,
             })
 
             await session.execute(text("""
-                INSERT INTO tenants (id, name, plan, created_at, updated_at)
-                VALUES (:id, :name, :plan, :created_at, :updated_at)
+                INSERT INTO tenants (id, name, plan, allowed_agent_modes, created_at, updated_at)
+                VALUES (:id, :name, :plan, :allowed_agent_modes, :created_at, :updated_at)
                 ON CONFLICT (id) DO NOTHING
             """), {
                 "id": tenant_id,
                 "name": "Demo Shop",
                 "plan": "starter",
+                "allowed_agent_modes": '["router", "react"]',
                 "created_at": now,
                 "updated_at": now,
             })
@@ -137,6 +148,19 @@ async def seed() -> None:
                 "hashed_password": tenant_password,
                 "role": "tenant_admin",
                 "created_at": now,
+                "updated_at": now,
+            })
+
+            # Seed system prompt config
+            await session.execute(text("""
+                INSERT INTO system_prompt_configs (id, base_prompt, router_mode_prompt, react_mode_prompt, updated_at)
+                VALUES (:id, :base_prompt, :router_mode_prompt, :react_mode_prompt, :updated_at)
+                ON CONFLICT (id) DO NOTHING
+            """), {
+                "id": "default",
+                "base_prompt": SEED_BASE_PROMPT,
+                "router_mode_prompt": SEED_ROUTER_MODE_PROMPT,
+                "react_mode_prompt": SEED_REACT_MODE_PROMPT,
                 "updated_at": now,
             })
 

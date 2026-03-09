@@ -68,6 +68,9 @@ class SQLAlchemyBotRepository(BotRepository):
             eval_provider=model.eval_provider or "",
             eval_model=model.eval_model or "",
             eval_depth=model.eval_depth or "L1",
+            base_prompt=model.base_prompt or "",
+            router_prompt=model.router_prompt or "",
+            react_prompt=model.react_prompt or "",
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
             created_at=model.created_at,
@@ -133,6 +136,9 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.eval_provider = bot.eval_provider
                 existing.eval_model = bot.eval_model
                 existing.eval_depth = bot.eval_depth
+                existing.base_prompt = bot.base_prompt
+                existing.router_prompt = bot.router_prompt
+                existing.react_prompt = bot.react_prompt
                 existing.line_channel_secret = bot.line_channel_secret
                 existing.line_channel_access_token = bot.line_channel_access_token
                 existing.temperature = bot.llm_params.temperature
@@ -166,6 +172,9 @@ class SQLAlchemyBotRepository(BotRepository):
                     eval_provider=bot.eval_provider,
                     eval_model=bot.eval_model,
                     eval_depth=bot.eval_depth,
+                    base_prompt=bot.base_prompt,
+                    router_prompt=bot.router_prompt,
+                    react_prompt=bot.react_prompt,
                     line_channel_secret=bot.line_channel_secret,
                     line_channel_access_token=bot.line_channel_access_token,
                     temperature=bot.llm_params.temperature,

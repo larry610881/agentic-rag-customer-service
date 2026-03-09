@@ -57,4 +57,11 @@ export const queryKeys = {
     knowledgeBases: ["admin", "knowledge-bases"] as const,
     bots: ["admin", "bots"] as const,
   },
+  systemPrompts: {
+    all: ["system-prompts"] as const,
+  },
+  observability: {
+    traces: (filters?: object) => ["observability", "traces", filters ?? {}] as const,
+    evals: (filters?: object) => ["observability", "evals", filters ?? {}] as const,
+  },
 };

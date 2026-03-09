@@ -1,7 +1,15 @@
 from abc import ABC, abstractmethod
 
-from src.domain.platform.entity import ProviderSetting
+from src.domain.platform.entity import ProviderSetting, SystemPromptConfig
 from src.domain.platform.value_objects import ProviderName, ProviderType
+
+
+class SystemPromptConfigRepository(ABC):
+    @abstractmethod
+    async def get(self) -> SystemPromptConfig: ...
+
+    @abstractmethod
+    async def save(self, config: SystemPromptConfig) -> None: ...
 
 
 class ProviderSettingRepository(ABC):

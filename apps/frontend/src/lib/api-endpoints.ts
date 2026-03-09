@@ -23,6 +23,10 @@ export const API_ENDPOINTS = {
       `/api/v1/knowledge-bases/${kbId}/documents/${docId}/reprocess`,
     qualityStats: (kbId: string) =>
       `/api/v1/knowledge-bases/${kbId}/documents/quality-stats`,
+    batchDelete: (kbId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/documents/batch-delete`,
+    batchReprocess: (kbId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/documents/batch-reprocess`,
   },
   tasks: {
     detail: (id: string) => `/api/v1/tasks/${id}`,
@@ -74,5 +78,16 @@ export const API_ENDPOINTS = {
   logs: {
     list: "/api/v1/logs",
     detail: (requestId: string) => `/api/v1/logs/${requestId}`,
+  },
+  mcp: {
+    discover: "/api/v1/mcp/discover",
+  },
+  systemPrompts: {
+    get: "/api/v1/system/prompts",
+    update: "/api/v1/system/prompts",
+  },
+  observability: {
+    traces: "/api/v1/observability/traces",
+    evaluations: "/api/v1/observability/evaluations",
   },
 } as const;

@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type UseFormRegister } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Copy, Check, Search, Loader2, X } from "lucide-react";
+import { Copy, Check, Search, Loader2, X, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +34,7 @@ import type { Bot, McpServerConfig, UpdateBotRequest } from "@/types/bot";
 import { useDiscoverMcpTools } from "@/hooks/queries/use-mcp";
 import type { McpToolInfo } from "@/types/mcp";
 import { useAuthStore } from "@/stores/use-auth-store";
+import { useSystemPrompts } from "@/hooks/queries/use-system-prompts";
 
 const AVAILABLE_TOOLS = [
   { value: "rag_query", label: "知識庫查詢" },
@@ -69,6 +70,9 @@ const botFormSchema = z.object({
     version: z.string().default(""),
   })),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
+  base_prompt: z.string().default(""),
+  router_prompt: z.string().default(""),
+  react_prompt: z.string().default(""),
   line_channel_secret: z.string().nullable().optional(),
   line_channel_access_token: z.string().nullable().optional(),
 });
@@ -113,6 +117,60 @@ function WebhookCopyButton({ url }: { url: string }) {
   );
 }
 
+function PromptOverrideField({
+  id,
+  label,
+  description,
+  register,
+  fieldName,
+  systemDefault,
+}: {
+  id: string;
+  label: string;
+  description: string;
+  register: UseFormRegister<BotFormValues>;
+  fieldName: "base_prompt" | "router_prompt" | "react_prompt";
+  systemDefault?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const placeholder = systemDefault
+    ? systemDefault.slice(0, 80) + (systemDefault.length > 80 ? "..." : "")
+    : "";
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={id}>
+          {label}（{description}）
+        </Label>
+        {systemDefault && (
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setExpanded(!expanded)}
+          >
+            <ChevronRight
+              className={`h-3 w-3 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+            />
+            查看目前系統預設
+          </button>
+        )}
+        {expanded && systemDefault && (
+          <pre className="whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs text-muted-foreground max-h-40 overflow-y-auto">
+            {systemDefault}
+          </pre>
+        )}
+      </div>
+      <Textarea
+        id={id}
+        {...register(fieldName)}
+        rows={5}
+        placeholder={placeholder}
+      />
+    </section>
+  );
+}
+
 export function BotDetailForm({
   bot,
   onSave,
@@ -122,6 +180,7 @@ export function BotDetailForm({
 }: BotDetailFormProps) {
   const { data: knowledgeBases } = useKnowledgeBases();
   const { data: enabledModels } = useEnabledModels();
+  const { data: systemPrompts } = useSystemPrompts();
   const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.KNOWLEDGE);
 
   // Tenant permission check for agent modes
@@ -164,6 +223,9 @@ export function BotDetailForm({
       eval_depth: bot.eval_depth ?? "L1",
       mcp_servers: bot.mcp_servers ?? [],
       max_tool_calls: bot.max_tool_calls ?? 5,
+      base_prompt: bot.base_prompt ?? "",
+      router_prompt: bot.router_prompt ?? "",
+      react_prompt: bot.react_prompt ?? "",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     },
@@ -265,6 +327,9 @@ export function BotDetailForm({
       eval_depth: bot.eval_depth ?? "L1",
       mcp_servers: bot.mcp_servers ?? [],
       max_tool_calls: bot.max_tool_calls ?? 5,
+      base_prompt: bot.base_prompt ?? "",
+      router_prompt: bot.router_prompt ?? "",
+      react_prompt: bot.react_prompt ?? "",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     });
@@ -740,19 +805,53 @@ export function BotDetailForm({
         </TabsContent>
 
         {/* Tab 2: 系統提示詞 */}
-        <TabsContent value={TAB_KEYS.PROMPT} className="flex flex-col gap-4 pt-4">
+        <TabsContent value={TAB_KEYS.PROMPT} className="flex flex-col gap-6 pt-4">
+          {/* 自訂指令 */}
           <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">系統提示詞</h3>
+            <h3 className="text-lg font-semibold">自訂指令</h3>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="bot-system-prompt">自訂系統提示詞</Label>
+              <Label htmlFor="bot-system-prompt">Bot 自訂指令</Label>
               <Textarea
                 id="bot-system-prompt"
                 {...register("system_prompt")}
-                rows={10}
-                placeholder="輸入此機器人的自訂系統提示詞..."
+                rows={6}
+                placeholder="輸入此機器人的自訂指令..."
               />
+              <p className="text-xs text-muted-foreground">
+                此指令會附加在系統提示詞最後，用於定義 Bot 的個性、語調等。
+              </p>
             </div>
           </section>
+
+          {/* 基礎 Prompt */}
+          <PromptOverrideField
+            id="bot-base-prompt"
+            label="基礎 Prompt"
+            description="留空則採用系統預設"
+            register={register}
+            fieldName="base_prompt"
+            systemDefault={systemPrompts?.base_prompt}
+          />
+
+          {/* Router 模式 Prompt */}
+          <PromptOverrideField
+            id="bot-router-prompt"
+            label="Router 模式 Prompt"
+            description="留空則採用系統預設"
+            register={register}
+            fieldName="router_prompt"
+            systemDefault={systemPrompts?.router_mode_prompt}
+          />
+
+          {/* ReAct 模式 Prompt */}
+          <PromptOverrideField
+            id="bot-react-prompt"
+            label="ReAct 模式 Prompt"
+            description="留空則採用系統預設"
+            register={register}
+            fieldName="react_prompt"
+            systemDefault={systemPrompts?.react_mode_prompt}
+          />
         </TabsContent>
 
         {/* Tab 3: LLM 參數 */}

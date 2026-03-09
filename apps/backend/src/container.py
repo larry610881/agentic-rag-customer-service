@@ -97,6 +97,10 @@ from src.application.platform.list_provider_settings_use_case import (
 from src.application.platform.test_provider_connection_use_case import (
     CheckProviderConnectionUseCase,
 )
+from src.application.platform.system_prompt_use_cases import (
+    GetSystemPromptsUseCase,
+    UpdateSystemPromptsUseCase,
+)
 from src.application.platform.update_provider_setting_use_case import (
     UpdateProviderSettingUseCase,
 )
@@ -145,6 +149,9 @@ from src.infrastructure.db.repositories.processing_task_repository import (
 )
 from src.infrastructure.db.repositories.provider_setting_repository import (
     SQLAlchemyProviderSettingRepository,
+)
+from src.infrastructure.db.repositories.system_prompt_config_repository import (
+    SQLAlchemySystemPromptConfigRepository,
 )
 from src.infrastructure.db.repositories.rate_limit_config_repository import (
     SQLAlchemyRateLimitConfigRepository,
@@ -231,6 +238,8 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.provider_setting_router",
             "src.interfaces.api.admin_router",
             "src.interfaces.api.mcp_router",
+            "src.interfaces.api.observability_router",
+            "src.interfaces.api.system_prompt_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -326,6 +335,11 @@ class Container(containers.DeclarativeContainer):
 
     provider_setting_repository = providers.Factory(
         SQLAlchemyProviderSettingRepository,
+        session=db_session,
+    )
+
+    system_prompt_config_repository = providers.Factory(
+        SQLAlchemySystemPromptConfigRepository,
         session=db_session,
     )
 
@@ -787,6 +801,7 @@ class Container(containers.DeclarativeContainer):
         debug=providers.Callable(lambda cfg: cfg.debug, config),
         react_agent_service=react_agent_service,
         tenant_repository=tenant_repository,
+        system_prompt_config_repository=system_prompt_config_repository,
     )
 
     # --- Platform: Provider Settings ---
@@ -830,6 +845,18 @@ class Container(containers.DeclarativeContainer):
         CheckProviderConnectionUseCase,
         provider_setting_repository=provider_setting_repository,
         encryption_service=encryption_service,
+    )
+
+    # --- Platform: System Prompt Config ---
+
+    get_system_prompts_use_case = providers.Factory(
+        GetSystemPromptsUseCase,
+        system_prompt_config_repository=system_prompt_config_repository,
+    )
+
+    update_system_prompts_use_case = providers.Factory(
+        UpdateSystemPromptsUseCase,
+        system_prompt_config_repository=system_prompt_config_repository,
     )
 
     # --- Observability: RAG Evaluation ---

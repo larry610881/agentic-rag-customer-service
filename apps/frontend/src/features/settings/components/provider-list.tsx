@@ -68,11 +68,9 @@ export function ProviderList() {
         const setting = findSetting(providerName);
         const isEnabled = setting?.is_enabled ?? false;
         const isBusy =
-          (updateMutation.isPending &&
-            updateMutation.variables?.id === setting?.id) ||
-          (createMutation.isPending &&
-            (createMutation.variables as { provider_name?: string })
-              ?.provider_name === providerName);
+          createMutation.isPending &&
+          (createMutation.variables as { provider_name?: string })
+            ?.provider_name === providerName;
 
         const switchId = `toggle-${providerName}-llm`;
 

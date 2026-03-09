@@ -259,7 +259,7 @@ class ReActAgentService(AgentService):
         llm = await self._resolve_llm_model(llm_params)
 
         # 4. Build and execute ReAct graph
-        assembled_prompt = assemble_prompt(system_prompt, "react")
+        assembled_prompt = system_prompt or assemble_prompt("", "react")
         graph = self._build_react_graph(
             tools, assembled_prompt, llm, max_tool_calls
         )
@@ -324,7 +324,7 @@ class ReActAgentService(AgentService):
             tools.extend(mcp_tools)
 
         llm = await self._resolve_llm_model(llm_params)
-        assembled_prompt = assemble_prompt(system_prompt, "react")
+        assembled_prompt = system_prompt or assemble_prompt("", "react")
         graph = self._build_react_graph(
             tools, assembled_prompt, llm, max_tool_calls
         )

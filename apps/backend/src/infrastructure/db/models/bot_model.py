@@ -57,6 +57,9 @@ class BotModel(Base):
     eval_depth: Mapped[str] = mapped_column(
         String(20), nullable=False, default="L1", server_default="L1"
     )
+    base_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    router_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    react_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     line_channel_secret: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )

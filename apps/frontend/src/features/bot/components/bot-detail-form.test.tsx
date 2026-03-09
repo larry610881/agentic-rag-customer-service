@@ -71,7 +71,7 @@ describe("BotDetailForm", () => {
       />,
     );
     await user.click(screen.getByRole("tab", { name: "系統提示詞" }));
-    expect(screen.getByLabelText("自訂系統提示詞")).toHaveValue(
+    expect(screen.getByLabelText("Bot 自訂指令")).toHaveValue(
       "You are a helpful customer service bot.",
     );
   });

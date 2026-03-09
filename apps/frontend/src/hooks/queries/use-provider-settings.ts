@@ -25,6 +25,7 @@ export function useProviderSettings(type?: string) {
     queryFn: () =>
       apiFetch<ProviderSetting[]>(url, {}, token ?? undefined),
     enabled: !!token,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -64,7 +65,32 @@ export function useUpdateProviderSetting() {
         { method: "PUT", body: JSON.stringify(data) },
         token ?? undefined,
       ),
-    onSuccess: () => {
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({
+        queryKey: queryKeys.providerSettings.all,
+      });
+      const allKeys = [
+        queryKeys.providerSettings.all,
+        queryKeys.providerSettings.byType("llm"),
+      ];
+      const snapshots = allKeys.map((key) =>
+        queryClient.getQueryData<ProviderSetting[]>(key),
+      );
+      for (const key of allKeys) {
+        queryClient.setQueryData<ProviderSetting[]>(key, (old) =>
+          old?.map((s) => (s.id === id ? { ...s, ...data } : s)),
+        );
+      }
+      return { snapshots, allKeys };
+    },
+    onError: (_err, _vars, context) => {
+      if (context) {
+        context.allKeys.forEach((key, i) => {
+          queryClient.setQueryData(key, context.snapshots[i]);
+        });
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.providerSettings.all,
       });
