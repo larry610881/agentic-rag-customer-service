@@ -203,6 +203,14 @@ class ReActAgentService(AgentService):
         async def agent_node(state: MessagesState) -> dict:
             nonlocal call_count
             messages = list(state["messages"])
+            # Sanitize: some LLMs (DeepSeek) require string content,
+            # but MCP ToolMessages may have list content blocks.
+            for msg in messages:
+                if isinstance(msg.content, list):
+                    msg.content = "\n".join(
+                        b.text if hasattr(b, "text") else str(b)
+                        for b in msg.content
+                    )
             if system_prompt:
                 messages = [SystemMessage(content=system_prompt)] + messages
             response = await model_with_tools.ainvoke(messages)
