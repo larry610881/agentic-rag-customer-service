@@ -197,11 +197,16 @@ class ReActAgentService(AgentService):
         max_tool_calls: int,
     ) -> Any:
         """Build a ReAct StateGraph with agent ↔ tools loop."""
+        import time
+
         model_with_tools = llm.bind_tools(tools)
         call_count = 0
 
         async def agent_node(state: MessagesState) -> dict:
             nonlocal call_count
+            call_count += 1
+            t0 = time.monotonic()
+
             messages = list(state["messages"])
             # Sanitize: some LLMs (DeepSeek) require string content,
             # but MCP ToolMessages may have list content blocks.
@@ -211,11 +216,88 @@ class ReActAgentService(AgentService):
                         b.text if hasattr(b, "text") else str(b)
                         for b in msg.content
                     )
+
+            logger.info(
+                "react.agent_node.start",
+                iteration=call_count,
+                message_count=len(messages),
+            )
+
             if system_prompt:
                 messages = [SystemMessage(content=system_prompt)] + messages
             response = await model_with_tools.ainvoke(messages)
-            call_count += 1
+
+            elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
+
+            if isinstance(response, AIMessage) and response.tool_calls:
+                tc_summary = [
+                    {
+                        "name": tc["name"],
+                        "args_keys": list(tc.get("args", {}).keys()),
+                    }
+                    for tc in response.tool_calls
+                ]
+                logger.info(
+                    "react.agent_node.tool_calls",
+                    iteration=call_count,
+                    elapsed_ms=elapsed_ms,
+                    tool_calls=tc_summary,
+                )
+            else:
+                content_preview = ""
+                if isinstance(response, AIMessage) and response.content:
+                    content_preview = (
+                        response.content[:100]
+                        if isinstance(response.content, str)
+                        else str(response.content)[:100]
+                    )
+                logger.info(
+                    "react.agent_node.final_answer",
+                    iteration=call_count,
+                    elapsed_ms=elapsed_ms,
+                    answer_preview=content_preview,
+                )
+
             return {"messages": [response]}
+
+        _tool_node = ToolNode(tools)
+
+        async def tools_node(state: MessagesState) -> dict:
+            """Wraps ToolNode with logging."""
+            import time
+
+            t0 = time.monotonic()
+            last_msg = state["messages"][-1]
+            tool_names = []
+            if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
+                tool_names = [tc["name"] for tc in last_msg.tool_calls]
+
+            logger.info(
+                "react.tools_node.start",
+                tools=tool_names,
+            )
+
+            result = await _tool_node.ainvoke(state)
+
+            elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
+
+            # Log each tool result summary
+            for msg in result.get("messages", []):
+                if isinstance(msg, ToolMessage):
+                    content_str = (
+                        msg.content
+                        if isinstance(msg.content, str)
+                        else str(msg.content)
+                    )
+                    logger.info(
+                        "react.tools_node.result",
+                        tool_name=getattr(msg, "name", "unknown"),
+                        elapsed_ms=elapsed_ms,
+                        result_length=len(content_str),
+                        result_preview=content_str[:200],
+                    )
+
+            return result
 
         def should_continue(state: MessagesState) -> str:
             nonlocal call_count
@@ -223,12 +305,16 @@ class ReActAgentService(AgentService):
             if not isinstance(last, AIMessage) or not last.tool_calls:
                 return END
             if call_count >= max_tool_calls:
+                logger.warning(
+                    "react.max_tool_calls_reached",
+                    max_tool_calls=max_tool_calls,
+                )
                 return END
             return "tools"
 
         builder = StateGraph(MessagesState)
         builder.add_node("agent", agent_node)
-        builder.add_node("tools", ToolNode(tools))
+        builder.add_node("tools", tools_node)
         builder.add_edge(START, "agent")
         builder.add_conditional_edges(
             "agent", should_continue, {"tools": "tools", END: END}
@@ -352,6 +438,8 @@ class ReActAgentService(AgentService):
                 "react.process_message_stream",
                 tenant_id=tenant_id,
                 tool_count=len(tools),
+                tool_names=[t.name for t in tools],
+                mcp_server_count=len(mcp_servers or []),
             )
 
             # Emit initial status so frontend shows "AI 分析中" immediately
@@ -431,6 +519,12 @@ class ReActAgentService(AgentService):
                                             }
                                 except (json.JSONDecodeError, TypeError):
                                     pass
+                        # After all tools complete, LLM will think again
+                        # — emit status so frontend shows transition
+                        yield {
+                            "type": "status",
+                            "status": "react_thinking",
+                        }
 
             yield {"type": "done"}
 

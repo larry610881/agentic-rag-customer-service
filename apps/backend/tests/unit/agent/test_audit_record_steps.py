@@ -98,7 +98,8 @@ def react_agent_processes(context):
         ),
         patch.object(service, "_build_rag_lc_tool", return_value=rag_lc_tool),
         patch.object(
-            service, "_load_mcp_tools", new=AsyncMock(return_value=[])
+            service, "_load_mcp_tools_with_stack",
+            new=AsyncMock(return_value=[]),
         ),
     ):
         result = _run(

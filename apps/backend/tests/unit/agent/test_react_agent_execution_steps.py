@@ -82,7 +82,8 @@ def _patch_and_run(service, mock_llm, rag_lc_tool, mcp_tools, **process_kwargs):
         ),
         patch.object(service, "_build_rag_lc_tool", return_value=rag_lc_tool),
         patch.object(
-            service, "_load_mcp_tools", new=AsyncMock(return_value=mcp_tools)
+            service, "_load_mcp_tools_with_stack",
+            new=AsyncMock(return_value=mcp_tools),
         ),
     ):
         return _run(service.process_message(**process_kwargs))

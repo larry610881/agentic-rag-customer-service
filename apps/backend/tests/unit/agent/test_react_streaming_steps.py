@@ -142,7 +142,7 @@ def stream_message(context):
             ),
             patch.object(service, "_build_rag_lc_tool", return_value=rag_lc_tool),
             patch.object(
-                service, "_load_mcp_tools",
+                service, "_load_mcp_tools_with_stack",
                 new=AsyncMock(return_value=extra_tools),
             ),
         ):
