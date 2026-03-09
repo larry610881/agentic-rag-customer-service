@@ -59,6 +59,13 @@ export function SystemPromptEditor() {
         <p className="text-xs text-muted-foreground">
           所有模式共用的基礎提示詞，定義 AI 的角色與行為準則。
         </p>
+        <p className="text-xs text-muted-foreground/70">
+          支援動態變數：
+          <code className="rounded bg-muted px-1">{"{today}"}</code> 今日日期、
+          <code className="rounded bg-muted px-1">{"{now}"}</code> 當前時間、
+          <code className="rounded bg-muted px-1">{"{weekday_zh}"}</code> 中文星期。
+          例：「今天是 {"{today}"}（{"{weekday_zh}"}）」
+        </p>
       </div>
 
       <div className="flex flex-col gap-2">

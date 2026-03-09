@@ -820,6 +820,12 @@ export function BotDetailForm({
               <p className="text-xs text-muted-foreground">
                 此指令會附加在系統提示詞最後，用於定義 Bot 的個性、語調等。
               </p>
+              <p className="text-xs text-muted-foreground/70">
+                支援動態變數：
+                <code className="rounded bg-muted px-1">{"{today}"}</code>、
+                <code className="rounded bg-muted px-1">{"{now}"}</code>、
+                <code className="rounded bg-muted px-1">{"{weekday_zh}"}</code>
+              </p>
             </div>
           </section>
 
