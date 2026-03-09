@@ -3,7 +3,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Copy, Check, Search, Loader2 } from "lucide-react";
+import { Copy, Check, Search, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +30,7 @@ import {
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
 import { ModelSelect } from "./model-select";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
-import type { Bot, UpdateBotRequest } from "@/types/bot";
+import type { Bot, McpServerConfig, UpdateBotRequest } from "@/types/bot";
 import { useDiscoverMcpTools } from "@/hooks/queries/use-mcp";
 import type { McpToolInfo } from "@/types/mcp";
 
@@ -60,8 +60,11 @@ const botFormSchema = z.object({
   eval_provider: z.string().optional(),
   eval_model: z.string().optional(),
   eval_depth: z.enum(["off", "L1", "L1+L2", "L1+L2+L3"]),
-  mcp_server_url: z.string().nullable().optional(),
-  mcp_enabled_tools: z.array(z.string()),
+  mcp_servers: z.array(z.object({
+    url: z.string(),
+    name: z.string(),
+    enabled_tools: z.array(z.string()),
+  })),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
   line_channel_secret: z.string().nullable().optional(),
   line_channel_access_token: z.string().nullable().optional(),
@@ -150,8 +153,7 @@ export function BotDetailForm({
       eval_provider: bot.eval_provider ?? "",
       eval_model: bot.eval_model ?? "",
       eval_depth: bot.eval_depth ?? "L1",
-      mcp_server_url: bot.mcp_server_url,
-      mcp_enabled_tools: bot.mcp_enabled_tools ?? [],
+      mcp_servers: bot.mcp_servers ?? [],
       max_tool_calls: bot.max_tool_calls ?? 5,
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
@@ -160,40 +162,70 @@ export function BotDetailForm({
 
   const enabledTools = watch("enabled_tools") ?? [];
   const agentMode = watch("agent_mode");
-  const mcpServerUrl = watch("mcp_server_url");
+  const mcpServers = watch("mcp_servers") ?? [];
 
   // MCP Discovery state
-  const [discoveredTools, setDiscoveredTools] = useState<McpToolInfo[]>([]);
+  const [mcpUrlInput, setMcpUrlInput] = useState("");
+  const [serverToolsMap, setServerToolsMap] = useState<Record<string, McpToolInfo[]>>({});
   const discoverMcp = useDiscoverMcpTools();
 
-  const handleDiscoverTools = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!mcpServerUrl) {
-      if (!opts?.silent) toast.error("請先輸入 MCP Server URL");
+  const handleDiscoverAndAdd = useCallback(async () => {
+    if (!mcpUrlInput) {
+      toast.error("請先輸入 MCP Server URL");
+      return;
+    }
+    // Check if already added
+    if (mcpServers.some((s) => s.url === mcpUrlInput)) {
+      toast.error("此 Server 已綁定");
       return;
     }
     try {
-      const result = await discoverMcp.mutateAsync(mcpServerUrl);
-      setDiscoveredTools(result.tools);
-      if (!opts?.silent) {
-        // Manual discover: select all tools by default
-        const allToolNames = result.tools.map((t) => t.name);
-        setValue("mcp_enabled_tools", allToolNames);
-        toast.success(`發現 ${result.tools.length} 個 Tools（${result.server_name}）`);
-      }
+      const result = await discoverMcp.mutateAsync(mcpUrlInput);
+      const allToolNames = result.tools.map((t) => t.name);
+      const newServer: McpServerConfig = {
+        url: mcpUrlInput,
+        name: result.server_name,
+        enabled_tools: allToolNames,
+      };
+      setValue("mcp_servers", [...mcpServers, newServer]);
+      setServerToolsMap((prev) => ({ ...prev, [mcpUrlInput]: result.tools }));
+      setMcpUrlInput("");
+      toast.success(`已新增 ${result.server_name}（${result.tools.length} 個 Tools）`);
     } catch {
-      if (!opts?.silent) toast.error("無法連線 MCP Server");
-      setDiscoveredTools([]);
+      toast.error("無法連線 MCP Server");
     }
-  }, [mcpServerUrl, discoverMcp, setValue]);
+  }, [mcpUrlInput, mcpServers, discoverMcp, setValue]);
 
-  // Auto-discover MCP tools on mount when bot already has a server URL
+  const handleRemoveServer = useCallback((url: string) => {
+    setValue("mcp_servers", mcpServers.filter((s) => s.url !== url));
+    setServerToolsMap((prev) => {
+      const next = { ...prev };
+      delete next[url];
+      return next;
+    });
+  }, [mcpServers, setValue]);
+
+  const handleToggleTool = useCallback((serverUrl: string, toolName: string, checked: boolean) => {
+    setValue("mcp_servers", mcpServers.map((s) => {
+      if (s.url !== serverUrl) return s;
+      const tools = checked
+        ? [...s.enabled_tools, toolName]
+        : s.enabled_tools.filter((t) => t !== toolName);
+      return { ...s, enabled_tools: tools };
+    }));
+  }, [mcpServers, setValue]);
+
+  // Auto-discover tool metadata on mount for existing servers
   useEffect(() => {
-    if (bot.mcp_server_url && discoveredTools.length === 0) {
-      handleDiscoverTools({ silent: true });
+    for (const server of bot.mcp_servers ?? []) {
+      if (!serverToolsMap[server.url]) {
+        discoverMcp.mutateAsync(server.url).then((result) => {
+          setServerToolsMap((prev) => ({ ...prev, [server.url]: result.tools }));
+        }).catch(() => { /* silent */ });
+      }
     }
-    // Only run on mount / when bot changes, not on every discoveredTools change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bot.mcp_server_url]);
+  }, [bot.mcp_servers]);
 
   useEffect(() => {
     reset({
@@ -218,8 +250,7 @@ export function BotDetailForm({
       eval_provider: bot.eval_provider ?? "",
       eval_model: bot.eval_model ?? "",
       eval_depth: bot.eval_depth ?? "L1",
-      mcp_server_url: bot.mcp_server_url,
-      mcp_enabled_tools: bot.mcp_enabled_tools ?? [],
+      mcp_servers: bot.mcp_servers ?? [],
       max_tool_calls: bot.max_tool_calls ?? 5,
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
@@ -528,24 +559,25 @@ export function BotDetailForm({
             <section className="flex flex-col gap-4">
               <h3 className="text-lg font-semibold">MCP 設定</h3>
               <p className="text-sm text-muted-foreground">
-                設定 ReAct 模式的 MCP Server 連線，探索可用的 Tools。
+                新增 MCP Server，探索可用 Tools 並綁定至此機器人。
               </p>
 
-              {/* URL + Discover Button */}
+              {/* URL input + Discover & Add */}
               <div className="flex flex-col gap-2">
-                <Label htmlFor="bot-mcp-server-url">MCP Server URL</Label>
+                <Label htmlFor="bot-mcp-url-input">新增 MCP Server</Label>
                 <div className="flex gap-2">
                   <Input
-                    id="bot-mcp-server-url"
-                    {...register("mcp_server_url")}
-                    placeholder="例如：http://localhost:9000/sse"
+                    id="bot-mcp-url-input"
+                    value={mcpUrlInput}
+                    onChange={(e) => setMcpUrlInput(e.target.value)}
+                    placeholder="例如：http://localhost:9000/mcp"
                     className="flex-1"
                   />
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={handleDiscoverTools}
-                    disabled={discoverMcp.isPending || !mcpServerUrl}
+                    onClick={handleDiscoverAndAdd}
+                    disabled={discoverMcp.isPending || !mcpUrlInput}
                   >
                     {discoverMcp.isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -557,49 +589,86 @@ export function BotDetailForm({
                 </div>
               </div>
 
-              {/* Discovered Tools Checkbox List */}
-              {discoveredTools.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <Label>可用 Tools</Label>
-                  <Controller
-                    name="mcp_enabled_tools"
-                    control={control}
-                    render={({ field }) => (
-                      <div className="flex flex-col gap-2 rounded-md border p-3">
-                        {discoveredTools.map((tool) => (
-                          <label
-                            key={tool.name}
-                            className="flex items-start gap-2 text-sm"
+              {/* Bound MCP Server cards */}
+              {mcpServers.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  <Label>已綁定的 MCP Servers</Label>
+                  {mcpServers.map((server) => {
+                    const toolsMeta = serverToolsMap[server.url] ?? [];
+                    return (
+                      <div
+                        key={server.url}
+                        className="rounded-md border p-3"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">
+                              {server.name}
+                            </span>
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {server.url}
+                            </span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => handleRemoveServer(server.url)}
+                            aria-label={`移除 ${server.name}`}
                           >
-                            <input
-                              type="checkbox"
-                              checked={field.value.includes(tool.name)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  field.onChange([...field.value, tool.name]);
-                                } else {
-                                  field.onChange(
-                                    field.value.filter((n) => n !== tool.name),
-                                  );
-                                }
-                              }}
-                              className="mt-0.5 rounded border-input"
-                            />
-                            <div>
-                              <span className="font-mono text-xs font-medium">
-                                {tool.name}
-                              </span>
-                              <span className="ml-2 text-muted-foreground">
-                                {tool.description.length > 60
-                                  ? tool.description.slice(0, 60) + "..."
-                                  : tool.description}
-                              </span>
-                            </div>
-                          </label>
-                        ))}
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          {toolsMeta.length > 0
+                            ? toolsMeta.map((tool) => (
+                                <label
+                                  key={tool.name}
+                                  className="flex items-start gap-2 text-sm"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={server.enabled_tools.includes(tool.name)}
+                                    onChange={(e) =>
+                                      handleToggleTool(server.url, tool.name, e.target.checked)
+                                    }
+                                    className="mt-0.5 rounded border-input"
+                                  />
+                                  <div>
+                                    <span className="font-mono text-xs font-medium">
+                                      {tool.name}
+                                    </span>
+                                    <span className="ml-2 text-muted-foreground">
+                                      {tool.description.length > 60
+                                        ? tool.description.slice(0, 60) + "..."
+                                        : tool.description}
+                                    </span>
+                                  </div>
+                                </label>
+                              ))
+                            : server.enabled_tools.map((toolName) => (
+                                <label
+                                  key={toolName}
+                                  className="flex items-center gap-2 text-sm"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked
+                                    onChange={(e) =>
+                                      handleToggleTool(server.url, toolName, e.target.checked)
+                                    }
+                                    className="rounded border-input"
+                                  />
+                                  <span className="font-mono text-xs font-medium">
+                                    {toolName}
+                                  </span>
+                                </label>
+                              ))}
+                        </div>
                       </div>
-                    )}
-                  />
+                    );
+                  })}
                 </div>
               )}
 

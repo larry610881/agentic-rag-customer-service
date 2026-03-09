@@ -93,8 +93,7 @@ class LangGraphAgentService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
-        mcp_server_url: str | None = None,
-        mcp_enabled_tools: list[str] | None = None,
+        mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
         audit_mode: str = "minimal",
     ) -> AgentResponse:
@@ -155,21 +154,27 @@ class LangGraphAgentService(AgentService):
             else None
         )
 
-        tc_entry: dict[str, Any] = {
-            "tool_name": tool_name,
-            "reasoning": tool_reasoning,
-        }
-        if audit_mode == "full":
-            tc_entry["tool_input"] = user_message
-            tool_result_raw = result.get("tool_result", {})
-            if isinstance(tool_result_raw, dict):
-                tc_entry["tool_output"] = str(
-                    tool_result_raw.get("context", "")
-                )[:500]
+        if audit_mode == "off":
+            tc_list: list[dict[str, Any]] = [
+                {"tool_name": "direct", "reasoning": ""}
+            ]
+        else:
+            tc_entry: dict[str, Any] = {
+                "tool_name": tool_name,
+                "reasoning": tool_reasoning,
+            }
+            if audit_mode == "full":
+                tc_entry["tool_input"] = user_message
+                tool_result_raw = result.get("tool_result", {})
+                if isinstance(tool_result_raw, dict):
+                    tc_entry["tool_output"] = str(
+                        tool_result_raw.get("context", "")
+                    )[:500]
+            tc_list = [tc_entry]
 
         return AgentResponse(
             answer=answer,
-            tool_calls=[tc_entry],
+            tool_calls=tc_list,
             sources=sources,
             conversation_id=str(uuid4()),
             usage=usage,
@@ -327,8 +332,7 @@ class LangGraphAgentService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
-        mcp_server_url: str | None = None,
-        mcp_enabled_tools: list[str] | None = None,
+        mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
         audit_mode: str = "minimal",
     ) -> AsyncIterator[dict[str, Any]]:

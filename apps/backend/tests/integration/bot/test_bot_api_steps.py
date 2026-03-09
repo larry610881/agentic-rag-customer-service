@@ -153,3 +153,128 @@ def check_bot_count(ctx, count):
 def check_kb_binding(ctx):
     body = ctx["response"].json()
     assert ctx["kb"]["id"] in body["knowledge_base_ids"]
+
+
+# ---------------------------------------------------------------------------
+# MCP multi-server scenarios
+# ---------------------------------------------------------------------------
+
+_MCP_SERVERS_FIXTURE = [
+    {
+        "url": "http://localhost:9000/mcp",
+        "name": "joyinkitchen",
+        "enabled_tools": ["search_products", "search_courses"],
+    },
+    {
+        "url": "http://localhost:9001/mcp",
+        "name": "crm",
+        "enabled_tools": ["query_orders"],
+    },
+]
+
+
+@when("我送出認證 POST /api/v1/bots 含 MCP 設定")
+def post_create_bot_with_mcp(ctx, client):
+    ctx["response"] = client.post(
+        "/api/v1/bots",
+        json={
+            "name": "MCP Bot",
+            "agent_mode": "react",
+            "mcp_servers": _MCP_SERVERS_FIXTURE,
+        },
+        headers=_auth_only(ctx["headers"]),
+    )
+    # Store bot for subsequent GET
+    if ctx["response"].status_code == 201:
+        ctx["bot"] = ctx["response"].json()
+
+
+@when("我用該回應 Bot ID 送出 GET /api/v1/bots/{id}")
+def get_bot_from_response(ctx, client):
+    bot_id = ctx["bot"]["id"]
+    ctx["response"] = client.get(
+        f"/api/v1/bots/{bot_id}",
+        headers=_auth_only(ctx["headers"]),
+    )
+
+
+@when("我用該 Bot ID 送出 PUT 更新 mcp_servers")
+def update_bot_mcp(ctx, client):
+    ctx["response"] = client.put(
+        f"/api/v1/bots/{ctx['bot']['id']}",
+        json={
+            "mcp_servers": [
+                {
+                    "url": "http://localhost:9002/mcp",
+                    "name": "new-server",
+                    "enabled_tools": ["tool_a"],
+                },
+            ],
+        },
+        headers=_auth_only(ctx["headers"]),
+    )
+
+
+@when("我送出認證 POST /api/v1/bots 含完整欄位")
+def post_create_bot_full(ctx, client):
+    ctx["response"] = client.post(
+        "/api/v1/bots",
+        json={
+            "name": "Full Bot",
+            "agent_mode": "react",
+            "audit_mode": "full",
+            "max_tool_calls": 10,
+            "mcp_servers": [
+                {
+                    "url": "http://localhost:9000/mcp",
+                    "name": "test-server",
+                    "enabled_tools": ["tool_x"],
+                },
+            ],
+        },
+        headers=_auth_only(ctx["headers"]),
+    )
+
+
+@then(parsers.parse("回應包含 mcp_servers 陣列長度為 {count:d}"))
+def check_mcp_servers_count(ctx, count):
+    body = ctx["response"].json()
+    assert "mcp_servers" in body, f"mcp_servers not in response: {body.keys()}"
+    assert len(body["mcp_servers"]) == count, (
+        f"Expected {count} servers, got {len(body['mcp_servers'])}: "
+        f"{body['mcp_servers']}"
+    )
+
+
+@then(parsers.parse('回應 mcp_servers 第 {idx:d} 個 URL 為 "{url}"'))
+def check_mcp_server_url(ctx, idx, url):
+    servers = ctx["response"].json()["mcp_servers"]
+    assert servers[idx - 1]["url"] == url
+
+
+@then(parsers.parse('回應 mcp_servers 第 {idx:d} 個 name 為 "{name}"'))
+def check_mcp_server_name(ctx, idx, name):
+    servers = ctx["response"].json()["mcp_servers"]
+    assert servers[idx - 1]["name"] == name
+
+
+@then(parsers.parse('回應 mcp_servers 第 {idx:d} 個 enabled_tools 包含 "{tool}"'))
+def check_mcp_server_tool(ctx, idx, tool):
+    servers = ctx["response"].json()["mcp_servers"]
+    assert tool in servers[idx - 1]["enabled_tools"]
+
+
+@then(parsers.parse('回應欄位 {field} 為 "{value}"'))
+def check_field_str(ctx, field, value):
+    body = ctx["response"].json()
+    assert str(body[field]) == value, (
+        f"Expected {field}={value}, got {body[field]}"
+    )
+
+
+@then(parsers.parse("回應欄位 {field} 為 {value:d}"))
+def check_field_int(ctx, field, value):
+    body = ctx["response"].json()
+    assert body[field] == value, (
+        f"Expected {field}={value}, got {body[field]}"
+    )

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from src.domain.bot.entity import Bot, BotLLMParams
+from src.domain.bot.entity import Bot, BotLLMParams, McpServerConfig
 from src.domain.bot.repository import BotRepository
 
 
@@ -30,8 +30,7 @@ class CreateBotCommand:
     eval_provider: str = ""
     eval_model: str = ""
     eval_depth: str = "L1"
-    mcp_server_url: str | None = None
-    mcp_enabled_tools: list[str] = field(default_factory=list)
+    mcp_servers: list[dict] = field(default_factory=list)
     max_tool_calls: int = 5
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
@@ -67,8 +66,14 @@ class CreateBotUseCase:
             eval_provider=command.eval_provider,
             eval_model=command.eval_model,
             eval_depth=command.eval_depth,
-            mcp_server_url=command.mcp_server_url,
-            mcp_enabled_tools=list(command.mcp_enabled_tools),
+            mcp_servers=[
+                McpServerConfig(
+                    url=s.get("url", ""),
+                    name=s.get("name", ""),
+                    enabled_tools=s.get("enabled_tools", []),
+                )
+                for s in command.mcp_servers
+            ],
             max_tool_calls=command.max_tool_calls,
             line_channel_secret=command.line_channel_secret,
             line_channel_access_token=command.line_channel_access_token,

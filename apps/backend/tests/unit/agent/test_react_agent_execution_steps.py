@@ -205,8 +205,8 @@ def user_asks(context, question):
         tenant_id="tenant-1",
         kb_id="kb-1",
         user_message=question,
-        mcp_server_url=(
-            "http://fake-mcp"
+        mcp_servers=(
+            [{"url": "http://fake-mcp", "enabled_tools": None}]
             if (mcp_return or context.get("mcp_failure"))
             else None
         ),

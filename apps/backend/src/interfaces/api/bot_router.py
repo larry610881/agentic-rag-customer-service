@@ -2,6 +2,8 @@
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Any
+
 from pydantic import BaseModel
 
 from src.application.bot.create_bot_use_case import (
@@ -21,6 +23,8 @@ router = APIRouter(prefix="/api/v1/bots", tags=["bots"])
 
 
 _VALID_AGENT_MODES = {"router", "react"}
+_VALID_AUDIT_MODES = {"off", "minimal", "full"}
+_VALID_EVAL_DEPTHS = {"off", "L1", "L1+L2", "L1+L2+L3"}
 
 
 class CreateBotRequest(BaseModel):
@@ -45,8 +49,7 @@ class CreateBotRequest(BaseModel):
     eval_provider: str = ""
     eval_model: str = ""
     eval_depth: str = "L1"
-    mcp_server_url: str | None = None
-    mcp_enabled_tools: list[str] = []
+    mcp_servers: list[dict[str, Any]] = []
     max_tool_calls: int = 5
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
@@ -74,8 +77,7 @@ class UpdateBotRequest(BaseModel):
     eval_provider: str | None = None
     eval_model: str | None = None
     eval_depth: str | None = None
-    mcp_server_url: str | None = None
-    mcp_enabled_tools: list[str] | None = None
+    mcp_servers: list[dict[str, Any]] | None = None
     max_tool_calls: int | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
@@ -106,8 +108,7 @@ class BotResponse(BaseModel):
     eval_provider: str
     eval_model: str
     eval_depth: str
-    mcp_server_url: str | None
-    mcp_enabled_tools: list[str]
+    mcp_servers: list[dict[str, Any]]
     max_tool_calls: int
     line_channel_secret: str | None
     line_channel_access_token: str | None
@@ -141,8 +142,10 @@ def _to_response(bot) -> BotResponse:
         eval_provider=bot.eval_provider,
         eval_model=bot.eval_model,
         eval_depth=bot.eval_depth,
-        mcp_server_url=bot.mcp_server_url,
-        mcp_enabled_tools=bot.mcp_enabled_tools,
+        mcp_servers=[
+            {"url": s.url, "name": s.name, "enabled_tools": s.enabled_tools}
+            for s in bot.mcp_servers
+        ],
         max_tool_calls=bot.max_tool_calls,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
@@ -169,6 +172,16 @@ async def create_bot(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"agent_mode must be one of {sorted(_VALID_AGENT_MODES)}",
         )
+    if body.audit_mode not in _VALID_AUDIT_MODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"audit_mode must be one of {sorted(_VALID_AUDIT_MODES)}",
+        )
+    if body.eval_depth not in _VALID_EVAL_DEPTHS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
+        )
     bot = await use_case.execute(
         CreateBotCommand(
             tenant_id=tenant.tenant_id,
@@ -193,8 +206,7 @@ async def create_bot(
             eval_provider=body.eval_provider,
             eval_model=body.eval_model,
             eval_depth=body.eval_depth,
-            mcp_server_url=body.mcp_server_url,
-            mcp_enabled_tools=body.mcp_enabled_tools,
+            mcp_servers=body.mcp_servers,
             max_tool_calls=body.max_tool_calls,
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
@@ -264,6 +276,16 @@ async def update_bot(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"agent_mode must be one of {sorted(_VALID_AGENT_MODES)}",
+        )
+    if body.audit_mode is not None and body.audit_mode not in _VALID_AUDIT_MODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"audit_mode must be one of {sorted(_VALID_AUDIT_MODES)}",
+        )
+    if body.eval_depth is not None and body.eval_depth not in _VALID_EVAL_DEPTHS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
         )
     command = _build_update_command(bot_id, body)
     try:

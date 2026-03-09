@@ -1,6 +1,6 @@
 """Cached MCP Tool Loader — 快取 MCP Server 工具載入
 
-避免每次 ReAct 呼叫都重新建立 SSE 連線，
+避免每次 ReAct 呼叫都重新建立連線，
 以 server_url 為 key 快取 BaseTool 列表，TTL 預設 5 分鐘。
 """
 
@@ -86,9 +86,9 @@ class CachedMCPToolLoader:
         try:
             from langchain_mcp_adapters.tools import load_mcp_tools
             from mcp import ClientSession
-            from mcp.client.sse import sse_client
+            from mcp.client.streamable_http import streamablehttp_client
 
-            async with sse_client(server_url) as (read, write):
+            async with streamablehttp_client(server_url) as (read, write, _):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     return await load_mcp_tools(session)

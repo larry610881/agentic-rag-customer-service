@@ -45,8 +45,7 @@ class BotModel(Base):
     agent_mode: Mapped[str] = mapped_column(
         String(10), nullable=False, default="router"
     )
-    mcp_server_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    mcp_enabled_tools: Mapped[list] = mapped_column(
+    mcp_servers: Mapped[list] = mapped_column(
         JSON, nullable=False, default=list
     )
     max_tool_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=5)

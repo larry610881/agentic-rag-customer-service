@@ -46,3 +46,33 @@ Feature: Bot API Integration
     When 我送出認證 POST /api/v1/bots 名稱為 "KB Bot" 綁定知識庫
     Then 回應狀態碼為 201
     And 回應包含綁定的知識庫 ID
+
+  Scenario: 建立 Bot 含 MCP Servers 設定
+    When 我送出認證 POST /api/v1/bots 含 MCP 設定
+    Then 回應狀態碼為 201
+    And 回應包含 mcp_servers 陣列長度為 2
+    And 回應 mcp_servers 第 1 個 URL 為 "http://localhost:9000/mcp"
+    And 回應 mcp_servers 第 2 個 name 為 "crm"
+
+  Scenario: 建立 Bot 後重新查詢 — MCP 欄位完整保留
+    When 我送出認證 POST /api/v1/bots 含 MCP 設定
+    Then 回應狀態碼為 201
+    When 我用該回應 Bot ID 送出 GET /api/v1/bots/{id}
+    Then 回應狀態碼為 200
+    And 回應包含 mcp_servers 陣列長度為 2
+    And 回應 mcp_servers 第 1 個 enabled_tools 包含 "search_products"
+
+  Scenario: 更新 Bot 的 MCP Servers
+    Given 已建立 Bot "MCP Bot"
+    When 我用該 Bot ID 送出 PUT 更新 mcp_servers
+    Then 回應狀態碼為 200
+    And 回應包含 mcp_servers 陣列長度為 1
+    And 回應 mcp_servers 第 1 個 name 為 "new-server"
+
+  Scenario: 建立 Bot — 所有欄位完整 round-trip
+    When 我送出認證 POST /api/v1/bots 含完整欄位
+    Then 回應狀態碼為 201
+    And 回應欄位 agent_mode 為 "react"
+    And 回應欄位 audit_mode 為 "full"
+    And 回應欄位 max_tool_calls 為 10
+    And 回應包含 mcp_servers 陣列長度為 1

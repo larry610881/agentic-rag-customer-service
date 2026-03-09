@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, replace
 
-from src.domain.bot.entity import Bot
+from src.domain.bot.entity import Bot, McpServerConfig
 from src.domain.bot.repository import BotRepository
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.exceptions import EntityNotFoundError
@@ -34,8 +34,7 @@ class UpdateBotCommand:
     eval_provider: object = _UNSET
     eval_model: object = _UNSET
     eval_depth: object = _UNSET
-    mcp_server_url: object = _UNSET
-    mcp_enabled_tools: object = _UNSET
+    mcp_servers: object = _UNSET
     max_tool_calls: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
@@ -59,7 +58,7 @@ class UpdateBotUseCase:
             "llm_provider", "llm_model", "show_sources",
             "agent_mode", "audit_mode",
             "eval_provider", "eval_model", "eval_depth",
-            "mcp_server_url", "max_tool_calls",
+            "max_tool_calls",
             "line_channel_secret", "line_channel_access_token",
         )
         for field in _DIRECT_FIELDS:
@@ -71,8 +70,15 @@ class UpdateBotUseCase:
             bot.knowledge_base_ids = list(command.knowledge_base_ids)  # type: ignore[arg-type]
         if command.enabled_tools is not _UNSET:
             bot.enabled_tools = list(command.enabled_tools)  # type: ignore[arg-type]
-        if command.mcp_enabled_tools is not _UNSET:
-            bot.mcp_enabled_tools = list(command.mcp_enabled_tools)  # type: ignore[arg-type]
+        if command.mcp_servers is not _UNSET:
+            bot.mcp_servers = [
+                McpServerConfig(
+                    url=s.get("url", ""),
+                    name=s.get("name", ""),
+                    enabled_tools=s.get("enabled_tools", []),
+                )
+                for s in command.mcp_servers  # type: ignore[union-attr]
+            ]
 
         # LLM params — collect changed fields, apply once
         _LLM_FIELDS = (

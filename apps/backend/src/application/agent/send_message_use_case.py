@@ -4,6 +4,9 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
+
+import structlog
 
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
@@ -16,6 +19,8 @@ from src.domain.conversation.history_strategy import (
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.shared.exceptions import DomainException
 from src.domain.tenant.repository import TenantRepository
+
+logger = structlog.get_logger(__name__)
 
 _REFUND_METADATA_MARKER = "__refund_metadata"
 
@@ -99,10 +104,15 @@ class SendMessageUseCase:
         cfg["rag_score_threshold"] = bot.llm_params.rag_score_threshold
         cfg["show_sources"] = bot.show_sources
         cfg["agent_mode"] = bot.agent_mode or "router"
-        cfg["mcp_server_url"] = bot.mcp_server_url
-        cfg["mcp_enabled_tools"] = bot.mcp_enabled_tools
+        cfg["mcp_servers"] = [
+            {"url": s.url, "name": s.name, "enabled_tools": s.enabled_tools}
+            for s in bot.mcp_servers
+        ]
         cfg["max_tool_calls"] = bot.max_tool_calls or 5
         cfg["audit_mode"] = getattr(bot, "audit_mode", "minimal")
+        cfg["eval_depth"] = getattr(bot, "eval_depth", "off")
+        cfg["eval_provider"] = getattr(bot, "eval_provider", "")
+        cfg["eval_model"] = getattr(bot, "eval_model", "")
         return cfg
 
     async def _resolve_agent_service(
@@ -179,8 +189,7 @@ class SendMessageUseCase:
             enabled_tools=bot_cfg["enabled_tools"],
             rag_top_k=bot_cfg["rag_top_k"],
             rag_score_threshold=bot_cfg["rag_score_threshold"],
-            mcp_server_url=bot_cfg.get("mcp_server_url"),
-            mcp_enabled_tools=bot_cfg.get("mcp_enabled_tools"),
+            mcp_servers=bot_cfg.get("mcp_servers"),
             max_tool_calls=bot_cfg.get("max_tool_calls", 5),
             audit_mode=bot_cfg.get("audit_mode", "minimal"),
         )
@@ -212,6 +221,17 @@ class SendMessageUseCase:
         await self._conversation_repo.save(conversation)
 
         response.conversation_id = conversation.id.value
+
+        # Fire-and-forget: persist RAG trace
+        await self._persist_trace(
+            tenant_id=command.tenant_id,
+            query=command.message,
+            tool_calls=response.tool_calls,
+            latency_ms=latency_ms,
+            chunk_count=len(retrieved_chunks) if retrieved_chunks else 0,
+            message_id=None,
+        )
+
         return response
 
     async def execute_stream(
@@ -253,8 +273,7 @@ class SendMessageUseCase:
             enabled_tools=bot_cfg["enabled_tools"],
             rag_top_k=bot_cfg["rag_top_k"],
             rag_score_threshold=bot_cfg["rag_score_threshold"],
-            mcp_server_url=bot_cfg.get("mcp_server_url"),
-            mcp_enabled_tools=bot_cfg.get("mcp_enabled_tools"),
+            mcp_servers=bot_cfg.get("mcp_servers"),
             max_tool_calls=bot_cfg.get("max_tool_calls", 5),
             audit_mode=bot_cfg.get("audit_mode", "minimal"),
         ):
@@ -313,6 +332,37 @@ class SendMessageUseCase:
                 return existing
 
         return Conversation(tenant_id=command.tenant_id, bot_id=command.bot_id)
+
+    @staticmethod
+    async def _persist_trace(
+        tenant_id: str,
+        query: str,
+        tool_calls: list[dict[str, Any]],
+        latency_ms: int,
+        chunk_count: int,
+        message_id: str | None = None,
+    ) -> None:
+        """Save RAG trace to DB (fire-and-forget, never raises)."""
+        try:
+            from src.infrastructure.db.engine import async_session_factory
+            from src.infrastructure.db.models.rag_trace_model import RAGTraceModel
+
+            trace_id = str(uuid4())
+            row = RAGTraceModel(
+                id=str(uuid4()),
+                trace_id=trace_id,
+                query=query[:2000],
+                tenant_id=tenant_id,
+                message_id=message_id,
+                steps=tool_calls,
+                total_ms=float(latency_ms),
+                chunk_count=chunk_count,
+            )
+            async with async_session_factory() as session:
+                session.add(row)
+                await session.commit()
+        except Exception:
+            logger.warning("trace.persist_failed", exc_info=True)
 
     @staticmethod
     def _extract_metadata(conversation: Conversation) -> dict[str, Any]:

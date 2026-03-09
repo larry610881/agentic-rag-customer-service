@@ -4,6 +4,15 @@ from datetime import datetime, timezone
 from src.domain.bot.value_objects import BotId, BotShortCode
 
 
+@dataclass(frozen=True)
+class McpServerConfig:
+    """MCP Server 配置（Value Object）"""
+
+    url: str
+    name: str
+    enabled_tools: list[str] = field(default_factory=list)
+
+
 @dataclass
 class BotLLMParams:
     temperature: float = 0.3
@@ -31,8 +40,7 @@ class Bot:
     llm_model: str = ""
     show_sources: bool = True
     agent_mode: str = "router"
-    mcp_server_url: str | None = None
-    mcp_enabled_tools: list[str] = field(default_factory=list)
+    mcp_servers: list[McpServerConfig] = field(default_factory=list)
     max_tool_calls: int = 5
     audit_mode: str = "minimal"  # "minimal" | "full"
     eval_provider: str = ""  # Eval LLM provider (independent from bot LLM)

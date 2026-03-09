@@ -145,9 +145,9 @@ class ReActAgentService(AgentService):
         try:
             from langchain_mcp_adapters.tools import load_mcp_tools
             from mcp import ClientSession
-            from mcp.client.sse import sse_client
+            from mcp.client.streamable_http import streamablehttp_client
 
-            async with sse_client(server_url) as (read, write):
+            async with streamablehttp_client(server_url) as (read, write, _):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     all_tools = await load_mcp_tools(session)
@@ -233,8 +233,7 @@ class ReActAgentService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
-        mcp_server_url: str | None = None,
-        mcp_enabled_tools: list[str] | None = None,
+        mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
         audit_mode: str = "minimal",
     ) -> AgentResponse:
@@ -244,15 +243,15 @@ class ReActAgentService(AgentService):
         )
         tools: list[BaseTool] = [rag_lc_tool]
 
-        # 2. Load MCP tools if configured
-        if mcp_server_url:
+        # 2. Load MCP tools from all configured servers
+        for server in (mcp_servers or []):
             if self._cached_tool_loader:
                 mcp_tools = await self._cached_tool_loader.load_tools(
-                    mcp_server_url, mcp_enabled_tools
+                    server["url"], server.get("enabled_tools")
                 )
             else:
                 mcp_tools = await self._load_mcp_tools(
-                    mcp_server_url, mcp_enabled_tools
+                    server["url"], server.get("enabled_tools")
                 )
             tools.extend(mcp_tools)
 
@@ -278,7 +277,7 @@ class ReActAgentService(AgentService):
             tenant_id=tenant_id,
             tool_count=len(tools),
             tool_names=[t.name for t in tools],
-            has_mcp=bool(mcp_server_url),
+            mcp_server_count=len(mcp_servers or []),
         )
 
         result = await graph.ainvoke({"messages": input_messages})
@@ -302,8 +301,7 @@ class ReActAgentService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
-        mcp_server_url: str | None = None,
-        mcp_enabled_tools: list[str] | None = None,
+        mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
         audit_mode: str = "minimal",
     ) -> AsyncIterator[dict[str, Any]]:
@@ -314,14 +312,14 @@ class ReActAgentService(AgentService):
         )
         tools: list[BaseTool] = [rag_lc_tool]
 
-        if mcp_server_url:
+        for server in (mcp_servers or []):
             if self._cached_tool_loader:
                 mcp_tools = await self._cached_tool_loader.load_tools(
-                    mcp_server_url, mcp_enabled_tools
+                    server["url"], server.get("enabled_tools")
                 )
             else:
                 mcp_tools = await self._load_mcp_tools(
-                    mcp_server_url, mcp_enabled_tools
+                    server["url"], server.get("enabled_tools")
                 )
             tools.extend(mcp_tools)
 
@@ -358,27 +356,28 @@ class ReActAgentService(AgentService):
                         if isinstance(msg, AIMessage):
                             if msg.tool_calls:
                                 call_count += 1
-                                tc_list = []
-                                for tc in msg.tool_calls:
-                                    entry: dict[str, Any] = {
-                                        "tool_name": tc["name"],
-                                        "reasoning": "",
-                                    }
-                                    if audit_mode == "full":
-                                        entry["tool_input"] = tc.get("args", {})
-                                        entry["iteration"] = call_count
-                                    tc_list.append(entry)
-                                tool_calls_emitted.extend(tc_list)
-                                yield {
-                                    "type": "tool_calls",
-                                    "tool_calls": tc_list,
-                                }
-                                # Yield executing status for each tool
-                                for tc in msg.tool_calls:
+                                if audit_mode != "off":
+                                    tc_list = []
+                                    for tc in msg.tool_calls:
+                                        entry: dict[str, Any] = {
+                                            "tool_name": tc["name"],
+                                            "reasoning": "",
+                                        }
+                                        if audit_mode == "full":
+                                            entry["tool_input"] = tc.get("args", {})
+                                            entry["iteration"] = call_count
+                                        tc_list.append(entry)
+                                    tool_calls_emitted.extend(tc_list)
                                     yield {
-                                        "type": "status",
-                                        "status": f"{tc['name']}_executing",
+                                        "type": "tool_calls",
+                                        "tool_calls": tc_list,
                                     }
+                                    # Yield executing status for each tool
+                                    for tc in msg.tool_calls:
+                                        yield {
+                                            "type": "status",
+                                            "status": f"{tc['name']}_executing",
+                                        }
                             elif msg.content:
                                 content = (
                                     msg.content
@@ -437,15 +436,16 @@ class ReActAgentService(AgentService):
             if isinstance(msg, AIMessage):
                 if msg.tool_calls:
                     iteration += 1
-                    for tc in msg.tool_calls:
-                        entry: dict[str, Any] = {
-                            "tool_name": tc["name"],
-                            "reasoning": "",
-                        }
-                        if audit_mode == "full":
-                            entry["tool_input"] = tc.get("args", {})
-                            entry["iteration"] = iteration
-                        tool_calls.append(entry)
+                    if audit_mode != "off":
+                        for tc in msg.tool_calls:
+                            entry: dict[str, Any] = {
+                                "tool_name": tc["name"],
+                                "reasoning": "",
+                            }
+                            if audit_mode == "full":
+                                entry["tool_input"] = tc.get("args", {})
+                                entry["iteration"] = iteration
+                            tool_calls.append(entry)
                 elif msg.content:
                     answer = (
                         msg.content

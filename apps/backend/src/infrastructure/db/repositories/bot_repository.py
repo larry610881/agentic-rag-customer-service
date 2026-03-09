@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.bot.entity import Bot, BotLLMParams
+from src.domain.bot.entity import Bot, BotLLMParams, McpServerConfig
 from src.domain.bot.repository import BotRepository
 from src.domain.bot.value_objects import BotId, BotShortCode
 from src.infrastructure.db.atomic import atomic
@@ -47,12 +47,14 @@ class SQLAlchemyBotRepository(BotRepository):
             llm_model=model.llm_model or "",
             show_sources=model.show_sources,
             agent_mode=model.agent_mode or "router",
-            mcp_server_url=model.mcp_server_url,
-            mcp_enabled_tools=(
-                list(model.mcp_enabled_tools)
-                if model.mcp_enabled_tools
-                else []
-            ),
+            mcp_servers=[
+                McpServerConfig(
+                    url=s.get("url", ""),
+                    name=s.get("name", ""),
+                    enabled_tools=s.get("enabled_tools", []),
+                )
+                for s in (model.mcp_servers or [])
+            ],
             max_tool_calls=model.max_tool_calls,
             audit_mode=model.audit_mode or "minimal",
             eval_provider=model.eval_provider or "",
@@ -108,8 +110,10 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.llm_model = bot.llm_model
                 existing.show_sources = bot.show_sources
                 existing.agent_mode = bot.agent_mode
-                existing.mcp_server_url = bot.mcp_server_url
-                existing.mcp_enabled_tools = bot.mcp_enabled_tools
+                existing.mcp_servers = [
+                    {"url": s.url, "name": s.name, "enabled_tools": s.enabled_tools}
+                    for s in bot.mcp_servers
+                ]
                 existing.max_tool_calls = bot.max_tool_calls
                 existing.audit_mode = bot.audit_mode
                 existing.eval_provider = bot.eval_provider
@@ -139,8 +143,10 @@ class SQLAlchemyBotRepository(BotRepository):
                     llm_model=bot.llm_model,
                     show_sources=bot.show_sources,
                     agent_mode=bot.agent_mode,
-                    mcp_server_url=bot.mcp_server_url,
-                    mcp_enabled_tools=bot.mcp_enabled_tools,
+                    mcp_servers=[
+                        {"url": s.url, "name": s.name, "enabled_tools": s.enabled_tools}
+                        for s in bot.mcp_servers
+                    ],
                     max_tool_calls=bot.max_tool_calls,
                     audit_mode=bot.audit_mode,
                     eval_provider=bot.eval_provider,
