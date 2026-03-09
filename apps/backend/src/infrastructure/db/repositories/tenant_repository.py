@@ -36,7 +36,7 @@ class SQLAlchemyTenantRepository(TenantRepository):
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
             )
-            self._session.add(model)
+            await self._session.merge(model)
 
     async def find_by_id(self, tenant_id: str) -> Tenant | None:
         stmt = select(TenantModel).where(TenantModel.id == tenant_id)
