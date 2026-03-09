@@ -12,9 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -29,8 +27,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { PROVIDER_LABELS } from "@/types/provider-setting";
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
+import { ModelSelect } from "./model-select";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import type { Bot, UpdateBotRequest } from "@/types/bot";
 import { useDiscoverMcpTools } from "@/hooks/queries/use-mcp";
@@ -58,10 +56,10 @@ const botFormSchema = z.object({
   rag_score_threshold: z.coerce.number().min(0).max(1),
   show_sources: z.boolean(),
   agent_mode: z.enum(["router", "react"]),
-  audit_mode: z.enum(["minimal", "full"]),
+  audit_mode: z.enum(["off", "minimal", "full"]),
   eval_provider: z.string().optional(),
   eval_model: z.string().optional(),
-  eval_depth: z.enum(["L1", "L1+L2", "L1+L2+L3"]),
+  eval_depth: z.enum(["off", "L1", "L1+L2", "L1+L2+L3"]),
   mcp_server_url: z.string().nullable().optional(),
   mcp_enabled_tools: z.array(z.string()),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
@@ -168,23 +166,34 @@ export function BotDetailForm({
   const [discoveredTools, setDiscoveredTools] = useState<McpToolInfo[]>([]);
   const discoverMcp = useDiscoverMcpTools();
 
-  const handleDiscoverTools = useCallback(async () => {
+  const handleDiscoverTools = useCallback(async (opts?: { silent?: boolean }) => {
     if (!mcpServerUrl) {
-      toast.error("請先輸入 MCP Server URL");
+      if (!opts?.silent) toast.error("請先輸入 MCP Server URL");
       return;
     }
     try {
       const result = await discoverMcp.mutateAsync(mcpServerUrl);
       setDiscoveredTools(result.tools);
-      // Select all tools by default
-      const allToolNames = result.tools.map((t) => t.name);
-      setValue("mcp_enabled_tools", allToolNames);
-      toast.success(`發現 ${result.tools.length} 個 Tools（${result.server_name}）`);
+      if (!opts?.silent) {
+        // Manual discover: select all tools by default
+        const allToolNames = result.tools.map((t) => t.name);
+        setValue("mcp_enabled_tools", allToolNames);
+        toast.success(`發現 ${result.tools.length} 個 Tools（${result.server_name}）`);
+      }
     } catch {
-      toast.error("無法連線 MCP Server");
+      if (!opts?.silent) toast.error("無法連線 MCP Server");
       setDiscoveredTools([]);
     }
   }, [mcpServerUrl, discoverMcp, setValue]);
+
+  // Auto-discover MCP tools on mount when bot already has a server URL
+  useEffect(() => {
+    if (bot.mcp_server_url && discoveredTools.length === 0) {
+      handleDiscoverTools({ silent: true });
+    }
+    // Only run on mount / when bot changes, not on every discoveredTools change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bot.mcp_server_url]);
 
   useEffect(() => {
     reset({
@@ -337,6 +346,7 @@ export function BotDetailForm({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="off">Off（不記錄）</SelectItem>
                       <SelectItem value="minimal">Minimal（基本記錄）</SelectItem>
                       <SelectItem value="full">Full（完整記錄含 input/output）</SelectItem>
                     </SelectContent>
@@ -344,7 +354,7 @@ export function BotDetailForm({
                 )}
               />
               <p className="text-xs text-muted-foreground">
-                Full 模式會記錄工具的輸入參數和輸出結果，適合除錯和品質分析
+                Off 模式不記錄任何工具呼叫；Full 模式會記錄輸入參數和輸出結果
               </p>
             </div>
           </section>
@@ -352,23 +362,32 @@ export function BotDetailForm({
           {/* RAG Evaluation 設定 */}
           <section className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold">RAG 品質評估</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="bot-eval-provider">評估用 Provider</Label>
-                <Input
-                  id="bot-eval-provider"
-                  {...register("eval_provider")}
-                  placeholder="例: openai"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="bot-eval-model">評估用 Model</Label>
-                <Input
-                  id="bot-eval-model"
-                  {...register("eval_model")}
-                  placeholder="例: gpt-4o-mini"
-                />
-              </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-eval-model">評估用模型</Label>
+              <ModelSelect
+                id="bot-eval-model"
+                value={
+                  watch("eval_provider") && watch("eval_model")
+                    ? `${watch("eval_provider")}:${watch("eval_model")}`
+                    : ""
+                }
+                onValueChange={(v) => {
+                  if (v === "__none__") {
+                    setValue("eval_provider", "");
+                    setValue("eval_model", "");
+                  } else {
+                    const [provider, ...modelParts] = v.split(":");
+                    setValue("eval_provider", provider);
+                    setValue("eval_model", modelParts.join(":"));
+                  }
+                }}
+                enabledModels={enabledModels}
+                allowEmpty
+                placeholder="選擇評估模型（可不選）"
+              />
+              <p className="text-xs text-muted-foreground">
+                未選擇模型時不執行 RAG 品質評估
+              </p>
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="bot-eval-depth">評估深度</Label>
@@ -381,6 +400,7 @@ export function BotDetailForm({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="off">Off（不評估）</SelectItem>
                       <SelectItem value="L1">L1 — 檢索品質（Context Precision/Recall）</SelectItem>
                       <SelectItem value="L1+L2">L1+L2 — 加上回答品質（Faithfulness/Relevancy）</SelectItem>
                       <SelectItem value="L1+L2+L3">L1+L2+L3 — 加上 Agent 決策品質（僅 ReAct）</SelectItem>
@@ -388,6 +408,9 @@ export function BotDetailForm({
                   </Select>
                 )}
               />
+              <p className="text-xs text-muted-foreground">
+                評估深度為 Off 或未選擇評估模型時，不會執行 RAG 品質評估
+              </p>
             </div>
           </section>
 
@@ -660,52 +683,17 @@ export function BotDetailForm({
                       : currentModelValue;
 
                   return (
-                    <Select
-                      value={selectValue || undefined}
+                    <ModelSelect
+                      id="bot-llm-model"
+                      value={selectValue}
                       onValueChange={(v) => {
                         const [provider, ...modelParts] = v.split(":");
                         const model = modelParts.join(":");
                         setValue("llm_provider", provider);
                         field.onChange(model);
                       }}
-                    >
-                      <SelectTrigger id="bot-llm-model">
-                        <SelectValue placeholder="請選擇模型" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {enabledModels && enabledModels.length > 0 ? (
-                          Object.entries(
-                            enabledModels.reduce<
-                              Record<
-                                string,
-                                typeof enabledModels
-                              >
-                            >((groups, m) => {
-                              (groups[m.provider_name] ??= []).push(m);
-                              return groups;
-                            }, {}),
-                          ).map(([provider, models]) => (
-                            <SelectGroup key={provider}>
-                              <SelectLabel>
-                                {PROVIDER_LABELS[provider] ?? provider}
-                              </SelectLabel>
-                              {models.map((m) => (
-                                <SelectItem
-                                  key={`${m.provider_name}:${m.model_id}`}
-                                  value={`${m.provider_name}:${m.model_id}`}
-                                >
-                                  {m.display_name} ({m.price})
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          ))
-                        ) : (
-                          <SelectItem value="__none__" disabled>
-                            尚未啟用任何模型
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                      enabledModels={enabledModels}
+                    />
                   );
                 }}
               />
