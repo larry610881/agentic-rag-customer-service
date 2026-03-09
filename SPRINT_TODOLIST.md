@@ -406,8 +406,8 @@
 - ✅ 全量測試：98 scenarios 通過（84 既有 + 14 新增）
 - ✅ 覆蓋率：85.22% > 80%
 - ✅ Lint：ruff clean
-- ⏭️ MCPToolWorker 通用 MCP Client Worker — 待 mcp 套件穩定後再實作
-- ⏭️ Embedded MCP Server（Knowledge, Conversation, Tenant）— 同上
+- ✅ MCP SSE→Streamable HTTP 遷移 + 多 Server 管理（Issue #10）
+- ⏭️ Embedded MCP Server（Knowledge, Conversation, Tenant）— 待需求確認
 
 ### 7.0.1 Config 重構 + Qwen/OpenRouter 整合
 - ✅ Config：新增 `qwen_api_key`, `openrouter_api_key`, `llm_base_url`, `embedding_base_url`
@@ -1093,7 +1093,7 @@
 | ~~[#8](https://github.com/larry610881/agentic-rag-customer-service/issues/8)~~ | ~~Embedding 429 Rate Limit~~ | ~~`bug`, `rag`~~ | ~~Edge E1~~ ✅ CLOSED |
 | ~~[#9](https://github.com/larry610881/agentic-rag-customer-service/issues/9)~~ | ~~API Rate Limiting + 用戶身份~~ | ~~`enhancement`~~ | ~~Edge E7~~ ✅ CLOSED |
 | ~~[#15](https://github.com/larry610881/agentic-rag-customer-service/issues/15)~~ | ~~Chunk Quality Monitoring~~ | ~~`enhancement`~~ | ~~E6 延伸~~ ✅ CLOSED |
-| [#10](https://github.com/larry610881/agentic-rag-customer-service/issues/10) | MCP 整合 | `enhancement`, `blocked` | S7P1 |
+| [#10](https://github.com/larry610881/agentic-rag-customer-service/issues/10) | MCP 整合 | `enhancement` | S7P1 — SSE→Streamable HTTP + 多 Server 管理 ✅ |
 | [#11](https://github.com/larry610881/agentic-rag-customer-service/issues/11) | 生產部署 + 壓力測試 | `infra` | S7.3, S7.6 |
 | [#12](https://github.com/larry610881/agentic-rag-customer-service/issues/12) | CI Pipeline 驗收 | `infra` | S0.4 |
 
@@ -1146,3 +1146,4 @@
 | **httpx 連線池 + 並行 KB 查詢** | **✅ 完成** | **100%** | **6 files: Embedding/OpenAI/Anthropic/LINE service 持久 AsyncClient 取代 per-request 建立, RAG 多 KB asyncio.gather 並行查詢, 290 tests pass** |
 | **ReAct 補齊 + Audit 記錄 + 可觀測性** | **✅ 完成** | **100%** | **52 files (+3,246 lines), 18 新 BDD scenarios, 309 tests pass。包含: (A) ReAct 執行+Streaming Unit Test, (B) PromptAssembler 分層+ToolRegistry+MCP 快取+Streaming 事件, (C) Audit 統一 Config (minimal/full)+tool input/output/iteration/latency, (D) RAG Tracing ContextVar+RAG Evaluation L1/L2/L3+Feedback 閉環 chunk quality_flag** |
 | **核心旅程 E2E 整合測試 — 知識庫 + RAG/ReAct** | **✅ 完成** | **100%** | **6 NEW + 3 MODIFY files: Router 旅程 3 scenarios（RAG 對話+空 KB+歷史連續）+ ReAct 旅程 3 scenarios（工具呼叫+audit off+max_tool_calls）, E2E conftest（real DB + mock Qdrant/Embedding/LLM）, tenant_repository.save() upsert 修復, 64 integration+e2e tests pass** |
+| **SSE→Streamable HTTP + 多 MCP Server 管理** | **✅ 完成** | **100%** | **20 files: (1) SSE→Streamable HTTP 全棧遷移（server+3 client sites）, (2) 單一 mcp_server_url→mcp_servers JSON 陣列（McpServerConfig VO）, (3) Domain+DB+Repo+UseCase+Router+Agent 全層, (4) 前端多 Server 管理 UI（探索+加入+移除+工具勾選）, (5) 4 新 BDD integration scenarios 防 DB schema drift, 309 backend + 12 integration tests pass** |
