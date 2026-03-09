@@ -12,6 +12,7 @@ from uuid import uuid4
 import structlog
 from langchain_core.messages import (
     AIMessage,
+    AIMessageChunk,
     HumanMessage,
     SystemMessage,
     ToolMessage,
@@ -445,86 +446,126 @@ class ReActAgentService(AgentService):
             # Emit initial status so frontend shows "AI 分析中" immediately
             yield {"type": "status", "status": "react_thinking"}
 
-            # Stream graph execution
+            # Stream graph execution with dual mode:
+            #   "messages" → per-token LLM streaming
+            #   "updates"  → node completions (tool_calls, tool results, sources)
             tool_calls_emitted: list[dict[str, Any]] = []
             call_count = 0
+            llm_generating_emitted = False
 
             async for event in graph.astream(
-                {"messages": input_messages}, stream_mode="updates"
+                {"messages": input_messages},
+                stream_mode=["messages", "updates"],
             ):
-                for node_name, node_output in event.items():
-                    if node_name == "agent":
-                        messages = node_output.get("messages", [])
-                        for msg in messages:
-                            if isinstance(msg, AIMessage):
-                                if msg.tool_calls:
-                                    call_count += 1
-                                    if audit_mode != "off":
-                                        tc_list = []
-                                        for tc in msg.tool_calls:
-                                            entry: dict[str, Any] = {
-                                                "tool_name": tc["name"],
-                                                "reasoning": "",
+                mode, data = event
+
+                if mode == "messages":
+                    msg_chunk, metadata = data
+                    if metadata.get("langgraph_node") != "agent":
+                        continue
+                    if not isinstance(msg_chunk, AIMessageChunk):
+                        continue
+                    if msg_chunk.content:
+                        if not llm_generating_emitted:
+                            yield {
+                                "type": "status",
+                                "status": "llm_generating",
+                            }
+                            llm_generating_emitted = True
+                        content = (
+                            msg_chunk.content
+                            if isinstance(msg_chunk.content, str)
+                            else str(msg_chunk.content)
+                        )
+                        yield {"type": "token", "content": content}
+
+                elif mode == "updates":
+                    for node_name, node_output in data.items():
+                        if node_name == "agent":
+                            messages = node_output.get("messages", [])
+                            for msg in messages:
+                                if isinstance(msg, AIMessage):
+                                    if msg.tool_calls:
+                                        call_count += 1
+                                        llm_generating_emitted = False
+                                        if audit_mode != "off":
+                                            tc_list = []
+                                            for tc in msg.tool_calls:
+                                                entry: dict[str, Any] = {
+                                                    "tool_name": tc["name"],
+                                                    "reasoning": "",
+                                                }
+                                                if audit_mode == "full":
+                                                    entry["tool_input"] = tc.get(
+                                                        "args", {}
+                                                    )
+                                                    entry["iteration"] = call_count
+                                                tc_list.append(entry)
+                                            tool_calls_emitted.extend(tc_list)
+                                            yield {
+                                                "type": "tool_calls",
+                                                "tool_calls": tc_list,
                                             }
-                                            if audit_mode == "full":
-                                                entry["tool_input"] = tc.get("args", {})
-                                                entry["iteration"] = call_count
-                                            tc_list.append(entry)
-                                        tool_calls_emitted.extend(tc_list)
-                                        yield {
-                                            "type": "tool_calls",
-                                            "tool_calls": tc_list,
-                                        }
-                                        # Yield executing status for each tool
-                                        for tc in msg.tool_calls:
+                                            for tc in msg.tool_calls:
+                                                yield {
+                                                    "type": "status",
+                                                    "status": f"{tc['name']}_executing",
+                                                }
+                                    elif msg.content:
+                                        # Fallback: if messages mode didn't
+                                        # stream tokens (e.g. mock LLM without
+                                        # astream), emit content as one chunk.
+                                        if not llm_generating_emitted:
                                             yield {
                                                 "type": "status",
-                                                "status": f"{tc['name']}_executing",
+                                                "status": "llm_generating",
                                             }
-                                elif msg.content:
-                                    content = (
-                                        msg.content
-                                        if isinstance(msg.content, str)
-                                        else str(msg.content)
-                                    )
-                                    yield {
-                                        "type": "token",
-                                        "content": content,
-                                    }
-
-                    elif node_name == "tools":
-                        # Tools node completed — yield done status
-                        messages = node_output.get("messages", [])
-                        for msg in messages:
-                            if hasattr(msg, "name") and msg.name:
-                                yield {
-                                    "type": "status",
-                                    "status": f"{msg.name}_done",
-                                }
-                            # Extract sources from ToolMessage if available
-                            if hasattr(msg, "content") and msg.content:
-                                try:
-                                    import json
-                                    content = (
-                                        json.loads(msg.content)
-                                        if isinstance(msg.content, str)
-                                        else msg.content
-                                    )
-                                    if isinstance(content, dict) and "sources" in content:
-                                        sources = content["sources"]
-                                        if sources:
+                                            content = (
+                                                msg.content
+                                                if isinstance(
+                                                    msg.content, str
+                                                )
+                                                else str(msg.content)
+                                            )
                                             yield {
-                                                "type": "sources",
-                                                "sources": sources,
+                                                "type": "token",
+                                                "content": content,
                                             }
-                                except (json.JSONDecodeError, TypeError):
-                                    pass
-                        # After all tools complete, LLM will think again
-                        # — emit status so frontend shows transition
-                        yield {
-                            "type": "status",
-                            "status": "react_thinking",
-                        }
+                                        llm_generating_emitted = False
+
+                        elif node_name == "tools":
+                            messages = node_output.get("messages", [])
+                            for msg in messages:
+                                if hasattr(msg, "name") and msg.name:
+                                    yield {
+                                        "type": "status",
+                                        "status": f"{msg.name}_done",
+                                    }
+                                if hasattr(msg, "content") and msg.content:
+                                    try:
+                                        import json
+
+                                        content = (
+                                            json.loads(msg.content)
+                                            if isinstance(msg.content, str)
+                                            else msg.content
+                                        )
+                                        if (
+                                            isinstance(content, dict)
+                                            and "sources" in content
+                                        ):
+                                            sources = content["sources"]
+                                            if sources:
+                                                yield {
+                                                    "type": "sources",
+                                                    "sources": sources,
+                                                }
+                                    except (json.JSONDecodeError, TypeError):
+                                        pass
+                            yield {
+                                "type": "status",
+                                "status": "react_thinking",
+                            }
 
             yield {"type": "done"}
 

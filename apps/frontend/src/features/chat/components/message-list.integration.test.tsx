@@ -35,7 +35,7 @@ describe("MessageList integration", () => {
     expect(screen.getByText("faq.pdf")).toBeInTheDocument();
 
     // 工具呼叫
-    expect(screen.getByText("Agent 操作（1）")).toBeInTheDocument();
+    expect(screen.getByText("Agent 操作（1 個工具）")).toBeInTheDocument();
   });
 
   it("should show empty state and then messages when conversation starts", () => {

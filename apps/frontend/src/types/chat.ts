@@ -7,6 +7,7 @@ export interface Source {
 export interface ToolCallInfo {
   tool_name: string;
   reasoning: string;
+  iteration?: number;
 }
 
 export interface ChatRequest {
