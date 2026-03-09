@@ -13,6 +13,7 @@ interface ChatState {
   addUserMessage: (content: string) => void;
   startAssistantMessage: () => void;
   appendToAssistantMessage: (token: string) => void;
+  resetAssistantContent: () => void;
   finalizeAssistantMessage: (sources: Source[], toolCalls: ToolCallInfo[]) => void;
   setIsStreaming: (isStreaming: boolean) => void;
   setConversationId: (id: string) => void;
@@ -76,6 +77,16 @@ export const useChatStore = create<ChatState>((set) => ({
           ...lastMsg,
           content: lastMsg.content + token,
         };
+      }
+      return { messages };
+    }),
+
+  resetAssistantContent: () =>
+    set((state) => {
+      const messages = [...state.messages];
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg && lastMsg.role === "assistant") {
+        messages[messages.length - 1] = { ...lastMsg, content: "" };
       }
       return { messages };
     }),

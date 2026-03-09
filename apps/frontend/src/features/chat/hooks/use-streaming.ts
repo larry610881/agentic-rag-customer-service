@@ -34,6 +34,7 @@ export function useStreaming() {
     addUserMessage,
     startAssistantMessage,
     appendToAssistantMessage,
+    resetAssistantContent,
     finalizeAssistantMessage,
     setIsStreaming,
     setConversationId,
@@ -51,6 +52,7 @@ export function useStreaming() {
 
       let sources: Source[] = [];
       let toolCalls: ToolCallInfo[] = [];
+      let generationCount = 0;
 
       // --- Throttled hint: ensure each status is visible for a minimum duration ---
       const minMs = STREAMING_CONFIG.STATUS_MIN_DISPLAY_MS;
@@ -106,7 +108,15 @@ export function useStreaming() {
             break;
           }
           case "status": {
-            const statusHint = getStatusHint(event.status as string);
+            const status = event.status as string;
+            if (status === "llm_generating") {
+              generationCount++;
+              if (generationCount > 1) {
+                // Subsequent generation → overwrite intermediate reasoning
+                resetAssistantContent();
+              }
+            }
+            const statusHint = getStatusHint(status);
             if (statusHint) {
               setHintThrottled(statusHint);
             }
@@ -168,6 +178,7 @@ export function useStreaming() {
       addUserMessage,
       startAssistantMessage,
       appendToAssistantMessage,
+      resetAssistantContent,
       finalizeAssistantMessage,
       setIsStreaming,
       setConversationId,
