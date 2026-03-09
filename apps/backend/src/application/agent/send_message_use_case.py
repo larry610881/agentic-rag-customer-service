@@ -126,7 +126,13 @@ class SendMessageUseCase:
         if self._tenant_repo:
             tenant = await self._tenant_repo.find_by_id(tenant_id)
             if tenant and agent_mode not in tenant.allowed_agent_modes:
-                # Fallback to router if tenant doesn't allow the mode
+                logger.warning(
+                    "agent.mode_fallback",
+                    tenant_id=tenant_id,
+                    requested_mode=agent_mode,
+                    allowed_modes=tenant.allowed_agent_modes,
+                    msg="Bot 設定的 agent_mode 不在租戶允許範圍內，降級為 router",
+                )
                 return self._agent_service
 
         if self._react_agent_service is None:

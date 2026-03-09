@@ -28,6 +28,21 @@ class AnthropicLLMService(LLMService):
         self._pricing = pricing or {}
         self._client = httpx.AsyncClient(timeout=60.0)
 
+    def get_chat_model(
+        self,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+    ):
+        """Return a LangChain ChatModel using the same API key."""
+        from langchain_anthropic import ChatAnthropic
+
+        return ChatAnthropic(
+            model=self._model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            api_key=self._api_key,
+        )
+
     def _build_headers(self) -> dict[str, str]:
         return {
             "x-api-key": self._api_key,

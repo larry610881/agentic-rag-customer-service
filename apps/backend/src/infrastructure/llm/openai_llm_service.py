@@ -37,6 +37,24 @@ class OpenAILLMService(LLMService):
         self._pricing = pricing or {}
         self._client = httpx.AsyncClient(timeout=60.0)
 
+    def get_chat_model(
+        self,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+    ):
+        """Return a LangChain ChatModel using the same API key and base_url."""
+        from langchain_openai import ChatOpenAI
+
+        kwargs: dict = {
+            "model": self._model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "api_key": self._api_key,
+        }
+        if self._base_url and self._base_url != "https://api.openai.com/v1":
+            kwargs["base_url"] = self._base_url
+        return ChatOpenAI(**kwargs)
+
     def _build_headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._api_key}",

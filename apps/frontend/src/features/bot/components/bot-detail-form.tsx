@@ -215,14 +215,26 @@ export function BotDetailForm({
     }));
   }, [mcpServers, setValue]);
 
-  // Auto-discover tool metadata on mount for existing servers
+  // Auto-discover tool metadata on mount for existing servers.
+  // First seed serverToolsMap with minimal entries from enabled_tools
+  // so that unchecking a tool doesn't make it vanish from the UI.
   useEffect(() => {
     for (const server of bot.mcp_servers ?? []) {
       if (!serverToolsMap[server.url]) {
-        discoverMcp.mutateAsync(server.url).then((result) => {
-          setServerToolsMap((prev) => ({ ...prev, [server.url]: result.tools }));
-        }).catch(() => { /* silent */ });
+        // Seed with minimal info to prevent checkbox-disappear bug
+        setServerToolsMap((prev) => ({
+          ...prev,
+          [server.url]: server.enabled_tools.map((name) => ({
+            name,
+            description: "",
+            parameters: [],
+          })),
+        }));
       }
+      // Upgrade to richer metadata via discovery (descriptions, params)
+      discoverMcp.mutateAsync(server.url).then((result) => {
+        setServerToolsMap((prev) => ({ ...prev, [server.url]: result.tools }));
+      }).catch(() => { /* keep minimal info */ });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot.mcp_servers]);
