@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [系統管理 Token 用量 — CQRS Q 側跨 BC JOIN + 權限分離](#系統管理-token-用量--cqrs-q-側跨-bc-join--權限分離)
 - [Streaming Tool Hint + 回饋分析 SQL 聚合修復](#streaming-tool-hint--回饋分析-sql-聚合修復)
 - [RAG 評估合併 1 call + 智慧 L1 跳過 + Streaming bug 修復](#rag-評估合併-1-call--智慧-l1-跳過--streaming-bug-修復)
 - [RAG 評估觸發接線 + Unit Test 資料洩漏根因修復](#rag-評估觸發接線--unit-test-資料洩漏根因修復)
@@ -48,6 +49,32 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## 系統管理 Token 用量 — CQRS Q 側跨 BC JOIN + 權限分離
+
+> Sprint 來源：系統管理擴充 — Token 用量統計頁面 + 回饋分析成本表簡化
+
+**本次相關主題**：CQRS 讀側設計、跨 BC JOIN、權限層級分離、統計查詢效能
+
+### 做得好的地方
+
+- **CQRS Q 側 direct-query**：`observability_router.GET /token-usage` 跳過 DDD Use Case，直接在 Router 層組裝 4 表 LEFT JOIN（`token_usage_records` + `messages` + `conversations` + `bots`）。統計聚合場景不需要 Domain 邏輯保護，直接 SQL 查詢符合 CQRS 社群實踐
+- **權限分離設計**：成本資訊（unit_cost, total_cost）從租戶級「回饋分析」頁面抽離至系統管理級「Token 用量」頁面。租戶管理員只看 Bot 用量摘要（BotUsageSummaryCards），系統管理員看完整成本明細。符合最小權限原則
+- **前端元件分層清晰**：Type → Hook（use-token-usage） → 3 個視覺元件（PieChart / BarChart / DetailTable） → Page 組裝，每層職責單一，可獨立測試
+- **舊元件乾淨移除**：TokenCostTable + 其 integration test 完整刪除，未留下 dead code 或 re-export shim
+
+### 潛在隱憂
+
+- **4 表 JOIN 效能隨資料成長** — 目前 `token_usage_records` 資料量小，4 表 JOIN 無壓力。當記錄達 100k+ 時，`GROUP BY bot_id, model_used` 的排序成本會顯著增加。→ 建議：為 `token_usage_records` 建立 `(tenant_id, created_at)` 複合索引 + 考慮 date range 過濾參數 → 優先級：中
+- **Router 層 SQL 膨脹風險** — direct-query 模式方便但可能導致 Router 層累積過多 raw SQL。若未來 /token-usage 需要更多維度（按日期區間、按 Provider 分組），SQL 會越來越長。→ 建議：抽出 `TokenUsageQueryService`（Application 層的 Query Service，不是 Use Case），專責統計查詢 → 優先級：低
+- **前端無 date range 過濾** — 目前拉全量資料渲染圖表，當資料量大時前端記憶體和渲染效能會受影響。→ 建議：後續加入日期區間 filter（後端 query parameter + 前端 DateRangePicker）→ 優先級：中
+
+### 延伸學習
+
+- **CQRS Read Model vs Direct Query**：本次用 direct-query（Router 層 SQL），適合簡單統計。若查詢複雜度持續增加，可演進為 Materialized View 或專屬 Read Model table（定期由 Domain Event 更新），在一致性與效能間取捨
+- **權限層級與 UI 拆分**：將同一份資料依權限拆成不同頁面（而非在同一頁用 `if (isAdmin)` 控制可見性），符合 RBAC 最佳實踐。每個頁面的 API 可獨立設定 auth middleware，攻擊面更小
 
 ---
 
