@@ -23,6 +23,16 @@ def context():
 # ---------- Given ----------
 
 
+@given("一個含有 system prompt 的追蹤記錄")
+def create_trace_with_prompt(context):
+    context["prompt"] = "你是一個專業的客服助理"
+    context["trace"] = RAGTraceRecord(
+        query="退貨政策",
+        tenant_id="T001",
+        prompt_snapshot=context["prompt"],
+    )
+
+
 @given("一個 RAG 追蹤器已初始化")
 def init_tracer(context):
     RAGTracer.init()
@@ -45,6 +55,11 @@ def create_two_traces(context):
 
 
 # ---------- When ----------
+
+
+@when("序列化為 dict")
+def serialize_trace(context):
+    context["trace_dict"] = context["trace"].to_dict()
 
 
 @when(parsers.parse('開始一次 RAG 查詢追蹤 "{query}" 租戶 "{tenant_id}"'))
@@ -76,6 +91,13 @@ def do_flush(context):
 
 
 # ---------- Then ----------
+
+
+@then("應包含 prompt_snapshot 欄位且值為該 system prompt")
+def check_prompt_snapshot(context):
+    d = context["trace_dict"]
+    assert "prompt_snapshot" in d
+    assert d["prompt_snapshot"] == context["prompt"]
 
 
 @then(parsers.parse("追蹤記錄應包含 {count:d} 個步驟"))

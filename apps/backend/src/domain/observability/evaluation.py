@@ -17,6 +17,7 @@ class EvalDimension:
     name: str  # e.g., "context_precision", "faithfulness", "agent_efficiency"
     score: float  # 0.0 - 1.0
     explanation: str = ""
+    metadata: dict | None = None
 
 
 @dataclass
@@ -48,7 +49,12 @@ class EvalResult:
             "tenant_id": self.tenant_id,
             "layer": self.layer,
             "dimensions": [
-                {"name": d.name, "score": d.score, "explanation": d.explanation}
+                {
+                    "name": d.name,
+                    "score": d.score,
+                    "explanation": d.explanation,
+                    **({"metadata": d.metadata} if d.metadata else {}),
+                }
                 for d in self.dimensions
             ],
             "avg_score": round(self.avg_score, 3),

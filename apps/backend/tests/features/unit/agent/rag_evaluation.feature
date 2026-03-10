@@ -44,6 +44,19 @@ Feature: RAG 品質評估
     When 執行合併評估 L2 查詢 "退貨政策"
     Then 評估結果的 model_used 應為 "gemini-2.5-flash-lite"
 
+  Scenario: L1 評估包含逐 chunk 相關性分數
+    Given 一個 RAG 評估用例使用 mock LLM
+    And LLM 回傳含 chunk_scores 的 L1 評估結果
+    When 執行 L1 評估查詢 "退貨政策" 和 3 個 chunks
+    Then context_precision 維度應包含 chunk_scores metadata
+    And chunk_scores 應有 3 筆且每筆含 index score reason
+
+  Scenario: L1 合併評估包含逐 chunk 相關性分數
+    Given 一個 RAG 評估用例使用 mock LLM
+    And LLM 回傳含 chunk_scores 的合併評估結果
+    When 執行合併評估且 L1 啟用
+    Then context_precision 維度的 metadata 應包含 chunk_scores
+
   Scenario: EvalResult 平均分數計算
     Given 一個包含多維度的 EvalResult
     Then avg_score 應為各維度分數的平均值

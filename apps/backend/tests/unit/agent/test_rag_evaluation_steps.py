@@ -115,6 +115,98 @@ def setup_mock_llm_with_model_name(context):
     context["use_case"] = RAGEvaluationUseCase(llm_service=llm)
 
 
+@given("LLM 回傳含 chunk_scores 的 L1 評估結果")
+def mock_l1_with_chunk_scores(context):
+    resp = MagicMock()
+    resp.text = json.dumps({
+        "context_precision": 0.85,
+        "context_recall": 0.7,
+        "chunk_scores": [
+            {"index": 0, "score": 0.9, "reason": "高度相關"},
+            {"index": 1, "score": 0.8, "reason": "部分相關"},
+            {"index": 2, "score": 0.3, "reason": "不太相關"},
+        ],
+        "explanation": "逐 chunk 評分測試",
+    })
+    context["llm_service"].generate.return_value = resp
+
+
+@given("LLM 回傳含 chunk_scores 的合併評估結果")
+def mock_combined_with_chunk_scores(context):
+    resp = MagicMock()
+    resp.text = json.dumps({
+        "context_precision": 0.8,
+        "context_recall": 0.7,
+        "faithfulness": 0.9,
+        "relevancy": 0.85,
+        "chunk_scores": [
+            {"index": 0, "score": 0.95, "reason": "完全相關"},
+        ],
+        "explanation": "合併 chunk_scores 測試",
+    })
+    context["llm_service"].generate.return_value = resp
+
+
+@when(
+    parsers.parse('執行 L1 評估查詢 "{query}" 和 {n:d} 個 chunks'),
+    target_fixture="result",
+)
+def run_l1_eval_multi_chunks(context, query, n):
+    chunks = [f"chunk content {i}" for i in range(n)]
+    return _run(
+        context["use_case"].evaluate_l1(
+            query=query,
+            chunks=chunks,
+            tenant_id="t-1",
+        )
+    )
+
+
+@when("執行合併評估且 L1 啟用", target_fixture="result")
+def run_combined_with_l1(context):
+    return _run(
+        context["use_case"].evaluate_combined(
+            query="退貨政策",
+            answer="30天內可退貨",
+            all_context="退貨政策原文",
+            chunks=["退貨政策原文"],
+            tool_calls=[],
+            run_l1=True,
+            run_l2=True,
+            has_rag_sources=True,
+            tenant_id="t-1",
+        )
+    )
+
+
+@then("context_precision 維度應包含 chunk_scores metadata")
+def check_chunk_scores_metadata(result):
+    cp = [d for d in result.dimensions if d.name == "context_precision"]
+    assert len(cp) == 1
+    assert cp[0].metadata is not None
+    assert "chunk_scores" in cp[0].metadata
+
+
+@then(parsers.parse("chunk_scores 應有 {n:d} 筆且每筆含 index score reason"))
+def check_chunk_scores_structure(result, n):
+    cp = [d for d in result.dimensions if d.name == "context_precision"][0]
+    scores = cp.metadata["chunk_scores"]
+    assert len(scores) == n
+    for item in scores:
+        assert "index" in item
+        assert "score" in item
+        assert "reason" in item
+
+
+@then("context_precision 維度的 metadata 應包含 chunk_scores")
+def check_combined_chunk_scores(result):
+    cp = [d for d in result.dimensions if d.name == "context_precision"]
+    assert len(cp) == 1
+    assert cp[0].metadata is not None
+    assert "chunk_scores" in cp[0].metadata
+    assert len(cp[0].metadata["chunk_scores"]) >= 1
+
+
 @given("一個包含多維度的 EvalResult")
 def setup_eval_result(context):
     context["eval_result"] = EvalResult(

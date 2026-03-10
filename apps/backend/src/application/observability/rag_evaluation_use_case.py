@@ -16,12 +16,14 @@ logger = structlog.get_logger(__name__)
 _L1_PROMPT = (
     "你是一個 RAG 品質評估專家。請評估以下查詢和檢索結果的品質。\n\n"
     "查詢：{query}\n\n"
-    "檢索到的內容：\n{chunks}\n\n"
+    "檢索到的內容（依序編號）：\n{chunks}\n\n"
     "請分別評估：\n"
-    "1. context_precision (0-1): 檢索結果與查詢的相關程度\n"
-    "2. context_recall (0-1): 檢索結果是否涵蓋回答所需的所有資訊\n\n"
+    "1. context_precision (0-1): 檢索結果與查詢的整體相關程度\n"
+    "2. context_recall (0-1): 檢索結果是否涵蓋回答所需的所有資訊\n"
+    "3. chunk_scores: 逐條 chunk 相關性評分\n\n"
     "回傳 JSON 格式：\n"
     '{{"context_precision": 0.8, "context_recall": 0.7, '
+    '"chunk_scores": [{{"index": 0, "score": 0.9, "reason": "高度相關"}}], '
     '"explanation": "簡短說明"}}'
 )
 
@@ -66,7 +68,11 @@ class RAGEvaluationUseCase:
         message_id: str | None = None,
     ) -> EvalResult:
         """L1 評估：單次 RAG 呼叫的 Context Precision/Recall"""
-        chunks_text = "\n---\n".join(chunks) if chunks else "(無檢索結果)"
+        chunks_text = (
+            "\n---\n".join(f"[{i}] {c}" for i, c in enumerate(chunks))
+            if chunks
+            else "(無檢索結果)"
+        )
         prompt = _L1_PROMPT.format(query=query, chunks=chunks_text)
 
         try:
@@ -74,11 +80,13 @@ class RAGEvaluationUseCase:
                 "你是 RAG 品質評估專家", prompt, ""
             )
             scores = self._parse_scores(result.text)
+            chunk_scores = scores.get("chunk_scores")
             dimensions = [
                 EvalDimension(
                     name="context_precision",
                     score=scores.get("context_precision", 0.0),
                     explanation=scores.get("explanation", ""),
+                    metadata={"chunk_scores": chunk_scores} if chunk_scores else None,
                 ),
                 EvalDimension(
                     name="context_recall",
@@ -229,12 +237,18 @@ class RAGEvaluationUseCase:
 
         # L1 section
         if actual_l1:
-            chunks_text = "\n---\n".join(chunks) if chunks else "(無檢索結果)"
+            chunks_text = (
+                "\n---\n".join(f"[{i}] {c}" for i, c in enumerate(chunks))
+                if chunks
+                else "(無檢索結果)"
+            )
             sections.append(
-                f"## L1 檢索品質\n檢索到的內容：\n{chunks_text}\n\n"
+                f"## L1 檢索品質\n檢索到的內容（依序編號）：\n{chunks_text}\n\n"
                 "請評估：\n"
-                "- context_precision (0-1): 檢索結果與查詢的相關程度\n"
-                "- context_recall (0-1): 檢索結果是否涵蓋回答所需的所有資訊"
+                "- context_precision (0-1): 檢索結果與查詢的整體相關程度\n"
+                "- context_recall (0-1): 檢索結果是否涵蓋回答所需的所有資訊\n"
+                "- chunk_scores: 逐條 chunk 相關性，格式 "
+                '[{"index": 0, "score": 0.9, "reason": "..."}]'
             )
             expected_keys.extend(["context_precision", "context_recall"])
 
@@ -303,14 +317,20 @@ class RAGEvaluationUseCase:
                 "你是 RAG 品質評估專家", prompt, ""
             )
             scores = self._parse_scores(result.text)
-            dimensions = [
-                EvalDimension(
-                    name=key,
-                    score=scores.get(key, 0.0),
-                    explanation=scores.get("explanation", ""),
+            chunk_scores = scores.get("chunk_scores")
+            dimensions = []
+            for key in expected_keys:
+                meta = None
+                if key == "context_precision" and chunk_scores:
+                    meta = {"chunk_scores": chunk_scores}
+                dimensions.append(
+                    EvalDimension(
+                        name=key,
+                        score=scores.get(key, 0.0),
+                        explanation=scores.get("explanation", ""),
+                        metadata=meta,
+                    )
                 )
-                for key in expected_keys
-            ]
         except Exception as exc:
             logger.warning("eval.combined.failed", error=str(exc))
             dimensions = [

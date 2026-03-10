@@ -23,6 +23,7 @@ class RAGTraceRecord:
     steps: list[RAGTraceStep] = field(default_factory=list)
     total_ms: float = 0.0
     chunk_count: int = 0
+    prompt_snapshot: str | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -57,5 +58,6 @@ class RAGTraceRecord:
             ],
             "total_ms": self.total_ms,
             "chunk_count": self.chunk_count,
+            "prompt_snapshot": self.prompt_snapshot,
             "created_at": self.created_at.isoformat(),
         }

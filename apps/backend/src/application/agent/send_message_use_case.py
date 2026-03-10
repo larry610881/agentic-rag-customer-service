@@ -286,6 +286,7 @@ class SendMessageUseCase:
             chunk_count=len(retrieved_chunks) if retrieved_chunks else 0,
             message_id=None,
             trace_id=trace_id,
+            prompt_snapshot=bot_cfg.get("system_prompt") or None,
         )
 
         # Fire-and-forget: background evaluation
@@ -398,6 +399,7 @@ class SendMessageUseCase:
             chunk_count=len(retrieved_chunks) if retrieved_chunks else 0,
             message_id=None,
             trace_id=trace_id,
+            prompt_snapshot=bot_cfg.get("system_prompt") or None,
         )
 
         # Fire-and-forget: background evaluation
@@ -445,6 +447,7 @@ class SendMessageUseCase:
         chunk_count: int,
         message_id: str | None = None,
         trace_id: str | None = None,
+        prompt_snapshot: str | None = None,
     ) -> None:
         """Save RAG trace to DB (fire-and-forget, never raises).
 
@@ -469,6 +472,7 @@ class SendMessageUseCase:
                 steps=tool_calls,
                 total_ms=float(latency_ms),
                 chunk_count=chunk_count,
+                prompt_snapshot=prompt_snapshot,
             )
             async with session_factory() as session:
                 session.add(row)
@@ -578,7 +582,12 @@ class SendMessageUseCase:
                 tenant_id=eval_result.tenant_id,
                 layer=eval_result.layer,
                 dimensions=[
-                    {"name": d.name, "score": d.score, "explanation": d.explanation}
+                    {
+                        "name": d.name,
+                        "score": d.score,
+                        "explanation": d.explanation,
+                        **({"metadata": d.metadata} if d.metadata else {}),
+                    }
                     for d in eval_result.dimensions
                 ],
                 avg_score=round(eval_result.avg_score, 3),

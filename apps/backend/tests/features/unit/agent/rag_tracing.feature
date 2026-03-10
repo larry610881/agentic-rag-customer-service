@@ -19,6 +19,11 @@ Feature: RAG 查詢追蹤
     Then 追蹤記錄應包含 1 個步驟
     And 追蹤記錄 chunk_count 應為 0
 
+  Scenario: 追蹤記錄包含 prompt snapshot
+    Given 一個含有 system prompt 的追蹤記錄
+    When 序列化為 dict
+    Then 應包含 prompt_snapshot 欄位且值為該 system prompt
+
   Scenario: Flush 清空並回傳所有記錄
     Given 一個 RAG 追蹤器已初始化
     And 已完成 2 筆追蹤記錄

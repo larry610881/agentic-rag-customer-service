@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [RAG 品質診斷強化 — L1 Chunk-Level Scoring + Prompt Snapshot](#rag-品質診斷強化--l1-chunk-level-scoring--prompt-snapshot)
 - [系統管理 Token 用量 — CQRS Q 側跨 BC JOIN + 權限分離](#系統管理-token-用量--cqrs-q-側跨-bc-join--權限分離)
 - [Streaming Tool Hint + 回饋分析 SQL 聚合修復](#streaming-tool-hint--回饋分析-sql-聚合修復)
 - [RAG 評估合併 1 call + 智慧 L1 跳過 + Streaming bug 修復](#rag-評估合併-1-call--智慧-l1-跳過--streaming-bug-修復)
@@ -49,6 +50,32 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## RAG 品質診斷強化 — L1 Chunk-Level Scoring + Prompt Snapshot
+
+> Sprint 來源：可觀測性擴充 — RAG 評估 L1 逐 chunk 評分 + Trace prompt snapshot
+
+**本次相關主題**：Domain Entity 擴充策略、LLM Structured Output 解析、可觀測性 Metadata 設計
+
+### 做得好的地方
+
+- **零成本擴充**：chunk_scores 在同一次 LLM call 內要求，不增加 API 費用；prompt_snapshot 純 metadata 寫入，零額外成本
+- **向後相容設計**：`EvalDimension.metadata` 和 `RAGTraceRecord.prompt_snapshot` 皆 nullable，既有記錄不受影響，DB JSON 欄位無需 schema migration
+- **DDD 層級清晰**：Domain 只加 dataclass field（純邏輯），Application 負責 prompt 改良和解析，Infrastructure 加 DB column，嚴格遵循依賴方向
+- **前端漸進式渲染**：chunk_scores 僅在有值時顯示子列表；prompt snapshot 預設收合避免干擾
+
+### 潛在隱憂
+
+- **LLM 輸出不穩定**：chunk_scores 依賴 LLM 回傳正確 JSON 結構，不同模型可能遺漏 reason 或格式不一致 → 建議未來加 JSON Schema validation / Pydantic 解析 → 優先級：中
+- **prompt_snapshot 欄位大小**：使用 TEXT type 可存數千字，但若 system prompt 包含大量知識庫注入內容可能達 10KB+ → 建議設 max length 或壓縮 → 優先級：低
+- **evaluate_combined 複雜度上升**：C901 已達 11（閾值 10），每次加新 section 會加劇 → 建議拆分為 `_build_l1_section()` / `_build_l2_section()` 等 helper → 優先級：中
+
+### 延伸學習
+
+- **Structured Output Parsing**：LLM 回傳 JSON 的穩定性問題，可參考 OpenAI Function Calling 或 Instructor 庫的 schema enforcement 策略
+- **Observability Metadata 設計**：如何在不影響查詢效能的前提下擴充追蹤欄位，可參考 OpenTelemetry 的 span attributes 設計理念
 
 ---
 
