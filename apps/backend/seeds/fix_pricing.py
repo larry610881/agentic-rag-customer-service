@@ -32,27 +32,9 @@ def _build_registry_pricing() -> dict[str, dict[str, float]]:
 
 
 async def main():
-    db_url = os.environ.get("DATABASE_URL", "")
-    if not db_url:
-        # Try reading from .env
-        env_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"
-        )
-        if os.path.exists(env_path):
-            with open(env_path) as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("DATABASE_URL="):
-                        db_url = line.split("=", 1)[1].strip('"').strip("'")
-                        break
-
-    if not db_url:
-        print("ERROR: DATABASE_URL not found")
-        sys.exit(1)
-
-    # Ensure async driver
-    if "postgresql://" in db_url and "+asyncpg" not in db_url:
-        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+    # Use app Settings to resolve DB URL (reads .env automatically via pydantic)
+    from src.config import Settings
+    db_url = Settings().database_url
 
     registry = _build_registry_pricing()
     print(f"Registry has {len(registry)} models with pricing")
