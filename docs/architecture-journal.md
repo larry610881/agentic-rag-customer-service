@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [MCP Server Registry — 工具市集 Registry Pattern + Transport Abstraction](#mcp-server-registry--工具市集-registry-pattern--transport-abstraction)
 - [Token Usage 預估成本 $0 修復 — Registry Fallback + API Schema 防禦](#token-usage-預估成本-0-修復--registry-fallback--api-schema-防禦)
 - [Token 用量 Bot 關聯 + 成本修復 + Agent Timeout — 跨 4 DDD 層的 Query 最佳化](#token-用量-bot-關聯--成本修復--agent-timeout--跨-4-ddd-層的-query-最佳化)
 - [RAG 品質診斷強化 — L1 Chunk-Level Scoring + Prompt Snapshot](#rag-品質診斷強化--l1-chunk-level-scoring--prompt-snapshot)
@@ -52,6 +53,35 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## MCP Server Registry — 工具市集 Registry Pattern + Transport Abstraction
+
+**Sprint 來源**：E7 MCP Server Registry (Issue #18)
+**相關主題**：Registry Pattern、Strategy Pattern、Transport Abstraction、DDD Bounded Context 擴展
+
+### 做得好的地方
+
+- **Registry Pattern 正確應用**：將 MCP Server 配置從每個 Bot 的 `mcp_servers` JSON 抽離到集中式 Registry，消除重複配置。Bot 透過 `mcp_bindings`（含 `registry_id` + `enabled_tools` + `env_values`）引用 Registry，實現「註冊一次，多處使用」
+- **Transport Strategy 抽象**：`CachedMCPToolLoader.load_tools()` 接受 `dict | str` 參數，根據 `transport` 欄位分流 HTTP（streamablehttp_client）或 stdio（stdio_client），遵循 Open-Closed Principle — 新增 transport 只需加分支，不改介面
+- **URL 模板替換**：`{VAR_NAME}` 模板在 `SendMessageUseCase` 中透過 per-binding `env_values` 替換，敏感值不存在 Registry 而是存在每個 Bot 的 binding 中，實現安全隔離
+- **Legacy 向後相容**：若 Bot 無 `mcp_bindings` 則 fallback 到原有 `mcp_servers` 欄位，漸進式遷移不破壞既有 Bot
+- **死碼清理**：刪除 `ReActAgentService._load_mcp_tools_with_stack` 重複邏輯，統一使用 `CachedMCPToolLoader`，減少維護負擔
+- **完整 BDD 覆蓋**：18 個 scenarios 覆蓋 Registry CRUD、Discover（HTTP+stdio）、Test Connection、Bot Binding 解析、Tool Loader stdio，335 unit tests pass
+
+### 潛在隱憂
+
+- **env_values 加密存儲未實施** → 目前 `mcp_bindings` 中的 `env_values`（含 API Key）以明文 JSON 存在 `bots` 表。應用 `AESEncryptionService` 在 Repository 層加密/解密 → **優先級：高**
+- **Discover 使用 ThreadPoolExecutor** → `DiscoverMcpToolsUseCase` 在獨立線程+事件迴圈中執行 MCP 連線，避免 TaskGroup 巢套。但 `loop.run_until_complete` 在高併發下可能成為瓶頸，未來應考慮 dedicated worker 或 connection pool → **優先級：中**
+- **Registry 刪除不清理 Bot 引用** → 刪除 Registry entry 後，已綁定該 entry 的 Bot 在 runtime 會 graceful skip（reg not found），但不主動清理 `mcp_bindings`。考慮加 soft-delete 或 cascade warning → **優先級：低**
+- **stdio process 生命週期** → 每次 Agent 呼叫都 spawn 新 stdio process → initialize → list_tools → close。高頻場景應考慮 process pool 或 persistent connection → **優先級：中**
+
+### 延伸學習
+
+- **Service Registry Pattern**：本次實作等同於 Microservices 中的 Service Registry（如 Consul/Eureka），但用於 MCP 工具發現。若未來 MCP Server 數量增長，可加入 health check 定期巡檢 + circuit breaker
+- **Strategy + Abstract Factory**：Transport 分流（HTTP vs stdio）是 Strategy Pattern 的教科書案例。若再加 WebSocket transport，只需在 `load_tools` 加一個 `elif` 分支。更正規的做法是用 Abstract Factory 產出不同 Transport Handler
+- **若想深入**：搜尋 "MCP Protocol specification stdio vs HTTP transport"、"Service Registry Pattern microservices"、Martin Fowler "Plugin" pattern
 
 ---
 
