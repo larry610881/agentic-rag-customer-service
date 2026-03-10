@@ -103,6 +103,7 @@ export function useStreaming() {
           case "tool_calls": {
             const newCalls = event.tool_calls as ToolCallInfo[];
             toolCalls = [...toolCalls, ...newCalls];
+            resetAssistantContent();
             const toolName = newCalls[0]?.tool_name || "";
             setHintThrottled(getToolHint(toolName));
             break;
