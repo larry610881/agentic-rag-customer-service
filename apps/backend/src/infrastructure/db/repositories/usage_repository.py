@@ -2,13 +2,14 @@
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.usage.entity import UsageRecord
 from src.domain.usage.repository import UsageRepository
 from src.domain.usage.value_objects import ModelCostStat, UsageSummary
 from src.infrastructure.db.atomic import atomic
+from src.infrastructure.db.models.message_model import MessageModel
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
 
 
@@ -101,31 +102,38 @@ class SQLAlchemyUsageRepository(UsageRepository):
         self, tenant_id: str, days: int = 30
     ) -> list[ModelCostStat]:
         since = datetime.now(timezone.utc) - timedelta(days=days)
-        records = await self.find_by_tenant(tenant_id, start_date=since)
 
-        model_data: dict[str, dict] = {}
-        for r in records:
-            if r.model not in model_data:
-                model_data[r.model] = {
-                    "count": 0,
-                    "input": 0,
-                    "output": 0,
-                    "cost": 0.0,
-                }
-            d = model_data[r.model]
-            d["count"] += 1
-            d["input"] += r.input_tokens
-            d["output"] += r.output_tokens
-            d["cost"] += r.estimated_cost
+        stmt = (
+            select(
+                UsageRecordModel.model,
+                func.count().label("cnt"),
+                func.sum(UsageRecordModel.input_tokens).label("sum_input"),
+                func.sum(UsageRecordModel.output_tokens).label("sum_output"),
+                func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
+                func.avg(MessageModel.latency_ms).label("avg_latency"),
+            )
+            .outerjoin(
+                MessageModel,
+                UsageRecordModel.message_id == MessageModel.id,
+            )
+            .where(
+                UsageRecordModel.tenant_id == tenant_id,
+                UsageRecordModel.created_at >= since,
+            )
+            .group_by(UsageRecordModel.model)
+        )
+
+        result = await self._session.execute(stmt)
+        rows = result.all()
 
         return [
             ModelCostStat(
-                model=model,
-                message_count=d["count"],
-                input_tokens=d["input"],
-                output_tokens=d["output"],
-                avg_latency_ms=0.0,  # latency is on messages, not usage records
-                estimated_cost=round(d["cost"], 4),
+                model=row.model,
+                message_count=row.cnt,
+                input_tokens=row.sum_input or 0,
+                output_tokens=row.sum_output or 0,
+                avg_latency_ms=round(float(row.avg_latency or 0), 1),
+                estimated_cost=round(float(row.sum_cost or 0), 4),
             )
-            for model, d in model_data.items()
+            for row in rows
         ]
