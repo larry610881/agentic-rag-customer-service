@@ -301,6 +301,8 @@ class SendMessageUseCase:
                     tenant_id=command.tenant_id,
                     trace_id=trace_id,
                     agent_mode=bot_cfg["agent_mode"],
+                    eval_provider=bot_cfg.get("eval_provider", ""),
+                    eval_model=bot_cfg.get("eval_model", ""),
                 )
             )
 
@@ -411,6 +413,8 @@ class SendMessageUseCase:
                     tenant_id=command.tenant_id,
                     trace_id=trace_id,
                     agent_mode=bot_cfg["agent_mode"],
+                    eval_provider=bot_cfg.get("eval_provider", ""),
+                    eval_model=bot_cfg.get("eval_model", ""),
                 )
             )
 
@@ -482,10 +486,30 @@ class SendMessageUseCase:
         tenant_id: str,
         trace_id: str,
         agent_mode: str,
+        eval_provider: str = "",
+        eval_model: str = "",
     ) -> None:
-        """Run RAG evaluations in background (fire-and-forget, never raises)."""
+        """Run RAG evaluations in background (fire-and-forget, never raises).
+
+        Uses evaluate_combined() for 1 LLM call instead of up to 3 separate calls.
+        Resolves bot-specific eval LLM via DynamicLLMServiceProxy when configured.
+        Smart L1 skip: MCP-only scenarios (no RAG sources) skip L1 retrieval metrics.
+        """
         try:
+            from src.application.observability.rag_evaluation_use_case import (
+                RAGEvaluationUseCase,
+            )
+
             assert self._eval_use_case is not None  # noqa: S101
+
+            # Resolve eval-specific LLM service
+            eval_llm = self._eval_use_case._llm_service
+            if eval_provider or eval_model:
+                if hasattr(eval_llm, "resolve_for_bot"):
+                    eval_llm = await eval_llm.resolve_for_bot(
+                        provider_name=eval_provider, model=eval_model,
+                    )
+            eval_uc = RAGEvaluationUseCase(llm_service=eval_llm)
 
             # Parse depth levels
             depth = eval_depth.upper()
@@ -493,7 +517,8 @@ class SendMessageUseCase:
             run_l2 = "L2" in depth
             run_l3 = "L3" in depth
 
-            # Extract chunk texts from sources
+            # Determine if we have RAG sources (vs MCP-only)
+            has_rag_sources = False
             chunks: list[str] = []
             if sources:
                 for s in sources:
@@ -503,6 +528,7 @@ class SendMessageUseCase:
                         text = getattr(s, "content_snippet", "") or getattr(s, "content", "")
                     if text:
                         chunks.append(text)
+                        has_rag_sources = True
 
             # Include MCP tool outputs (non-RAG tools) as context
             for tc in tool_calls:
@@ -515,30 +541,21 @@ class SendMessageUseCase:
 
             all_context = "\n---\n".join(chunks)
 
-            if run_l1:
-                result = await self._eval_use_case.evaluate_l1(
-                    query=query,
-                    chunks=chunks,
-                    tenant_id=tenant_id,
-                    trace_id=trace_id,
-                )
-                await self._persist_eval(result)
-
-            if run_l2:
-                result = await self._eval_use_case.evaluate_l2(
-                    query=query,
-                    answer=answer,
-                    all_context=all_context,
-                    tenant_id=tenant_id,
-                )
-                await self._persist_eval(result)
-
-            if run_l3 and agent_mode == "react":
-                result = await self._eval_use_case.evaluate_l3(
-                    query=query,
-                    tool_calls=tool_calls,
-                    tenant_id=tenant_id,
-                )
+            result = await eval_uc.evaluate_combined(
+                query=query,
+                answer=answer,
+                all_context=all_context,
+                chunks=chunks,
+                tool_calls=tool_calls,
+                run_l1=run_l1,
+                run_l2=run_l2,
+                run_l3=run_l3,
+                has_rag_sources=has_rag_sources,
+                agent_mode=agent_mode,
+                tenant_id=tenant_id,
+                trace_id=trace_id,
+            )
+            if result.dimensions:
                 await self._persist_eval(result)
 
         except Exception:

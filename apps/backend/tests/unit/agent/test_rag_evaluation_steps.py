@@ -72,6 +72,49 @@ def mock_l3_scores(context, ae, ts):
     context["llm_service"].generate.return_value = resp
 
 
+@given(
+    parsers.parse("LLM 回傳合併評分 context_precision {cp} 和 faithfulness {f}"),
+)
+def mock_combined_l1_l2_scores(context, cp, f):
+    resp = MagicMock()
+    resp.text = json.dumps({
+        "context_precision": float(cp),
+        "context_recall": 0.7,
+        "faithfulness": float(f),
+        "relevancy": 0.85,
+        "explanation": "合併測試評分",
+    })
+    context["llm_service"].generate.return_value = resp
+
+
+@given(
+    parsers.parse("LLM 回傳合併評分 faithfulness {f} 和 relevancy {r}"),
+)
+def mock_combined_l2_only_scores(context, f, r):
+    resp = MagicMock()
+    resp.text = json.dumps({
+        "faithfulness": float(f),
+        "relevancy": float(r),
+        "explanation": "合併測試評分",
+    })
+    context["llm_service"].generate.return_value = resp
+
+
+@given("一個 RAG 評估用例使用帶有 model_name 的 mock LLM")
+def setup_mock_llm_with_model_name(context):
+    llm = AsyncMock()
+    llm.model_name = "gemini-2.5-flash-lite"
+    resp = MagicMock()
+    resp.text = json.dumps({
+        "faithfulness": 0.9,
+        "relevancy": 0.85,
+        "explanation": "model name test",
+    })
+    llm.generate.return_value = resp
+    context["llm_service"] = llm
+    context["use_case"] = RAGEvaluationUseCase(llm_service=llm)
+
+
 @given("一個包含多維度的 EvalResult")
 def setup_eval_result(context):
     context["eval_result"] = EvalResult(
@@ -133,6 +176,64 @@ def run_l3_eval(context, query):
     )
 
 
+@when(
+    parsers.parse('執行合併評估 L1+L2 查詢 "{query}" 有 RAG sources'),
+    target_fixture="result",
+)
+def run_combined_with_rag(context, query):
+    return _run(
+        context["use_case"].evaluate_combined(
+            query=query,
+            answer="30天內可退貨",
+            all_context="退貨政策原文",
+            chunks=["退貨政策原文"],
+            tool_calls=[],
+            run_l1=True,
+            run_l2=True,
+            has_rag_sources=True,
+            tenant_id="t-1",
+        )
+    )
+
+
+@when(
+    parsers.parse('執行合併評估 L1+L2 查詢 "{query}" 無 RAG sources'),
+    target_fixture="result",
+)
+def run_combined_without_rag(context, query):
+    return _run(
+        context["use_case"].evaluate_combined(
+            query=query,
+            answer="這個商品500元",
+            all_context="[query_products] 商品A 500元",
+            chunks=["[query_products] 商品A 500元"],
+            tool_calls=[{"tool_name": "query_products", "tool_input": "500元商品"}],
+            run_l1=True,
+            run_l2=True,
+            has_rag_sources=False,
+            tenant_id="t-1",
+        )
+    )
+
+
+@when(
+    parsers.parse('執行合併評估 L2 查詢 "{query}"'),
+    target_fixture="result",
+)
+def run_combined_l2_only(context, query):
+    return _run(
+        context["use_case"].evaluate_combined(
+            query=query,
+            answer="30天內可退貨",
+            all_context="退貨政策原文",
+            chunks=["退貨政策原文"],
+            tool_calls=[],
+            run_l2=True,
+            tenant_id="t-1",
+        )
+    )
+
+
 # ── Then ──
 
 @then(parsers.parse('評估結果的 layer 應為 "{expected}"'))
@@ -145,6 +246,23 @@ def check_dimension_score(result, dim_name, expected_score):
     found = [d for d in result.dimensions if d.name == dim_name]
     assert len(found) == 1, f"維度 {dim_name} 未找到，現有: {[d.name for d in result.dimensions]}"
     assert found[0].score == pytest.approx(float(expected_score), abs=0.01)
+
+
+@then("應只呼叫 LLM 一次")
+def check_single_llm_call(context):
+    assert context["llm_service"].generate.call_count == 1
+
+
+@then("結果不應包含 context_precision 維度")
+def check_no_context_precision(result):
+    names = [d.name for d in result.dimensions]
+    assert "context_precision" not in names
+    assert "context_recall" not in names
+
+
+@then(parsers.parse('評估結果的 model_used 應為 "{expected}"'))
+def check_model_used(result, expected):
+    assert result.model_used == expected
 
 
 @then("avg_score 應為各維度分數的平均值")

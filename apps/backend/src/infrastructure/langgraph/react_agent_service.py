@@ -547,6 +547,25 @@ class ReActAgentService(AgentService):
                                         "type": "status",
                                         "status": f"{msg.name}_done",
                                     }
+                                # Backfill tool_output to tool_calls_emitted
+                                if (
+                                    hasattr(msg, "content")
+                                    and msg.content
+                                    and hasattr(msg, "name")
+                                    and msg.name
+                                ):
+                                    content_str = (
+                                        str(msg.content)[:500]
+                                        if msg.content
+                                        else ""
+                                    )
+                                    for tc in reversed(tool_calls_emitted):
+                                        if (
+                                            tc.get("tool_name") == msg.name
+                                            and "tool_output" not in tc
+                                        ):
+                                            tc["tool_output"] = content_str
+                                            break
                                 if hasattr(msg, "content") and msg.content:
                                     try:
                                         import json
