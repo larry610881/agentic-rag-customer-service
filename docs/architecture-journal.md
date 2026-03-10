@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Streaming Tool Hint + 回饋分析 SQL 聚合修復](#streaming-tool-hint--回饋分析-sql-聚合修復)
 - [RAG 評估合併 1 call + 智慧 L1 跳過 + Streaming bug 修復](#rag-評估合併-1-call--智慧-l1-跳過--streaming-bug-修復)
 - [RAG 評估觸發接線 + Unit Test 資料洩漏根因修復](#rag-評估觸發接線--unit-test-資料洩漏根因修復)
 - [ReAct Streaming UX 優化 + Trace DI 修復 — 跨端串流體驗與測試隔離](#react-streaming-ux-優化--trace-di-修復--跨端串流體驗與測試隔離)
@@ -47,6 +48,30 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Streaming Tool Hint + 回饋分析 SQL 聚合修復
+
+> Sprint 來源：Bug Fix — 前端 Streaming UX + 後端可觀測性統計
+
+**本次相關主題**：SSE Streaming 狀態機、SQL 聚合 vs Python 迴圈、資料完整性
+
+### 做得好的地方
+
+- **前端 1-line fix**：`resetAssistantContent()` 精準清除中間推理文字，利用既有 `!message.content` 條件讓 tool hint 自然顯示，無需改動 message-bubble 邏輯
+- **後端 SQL 聚合改寫**：`get_model_cost_stats()` 從 Python `find_by_tenant()` + 迴圈累加改為單次 SQL `GROUP BY` + `LEFT JOIN messages`，同時解決 latency 數據源問題和 N+1 效能問題
+- **根因分析到位**：cost=0 追溯到 `message_id=NULL`（舊資料未關聯 message），確認是資料問題非邏輯 bug，清理 orphan 記錄而非 hack 假值
+
+### 潛在隱憂
+
+- **`message_id` 關聯鬆散** — `UsageRecord.message_id` 為 nullable，早期資料未填入。若未來再出現 NULL 情況，latency 統計會被稀釋。→ 建議在 `RecordUsageUseCase` 加 warning log 偵測 `message_id=None` → 優先級：低
+- **SQL JOIN 跨聚合根** — `token_usage_records` JOIN `messages` 跨越 Usage 與 Conversation 兩個 Bounded Context 的 DB 表。DDD 嚴格來說應透過 Application Service 組合。但作為 read-only 統計查詢，實務上可接受（CQRS 的 Q 側允許跨聚合 JOIN）→ 優先級：低
+
+### 延伸學習
+
+- **CQRS 讀模型**：統計/報表場景允許跨聚合 JOIN（Query 側不受聚合邊界限制），這是 DDD 社群共識。若查詢更複雜，可考慮 Materialized View 或專屬 Read Model
+- **SSE 狀態機設計**：Streaming 的 event 順序 `token → tool_calls → status → token → done` 構成隱式狀態機，每個 case 的副作用（清 content、設 hint）需要整體思考，單點修改容易遺漏邊界
 
 ---
 
