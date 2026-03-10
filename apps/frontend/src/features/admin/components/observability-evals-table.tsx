@@ -33,13 +33,16 @@ function ChunkScoreBadge({ score }: { score: number }) {
 function ChunkScoreList({ scores }: { scores: ChunkScore[] }) {
   return (
     <div className="mt-1 ml-16 space-y-0.5 border-l-2 border-muted pl-3">
-      {scores.map((cs) => (
-        <div key={cs.index} className="flex items-center gap-2 text-xs">
-          <span className="w-6 text-right font-mono text-muted-foreground">[{cs.index}]</span>
-          <ChunkScoreBadge score={cs.score} />
-          <span className="text-muted-foreground">{cs.reason}</span>
-        </div>
-      ))}
+      {scores.map((cs) => {
+        const numScore = Number(cs.score) || 0;
+        return (
+          <div key={cs.index} className="flex items-center gap-2 text-xs">
+            <span className="w-6 text-right font-mono text-muted-foreground">[{cs.index}]</span>
+            <ChunkScoreBadge score={numScore} />
+            <span className="text-muted-foreground">{cs.reason}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

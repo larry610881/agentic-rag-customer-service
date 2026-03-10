@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Token 用量 Bot 關聯 + 成本修復 + Agent Timeout — 跨 4 DDD 層的 Query 最佳化](#token-用量-bot-關聯--成本修復--agent-timeout--跨-4-ddd-層的-query-最佳化)
 - [RAG 品質診斷強化 — L1 Chunk-Level Scoring + Prompt Snapshot](#rag-品質診斷強化--l1-chunk-level-scoring--prompt-snapshot)
 - [系統管理 Token 用量 — CQRS Q 側跨 BC JOIN + 權限分離](#系統管理-token-用量--cqrs-q-側跨-bc-join--權限分離)
 - [Streaming Tool Hint + 回饋分析 SQL 聚合修復](#streaming-tool-hint--回饋分析-sql-聚合修復)
@@ -50,6 +51,37 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Token 用量 Bot 關聯 + 成本修復 + Agent Timeout — 跨 4 DDD 層的 Query 最佳化
+
+> **Sprint 來源**：Token Usage 頁面三個 Bug 修復
+> **日期**：2026-03-10
+> **檔案數**：10+ files（跨 4 DDD 層 + 前端）
+
+### 本次相關主題
+
+Query Model 反正規化、LLM 輸出正規化、Config 外部化
+
+### 做得好的地方
+
+- **CQRS Q 側反正規化**：`token_usage_records` 直接加 `bot_id` 欄位，查詢從 4-table JOIN（usage→message→conversation→bot）簡化為 2-table JOIN（usage→bot）。這是典型的 Read Model 最佳化——犧牲少量寫入冗餘換取查詢效能和可靠性
+- **LLM 輸出防禦性解析**：`_parse_scores` 正規化 `chunk_scores` 的 `score` 值（字串→float、百分比→0-1 scale），防止 LLM 回傳格式不一致導致前端 NaN
+- **Config 外部化**：`agent_llm_request_timeout` 和 `agent_stream_timeout` 從 hardcode 移至 `Settings`，timeout 錯誤訊息也用 f-string 動態顯示
+- **通用演算法 vs hardcode**：`pricing.py` 的 prefix fallback 用 `model.startswith(key)` 一次解決所有帶日期後綴的 model name，不需逐模型維護
+
+### 潛在隱憂
+
+- **bot_id 寫入時機**：目前在 `Interfaces` 層（agent_router）傳入 `bot_id`，而非在 `Application` 層自動填充。若新增其他入口（如 LINE webhook 的 usage 記錄），需記得傳入 bot_id → 建議：未來考慮在 `SendMessageUseCase` 層記錄 usage，而非在 router → **優先級：低**
+- **prefix match 假陽性**：`model.startswith(key)` 可能匹配過寬（如 `gpt-5` 會匹配 `gpt-5-mini` 的 pricing）。目前 DB 中 model key 夠獨特所以不成問題，但若加入 `gpt-5` 和 `gpt-5-mini` 同時存在的定價，需改用更精確的匹配（longest prefix match）→ **優先級：低**
+- **LLM chunk_scores 格式脆弱性**：eval LLM 返回的 JSON 格式無 schema 驗證，完全依賴 prompt engineering 控制輸出格式。若改用 structured output（如 OpenAI function calling / JSON mode），可確保型別安全 → **優先級：中**
+
+### 延伸學習
+
+- **CQRS Read Model 反正規化**：本次是 CQRS 的 Q 側經典操作——在 Command 端（寫入）多存一個冗餘欄位，讓 Query 端查詢更簡單。這比在查詢端做複雜 JOIN 更可靠
+- **Defensive Parsing Pattern**：LLM 輸出永遠不可信，需在 Application 層做 sanitize/normalize。類比 Web 開發的「永遠不信任用戶輸入」原則
+- 若想深入：搜尋「CQRS read model projection」、「LLM structured output validation」
 
 ---
 

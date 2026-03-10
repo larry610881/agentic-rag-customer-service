@@ -358,6 +358,24 @@ class RAGEvaluationUseCase:
             cleaned = re.sub(r"^```\w*\n?", "", cleaned)
             cleaned = re.sub(r"\n?```$", "", cleaned).strip()
         try:
-            return json.loads(cleaned)
+            data = json.loads(cleaned)
         except json.JSONDecodeError:
             return {}
+
+        # Normalize chunk_scores: ensure score is float
+        if "chunk_scores" in data and isinstance(data["chunk_scores"], list):
+            for cs in data["chunk_scores"]:
+                if isinstance(cs, dict) and "score" in cs:
+                    raw = cs["score"]
+                    if isinstance(raw, str):
+                        raw = raw.replace("%", "").strip()
+                    try:
+                        val = float(raw)
+                        # If LLM returned 0-100 scale, normalize to 0-1
+                        if val > 1.0:
+                            val = val / 100.0
+                        cs["score"] = round(val, 4)
+                    except (ValueError, TypeError):
+                        cs["score"] = 0.0
+
+        return data
