@@ -59,8 +59,6 @@ class ReActAgentService(AgentService):
         rag_score_threshold: float | None,
     ) -> BaseTool:
         """Build a LangChain BaseTool wrapping the RAG query."""
-        import json as _json
-
         rag_tool = self._rag_tool
 
         @tool
@@ -78,8 +76,7 @@ class ReActAgentService(AgentService):
                 top_k=rag_top_k,
                 score_threshold=rag_score_threshold,
             )
-            # Return full JSON so streaming can extract sources for L1 eval
-            return _json.dumps(result, ensure_ascii=False)
+            return result.get("context", "") or "知識庫中沒有找到相關資訊。"
 
         return rag_query  # type: ignore[return-value]
 
@@ -569,7 +566,10 @@ class ReActAgentService(AgentService):
                                         ):
                                             tc["tool_output"] = content_str
                                             break
+                                # Extract sources from tool results
                                 if hasattr(msg, "content") and msg.content:
+                                    _emitted_sources = False
+                                    # 1. Try JSON parse (MCP tools return JSON with sources)
                                     try:
                                         import json
 
@@ -588,8 +588,32 @@ class ReActAgentService(AgentService):
                                                     "type": "sources",
                                                     "sources": sources,
                                                 }
+                                                _emitted_sources = True
                                     except (json.JSONDecodeError, TypeError):
                                         pass
+                                    # 2. rag_query returns plain text — split into chunks as sources
+                                    if (
+                                        not _emitted_sources
+                                        and hasattr(msg, "name")
+                                        and msg.name == "rag_query"
+                                    ):
+                                        ctx = (
+                                            msg.content
+                                            if isinstance(msg.content, str)
+                                            else str(msg.content)
+                                        )
+                                        _no_result = "知識庫中沒有找到相關資訊"
+                                        if ctx.strip() and _no_result not in ctx:
+                                            rag_sources = [
+                                                {"content_snippet": c.strip(), "source": "rag_query"}
+                                                for c in ctx.split("\n---\n")
+                                                if c.strip()
+                                            ]
+                                            if rag_sources:
+                                                yield {
+                                                    "type": "sources",
+                                                    "sources": rag_sources,
+                                                }
                             yield {
                                 "type": "status",
                                 "status": "react_thinking",
@@ -645,8 +669,10 @@ class ReActAgentService(AgentService):
                     content = str(msg.content)[:500] if msg.content else ""
                     if tool_calls:
                         tool_calls[-1]["tool_output"] = content
-                # Extract RAG sources from ToolMessage JSON
+                # Extract sources from tool results
                 if hasattr(msg, "content") and msg.content:
+                    _found = False
+                    # 1. Try JSON (MCP tools)
                     try:
                         parsed = (
                             _json.loads(msg.content)
@@ -655,8 +681,21 @@ class ReActAgentService(AgentService):
                         )
                         if isinstance(parsed, dict) and parsed.get("sources"):
                             sources.extend(parsed["sources"])
+                            _found = True
                     except (_json.JSONDecodeError, TypeError):
                         pass
+                    # 2. rag_query plain text — split into chunks
+                    if (
+                        not _found
+                        and hasattr(msg, "name")
+                        and msg.name == "rag_query"
+                    ):
+                        ctx = msg.content if isinstance(msg.content, str) else str(msg.content)
+                        _no_result = "知識庫中沒有找到相關資訊"
+                        if ctx.strip() and _no_result not in ctx:
+                            for c in ctx.split("\n---\n"):
+                                if c.strip():
+                                    sources.append({"content_snippet": c.strip(), "source": "rag_query"})
 
         if not tool_calls:
             tool_calls = [{"tool_name": "direct", "reasoning": ""}]
