@@ -16,6 +16,12 @@ def calculate_usage(
         價格單位：USD per 1M tokens
     """
     model_pricing = pricing.get(model, {})
+    # Fallback: strip date suffix (e.g. "gpt-5.1-2025-11-13" → "gpt-5.1")
+    if not model_pricing:
+        for key in pricing:
+            if model.startswith(key):
+                model_pricing = pricing[key]
+                break
     input_price = model_pricing.get("input", 0.0)
     output_price = model_pricing.get("output", 0.0)
 

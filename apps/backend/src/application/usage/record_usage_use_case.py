@@ -14,6 +14,7 @@ class RecordUsageUseCase:
         tenant_id: str,
         request_type: str,
         usage: TokenUsage | None,
+        bot_id: str | None = None,
     ) -> None:
         if usage is None or usage.total_tokens == 0:
             return
@@ -26,5 +27,6 @@ class RecordUsageUseCase:
             output_tokens=usage.output_tokens,
             total_tokens=usage.total_tokens,
             estimated_cost=usage.estimated_cost,
+            bot_id=bot_id,
         )
         await self._repo.save(record)

@@ -19,14 +19,13 @@ from langchain_core.messages import (
 )
 from langchain_core.tools import BaseTool, tool
 from langgraph.graph import END, START, MessagesState, StateGraph
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode
 
 from src.application.agent.prompt_assembler import assemble as assemble_prompt
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.conversation.entity import Message
 from src.domain.rag.services import LLMService
-from src.domain.rag.value_objects import Source
 from src.infrastructure.langgraph.tools import RAGQueryTool
 from src.infrastructure.langgraph.usage import (
     build_usage_event,
@@ -126,13 +125,17 @@ class ReActAgentService(AgentService):
             )
 
         # Default to OpenAI-compatible
-        from langchain_openai import ChatOpenAI
         import os
+
+        from langchain_openai import ChatOpenAI
+
+        from src.config import settings
 
         kwargs: dict[str, Any] = {
             "model": model or "gpt-4o-mini",
             "temperature": temperature,
             "max_tokens": max_tokens,
+            "request_timeout": settings.agent_llm_request_timeout,
         }
 
         # Support custom base_url for OpenAI-compatible providers
@@ -458,166 +461,192 @@ class ReActAgentService(AgentService):
             llm_generating_emitted = False
             all_ai_messages: list[AIMessage] = []
 
-            async for event in graph.astream(
-                {"messages": input_messages},
-                stream_mode=["messages", "updates"],
-            ):
-                mode, data = event
+            import asyncio
 
-                if mode == "messages":
-                    msg_chunk, metadata = data
-                    if metadata.get("langgraph_node") != "agent":
-                        continue
-                    if not isinstance(msg_chunk, AIMessageChunk):
-                        continue
-                    if msg_chunk.content:
-                        if not llm_generating_emitted:
-                            yield {
-                                "type": "status",
-                                "status": "llm_generating",
-                            }
-                            llm_generating_emitted = True
-                        content = (
-                            msg_chunk.content
-                            if isinstance(msg_chunk.content, str)
-                            else str(msg_chunk.content)
-                        )
-                        yield {"type": "token", "content": content}
+            from src.config import settings as _settings
 
-                elif mode == "updates":
-                    for node_name, node_output in data.items():
-                        if node_name == "agent":
-                            messages = node_output.get("messages", [])
-                            for msg in messages:
-                                if isinstance(msg, AIMessage):
-                                    all_ai_messages.append(msg)
-                                    if msg.tool_calls:
-                                        call_count += 1
-                                        llm_generating_emitted = False
-                                        if audit_mode != "off":
-                                            tc_list = []
-                                            for tc in msg.tool_calls:
-                                                entry: dict[str, Any] = {
-                                                    "tool_name": tc["name"],
-                                                    "reasoning": "",
-                                                }
-                                                if audit_mode == "full":
-                                                    entry["tool_input"] = tc.get(
-                                                        "args", {}
-                                                    )
-                                                    entry["iteration"] = call_count
-                                                tc_list.append(entry)
-                                            tool_calls_emitted.extend(tc_list)
-                                            yield {
-                                                "type": "tool_calls",
-                                                "tool_calls": tc_list,
-                                            }
-                                            for tc in msg.tool_calls:
-                                                yield {
-                                                    "type": "status",
-                                                    "status": f"{tc['name']}_executing",
-                                                }
-                                    elif msg.content:
-                                        # Fallback: if messages mode didn't
-                                        # stream tokens (e.g. mock LLM without
-                                        # astream), emit content as one chunk.
-                                        if not llm_generating_emitted:
-                                            yield {
-                                                "type": "status",
-                                                "status": "llm_generating",
-                                            }
-                                            content = (
-                                                msg.content
-                                                if isinstance(
-                                                    msg.content, str
-                                                )
-                                                else str(msg.content)
-                                            )
-                                            yield {
-                                                "type": "token",
-                                                "content": content,
-                                            }
-                                        llm_generating_emitted = False
+            try:
+                async with asyncio.timeout(_settings.agent_stream_timeout):
+                    async for event in graph.astream(
+                        {"messages": input_messages},
+                        stream_mode=["messages", "updates"],
+                    ):
+                        mode, data = event
 
-                        elif node_name == "tools":
-                            messages = node_output.get("messages", [])
-                            for msg in messages:
-                                if hasattr(msg, "name") and msg.name:
+                        if mode == "messages":
+                            msg_chunk, metadata = data
+                            if metadata.get("langgraph_node") != "agent":
+                                continue
+                            if not isinstance(msg_chunk, AIMessageChunk):
+                                continue
+                            if msg_chunk.content:
+                                if not llm_generating_emitted:
                                     yield {
                                         "type": "status",
-                                        "status": f"{msg.name}_done",
+                                        "status": "llm_generating",
                                     }
-                                # Backfill tool_output to tool_calls_emitted
-                                if (
-                                    hasattr(msg, "content")
-                                    and msg.content
-                                    and hasattr(msg, "name")
-                                    and msg.name
-                                ):
-                                    content_str = (
-                                        str(msg.content)[:500]
-                                        if msg.content
-                                        else ""
-                                    )
-                                    for tc in reversed(tool_calls_emitted):
-                                        if (
-                                            tc.get("tool_name") == msg.name
-                                            and "tool_output" not in tc
-                                        ):
-                                            tc["tool_output"] = content_str
-                                            break
-                                # Extract sources from tool results
-                                if hasattr(msg, "content") and msg.content:
-                                    _emitted_sources = False
-                                    # 1. Try JSON parse (MCP tools return JSON with sources)
-                                    try:
-                                        import json
+                                    llm_generating_emitted = True
+                                content = (
+                                    msg_chunk.content
+                                    if isinstance(msg_chunk.content, str)
+                                    else str(msg_chunk.content)
+                                )
+                                yield {"type": "token", "content": content}
 
-                                        content = (
-                                            json.loads(msg.content)
-                                            if isinstance(msg.content, str)
-                                            else msg.content
-                                        )
+                        elif mode == "updates":
+                            for node_name, node_output in data.items():
+                                if node_name == "agent":
+                                    messages = node_output.get("messages", [])
+                                    for msg in messages:
+                                        if isinstance(msg, AIMessage):
+                                            all_ai_messages.append(msg)
+                                            if msg.tool_calls:
+                                                call_count += 1
+                                                llm_generating_emitted = False
+                                                if audit_mode != "off":
+                                                    tc_list = []
+                                                    for tc in msg.tool_calls:
+                                                        entry: dict[str, Any] = {
+                                                            "tool_name": tc["name"],
+                                                            "reasoning": "",
+                                                        }
+                                                        if audit_mode == "full":
+                                                            entry["tool_input"] = tc.get(  # noqa: E501
+                                                                "args", {}
+                                                            )
+                                                            entry["iteration"] = (  # noqa: E501
+                                                                call_count
+                                                            )
+                                                        tc_list.append(entry)
+                                                    tool_calls_emitted.extend(tc_list)
+                                                    yield {
+                                                        "type": "tool_calls",
+                                                        "tool_calls": tc_list,
+                                                    }
+                                                    for tc in msg.tool_calls:
+                                                        yield {
+                                                            "type": "status",
+                                                            "status": f"{tc['name']}_executing",  # noqa: E501
+                                                        }
+                                            elif msg.content:
+                                                # Fallback: if messages mode didn't
+                                                # stream tokens (e.g. mock LLM without
+                                                # astream), emit content as one chunk.
+                                                if not llm_generating_emitted:
+                                                    yield {
+                                                        "type": "status",
+                                                        "status": "llm_generating",
+                                                    }
+                                                    content = (
+                                                        msg.content
+                                                        if isinstance(
+                                                            msg.content, str
+                                                        )
+                                                        else str(msg.content)
+                                                    )
+                                                    yield {
+                                                        "type": "token",
+                                                        "content": content,
+                                                    }
+                                                llm_generating_emitted = False
+
+                                elif node_name == "tools":
+                                    messages = node_output.get("messages", [])
+                                    for msg in messages:
+                                        if hasattr(msg, "name") and msg.name:
+                                            yield {
+                                                "type": "status",
+                                                "status": f"{msg.name}_done",
+                                            }
+                                        # Backfill tool_output to tool_calls_emitted
                                         if (
-                                            isinstance(content, dict)
-                                            and "sources" in content
+                                            hasattr(msg, "content")
+                                            and msg.content
+                                            and hasattr(msg, "name")
+                                            and msg.name
                                         ):
-                                            sources = content["sources"]
-                                            if sources:
-                                                yield {
-                                                    "type": "sources",
-                                                    "sources": sources,
-                                                }
-                                                _emitted_sources = True
-                                    except (json.JSONDecodeError, TypeError):
-                                        pass
-                                    # 2. rag_query returns plain text — split into chunks as sources
-                                    if (
-                                        not _emitted_sources
-                                        and hasattr(msg, "name")
-                                        and msg.name == "rag_query"
-                                    ):
-                                        ctx = (
-                                            msg.content
-                                            if isinstance(msg.content, str)
-                                            else str(msg.content)
-                                        )
-                                        _no_result = "知識庫中沒有找到相關資訊"
-                                        if ctx.strip() and _no_result not in ctx:
-                                            rag_sources = [
-                                                {"content_snippet": c.strip(), "source": "rag_query"}
-                                                for c in ctx.split("\n---\n")
-                                                if c.strip()
-                                            ]
-                                            if rag_sources:
-                                                yield {
-                                                    "type": "sources",
-                                                    "sources": rag_sources,
-                                                }
-                            yield {
-                                "type": "status",
-                                "status": "react_thinking",
-                            }
+                                            content_str = (
+                                                str(msg.content)[:500]
+                                                if msg.content
+                                                else ""
+                                            )
+                                            for tc in reversed(tool_calls_emitted):
+                                                if (
+                                                    tc.get("tool_name") == msg.name
+                                                    and "tool_output" not in tc
+                                                ):
+                                                    tc["tool_output"] = content_str
+                                                    break
+                                        # Extract sources from tool results
+                                        if hasattr(msg, "content") and msg.content:
+                                            _emitted_sources = False
+                                            # 1. JSON parse (MCP tools)
+                                            try:
+                                                import json
+
+                                                content = (
+                                                    json.loads(msg.content)
+                                                    if isinstance(msg.content, str)
+                                                    else msg.content
+                                                )
+                                                if (
+                                                    isinstance(content, dict)
+                                                    and "sources" in content
+                                                ):
+                                                    sources = content["sources"]
+                                                    if sources:
+                                                        yield {
+                                                            "type": "sources",
+                                                            "sources": sources,
+                                                        }
+                                                        _emitted_sources = True
+                                            except (json.JSONDecodeError, TypeError):
+                                                pass
+                                            # 2. rag_query plain text → chunks
+                                            if (
+                                                not _emitted_sources
+                                                and hasattr(msg, "name")
+                                                and msg.name == "rag_query"
+                                            ):
+                                                ctx = (
+                                                    msg.content
+                                                    if isinstance(msg.content, str)
+                                                    else str(msg.content)
+                                                )
+                                                _no_result = "知識庫中沒有找到相關資訊"
+                                                if (
+                                                    ctx.strip()
+                                                    and _no_result not in ctx
+                                                ):
+                                                    rag_sources = [
+                                                        {
+                                                            "content_snippet": c.strip(),  # noqa: E501
+                                                            "source": "rag_query",
+                                                        }
+                                                        for c in ctx.split("\n---\n")
+                                                        if c.strip()
+                                                    ]
+                                                    if rag_sources:
+                                                        yield {
+                                                            "type": "sources",
+                                                            "sources": rag_sources,
+                                                        }
+                                    yield {
+                                        "type": "status",
+                                        "status": "react_thinking",
+                                    }
+            except asyncio.TimeoutError:
+                timeout_s = _settings.agent_stream_timeout
+                logger.error(
+                    "react.stream.timeout", timeout_s=timeout_s
+                )
+                yield {
+                    "type": "error",
+                    "message": (
+                        f"Agent 回應逾時（{timeout_s}s）"
+                        "，請縮短問題或更換模型"
+                    ),
+                }
 
             # Yield usage event before done
             usage_event = build_usage_event(
@@ -690,12 +719,19 @@ class ReActAgentService(AgentService):
                         and hasattr(msg, "name")
                         and msg.name == "rag_query"
                     ):
-                        ctx = msg.content if isinstance(msg.content, str) else str(msg.content)
+                        ctx = (
+                            msg.content
+                            if isinstance(msg.content, str)
+                            else str(msg.content)
+                        )
                         _no_result = "知識庫中沒有找到相關資訊"
                         if ctx.strip() and _no_result not in ctx:
                             for c in ctx.split("\n---\n"):
                                 if c.strip():
-                                    sources.append({"content_snippet": c.strip(), "source": "rag_query"})
+                                    sources.append({
+                                        "content_snippet": c.strip(),
+                                        "source": "rag_query",
+                                    })
 
         if not tool_calls:
             tool_calls = [{"tool_name": "direct", "reasoning": ""}]

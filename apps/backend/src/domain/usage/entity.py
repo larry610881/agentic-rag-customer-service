@@ -20,6 +20,7 @@ class UsageRecord:
     total_tokens: int = 0
     estimated_cost: float = 0.0
     message_id: str | None = None
+    bot_id: str | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

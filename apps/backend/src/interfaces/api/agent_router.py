@@ -84,6 +84,7 @@ async def agent_chat(
         tenant_id=tenant.tenant_id,
         request_type="agent",
         usage=result.usage,
+        bot_id=request.bot_id,
     )
 
     usage_resp = None
@@ -171,6 +172,7 @@ async def agent_chat_stream(
                     tenant_id=tenant.tenant_id,
                     request_type="agent",
                     usage=usage,
+                    bot_id=request.bot_id,
                 )
             except Exception:
                 logger.exception("agent.chat.stream.record_usage_error")

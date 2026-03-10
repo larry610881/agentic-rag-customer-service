@@ -29,6 +29,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 total_tokens=record.total_tokens,
                 estimated_cost=record.estimated_cost,
                 message_id=record.message_id,
+                bot_id=record.bot_id,
                 created_at=record.created_at,
             )
             self._session.add(model)
@@ -62,6 +63,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 total_tokens=r.total_tokens,
                 estimated_cost=r.estimated_cost,
                 message_id=r.message_id,
+                bot_id=r.bot_id,
                 created_at=r.created_at,
             )
             for r in rows

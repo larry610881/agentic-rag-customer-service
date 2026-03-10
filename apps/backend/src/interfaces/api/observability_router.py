@@ -7,8 +7,6 @@ from sqlalchemy import func, select
 
 from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.models.bot_model import BotModel
-from src.infrastructure.db.models.conversation_model import ConversationModel
-from src.infrastructure.db.models.message_model import MessageModel
 from src.infrastructure.db.models.rag_eval_model import RAGEvalModel
 from src.infrastructure.db.models.rag_trace_model import RAGTraceModel
 from src.infrastructure.db.models.tenant_model import TenantModel
@@ -117,7 +115,7 @@ async def get_token_usage(
             select(
                 UsageRecordModel.tenant_id,
                 TenantModel.name.label("tenant_name"),
-                ConversationModel.bot_id,
+                UsageRecordModel.bot_id,
                 BotModel.name.label("bot_name"),
                 UsageRecordModel.model,
                 func.sum(UsageRecordModel.input_tokens).label("input_tokens"),
@@ -127,16 +125,8 @@ async def get_token_usage(
                 func.count().label("message_count"),
             )
             .outerjoin(
-                MessageModel,
-                UsageRecordModel.message_id == MessageModel.id,
-            )
-            .outerjoin(
-                ConversationModel,
-                MessageModel.conversation_id == ConversationModel.id,
-            )
-            .outerjoin(
                 BotModel,
-                ConversationModel.bot_id == BotModel.id,
+                UsageRecordModel.bot_id == BotModel.id,
             )
             .outerjoin(
                 TenantModel,
@@ -146,7 +136,7 @@ async def get_token_usage(
             .group_by(
                 UsageRecordModel.tenant_id,
                 TenantModel.name,
-                ConversationModel.bot_id,
+                UsageRecordModel.bot_id,
                 BotModel.name,
                 UsageRecordModel.model,
             )

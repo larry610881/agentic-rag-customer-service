@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-03-05 (Qdrant gRPC + httpx 連線池 + 並行 KB 查詢)
+> 最後更新：2026-03-10 (Token 用量 Bot 關聯 + 成本修復 + Agent Timeout)
 
 ---
 
@@ -1157,3 +1157,4 @@
 | **RAG 品質診斷強化 — L1 Chunk-Level Scoring + Prompt Snapshot** | **✅ 完成** | **100%** | **12 files 跨 4 DDD 層 + 前後端: (1) Domain EvalDimension+metadata + RAGTraceRecord+prompt_snapshot, (2) Application L1 prompt 逐 chunk 編號+chunk_scores 解析 + evaluate_combined chunk_scores + _persist_trace prompt_snapshot, (3) Infrastructure RAGTraceModel TEXT column, (4) Frontend ChunkScore type+逐 chunk 分數渲染（≥0.7綠/≥0.4黃/<0.4紅）+ System Prompt 可折疊區塊, (5) 3 新 BDD scenarios, 314 backend tests pass** |
 | **ReAct rag_query tool description + 工具選擇指引** | **✅ 完成** | **100%** | **5 files: (1) tools.py/agent_graph.py/react_agent_service.py rag_query description 擴充「推薦/適合」類問題優先, (2) prompt_defaults.py SEED_REACT_MODE_PROMPT 加規則 5（工具選擇指引）+規則 6（停止判斷）, (3) MCP server.py search_products description 移除「推薦」場景+instructions 移除「不確定兩個都查」, 減少 ReAct 重複 MCP 呼叫 5→2** |
 | **ReAct L1 評估永不觸發修復** | **✅ 完成** | **100%** | **1 file react_agent_service.py: 根因 _build_rag_lc_tool 只回傳 context 純文字丟棄 sources → streaming json.loads silent fail → has_rag_sources=False。首版改回傳完整 JSON 但造成 LLM token 暴增 streaming 卡住。最終方案：(1) rag_query 維持回傳純文字, (2) streaming + _parse_response 透過 msg.name=="rag_query" 識別工具名稱，將 context 以 \\n---\\n 拆分為 chunks 作為 sources 給 L1 評估, 314 backend tests pass** |
+| **Token 用量頁面 Bot 關聯 + 成本 $0 + Agent Timeout 修復** | **✅ 完成** | **100%** | **8 files 跨 4 DDD 層: (1) UsageRecord+UsageRecordModel 加 bot_id 欄位, RecordUsageUseCase+agent_router 傳入 bot_id, (2) observability_router token-usage 查詢從 4-table JOIN（usage→message→conversation→bot）簡化為 2-table JOIN（usage→bot）, (3) pricing.py prefix fallback 匹配 model name（gpt-5.1-2025-11-13→gpt-5.1），通用演算法, (4) config.py agent_llm_request_timeout+agent_stream_timeout 可配置, react_agent_service.py 使用 config 值+縮排修正, 314 backend tests pass** |

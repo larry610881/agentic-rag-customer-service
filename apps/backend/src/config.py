@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     llm_provider: str = "dynamic"
     llm_max_tokens: int = 1024
 
+    # Agent Timeout
+    agent_llm_request_timeout: int = 120  # 單次 LLM API 請求 HTTP 超時（秒）
+    agent_stream_timeout: int = 180  # 整個 Agent 迴圈（含多次工具呼叫）總超時（秒）
+
     # Conversation History Strategy
     # "full" | "sliding_window" | "summary_recent" | "rag_history"
     history_strategy: str = "sliding_window"
