@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [RAG 評估合併 1 call + 智慧 L1 跳過 + Streaming bug 修復](#rag-評估合併-1-call--智慧-l1-跳過--streaming-bug-修復)
 - [RAG 評估觸發接線 + Unit Test 資料洩漏根因修復](#rag-評估觸發接線--unit-test-資料洩漏根因修復)
 - [ReAct Streaming UX 優化 + Trace DI 修復 — 跨端串流體驗與測試隔離](#react-streaming-ux-優化--trace-di-修復--跨端串流體驗與測試隔離)
 - [ReAct 補齊 + Audit 記錄 + 可觀測性 — 跨層大規模 Sprint](#react-補齊--audit-記錄--可觀測性--跨層大規模-sprint)
@@ -46,6 +47,32 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## RAG 評估合併 1 call + 智慧 L1 跳過 + Streaming bug 修復
+
+> Sprint 來源：可觀測性優化 — 評估機制重構
+
+**本次相關主題**：API Call 合併（Batch Evaluation）、Strategy Pattern（動態跳過）、Streaming 狀態同步
+
+### 做得好的地方
+
+- **evaluate_combined() 動態 prompt 組裝**：根據 `has_rag_sources`、`agent_mode` 動態決定評估維度，組裝單一 prompt 完成 1 call。保留 `evaluate_l1/l2/l3` backwards compat，新舊共存無風險。
+- **Streaming tool_output 回填**：在 tools node 完成後遍歷 `tool_calls_emitted` 反向匹配 tool_name，確保 MCP 工具的 output 不再丟失。這是典型的「生產者-消費者時序錯位」修復。
+- **Bot 專屬 eval LLM resolve**：利用既有 `DynamicLLMServiceProxy.resolve_for_bot()` 複用 factory 邏輯，不引入新的 LLM 實例化路徑。
+
+### 潛在隱憂
+
+- **合併 prompt 的 JSON 解析脆弱性** → 當 LLM 回傳的 JSON 缺少某些 key 時，目前用 `scores.get(key, 0.0)` 降級為 0 分。若 LLM 幻覺回傳額外 key 或格式錯誤，可能導致所有維度 0 分 → 建議未來加入 structured output（JSON mode）強制 schema → 優先級：低
+- **tool_output 回填的 name 碰撞** → 若同一工具被呼叫多次（如 `rag_query` × 2），反向匹配 `tool_name` 可能錯配。目前用 `"tool_output" not in tc` 守衛，但如果第一次呼叫失敗沒有 output，第二次的 output 會錯填到第一次 → 建議改用 `tool_call_id` 精確匹配 → 優先級：中
+- **eval LLM resolve 與主 LLM 共享 factory** → 高併發下 eval 和主對話的 LLM resolve 共享 cache，目前 cache key 是 `provider:model` 可區分，但如果 eval 用獨立 API key 則需要擴展 cache key → 優先級：低
+
+### 延伸學習
+
+- **Structured Output / JSON Mode**：OpenAI 和 Gemini 都支援 `response_format={"type": "json_object"}`，可確保回傳合法 JSON — 與本次 prompt 要求回傳 JSON 直接相關
+- **LangGraph ToolMessage.tool_call_id**：每個 ToolMessage 都帶有 `tool_call_id` 可與 AIMessage.tool_calls 精確配對 — 可取代目前的 name-based 匹配
+- 若想深入：搜尋 "LangGraph streaming dual mode messages updates" 和 "OpenAI structured outputs JSON schema"
 
 ---
 
