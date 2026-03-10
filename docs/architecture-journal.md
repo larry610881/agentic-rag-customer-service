@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Token Usage 預估成本 $0 修復 — Registry Fallback + API Schema 防禦](#token-usage-預估成本-0-修復--registry-fallback--api-schema-防禦)
 - [Token 用量 Bot 關聯 + 成本修復 + Agent Timeout — 跨 4 DDD 層的 Query 最佳化](#token-用量-bot-關聯--成本修復--agent-timeout--跨-4-ddd-層的-query-最佳化)
 - [RAG 品質診斷強化 — L1 Chunk-Level Scoring + Prompt Snapshot](#rag-品質診斷強化--l1-chunk-level-scoring--prompt-snapshot)
 - [系統管理 Token 用量 — CQRS Q 側跨 BC JOIN + 權限分離](#系統管理-token-用量--cqrs-q-側跨-bc-join--權限分離)
@@ -51,6 +52,30 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Token Usage 預估成本 $0 修復 — Registry Fallback + API Schema 防禦
+
+**Sprint 來源**：Bug Fix (Issue #17)
+**相關主題**：Data Integrity、Defensive Programming、API Schema 完整性
+
+### 做得好的地方
+
+- **兩層防禦設計**：Infrastructure 層 Factory 加 registry fallback（即時修復），同時 Interfaces 層 API Schema 補欄位（根因修復），確保未來前端 round-trip 不再遺失定價資料
+- **BDD 先行**：3 個 regression scenarios 確保修復不會回退——factory fallback、registry miss、cost prefix fallback
+- **資料修復分離**：`seeds/fix_pricing.py` 獨立 script，不污染業務邏輯，執行後可丟棄
+
+### 潛在隱憂
+
+- **Schema 欄位默認值陷阱**：`input_price: float = 0.0` 讓 Pydantic 在欄位缺失時靜默填 0，無法區分「真的是免費模型」vs「前端沒傳」。→ 考慮用 `Optional[float] = None` 區分，或在 Use Case 層加驗證邏輯 → 優先級：低
+- **Registry 硬編碼定價**：`model_registry.py` 的價格需手動更新，OpenAI 調價時容易遺漏。→ 未來可考慮從 API 或設定檔動態載入 → 優先級：低
+- **DB 既有資料一致性**：跑完 `fix_pricing.py` 後，若前端在 Schema 修復前再次更新 provider settings，定價又會歸零。需確保部署順序：後端先上（含 Schema 修復），再跑 seed → 優先級：中
+
+### 延伸學習
+
+- **Schema Evolution 策略**：API Schema 新增欄位時如何確保向後相容？本次用 `= 0.0` default 避免 breaking change，但更嚴謹的做法是 API versioning
+- **若想深入**：搜尋「API Schema Evolution Patterns」、「Tolerant Reader Pattern」（Martin Fowler）
 
 ---
 
