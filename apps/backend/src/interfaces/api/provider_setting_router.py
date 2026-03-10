@@ -42,6 +42,8 @@ class ModelConfigSchema(BaseModel):
     is_enabled: bool = True
     price: str = ""
     description: str = ""
+    input_price: float = 0.0   # USD per 1M tokens
+    output_price: float = 0.0  # USD per 1M tokens
 
 
 class CreateProviderSettingRequest(BaseModel):
@@ -113,6 +115,8 @@ def _to_response(setting) -> ProviderSettingResponse:
                 is_enabled=m.is_enabled,
                 price=m.price,
                 description=m.description,
+                input_price=m.input_price,
+                output_price=m.output_price,
             )
             for m in setting.models
         ],

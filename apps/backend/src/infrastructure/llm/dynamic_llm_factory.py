@@ -2,6 +2,7 @@ import json
 from collections.abc import AsyncIterator
 
 from src.config import Settings
+from src.domain.platform.model_registry import DEFAULT_MODELS as _REGISTRY
 from src.domain.platform.services import EncryptionService
 from src.domain.platform.value_objects import ProviderName, ProviderType
 from src.domain.rag.services import LLMService
@@ -162,14 +163,28 @@ class DynamicLLMServiceFactory:
             if setting.provider_name == ProviderName.MOCK:
                 return self._fallback
 
-            # Build pricing dict from DB models
+            # Build pricing dict from DB models, fallback to registry
             pricing: dict[str, dict[str, float]] = {}
+            registry_models = _REGISTRY.get(
+                setting.provider_name.value, {},
+            ).get("llm", [])
+            registry_pricing = {
+                rm["model_id"]: {
+                    "input": rm["input_price"],
+                    "output": rm["output_price"],
+                }
+                for rm in registry_models
+                if rm.get("input_price", 0) > 0
+                or rm.get("output_price", 0) > 0
+            }
             for m in setting.models:
                 if m.input_price > 0 or m.output_price > 0:
                     pricing[m.model_id] = {
                         "input": m.input_price,
                         "output": m.output_price,
                     }
+                elif m.model_id in registry_pricing:
+                    pricing[m.model_id] = registry_pricing[m.model_id]
 
             config = {
                 "provider_name": setting.provider_name.value,

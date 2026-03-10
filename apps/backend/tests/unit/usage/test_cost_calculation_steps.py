@@ -47,3 +47,24 @@ def verify_cost(context):
 @then("estimated_cost 應為 0.0")
 def verify_zero_cost(context):
     assert context["usage"].estimated_cost == 0.0
+
+
+@given('模型 "gpt-5.1" 的定價為 input 1.25 output 10.0 per 1M tokens')
+def setup_gpt_pricing(context):
+    context["pricing"] = {"gpt-5.1": {"input": 1.25, "output": 10.0}}
+
+
+@when('用模型名 "gpt-5.1-2025-11-13" 計算 1000 input tokens 和 500 output tokens 的成本')
+def do_calculate_with_suffix(context):
+    context["usage"] = calculate_usage(
+        model="gpt-5.1-2025-11-13",
+        input_tokens=1000,
+        output_tokens=500,
+        pricing=context["pricing"],
+    )
+
+
+@then("estimated_cost 應為 0.00625")
+def verify_prefix_fallback_cost(context):
+    # 1000 * 1.25 / 1M + 500 * 10.0 / 1M = 0.00125 + 0.005 = 0.00625
+    assert abs(context["usage"].estimated_cost - 0.00625) < 1e-10
