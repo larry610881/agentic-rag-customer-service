@@ -503,16 +503,27 @@ class SendMessageUseCase:
             from src.application.observability.rag_evaluation_use_case import (
                 RAGEvaluationUseCase,
             )
+            from src.infrastructure.db.session_middleware import (
+                independent_session_scope,
+            )
 
             assert self._eval_use_case is not None  # noqa: S101
 
-            # Resolve eval-specific LLM service
-            eval_llm = self._eval_use_case._llm_service
-            if eval_provider or eval_model:
-                if hasattr(eval_llm, "resolve_for_bot"):
-                    eval_llm = await eval_llm.resolve_for_bot(
-                        provider_name=eval_provider, model=eval_model,
-                    )
+            # Background task: request session is closed.
+            # Use independent_session_scope so DynamicLLMServiceFactory
+            # gets a fresh DB session to resolve provider settings.
+            async with independent_session_scope():
+                eval_llm = self._eval_use_case._llm_service
+                if eval_provider or eval_model:
+                    if hasattr(eval_llm, "resolve_for_bot"):
+                        eval_llm = await eval_llm.resolve_for_bot(
+                            provider_name=eval_provider,
+                            model=eval_model,
+                        )
+                else:
+                    # No eval-specific config: resolve system default
+                    if hasattr(eval_llm, "resolve_for_bot"):
+                        eval_llm = await eval_llm.resolve_for_bot()
             eval_uc = RAGEvaluationUseCase(llm_service=eval_llm)
 
             # Parse depth levels
