@@ -89,5 +89,6 @@ export const API_ENDPOINTS = {
   observability: {
     traces: "/api/v1/observability/traces",
     evaluations: "/api/v1/observability/evaluations",
+    tokenUsage: "/api/v1/observability/token-usage",
   },
 } as const;

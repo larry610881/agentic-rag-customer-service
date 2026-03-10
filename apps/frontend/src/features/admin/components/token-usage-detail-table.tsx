@@ -8,23 +8,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ModelCostStat } from "@/types/feedback";
+import type { TenantBotUsageStat } from "@/types/token-usage";
 
-interface TokenCostTableProps {
-  data: ModelCostStat[] | undefined;
+interface TokenUsageDetailTableProps {
+  data: TenantBotUsageStat[] | undefined;
   isLoading: boolean;
 }
 
-export function TokenCostTable({ data, isLoading }: TokenCostTableProps) {
+export function TokenUsageDetailTable({ data, isLoading }: TokenUsageDetailTableProps) {
   if (isLoading) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Token 成本統計</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-[200px] w-full" />
-        </CardContent>
+        <CardHeader><CardTitle>用量明細</CardTitle></CardHeader>
+        <CardContent><Skeleton className="h-[200px] w-full" /></CardContent>
       </Card>
     );
   }
@@ -32,13 +28,9 @@ export function TokenCostTable({ data, isLoading }: TokenCostTableProps) {
   if (!data?.length) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Token 成本統計</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>用量明細</CardTitle></CardHeader>
         <CardContent>
-          <p className="py-8 text-center text-muted-foreground">
-            尚無成本資料
-          </p>
+          <p className="py-8 text-center text-muted-foreground">尚無用量資料</p>
         </CardContent>
       </Card>
     );
@@ -46,24 +38,25 @@ export function TokenCostTable({ data, isLoading }: TokenCostTableProps) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Token 成本統計</CardTitle>
-      </CardHeader>
+      <CardHeader><CardTitle>用量明細</CardTitle></CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>租戶</TableHead>
+              <TableHead>Bot</TableHead>
               <TableHead>模型</TableHead>
               <TableHead className="text-right">訊息數</TableHead>
               <TableHead className="text-right">輸入 Tokens</TableHead>
               <TableHead className="text-right">輸出 Tokens</TableHead>
-              <TableHead className="text-right">平均延遲</TableHead>
               <TableHead className="text-right">預估成本</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((row) => (
-              <TableRow key={row.model}>
+            {data.map((row, idx) => (
+              <TableRow key={`${row.tenant_id}-${row.bot_id}-${row.model}-${idx}`}>
+                <TableCell>{row.tenant_name}</TableCell>
+                <TableCell>{row.bot_name ?? "(未指定 Bot)"}</TableCell>
                 <TableCell className="font-medium">{row.model}</TableCell>
                 <TableCell className="text-right">
                   {row.message_count.toLocaleString()}
@@ -73,9 +66,6 @@ export function TokenCostTable({ data, isLoading }: TokenCostTableProps) {
                 </TableCell>
                 <TableCell className="text-right">
                   {row.output_tokens.toLocaleString()}
-                </TableCell>
-                <TableCell className="text-right">
-                  {row.avg_latency_ms.toFixed(0)} ms
                 </TableCell>
                 <TableCell className="text-right">
                   ${row.estimated_cost.toFixed(4)}

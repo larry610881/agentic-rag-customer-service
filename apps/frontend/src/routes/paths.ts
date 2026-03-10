@@ -14,4 +14,6 @@ export const ROUTES = {
   ADMIN_LOGS: "/admin/logs",
   ADMIN_KNOWLEDGE_BASES: "/admin/knowledge-bases",
   ADMIN_BOTS: "/admin/bots",
+  ADMIN_OBSERVABILITY: "/admin/observability",
+  ADMIN_TOKEN_USAGE: "/admin/token-usage",
 } as const;

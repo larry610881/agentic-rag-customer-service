@@ -21,6 +21,8 @@ const AdminKnowledgeBasesPage = lazy(
   () => import("@/pages/admin-knowledge-bases"),
 );
 const AdminBotsPage = lazy(() => import("@/pages/admin-bots"));
+const AdminObservabilityPage = lazy(() => import("@/pages/admin-observability"));
+const AdminTokenUsagePage = lazy(() => import("@/pages/admin-token-usage"));
 
 function PageFallback() {
   return (
@@ -74,6 +76,14 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_BOTS}
               element={<AdminBotsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_OBSERVABILITY}
+              element={<AdminObservabilityPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_TOKEN_USAGE}
+              element={<AdminTokenUsagePage />}
             />
           </Route>
         </Route>

@@ -10,7 +10,7 @@ import {
 } from "@/hooks/queries/use-feedback";
 import { FeedbackStatsSummary } from "@/features/feedback/components/feedback-stats-summary";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TokenCostTable } from "@/features/feedback/components/token-cost-table";
+import { BotUsageSummaryCards } from "@/features/feedback/components/bot-usage-summary-cards";
 import { ROUTES } from "@/routes/paths";
 
 const ChartSkeleton = () => <Skeleton className="h-[300px] w-full rounded-lg" />;
@@ -71,7 +71,7 @@ export default function FeedbackPage() {
         </Suspense>
       </motion.div>
       <motion.div variants={itemVariants}>
-        <TokenCostTable data={costs.data} isLoading={costs.isLoading} />
+        <BotUsageSummaryCards data={costs.data} isLoading={costs.isLoading} />
       </motion.div>
     </motion.div>
   );
