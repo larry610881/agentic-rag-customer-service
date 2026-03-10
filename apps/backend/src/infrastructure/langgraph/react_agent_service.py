@@ -28,6 +28,10 @@ from src.domain.conversation.entity import Message
 from src.domain.rag.services import LLMService
 from src.domain.rag.value_objects import Source
 from src.infrastructure.langgraph.tools import RAGQueryTool
+from src.infrastructure.langgraph.usage import (
+    build_usage_event,
+    extract_usage_from_langchain_messages,
+)
 from src.infrastructure.llm.dynamic_llm_factory import DynamicLLMServiceProxy
 
 logger = structlog.get_logger(__name__)
@@ -452,6 +456,7 @@ class ReActAgentService(AgentService):
             tool_calls_emitted: list[dict[str, Any]] = []
             call_count = 0
             llm_generating_emitted = False
+            all_ai_messages: list[AIMessage] = []
 
             async for event in graph.astream(
                 {"messages": input_messages},
@@ -485,6 +490,7 @@ class ReActAgentService(AgentService):
                             messages = node_output.get("messages", [])
                             for msg in messages:
                                 if isinstance(msg, AIMessage):
+                                    all_ai_messages.append(msg)
                                     if msg.tool_calls:
                                         call_count += 1
                                         llm_generating_emitted = False
@@ -567,6 +573,13 @@ class ReActAgentService(AgentService):
                                 "status": "react_thinking",
                             }
 
+            # Yield usage event before done
+            usage_event = build_usage_event(
+                extract_usage_from_langchain_messages(all_ai_messages)
+            )
+            if usage_event:
+                yield usage_event
+
             yield {"type": "done"}
 
     @staticmethod
@@ -610,9 +623,12 @@ class ReActAgentService(AgentService):
         if not tool_calls:
             tool_calls = [{"tool_name": "direct", "reasoning": ""}]
 
+        usage = extract_usage_from_langchain_messages(messages)
+
         return AgentResponse(
             answer=answer,
             tool_calls=tool_calls,
             sources=[],
             conversation_id=str(uuid4()),
+            usage=usage,
         )

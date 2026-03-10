@@ -10,6 +10,7 @@ from src.domain.agent.team_supervisor import TeamSupervisor
 from src.domain.agent.worker import WorkerContext
 from src.domain.conversation.entity import Message
 from src.domain.rag.value_objects import TokenUsage
+from src.infrastructure.langgraph.usage import build_usage_event
 
 _MIN_ANSWER_LENGTH = 10
 _DEFAULT_ROLE = "customer"
@@ -139,3 +140,6 @@ class MetaSupervisorService(AgentService):
                 "type": "sources",
                 "sources": [s.to_dict() for s in response.sources],
             }
+        usage_event = build_usage_event(response.usage)
+        if usage_event:
+            yield usage_event
