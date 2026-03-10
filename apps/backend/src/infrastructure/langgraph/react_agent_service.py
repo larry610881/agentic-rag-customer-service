@@ -63,7 +63,7 @@ class ReActAgentService(AgentService):
 
         @tool
         async def rag_query(query: str) -> str:
-            """查詢知識庫回答用戶問題，適用於退貨政策、使用說明等知識型問題。
+            """查詢知識庫回答用戶問題。適用於：商品推薦、分類導覽、退貨政策、使用說明、品牌介紹等需要綜合判斷的問題。當用戶問「推薦」「適合」「有什麼」「哪些」類問題時優先使用此工具。
 
             Args:
                 query: 要查詢的問題

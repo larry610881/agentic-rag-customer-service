@@ -24,7 +24,8 @@ _GREETING_PATTERN = re.compile(
 _DEFAULT_TOOL_DESCRIPTIONS = {
     "rag_query": (
         "rag_query: 查詢知識庫中的資料"
-        "（任何可能在知識庫中有答案的問題都應使用此工具）"
+        "（商品推薦、分類導覽、退貨政策、使用說明等"
+        "需要綜合判斷的問題都應使用此工具）"
     ),
 }
 
