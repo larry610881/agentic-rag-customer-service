@@ -59,6 +59,8 @@ class ReActAgentService(AgentService):
         rag_score_threshold: float | None,
     ) -> BaseTool:
         """Build a LangChain BaseTool wrapping the RAG query."""
+        import json as _json
+
         rag_tool = self._rag_tool
 
         @tool
@@ -76,7 +78,8 @@ class ReActAgentService(AgentService):
                 top_k=rag_top_k,
                 score_threshold=rag_score_threshold,
             )
-            return result.get("context", "") or "知識庫中沒有找到相關資訊。"
+            # Return full JSON so streaming can extract sources for L1 eval
+            return _json.dumps(result, ensure_ascii=False)
 
         return rag_query  # type: ignore[return-value]
 
@@ -607,11 +610,14 @@ class ReActAgentService(AgentService):
         audit_mode: str = "minimal",
     ) -> AgentResponse:
         """Extract final answer and tool calls from graph result."""
+        import json as _json
+
         messages = result.get("messages", [])
 
         # Find the last AI message as the answer
         answer = ""
         tool_calls: list[dict[str, Any]] = []
+        sources: list[dict[str, Any]] = []
         iteration = 0
 
         for msg in messages:
@@ -634,10 +640,23 @@ class ReActAgentService(AgentService):
                         if isinstance(msg.content, str)
                         else str(msg.content)
                     )
-            elif isinstance(msg, ToolMessage) and audit_mode == "full":
-                content = str(msg.content)[:500] if msg.content else ""
-                if tool_calls:
-                    tool_calls[-1]["tool_output"] = content
+            elif isinstance(msg, ToolMessage):
+                if audit_mode == "full":
+                    content = str(msg.content)[:500] if msg.content else ""
+                    if tool_calls:
+                        tool_calls[-1]["tool_output"] = content
+                # Extract RAG sources from ToolMessage JSON
+                if hasattr(msg, "content") and msg.content:
+                    try:
+                        parsed = (
+                            _json.loads(msg.content)
+                            if isinstance(msg.content, str)
+                            else msg.content
+                        )
+                        if isinstance(parsed, dict) and parsed.get("sources"):
+                            sources.extend(parsed["sources"])
+                    except (_json.JSONDecodeError, TypeError):
+                        pass
 
         if not tool_calls:
             tool_calls = [{"tool_name": "direct", "reasoning": ""}]
@@ -647,7 +666,7 @@ class ReActAgentService(AgentService):
         return AgentResponse(
             answer=answer,
             tool_calls=tool_calls,
-            sources=[],
+            sources=sources,
             conversation_id=str(uuid4()),
             usage=usage,
         )
