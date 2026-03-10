@@ -61,7 +61,7 @@ const botFormSchema = z.object({
   audit_mode: z.enum(["off", "minimal", "full"]),
   eval_provider: z.string().optional(),
   eval_model: z.string().optional(),
-  eval_depth: z.enum(["off", "L1", "L1+L2", "L1+L2+L3"]),
+  eval_depth: z.string(),
   mcp_servers: z.array(z.object({
     url: z.string(),
     name: z.string(),
@@ -504,26 +504,56 @@ export function BotDetailForm({
               </p>
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="bot-eval-depth">評估深度</Label>
+              <Label>評估維度</Label>
               <Controller
                 name="eval_depth"
                 control={control}
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger id="bot-eval-depth">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="off">Off（不評估）</SelectItem>
-                      <SelectItem value="L1">L1 — 檢索品質（Context Precision/Recall）</SelectItem>
-                      <SelectItem value="L1+L2">L1+L2 — 加上回答品質（Faithfulness/Relevancy）</SelectItem>
-                      <SelectItem value="L1+L2+L3">L1+L2+L3 — 加上 Agent 決策品質（僅 ReAct）</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
+                render={({ field }) => {
+                  const layers = field.value && field.value !== "off"
+                    ? field.value.split("+")
+                    : [];
+                  const toggle = (layer: string) => {
+                    const next = layers.includes(layer)
+                      ? layers.filter((l) => l !== layer)
+                      : [...layers, layer].sort();
+                    field.onChange(next.length > 0 ? next.join("+") : "off");
+                  };
+                  return (
+                    <div className="flex flex-col gap-2">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={layers.includes("L1")}
+                          onChange={() => toggle("L1")}
+                          className="rounded border-input"
+                        />
+                        L1 — 檢索品質（Context Precision / Recall）
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={layers.includes("L2")}
+                          onChange={() => toggle("L2")}
+                          className="rounded border-input"
+                        />
+                        L2 — 回答品質（Faithfulness / Relevancy）
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={layers.includes("L3")}
+                          onChange={() => toggle("L3")}
+                          className="rounded border-input"
+                        />
+                        L3 — Agent 決策品質（僅 ReAct 模式）
+                      </label>
+                    </div>
+                  );
+                }}
               />
               <p className="text-xs text-muted-foreground">
-                評估深度為 Off 或未選擇評估模型時，不會執行 RAG 品質評估
+                未勾選任何維度或未選擇評估模型時，不會執行 RAG 品質評估。
+                MCP-only 場景會自動跳過 L1（無檢索語義）。
               </p>
             </div>
           </section>

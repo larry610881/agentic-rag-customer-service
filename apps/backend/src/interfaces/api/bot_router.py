@@ -24,7 +24,11 @@ router = APIRouter(prefix="/api/v1/bots", tags=["bots"])
 
 _VALID_AGENT_MODES = {"router", "react"}
 _VALID_AUDIT_MODES = {"off", "minimal", "full"}
-_VALID_EVAL_DEPTHS = {"off", "L1", "L1+L2", "L1+L2+L3"}
+_VALID_EVAL_DEPTHS = {
+    "off", "L1", "L2", "L3",
+    "L1+L2", "L1+L3", "L2+L3",
+    "L1+L2+L3",
+}
 
 
 class CreateBotRequest(BaseModel):

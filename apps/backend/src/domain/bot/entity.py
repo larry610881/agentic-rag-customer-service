@@ -55,7 +55,7 @@ class Bot:
     audit_mode: str = "minimal"  # "minimal" | "full"
     eval_provider: str = ""  # Eval LLM provider (independent from bot LLM)
     eval_model: str = ""  # Eval LLM model
-    eval_depth: str = "L1"  # "L1" | "L1+L2" | "L1+L2+L3"
+    eval_depth: str = "L1"  # "off" | any combo of "L1", "L2", "L3" joined by "+"
     base_prompt: str = ""       # 空 = 用系統預設
     router_prompt: str = ""     # 空 = 用系統預設
     react_prompt: str = ""      # 空 = 用系統預設

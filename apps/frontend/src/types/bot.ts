@@ -35,7 +35,7 @@ export interface Bot {
   audit_mode: "off" | "minimal" | "full";
   eval_provider: string;
   eval_model: string;
-  eval_depth: "off" | "L1" | "L1+L2" | "L1+L2+L3";
+  eval_depth: string;
   mcp_servers: McpServerConfig[];
   max_tool_calls: number;
   base_prompt: string;
