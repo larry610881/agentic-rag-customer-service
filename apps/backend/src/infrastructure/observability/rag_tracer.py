@@ -15,8 +15,9 @@
     record = tracer.get_trace(trace.trace_id)
 """
 
-import structlog
 from contextvars import ContextVar
+
+import structlog
 
 from src.domain.observability.trace_record import RAGTraceRecord
 

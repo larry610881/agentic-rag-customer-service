@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from src.domain.platform.value_objects import (
+    McpRegistryId,
+    McpRegistryToolMeta,
     ModelConfig,
     ProviderName,
     ProviderSettingId,
@@ -45,6 +47,31 @@ class SystemPromptConfig:
     base_prompt: str = ""
     router_mode_prompt: str = ""
     react_mode_prompt: str = ""
+    updated_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+
+@dataclass
+class McpServerRegistration:
+    """MCP Server 全域註冊表（Platform 層級）"""
+
+    id: McpRegistryId = field(default_factory=McpRegistryId)
+    name: str = ""
+    description: str = ""
+    transport: str = "http"          # "http" | "stdio"
+    url: str = ""
+    command: str = ""
+    args: list[str] = field(default_factory=list)
+    required_env: list[str] = field(default_factory=list)
+    available_tools: list[McpRegistryToolMeta] = field(default_factory=list)
+    version: str = ""
+    scope: str = "global"
+    tenant_ids: list[str] = field(default_factory=list)
+    is_enabled: bool = True
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

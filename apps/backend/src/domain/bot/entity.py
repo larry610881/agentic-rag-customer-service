@@ -23,6 +23,15 @@ class McpServerConfig:
     version: str = ""
 
 
+@dataclass(frozen=True)
+class BotMcpBinding:
+    """Bot 與 MCP Registry Server 的綁定（Value Object）"""
+
+    registry_id: str
+    enabled_tools: list[str] = field(default_factory=list)
+    env_values: dict[str, str] = field(default_factory=dict)
+
+
 @dataclass
 class BotLLMParams:
     temperature: float = 0.3
@@ -51,6 +60,7 @@ class Bot:
     show_sources: bool = True
     agent_mode: str = "router"
     mcp_servers: list[McpServerConfig] = field(default_factory=list)
+    mcp_bindings: list[BotMcpBinding] = field(default_factory=list)
     max_tool_calls: int = 5
     audit_mode: str = "minimal"  # "minimal" | "full"
     eval_provider: str = ""  # Eval LLM provider (independent from bot LLM)

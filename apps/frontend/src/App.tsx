@@ -23,6 +23,7 @@ const AdminKnowledgeBasesPage = lazy(
 const AdminBotsPage = lazy(() => import("@/pages/admin-bots"));
 const AdminObservabilityPage = lazy(() => import("@/pages/admin-observability"));
 const AdminTokenUsagePage = lazy(() => import("@/pages/admin-token-usage"));
+const AdminMcpRegistryPage = lazy(() => import("@/pages/admin-mcp-registry"));
 
 function PageFallback() {
   return (
@@ -84,6 +85,10 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_TOKEN_USAGE}
               element={<AdminTokenUsagePage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_MCP_REGISTRY}
+              element={<AdminMcpRegistryPage />}
             />
           </Route>
         </Route>

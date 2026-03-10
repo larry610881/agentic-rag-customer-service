@@ -1,7 +1,8 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, inspect as sa_inspect, select, update
+from sqlalchemy import delete, func, select, update
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 

@@ -82,6 +82,15 @@ export const API_ENDPOINTS = {
   mcp: {
     discover: "/api/v1/mcp/discover",
   },
+  mcpRegistry: {
+    list: "/api/v1/mcp-servers",
+    create: "/api/v1/mcp-servers",
+    detail: (id: string) => `/api/v1/mcp-servers/${id}`,
+    update: (id: string) => `/api/v1/mcp-servers/${id}`,
+    delete: (id: string) => `/api/v1/mcp-servers/${id}`,
+    discover: "/api/v1/mcp-servers/discover",
+    testConnection: (id: string) => `/api/v1/mcp-servers/${id}/test-connection`,
+  },
   systemPrompts: {
     get: "/api/v1/system/prompts",
     update: "/api/v1/system/prompts",

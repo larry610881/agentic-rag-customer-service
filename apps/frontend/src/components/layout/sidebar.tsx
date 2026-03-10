@@ -9,6 +9,7 @@ import {
   ScrollText,
   Activity,
   Coins,
+  Puzzle,
   ChevronsLeft,
   ChevronsRight,
   Shield,
@@ -35,6 +36,7 @@ const systemAdminItems = [
   { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
   { href: "/admin/observability", label: "可觀測性", icon: Activity },
   { href: "/admin/token-usage", label: "Token 用量", icon: Coins },
+  { href: "/admin/mcp-registry", label: "MCP 工具庫", icon: Puzzle },
   { href: "/settings", label: "設定", icon: Settings },
 ];
 

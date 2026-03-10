@@ -48,6 +48,9 @@ class BotModel(Base):
     mcp_servers: Mapped[list] = mapped_column(
         JSON, nullable=False, default=list
     )
+    mcp_bindings: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list
+    )
     max_tool_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     audit_mode: Mapped[str] = mapped_column(
         String(20), nullable=False, default="minimal", server_default="minimal"

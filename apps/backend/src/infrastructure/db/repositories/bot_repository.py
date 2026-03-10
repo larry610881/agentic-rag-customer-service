@@ -3,7 +3,13 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.bot.entity import Bot, BotLLMParams, McpServerConfig, McpToolMeta
+from src.domain.bot.entity import (
+    Bot,
+    BotLLMParams,
+    BotMcpBinding,
+    McpServerConfig,
+    McpToolMeta,
+)
 from src.domain.bot.repository import BotRepository
 from src.domain.bot.value_objects import BotId, BotShortCode
 from src.infrastructure.db.atomic import atomic
@@ -62,6 +68,14 @@ class SQLAlchemyBotRepository(BotRepository):
                     version=s.get("version", ""),
                 )
                 for s in (model.mcp_servers or [])
+            ],
+            mcp_bindings=[
+                BotMcpBinding(
+                    registry_id=b.get("registry_id", ""),
+                    enabled_tools=b.get("enabled_tools", []),
+                    env_values=b.get("env_values", {}),
+                )
+                for b in (model.mcp_bindings or [])
             ],
             max_tool_calls=model.max_tool_calls,
             audit_mode=model.audit_mode or "minimal",
@@ -126,10 +140,21 @@ class SQLAlchemyBotRepository(BotRepository):
                         "url": s.url,
                         "name": s.name,
                         "enabled_tools": s.enabled_tools,
-                        "tools": [{"name": t.name, "description": t.description} for t in s.tools],
+                        "tools": [
+                            {"name": t.name, "description": t.description}
+                            for t in s.tools
+                        ],
                         "version": s.version,
                     }
                     for s in bot.mcp_servers
+                ]
+                existing.mcp_bindings = [
+                    {
+                        "registry_id": b.registry_id,
+                        "enabled_tools": b.enabled_tools,
+                        "env_values": b.env_values,
+                    }
+                    for b in bot.mcp_bindings
                 ]
                 existing.max_tool_calls = bot.max_tool_calls
                 existing.audit_mode = bot.audit_mode
@@ -164,8 +189,25 @@ class SQLAlchemyBotRepository(BotRepository):
                     show_sources=bot.show_sources,
                     agent_mode=bot.agent_mode,
                     mcp_servers=[
-                        {"url": s.url, "name": s.name, "enabled_tools": s.enabled_tools}
+                        {
+                            "url": s.url,
+                            "name": s.name,
+                            "enabled_tools": s.enabled_tools,
+                            "tools": [
+                                {"name": t.name, "description": t.description}
+                                for t in s.tools
+                            ],
+                            "version": s.version,
+                        }
                         for s in bot.mcp_servers
+                    ],
+                    mcp_bindings=[
+                        {
+                            "registry_id": b.registry_id,
+                            "enabled_tools": b.enabled_tools,
+                            "env_values": b.env_values,
+                        }
+                        for b in bot.mcp_bindings
                     ],
                     max_tool_calls=bot.max_tool_calls,
                     audit_mode=bot.audit_mode,

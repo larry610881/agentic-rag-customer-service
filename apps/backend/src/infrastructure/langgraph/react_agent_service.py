@@ -145,58 +145,6 @@ class ReActAgentService(AgentService):
 
         return ChatOpenAI(**kwargs)
 
-    @staticmethod
-    async def _load_mcp_tools_with_stack(
-        stack: AsyncExitStack,
-        server_url: str,
-        enabled_tools: list[str] | None = None,
-    ) -> list[BaseTool]:
-        """Connect to MCP Server, keep session alive via exit stack.
-
-        The session is kept open until the exit stack is closed,
-        so that tool objects can call the MCP server during agent execution.
-        """
-        try:
-            from langchain_mcp_adapters.tools import load_mcp_tools
-            from mcp import ClientSession
-            from mcp.client.streamable_http import streamablehttp_client
-
-            # Enter streamable HTTP context — kept alive by stack
-            read, write, _ = await stack.enter_async_context(
-                streamablehttp_client(server_url)
-            )
-            session = await stack.enter_async_context(
-                ClientSession(read, write)
-            )
-            await session.initialize()
-            all_tools = await load_mcp_tools(session)
-
-            if enabled_tools:
-                filtered = [
-                    t for t in all_tools if t.name in enabled_tools
-                ]
-                logger.info(
-                    "react.mcp_tools_loaded",
-                    total=len(all_tools),
-                    filtered=len(filtered),
-                    enabled=enabled_tools,
-                )
-                return filtered
-
-            logger.info(
-                "react.mcp_tools_loaded",
-                total=len(all_tools),
-            )
-            return all_tools
-
-        except Exception as exc:
-            logger.warning(
-                "react.mcp_tools_failed",
-                server_url=server_url,
-                error=str(exc),
-            )
-            return []
-
     def _build_react_graph(
         self,
         tools: list[BaseTool],
@@ -358,11 +306,12 @@ class ReActAgentService(AgentService):
             tools: list[BaseTool] = [rag_lc_tool]
 
             # 2. Load MCP tools — sessions kept alive by stack
-            for server in (mcp_servers or []):
-                mcp_tools = await self._load_mcp_tools_with_stack(
-                    stack, server["url"], server.get("enabled_tools")
-                )
-                tools.extend(mcp_tools)
+            if self._cached_tool_loader:
+                for server in (mcp_servers or []):
+                    mcp_tools = await self._cached_tool_loader.load_tools(
+                        stack, server, server.get("enabled_tools")
+                    )
+                    tools.extend(mcp_tools)
 
             # 3. Resolve LLM
             llm = await self._resolve_llm_model(llm_params)
@@ -423,11 +372,12 @@ class ReActAgentService(AgentService):
             tools: list[BaseTool] = [rag_lc_tool]
 
             # Load MCP tools — sessions kept alive by stack
-            for server in (mcp_servers or []):
-                mcp_tools = await self._load_mcp_tools_with_stack(
-                    stack, server["url"], server.get("enabled_tools")
-                )
-                tools.extend(mcp_tools)
+            if self._cached_tool_loader:
+                for server in (mcp_servers or []):
+                    mcp_tools = await self._cached_tool_loader.load_tools(
+                        stack, server, server.get("enabled_tools")
+                    )
+                    tools.extend(mcp_tools)
 
             llm = await self._resolve_llm_model(llm_params)
             assembled_prompt = system_prompt or assemble_prompt("", "react")

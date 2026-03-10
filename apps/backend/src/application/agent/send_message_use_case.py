@@ -55,6 +55,7 @@ class SendMessageUseCase:
         system_prompt_config_repository: SystemPromptConfigRepository | None = None,
         trace_session_factory: Any | None = None,
         rag_evaluation_use_case: "RAGEvaluationUseCase | None" = None,
+        mcp_registry_repo: Any | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -66,6 +67,7 @@ class SendMessageUseCase:
         self._trace_session_factory = trace_session_factory
         self._sys_prompt_repo = system_prompt_config_repository
         self._eval_use_case = rag_evaluation_use_case
+        self._mcp_registry_repo = mcp_registry_repo
 
     async def _load_bot_config(
         self, command: SendMessageCommand
@@ -135,6 +137,37 @@ class SendMessageUseCase:
             {"url": s.url, "name": s.name, "enabled_tools": s.enabled_tools}
             for s in bot.mcp_servers
         ]
+
+        # Registry-based MCP bindings → resolved server configs
+        if bot.mcp_bindings and self._mcp_registry_repo:
+            registry_servers: list[dict[str, Any]] = []
+            for binding in bot.mcp_bindings:
+                reg = await self._mcp_registry_repo.find_by_id(
+                    binding.registry_id
+                )
+                if not reg or not reg.is_enabled:
+                    continue
+                server_cfg: dict[str, Any] = {
+                    "name": reg.name,
+                    "transport": reg.transport,
+                }
+                if reg.transport == "stdio":
+                    server_cfg["command"] = reg.command
+                    server_cfg["args"] = reg.args
+                    server_cfg["env"] = binding.env_values
+                else:
+                    resolved_url = reg.url
+                    for key, value in binding.env_values.items():
+                        resolved_url = resolved_url.replace(
+                            f"{{{key}}}", value
+                        )
+                    server_cfg["url"] = resolved_url
+                if binding.enabled_tools:
+                    server_cfg["enabled_tools"] = binding.enabled_tools
+                registry_servers.append(server_cfg)
+            if registry_servers:
+                cfg["mcp_servers"] = registry_servers
+
         cfg["max_tool_calls"] = bot.max_tool_calls or 5
         cfg["audit_mode"] = getattr(bot, "audit_mode", "minimal")
         cfg["eval_depth"] = getattr(bot, "eval_depth", "off")

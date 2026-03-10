@@ -10,7 +10,6 @@ from contextlib import asynccontextmanager
 print("[startup] importing modules ...", flush=True)
 
 try:
-    import sqlalchemy
     from fastapi import FastAPI, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
@@ -18,7 +17,6 @@ try:
     from src.config import settings
     from src.container import Container
     from src.domain.shared.exceptions import DomainException, EntityNotFoundError
-    from src.infrastructure.db.base import Base
     from src.infrastructure.db.engine import engine
     from src.infrastructure.db.models import (  # noqa: F401
         BotKnowledgeBaseModel,
@@ -28,6 +26,7 @@ try:
         DocumentModel,
         FeedbackModel,
         KnowledgeBaseModel,
+        McpServerModel,
         MessageModel,
         ProcessingTaskModel,
         ProviderSettingModel,
@@ -203,12 +202,18 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         application.include_router(admin_router)
 
         from src.interfaces.api.mcp_router import router as mcp_router
-        from src.interfaces.api.system_prompt_router import router as system_prompt_router
+        from src.interfaces.api.mcp_server_router import router as mcp_server_router
+        from src.interfaces.api.system_prompt_router import (
+            router as system_prompt_router,
+        )
 
         application.include_router(mcp_router)
+        application.include_router(mcp_server_router)
         application.include_router(system_prompt_router)
 
-        from src.interfaces.api.observability_router import router as observability_router
+        from src.interfaces.api.observability_router import (
+            router as observability_router,
+        )
 
         application.include_router(observability_router)
 

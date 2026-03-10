@@ -71,20 +71,25 @@ def _build_service():
     """Build a ReActAgentService with mocked dependencies."""
     llm_service = AsyncMock()
     rag_tool = AsyncMock(spec=RAGQueryTool)
-    return ReActAgentService(llm_service=llm_service, rag_tool=rag_tool)
+    cached_tool_loader = MagicMock()
+    cached_tool_loader.load_tools = AsyncMock(return_value=[])
+    return ReActAgentService(
+        llm_service=llm_service,
+        rag_tool=rag_tool,
+        cached_tool_loader=cached_tool_loader,
+    )
 
 
 def _patch_and_run(service, mock_llm, rag_lc_tool, mcp_tools, **process_kwargs):
     """Patch service internals and run process_message."""
+    service._cached_tool_loader.load_tools = AsyncMock(
+        return_value=mcp_tools,
+    )
     with (
         patch.object(
             service, "_resolve_llm_model", new=AsyncMock(return_value=mock_llm)
         ),
         patch.object(service, "_build_rag_lc_tool", return_value=rag_lc_tool),
-        patch.object(
-            service, "_load_mcp_tools_with_stack",
-            new=AsyncMock(return_value=mcp_tools),
-        ),
     ):
         return _run(service.process_message(**process_kwargs))
 

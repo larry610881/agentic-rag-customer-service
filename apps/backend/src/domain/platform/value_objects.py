@@ -4,6 +4,17 @@ from uuid import uuid4
 
 
 @dataclass(frozen=True)
+class McpRegistryId:
+    value: str = field(default_factory=lambda: str(uuid4()))
+
+
+@dataclass(frozen=True)
+class McpRegistryToolMeta:
+    name: str
+    description: str = ""
+
+
+@dataclass(frozen=True)
 class ProviderSettingId:
     value: str = field(default_factory=lambda: str(uuid4()))
 

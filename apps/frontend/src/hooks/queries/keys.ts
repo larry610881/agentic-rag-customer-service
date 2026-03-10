@@ -60,6 +60,10 @@ export const queryKeys = {
   systemPrompts: {
     all: ["system-prompts"] as const,
   },
+  mcpRegistry: {
+    all: ["mcp-registry"] as const,
+    detail: (id: string) => ["mcp-registry", id] as const,
+  },
   observability: {
     traces: (filters?: object) => ["observability", "traces", filters ?? {}] as const,
     evals: (filters?: object) => ["observability", "evals", filters ?? {}] as const,

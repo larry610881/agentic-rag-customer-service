@@ -7,12 +7,12 @@ from uuid import uuid4
 
 import structlog
 
+from src.application.agent.prompt_assembler import assemble as assemble_prompt
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.conversation.entity import Message
 from src.domain.rag.services import LLMService
 from src.domain.rag.value_objects import Source, TokenUsage
-from src.application.agent.prompt_assembler import assemble as assemble_prompt
 from src.infrastructure.langgraph.agent_graph import (
     _extract_llm_kwargs,
     build_agent_graph,

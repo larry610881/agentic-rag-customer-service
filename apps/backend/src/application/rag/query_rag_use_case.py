@@ -5,11 +5,11 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
-from src.infrastructure.logging import get_logger
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.rag.services import EmbeddingService, LLMService, VectorStore
 from src.domain.rag.value_objects import RAGResponse, Source
 from src.domain.shared.exceptions import EntityNotFoundError, NoRelevantKnowledgeError
+from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
 

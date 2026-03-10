@@ -65,7 +65,13 @@ def _make_extra_tool(tool_name: str, return_value: str = "工具結果"):
 def _build_service():
     llm_service = AsyncMock()
     rag_tool = AsyncMock(spec=RAGQueryTool)
-    return ReActAgentService(llm_service=llm_service, rag_tool=rag_tool)
+    cached_tool_loader = MagicMock()
+    cached_tool_loader.load_tools = AsyncMock(return_value=[])
+    return ReActAgentService(
+        llm_service=llm_service,
+        rag_tool=rag_tool,
+        cached_tool_loader=cached_tool_loader,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -135,16 +141,15 @@ def stream_message(context):
     mock_llm = _make_mock_llm(context["llm_responses"])
 
     async def _collect_events():
+        service._cached_tool_loader.load_tools = AsyncMock(
+            return_value=extra_tools,
+        )
         with (
             patch.object(
                 service, "_resolve_llm_model",
                 new=AsyncMock(return_value=mock_llm),
             ),
             patch.object(service, "_build_rag_lc_tool", return_value=rag_lc_tool),
-            patch.object(
-                service, "_load_mcp_tools_with_stack",
-                new=AsyncMock(return_value=extra_tools),
-            ),
         ):
             events = []
             async for event in service.process_message_stream(

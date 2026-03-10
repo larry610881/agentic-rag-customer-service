@@ -13,11 +13,11 @@ from src.application.platform.create_provider_setting_use_case import (
 from src.application.platform.delete_provider_setting_use_case import (
     DeleteProviderSettingUseCase,
 )
-from src.application.platform.list_enabled_models_use_case import (
-    ListEnabledModelsUseCase,
-)
 from src.application.platform.get_provider_setting_use_case import (
     GetProviderSettingUseCase,
+)
+from src.application.platform.list_enabled_models_use_case import (
+    ListEnabledModelsUseCase,
 )
 from src.application.platform.list_provider_settings_use_case import (
     ListProviderSettingsUseCase,

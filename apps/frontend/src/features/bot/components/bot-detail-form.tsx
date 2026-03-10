@@ -3,7 +3,7 @@ import { useForm, Controller, type UseFormRegister } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Copy, Check, Search, Loader2, X, ChevronRight } from "lucide-react";
+import { Copy, Check, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,10 +30,10 @@ import {
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
 import { ModelSelect } from "./model-select";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
-import type { Bot, McpServerConfig, UpdateBotRequest } from "@/types/bot";
-import { useDiscoverMcpTools } from "@/hooks/queries/use-mcp";
+import type { Bot, UpdateBotRequest } from "@/types/bot";
 import type { McpToolInfo } from "@/types/mcp";
 import { useAuthStore } from "@/stores/use-auth-store";
+import { McpBindingsSection } from "./mcp-bindings-section";
 import { useSystemPrompts } from "@/hooks/queries/use-system-prompts";
 
 const AVAILABLE_TOOLS = [
@@ -235,64 +235,13 @@ export function BotDetailForm({
   const agentMode = watch("agent_mode");
   const mcpServers = watch("mcp_servers") ?? [];
 
-  // MCP Discovery state
-  const [mcpUrlInput, setMcpUrlInput] = useState("");
+  // MCP server tools metadata (shared with McpBindingsSection)
   const [serverToolsMap, setServerToolsMap] = useState<Record<string, McpToolInfo[]>>({});
-  const discoverMcp = useDiscoverMcpTools();
-
-  const handleDiscoverAndAdd = useCallback(async () => {
-    if (!mcpUrlInput) {
-      toast.error("請先輸入 MCP Server URL");
-      return;
-    }
-    // Check if already added
-    if (mcpServers.some((s) => s.url === mcpUrlInput)) {
-      toast.error("此 Server 已綁定");
-      return;
-    }
-    try {
-      const result = await discoverMcp.mutateAsync(mcpUrlInput);
-      const allToolNames = result.tools.map((t) => t.name);
-      const newServer: McpServerConfig = {
-        url: mcpUrlInput,
-        name: result.server_name,
-        enabled_tools: allToolNames,
-        tools: result.tools.map((t) => ({ name: t.name, description: t.description })),
-        version: result.version ?? "",
-      };
-      setValue("mcp_servers", [...mcpServers, newServer]);
-      setServerToolsMap((prev) => ({ ...prev, [mcpUrlInput]: result.tools }));
-      setMcpUrlInput("");
-      toast.success(`已新增 ${result.server_name}（${result.tools.length} 個 Tools）`);
-    } catch {
-      toast.error("無法連線 MCP Server");
-    }
-  }, [mcpUrlInput, mcpServers, discoverMcp, setValue]);
-
-  const handleRemoveServer = useCallback((url: string) => {
-    setValue("mcp_servers", mcpServers.filter((s) => s.url !== url));
-    setServerToolsMap((prev) => {
-      const next = { ...prev };
-      delete next[url];
-      return next;
-    });
-  }, [mcpServers, setValue]);
-
-  const handleToggleTool = useCallback((serverUrl: string, toolName: string, checked: boolean) => {
-    setValue("mcp_servers", mcpServers.map((s) => {
-      if (s.url !== serverUrl) return s;
-      const tools = checked
-        ? [...s.enabled_tools, toolName]
-        : s.enabled_tools.filter((t) => t !== toolName);
-      return { ...s, enabled_tools: tools };
-    }));
-  }, [mcpServers, setValue]);
 
   // Initialize serverToolsMap from persisted server.tools (no auto-discover).
   useEffect(() => {
     for (const server of bot.mcp_servers ?? []) {
       if (!serverToolsMap[server.url]) {
-        // Use persisted tool metadata if available, otherwise fallback to enabled_tools names
         const toolsMeta: McpToolInfo[] = server.tools?.length
           ? server.tools.map((t) => ({ name: t.name, description: t.description, parameters: [] }))
           : server.enabled_tools.map((name) => ({ name, description: "", parameters: [] }));
@@ -669,145 +618,14 @@ export function BotDetailForm({
 
           {/* MCP 設定 (ReAct 模式才顯示) */}
           {agentMode === "react" && (
-            <section className="flex flex-col gap-4">
-              <h3 className="text-lg font-semibold">MCP 設定</h3>
-              <p className="text-sm text-muted-foreground">
-                新增 MCP Server，探索可用 Tools 並綁定至此機器人。
-              </p>
-
-              {/* URL input + Discover & Add */}
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="bot-mcp-url-input">新增 MCP Server</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="bot-mcp-url-input"
-                    value={mcpUrlInput}
-                    onChange={(e) => setMcpUrlInput(e.target.value)}
-                    placeholder="例如：http://localhost:9000/mcp"
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleDiscoverAndAdd}
-                    disabled={discoverMcp.isPending || !mcpUrlInput}
-                  >
-                    {discoverMcp.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Search className="mr-2 h-4 w-4" />
-                    )}
-                    探索 Tools
-                  </Button>
-                </div>
-              </div>
-
-              {/* Bound MCP Server cards */}
-              {mcpServers.length > 0 && (
-                <div className="flex flex-col gap-3">
-                  <Label>已綁定的 MCP Servers</Label>
-                  {mcpServers.map((server) => {
-                    const toolsMeta = serverToolsMap[server.url] ?? [];
-                    return (
-                      <div
-                        key={server.url}
-                        className="rounded-md border p-3"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm">
-                              {server.name}
-                            </span>
-                            {server.version && (
-                              <span className="text-xs text-muted-foreground">
-                                v{server.version}
-                              </span>
-                            )}
-                            <span className="text-xs text-muted-foreground font-mono">
-                              {server.url}
-                            </span>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => handleRemoveServer(server.url)}
-                            aria-label={`移除 ${server.name}`}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          {toolsMeta.length > 0
-                            ? toolsMeta.map((tool) => (
-                                <label
-                                  key={tool.name}
-                                  className="flex items-start gap-2 text-sm"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={server.enabled_tools.includes(tool.name)}
-                                    onChange={(e) =>
-                                      handleToggleTool(server.url, tool.name, e.target.checked)
-                                    }
-                                    className="mt-0.5 rounded border-input"
-                                  />
-                                  <div>
-                                    <span className="font-mono text-xs font-medium">
-                                      {tool.name}
-                                    </span>
-                                    <span className="ml-2 text-muted-foreground">
-                                      {tool.description.length > 60
-                                        ? tool.description.slice(0, 60) + "..."
-                                        : tool.description}
-                                    </span>
-                                  </div>
-                                </label>
-                              ))
-                            : server.enabled_tools.map((toolName) => (
-                                <label
-                                  key={toolName}
-                                  className="flex items-center gap-2 text-sm"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked
-                                    onChange={(e) =>
-                                      handleToggleTool(server.url, toolName, e.target.checked)
-                                    }
-                                    className="rounded border-input"
-                                  />
-                                  <span className="font-mono text-xs font-medium">
-                                    {toolName}
-                                  </span>
-                                </label>
-                              ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Max Tool Calls */}
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="bot-max-tool-calls">最大 Tool 呼叫次數（1-20）</Label>
-                <Input
-                  id="bot-max-tool-calls"
-                  type="number"
-                  min="1"
-                  max="20"
-                  className="w-32"
-                  {...register("max_tool_calls")}
-                />
-                {errors.max_tool_calls && (
-                  <p className="text-sm text-destructive">
-                    {errors.max_tool_calls.message}
-                  </p>
-                )}
-              </div>
-            </section>
+            <McpBindingsSection
+              mcpServers={mcpServers}
+              onMcpServersChange={(servers) => setValue("mcp_servers", servers)}
+              serverToolsMap={serverToolsMap}
+              setServerToolsMap={setServerToolsMap}
+              registerMaxToolCalls={register("max_tool_calls")}
+              maxToolCallsError={errors.max_tool_calls?.message}
+            />
           )}
 
           {/* 回覆顯示設定 */}

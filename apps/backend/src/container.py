@@ -2,9 +2,7 @@ import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
 from src.application.agent.send_message_use_case import SendMessageUseCase
-from src.application.observability.rag_evaluation_use_case import (
-    RAGEvaluationUseCase,
-)
+from src.application.agent.tool_registry import ToolRegistry
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.login_use_case import LoginUseCase
 from src.application.auth.register_user_use_case import RegisterUserUseCase
@@ -45,14 +43,11 @@ from src.application.health.health_check_use_case import HealthCheckUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
 )
-from src.application.knowledge.delete_knowledge_base_use_case import (
-    DeleteKnowledgeBaseUseCase,
-)
-from src.application.knowledge.list_all_knowledge_bases_use_case import (
-    ListAllKnowledgeBasesUseCase,
-)
 from src.application.knowledge.delete_document_use_case import (
     DeleteDocumentUseCase,
+)
+from src.application.knowledge.delete_knowledge_base_use_case import (
+    DeleteKnowledgeBaseUseCase,
 )
 from src.application.knowledge.get_document_chunks_use_case import (
     GetDocumentChunksUseCase,
@@ -62,6 +57,9 @@ from src.application.knowledge.get_document_quality_stats_use_case import (
 )
 from src.application.knowledge.get_processing_task_use_case import (
     GetProcessingTaskUseCase,
+)
+from src.application.knowledge.list_all_knowledge_bases_use_case import (
+    ListAllKnowledgeBasesUseCase,
 )
 from src.application.knowledge.list_documents_use_case import (
     ListDocumentsUseCase,
@@ -79,6 +77,9 @@ from src.application.knowledge.upload_document_use_case import (
     UploadDocumentUseCase,
 )
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
+from src.application.observability.rag_evaluation_use_case import (
+    RAGEvaluationUseCase,
+)
 from src.application.platform.create_provider_setting_use_case import (
     CreateProviderSettingUseCase,
 )
@@ -94,17 +95,31 @@ from src.application.platform.list_enabled_models_use_case import (
 from src.application.platform.list_provider_settings_use_case import (
     ListProviderSettingsUseCase,
 )
-from src.application.platform.test_provider_connection_use_case import (
-    CheckProviderConnectionUseCase,
+from src.application.platform.mcp.create_mcp_server_use_case import (
+    CreateMcpServerUseCase,
+)
+from src.application.platform.mcp.delete_mcp_server_use_case import (
+    DeleteMcpServerUseCase,
+)
+from src.application.platform.mcp.discover_mcp_server_use_case import (
+    DiscoverMcpServerUseCase,
+)
+from src.application.platform.mcp.test_connection_use_case import (
+    TestMcpConnectionUseCase,
+)
+from src.application.platform.mcp.update_mcp_server_use_case import (
+    UpdateMcpServerUseCase,
 )
 from src.application.platform.system_prompt_use_cases import (
     GetSystemPromptsUseCase,
     UpdateSystemPromptsUseCase,
 )
+from src.application.platform.test_provider_connection_use_case import (
+    CheckProviderConnectionUseCase,
+)
 from src.application.platform.update_provider_setting_use_case import (
     UpdateProviderSettingUseCase,
 )
-from src.application.agent.tool_registry import ToolRegistry
 from src.application.rag.query_rag_use_case import QueryRAGUseCase
 from src.application.ratelimit.get_rate_limits_use_case import GetRateLimitsUseCase
 from src.application.ratelimit.seed_defaults_use_case import SeedDefaultsUseCase
@@ -128,6 +143,9 @@ from src.infrastructure.conversation import (
     SummaryRecentStrategy,
 )
 from src.infrastructure.crypto.aes_encryption_service import AESEncryptionService
+from src.infrastructure.db.engine import (
+    async_session_factory as _async_session_factory,
+)
 from src.infrastructure.db.health_repository import HealthRepository
 from src.infrastructure.db.repositories.bot_repository import (
     SQLAlchemyBotRepository,
@@ -144,17 +162,20 @@ from src.infrastructure.db.repositories.feedback_repository import (
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
 )
+from src.infrastructure.db.repositories.mcp_server_repository import (
+    SQLAlchemyMcpServerRepository,
+)
 from src.infrastructure.db.repositories.processing_task_repository import (
     SQLAlchemyProcessingTaskRepository,
 )
 from src.infrastructure.db.repositories.provider_setting_repository import (
     SQLAlchemyProviderSettingRepository,
 )
-from src.infrastructure.db.repositories.system_prompt_config_repository import (
-    SQLAlchemySystemPromptConfigRepository,
-)
 from src.infrastructure.db.repositories.rate_limit_config_repository import (
     SQLAlchemyRateLimitConfigRepository,
+)
+from src.infrastructure.db.repositories.system_prompt_config_repository import (
+    SQLAlchemySystemPromptConfigRepository,
 )
 from src.infrastructure.db.repositories.tenant_repository import (
     SQLAlchemyTenantRepository,
@@ -164,9 +185,6 @@ from src.infrastructure.db.repositories.usage_repository import (
 )
 from src.infrastructure.db.repositories.user_repository import (
     SQLAlchemyUserRepository,
-)
-from src.infrastructure.db.engine import (
-    async_session_factory as _async_session_factory,
 )
 from src.infrastructure.db.session_middleware import get_tracked_session
 from src.infrastructure.embedding.dynamic_embedding_factory import (
@@ -188,6 +206,9 @@ from src.infrastructure.langgraph.langgraph_agent_service import (
 from src.infrastructure.langgraph.meta_supervisor_service import (
     MetaSupervisorService,
 )
+from src.infrastructure.langgraph.react_agent_service import (
+    ReActAgentService,
+)
 from src.infrastructure.langgraph.tools import RAGQueryTool
 from src.infrastructure.langgraph.workers.fake_main_worker import FakeMainWorker
 from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWorker
@@ -203,6 +224,7 @@ from src.infrastructure.llm.dynamic_llm_factory import (
     DynamicLLMServiceProxy,
 )
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
+from src.infrastructure.mcp.cached_tool_loader import CachedMCPToolLoader
 from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
 from src.infrastructure.sentiment.keyword_sentiment_service import (
     KeywordSentimentService,
@@ -216,10 +238,6 @@ from src.infrastructure.text_splitter.csv_row_text_splitter_service import (
 from src.infrastructure.text_splitter.recursive_text_splitter_service import (
     RecursiveTextSplitterService,
 )
-from src.infrastructure.langgraph.react_agent_service import (
-    ReActAgentService,
-)
-from src.infrastructure.mcp.cached_tool_loader import CachedMCPToolLoader
 
 
 class Container(containers.DeclarativeContainer):
@@ -241,6 +259,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.provider_setting_router",
             "src.interfaces.api.admin_router",
             "src.interfaces.api.mcp_router",
+            "src.interfaces.api.mcp_server_router",
             "src.interfaces.api.observability_router",
             "src.interfaces.api.system_prompt_router",
             "src.interfaces.api.deps",
@@ -339,6 +358,11 @@ class Container(containers.DeclarativeContainer):
 
     provider_setting_repository = providers.Factory(
         SQLAlchemyProviderSettingRepository,
+        session=db_session,
+    )
+
+    mcp_server_repository = providers.Factory(
+        SQLAlchemyMcpServerRepository,
         session=db_session,
     )
 
@@ -815,6 +839,7 @@ class Container(containers.DeclarativeContainer):
         system_prompt_config_repository=system_prompt_config_repository,
         trace_session_factory=trace_session_factory,
         rag_evaluation_use_case=rag_evaluation_use_case,
+        mcp_registry_repo=mcp_server_repository,
     )
 
     # --- Platform: Provider Settings ---
@@ -858,6 +883,32 @@ class Container(containers.DeclarativeContainer):
         CheckProviderConnectionUseCase,
         provider_setting_repository=provider_setting_repository,
         encryption_service=encryption_service,
+    )
+
+    # --- Platform: MCP Server Registry ---
+
+    create_mcp_server_use_case = providers.Factory(
+        CreateMcpServerUseCase,
+        mcp_server_repository=mcp_server_repository,
+    )
+
+    update_mcp_server_use_case = providers.Factory(
+        UpdateMcpServerUseCase,
+        mcp_server_repository=mcp_server_repository,
+    )
+
+    delete_mcp_server_use_case = providers.Factory(
+        DeleteMcpServerUseCase,
+        mcp_server_repository=mcp_server_repository,
+    )
+
+    discover_mcp_server_use_case = providers.Factory(
+        DiscoverMcpServerUseCase,
+        mcp_server_repository=mcp_server_repository,
+    )
+
+    test_mcp_connection_use_case = providers.Factory(
+        TestMcpConnectionUseCase,
     )
 
     # --- Platform: System Prompt Config ---
