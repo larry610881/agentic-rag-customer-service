@@ -1,9 +1,10 @@
 """發送訊息用例 — 委託 AgentService 處理，支援對話記憶"""
 
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import structlog
@@ -21,6 +22,11 @@ from src.domain.conversation.repository import ConversationRepository
 from src.domain.platform.repository import SystemPromptConfigRepository
 from src.domain.shared.exceptions import DomainException
 from src.domain.tenant.repository import TenantRepository
+
+if TYPE_CHECKING:
+    from src.application.observability.rag_evaluation_use_case import (
+        RAGEvaluationUseCase,
+    )
 
 logger = structlog.get_logger(__name__)
 
@@ -48,6 +54,7 @@ class SendMessageUseCase:
         tenant_repository: TenantRepository | None = None,
         system_prompt_config_repository: SystemPromptConfigRepository | None = None,
         trace_session_factory: Any | None = None,
+        rag_evaluation_use_case: "RAGEvaluationUseCase | None" = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -58,6 +65,7 @@ class SendMessageUseCase:
         self._tenant_repo = tenant_repository
         self._trace_session_factory = trace_session_factory
         self._sys_prompt_repo = system_prompt_config_repository
+        self._eval_use_case = rag_evaluation_use_case
 
     async def _load_bot_config(
         self, command: SendMessageCommand
@@ -269,6 +277,7 @@ class SendMessageUseCase:
         response.conversation_id = conversation.id.value
 
         # Fire-and-forget: persist RAG trace
+        trace_id = str(uuid4())
         await self._persist_trace(
             tenant_id=command.tenant_id,
             query=command.message,
@@ -276,7 +285,24 @@ class SendMessageUseCase:
             latency_ms=latency_ms,
             chunk_count=len(retrieved_chunks) if retrieved_chunks else 0,
             message_id=None,
+            trace_id=trace_id,
         )
+
+        # Fire-and-forget: background evaluation
+        eval_depth = bot_cfg.get("eval_depth", "off")
+        if eval_depth != "off" and self._eval_use_case:
+            asyncio.create_task(
+                self._run_evaluations(
+                    eval_depth=eval_depth,
+                    query=command.message,
+                    answer=response.answer,
+                    sources=response.sources,
+                    tool_calls=response.tool_calls,
+                    tenant_id=command.tenant_id,
+                    trace_id=trace_id,
+                    agent_mode=bot_cfg["agent_mode"],
+                )
+            )
 
         return response
 
@@ -361,6 +387,7 @@ class SendMessageUseCase:
         )
         await self._conversation_repo.save(conversation)
 
+        trace_id = str(uuid4())
         await self._persist_trace(
             tenant_id=command.tenant_id,
             query=command.message,
@@ -368,7 +395,24 @@ class SendMessageUseCase:
             latency_ms=latency_ms,
             chunk_count=len(retrieved_chunks) if retrieved_chunks else 0,
             message_id=None,
+            trace_id=trace_id,
         )
+
+        # Fire-and-forget: background evaluation
+        eval_depth = bot_cfg.get("eval_depth", "off")
+        if eval_depth != "off" and self._eval_use_case:
+            asyncio.create_task(
+                self._run_evaluations(
+                    eval_depth=eval_depth,
+                    query=command.message,
+                    answer=full_answer,
+                    sources=sources_list,
+                    tool_calls=tool_calls,
+                    tenant_id=command.tenant_id,
+                    trace_id=trace_id,
+                    agent_mode=bot_cfg["agent_mode"],
+                )
+            )
 
         yield {
             "type": "conversation_id",
@@ -396,6 +440,7 @@ class SendMessageUseCase:
         latency_ms: int,
         chunk_count: int,
         message_id: str | None = None,
+        trace_id: str | None = None,
     ) -> None:
         """Save RAG trace to DB (fire-and-forget, never raises).
 
@@ -407,13 +452,10 @@ class SendMessageUseCase:
 
             session_factory = self._trace_session_factory
             if session_factory is None:
-                from src.infrastructure.db.engine import (
-                    async_session_factory,
-                )
+                return  # No session factory → skip (prevents unit test leakage)
 
-                session_factory = async_session_factory
-
-            trace_id = str(uuid4())
+            if trace_id is None:
+                trace_id = str(uuid4())
             row = RAGTraceModel(
                 id=str(uuid4()),
                 trace_id=trace_id,
@@ -429,6 +471,98 @@ class SendMessageUseCase:
                 await session.commit()
         except Exception:
             logger.warning("trace.persist_failed", exc_info=True)
+
+    async def _run_evaluations(
+        self,
+        eval_depth: str,
+        query: str,
+        answer: str,
+        sources: list[Any],
+        tool_calls: list[dict[str, Any]],
+        tenant_id: str,
+        trace_id: str,
+        agent_mode: str,
+    ) -> None:
+        """Run RAG evaluations in background (fire-and-forget, never raises)."""
+        try:
+            assert self._eval_use_case is not None  # noqa: S101
+
+            # Parse depth levels
+            depth = eval_depth.upper()
+            run_l1 = "L1" in depth
+            run_l2 = "L2" in depth
+            run_l3 = "L3" in depth
+
+            # Extract chunk texts from sources
+            chunks: list[str] = []
+            if sources:
+                for s in sources:
+                    if isinstance(s, dict):
+                        text = s.get("content_snippet") or s.get("content", "")
+                    else:
+                        text = getattr(s, "content_snippet", "") or getattr(s, "content", "")
+                    if text:
+                        chunks.append(text)
+
+            all_context = "\n---\n".join(chunks)
+
+            if run_l1:
+                result = await self._eval_use_case.evaluate_l1(
+                    query=query,
+                    chunks=chunks,
+                    tenant_id=tenant_id,
+                    trace_id=trace_id,
+                )
+                await self._persist_eval(result)
+
+            if run_l2:
+                result = await self._eval_use_case.evaluate_l2(
+                    query=query,
+                    answer=answer,
+                    all_context=all_context,
+                    tenant_id=tenant_id,
+                )
+                await self._persist_eval(result)
+
+            if run_l3 and agent_mode == "react":
+                result = await self._eval_use_case.evaluate_l3(
+                    query=query,
+                    tool_calls=tool_calls,
+                    tenant_id=tenant_id,
+                )
+                await self._persist_eval(result)
+
+        except Exception:
+            logger.warning("eval.run_failed", exc_info=True)
+
+    async def _persist_eval(self, eval_result: Any) -> None:
+        """Persist a single EvalResult to DB (fire-and-forget, never raises)."""
+        try:
+            from src.infrastructure.db.models.rag_eval_model import RAGEvalModel
+
+            session_factory = self._trace_session_factory
+            if session_factory is None:
+                return  # No session factory → skip (prevents unit test leakage)
+
+            row = RAGEvalModel(
+                id=str(uuid4()),
+                eval_id=eval_result.eval_id,
+                message_id=eval_result.message_id,
+                trace_id=eval_result.trace_id,
+                tenant_id=eval_result.tenant_id,
+                layer=eval_result.layer,
+                dimensions=[
+                    {"name": d.name, "score": d.score, "explanation": d.explanation}
+                    for d in eval_result.dimensions
+                ],
+                avg_score=round(eval_result.avg_score, 3),
+                model_used=eval_result.model_used,
+            )
+            async with session_factory() as session:
+                session.add(row)
+                await session.commit()
+        except Exception:
+            logger.warning("eval.persist_failed", exc_info=True)
 
     @staticmethod
     def _extract_metadata(conversation: Conversation) -> dict[str, Any]:

@@ -150,8 +150,8 @@ class RAGEvaluationUseCase:
     async def evaluate_l3(
         self,
         query: str,
-        trace_records: list[RAGTraceRecord],
         tool_calls: list[dict],
+        trace_records: list[RAGTraceRecord] | None = None,
         tenant_id: str = "",
         message_id: str | None = None,
     ) -> EvalResult:
@@ -161,7 +161,8 @@ class RAGEvaluationUseCase:
             f"輸入: {tc.get('tool_input', 'N/A')}"
             for tc in tool_calls
         ])
-        decisions += f"\n\n總 RAG 呼叫次數: {len(trace_records)}"
+        rag_call_count = len(trace_records) if trace_records else len(tool_calls)
+        decisions += f"\n\n總 RAG 呼叫次數: {rag_call_count}"
 
         prompt = _L3_PROMPT.format(query=query, decisions=decisions)
 

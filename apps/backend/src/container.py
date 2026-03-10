@@ -796,6 +796,13 @@ class Container(containers.DeclarativeContainer):
         cache_service=cache_service,
     )
 
+    # --- Observability: RAG Evaluation ---
+
+    rag_evaluation_use_case = providers.Factory(
+        RAGEvaluationUseCase,
+        llm_service=llm_service,
+    )
+
     send_message_use_case = providers.Factory(
         SendMessageUseCase,
         agent_service=agent_service,
@@ -807,6 +814,7 @@ class Container(containers.DeclarativeContainer):
         tenant_repository=tenant_repository,
         system_prompt_config_repository=system_prompt_config_repository,
         trace_session_factory=trace_session_factory,
+        rag_evaluation_use_case=rag_evaluation_use_case,
     )
 
     # --- Platform: Provider Settings ---
@@ -862,13 +870,6 @@ class Container(containers.DeclarativeContainer):
     update_system_prompts_use_case = providers.Factory(
         UpdateSystemPromptsUseCase,
         system_prompt_config_repository=system_prompt_config_repository,
-    )
-
-    # --- Observability: RAG Evaluation ---
-
-    rag_evaluation_use_case = providers.Factory(
-        RAGEvaluationUseCase,
-        llm_service=llm_service,
     )
 
     # --- LINE Bot ---

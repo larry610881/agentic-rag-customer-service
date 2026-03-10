@@ -9,6 +9,8 @@
 
 ## 目錄
 
+- [RAG 評估觸發接線 + Unit Test 資料洩漏根因修復](#rag-評估觸發接線--unit-test-資料洩漏根因修復)
+- [ReAct Streaming UX 優化 + Trace DI 修復 — 跨端串流體驗與測試隔離](#react-streaming-ux-優化--trace-di-修復--跨端串流體驗與測試隔離)
 - [ReAct 補齊 + Audit 記錄 + 可觀測性 — 跨層大規模 Sprint](#react-補齊--audit-記錄--可觀測性--跨層大規模-sprint)
 - [SQL 上傳修復 + 統一 Login API — 跨層 Bug Fix 與測試同步](#sql-上傳修復--統一-login-api--跨層-bug-fix-與測試同步)
 - [LINE Webhook 效能最佳化全鏈路 — gRPC + 連線池 + 並行查詢](#line-webhook-效能最佳化全鏈路--grpc--連線池--並行查詢)
@@ -44,6 +46,57 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## RAG 評估觸發接線 + Unit Test 資料洩漏根因修復
+
+**Sprint 來源**：Observability RAG Evaluation 接線 + Trace 洩漏修復 (2026-03-10)
+**主題**：asyncio.create_task fire-and-forget、DI session factory 注入、Service Locator fallback 反模式
+
+### 做得好的地方
+
+- **評估觸發設計**：`_run_evaluations()` 使用 `asyncio.create_task()` 背景執行，不阻塞回應。整體 try/except 確保評估失敗不影響聊天功能。`eval_depth` 字串解析（`L1`, `L1+L2`, `L1+L2+L3`）保持彈性
+- **trace_id 共享**：將 `trace_id` 從 `_persist_trace` 內部提升到 `execute()` / `execute_stream()` 生成，讓 trace 和 eval 共用同一個 `trace_id`，方便後續關聯查詢
+- **L3 簡化決策**：`evaluate_l3()` 的 `trace_records` 改為 optional，用 `len(tool_calls)` 替代——避免為了一個計數值引入複雜的資料流
+- **`_persist_eval` 模式複用**：完全仿照 `_persist_trace` 的 DI session factory 模式，一致性高
+
+### 潛在隱憂
+
+- **Unit Test 資料洩漏（已修復）**：`_persist_trace` / `_persist_eval` 原本有 fallback 邏輯——`session_factory is None` 時直接 import 正式 DB 的 `async_session_factory`。Unit test 建立 `SendMessageUseCase` 沒傳 `trace_session_factory`，導致每次跑測試 trace 靜默寫進正式 DB（12 筆 `tenant-001` 髒資料）。修復方式：移除 fallback，`None` 時直接 return → 優先級：已修復
+- **`asyncio.create_task` 無 reference**：背景 task 沒有被持有，若主 coroutine 或 event loop 提前結束，task 可能被 GC 回收。目前 FastAPI 的 event loop 長活不會有問題，但未來若改為短生命週期的 worker 環境需注意 → 優先級：低
+- **評估 LLM 共用 Bot LLM**：目前 `RAGEvaluationUseCase` 注入的是全域 `llm_service`，而非 Bot 指定的 `eval_provider` / `eval_model`。Bot config 已讀取這兩個欄位但未使用 → 優先級：中
+
+### 延伸學習
+
+- **Service Locator Anti-Pattern**：本次 bug 是典型案例——`_persist_trace` 內部 `from src.infrastructure.db.engine import async_session_factory` 是 Service Locator，繞過了 constructor injection。DI container override 對它無效。根本解法：所有依賴都必須通過 `__init__` 注入，禁止在方法內部 import 基礎設施模組作為 fallback。搜尋 `dependency injection vs service locator mark seemann`
+- **Fire-and-Forget Task 管理**：`asyncio.create_task()` 的 task 若未被 await 或持有 reference，exception 只會在 GC 時 log warning。生產環境建議用 `TaskGroup`（Python 3.11+）或維護一個 `background_tasks: set[Task]` 集合搭配 `task.add_done_callback(tasks.discard)` 避免遺失錯誤。搜尋 `python asyncio fire and forget best practices`
+
+---
+
+## ReAct Streaming UX 優化 + Trace DI 修復 — 跨端串流體驗與測試隔離
+
+**Sprint 來源**：ReAct Streaming UX 優化 + Observability Trace DI 修復 (2026-03-09)
+**主題**：LangGraph dual stream_mode、前端狀態節流、DI container 測試隔離、Zustand store action
+
+### 做得好的地方
+
+- **LangGraph dual stream_mode**：`stream_mode=["messages", "updates"]` 同時取得逐 token 串流（`messages` mode 的 `AIMessageChunk`）和節點級更新（`updates` mode 的 tool_calls/sources）。搭配 `llm_generating_emitted` 旗標做 fallback——mock LLM 不支援 `astream` 時自動退化為單次 chunk 輸出，測試與生產兩種場景都能正確運作
+- **狀態節流機制**：`setHintThrottled()` 實作最低顯示時間（1.5s），避免工具切換時 status hint 閃爍。null 值（清除）立即生效，status→status 尊重最低時間——簡潔的區分邏輯
+- **中間推理文字覆蓋**：`generationCount` 追蹤 LLM 生成次數，第二次 `llm_generating` 觸發 `resetAssistantContent()` 清除中間文字。這讓使用者看到 LLM 的即時思考過程，但最終回答不被前置文字污染
+- **Trace DI 注入根因修復**：發現 `_persist_trace` 直接 import `async_session_factory` 繞過 DI container，導致 E2E 測試 trace 寫入生產 DB。注入 `trace_session_factory` 到 `SendMessageUseCase`，E2E conftest 同步 override，徹底解決測試資料污染
+
+### 潛在隱憂
+
+- **`generationCount` 依賴事件順序**：假設 `llm_generating` 事件會按「中間推理→最終回答」順序到達。若 agent 結構改變（如 multi-step 產生 3 次以上 content），覆蓋邏輯需重新審視 → 建議改用明確的 `is_final_answer` 旗標 → 優先級：低
+- **`TOOL_LABELS` 硬編碼映射**：新增 MCP tool 時前端映射不會自動更新，需手動維護。目前 3 個 tool 無感，10+ 個 tool 後會成為負擔 → 建議 tool 註冊時由後端回傳 `display_name`，前端只做 fallback → 優先級：中
+- **`execute_stream` 缺少 trace 呼叫已修復但無對應測試**：`_persist_trace` 在 `execute_stream` 的整合測試覆蓋仍為零（E2E 只測 Router 模式的非 streaming path） → 建議補一個 streaming E2E scenario 驗證 trace 寫入 → 優先級：低
+
+### 延伸學習
+
+- **LangGraph Stream Mode 差異**：`messages` 提供 per-token 即時性，`updates` 提供結構化節點輸出。雙模式同時使用時 event 是 `(mode, data)` tuple，需按 mode 分路處理。這是 LangGraph 0.3+ 的設計，搜尋 `langgraph stream_mode messages vs updates`
+- **Zustand Immutable Update Pattern**：`resetAssistantContent` 展示了 Zustand 的 immutable state update：複製 array → 修改最後一個元素 → 回傳新 state。這是 Zustand 與 Immer 的核心差異——不用 Immer 時必須手動做淺拷貝。搜尋 `zustand immutable update vs immer`
+- **DI Container 在測試中的完整性**：本次 bug 暴露一個模式：當服務內部直接 import 模組級物件（而非通過 constructor injection），DI override 無法生效。這是 DI 的經典陷阱——**Service Locator anti-pattern**。若想深入：搜尋 `dependency injection vs service locator mark seemann`
 
 ---
 
