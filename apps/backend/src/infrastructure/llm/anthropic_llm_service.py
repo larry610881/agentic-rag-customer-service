@@ -14,6 +14,10 @@ logger = get_logger(__name__)
 
 
 class AnthropicLLMService(LLMService):
+    @property
+    def model_name(self) -> str:
+        return self._model
+
     def __init__(
         self,
         api_key: str,

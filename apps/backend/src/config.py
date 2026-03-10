@@ -77,7 +77,8 @@ class Settings(BaseSettings):
     line_default_tenant_id: str = ""
     line_default_kb_id: str = ""
 
-    # LLM Pricing (JSON: {"model": {"input": price_per_1m, "output": price_per_1m}})
+    # LLM Pricing — deprecated: pricing is now DB-driven via ProviderSetting.models
+    # Kept for backwards-compat; overridden by DB values when available.
     llm_pricing_json: str = "{}"
 
     # Encryption

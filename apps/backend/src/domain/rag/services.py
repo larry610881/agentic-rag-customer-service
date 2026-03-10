@@ -47,6 +47,10 @@ class VectorStore(ABC):
 
 
 class LLMService(ABC):
+    @property
+    @abstractmethod
+    def model_name(self) -> str: ...
+
     @abstractmethod
     async def generate(
         self,

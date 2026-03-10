@@ -9,6 +9,10 @@ from src.domain.rag.value_objects import LLMResult, TokenUsage
 class FakeLLMService(LLMService):
     """不依賴真實 LLM API 的假實作"""
 
+    @property
+    def model_name(self) -> str:
+        return "fake"
+
     async def generate(
         self,
         system_prompt: str,

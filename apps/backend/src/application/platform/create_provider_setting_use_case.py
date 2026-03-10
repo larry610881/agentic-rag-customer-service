@@ -73,6 +73,8 @@ class CreateProviderSettingUseCase:
                 is_enabled=m.get("is_enabled", True),
                 price=m.get("price", ""),
                 description=m.get("description", ""),
+                input_price=m.get("input_price", 0.0),
+                output_price=m.get("output_price", 0.0),
             )
             for m in raw_models
         ]

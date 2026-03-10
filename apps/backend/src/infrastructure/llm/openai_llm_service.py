@@ -22,6 +22,10 @@ def _needs_max_completion_tokens(model: str) -> bool:
 
 
 class OpenAILLMService(LLMService):
+    @property
+    def model_name(self) -> str:
+        return self._model
+
     def __init__(
         self,
         api_key: str,

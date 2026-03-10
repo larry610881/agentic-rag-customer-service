@@ -504,6 +504,15 @@ class SendMessageUseCase:
                     if text:
                         chunks.append(text)
 
+            # Include MCP tool outputs (non-RAG tools) as context
+            for tc in tool_calls:
+                tool_output = tc.get("tool_output", "")
+                tool_name = tc.get("tool_name", "")
+                if tool_name in ("rag_query", "direct"):
+                    continue
+                if tool_output:
+                    chunks.append(f"[{tool_name}] {tool_output}")
+
             all_context = "\n---\n".join(chunks)
 
             if run_l1:

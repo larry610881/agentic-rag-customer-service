@@ -42,18 +42,19 @@ _ENV_KEY_MAP: dict[str, str] = {
 
 
 def _build_llm_service_from_config(config: dict) -> LLMService:
-    """Build LLM service from config dict (provider_name, api_key, model, base_url)."""
+    """Build LLM service from config dict (provider_name, api_key, model, base_url, pricing)."""
     provider_name = config["provider_name"]
     api_key = config["api_key"]
     model = config["model"]
     base_url = config.get("base_url", "")
+    pricing = config.get("pricing", {})
 
     if provider_name == ProviderName.ANTHROPIC.value:
         from src.infrastructure.llm.anthropic_llm_service import (
             AnthropicLLMService,
         )
         return AnthropicLLMService(
-            api_key=api_key, model=model, max_tokens=1024
+            api_key=api_key, model=model, max_tokens=1024, pricing=pricing,
         )
 
     from src.infrastructure.llm.openai_llm_service import OpenAILLMService
@@ -61,6 +62,7 @@ def _build_llm_service_from_config(config: dict) -> LLMService:
         api_key=api_key,
         model=model,
         max_tokens=1024,
+        pricing=pricing,
         base_url=base_url,
     )
 
@@ -160,11 +162,21 @@ class DynamicLLMServiceFactory:
             if setting.provider_name == ProviderName.MOCK:
                 return self._fallback
 
+            # Build pricing dict from DB models
+            pricing: dict[str, dict[str, float]] = {}
+            for m in setting.models:
+                if m.input_price > 0 or m.output_price > 0:
+                    pricing[m.model_id] = {
+                        "input": m.input_price,
+                        "output": m.output_price,
+                    }
+
             config = {
                 "provider_name": setting.provider_name.value,
                 "api_key": api_key,
                 "model": resolved_model,
                 "base_url": base_url,
+                "pricing": pricing,
             }
 
             # Cache encrypted config
@@ -189,6 +201,10 @@ class DynamicLLMServiceFactory:
 
 class DynamicLLMServiceProxy(LLMService):
     """Proxy that delegates to DynamicLLMServiceFactory-resolved service."""
+
+    @property
+    def model_name(self) -> str:
+        return "dynamic"
 
     def __init__(self, factory: DynamicLLMServiceFactory) -> None:
         self._factory = factory

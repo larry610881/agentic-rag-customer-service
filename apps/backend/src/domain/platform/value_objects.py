@@ -31,3 +31,5 @@ class ModelConfig:
     is_enabled: bool = True
     price: str = ""
     description: str = ""
+    input_price: float = 0.0   # USD per 1M tokens
+    output_price: float = 0.0  # USD per 1M tokens
