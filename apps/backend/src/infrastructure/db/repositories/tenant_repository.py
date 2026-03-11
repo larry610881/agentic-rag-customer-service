@@ -22,6 +22,7 @@ class SQLAlchemyTenantRepository(TenantRepository):
                 if model.allowed_agent_modes
                 else ["router"]
             ),
+            monthly_token_limit=model.monthly_token_limit,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -33,6 +34,7 @@ class SQLAlchemyTenantRepository(TenantRepository):
                 name=tenant.name,
                 plan=tenant.plan,
                 allowed_agent_modes=tenant.allowed_agent_modes,
+                monthly_token_limit=tenant.monthly_token_limit,
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
             )

@@ -12,6 +12,7 @@ class Tenant:
     allowed_agent_modes: list[str] = field(
         default_factory=lambda: ["router"]
     )
+    monthly_token_limit: int | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

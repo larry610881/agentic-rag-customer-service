@@ -13,8 +13,12 @@ export const ROUTES = {
   SETTINGS_PROVIDERS: "/settings/providers",
   ADMIN_LOGS: "/admin/logs",
   ADMIN_KNOWLEDGE_BASES: "/admin/knowledge-bases",
+  ADMIN_KB_DETAIL: "/admin/knowledge-bases/:id",
   ADMIN_BOTS: "/admin/bots",
+  ADMIN_BOT_DETAIL: "/admin/bots/:id",
+  ADMIN_USERS: "/admin/users",
   ADMIN_OBSERVABILITY: "/admin/observability",
   ADMIN_TOKEN_USAGE: "/admin/token-usage",
   ADMIN_MCP_REGISTRY: "/admin/mcp-registry",
+  ADMIN_TENANTS: "/admin/tenants",
 } as const;

@@ -54,8 +54,12 @@ export const queryKeys = {
     detail: (requestId: string) => ["logs", "detail", requestId] as const,
   },
   admin: {
-    knowledgeBases: ["admin", "knowledge-bases"] as const,
-    bots: ["admin", "bots"] as const,
+    knowledgeBases: (tenantId?: string) =>
+      ["admin", "knowledge-bases", tenantId ?? "all"] as const,
+    bots: (tenantId?: string) =>
+      ["admin", "bots", tenantId ?? "all"] as const,
+    users: (tenantId?: string) =>
+      ["admin", "users", tenantId ?? "all"] as const,
   },
   systemPrompts: {
     all: ["system-prompts"] as const,
@@ -67,7 +71,8 @@ export const queryKeys = {
   observability: {
     traces: (filters?: object) => ["observability", "traces", filters ?? {}] as const,
     evals: (filters?: object) => ["observability", "evals", filters ?? {}] as const,
-    tokenUsage: (days: number) => ["observability", "token-usage", days] as const,
+    tokenUsage: (days: number, tenantId?: string) =>
+      ["observability", "token-usage", days, tenantId ?? "all"] as const,
     diagnosticRules: ["observability", "diagnostic-rules"] as const,
   },
 };

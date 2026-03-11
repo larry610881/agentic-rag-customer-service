@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, Index, Integer, String
+from sqlalchemy import DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,8 @@ class RequestLogModel(Base):
     path: Mapped[str] = mapped_column(String(500), nullable=False)
     status_code: Mapped[int] = mapped_column(Integer, nullable=False)
     elapsed_ms: Mapped[float] = mapped_column(Float, nullable=False)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     trace_steps: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
@@ -28,4 +30,5 @@ class RequestLogModel(Base):
     __table_args__ = (
         Index("ix_request_logs_created_at", "created_at"),
         Index("ix_request_logs_path", "path"),
+        Index("ix_request_logs_tenant_id", "tenant_id"),
     )

@@ -1,0 +1,4 @@
+"""Domain-level shared constants."""
+
+SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
+SYSTEM_TENANT_NAME = "系統"

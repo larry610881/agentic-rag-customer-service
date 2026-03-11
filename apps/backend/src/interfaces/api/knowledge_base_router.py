@@ -1,5 +1,5 @@
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from src.application.knowledge.create_knowledge_base_use_case import (
@@ -71,6 +71,7 @@ async def create_knowledge_base(
 @router.get("", response_model=list[KnowledgeBaseResponse])
 @inject
 async def list_knowledge_bases(
+    tenant_id: str | None = Query(default=None),
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: ListKnowledgeBasesUseCase = Depends(
         Provide[Container.list_knowledge_bases_use_case]
@@ -80,7 +81,7 @@ async def list_knowledge_bases(
     ),
 ) -> list[KnowledgeBaseResponse]:
     if tenant.role == "system_admin":
-        kbs = await list_all_use_case.execute()
+        kbs = await list_all_use_case.execute(tenant_id=tenant_id)
     else:
         kbs = await use_case.execute(tenant.tenant_id)
     return [

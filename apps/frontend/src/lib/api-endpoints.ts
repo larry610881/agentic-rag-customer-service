@@ -6,6 +6,7 @@ export const API_ENDPOINTS = {
   tenants: {
     list: "/api/v1/tenants",
     create: "/api/v1/tenants",
+    config: (id: string) => `/api/v1/tenants/${id}/config`,
   },
   knowledgeBases: {
     list: "/api/v1/knowledge-bases",
@@ -90,6 +91,14 @@ export const API_ENDPOINTS = {
     delete: (id: string) => `/api/v1/mcp-servers/${id}`,
     discover: "/api/v1/mcp-servers/discover",
     testConnection: (id: string) => `/api/v1/mcp-servers/${id}/test-connection`,
+  },
+  adminUsers: {
+    list: "/api/v1/admin/users",
+    create: "/api/v1/admin/users",
+    detail: (id: string) => `/api/v1/admin/users/${id}`,
+    update: (id: string) => `/api/v1/admin/users/${id}`,
+    delete: (id: string) => `/api/v1/admin/users/${id}`,
+    resetPassword: (id: string) => `/api/v1/admin/users/${id}/reset-password`,
   },
   systemPrompts: {
     get: "/api/v1/system/prompts",

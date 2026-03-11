@@ -152,7 +152,10 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
+        from src.infrastructure.logging.error_context import set_captured_error
+
         logger.exception("unhandled_error", error=str(exc))
+        set_captured_error(f"{type(exc).__name__}: {exc}")
         return JSONResponse(
             status_code=500,
             content={"detail": "Internal server error"},

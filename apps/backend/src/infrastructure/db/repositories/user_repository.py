@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,6 +61,11 @@ class SQLAlchemyUserRepository(UserRepository):
             return None
         return self._to_entity(model)
 
+    async def find_all(self) -> list[User]:
+        stmt = select(UserModel).order_by(UserModel.created_at)
+        result = await self._session.execute(stmt)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
     async def find_all_by_tenant(self, tenant_id: str) -> list[User]:
         stmt = (
             select(UserModel)
@@ -68,3 +74,8 @@ class SQLAlchemyUserRepository(UserRepository):
         )
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def delete(self, user_id: str) -> None:
+        async with atomic(self._session):
+            stmt = sa_delete(UserModel).where(UserModel.id == user_id)
+            await self._session.execute(stmt)

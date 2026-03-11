@@ -3,7 +3,7 @@
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from src.application.bot.create_bot_use_case import (
@@ -258,6 +258,7 @@ async def create_bot(
 @router.get("", response_model=list[BotResponse])
 @inject
 async def list_bots(
+    tenant_id: str | None = Query(default=None),
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: ListBotsUseCase = Depends(
         Provide[Container.list_bots_use_case]
@@ -267,7 +268,7 @@ async def list_bots(
     ),
 ) -> list[BotResponse]:
     if tenant.role == "system_admin":
-        bots = await list_all_use_case.execute()
+        bots = await list_all_use_case.execute(tenant_id=tenant_id)
     else:
         bots = await use_case.execute(tenant.tenant_id)
     return [_to_response(b) for b in bots]

@@ -18,6 +18,8 @@ export interface RequestLogItem {
   status_code: number;
   elapsed_ms: number;
   trace_steps: TraceStep[] | null;
+  tenant_id: string | null;
+  error_detail: string | null;
   created_at: string;
 }
 
@@ -31,6 +33,10 @@ export interface LogFilters {
   offset: number;
   path?: string;
   min_elapsed_ms?: number;
+  tenant_id?: string;
+  /** Client-side range filter: "2xx" | "3xx" | "4xx" | "5xx" */
+  status_range?: string;
+  method?: string;
 }
 
 export function useRequestLogs(filters: LogFilters) {
@@ -42,6 +48,8 @@ export function useRequestLogs(filters: LogFilters) {
   if (filters.path) params.set("path", filters.path);
   if (filters.min_elapsed_ms !== undefined)
     params.set("min_elapsed_ms", String(filters.min_elapsed_ms));
+  if (filters.tenant_id) params.set("tenant_id", filters.tenant_id);
+  if (filters.method) params.set("method", filters.method);
 
   return useQuery({
     queryKey: queryKeys.logs.all(filters),

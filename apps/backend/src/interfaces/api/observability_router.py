@@ -133,6 +133,7 @@ async def list_evaluations(
 @router.get("/token-usage")
 async def get_token_usage(
     days: int = Query(default=30, ge=1, le=365),
+    tenant_id: str | None = Query(default=None),
 ):
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
@@ -159,15 +160,18 @@ async def get_token_usage(
                 UsageRecordModel.tenant_id == TenantModel.id,
             )
             .where(UsageRecordModel.created_at >= since)
-            .group_by(
-                UsageRecordModel.tenant_id,
-                TenantModel.name,
-                UsageRecordModel.bot_id,
-                BotModel.name,
-                UsageRecordModel.model,
-            )
-            .order_by(func.sum(UsageRecordModel.estimated_cost).desc())
         )
+
+        if tenant_id:
+            stmt = stmt.where(UsageRecordModel.tenant_id == tenant_id)
+
+        stmt = stmt.group_by(
+            UsageRecordModel.tenant_id,
+            TenantModel.name,
+            UsageRecordModel.bot_id,
+            BotModel.name,
+            UsageRecordModel.model,
+        ).order_by(func.sum(UsageRecordModel.estimated_cost).desc())
 
         rows = (await session.execute(stmt)).all()
 

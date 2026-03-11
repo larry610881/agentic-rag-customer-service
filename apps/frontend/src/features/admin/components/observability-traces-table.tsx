@@ -5,7 +5,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { AdminTenantFilter } from "@/features/admin/components/admin-tenant-filter";
+import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
 import { useRAGTraces } from "@/hooks/queries/use-observability";
 import { getToolLabel } from "@/constants/tool-labels";
 import type { RAGTrace, RAGTraceStep } from "@/types/observability";
@@ -98,7 +99,7 @@ function PromptSnapshotBlock({ prompt }: { prompt: string }) {
   );
 }
 
-function ExpandableTraceRow({ trace }: { trace: RAGTrace }) {
+function ExpandableTraceRow({ trace, tenantNameMap }: { trace: RAGTrace; tenantNameMap: Map<string, string> }) {
   const [expanded, setExpanded] = useState(false);
   const hasSteps = trace.steps && trace.steps.length > 0;
   const hasContent = hasSteps || !!trace.prompt_snapshot;
@@ -112,7 +113,7 @@ function ExpandableTraceRow({ trace }: { trace: RAGTrace }) {
           {hasContent && (expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
         </TableCell>
         <TableCell className="font-mono text-xs text-muted-foreground">{formatTime(trace.created_at)}</TableCell>
-        <TableCell className="font-mono text-xs">{trace.tenant_id.slice(0, 8)}</TableCell>
+        <TableCell className="text-xs">{tenantNameMap.get(trace.tenant_id) ?? trace.tenant_id.slice(0, 8)}</TableCell>
         <TableCell className="max-w-[300px] truncate text-sm" title={trace.query}>
           {trace.query.length > 60 ? trace.query.slice(0, 60) + "..." : trace.query}
         </TableCell>
@@ -139,12 +140,13 @@ function ExpandableTraceRow({ trace }: { trace: RAGTrace }) {
 
 export function ObservabilityTracesTable() {
   const [page, setPage] = useState(0);
-  const [tenantFilter, setTenantFilter] = useState("");
+  const [tenantFilter, setTenantFilter] = useState<string | undefined>();
+  const tenantNameMap = useTenantNameMap();
 
   const filters = {
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
-    tenant_id: tenantFilter || undefined,
+    tenant_id: tenantFilter,
   };
   const { data, isLoading } = useRAGTraces(filters);
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
@@ -152,11 +154,9 @@ export function ObservabilityTracesTable() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Input
-          placeholder="篩選 Tenant ID..."
+        <AdminTenantFilter
           value={tenantFilter}
-          onChange={(e) => { setTenantFilter(e.target.value); setPage(0); }}
-          className="w-64"
+          onChange={(v) => { setTenantFilter(v); setPage(0); }}
         />
         {data && <span className="text-sm text-muted-foreground">共 {data.total} 筆</span>}
       </div>
@@ -177,7 +177,7 @@ export function ObservabilityTracesTable() {
             {isLoading && (
               <TableRow><TableCell colSpan={7} className="text-center py-8">載入中...</TableCell></TableRow>
             )}
-            {data?.items.map((t) => <ExpandableTraceRow key={t.id} trace={t} />)}
+            {data?.items.map((t) => <ExpandableTraceRow key={t.id} trace={t} tenantNameMap={tenantNameMap} />)}
             {data && data.items.length === 0 && (
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">沒有 RAG 追蹤記錄</TableCell></TableRow>
             )}

@@ -17,6 +17,8 @@ async def write_request_log(
     status_code: int,
     elapsed_ms: float,
     trace_steps: list[dict] | None,
+    tenant_id: str | None = None,
+    error_detail: str | None = None,
 ) -> None:
     """Persist a single request log entry. Swallows all errors."""
     try:
@@ -29,6 +31,8 @@ async def write_request_log(
                 status_code=status_code,
                 elapsed_ms=round(elapsed_ms, 1),
                 trace_steps=trace_steps,
+                tenant_id=tenant_id,
+                error_detail=error_detail,
             )
             session.add(row)
             await session.commit()

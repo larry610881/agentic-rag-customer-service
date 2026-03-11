@@ -1,4 +1,8 @@
+import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAdminBots } from "@/hooks/queries/use-admin";
+import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
+import { AdminTenantFilter } from "@/features/admin/components/admin-tenant-filter";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -11,13 +15,18 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 export default function AdminBotsPage() {
-  const { data: bots, isLoading, isError } = useAdminBots();
+  const [tenantId, setTenantId] = useState<string | undefined>();
+  const { data: bots, isLoading, isError } = useAdminBots(tenantId);
+  const tenantNameMap = useTenantNameMap();
 
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">所有機器人（跨租戶總覽）</h2>
-        <Badge variant="outline">唯讀</Badge>
+        <div className="flex items-center gap-3">
+          <AdminTenantFilter value={tenantId} onChange={setTenantId} />
+          <Badge variant="outline">唯讀</Badge>
+        </div>
       </div>
 
       {isLoading && (
@@ -44,7 +53,7 @@ export default function AdminBotsPage() {
                 <TableHead>名稱</TableHead>
                 <TableHead>說明</TableHead>
                 <TableHead>狀態</TableHead>
-                <TableHead>租戶 ID</TableHead>
+                <TableHead>租戶</TableHead>
                 <TableHead>Agent</TableHead>
                 <TableHead>LLM</TableHead>
                 <TableHead>建立時間</TableHead>
@@ -53,7 +62,14 @@ export default function AdminBotsPage() {
             <TableBody>
               {bots.map((bot) => (
                 <TableRow key={bot.id}>
-                  <TableCell className="font-medium">{bot.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link
+                      to={`/admin/bots/${bot.id}`}
+                      className="hover:underline underline-offset-4"
+                    >
+                      {bot.name}
+                    </Link>
+                  </TableCell>
                   <TableCell className="max-w-xs truncate text-muted-foreground">
                     {bot.description || "-"}
                   </TableCell>
@@ -63,7 +79,7 @@ export default function AdminBotsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <code className="text-xs">{bot.tenant_id.slice(0, 8)}...</code>
+                    {tenantNameMap.get(bot.tenant_id) ?? bot.tenant_id.slice(0, 8)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={bot.agent_mode === "react" ? "default" : "outline"}>

@@ -10,12 +10,14 @@ import {
   Activity,
   Coins,
   Puzzle,
+  Users,
   ChevronsLeft,
   ChevronsRight,
   Shield,
   ChevronDown,
   ChevronRight,
   Layers,
+  Building,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -31,8 +33,10 @@ const generalNavItems = [
 ];
 
 const systemAdminItems = [
+  { href: "/admin/tenants", label: "租戶管理", icon: Building },
   { href: "/admin/knowledge-bases", label: "所有知識庫", icon: BookOpen },
   { href: "/admin/bots", label: "所有機器人", icon: Bot },
+  { href: "/admin/users", label: "帳號管理", icon: Users },
   { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
   { href: "/admin/observability", label: "可觀測性", icon: Activity },
   { href: "/admin/token-usage", label: "Token 用量", icon: Coins },

@@ -3,9 +3,13 @@ from dependency_injector import containers, providers
 
 from src.application.agent.send_message_use_case import SendMessageUseCase
 from src.application.agent.tool_registry import ToolRegistry
+from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
+from src.application.auth.list_users_use_case import ListUsersUseCase
 from src.application.auth.login_use_case import LoginUseCase
 from src.application.auth.register_user_use_case import RegisterUserUseCase
+from src.application.auth.reset_password_use_case import ResetPasswordUseCase
+from src.application.auth.update_user_use_case import UpdateUserUseCase
 from src.application.bot.create_bot_use_case import CreateBotUseCase
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
@@ -232,6 +236,7 @@ from src.infrastructure.llm.dynamic_llm_factory import (
     DynamicLLMServiceProxy,
 )
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
+from src.infrastructure.logging.db_error_reporter import DBErrorReporter
 from src.infrastructure.mcp.cached_tool_loader import CachedMCPToolLoader
 from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
 from src.infrastructure.sentiment.keyword_sentiment_service import (
@@ -392,6 +397,8 @@ class Container(containers.DeclarativeContainer):
             config,
         ),
     )
+
+    error_reporter = providers.Singleton(DBErrorReporter)
 
     file_parser_service = providers.Singleton(DefaultFileParserService)
 
@@ -566,6 +573,27 @@ class Container(containers.DeclarativeContainer):
     get_user_use_case = providers.Factory(
         GetUserUseCase,
         user_repository=user_repository,
+    )
+
+    list_users_use_case = providers.Factory(
+        ListUsersUseCase,
+        user_repository=user_repository,
+    )
+
+    update_user_use_case = providers.Factory(
+        UpdateUserUseCase,
+        user_repository=user_repository,
+    )
+
+    delete_user_use_case = providers.Factory(
+        DeleteUserUseCase,
+        user_repository=user_repository,
+    )
+
+    reset_password_use_case = providers.Factory(
+        ResetPasswordUseCase,
+        user_repository=user_repository,
+        password_service=password_service,
     )
 
     get_rate_limits_use_case = providers.Factory(

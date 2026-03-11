@@ -11,6 +11,15 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { AdminTenantFilter } from "@/features/admin/components/admin-tenant-filter";
+import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
 import type { RequestLogItem, TraceStep } from "@/hooks/queries/use-logs";
 import { useRequestLogs } from "@/hooks/queries/use-logs";
 
@@ -52,18 +61,26 @@ function TraceStepRow({ step }: { step: TraceStep }) {
   );
 }
 
-function ExpandableRow({ log }: { log: RequestLogItem }) {
+function ExpandableRow({
+  log,
+  tenantNameMap,
+}: {
+  log: RequestLogItem;
+  tenantNameMap: Map<string, string>;
+}) {
   const [expanded, setExpanded] = useState(false);
   const hasSteps = log.trace_steps && log.trace_steps.length > 0;
+  const hasError = !!log.error_detail;
+  const hasContent = hasSteps || hasError;
 
   return (
     <>
       <TableRow
-        className={hasSteps ? "cursor-pointer hover:bg-muted/50" : ""}
-        onClick={() => hasSteps && setExpanded(!expanded)}
+        className={hasContent ? "cursor-pointer hover:bg-muted/50" : ""}
+        onClick={() => hasContent && setExpanded(!expanded)}
       >
         <TableCell className="w-8">
-          {hasSteps &&
+          {hasContent &&
             (expanded ? (
               <ChevronDown className="h-4 w-4" />
             ) : (
@@ -72,6 +89,11 @@ function ExpandableRow({ log }: { log: RequestLogItem }) {
         </TableCell>
         <TableCell className="font-mono text-xs text-muted-foreground">
           {formatTime(log.created_at)}
+        </TableCell>
+        <TableCell className="text-xs">
+          {log.tenant_id
+            ? tenantNameMap.get(log.tenant_id) ?? log.tenant_id.slice(0, 8)
+            : "-"}
         </TableCell>
         <TableCell className="font-mono text-xs">{log.request_id}</TableCell>
         <TableCell>
@@ -87,14 +109,23 @@ function ExpandableRow({ log }: { log: RequestLogItem }) {
           <ElapsedBadge ms={log.elapsed_ms} />
         </TableCell>
       </TableRow>
-      {expanded && hasSteps && (
+      {expanded && hasContent && (
         <TableRow>
           <TableCell />
-          <TableCell colSpan={5}>
-            <div className="rounded-md border bg-muted/30 px-4 py-2">
-              {log.trace_steps!.map((step, i) => (
-                <TraceStepRow key={i} step={step} />
-              ))}
+          <TableCell colSpan={6}>
+            <div className="rounded-md border bg-muted/30 px-4 py-2 space-y-2">
+              {hasError && (
+                <div className="rounded border border-destructive/30 bg-destructive/5 px-3 py-2">
+                  <span className="text-xs font-medium text-destructive">Error Detail</span>
+                  <pre className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground max-h-32 overflow-y-auto">
+                    {log.error_detail}
+                  </pre>
+                </div>
+              )}
+              {hasSteps &&
+                log.trace_steps!.map((step, i) => (
+                  <TraceStepRow key={i} step={step} />
+                ))}
             </div>
           </TableCell>
         </TableRow>
@@ -119,21 +150,84 @@ export function RequestLogsTable() {
   const [page, setPage] = useState(0);
   const [pathFilter, setPathFilter] = useState("");
   const [minMs, setMinMs] = useState("");
+  const [tenantFilter, setTenantFilter] = useState<string | undefined>();
+  const [statusFilter, setStatusFilter] = useState("");
+  const [methodFilter, setMethodFilter] = useState("");
+  const tenantNameMap = useTenantNameMap();
 
   const filters = {
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
     path: pathFilter || undefined,
     min_elapsed_ms: minMs ? Number(minMs) : undefined,
+    tenant_id: tenantFilter,
+    status_range: statusFilter || undefined,
+    method: methodFilter || undefined,
   };
 
   const { data, isLoading } = useRequestLogs(filters);
 
-  const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
+  // Client-side status code range filtering (backend only supports exact match)
+  const filteredItems = data?.items.filter((log) => {
+    if (!statusFilter) return true;
+    const prefix = Math.floor(log.status_code / 100);
+    return statusFilter === `${prefix}xx`;
+  });
+
+  const displayTotal = statusFilter ? (filteredItems?.length ?? 0) : (data?.total ?? 0);
+  const totalPages = statusFilter
+    ? Math.ceil(displayTotal / PAGE_SIZE)
+    : data
+      ? Math.ceil(data.total / PAGE_SIZE)
+      : 0;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
+        <AdminTenantFilter
+          value={tenantFilter}
+          onChange={(v) => {
+            setTenantFilter(v);
+            setPage(0);
+          }}
+        />
+        <Select
+          value={methodFilter || "all"}
+          onValueChange={(v) => {
+            setMethodFilter(v === "all" ? "" : v);
+            setPage(0);
+          }}
+        >
+          <SelectTrigger className="w-[120px]">
+            <SelectValue placeholder="Method" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部 Method</SelectItem>
+            <SelectItem value="GET">GET</SelectItem>
+            <SelectItem value="POST">POST</SelectItem>
+            <SelectItem value="PUT">PUT</SelectItem>
+            <SelectItem value="PATCH">PATCH</SelectItem>
+            <SelectItem value="DELETE">DELETE</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={statusFilter || "all"}
+          onValueChange={(v) => {
+            setStatusFilter(v === "all" ? "" : v);
+            setPage(0);
+          }}
+        >
+          <SelectTrigger className="w-[120px]">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部 Status</SelectItem>
+            <SelectItem value="2xx">2xx</SelectItem>
+            <SelectItem value="3xx">3xx</SelectItem>
+            <SelectItem value="4xx">4xx</SelectItem>
+            <SelectItem value="5xx">5xx</SelectItem>
+          </SelectContent>
+        </Select>
         <Input
           placeholder="篩選 API path..."
           value={pathFilter}
@@ -155,7 +249,7 @@ export function RequestLogsTable() {
         />
         {data && (
           <span className="text-sm text-muted-foreground">
-            共 {data.total} 筆
+            共 {displayTotal} 筆
           </span>
         )}
       </div>
@@ -166,6 +260,7 @@ export function RequestLogsTable() {
             <TableRow>
               <TableHead className="w-8" />
               <TableHead className="w-40">時間</TableHead>
+              <TableHead className="w-24">租戶</TableHead>
               <TableHead className="w-32">Request ID</TableHead>
               <TableHead>API</TableHead>
               <TableHead className="w-20">Status</TableHead>
@@ -175,18 +270,22 @@ export function RequestLogsTable() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
+                <TableCell colSpan={7} className="text-center py-8">
                   載入中...
                 </TableCell>
               </TableRow>
             )}
-            {data?.items.map((log) => (
-              <ExpandableRow key={log.id} log={log} />
+            {filteredItems?.map((log) => (
+              <ExpandableRow
+                key={log.id}
+                log={log}
+                tenantNameMap={tenantNameMap}
+              />
             ))}
-            {data && data.items.length === 0 && (
+            {data && (filteredItems?.length ?? 0) === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="text-center py-8 text-muted-foreground"
                 >
                   沒有符合條件的記錄

@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { AdminTenantFilter } from "@/features/admin/components/admin-tenant-filter";
+import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
 import { useRAGEvals } from "@/hooks/queries/use-observability";
 import type { EvalResult, EvalDimension, ChunkScore, DiagnosticHint } from "@/types/observability";
 
@@ -96,7 +98,7 @@ function formatTime(iso: string) {
   });
 }
 
-function ExpandableEvalRow({ eval: ev }: { eval: EvalResult }) {
+function ExpandableEvalRow({ eval: ev, tenantNameMap }: { eval: EvalResult; tenantNameMap: Map<string, string> }) {
   const [expanded, setExpanded] = useState(false);
   const hasDims = ev.dimensions && ev.dimensions.length > 0;
   const hints = ev.diagnostic_hints ?? [];
@@ -111,7 +113,7 @@ function ExpandableEvalRow({ eval: ev }: { eval: EvalResult }) {
           {hasContent && (expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
         </TableCell>
         <TableCell className="font-mono text-xs text-muted-foreground">{formatTime(ev.created_at)}</TableCell>
-        <TableCell className="font-mono text-xs">{ev.tenant_id.slice(0, 8)}</TableCell>
+        <TableCell className="text-xs">{tenantNameMap.get(ev.tenant_id) ?? ev.tenant_id.slice(0, 8)}</TableCell>
         <TableCell><Badge variant="outline">{ev.layer}</Badge></TableCell>
         <TableCell><ScoreBadge score={ev.avg_score} /></TableCell>
         <TableCell className="font-mono text-xs text-muted-foreground">{ev.model_used}</TableCell>
@@ -141,14 +143,15 @@ function ExpandableEvalRow({ eval: ev }: { eval: EvalResult }) {
 
 export function ObservabilityEvalsTable() {
   const [page, setPage] = useState(0);
-  const [tenantFilter, setTenantFilter] = useState("");
+  const [tenantFilter, setTenantFilter] = useState<string | undefined>();
   const [layerFilter, setLayerFilter] = useState("");
   const [minScore, setMinScore] = useState("");
+  const tenantNameMap = useTenantNameMap();
 
   const filters = {
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
-    tenant_id: tenantFilter || undefined,
+    tenant_id: tenantFilter,
     layer: layerFilter || undefined,
     min_score: minScore ? Number(minScore) : undefined,
   };
@@ -158,11 +161,9 @@ export function ObservabilityEvalsTable() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Input
-          placeholder="篩選 Tenant ID..."
+        <AdminTenantFilter
           value={tenantFilter}
-          onChange={(e) => { setTenantFilter(e.target.value); setPage(0); }}
-          className="w-64"
+          onChange={(v) => { setTenantFilter(v); setPage(0); }}
         />
         <Select value={layerFilter} onValueChange={(v) => { setLayerFilter(v === "all" ? "" : v); setPage(0); }}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Layer" /></SelectTrigger>
@@ -202,7 +203,7 @@ export function ObservabilityEvalsTable() {
             {isLoading && (
               <TableRow><TableCell colSpan={7} className="text-center py-8">載入中...</TableCell></TableRow>
             )}
-            {data?.items.map((ev) => <ExpandableEvalRow key={ev.id} eval={ev} />)}
+            {data?.items.map((ev) => <ExpandableEvalRow key={ev.id} eval={ev} tenantNameMap={tenantNameMap} />)}
             {data && data.items.length === 0 && (
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">沒有評估記錄</TableCell></TableRow>
             )}
