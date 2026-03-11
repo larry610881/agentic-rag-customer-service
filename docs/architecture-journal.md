@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [System Admin UI 重構 — 保留租戶 Pattern + ErrorReporter Port/Adapter + Agent Team 並行](#system-admin-ui-重構--保留租戶-pattern--errorreporter-portadapter--agent-team-並行)
 - [診斷規則可編輯化 — Singleton Config Pattern + Rule Engine 通用化](#診斷規則可編輯化--singleton-config-pattern--rule-engine-通用化)
 - [Qdrant Payload Index + env_values 加密 — 隱憂驅動的跨層修復](#qdrant-payload-index--env_values-加密--隱憂驅動的跨層修復)
 - [MCP Server Registry — 工具市集 Registry Pattern + Transport Abstraction](#mcp-server-registry--工具市集-registry-pattern--transport-abstraction)
@@ -55,6 +56,34 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## System Admin UI 重構 — 保留租戶 Pattern + ErrorReporter Port/Adapter + Agent Team 並行
+
+**Sprint 來源**：Issue #20 — System Admin UI 重構（5 Phase 多功能需求變更）
+**相關主題**：System Tenant 保留租戶、ErrorReporter Port/Adapter、ContextVar 橋接、Agent Team 並行協調
+
+### 做得好的地方
+
+- **保留租戶（Sentinel Tenant）設計**：以固定 UUID `00000000-0000-0000-0000-000000000000` 作為系統租戶，讓 system_admin 帳號也有 `tenant_id`，徹底避免 User entity 的 `tenant_id` nullable 問題。所有角色統一用 `tenant_id` 欄位，判斷是否為系統帳號只需 `tenant_id == SYSTEM_TENANT_ID`，不需增加新欄位或改驗證邏輯。
+- **Domain Entity 自我驗證（`_validate_tenant_role`）**：角色與租戶綁定的業務規則放在 User entity 內部，`__post_init__` 自動觸發，不依賴外部 Guard。system_admin 必須綁定系統租戶、非 system_admin 不可綁定系統租戶 — 雙向約束在 Domain 層完成。
+- **ErrorReporter Port/Adapter 分離**：Domain 層定義 `ErrorReporter` ABC + `ErrorContext` frozen dataclass，Infrastructure 提供 `DBErrorReporter` 實作。未來接 Sentry 或 CompositeReporter 零修改 Domain 層。
+- **ContextVar 橋接 exception handler → middleware**：FastAPI exception handler 執行在 middleware `call_next()` 內部，無法直接回傳 error 資訊。用 `ContextVar[str | None]` 在 exception handler 寫入、middleware 讀取，巧妙繞過 Starlette 生命週期限制。
+- **Agent Team 4 批次並行**：5 agents（backend-1/2 + frontend-1/2 + lead）依據依賴圖分 4 批次執行，container.py 唯一衝突點由 lead 手動 merge（兩個 agent 各加不同 Provider，無邏輯衝突）。67 files 一次性完成。
+
+### 潛在隱憂
+
+- **JWT base64 decode（無驗簽）取 tenant_id 寫入日誌**：middleware 為記錄日誌的 tenant_id 做 base64 decode JWT payload 但不驗簽。若 JWT 被竄改，日誌的 tenant_id 可能不正確。但這僅影響日誌品質（非授權判斷），且 auth guard 仍在 endpoint 層驗簽，風險低。 → 優先級：低
+- **`SYSTEM_TENANT_ID` 硬編碼在前後端多處**：後端 `constants.py`、前端 `admin-tenant-filter.tsx`、`admin-tenants.tsx` 都硬編碼此 UUID。若需變更需同步修改多處。 → 建議前端從 `/api/v1/config` 取得常數而非硬編碼 → 優先級：低
+- **DB Migration 手動 SQL**：`request_logs` 加 `tenant_id`/`error_detail`、`tenants` 加 `monthly_token_limit` 需手動跑 ALTER TABLE。目前無自動化 migration 工具（如 Alembic），生產環境需人工操作。 → 建議引入 Alembic → 優先級：中
+- **admin_router 6 個 User CRUD 端點未做分頁**：`find_all()` 直接回傳全部使用者，帳號數量增長後有效能風險。 → 待帳號量級增長時加分頁 → 優先級：低
+
+### 延伸學習
+
+- **Sentinel Value Pattern**：系統租戶是 Sentinel Value 的典型應用 — 用特殊值替代 null，簡化判斷邏輯。Eric Evans 在 DDD 中稱之為 Special Case Pattern。類似應用：NullObject、Guest User、Anonymous Tenant。
+- **ContextVar 在 ASGI 生命週期中的角色**：ContextVar 在 asyncio 中跟隨 Task context 傳播，是 ASGI middleware/handler 間傳遞 request-scoped 資料的標準方式。本次用於 error 橋接，之前用於 session scope — 兩者都是利用 ContextVar 的 request-scoped 特性。
+- **若想深入**：搜尋「ASGI middleware ContextVar propagation」、「Starlette middleware exception handler lifecycle」
 
 ---
 
