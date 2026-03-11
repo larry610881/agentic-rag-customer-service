@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Qdrant Payload Index + env_values 加密 — 隱憂驅動的跨層修復](#qdrant-payload-index--env_values-加密--隱憂驅動的跨層修復)
 - [MCP Server Registry — 工具市集 Registry Pattern + Transport Abstraction](#mcp-server-registry--工具市集-registry-pattern--transport-abstraction)
 - [Token Usage 預估成本 $0 修復 — Registry Fallback + API Schema 防禦](#token-usage-預估成本-0-修復--registry-fallback--api-schema-防禦)
 - [Token 用量 Bot 關聯 + 成本修復 + Agent Timeout — 跨 4 DDD 層的 Query 最佳化](#token-用量-bot-關聯--成本修復--agent-timeout--跨-4-ddd-層的-query-最佳化)
@@ -53,6 +54,34 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Qdrant Payload Index + env_values 加密 — 隱憂驅動的跨層修復
+
+**Sprint 來源**：MCP Server Registry 隱憂修復（架構筆記追蹤項）
+**相關主題**：Payload Index 冪等建立、AES 加密/解密生命週期、Masked Value 防覆寫模式
+
+### 做得好的地方
+
+- **隱憂驅動開發**：上一輪 MCP Server Registry 架構筆記明確標註「env_values 加密未實施（優先級：高）」和「Qdrant payload index 缺失」，本次修復直接追蹤隱憂清單，形成良性回饋迴圈
+- **冪等 Payload Index**：`_ensure_payload_indexes()` 在 `ensure_collection()` 末尾呼叫，對 `tenant_id` 和 `document_id` 建立 keyword index。Qdrant 的 `create_payload_index` 本身冪等，已存在不報錯，設計安全
+- **加密三階段完整**：Create（加密寫入）→ Update（masked `***` 保留原密文 / 新值重新加密）→ Send（解密 + fallback plaintext），三個 Use Case 各自負責對應階段，職責清晰
+- **Masked Value 防覆寫**：`UpdateBotUseCase._encrypt_bindings()` 對 `***` 值保留 DB 中的密文，避免前端回傳遮罩值覆蓋真實密鑰 — 這是 secret 管理的常見陷阱
+- **Graceful Fallback**：`SendMessageUseCase` 解密失敗時 fallback 到原始值，相容遷移前的明文資料，不會因為歷史資料未加密而中斷服務
+- **BDD 先行**：3 個 Scenario 覆蓋 Create 加密、Update masked 保留、Agent 解密替換，符合方法論
+
+### 潛在隱憂
+
+- **加密 Key 輪換未考慮** → 目前 `AESEncryptionService` 用單一固定 key，若需輪換（key rotation），歷史密文需批次 re-encrypt。建議未來加 key versioning（密文前綴標記版本號）→ **優先級：低**
+- **Qdrant Index 建立時機** → 每次 `ensure_collection` 都觸發 `_ensure_payload_indexes`，高頻 upsert 場景會產生多餘的 index 建立嘗試。Qdrant 內部處理冪等但仍有 RPC 開銷，可考慮 startup-only 建立 → **優先級：低**
+- **env_values 解密在 Application 層** → `SendMessageUseCase` 直接呼叫 `EncryptionService.decrypt()`，若未來有其他 Use Case 也需解密 env_values，可能出現重複邏輯。考慮抽取至 Domain Service 或 BotMcpBinding 自身的 `decrypted_env()` 方法 → **優先級：中**
+
+### 延伸學習
+
+- **Envelope Encryption**：AWS KMS 等雲服務的標準做法 — 用 master key 加密 data key，data key 加密實際資料。若未來需要更高安全等級，可參考此模式
+- **Secret Masking Pattern**：GitHub / GitLab CI 的 secret 管理都用 `***` 遮罩 + 不回傳原值的設計，本次實作與業界慣例一致
+- 若想深入：搜尋「envelope encryption pattern」、「secret rotation strategy」
 
 ---
 

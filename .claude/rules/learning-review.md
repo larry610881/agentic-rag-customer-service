@@ -72,3 +72,29 @@
 | 小型修復 / 單檔變更 | 1-2 句提示，或標註「無特別隱憂」 |
 | 中型功能 / 跨層變更 | 挑 2-3 個維度分析，附延伸學習 |
 | 大型功能 / 架構變更 | 完整分析 + 討論題 + 替代方案比較 |
+
+## 六階段合規清單（計畫與實作必須遵循）
+
+> **目的**：確保 AI 撰寫的計畫完整涵蓋 CLAUDE.md 定義的 DDD + BDD + TDD 方法論與交付流程。
+> 計畫的最後一個 section 必須是本清單的對照結果。
+
+### 設計階段（計畫中必須體現）
+
+- [ ] **Stage 1 — DDD 設計**：確認限界上下文歸屬 + DDD 4 層檔案落點（Domain → Application → Infrastructure → Interfaces）
+- [ ] **Stage 2 — BDD 行為規格**：列出 `.feature` 檔案及 Scenario，**先於實作代碼定義**
+- [ ] **Stage 3 — TDD 紅燈測試**：列出 Step Definition 檔案，執行順序為「先寫失敗測試 → 再寫實作代碼」
+
+### 實作階段（執行時必須遵循）
+
+- [ ] **Stage 4 — DDD 實作順序**：後端 Domain Entity → Application Use Case → Infrastructure Impl → Interfaces Router；前端 Type → Hook → Component → Page
+
+### 交付階段（完成後必須執行）
+
+- [ ] 全量測試通過（`make test` 或對應指令）
+- [ ] Lint 通過（`make lint` 或對應指令）
+- [ ] Git commit — Conventional Commits 格式，含 `Refs #N` 或 `Closes #N`
+- [ ] **架構學習筆記**（若 non-trivial）— 追加至 `docs/architecture-journal.md`
+- [ ] **SPRINT_TODOLIST.md 同步**（若有狀態變更）— 標記 ✅ 並 commit
+- [ ] **GitHub Issue 更新**（若有關聯 Issue）— 留 comment 或 close
+
+> **口訣：DDD 定位 → BDD 先寫 → TDD 紅燈 → 實作 → 過清單交付。跳階段 = 違規。**
