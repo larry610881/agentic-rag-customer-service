@@ -20,6 +20,7 @@ from src.domain.conversation.history_strategy import (
 )
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.platform.repository import SystemPromptConfigRepository
+from src.domain.platform.services import EncryptionService
 from src.domain.shared.exceptions import DomainException
 from src.domain.tenant.repository import TenantRepository
 
@@ -56,6 +57,7 @@ class SendMessageUseCase:
         trace_session_factory: Any | None = None,
         rag_evaluation_use_case: "RAGEvaluationUseCase | None" = None,
         mcp_registry_repo: Any | None = None,
+        encryption_service: EncryptionService | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -68,6 +70,7 @@ class SendMessageUseCase:
         self._sys_prompt_repo = system_prompt_config_repository
         self._eval_use_case = rag_evaluation_use_case
         self._mcp_registry_repo = mcp_registry_repo
+        self._encryption = encryption_service
 
     async def _load_bot_config(
         self, command: SendMessageCommand
@@ -147,6 +150,21 @@ class SendMessageUseCase:
                 )
                 if not reg or not reg.is_enabled:
                     continue
+
+                # Decrypt env_values (stored encrypted in DB)
+                decrypted_env: dict[str, str] = {}
+                for k, v in binding.env_values.items():
+                    if not v:
+                        decrypted_env[k] = ""
+                    elif self._encryption:
+                        try:
+                            decrypted_env[k] = self._encryption.decrypt(v)
+                        except Exception:
+                            # Fallback: pre-migration plaintext data
+                            decrypted_env[k] = v
+                    else:
+                        decrypted_env[k] = v
+
                 server_cfg: dict[str, Any] = {
                     "name": reg.name,
                     "transport": reg.transport,
@@ -154,10 +172,10 @@ class SendMessageUseCase:
                 if reg.transport == "stdio":
                     server_cfg["command"] = reg.command
                     server_cfg["args"] = reg.args
-                    server_cfg["env"] = binding.env_values
+                    server_cfg["env"] = decrypted_env
                 else:
                     resolved_url = reg.url
-                    for key, value in binding.env_values.items():
+                    for key, value in decrypted_env.items():
                         resolved_url = resolved_url.replace(
                             f"{{{key}}}", value
                         )

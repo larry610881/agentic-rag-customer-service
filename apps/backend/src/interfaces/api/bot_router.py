@@ -54,6 +54,7 @@ class CreateBotRequest(BaseModel):
     eval_model: str = ""
     eval_depth: str = "L1"
     mcp_servers: list[dict[str, Any]] = []
+    mcp_bindings: list[dict[str, Any]] = []
     max_tool_calls: int = 5
     base_prompt: str = ""
     router_prompt: str = ""
@@ -85,6 +86,7 @@ class UpdateBotRequest(BaseModel):
     eval_model: str | None = None
     eval_depth: str | None = None
     mcp_servers: list[dict[str, Any]] | None = None
+    mcp_bindings: list[dict[str, Any]] | None = None
     max_tool_calls: int | None = None
     base_prompt: str | None = None
     router_prompt: str | None = None
@@ -119,6 +121,7 @@ class BotResponse(BaseModel):
     eval_model: str
     eval_depth: str
     mcp_servers: list[dict[str, Any]]
+    mcp_bindings: list[dict[str, Any]]
     max_tool_calls: int
     base_prompt: str
     router_prompt: str
@@ -164,6 +167,17 @@ def _to_response(bot) -> BotResponse:
                 "version": s.version,
             }
             for s in bot.mcp_servers
+        ],
+        mcp_bindings=[
+            {
+                "registry_id": b.registry_id,
+                "enabled_tools": b.enabled_tools,
+                "env_values": (
+                    dict.fromkeys(b.env_values, "***")
+                    if b.env_values else {}
+                ),
+            }
+            for b in bot.mcp_bindings
         ],
         max_tool_calls=bot.max_tool_calls,
         base_prompt=bot.base_prompt,
@@ -229,6 +243,7 @@ async def create_bot(
             eval_model=body.eval_model,
             eval_depth=body.eval_depth,
             mcp_servers=body.mcp_servers,
+            mcp_bindings=body.mcp_bindings,
             max_tool_calls=body.max_tool_calls,
             base_prompt=body.base_prompt,
             router_prompt=body.router_prompt,

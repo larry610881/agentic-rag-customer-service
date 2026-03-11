@@ -2,12 +2,16 @@
 
 from dataclasses import dataclass, replace
 
-from src.domain.bot.entity import Bot, McpServerConfig, McpToolMeta
+from src.domain.bot.entity import Bot, BotMcpBinding, McpServerConfig, McpToolMeta
 from src.domain.bot.repository import BotRepository
+from src.domain.platform.services import EncryptionService
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.exceptions import EntityNotFoundError
 
 _UNSET = object()
+
+# 前端送回此遮罩值表示「保留原加密值」
+_MASKED_VALUE = "***"
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,7 @@ class UpdateBotCommand:
     eval_model: object = _UNSET
     eval_depth: object = _UNSET
     mcp_servers: object = _UNSET
+    mcp_bindings: object = _UNSET
     max_tool_calls: object = _UNSET
     base_prompt: object = _UNSET
     router_prompt: object = _UNSET
@@ -48,9 +53,11 @@ class UpdateBotUseCase:
         self,
         bot_repository: BotRepository,
         cache_service: CacheService | None = None,
+        encryption_service: EncryptionService | None = None,
     ) -> None:
         self._bot_repo = bot_repository
         self._cache_service = cache_service
+        self._encryption = encryption_service
 
     @staticmethod
     def _apply_updates(bot: Bot, command: UpdateBotCommand) -> None:
@@ -92,6 +99,8 @@ class UpdateBotUseCase:
                 for s in command.mcp_servers  # type: ignore[union-attr]
             ]
 
+        # mcp_bindings is handled separately (needs encryption + masking)
+
         # LLM params — collect changed fields, apply once
         _LLM_FIELDS = (
             "temperature", "max_tokens", "history_limit",
@@ -106,12 +115,54 @@ class UpdateBotUseCase:
         if llm_changes:
             bot.llm_params = replace(bot.llm_params, **llm_changes)
 
+    def _encrypt_bindings(
+        self,
+        new_bindings: list[dict],
+        old_bindings_map: dict[str, BotMcpBinding],
+    ) -> list[BotMcpBinding]:
+        """Encrypt env_values, preserving masked (***) values from existing bindings."""
+        result: list[BotMcpBinding] = []
+        for b in new_bindings:
+            registry_id = b.get("registry_id", "")
+            old_binding = old_bindings_map.get(registry_id)
+            old_env = old_binding.env_values if old_binding else {}
+
+            raw_env = b.get("env_values", {})
+            encrypted_env: dict[str, str] = {}
+            for k, v in raw_env.items():
+                if not v or v == _MASKED_VALUE:
+                    # Keep existing encrypted value
+                    encrypted_env[k] = old_env.get(k, "")
+                elif self._encryption:
+                    encrypted_env[k] = self._encryption.encrypt(v)
+                else:
+                    encrypted_env[k] = v
+
+            result.append(
+                BotMcpBinding(
+                    registry_id=registry_id,
+                    enabled_tools=b.get("enabled_tools", []),
+                    env_values=encrypted_env,
+                )
+            )
+        return result
+
     async def execute(self, command: UpdateBotCommand) -> Bot:
         bot = await self._bot_repo.find_by_id(command.bot_id)
         if bot is None:
             raise EntityNotFoundError("Bot", command.bot_id)
 
+        # Capture old bindings before update (may contain encrypted env_values)
+        old_bindings_map = {b.registry_id: b for b in bot.mcp_bindings}
+
         self._apply_updates(bot, command)
+
+        # Handle mcp_bindings with encryption + masking
+        if command.mcp_bindings is not _UNSET:
+            bot.mcp_bindings = self._encrypt_bindings(
+                command.mcp_bindings,  # type: ignore[arg-type]
+                old_bindings_map,
+            )
 
         await self._bot_repo.save(bot)
         if self._cache_service is not None:

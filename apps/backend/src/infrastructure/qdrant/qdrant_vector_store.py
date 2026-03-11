@@ -45,7 +45,7 @@ class QdrantVectorStore(VectorStore):
                 prefer_grpc=True,
                 grpc_port=grpc_port,
             )
-        elif url:
+        else:
             self._client = AsyncQdrantClient(
                 host=host,
                 port=port,
@@ -91,6 +91,29 @@ class QdrantVectorStore(VectorStore):
                 )
         else:
             logger.debug("qdrant.collection.exists", collection=collection)
+
+        # 冪等建立 payload index（collection 已存在也安全）
+        await self._ensure_payload_indexes(collection)
+
+    async def _ensure_payload_indexes(self, collection: str) -> None:
+        """確保 collection 有 tenant_id + document_id 的 payload index。
+
+        create_payload_index 是冪等的 — 已存在的 index 不會報錯。
+        """
+        for field_name in ("tenant_id", "document_id"):
+            try:
+                await self._client.create_payload_index(
+                    collection_name=collection,
+                    field_name=field_name,
+                    field_schema="keyword",
+                )
+            except Exception:
+                logger.debug(
+                    "qdrant.payload_index.skip",
+                    collection=collection,
+                    field=field_name,
+                )
+        logger.info("qdrant.payload_index.ensured", collection=collection)
 
     async def upsert(
         self,

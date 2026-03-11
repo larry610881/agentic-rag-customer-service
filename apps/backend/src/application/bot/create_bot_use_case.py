@@ -2,8 +2,15 @@
 
 from dataclasses import dataclass, field
 
-from src.domain.bot.entity import Bot, BotLLMParams, McpServerConfig, McpToolMeta
+from src.domain.bot.entity import (
+    Bot,
+    BotLLMParams,
+    BotMcpBinding,
+    McpServerConfig,
+    McpToolMeta,
+)
 from src.domain.bot.repository import BotRepository
+from src.domain.platform.services import EncryptionService
 
 
 @dataclass(frozen=True)
@@ -31,6 +38,7 @@ class CreateBotCommand:
     eval_model: str = ""
     eval_depth: str = "L1"
     mcp_servers: list[dict] = field(default_factory=list)
+    mcp_bindings: list[dict] = field(default_factory=list)
     max_tool_calls: int = 5
     base_prompt: str = ""
     router_prompt: str = ""
@@ -40,10 +48,31 @@ class CreateBotCommand:
 
 
 class CreateBotUseCase:
-    def __init__(self, bot_repository: BotRepository) -> None:
+    def __init__(
+        self,
+        bot_repository: BotRepository,
+        encryption_service: EncryptionService | None = None,
+    ) -> None:
         self._bot_repo = bot_repository
+        self._encryption = encryption_service
 
     async def execute(self, command: CreateBotCommand) -> Bot:
+        # Build MCP bindings with encrypted env_values
+        mcp_bindings = []
+        for b in command.mcp_bindings:
+            raw_env = b.get("env_values", {})
+            encrypted_env = {
+                k: self._encryption.encrypt(v) if v and self._encryption else v
+                for k, v in raw_env.items()
+            }
+            mcp_bindings.append(
+                BotMcpBinding(
+                    registry_id=b.get("registry_id", ""),
+                    enabled_tools=b.get("enabled_tools", []),
+                    env_values=encrypted_env,
+                )
+            )
+
         bot = Bot(
             tenant_id=command.tenant_id,
             name=command.name,
@@ -85,6 +114,7 @@ class CreateBotUseCase:
                 )
                 for s in command.mcp_servers
             ],
+            mcp_bindings=mcp_bindings,
             max_tool_calls=command.max_tool_calls,
             base_prompt=command.base_prompt,
             router_prompt=command.router_prompt,

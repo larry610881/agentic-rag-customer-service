@@ -791,6 +791,7 @@ class Container(containers.DeclarativeContainer):
     create_bot_use_case = providers.Factory(
         CreateBotUseCase,
         bot_repository=bot_repository,
+        encryption_service=encryption_service,
     )
 
     list_bots_use_case = providers.Factory(
@@ -812,6 +813,7 @@ class Container(containers.DeclarativeContainer):
         UpdateBotUseCase,
         bot_repository=bot_repository,
         cache_service=cache_service,
+        encryption_service=encryption_service,
     )
 
     delete_bot_use_case = providers.Factory(
@@ -840,6 +842,7 @@ class Container(containers.DeclarativeContainer):
         trace_session_factory=trace_session_factory,
         rag_evaluation_use_case=rag_evaluation_use_case,
         mcp_registry_repo=mcp_server_repository,
+        encryption_service=encryption_service,
     )
 
     # --- Platform: Provider Settings ---
