@@ -21,7 +21,15 @@ engine = create_async_engine(
 
 # Safety net: 確保 process exit 時（包括 SIGTERM → SystemExit）
 # 同步釋放所有 pool connections，防止 hot reload 連線洩漏。
-atexit.register(engine.sync_engine.dispose)
+# Wrapper: interpreter shutdown 期間 module 可能已被 GC，dispose() 可能失敗。
+def _dispose_engine_sync() -> None:
+    try:
+        engine.sync_engine.dispose()
+    except Exception:
+        pass
+
+
+atexit.register(_dispose_engine_sync)
 
 
 # --- SQL query timing (buffered, only flushed for slow requests) ---
