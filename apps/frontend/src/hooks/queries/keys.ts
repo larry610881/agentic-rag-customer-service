@@ -68,5 +68,6 @@ export const queryKeys = {
     traces: (filters?: object) => ["observability", "traces", filters ?? {}] as const,
     evals: (filters?: object) => ["observability", "evals", filters ?? {}] as const,
     tokenUsage: (days: number) => ["observability", "token-usage", days] as const,
+    diagnosticRules: ["observability", "diagnostic-rules"] as const,
   },
 };

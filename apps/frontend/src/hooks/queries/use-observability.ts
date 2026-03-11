@@ -1,9 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { queryKeys } from "@/hooks/queries/keys";
 import { useAuthStore } from "@/stores/use-auth-store";
-import type { PaginatedTraces, PaginatedEvals } from "@/types/observability";
+import type {
+  PaginatedTraces,
+  PaginatedEvals,
+  DiagnosticRulesConfig,
+} from "@/types/observability";
 
 export interface TraceFilters {
   limit: number;
@@ -62,5 +66,60 @@ export function useRAGEvals(filters: EvalFilters) {
       ),
     enabled: !!token,
     refetchInterval: 10_000,
+  });
+}
+
+// --- Diagnostic Rules ---
+
+export function useDiagnosticRules() {
+  const token = useAuthStore((s) => s.token);
+
+  return useQuery({
+    queryKey: queryKeys.observability.diagnosticRules,
+    queryFn: () =>
+      apiFetch<DiagnosticRulesConfig>(
+        API_ENDPOINTS.observability.diagnosticRules,
+        {},
+        token ?? undefined,
+      ),
+    enabled: !!token,
+  });
+}
+
+export function useUpdateDiagnosticRules() {
+  const token = useAuthStore((s) => s.token);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: Pick<DiagnosticRulesConfig, "single_rules" | "combo_rules">) =>
+      apiFetch<DiagnosticRulesConfig>(
+        API_ENDPOINTS.observability.diagnosticRules,
+        { method: "PUT", body: JSON.stringify(data) },
+        token ?? undefined,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.observability.diagnosticRules,
+      });
+    },
+  });
+}
+
+export function useResetDiagnosticRules() {
+  const token = useAuthStore((s) => s.token);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<DiagnosticRulesConfig>(
+        API_ENDPOINTS.observability.resetDiagnosticRules,
+        { method: "POST" },
+        token ?? undefined,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.observability.diagnosticRules,
+      });
+    },
   });
 }

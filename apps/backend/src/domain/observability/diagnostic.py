@@ -3,6 +3,8 @@
 純 rule-based，無需額外 LLM call。On-the-fly 計算，不存 DB。
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 
@@ -71,6 +73,62 @@ _SINGLE_RULES: list[tuple[str, float, str, str, str, str]] = [
     ),
 ]
 
+# -----------------------------------------------------------------------
+# Combo rules — structured format for DB persistence
+# Each combo: {dim_a, op_a, threshold_a, dim_b, op_b, threshold_b,
+#              category, severity, dimension_label, message, suggestion}
+# -----------------------------------------------------------------------
+_COMBO_RULES: list[dict] = [
+    {
+        "dim_a": "context_precision", "op_a": ">", "threshold_a": 0.6,
+        "dim_b": "context_recall", "op_b": "<=", "threshold_b": 0.3,
+        "category": "rag_strategy", "severity": "warning",
+        "dimension": "context_precision+context_recall",
+        "message": "檢索到的內容相關但不完整",
+        "suggestion": "增加 top_k 檢索數量以提升資訊覆蓋率",
+    },
+    {
+        "dim_a": "context_precision", "op_a": "<=", "threshold_a": 0.3,
+        "dim_b": "context_recall", "op_b": ">", "threshold_b": 0.6,
+        "category": "rag_strategy", "severity": "warning",
+        "dimension": "context_precision+context_recall",
+        "message": "檢索涵蓋面廣但雜訊多",
+        "suggestion": "考慮啟用 re-ranking 或提高相似度門檻以過濾低品質結果",
+    },
+    {
+        "dim_a": "faithfulness", "op_a": "<=", "threshold_a": 0.3,
+        "dim_b": "relevancy", "op_b": ">", "threshold_b": 0.6,
+        "category": "prompt", "severity": "warning",
+        "dimension": "faithfulness+relevancy",
+        "message": "模型理解問題但編造內容",
+        "suggestion": "強化 grounding prompt，要求模型嚴格基於上下文回答",
+    },
+    {
+        "dim_a": "faithfulness", "op_a": ">", "threshold_a": 0.6,
+        "dim_b": "relevancy", "op_b": "<=", "threshold_b": 0.3,
+        "category": "prompt", "severity": "warning",
+        "dimension": "faithfulness+relevancy",
+        "message": "模型忠於上下文但答非所問",
+        "suggestion": "檢查 query rewrite 邏輯，確保改寫後的查詢仍反映使用者意圖",
+    },
+]
+
+
+def get_default_single_rules() -> list[dict]:
+    """回傳預設的單維度規則（dict 格式，適合序列化）。"""
+    return [
+        {
+            "dimension": dim, "threshold": thr, "category": cat,
+            "severity": sev, "message": msg, "suggestion": sug,
+        }
+        for dim, thr, cat, sev, msg, sug in _SINGLE_RULES
+    ]
+
+
+def get_default_combo_rules() -> list[dict]:
+    """回傳預設的交叉維度規則（dict 格式，適合序列化）。"""
+    return [dict(r) for r in _COMBO_RULES]
+
 
 def _get_score(dimensions: list[dict], name: str) -> float | None:
     """取得指定維度的分數，不存在則回傳 None。"""
@@ -80,81 +138,99 @@ def _get_score(dimensions: list[dict], name: str) -> float | None:
     return None
 
 
-def _apply_single_rules(dimensions: list[dict]) -> list[DiagnosticHint]:
+def _compare(score: float, op: str, threshold: float) -> bool:
+    """根據運算子比較分數。"""
+    if op == "<=":
+        return score <= threshold
+    if op == "<":
+        return score < threshold
+    if op == ">=":
+        return score >= threshold
+    if op == ">":
+        return score > threshold
+    if op == "==":
+        return score == threshold
+    return False
+
+
+def _apply_single_rules(
+    dimensions: list[dict],
+    rules: list[dict] | None = None,
+) -> list[DiagnosticHint]:
     """套用單一維度門檻規則。"""
+    if rules is None:
+        rules = get_default_single_rules()
+
     hints: list[DiagnosticHint] = []
     triggered: set[tuple[str, str]] = set()  # (dimension, severity) 去重
 
-    for dim_name, threshold, category, severity, message, suggestion in _SINGLE_RULES:
+    for rule in rules:
+        dim_name = rule["dimension"]
+        threshold = float(rule["threshold"])
         score = _get_score(dimensions, dim_name)
         if score is None:
             continue
         if score <= threshold:
-            key = (dim_name, severity)
+            key = (dim_name, rule["severity"])
             if key not in triggered:
                 triggered.add(key)
                 hints.append(DiagnosticHint(
-                    category=category,
-                    severity=severity,
+                    category=rule["category"],
+                    severity=rule["severity"],
                     dimension=dim_name,
-                    message=message,
-                    suggestion=suggestion,
+                    message=rule["message"],
+                    suggestion=rule["suggestion"],
                 ))
     return hints
 
 
-def _apply_combo_rules(dimensions: list[dict]) -> list[DiagnosticHint]:
+def _apply_combo_rules(
+    dimensions: list[dict],
+    rules: list[dict] | None = None,
+) -> list[DiagnosticHint]:
     """套用跨維度組合規則。"""
+    if rules is None:
+        rules = get_default_combo_rules()
+
     hints: list[DiagnosticHint] = []
-    precision = _get_score(dimensions, "context_precision")
-    recall = _get_score(dimensions, "context_recall")
-    faithfulness = _get_score(dimensions, "faithfulness")
-    relevancy = _get_score(dimensions, "relevancy")
-
-    if precision is not None and recall is not None:
-        if precision > 0.6 and recall <= 0.3:
+    for rule in rules:
+        score_a = _get_score(dimensions, rule["dim_a"])
+        score_b = _get_score(dimensions, rule["dim_b"])
+        if score_a is None or score_b is None:
+            continue
+        if _compare(score_a, rule["op_a"], float(rule["threshold_a"])) and \
+           _compare(score_b, rule["op_b"], float(rule["threshold_b"])):
             hints.append(DiagnosticHint(
-                category="rag_strategy", severity="warning",
-                dimension="context_precision+context_recall",
-                message="檢索到的內容相關但不完整",
-                suggestion="增加 top_k 檢索數量以提升資訊覆蓋率",
+                category=rule["category"],
+                severity=rule["severity"],
+                dimension=rule["dimension"],
+                message=rule["message"],
+                suggestion=rule["suggestion"],
             ))
-        elif precision <= 0.3 and recall > 0.6:
-            hints.append(DiagnosticHint(
-                category="rag_strategy", severity="warning",
-                dimension="context_precision+context_recall",
-                message="檢索涵蓋面廣但雜訊多",
-                suggestion="考慮啟用 re-ranking 或提高相似度門檻以過濾低品質結果",
-            ))
-
-    if faithfulness is not None and relevancy is not None:
-        if faithfulness <= 0.3 and relevancy > 0.6:
-            hints.append(DiagnosticHint(
-                category="prompt", severity="warning",
-                dimension="faithfulness+relevancy",
-                message="模型理解問題但編造內容",
-                suggestion="強化 grounding prompt，要求模型嚴格基於上下文回答",
-            ))
-        elif faithfulness > 0.6 and relevancy <= 0.3:
-            hints.append(DiagnosticHint(
-                category="prompt", severity="warning",
-                dimension="faithfulness+relevancy",
-                message="模型忠於上下文但答非所問",
-                suggestion="檢查 query rewrite 邏輯，確保改寫後的查詢仍反映使用者意圖",
-            ))
-
     return hints
 
 
-def diagnose(dimensions: list[dict]) -> list[DiagnosticHint]:
+def diagnose(
+    dimensions: list[dict],
+    rule_config: object | None = None,
+) -> list[DiagnosticHint]:
     """根據 eval dimensions 的分數模式產生診斷提示。
 
     Args:
         dimensions: 評估維度列表，每項含 ``name`` 和 ``score``。
+        rule_config: 可選的 DiagnosticRulesConfig。None 時使用預設規則。
 
     Returns:
         診斷提示列表，可能為空（表示所有分數正常）。
     """
-    hints = _apply_single_rules(dimensions)
-    hints.extend(_apply_combo_rules(dimensions))
+    single_rules = None
+    combo_rules = None
+    if rule_config is not None:
+        sr = rule_config.single_rules  # type: ignore[union-attr]
+        cr = rule_config.combo_rules  # type: ignore[union-attr]
+        single_rules = sr if sr is not None else None
+        combo_rules = cr if cr is not None else None
+
+    hints = _apply_single_rules(dimensions, single_rules)
+    hints.extend(_apply_combo_rules(dimensions, combo_rules))
     return hints

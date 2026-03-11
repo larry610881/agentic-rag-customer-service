@@ -77,6 +77,11 @@ from src.application.knowledge.upload_document_use_case import (
     UploadDocumentUseCase,
 )
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
+from src.application.observability.diagnostic_rules_use_cases import (
+    GetDiagnosticRulesUseCase,
+    ResetDiagnosticRulesUseCase,
+    UpdateDiagnosticRulesUseCase,
+)
 from src.application.observability.rag_evaluation_use_case import (
     RAGEvaluationUseCase,
 )
@@ -152,6 +157,9 @@ from src.infrastructure.db.repositories.bot_repository import (
 )
 from src.infrastructure.db.repositories.conversation_repository import (
     SQLAlchemyConversationRepository,
+)
+from src.infrastructure.db.repositories.diagnostic_rules_config_repository import (
+    SQLAlchemyDiagnosticRulesConfigRepository,
 )
 from src.infrastructure.db.repositories.document_repository import (
     SQLAlchemyDocumentRepository,
@@ -368,6 +376,11 @@ class Container(containers.DeclarativeContainer):
 
     system_prompt_config_repository = providers.Factory(
         SQLAlchemySystemPromptConfigRepository,
+        session=db_session,
+    )
+
+    diagnostic_rules_config_repository = providers.Factory(
+        SQLAlchemyDiagnosticRulesConfigRepository,
         session=db_session,
     )
 
@@ -827,6 +840,23 @@ class Container(containers.DeclarativeContainer):
     rag_evaluation_use_case = providers.Factory(
         RAGEvaluationUseCase,
         llm_service=llm_service,
+    )
+
+    # --- Observability: Diagnostic Rules ---
+
+    get_diagnostic_rules_use_case = providers.Factory(
+        GetDiagnosticRulesUseCase,
+        diagnostic_rules_config_repository=diagnostic_rules_config_repository,
+    )
+
+    update_diagnostic_rules_use_case = providers.Factory(
+        UpdateDiagnosticRulesUseCase,
+        diagnostic_rules_config_repository=diagnostic_rules_config_repository,
+    )
+
+    reset_diagnostic_rules_use_case = providers.Factory(
+        ResetDiagnosticRulesUseCase,
+        diagnostic_rules_config_repository=diagnostic_rules_config_repository,
     )
 
     send_message_use_case = providers.Factory(

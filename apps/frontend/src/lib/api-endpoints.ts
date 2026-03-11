@@ -99,5 +99,7 @@ export const API_ENDPOINTS = {
     traces: "/api/v1/observability/traces",
     evaluations: "/api/v1/observability/evaluations",
     tokenUsage: "/api/v1/observability/token-usage",
+    diagnosticRules: "/api/v1/observability/diagnostic-rules",
+    resetDiagnosticRules: "/api/v1/observability/diagnostic-rules/reset",
   },
 } as const;

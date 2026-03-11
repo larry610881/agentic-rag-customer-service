@@ -67,3 +67,35 @@ export interface PaginatedEvals {
   total: number;
   items: EvalResult[];
 }
+
+// --- Diagnostic Rules Config ---
+
+export interface DiagnosticSingleRule {
+  dimension: string;
+  threshold: number;
+  category: "data_source" | "rag_strategy" | "prompt" | "agent";
+  severity: "critical" | "warning" | "info";
+  message: string;
+  suggestion: string;
+}
+
+export interface DiagnosticComboRule {
+  dim_a: string;
+  op_a: string;
+  threshold_a: number;
+  dim_b: string;
+  op_b: string;
+  threshold_b: number;
+  category: "data_source" | "rag_strategy" | "prompt" | "agent";
+  severity: "critical" | "warning" | "info";
+  dimension: string;
+  message: string;
+  suggestion: string;
+}
+
+export interface DiagnosticRulesConfig {
+  id: string;
+  single_rules: DiagnosticSingleRule[];
+  combo_rules: DiagnosticComboRule[];
+  updated_at: string;
+}

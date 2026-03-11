@@ -2,9 +2,18 @@
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Query
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy import func, select
 
+from src.application.observability.diagnostic_rules_use_cases import (
+    GetDiagnosticRulesUseCase,
+    ResetDiagnosticRulesUseCase,
+    UpdateDiagnosticRulesCommand,
+    UpdateDiagnosticRulesUseCase,
+)
+from src.container import Container
 from src.domain.observability.diagnostic import diagnose
 from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.models.bot_model import BotModel
@@ -61,13 +70,19 @@ async def list_traces(
 
 
 @router.get("/evaluations")
+@inject
 async def list_evaluations(
     limit: int = Query(default=30, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     tenant_id: str | None = Query(default=None),
     layer: str | None = Query(default=None),
     min_score: float | None = Query(default=None, ge=0, le=1),
+    get_rules_uc: GetDiagnosticRulesUseCase = Depends(
+        Provide[Container.get_diagnostic_rules_use_case]
+    ),
 ):
+    rule_config = await get_rules_uc.execute()
+
     async with async_session_factory() as session:
         stmt = select(RAGEvalModel).order_by(RAGEvalModel.created_at.desc())
         count_stmt = select(func.count()).select_from(RAGEvalModel)
@@ -107,7 +122,7 @@ async def list_evaluations(
                         "message": h.message,
                         "suggestion": h.suggestion,
                     }
-                    for h in diagnose(r.dimensions or [])
+                    for h in diagnose(r.dimensions or [], rule_config=rule_config)
                 ],
             }
             for r in rows
@@ -172,4 +187,68 @@ async def get_token_usage(
             }
             for r in rows
         ],
+    }
+
+
+# -----------------------------------------------------------------------
+# Diagnostic Rules CRUD
+# -----------------------------------------------------------------------
+
+
+class _DiagnosticRulesBody(BaseModel):
+    single_rules: list[dict]
+    combo_rules: list[dict]
+
+
+@router.get("/diagnostic-rules")
+@inject
+async def get_diagnostic_rules(
+    use_case: GetDiagnosticRulesUseCase = Depends(
+        Provide[Container.get_diagnostic_rules_use_case]
+    ),
+):
+    config = await use_case.execute()
+    return {
+        "id": config.id,
+        "single_rules": config.single_rules,
+        "combo_rules": config.combo_rules,
+        "updated_at": config.updated_at.isoformat(),
+    }
+
+
+@router.put("/diagnostic-rules")
+@inject
+async def update_diagnostic_rules(
+    body: _DiagnosticRulesBody,
+    use_case: UpdateDiagnosticRulesUseCase = Depends(
+        Provide[Container.update_diagnostic_rules_use_case]
+    ),
+):
+    config = await use_case.execute(
+        UpdateDiagnosticRulesCommand(
+            single_rules=body.single_rules,
+            combo_rules=body.combo_rules,
+        )
+    )
+    return {
+        "id": config.id,
+        "single_rules": config.single_rules,
+        "combo_rules": config.combo_rules,
+        "updated_at": config.updated_at.isoformat(),
+    }
+
+
+@router.post("/diagnostic-rules/reset")
+@inject
+async def reset_diagnostic_rules(
+    use_case: ResetDiagnosticRulesUseCase = Depends(
+        Provide[Container.reset_diagnostic_rules_use_case]
+    ),
+):
+    config = await use_case.execute()
+    return {
+        "id": config.id,
+        "single_rules": config.single_rules,
+        "combo_rules": config.combo_rules,
+        "updated_at": config.updated_at.isoformat(),
     }
