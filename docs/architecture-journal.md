@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [診斷規則可編輯化 — Singleton Config Pattern + Rule Engine 通用化](#診斷規則可編輯化--singleton-config-pattern--rule-engine-通用化)
 - [Qdrant Payload Index + env_values 加密 — 隱憂驅動的跨層修復](#qdrant-payload-index--env_values-加密--隱憂驅動的跨層修復)
 - [MCP Server Registry — 工具市集 Registry Pattern + Transport Abstraction](#mcp-server-registry--工具市集-registry-pattern--transport-abstraction)
 - [Token Usage 預估成本 $0 修復 — Registry Fallback + API Schema 防禦](#token-usage-預估成本-0-修復--registry-fallback--api-schema-防禦)
@@ -54,6 +55,31 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## 診斷規則可編輯化 — Singleton Config Pattern + Rule Engine 通用化
+
+**Sprint 來源**：Issue #19 — 診斷規則可編輯化（可觀測性增強）
+**相關主題**：Singleton Config Pattern、Rule Engine 通用化、Falsy Fallback 陷阱
+
+### 做得好的地方
+
+- **Singleton 設計一致性**：參照 `SystemPromptConfig` 的 `id="default"` 模式，`DiagnosticRulesConfig` 採用相同的 singleton upsert 策略，零 seed 即可運作（DB 無資料 → 回傳硬編碼預設值）
+- **向後相容**：`diagnose()` 新增可選 `rule_config` 參數，None 時自動使用預設規則。既有呼叫方無需修改
+- **Combo Rules 結構化**：將原本的硬編碼 if/else 交叉規則轉為 `{dim_a, op_a, threshold_a, dim_b, op_b, threshold_b}` 的通用結構，DB 可持久化、前端可編輯、新規則免改程式碼
+- **BDD 先行**：2 features / 6 scenarios 在實作前定義完成，TDD 紅燈→綠燈順利
+
+### 潛在隱憂
+
+- **JSON 欄位無 schema 驗證** → 前端送進 malformed rules（如缺 `dimension` 欄位）會在 `diagnose()` 時 KeyError。建議加 Pydantic model 驗證 PUT body → 優先級：中
+- **全域 singleton 無版本控制** → 多人同時編輯可能互蓋。若未來多管理員場景，考慮 optimistic lock（`updated_at` 比對） → 優先級：低
+
+### 延伸學習
+
+- **Python Falsy 陷阱**：`[] or None` == `None`。在本次實作中差點導致空規則列表被誤判為 None 而 fallback 到預設值。修復方法：用 `is not None` 明確判斷
+- **Rule Engine Pattern**：本次從硬編碼 tuples 演進到 dict-based 結構化規則，是輕量 Rule Engine 的雛形。若規則繼續複雜化（如 OR 條件、巢狀規則），可考慮引入 DSL 或 rule engine library（如 `business-rules`）
+- 若想深入：搜尋「Business Rules Engine Python」或「Martin Fowler Specification Pattern」
 
 ---
 
