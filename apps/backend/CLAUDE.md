@@ -11,6 +11,16 @@ uv add --dev <package>     # 新增開發套件
 uv run <command>           # 執行指令
 ```
 
+## 開發伺服器
+
+```bash
+# 從 monorepo 根目錄
+make dev-backend          # uvicorn --reload on port 8000
+
+# 或直接從 backend 目錄
+uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+```
+
 ## 測試
 
 ```bash

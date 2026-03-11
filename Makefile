@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-ps install test test-backend test-frontend lint lint-backend lint-frontend seed-data seed-knowledge
+.PHONY: dev-up dev-down dev-ps dev-backend install test test-backend test-frontend lint lint-backend lint-frontend seed-data seed-knowledge
 
 COMPOSE_FILE := infra/docker-compose.yml
 COMPOSE_DEV  := infra/docker-compose.dev.yml
@@ -15,6 +15,10 @@ dev-down:
 
 dev-ps:
 	$(COMPOSE_CMD) ps
+
+# ─── Dev Server ──────────────────────────────────────────────
+dev-backend:
+	cd apps/backend && uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
 # ─── Install ─────────────────────────────────────────────────
 install:

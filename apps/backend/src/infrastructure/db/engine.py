@@ -1,3 +1,4 @@
+import atexit
 import time
 
 from sqlalchemy import event
@@ -17,6 +18,10 @@ engine = create_async_engine(
     pool_recycle=300,
     pool_timeout=10,  # Fail fast instead of waiting 30s for a connection
 )
+
+# Safety net: 確保 process exit 時（包括 SIGTERM → SystemExit）
+# 同步釋放所有 pool connections，防止 hot reload 連線洩漏。
+atexit.register(engine.sync_engine.dispose)
 
 
 # --- SQL query timing (buffered, only flushed for slow requests) ---
