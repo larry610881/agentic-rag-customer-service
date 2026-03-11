@@ -294,12 +294,13 @@ class RAGEvaluationUseCase:
             f"你是一個 RAG 品質評估專家。請評估以下查詢的品質。\n\n"
             f"用戶查詢：{query}\n\n"
             + "\n\n".join(sections)
-            + "\n\n回傳 JSON 格式，包含以下 key：\n"
-            + ", ".join(expected_keys)
-            + ', explanation\n'
+            + "\n\n回傳 JSON 格式，每個維度用物件包含 score 和 explanation：\n"
             + "範例：{"
-            + ", ".join(f'"{k}": 0.8' for k in expected_keys)
-            + ', "explanation": "簡短說明"}'
+            + ", ".join(
+                f'"{k}": {{"score": 0.8, "explanation": "針對 {k} 的說明"}}'
+                for k in expected_keys
+            )
+            + "}"
         )
 
         # Determine layer label
@@ -323,11 +324,19 @@ class RAGEvaluationUseCase:
                 meta = None
                 if key == "context_precision" and chunk_scores:
                     meta = {"chunk_scores": chunk_scores}
+                # Support per-dimension {score, explanation} objects
+                dim_val = scores.get(key, 0.0)
+                if isinstance(dim_val, dict):
+                    dim_score = float(dim_val.get("score", 0.0))
+                    dim_expl = dim_val.get("explanation", "")
+                else:
+                    dim_score = float(dim_val) if dim_val else 0.0
+                    dim_expl = scores.get("explanation", "")
                 dimensions.append(
                     EvalDimension(
                         name=key,
-                        score=scores.get(key, 0.0),
-                        explanation=scores.get("explanation", ""),
+                        score=dim_score,
+                        explanation=dim_expl,
                         metadata=meta,
                     )
                 )
