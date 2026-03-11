@@ -73,12 +73,24 @@ export function TokenUsagePieChart({ data, isLoading }: TokenUsagePieChartProps)
               ))}
             </Pie>
             <Tooltip
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              formatter={(value: any) => [`$${Number(value).toFixed(4)}`, "預估成本"]}
-              contentStyle={{
-                background: "oklch(0.14 0.02 250)",
-                border: "1px solid oklch(0.75 0.15 195 / 20%)",
-                borderRadius: "8px",
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const entry = payload[0];
+                const model = entry.name ?? "";
+                const cost = Number(entry.value ?? 0);
+                const total = chartData.reduce((s, d) => s + d.cost, 0);
+                const pct = total > 0 ? ((cost / total) * 100).toFixed(1) : "0.0";
+                return (
+                  <div className="rounded-lg border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md">
+                    <p className="font-medium">{model}</p>
+                    <p className="text-muted-foreground">
+                      預估成本：<span className="text-foreground font-mono">${cost.toFixed(4)}</span>
+                    </p>
+                    <p className="text-muted-foreground">
+                      佔比：<span className="text-foreground font-mono">{pct}%</span>
+                    </p>
+                  </div>
+                );
               }}
             />
           </PieChart>

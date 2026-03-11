@@ -278,6 +278,89 @@ async def get_document_chunks(
     )
 
 
+class BatchDocIdsRequest(BaseModel):
+    doc_ids: list[str]
+
+
+class BatchFailedItem(BaseModel):
+    id: str
+    error: str
+
+
+class BatchDeleteResponse(BaseModel):
+    succeeded: list[str]
+    failed: list[BatchFailedItem]
+
+
+class BatchReprocessTaskItem(BaseModel):
+    document_id: str
+    task_id: str
+
+
+class BatchReprocessResponse(BaseModel):
+    tasks: list[BatchReprocessTaskItem]
+    failed: list[BatchFailedItem]
+
+
+@router.post("/batch-delete", response_model=BatchDeleteResponse)
+@inject
+async def batch_delete_documents(
+    kb_id: str,
+    body: BatchDocIdsRequest,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: DeleteDocumentUseCase = Depends(
+        Provide[Container.delete_document_use_case]
+    ),
+) -> BatchDeleteResponse:
+    succeeded: list[str] = []
+    failed: list[BatchFailedItem] = []
+    for doc_id in body.doc_ids:
+        try:
+            await use_case.execute(doc_id)
+            succeeded.append(doc_id)
+        except EntityNotFoundError:
+            failed.append(BatchFailedItem(id=doc_id, error="Document not found"))
+        except Exception as e:
+            failed.append(BatchFailedItem(id=doc_id, error=str(e)))
+    return BatchDeleteResponse(succeeded=succeeded, failed=failed)
+
+
+@router.post(
+    "/batch-reprocess",
+    response_model=BatchReprocessResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@inject
+async def batch_reprocess_documents(
+    kb_id: str,
+    body: BatchDocIdsRequest,
+    background_tasks: BackgroundTasks,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: ReprocessDocumentUseCase = Depends(
+        Provide[Container.reprocess_document_use_case]
+    ),
+) -> BatchReprocessResponse:
+    tasks: list[BatchReprocessTaskItem] = []
+    failed: list[BatchFailedItem] = []
+    for doc_id in body.doc_ids:
+        try:
+            task = await use_case.begin_reprocess(doc_id, tenant.tenant_id)
+            execute_fn = functools.partial(
+                use_case.execute, doc_id, task.id.value,
+            )
+            background_tasks.add_task(
+                safe_background_task,
+                execute_fn,
+                task_name="reprocess_document",
+            )
+            tasks.append(
+                BatchReprocessTaskItem(document_id=doc_id, task_id=task.id.value)
+            )
+        except Exception as e:
+            failed.append(BatchFailedItem(id=doc_id, error=str(e)))
+    return BatchReprocessResponse(tasks=tasks, failed=failed)
+
+
 class ReprocessRequest(BaseModel):
     chunk_size: int | None = None
     chunk_overlap: int | None = None

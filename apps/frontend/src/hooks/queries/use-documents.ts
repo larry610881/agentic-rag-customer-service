@@ -3,7 +3,12 @@ import { ApiError, apiFetch } from "@/lib/api-client";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { queryKeys } from "@/hooks/queries/keys";
 import { useAuthStore } from "@/stores/use-auth-store";
-import type { DocumentResponse, UploadDocumentResponse } from "@/types/knowledge";
+import type {
+  BatchDeleteResult,
+  BatchReprocessResult,
+  DocumentResponse,
+  UploadDocumentResponse,
+} from "@/types/knowledge";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -90,6 +95,58 @@ export function useUploadDocument() {
       }
 
       return res.json() as Promise<UploadDocumentResponse>;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.documents.all(variables.knowledgeBaseId),
+      });
+    },
+  });
+}
+
+export function useBatchDeleteDocuments() {
+  const token = useAuthStore((s) => s.token);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      knowledgeBaseId: string;
+      docIds: string[];
+    }): Promise<BatchDeleteResult> => {
+      return apiFetch<BatchDeleteResult>(
+        API_ENDPOINTS.documents.batchDelete(data.knowledgeBaseId),
+        {
+          method: "POST",
+          body: JSON.stringify({ doc_ids: data.docIds }),
+        },
+        token ?? undefined,
+      );
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.documents.all(variables.knowledgeBaseId),
+      });
+    },
+  });
+}
+
+export function useBatchReprocessDocuments() {
+  const token = useAuthStore((s) => s.token);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      knowledgeBaseId: string;
+      docIds: string[];
+    }): Promise<BatchReprocessResult> => {
+      return apiFetch<BatchReprocessResult>(
+        API_ENDPOINTS.documents.batchReprocess(data.knowledgeBaseId),
+        {
+          method: "POST",
+          body: JSON.stringify({ doc_ids: data.docIds }),
+        },
+        token ?? undefined,
+      );
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({

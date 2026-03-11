@@ -36,6 +36,14 @@ export interface EvalDimension {
   metadata?: { chunk_scores?: ChunkScore[] } | null;
 }
 
+export interface DiagnosticHint {
+  category: "data_source" | "rag_strategy" | "prompt" | "agent";
+  severity: "critical" | "warning" | "info";
+  dimension: string;
+  message: string;
+  suggestion: string;
+}
+
 export interface EvalResult {
   id: string;
   eval_id: string;
@@ -47,6 +55,7 @@ export interface EvalResult {
   avg_score: number;
   model_used: string;
   created_at: string;
+  diagnostic_hints?: DiagnosticHint[] | null;
 }
 
 export interface PaginatedTraces {

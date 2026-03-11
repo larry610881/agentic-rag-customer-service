@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Query
 from sqlalchemy import func, select
 
+from src.domain.observability.diagnostic import diagnose
 from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.models.bot_model import BotModel
 from src.infrastructure.db.models.rag_eval_model import RAGEvalModel
@@ -98,6 +99,16 @@ async def list_evaluations(
                 "avg_score": r.avg_score,
                 "model_used": r.model_used,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
+                "diagnostic_hints": [
+                    {
+                        "category": h.category,
+                        "severity": h.severity,
+                        "dimension": h.dimension,
+                        "message": h.message,
+                        "suggestion": h.suggestion,
+                    }
+                    for h in diagnose(r.dimensions or [])
+                ],
             }
             for r in rows
         ],

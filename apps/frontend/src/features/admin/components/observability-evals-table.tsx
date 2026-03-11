@@ -10,7 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useRAGEvals } from "@/hooks/queries/use-observability";
-import type { EvalResult, EvalDimension, ChunkScore } from "@/types/observability";
+import type { EvalResult, EvalDimension, ChunkScore, DiagnosticHint } from "@/types/observability";
 
 const PAGE_SIZE = 30;
 
@@ -61,6 +61,33 @@ function DimensionDetail({ dim }: { dim: EvalDimension }) {
   );
 }
 
+const HINT_COLORS: Record<string, string> = {
+  critical: "border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400",
+  warning: "border-yellow-500/50 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
+  info: "border-blue-500/50 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+};
+
+const HINT_LABELS: Record<string, string> = {
+  data_source: "資料源",
+  rag_strategy: "RAG 策略",
+  prompt: "Prompt",
+  agent: "Agent",
+};
+
+function HintBadge({ hint }: { hint: DiagnosticHint }) {
+  return (
+    <div className={`rounded-md border px-3 py-2 text-xs ${HINT_COLORS[hint.severity] ?? ""}`}>
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className="text-[10px]">
+          {HINT_LABELS[hint.category] ?? hint.category}
+        </Badge>
+        <span className="font-medium">{hint.message}</span>
+      </div>
+      <p className="mt-1 text-muted-foreground">{hint.suggestion}</p>
+    </div>
+  );
+}
+
 function formatTime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleString("zh-TW", {
@@ -72,14 +99,16 @@ function formatTime(iso: string) {
 function ExpandableEvalRow({ eval: ev }: { eval: EvalResult }) {
   const [expanded, setExpanded] = useState(false);
   const hasDims = ev.dimensions && ev.dimensions.length > 0;
+  const hints = ev.diagnostic_hints ?? [];
+  const hasContent = hasDims || hints.length > 0;
   return (
     <>
       <TableRow
-        className={hasDims ? "cursor-pointer hover:bg-muted/50" : ""}
-        onClick={() => hasDims && setExpanded(!expanded)}
+        className={hasContent ? "cursor-pointer hover:bg-muted/50" : ""}
+        onClick={() => hasContent && setExpanded(!expanded)}
       >
         <TableCell className="w-8">
-          {hasDims && (expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
+          {hasContent && (expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
         </TableCell>
         <TableCell className="font-mono text-xs text-muted-foreground">{formatTime(ev.created_at)}</TableCell>
         <TableCell className="font-mono text-xs">{ev.tenant_id.slice(0, 8)}</TableCell>
@@ -90,12 +119,18 @@ function ExpandableEvalRow({ eval: ev }: { eval: EvalResult }) {
           <Badge variant="secondary">{ev.dimensions?.length ?? 0}</Badge>
         </TableCell>
       </TableRow>
-      {expanded && hasDims && (
+      {expanded && hasContent && (
         <TableRow>
           <TableCell />
           <TableCell colSpan={6}>
             <div className="rounded-md border bg-muted/30 px-4 py-2">
-              {ev.dimensions!.map((dim, i) => <DimensionDetail key={i} dim={dim} />)}
+              {hasDims && ev.dimensions!.map((dim, i) => <DimensionDetail key={i} dim={dim} />)}
+              {hints.length > 0 && (
+                <div className="mt-3 space-y-2 border-t pt-3">
+                  <span className="text-xs font-medium text-muted-foreground">診斷提示</span>
+                  {hints.map((hint, i) => <HintBadge key={i} hint={hint} />)}
+                </div>
+              )}
             </div>
           </TableCell>
         </TableRow>

@@ -21,30 +21,49 @@ function ElapsedBadge({ ms }: { ms: number }) {
 }
 
 function StepDetail({ step, index }: { step: RAGTraceStep; index: number }) {
+  const [showOutput, setShowOutput] = useState(false);
   const toolName = step.tool_name || step.name || "unknown";
   const label = getToolLabel(toolName);
   const iteration = step.iteration ?? index + 1;
+  const hasOutput = !!step.tool_output;
 
   return (
-    <div className="flex items-center gap-3 py-1 text-xs">
-      <span className="w-6 text-right font-medium text-muted-foreground">
-        {iteration}.
-      </span>
-      <span className="font-medium">{label}</span>
-      {step.elapsed_ms != null && (
-        <span className="font-mono text-muted-foreground">
-          {step.elapsed_ms.toFixed(1)} ms
+    <div className="py-1 text-xs">
+      <div className="flex items-center gap-3">
+        <span className="w-6 text-right font-medium text-muted-foreground">
+          {iteration}.
         </span>
-      )}
-      {step.reasoning && (
-        <span className="truncate text-muted-foreground">
-          {step.reasoning}
-        </span>
-      )}
-      {step.tool_input && (
-        <span className="truncate text-muted-foreground">
-          {JSON.stringify(step.tool_input).slice(0, 80)}
-        </span>
+        <span className="font-medium">{label}</span>
+        {step.elapsed_ms != null && (
+          <span className="font-mono text-muted-foreground">
+            {step.elapsed_ms.toFixed(1)} ms
+          </span>
+        )}
+        {step.reasoning && (
+          <span className="truncate text-muted-foreground">
+            {step.reasoning}
+          </span>
+        )}
+        {step.tool_input && (
+          <span className="truncate text-muted-foreground">
+            {JSON.stringify(step.tool_input).slice(0, 80)}
+          </span>
+        )}
+        {hasOutput && (
+          <button
+            type="button"
+            className="ml-auto flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+            onClick={(e) => { e.stopPropagation(); setShowOutput(!showOutput); }}
+          >
+            {showOutput ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            Output
+          </button>
+        )}
+      </div>
+      {showOutput && step.tool_output && (
+        <pre className="mt-1 ml-9 whitespace-pre-wrap rounded bg-muted/50 p-2 text-xs text-muted-foreground max-h-48 overflow-y-auto">
+          {step.tool_output}
+        </pre>
       )}
     </div>
   );

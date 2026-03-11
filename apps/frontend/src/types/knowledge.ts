@@ -49,6 +49,21 @@ export interface UploadDocumentResponse {
   task_id: string;
 }
 
+export interface BatchFailedItem {
+  id: string;
+  error: string;
+}
+
+export interface BatchDeleteResult {
+  succeeded: string[];
+  failed: BatchFailedItem[];
+}
+
+export interface BatchReprocessResult {
+  tasks: Array<{ document_id: string; task_id: string }>;
+  failed: BatchFailedItem[];
+}
+
 export interface TaskResponse {
   id: string;
   status: "pending" | "processing" | "completed" | "failed";
