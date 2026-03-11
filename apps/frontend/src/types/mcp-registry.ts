@@ -29,6 +29,7 @@ export interface CreateMcpServerRequest {
   command?: string;
   args?: string[];
   required_env?: string[];
+  available_tools?: McpRegistrationToolMeta[];
   scope?: string;
   tenant_ids?: string[];
 }

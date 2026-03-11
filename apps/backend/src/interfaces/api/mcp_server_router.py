@@ -96,6 +96,12 @@ class DiscoverRequest(BaseModel):
     server_id: str = ""
 
 
+class DiscoverResponse(BaseModel):
+    tools: list[ToolMetaSchema]
+    server_name: str = ""
+    version: str = ""
+
+
 class TestConnectionRequest(BaseModel):
     transport: str = "http"
     url: str = ""
@@ -256,14 +262,14 @@ async def delete_mcp_server(
     await use_case.execute(server_id)
 
 
-@router.post("/discover", response_model=list[ToolMetaSchema])
+@router.post("/discover", response_model=DiscoverResponse)
 @inject
 async def discover_tools(
     body: DiscoverRequest,
     use_case: DiscoverMcpServerUseCase = Depends(
         Provide[Container.discover_mcp_server_use_case]
     ),
-) -> list[ToolMetaSchema]:
+) -> DiscoverResponse:
     try:
         tools = await use_case.execute(
             transport=body.transport,
@@ -278,7 +284,10 @@ async def discover_tools(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to discover tools: {e}",
         ) from None
-    return [ToolMetaSchema(name=t.name, description=t.description) for t in tools]
+    return DiscoverResponse(
+        tools=[ToolMetaSchema(name=t.name, description=t.description) for t in tools],
+        server_name=body.url or body.command,
+    )
 
 
 @router.post(

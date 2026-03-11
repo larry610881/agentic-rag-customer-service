@@ -104,17 +104,17 @@ export function AddMcpServerDialog() {
       return;
     }
 
+    const base = {
+      name: name.trim(),
+      description: description.trim() || undefined,
+      available_tools: discovered?.tools ?? [],
+    };
+
     const payload =
       transport === "http"
-        ? {
-            name: name.trim(),
-            description: description.trim() || undefined,
-            transport: "http" as const,
-            url,
-          }
+        ? { ...base, transport: "http" as const, url }
         : {
-            name: name.trim(),
-            description: description.trim() || undefined,
+            ...base,
             transport: "stdio" as const,
             command,
             args: args.split(/\s+/).filter(Boolean),
