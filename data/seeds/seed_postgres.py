@@ -184,14 +184,15 @@ async def seed() -> None:
             # ── Tenants ───────────────────────────────────
             for t in TENANTS:
                 await session.execute(text("""
-                    INSERT INTO tenants (id, name, plan, allowed_agent_modes, created_at, updated_at)
-                    VALUES (:id, :name, :plan, :allowed_agent_modes, :created_at, :updated_at)
+                    INSERT INTO tenants (id, name, plan, allowed_agent_modes, allowed_widget_avatar, created_at, updated_at)
+                    VALUES (:id, :name, :plan, :allowed_agent_modes, :allowed_widget_avatar, :created_at, :updated_at)
                     ON CONFLICT (id) DO NOTHING
                 """), {
                     "id": t["id"],
                     "name": t["name"],
                     "plan": t["plan"],
                     "allowed_agent_modes": '["router", "react"]',
+                    "allowed_widget_avatar": False,
                     "created_at": now,
                     "updated_at": now,
                 })
