@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Web Bot Widget + Avatar — IIFE Library Mode + Tenant Feature Gate + Agent Team 3 並行](#web-bot-widget--avatar--iife-library-mode--tenant-feature-gate--agent-team-3-並行)
 - [System Admin UI 重構 — 保留租戶 Pattern + ErrorReporter Port/Adapter + Agent Team 並行](#system-admin-ui-重構--保留租戶-pattern--errorreporter-portadapter--agent-team-並行)
 - [診斷規則可編輯化 — Singleton Config Pattern + Rule Engine 通用化](#診斷規則可編輯化--singleton-config-pattern--rule-engine-通用化)
 - [Qdrant Payload Index + env_values 加密 — 隱憂驅動的跨層修復](#qdrant-payload-index--env_values-加密--隱憂驅動的跨層修復)
@@ -56,6 +57,39 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Web Bot Widget + Avatar — IIFE Library Mode + Tenant Feature Gate + Agent Team 3 並行
+
+> **Sprint 來源**：S5 Widget + Avatar（Issue #21）
+> **日期**：2026-03-12
+> **影響範圍**：Backend DDD 4 層 + Widget 新專案 + Frontend 管理後台（49 files, +3152 lines）
+
+### 本次相關主題
+
+Vite Library Mode IIFE、Tenant Feature Gate Pattern、Avatar 動態載入、Agent Team 3-worker 並行
+
+### 做得好的地方
+
+- **Tenant Feature Gate Pattern**：`allowed_widget_avatar` 仿照 `allowed_agent_modes` 模式，在 Tenant entity 加布林旗標，widget_router 在回傳 config 時檢查權限、前端 UI 依權限 disable — 三層一致的 gate 機制
+- **Vite Library Mode IIFE**：Widget 打包為單一 `widget.js`（11KB / 3.9KB gzip），純 vanilla TS 無框架依賴，`postbuild` 自動複製到 backend static — 部署零配置
+- **Avatar 動態載入**：`avatar-manager.ts` 用 `import()` 按需載入 Live2D/VRM 渲染器，avatar_type 為 "none" 時完全不載入，零 overhead
+- **Agent Team 並行**：3 worker（backend / widget / frontend）並行開發，各自獨立檔案群無衝突，開發效率 ~3x
+- **DDD 4 層貫穿一致**：新增 5 個欄位（1 tenant + 4 bot），嚴格遵循 Entity → UseCase → Model/Repo → Router 順序
+
+### 潛在隱憂
+
+- **Avatar 模型檔體積**：Live2D/VRM 模型檔可達數 MB，目前由 StaticFiles serve — 生產環境應走 CDN + Cache-Control → 優先級：中
+- **Widget CSS 隔離**：widget.css 直接注入 `<style>` 到宿主頁面，可能與宿主樣式衝突 — 應考慮 Shadow DOM 封裝 → 優先級：中
+- **SSE 連線管理**：Widget chat 使用 `fetch` + `ReadableStream` 模擬 SSE（非 EventSource），沒有自動重連機制 — 弱網環境可能斷線 → 優先級：低
+- **預設角色常數放 Domain 層**：`PRESET_AVATARS` 包含 URL 路徑（`/static/models/...`），嚴格來說是 Infrastructure 關注點 — 但因為是靜態常數且由 Interfaces 層消費，實務上可接受 → 優先級：低
+
+### 延伸學習
+
+- **Shadow DOM Encapsulation**：Web Component 的 Shadow DOM 可完全隔離 CSS，避免宿主頁面互相污染 — 跟 Widget 嵌入場景直接相關
+- **Feature Flag / Feature Gate**：本次用簡單的 DB boolean，生產級可用 LaunchDarkly / Unleash 等服務做漸進式 rollout
+- **Dynamic Import + Code Splitting**：Vite 的 `import()` 在 library mode 下會 inline 為同一 IIFE bundle（不做 chunk split），若 avatar renderer 引入大型 3D 庫需考慮外部化
 
 ---
 
