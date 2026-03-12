@@ -21,4 +21,7 @@ export const ROUTES = {
   ADMIN_TOKEN_USAGE: "/admin/token-usage",
   ADMIN_MCP_REGISTRY: "/admin/mcp-registry",
   ADMIN_TENANTS: "/admin/tenants",
+  ADMIN_PROMPTS: "/admin/prompts",
+  ADMIN_DIAGNOSTIC_RULES: "/admin/diagnostic-rules",
+  ADMIN_RATE_LIMITS: "/admin/rate-limits",
 } as const;

@@ -22,6 +22,7 @@ export const queryKeys = {
   bots: {
     all: (tenantId: string) => ["bots", tenantId] as const,
     detail: (botId: string) => ["bots", "detail", botId] as const,
+    avatarPresets: ["bots", "avatar-presets"] as const,
   },
   conversations: {
     all: (tenantId: string, botId?: string | null) =>
@@ -74,5 +75,8 @@ export const queryKeys = {
     tokenUsage: (days: number, tenantId?: string) =>
       ["observability", "token-usage", days, tenantId ?? "all"] as const,
     diagnosticRules: ["observability", "diagnostic-rules"] as const,
+  },
+  rateLimits: {
+    byTenant: (tenantId: string) => ["rate-limits", tenantId] as const,
   },
 };

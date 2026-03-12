@@ -28,6 +28,9 @@ const AdminObservabilityPage = lazy(() => import("@/pages/admin-observability"))
 const AdminTokenUsagePage = lazy(() => import("@/pages/admin-token-usage"));
 const AdminMcpRegistryPage = lazy(() => import("@/pages/admin-mcp-registry"));
 const AdminTenantsPage = lazy(() => import("@/pages/admin-tenants"));
+const AdminPromptsPage = lazy(() => import("@/pages/admin-prompts"));
+const AdminDiagnosticRulesPage = lazy(() => import("@/pages/admin-diagnostic-rules"));
+const AdminRateLimitsPage = lazy(() => import("@/pages/admin-rate-limits"));
 
 function PageFallback() {
   return (
@@ -109,6 +112,18 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_TENANTS}
               element={<AdminTenantsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_PROMPTS}
+              element={<AdminPromptsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_DIAGNOSTIC_RULES}
+              element={<AdminDiagnosticRulesPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_RATE_LIMITS}
+              element={<AdminRateLimitsPage />}
             />
           </Route>
         </Route>

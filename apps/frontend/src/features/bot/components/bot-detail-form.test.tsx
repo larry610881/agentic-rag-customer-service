@@ -21,6 +21,8 @@ describe("BotDetailForm", () => {
           name: "Test Tenant",
           plan: "pro",
           allowed_agent_modes: ["router", "react"],
+          allowed_widget_avatar: false,
+          monthly_token_limit: null,
           created_at: "2024-01-01T00:00:00Z",
           updated_at: "2024-01-01T00:00:00Z",
         },

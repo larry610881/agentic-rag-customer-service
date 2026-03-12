@@ -275,6 +275,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.mcp_server_router",
             "src.interfaces.api.observability_router",
             "src.interfaces.api.system_prompt_router",
+            "src.interfaces.api.widget_router",
             "src.interfaces.api.deps",
         ],
     )

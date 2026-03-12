@@ -16,6 +16,7 @@ from src.application.bot.list_all_bots_use_case import ListAllBotsUseCase
 from src.application.bot.list_bots_use_case import ListBotsUseCase
 from src.application.bot.update_bot_use_case import UpdateBotCommand, UpdateBotUseCase
 from src.container import Container
+from src.domain.bot.avatar_presets import PRESET_AVATARS
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 
@@ -59,6 +60,13 @@ class CreateBotRequest(BaseModel):
     base_prompt: str = ""
     router_prompt: str = ""
     react_prompt: str = ""
+    widget_enabled: bool = False
+    widget_allowed_origins: list[str] = []
+    widget_keep_history: bool = True
+    avatar_type: str = "none"
+    avatar_model_url: str = ""
+    widget_welcome_message: str = ""
+    widget_placeholder_text: str = ""
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -91,6 +99,13 @@ class UpdateBotRequest(BaseModel):
     base_prompt: str | None = None
     router_prompt: str | None = None
     react_prompt: str | None = None
+    widget_enabled: bool | None = None
+    widget_allowed_origins: list[str] | None = None
+    widget_keep_history: bool | None = None
+    avatar_type: str | None = None
+    avatar_model_url: str | None = None
+    widget_welcome_message: str | None = None
+    widget_placeholder_text: str | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -126,6 +141,13 @@ class BotResponse(BaseModel):
     base_prompt: str
     router_prompt: str
     react_prompt: str
+    widget_enabled: bool
+    widget_allowed_origins: list[str]
+    widget_keep_history: bool
+    avatar_type: str
+    avatar_model_url: str
+    widget_welcome_message: str
+    widget_placeholder_text: str
     line_channel_secret: str | None
     line_channel_access_token: str | None
     created_at: str
@@ -183,6 +205,13 @@ def _to_response(bot) -> BotResponse:
         base_prompt=bot.base_prompt,
         router_prompt=bot.router_prompt,
         react_prompt=bot.react_prompt,
+        widget_enabled=bot.widget_enabled,
+        widget_allowed_origins=bot.widget_allowed_origins,
+        widget_keep_history=bot.widget_keep_history,
+        avatar_type=bot.avatar_type,
+        avatar_model_url=bot.avatar_model_url,
+        widget_welcome_message=bot.widget_welcome_message,
+        widget_placeholder_text=bot.widget_placeholder_text,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
         created_at=bot.created_at.isoformat(),
@@ -245,6 +274,13 @@ async def create_bot(
             mcp_servers=body.mcp_servers,
             mcp_bindings=body.mcp_bindings,
             max_tool_calls=body.max_tool_calls,
+            widget_enabled=body.widget_enabled,
+            widget_allowed_origins=body.widget_allowed_origins,
+            widget_keep_history=body.widget_keep_history,
+            avatar_type=body.avatar_type,
+            avatar_model_url=body.avatar_model_url,
+            widget_welcome_message=body.widget_welcome_message,
+            widget_placeholder_text=body.widget_placeholder_text,
             base_prompt=body.base_prompt,
             router_prompt=body.router_prompt,
             react_prompt=body.react_prompt,
@@ -253,6 +289,12 @@ async def create_bot(
         )
     )
     return _to_response(bot)
+
+
+@router.get("/avatar-presets")
+async def get_avatar_presets() -> dict:
+    """Public endpoint: list available avatar presets."""
+    return PRESET_AVATARS
 
 
 @router.get("", response_model=list[BotResponse])

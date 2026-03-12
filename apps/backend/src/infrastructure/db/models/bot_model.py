@@ -63,6 +63,27 @@ class BotModel(Base):
     base_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     router_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     react_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    widget_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    widget_allowed_origins: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    widget_keep_history: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    avatar_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none"
+    )
+    avatar_model_url: Mapped[str] = mapped_column(
+        String(512), nullable=False, default=""
+    )
+    widget_welcome_message: Mapped[str] = mapped_column(
+        String(500), nullable=False, default=""
+    )
+    widget_placeholder_text: Mapped[str] = mapped_column(
+        String(200), nullable=False, default=""
+    )
     line_channel_secret: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )

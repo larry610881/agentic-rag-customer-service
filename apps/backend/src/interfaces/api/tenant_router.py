@@ -29,12 +29,17 @@ class UpdateTenantConfigRequest(BaseModel):
     monthly_token_limit: int | None = None
 
 
+class UpdateTenantWidgetAvatarRequest(BaseModel):
+    allowed_widget_avatar: bool
+
+
 class TenantResponse(BaseModel):
     id: str
     name: str
     plan: str
     allowed_agent_modes: list[str]
     monthly_token_limit: int | None = None
+    allowed_widget_avatar: bool = False
     created_at: str
     updated_at: str
 
@@ -46,6 +51,7 @@ def _to_response(t: Tenant) -> TenantResponse:
         plan=t.plan,
         allowed_agent_modes=t.allowed_agent_modes,
         monthly_token_limit=t.monthly_token_limit,
+        allowed_widget_avatar=t.allowed_widget_avatar,
         created_at=t.created_at.isoformat(),
         updated_at=t.updated_at.isoformat(),
     )
@@ -157,5 +163,27 @@ async def update_tenant_config(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from None
     tenant.monthly_token_limit = body.monthly_token_limit
+    await tenant_repo.save(tenant)
+    return _to_response(tenant)
+
+
+@router.patch("/{tenant_id}/widget-avatar", response_model=TenantResponse)
+@inject
+async def update_tenant_widget_avatar(
+    tenant_id: str,
+    body: UpdateTenantWidgetAvatarRequest,
+    _: CurrentTenant = Depends(require_role("system_admin")),
+    use_case: GetTenantUseCase = Depends(
+        Provide[Container.get_tenant_use_case]
+    ),
+    tenant_repo=Depends(Provide[Container.tenant_repository]),
+) -> TenantResponse:
+    try:
+        tenant = await use_case.execute(tenant_id)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
+    tenant.allowed_widget_avatar = body.allowed_widget_avatar
     await tenant_repo.save(tenant)
     return _to_response(tenant)

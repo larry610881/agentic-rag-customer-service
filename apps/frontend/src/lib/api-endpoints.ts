@@ -7,6 +7,7 @@ export const API_ENDPOINTS = {
     list: "/api/v1/tenants",
     create: "/api/v1/tenants",
     config: (id: string) => `/api/v1/tenants/${id}/config`,
+    widgetAvatar: (id: string) => `/api/v1/tenants/${id}/widget-avatar`,
   },
   knowledgeBases: {
     list: "/api/v1/knowledge-bases",
@@ -46,6 +47,7 @@ export const API_ENDPOINTS = {
     detail: (id: string) => `/api/v1/bots/${id}`,
     update: (id: string) => `/api/v1/bots/${id}`,
     delete: (id: string) => `/api/v1/bots/${id}`,
+    avatarPresets: "/api/v1/bots/avatar-presets",
   },
   conversations: {
     list: (botId?: string | null) =>
@@ -110,5 +112,8 @@ export const API_ENDPOINTS = {
     tokenUsage: "/api/v1/observability/token-usage",
     diagnosticRules: "/api/v1/observability/diagnostic-rules",
     resetDiagnosticRules: "/api/v1/observability/diagnostic-rules/reset",
+  },
+  rateLimits: {
+    byTenant: (tenantId: string) => `/api/v1/admin/rate-limits/${tenantId}`,
   },
 } as const;

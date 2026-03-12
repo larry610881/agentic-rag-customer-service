@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +20,9 @@ class TenantModel(Base):
     )
     monthly_token_limit: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
+    )
+    allowed_widget_avatar: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
     )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,

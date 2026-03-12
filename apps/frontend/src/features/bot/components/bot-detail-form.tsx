@@ -1,12 +1,17 @@
 import { useState, useEffect, useCallback } from "react";
 import { useForm, Controller, type UseFormRegister } from "react-hook-form";
+import { useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Copy, Check, ChevronRight } from "lucide-react";
+import { Copy, Check, ChevronRight, Globe } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
+import { API_ENDPOINTS } from "@/lib/api-endpoints";
+import { queryKeys } from "@/hooks/queries/keys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -73,6 +78,13 @@ const botFormSchema = z.object({
   base_prompt: z.string().default(""),
   router_prompt: z.string().default(""),
   react_prompt: z.string().default(""),
+  widget_enabled: z.boolean().default(false),
+  widget_allowed_origins: z.string().default(""),
+  widget_keep_history: z.boolean().default(true),
+  avatar_type: z.enum(["none", "live2d", "vrm"]).default("none"),
+  avatar_model_url: z.string().default(""),
+  widget_welcome_message: z.string().max(500).default(""),
+  widget_placeholder_text: z.string().max(200).default(""),
   line_channel_secret: z.string().nullable().optional(),
   line_channel_access_token: z.string().nullable().optional(),
 });
@@ -87,22 +99,30 @@ interface BotDetailFormProps {
   isDeleting: boolean;
 }
 
+interface AvatarPreset {
+  name: string;
+  label: string;
+  type: "live2d" | "vrm";
+  url: string;
+}
+
 const TAB_KEYS = {
   KNOWLEDGE: "knowledge",
   PROMPT: "prompt",
   LLM: "llm",
+  WIDGET: "widget",
   LINE: "line",
 } as const;
 
-function WebhookCopyButton({ url }: { url: string }) {
+function WebhookCopyButton({ url, label = "Webhook URL" }: { url: string; label?: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(url);
-    toast.success("已複製 Webhook URL");
+    toast.success(`已複製${label}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [url]);
+  }, [url, label]);
 
   return (
     <Button
@@ -110,7 +130,7 @@ function WebhookCopyButton({ url }: { url: string }) {
       variant="outline"
       size="icon"
       onClick={handleCopy}
-      aria-label="複製 Webhook URL"
+      aria-label={`複製 ${label}`}
     >
       {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
     </Button>
@@ -188,6 +208,19 @@ export function BotDetailForm({
   const tenants = useAuthStore((s) => s.tenants);
   const currentTenant = tenants.find((t) => t.id === tenantId);
   const allowedModes = currentTenant?.allowed_agent_modes ?? ["router"];
+  const allowedWidgetAvatar = currentTenant?.allowed_widget_avatar ?? false;
+  const token = useAuthStore((s) => s.token);
+
+  const { data: avatarPresets } = useQuery({
+    queryKey: queryKeys.bots.avatarPresets,
+    queryFn: () =>
+      apiFetch<AvatarPreset[]>(
+        API_ENDPOINTS.bots.avatarPresets,
+        {},
+        token ?? undefined,
+      ),
+    enabled: !!token,
+  });
 
   const {
     register,
@@ -226,6 +259,13 @@ export function BotDetailForm({
       base_prompt: bot.base_prompt ?? "",
       router_prompt: bot.router_prompt ?? "",
       react_prompt: bot.react_prompt ?? "",
+      widget_enabled: bot.widget_enabled ?? false,
+      widget_allowed_origins: (bot.widget_allowed_origins ?? []).join("\n"),
+      widget_keep_history: bot.widget_keep_history ?? true,
+      avatar_type: bot.avatar_type ?? "none",
+      avatar_model_url: bot.avatar_model_url ?? "",
+      widget_welcome_message: bot.widget_welcome_message ?? "",
+      widget_placeholder_text: bot.widget_placeholder_text ?? "",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     },
@@ -279,6 +319,13 @@ export function BotDetailForm({
       base_prompt: bot.base_prompt ?? "",
       router_prompt: bot.router_prompt ?? "",
       react_prompt: bot.react_prompt ?? "",
+      widget_enabled: bot.widget_enabled ?? false,
+      widget_allowed_origins: (bot.widget_allowed_origins ?? []).join("\n"),
+      widget_keep_history: bot.widget_keep_history ?? true,
+      avatar_type: bot.avatar_type ?? "none",
+      avatar_model_url: bot.avatar_model_url ?? "",
+      widget_welcome_message: bot.widget_welcome_message ?? "",
+      widget_placeholder_text: bot.widget_placeholder_text ?? "",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     });
@@ -293,8 +340,16 @@ export function BotDetailForm({
       setActiveTab(TAB_KEYS.KNOWLEDGE);
       return;
     }
+    // Convert widget_allowed_origins from newline-separated string to array
+    const originsStr = data.widget_allowed_origins as string;
+    const payload = {
+      ...data,
+      widget_allowed_origins: originsStr
+        ? originsStr.split("\n").map((s) => s.trim()).filter(Boolean)
+        : [],
+    };
     try {
-      await onSave(data);
+      await onSave(payload);
       toast.success("機器人設定已儲存");
     } catch {
       toast.error("儲存失敗，請稍後再試");
@@ -356,6 +411,9 @@ export function BotDetailForm({
           </TabsTrigger>
           <TabsTrigger value={TAB_KEYS.LLM} className="flex-1">
             LLM 參數
+          </TabsTrigger>
+          <TabsTrigger value={TAB_KEYS.WIDGET} className="flex-1">
+            Widget
           </TabsTrigger>
           <TabsTrigger value={TAB_KEYS.LINE} className="flex-1">
             LINE 頻道
@@ -830,7 +888,213 @@ export function BotDetailForm({
           </section>
         </TabsContent>
 
-        {/* Tab 4: LINE 頻道 */}
+        {/* Tab 4: Widget 設定 */}
+        <TabsContent value={TAB_KEYS.WIDGET} className="flex flex-col gap-6 pt-4">
+          {/* Widget 開關 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">Web Widget</h3>
+            <p className="text-sm text-muted-foreground">
+              啟用後，外部網站可嵌入聊天機器人。
+            </p>
+            <Controller
+              name="widget_enabled"
+              control={control}
+              render={({ field }) => (
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="widget-enabled"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                  <Label htmlFor="widget-enabled">
+                    {field.value ? "已啟用" : "未啟用"}
+                  </Label>
+                </div>
+              )}
+            />
+          </section>
+
+          {/* 允許來源 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">允許來源</h3>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="widget-origins">
+                允許的網域（每行一個）
+              </Label>
+              <Textarea
+                id="widget-origins"
+                {...register("widget_allowed_origins")}
+                rows={4}
+                placeholder={"https://shop.example.com\nhttps://www.example.com"}
+              />
+              <p className="text-xs text-muted-foreground">
+                只有在此清單中的網域可以呼叫 Widget API。留空則不允許任何來源。
+              </p>
+            </div>
+          </section>
+
+          {/* 對話歷史保留 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">對話歷史</h3>
+            <Controller
+              name="widget_keep_history"
+              control={control}
+              render={({ field }) => (
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="widget-keep-history"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                  <Label htmlFor="widget-keep-history">
+                    {field.value ? "保留對話歷史" : "每次獨立對話"}
+                  </Label>
+                </div>
+              )}
+            />
+            <p className="text-sm text-muted-foreground">
+              關閉後，每次對話都是獨立的，適合純 FAQ 場景。
+            </p>
+          </section>
+
+          {/* Avatar 角色選擇 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">Avatar 角色選擇</h3>
+            <Controller
+              name="avatar_type"
+              control={control}
+              render={({ field: avatarField }) => {
+                // Build a combined select value for preset matching
+                const avatarUrl = watch("avatar_model_url");
+                const selectValue = (() => {
+                  if (avatarField.value === "none") return "__none__";
+                  // Check if current URL matches a preset
+                  const matched = avatarPresets?.find(
+                    (p) => p.type === avatarField.value && p.url === avatarUrl,
+                  );
+                  if (matched) return `preset:${matched.name}`;
+                  return "__custom__";
+                })();
+
+                return (
+                  <div className="flex flex-col gap-3">
+                    <Select
+                      value={selectValue}
+                      onValueChange={(v) => {
+                        if (v === "__none__") {
+                          avatarField.onChange("none");
+                          setValue("avatar_model_url", "");
+                        } else if (v === "__custom__") {
+                          avatarField.onChange("vrm");
+                          setValue("avatar_model_url", "");
+                        } else if (v.startsWith("preset:")) {
+                          const presetName = v.replace("preset:", "");
+                          const preset = avatarPresets?.find((p) => p.name === presetName);
+                          if (preset) {
+                            avatarField.onChange(preset.type);
+                            setValue("avatar_model_url", preset.url);
+                          }
+                        }
+                      }}
+                      disabled={!allowedWidgetAvatar}
+                    >
+                      <SelectTrigger className="w-64">
+                        <SelectValue placeholder="選擇角色" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">無角色</SelectItem>
+                        {avatarPresets?.map((preset) => (
+                          <SelectItem
+                            key={preset.name}
+                            value={`preset:${preset.name}`}
+                          >
+                            {preset.label}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__custom__">自訂 URL（進階）</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {!allowedWidgetAvatar && (
+                      <p className="text-xs text-muted-foreground">
+                        租戶未啟用此功能，請聯絡系統管理員開啟 Widget Avatar 權限。
+                      </p>
+                    )}
+                    {selectValue === "__custom__" && (
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="avatar-model-url">模型 URL</Label>
+                        <Input
+                          id="avatar-model-url"
+                          {...register("avatar_model_url")}
+                          placeholder="https://example.com/model.vrm"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              }}
+            />
+          </section>
+
+          {/* 歡迎訊息 + Placeholder */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">Widget 文字設定</h3>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="widget-welcome-msg">歡迎訊息</Label>
+              <Input
+                id="widget-welcome-msg"
+                {...register("widget_welcome_message")}
+                placeholder="你好！有什麼可以幫你的嗎？"
+                maxLength={500}
+              />
+              {errors.widget_welcome_message && (
+                <p className="text-sm text-destructive">
+                  {errors.widget_welcome_message.message}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Widget 開啟時顯示的歡迎訊息（最多 500 字）
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="widget-placeholder">輸入框提示文字</Label>
+              <Input
+                id="widget-placeholder"
+                {...register("widget_placeholder_text")}
+                placeholder="請輸入訊息..."
+                maxLength={200}
+              />
+              {errors.widget_placeholder_text && (
+                <p className="text-sm text-destructive">
+                  {errors.widget_placeholder_text.message}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Widget 輸入框的 placeholder 文字（最多 200 字）
+              </p>
+            </div>
+          </section>
+
+          {/* 嵌入碼預覽 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">嵌入碼</h3>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-start gap-2">
+                <pre className="flex-1 whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs font-mono select-all">
+                  {`<script src="${import.meta.env.VITE_API_URL || "http://localhost:8000"}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light">\n</script>`}
+                </pre>
+                <WebhookCopyButton
+                  url={`<script src="${import.meta.env.VITE_API_URL || "http://localhost:8000"}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light">\n</script>`}
+                  label="嵌入碼"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                將此程式碼貼入外部網站的 HTML 即可嵌入聊天機器人。
+              </p>
+            </div>
+          </section>
+        </TabsContent>
+
+        {/* Tab 5: LINE 頻道 */}
         <TabsContent value={TAB_KEYS.LINE} className="flex flex-col gap-6 pt-4">
           {/* Webhook URL */}
           <section className="flex flex-col gap-4">

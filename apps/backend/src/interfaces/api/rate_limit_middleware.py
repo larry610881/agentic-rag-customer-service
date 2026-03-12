@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 ENDPOINT_GROUP_MAP: dict[str, str | None] = {
     "/api/v1/webhook": "webhook",
+    "/api/v1/widget": "widget",
     "/api/v1/rag": "rag",
     "/api/v1/agent": "rag",
     "/api/v1/feedback": "feedback",

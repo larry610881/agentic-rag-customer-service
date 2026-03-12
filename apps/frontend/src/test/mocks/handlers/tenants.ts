@@ -15,6 +15,8 @@ export const tenantHandlers = [
         name: body.name,
         plan: body.plan || "starter",
         allowed_agent_modes: ["router"],
+        allowed_widget_avatar: false,
+        monthly_token_limit: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },

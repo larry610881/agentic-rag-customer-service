@@ -5,7 +5,6 @@ import {
   Bot,
   BookOpen,
   BarChart3,
-  Settings,
   ScrollText,
   Activity,
   Coins,
@@ -18,6 +17,10 @@ import {
   ChevronRight,
   Layers,
   Building,
+  Plug,
+  FileText,
+  Stethoscope,
+  Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -37,11 +40,14 @@ const systemAdminItems = [
   { href: "/admin/knowledge-bases", label: "所有知識庫", icon: BookOpen },
   { href: "/admin/bots", label: "所有機器人", icon: Bot },
   { href: "/admin/users", label: "帳號管理", icon: Users },
+  { href: "/settings/providers", label: "供應商設定", icon: Plug },
+  { href: "/admin/prompts", label: "系統提示詞", icon: FileText },
+  { href: "/admin/diagnostic-rules", label: "診斷規則", icon: Stethoscope },
+  { href: "/admin/rate-limits", label: "速率限制", icon: Gauge },
   { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
   { href: "/admin/observability", label: "可觀測性", icon: Activity },
   { href: "/admin/token-usage", label: "Token 用量", icon: Coins },
   { href: "/admin/mcp-registry", label: "MCP 工具庫", icon: Puzzle },
-  { href: "/settings", label: "設定", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -101,7 +107,7 @@ export function Sidebar() {
           </>
         ) : (
           <>
-            {[...generalNavItems, { href: "/settings", label: "設定", icon: Settings }].map(
+            {generalNavItems.map(
               (item) => renderNavItem(item, pathname, isCollapsed),
             )}
           </>

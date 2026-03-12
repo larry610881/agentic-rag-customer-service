@@ -220,6 +220,19 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
 
         application.include_router(observability_router)
 
+        from src.interfaces.api.widget_router import router as widget_router
+
+        application.include_router(widget_router)
+
+    # Static files for widget.js
+    import os
+
+    from starlette.staticfiles import StaticFiles
+
+    static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+    if os.path.isdir(static_dir):
+        application.mount("/static", StaticFiles(directory=static_dir), name="static")
+
     # Webhook module: LINE Bot
     if "webhook" in modules:
         from src.interfaces.api.line_webhook_router import router as line_webhook_router

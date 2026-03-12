@@ -69,6 +69,13 @@ class Bot:
     base_prompt: str = ""       # 空 = 用系統預設
     router_prompt: str = ""     # 空 = 用系統預設
     react_prompt: str = ""      # 空 = 用系統預設
+    widget_enabled: bool = False
+    widget_allowed_origins: list[str] = field(default_factory=list)
+    widget_keep_history: bool = True
+    avatar_type: str = "none"              # "none" | "live2d" | "vrm"
+    avatar_model_url: str = ""
+    widget_welcome_message: str = ""
+    widget_placeholder_text: str = ""
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     created_at: datetime = field(

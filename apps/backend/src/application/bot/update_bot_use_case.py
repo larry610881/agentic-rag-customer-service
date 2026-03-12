@@ -44,6 +44,13 @@ class UpdateBotCommand:
     base_prompt: object = _UNSET
     router_prompt: object = _UNSET
     react_prompt: object = _UNSET
+    widget_enabled: object = _UNSET
+    widget_allowed_origins: object = _UNSET
+    widget_keep_history: object = _UNSET
+    avatar_type: object = _UNSET
+    avatar_model_url: object = _UNSET
+    widget_welcome_message: object = _UNSET
+    widget_placeholder_text: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
 
@@ -69,6 +76,9 @@ class UpdateBotUseCase:
             "agent_mode", "audit_mode",
             "eval_provider", "eval_model", "eval_depth",
             "max_tool_calls",
+            "widget_enabled", "widget_keep_history",
+            "avatar_type", "avatar_model_url",
+            "widget_welcome_message", "widget_placeholder_text",
             "base_prompt", "router_prompt", "react_prompt",
             "line_channel_secret", "line_channel_access_token",
         )
@@ -81,6 +91,8 @@ class UpdateBotUseCase:
             bot.knowledge_base_ids = list(command.knowledge_base_ids)  # type: ignore[arg-type]
         if command.enabled_tools is not _UNSET:
             bot.enabled_tools = list(command.enabled_tools)  # type: ignore[arg-type]
+        if command.widget_allowed_origins is not _UNSET:
+            bot.widget_allowed_origins = list(command.widget_allowed_origins)  # type: ignore[arg-type]
         if command.mcp_servers is not _UNSET:
             bot.mcp_servers = [
                 McpServerConfig(

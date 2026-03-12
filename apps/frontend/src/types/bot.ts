@@ -41,6 +41,13 @@ export interface Bot {
   base_prompt: string;
   router_prompt: string;
   react_prompt: string;
+  widget_enabled: boolean;
+  widget_allowed_origins: string[];
+  widget_keep_history: boolean;
+  avatar_type: "none" | "live2d" | "vrm";
+  avatar_model_url: string;
+  widget_welcome_message: string;
+  widget_placeholder_text: string;
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
   created_at: string;
@@ -74,6 +81,13 @@ export interface CreateBotRequest {
   base_prompt?: string;
   router_prompt?: string;
   react_prompt?: string;
+  widget_enabled?: boolean;
+  widget_allowed_origins?: string[];
+  widget_keep_history?: boolean;
+  avatar_type?: "none" | "live2d" | "vrm";
+  avatar_model_url?: string;
+  widget_welcome_message?: string;
+  widget_placeholder_text?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }
@@ -105,6 +119,13 @@ export interface UpdateBotRequest {
   base_prompt?: string;
   router_prompt?: string;
   react_prompt?: string;
+  widget_enabled?: boolean;
+  widget_allowed_origins?: string[];
+  widget_keep_history?: boolean;
+  avatar_type?: "none" | "live2d" | "vrm";
+  avatar_model_url?: string;
+  widget_welcome_message?: string;
+  widget_placeholder_text?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }
