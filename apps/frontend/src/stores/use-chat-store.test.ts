@@ -11,6 +11,8 @@ describe("useChatStore", () => {
       knowledgeBaseId: null,
       botId: null,
       botName: null,
+      avatarType: null,
+      avatarModelUrl: null,
     });
   });
 
@@ -91,5 +93,29 @@ describe("useChatStore", () => {
     expect(state.botName).toBeNull();
     expect(state.messages).toEqual([]);
     expect(state.conversationId).toBeNull();
+  });
+
+  describe("avatar fields", () => {
+    it("selectBot 應設定 avatarType 和 avatarModelUrl", () => {
+      useChatStore.getState().selectBot("bot-1", "My Bot", "live2d", "/model.json");
+      const state = useChatStore.getState();
+      expect(state.avatarType).toBe("live2d");
+      expect(state.avatarModelUrl).toBe("/model.json");
+    });
+
+    it("selectBot 未傳 avatar 參數時應使用預設值", () => {
+      useChatStore.getState().selectBot("bot-1", "My Bot");
+      const state = useChatStore.getState();
+      expect(state.avatarType).toBe("none");
+      expect(state.avatarModelUrl).toBe("");
+    });
+
+    it("clearBot 應清除 avatar 欄位", () => {
+      useChatStore.getState().selectBot("bot-1", "Bot", "vrm", "/model.vrm");
+      useChatStore.getState().clearBot();
+      const state = useChatStore.getState();
+      expect(state.avatarType).toBeNull();
+      expect(state.avatarModelUrl).toBeNull();
+    });
   });
 });

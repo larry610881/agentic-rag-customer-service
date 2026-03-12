@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Avatar 真實渲染 — CDN 動態載入策略 + Widget/SPA 雙軌 Renderer 架構](#avatar-真實渲染--cdn-動態載入策略--widgetspa-雙軌-renderer-架構)
 - [Web Bot Widget + Avatar — IIFE Library Mode + Tenant Feature Gate + Agent Team 3 並行](#web-bot-widget--avatar--iife-library-mode--tenant-feature-gate--agent-team-3-並行)
 - [System Admin UI 重構 — 保留租戶 Pattern + ErrorReporter Port/Adapter + Agent Team 並行](#system-admin-ui-重構--保留租戶-pattern--errorreporter-portadapter--agent-team-並行)
 - [診斷規則可編輯化 — Singleton Config Pattern + Rule Engine 通用化](#診斷規則可編輯化--singleton-config-pattern--rule-engine-通用化)
@@ -57,6 +58,41 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Avatar 真實渲染 — CDN 動態載入策略 + Widget/SPA 雙軌 Renderer 架構
+
+> **Sprint 來源**：Issue #22 — Avatar 真實渲染 — Live2D + VRM + 後台 Chat 顯示
+> **日期**：2026-03-12
+> **涉及檔案**：19 個（Widget 4 + Frontend 10 + Backend 2 + BDD 2 + 模型檔案）
+> **非 trivial 判定**：跨端（Widget + Frontend SPA）、10+ 檔案、新增 CDN 動態載入 Pattern
+
+### 本次相關主題
+
+CDN 動態載入策略、Widget IIFE vs SPA npm 雙軌依賴、AvatarRenderer Interface 統一、Zustand Store 擴展
+
+### 做得好的地方
+
+- **雙軌依賴策略**：Widget（IIFE）用 CDN `<script>` 動態載入 pixi.js/three.js，Admin SPA 用 npm + Vite code-splitting `import()`。同一個 `AvatarRenderer` interface 在兩個環境都實現，但載入策略完全不同 — 這是 **Strategy Pattern** 在 module loading 層面的應用
+- **CDN Loader 去重設計**：`cdn-loader.ts` 使用 `Set<string>` 防止同一 script 重複載入 + timeout 機制防止 CDN 掛起阻塞 UI
+- **Live2D CDN 版本固釘**：Cubism Core 自建託管（`/static/libs/`），pixi.js/pixi-live2d-display 用固定版本 CDN — 避免第三方 CDN 升版導致破壞
+- **Three.js 版本降級決策**：Widget VRM renderer 使用 three@0.160.1 而非最新版，因為這是最後支援 `examples/js/` script-tag-compatible GLTFLoader 的版本 — 這是一個正確的務實決策
+- **AvatarPanel Cleanup Pattern**：React `useEffect` return cleanup 中 `cancelled` flag 防止 race condition（快速切換 Bot 時舊 renderer 不會掛載到新 container）
+- **Agent Team 3 並行**：model-worker（模型下載）、widget-worker（渲染器）、frontend-worker（UI 元件）同步執行，無互相依賴 — 有效利用 TaskCreate + blockedBy 結構
+
+### 潛在隱憂
+
+- **CDN 可用性風險** → cdn.jsdelivr.net 若下線，Widget Live2D/VRM 全部失效 → 建議：加入 fallback CDN（unpkg.com）或預載偵測機制 → 優先級：中
+- **Widget bundle 膨脹監控缺失** → 目前 14.39KB 但沒有 CI 的 bundle size check → 建議：在 CI 加 `size-limit` 或 Vite bundle analyzer 設 25KB 上限告警 → 優先級：低
+- **Live2D Cubism Core 授權** → live2dcubismcore.min.js 是 Live2D Inc. 專有授權，非 OSS — 商用部署前需確認授權範圍 → 優先級：高（商用前必解）
+- **pixi-live2d-display 維護停滯** → v0.4.0 已久未更新，pixi.js v8 不相容 — 未來升級 pixi.js 會是 breaking change → 優先級：低
+
+### 延伸學習
+
+- **Module Federation**：若未來需要在多個 SPA 共享 avatar 渲染能力，可研究 Webpack/Vite Module Federation 取代 CDN script tag — 搜尋：「Vite Module Federation plugin」
+- **Web Worker 渲染卸載**：Live2D/VRM 的 animation loop 佔主線程，高訊息量時可能影響 chat UI 流暢度 — 搜尋：「OffscreenCanvas transferControlToOffscreen Three.js」
+- **CDN Fallback Chain Pattern**：搜尋：「JavaScript CDN fallback chain pattern」— 多個 CDN 按優先級嘗試，第一個成功即停
 
 ---
 

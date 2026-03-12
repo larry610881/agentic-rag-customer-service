@@ -52,7 +52,7 @@ export function BotSelector() {
   }
 
   const handleSelect = (bot: Bot) => {
-    selectBot(bot.id, bot.name);
+    selectBot(bot.id, bot.name, bot.avatar_type, bot.avatar_model_url);
   };
 
   return (

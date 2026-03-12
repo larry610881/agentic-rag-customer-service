@@ -2,6 +2,7 @@ import { MessageList } from "@/features/chat/components/message-list";
 import { ChatInput } from "@/features/chat/components/chat-input";
 import { ConversationList } from "@/features/chat/components/conversation-list";
 import { BotSelector } from "@/features/chat/components/bot-selector";
+import { AvatarPanel } from "@/features/chat/components/avatar-panel";
 import { useChatStore } from "@/stores/use-chat-store";
 
 export default function ChatPage() {
@@ -17,6 +18,7 @@ export default function ChatPage() {
         <ConversationList />
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <AvatarPanel />
         <MessageList />
         <ChatInput />
       </div>

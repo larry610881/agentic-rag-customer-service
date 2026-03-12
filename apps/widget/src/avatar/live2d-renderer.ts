@@ -1,84 +1,112 @@
 import type { AvatarRenderer } from "../types";
+import { loadScript } from "./cdn-loader";
+
+/* Global declarations for CDN-loaded libraries */
+declare const PIXI: any;
+
+const CDN_PIXI = "https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js";
+const CDN_LIVE2D_DISPLAY =
+  "https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js";
 
 /**
- * Live2D avatar renderer stub.
+ * Live2D avatar renderer.
  *
- * Full implementation requires:
- *   - pixi.js (v7)
- *   - pixi-live2d-display
- *   - Cubism SDK Core (proprietary, must be downloaded separately)
- *
- * This scaffold shows a placeholder canvas with loading state.
- * Replace with actual PixiJS + Live2D integration when model files are available.
+ * Loads Cubism Core (self-hosted), pixi.js, and pixi-live2d-display from CDN,
+ * then renders a Live2D model with idle motion.
  */
 export class Live2DRenderer implements AvatarRenderer {
-  private canvas: HTMLCanvasElement | null = null;
-  private animFrame: number | null = null;
+  private app: any = null;
+  private container: HTMLElement | null = null;
 
-  constructor(private modelUrl: string) {}
+  constructor(
+    private modelUrl: string,
+    private apiBase: string,
+  ) {}
 
   async mount(container: HTMLElement): Promise<void> {
-    this.canvas = document.createElement("canvas");
-    this.canvas.width = container.clientWidth || 380;
-    this.canvas.height = 200;
-    this.canvas.style.width = "100%";
-    this.canvas.style.height = "100%";
-    container.appendChild(this.canvas);
+    this.container = container;
 
-    const ctx = this.canvas.getContext("2d");
-    if (!ctx) return;
+    try {
+      // Load Cubism Core first (must be available before pixi-live2d-display)
+      await loadScript(`${this.apiBase}/static/libs/live2dcubismcore.min.js`);
+      // Then load pixi.js
+      await loadScript(CDN_PIXI);
+      // Then load pixi-live2d-display (depends on both PIXI and CubismCore)
+      await loadScript(CDN_LIVE2D_DISPLAY);
 
-    // Placeholder: draw loading indicator
-    let frame = 0;
-    const draw = () => {
-      if (!ctx || !this.canvas) return;
-      const w = this.canvas.width;
-      const h = this.canvas.height;
-      ctx.clearRect(0, 0, w, h);
+      // pixi-live2d-display registers itself on PIXI.live2d
+      const Live2DModel = PIXI.live2d?.Live2DModel;
+      if (!Live2DModel) {
+        throw new Error("Live2DModel not found on PIXI.live2d");
+      }
 
-      // Background
-      ctx.fillStyle = "#f1f5f9";
-      ctx.fillRect(0, 0, w, h);
+      // Create PIXI Application
+      const width = container.clientWidth || 380;
+      const height = container.clientHeight || 180;
 
-      // Breathing circle animation (simulates idle)
-      const scale = 1 + Math.sin(frame * 0.03) * 0.08;
-      const cx = w / 2;
-      const cy = h / 2 - 10;
-      const radius = 30 * scale;
+      this.app = new PIXI.Application({
+        width,
+        height,
+        backgroundAlpha: 0,
+        autoStart: true,
+      });
+      container.appendChild(this.app.view as HTMLCanvasElement);
 
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.fillStyle = "#94a3b8";
-      ctx.fill();
+      // Style the canvas to fill container
+      const canvas = this.app.view as HTMLCanvasElement;
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
 
-      // Eyes
-      ctx.fillStyle = "#fff";
-      ctx.beginPath();
-      ctx.arc(cx - 10, cy - 5, 5, 0, Math.PI * 2);
-      ctx.arc(cx + 10, cy - 5, 5, 0, Math.PI * 2);
-      ctx.fill();
+      // Resolve model URL relative to backend origin
+      const fullModelUrl = this.modelUrl.startsWith("http")
+        ? this.modelUrl
+        : `${this.apiBase}${this.modelUrl}`;
 
-      // Label
-      ctx.fillStyle = "#64748b";
-      ctx.font = "12px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("Live2D Avatar", cx, cy + radius + 20);
-      ctx.fillText("(模型載入中...)", cx, cy + radius + 36);
+      // Load model
+      const model = await Live2DModel.from(fullModelUrl, {
+        autoInteract: false,
+      });
 
-      frame++;
-      this.animFrame = requestAnimationFrame(draw);
-    };
-    draw();
+      // Scale model to fit container
+      const scaleX = width / model.width;
+      const scaleY = height / model.height;
+      const scale = Math.min(scaleX, scaleY) * 0.85;
+      model.scale.set(scale);
+
+      // Center model
+      model.x = (width - model.width * scale) / 2;
+      model.y = (height - model.height * scale) / 2;
+
+      this.app.stage.addChild(model);
+
+      // Start idle motion if available
+      try {
+        model.motion("Idle");
+      } catch {
+        // Model may not have Idle motion group — that's fine
+      }
+    } catch (err) {
+      console.error("[widget] Live2D load failed:", err);
+      this.showFallback(container);
+    }
   }
 
   dispose(): void {
-    if (this.animFrame !== null) {
-      cancelAnimationFrame(this.animFrame);
-      this.animFrame = null;
+    if (this.app) {
+      this.app.destroy(true, { children: true, texture: true, baseTexture: true });
+      this.app = null;
     }
-    if (this.canvas?.parentElement) {
-      this.canvas.parentElement.removeChild(this.canvas);
-    }
-    this.canvas = null;
+    this.container = null;
+  }
+
+  private showFallback(container: HTMLElement): void {
+    // Clean any partial rendering
+    container.innerHTML = "";
+
+    const fallback = document.createElement("div");
+    fallback.style.cssText =
+      "display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#f1f5f9;color:#64748b;font:14px sans-serif;border-radius:8px;";
+    fallback.textContent = "Avatar \u8F09\u5165\u5931\u6557";
+    container.appendChild(fallback);
   }
 }

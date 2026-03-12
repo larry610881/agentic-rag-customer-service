@@ -49,7 +49,7 @@ export class Widget {
   }
 
   private async initAvatar(): Promise<void> {
-    this.avatar = await loadAvatar(this.config);
+    this.avatar = await loadAvatar(this.config, this.apiBase);
     if (!this.avatar) return;
 
     // Create avatar container and insert before messages
