@@ -11,7 +11,6 @@ print("[startup] importing modules ...", flush=True)
 
 try:
     from fastapi import FastAPI, Request
-    from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
 
     from src.config import settings
@@ -76,6 +75,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     container = Container()
 
+    # E2E mode: override llm_service so react_agent_service also uses FakeLLM
+    if container.config().e2e_mode:
+        container.llm_service.override(container._static_llm_service)
+
     application = FastAPI(
         title="Agentic RAG Customer Service",
         version="0.1.0",
@@ -115,10 +118,12 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
             global_rpm=settings.rate_limit_global_rpm,
         )
 
+    from src.interfaces.api.middleware import CORSMiddlewareWithExclusions
+
     cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     print(f"[startup] CORS origins: {cors_origins!r}", flush=True)
     application.add_middleware(
-        CORSMiddleware,
+        CORSMiddlewareWithExclusions,
         allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],

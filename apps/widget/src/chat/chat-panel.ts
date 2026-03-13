@@ -61,6 +61,9 @@ export class ChatPanel {
     // Messages
     const messagesEl = document.createElement("div");
     messagesEl.className = "aw-messages";
+    if (config.avatar_type && config.avatar_type !== "none") {
+      messagesEl.classList.add("aw-messages--has-avatar");
+    }
     this.element.appendChild(messagesEl);
     this.messageList = new MessageList(messagesEl);
 

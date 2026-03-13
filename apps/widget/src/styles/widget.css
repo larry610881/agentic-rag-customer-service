@@ -187,6 +187,43 @@
   cursor: not-allowed;
 }
 
+/* ── Avatar Speech Bubble (bot messages when avatar is present) ── */
+.aw-messages--has-avatar .aw-bubble--bot {
+  position: relative;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px 16px 16px 4px;
+  margin-left: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+/* 左上角小三角 tail，指向上方 avatar */
+.aw-messages--has-avatar .aw-bubble--bot::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-left: 1px solid #e2e8f0;
+  border-top: 1px solid #e2e8f0;
+  transform: rotate(45deg);
+}
+/* 淡入動畫 */
+.aw-messages--has-avatar .aw-bubble--bot {
+  animation: aw-bubble-in 0.3s ease-out;
+}
+@keyframes aw-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 
 @media (max-width: 480px) {

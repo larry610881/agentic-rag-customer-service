@@ -7,11 +7,9 @@ import { useChatStore } from "@/stores/use-chat-store";
 
 export default function ChatPage() {
   const botId = useChatStore((s) => s.botId);
-
   if (!botId) {
     return <BotSelector />;
   }
-
   return (
     <div className="flex h-full overflow-hidden">
       <div className="h-full w-64 shrink-0">
