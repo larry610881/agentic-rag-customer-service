@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Batch A 安全/品質修復 — Pydantic 結構化解析 + 精確 Tool Matching + Router 校驗](#batch-a-安全品質修復--pydantic-結構化解析--精確-tool-matching--router-校驗)
 - [Widget FAB Greeting Bubble — 跨端全棧 Feature Flag + CSS 動畫狀態機](#widget-fab-greeting-bubble--跨端全棧-feature-flag--css-動畫狀態機)
 - [Avatar 預覽 + System Admin 跨租戶授權 — Router 層 tenant_id 解析 + 元件複用策略](#avatar-預覽--system-admin-跨租戶授權--router-層-tenant_id-解析--元件複用策略)
 - [Avatar 真實渲染 — CDN 動態載入策略 + Widget/SPA 雙軌 Renderer 架構](#avatar-真實渲染--cdn-動態載入策略--widgetspa-雙軌-renderer-架構)
@@ -60,6 +61,37 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Batch A 安全/品質修復 — Pydantic 結構化解析 + 精確 Tool Matching + Router 校驗
+
+> **Sprint 來源**：安全/品質審查 Batch A（C9/C10/C11/C16/C19/C22/C23）
+> **日期**：2026-03-13
+
+### 概述
+
+6 項後端安全/品質隱憂一次修復，涵蓋 Application + Infrastructure + Interfaces 三層。使用 4 個 Agent 並行處理，所有工作互不重疊。
+
+### 做得好的地方
+
+- **Pydantic 結構化解析（C9/C10）**：LLM 回傳的 JSON 評分改用 `EvalScores` model 驗證，`ChunkScoreItem.normalize_score` field_validator 自動處理百分比字串（`"85%"`）和 0-100 尺度轉換，比手動 normalize 更安全且可維護
+- **複雜度拆分（C11）**：`evaluate_combined` 從 C901=12 降至合規，抽出 `_build_eval_sections` / `_determine_layer_label` / `_extract_dimensions` 三個 static helper，每個都可獨立測試
+- **精確匹配（C22）**：`_backfill_tool_output()` 以 `tool_call_id` 為主鍵匹配，解決同名 tool 多次呼叫的 output 錯位問題。Fallback 保留 `tool_name` 匹配確保向後相容
+- **早期校驗（C16/C23）**：`_validate_llm_fields()` 在 Router 層攔截無效 provider，避免 runtime 才 crash
+- **4 Agent 並行**：Bot validation / eval refactor / tool matching / auth tests 四條線零衝突完成
+
+### 潛在隱憂
+
+- **Pydantic `extra="ignore"` 吞未知欄位** → LLM 回傳新維度時無 warning，可能遺漏有用資訊 → 考慮改用 `extra="allow"` 或加 logger.debug → 優先級：低
+- **`_VALID_LLM_PROVIDERS` 包含 `"mock"`** → 前端不應選擇 mock provider，但目前允許通過 → 考慮區分 internal/external providers → 優先級：低
+- **react_agent_service C901 仍高** → `process_message_stream` 複雜度 35，雖然 `_backfill_tool_output` 抽出降了 2 點，但主體仍需進一步拆分 → 優先級：中
+
+### 延伸學習
+
+- **Pydantic field_validator `mode="before"`**：在型別轉換前執行，適合處理 LLM 回傳的非標準格式（字串百分比、整數分數等）
+- **Static Method 作為 Pure Function**：三個 helper 都是 `@staticmethod`，無 side effect，易測試且不增加類別狀態複雜度
+- 若想深入：搜尋「Pydantic V2 validators mode before vs after」「Cyclomatic Complexity refactoring Extract Method」
 
 ---
 
