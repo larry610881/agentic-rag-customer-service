@@ -2,10 +2,30 @@ export interface RendererHandle {
   dispose: () => void;
 }
 
+/** Dynamically load a script (deduplicates by URL) */
+const loadedScripts = new Set<string>();
+function loadScript(url: string): Promise<void> {
+  if (loadedScripts.has(url)) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = url;
+    script.async = true;
+    script.onload = () => {
+      loadedScripts.add(url);
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`Failed to load: ${url}`));
+    document.head.appendChild(script);
+  });
+}
+
 export async function createLive2DRenderer(
   container: HTMLElement,
   modelUrl: string,
 ): Promise<RendererHandle> {
+  // Load Cubism Core first — required by pixi-live2d-display
+  await loadScript("/static/libs/live2dcubismcore.min.js");
+
   const { Application } = await import("pixi.js");
   // pixi-live2d-display registers on PIXI global
   const PIXI = await import("pixi.js");
