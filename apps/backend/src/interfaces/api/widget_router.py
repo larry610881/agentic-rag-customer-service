@@ -89,7 +89,7 @@ def _set_cors_headers(response, origin: str | None, bot: Bot) -> None:
     if origin and origin in bot.widget_allowed_origins:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Visitor-Id"
 
 
 @router.options("/{short_code}/chat/stream")
@@ -111,7 +111,7 @@ async def widget_cors_preflight(
     if bot and bot.widget_enabled and origin and origin in bot.widget_allowed_origins:
         resp.headers["Access-Control-Allow-Origin"] = origin
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Visitor-Id"
         resp.headers["Access-Control-Max-Age"] = "3600"
     return resp
 

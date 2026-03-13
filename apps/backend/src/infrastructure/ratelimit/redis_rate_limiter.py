@@ -1,5 +1,6 @@
 import logging
 import time
+from uuid import uuid4
 
 from redis.asyncio import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -34,10 +35,11 @@ class RedisRateLimiter(RateLimiterService):
     ) -> RateLimitResult:
         now = time.time()
         window_start = now - window_seconds
+        member = f"{now}-{uuid4().hex[:8]}"
 
         pipe = self._redis.pipeline()
         pipe.zremrangebyscore(key, 0, window_start)
-        pipe.zadd(key, {str(now): now})
+        pipe.zadd(key, {member: now})
         pipe.zcard(key)
         pipe.expire(key, window_seconds)
         results = await pipe.execute()
@@ -46,7 +48,7 @@ class RedisRateLimiter(RateLimiterService):
 
         if count > limit:
             # Remove the request we just added since it's over limit
-            await self._redis.zrem(key, str(now))
+            await self._redis.zrem(key, member)
             # Calculate retry_after from oldest entry in window
             oldest = await self._redis.zrange(key, 0, 0, withscores=True)
             retry_after = 1

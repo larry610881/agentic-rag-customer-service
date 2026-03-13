@@ -8,7 +8,7 @@ export class LoginPage {
   readonly validationErrors: Locator;
 
   constructor(private page: Page) {
-    this.usernameInput = page.getByLabel('使用者名稱');
+    this.usernameInput = page.getByLabel('帳號');
     this.passwordInput = page.getByLabel('密碼');
     this.submitButton = page.getByRole('button', { name: '登入' });
     this.errorMessage = page.getByText('登入失敗，請確認帳號密碼是否正確。');

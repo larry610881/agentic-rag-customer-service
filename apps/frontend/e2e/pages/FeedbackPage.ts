@@ -12,7 +12,7 @@ export class FeedbackPage {
     this.statCards = page.locator("[data-slot='card']");
     this.trendChart = page.getByText("滿意度趨勢");
     this.browserLink = page.getByRole("link", { name: "差評瀏覽器" });
-    this.costTable = page.getByText("Token 成本統計");
+    this.costTable = page.getByText("總輸入 Tokens");
   }
 
   async goto() {

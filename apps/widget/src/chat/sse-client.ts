@@ -1,4 +1,5 @@
 import type { SSEEvent } from "../types";
+import { getVisitorId } from "../visitor";
 
 /**
  * POST-based SSE client.
@@ -14,7 +15,10 @@ export function streamChat(
 
   fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Visitor-Id": getVisitorId(),
+    },
     body: JSON.stringify(body),
     signal: controller.signal,
   })

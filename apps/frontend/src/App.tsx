@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ROUTES } from "@/routes/paths";
-import { ProtectedRoute } from "@/components/layout/protected-route";
+import { AdminRoute, ProtectedRoute } from "@/components/layout/protected-route";
 import { AppShell } from "@/components/layout/app-shell";
 
 const LoginPage = lazy(() => import("@/pages/login"));
@@ -31,6 +31,7 @@ const AdminTenantsPage = lazy(() => import("@/pages/admin-tenants"));
 const AdminPromptsPage = lazy(() => import("@/pages/admin-prompts"));
 const AdminDiagnosticRulesPage = lazy(() => import("@/pages/admin-diagnostic-rules"));
 const AdminRateLimitsPage = lazy(() => import("@/pages/admin-rate-limits"));
+const AdminLogRetentionPage = lazy(() => import("@/pages/admin-log-retention"));
 
 function PageFallback() {
   return (
@@ -65,6 +66,11 @@ export function App() {
               path={ROUTES.FEEDBACK_CONVERSATION}
               element={<FeedbackConversationPage />}
             />
+          </Route>
+        </Route>
+
+        <Route element={<AdminRoute />}>
+          <Route element={<AppShell />}>
             <Route
               path={ROUTES.SETTINGS}
               element={<Navigate to={ROUTES.SETTINGS_PROVIDERS} replace />}
@@ -73,10 +79,7 @@ export function App() {
               path={ROUTES.SETTINGS_PROVIDERS}
               element={<ProvidersSettingsPage />}
             />
-            <Route
-              path={ROUTES.ADMIN_LOGS}
-              element={<AdminLogsPage />}
-            />
+            <Route path={ROUTES.ADMIN_LOGS} element={<AdminLogsPage />} />
             <Route
               path={ROUTES.ADMIN_KNOWLEDGE_BASES}
               element={<AdminKnowledgeBasesPage />}
@@ -85,18 +88,12 @@ export function App() {
               path={ROUTES.ADMIN_KB_DETAIL}
               element={<AdminKbDetailPage />}
             />
-            <Route
-              path={ROUTES.ADMIN_BOTS}
-              element={<AdminBotsPage />}
-            />
+            <Route path={ROUTES.ADMIN_BOTS} element={<AdminBotsPage />} />
             <Route
               path={ROUTES.ADMIN_BOT_DETAIL}
               element={<AdminBotDetailPage />}
             />
-            <Route
-              path={ROUTES.ADMIN_USERS}
-              element={<AdminUsersPage />}
-            />
+            <Route path={ROUTES.ADMIN_USERS} element={<AdminUsersPage />} />
             <Route
               path={ROUTES.ADMIN_OBSERVABILITY}
               element={<AdminObservabilityPage />}
@@ -124,6 +121,10 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_RATE_LIMITS}
               element={<AdminRateLimitsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_LOG_RETENTION}
+              element={<AdminLogRetentionPage />}
             />
           </Route>
         </Route>

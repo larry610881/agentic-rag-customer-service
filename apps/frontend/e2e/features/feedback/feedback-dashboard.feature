@@ -8,7 +8,7 @@ Feature: 回饋分析儀表板
     When 使用者進入回饋分析頁面
     Then 應顯示回饋統計摘要
     And 應顯示滿意度趨勢區塊
-    And 應顯示 Token 成本統計區塊
+    And 應顯示 Token 用量統計區塊
     And 應顯示差評瀏覽器連結
 
   Scenario: 進入差評瀏覽器

@@ -1,5 +1,8 @@
 Feature: 後台 Chat Avatar 顯示
 
+  Background:
+    Given 使用者已登入為 "Demo Store"
+
   Scenario: 選擇有 Live2D Avatar 的 Bot 時顯示 Avatar 面板
     Given 有一個 avatar_type 為 "live2d" 的 Bot
     When 我在 Chat 頁面選擇該 Bot

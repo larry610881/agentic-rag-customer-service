@@ -86,6 +86,11 @@ from src.application.observability.diagnostic_rules_use_cases import (
     ResetDiagnosticRulesUseCase,
     UpdateDiagnosticRulesUseCase,
 )
+from src.application.observability.log_retention_use_cases import (
+    ExecuteLogCleanupUseCase,
+    GetLogRetentionPolicyUseCase,
+    UpdateLogRetentionPolicyUseCase,
+)
 from src.application.observability.rag_evaluation_use_case import (
     RAGEvaluationUseCase,
 )
@@ -173,6 +178,9 @@ from src.infrastructure.db.repositories.feedback_repository import (
 )
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
+)
+from src.infrastructure.db.repositories.log_retention_policy_repository import (
+    SQLAlchemyLogRetentionPolicyRepository,
 )
 from src.infrastructure.db.repositories.mcp_server_repository import (
     SQLAlchemyMcpServerRepository,
@@ -387,6 +395,11 @@ class Container(containers.DeclarativeContainer):
 
     diagnostic_rules_config_repository = providers.Factory(
         SQLAlchemyDiagnosticRulesConfigRepository,
+        session=db_session,
+    )
+
+    log_retention_policy_repository = providers.Factory(
+        SQLAlchemyLogRetentionPolicyRepository,
         session=db_session,
     )
 
@@ -786,7 +799,7 @@ class Container(containers.DeclarativeContainer):
 
     agent_service = providers.Selector(
         providers.Callable(
-            lambda cfg: "mock" if cfg.llm_provider == "mock" else "real",
+            lambda cfg: "mock" if cfg.e2e_mode else "real",
             config,
         ),
         mock=providers.Factory(
@@ -886,6 +899,23 @@ class Container(containers.DeclarativeContainer):
     reset_diagnostic_rules_use_case = providers.Factory(
         ResetDiagnosticRulesUseCase,
         diagnostic_rules_config_repository=diagnostic_rules_config_repository,
+    )
+
+    # --- Observability: Log Retention ---
+
+    get_log_retention_policy_use_case = providers.Factory(
+        GetLogRetentionPolicyUseCase,
+        log_retention_policy_repository=log_retention_policy_repository,
+    )
+
+    update_log_retention_policy_use_case = providers.Factory(
+        UpdateLogRetentionPolicyUseCase,
+        log_retention_policy_repository=log_retention_policy_repository,
+    )
+
+    execute_log_cleanup_use_case = providers.Factory(
+        ExecuteLogCleanupUseCase,
+        log_retention_policy_repository=log_retention_policy_repository,
     )
 
     send_message_use_case = providers.Factory(

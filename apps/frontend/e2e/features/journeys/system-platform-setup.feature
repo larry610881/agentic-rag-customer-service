@@ -8,8 +8,7 @@ Feature: 系統管理員平台環境建置
     # Step 1: Provider Settings
     When 使用者進入供應商設定頁面
     Then 應顯示供應商設定標題
-    And 應顯示全部、LLM、Embedding 分頁按鈕
-    And 應顯示新增供應商按鈕
+    And 應顯示 LLM 與 API Key 分頁按鈕
     # Step 2: Knowledge Base
     When 使用者在知識庫頁面
     Then 應顯示知識庫列表

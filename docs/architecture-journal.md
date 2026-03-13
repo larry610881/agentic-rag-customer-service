@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Widget FAB Greeting Bubble — 跨端全棧 Feature Flag + CSS 動畫狀態機](#widget-fab-greeting-bubble--跨端全棧-feature-flag--css-動畫狀態機)
 - [Avatar 預覽 + System Admin 跨租戶授權 — Router 層 tenant_id 解析 + 元件複用策略](#avatar-預覽--system-admin-跨租戶授權--router-層-tenant_id-解析--元件複用策略)
 - [Avatar 真實渲染 — CDN 動態載入策略 + Widget/SPA 雙軌 Renderer 架構](#avatar-真實渲染--cdn-動態載入策略--widgetspa-雙軌-renderer-架構)
 - [Web Bot Widget + Avatar — IIFE Library Mode + Tenant Feature Gate + Agent Team 3 並行](#web-bot-widget--avatar--iife-library-mode--tenant-feature-gate--agent-team-3-並行)
@@ -59,6 +60,41 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Widget FAB Greeting Bubble — 跨端全棧 Feature Flag + CSS 動畫狀態機
+
+> **Sprint 來源**：Widget FAB 招呼氣泡功能（commit `6929dc3`）
+> **日期**：2026-03-13
+
+### 概述
+
+在 Widget FAB 按鈕旁新增可設定的招呼語氣泡，支援三種動畫模式（fade / slide / typewriter），管理員可在 Bot 設定中配置。跨 15 個檔案、涵蓋後端 DDD 4 層 + Widget TypeScript + 前端 React 表單。
+
+**本次相關主題**：Full-Stack Feature Delivery、CSS Animation State Machine、DDD 跨層欄位擴展
+
+### 做得好的地方
+
+- **DDD 4 層一致性**：新增兩個欄位（`widget_greeting_messages` / `widget_greeting_animation`）嚴格走 Domain Entity → Infrastructure Model → Application UseCase → Interfaces Router 的標準路徑，沒有捷徑跳層
+- **Widget 動畫狀態機設計**：三種動畫模式用 CSS class toggle 實現，避免 JavaScript 直接操作 style，保持 CSS 與 JS 的關注點分離
+- **Typewriter 動畫**：遞迴 `setTimeout` 逐字渲染，簡潔且不依賴第三方動畫庫
+- **生命週期管理**：Panel 開啟時 `stopGreeting()`、關閉時 `restartGreeting()`，正確清理 timer 避免記憶體洩漏
+- **向下相容**：`greeting_messages` 預設空陣列，未設定時不渲染氣泡，零 breaking change
+- **Avatar Live 模式適配**：CSS 用 `~` 相鄰選擇器（`.aw-fab--avatar-live ~ .aw-greeting`）自動調整氣泡位置
+
+### 潛在隱憂
+
+- **Timer 累積風險** → `scheduleNextGreeting()` 的遞迴排程 + `restartGreeting()` 未清理上一輪 timer，快速開關 panel 可能累積多個 `setTimeout` → 建議在 `restartGreeting()` 開頭加 `clearTimeout` → **優先級：中**
+- **Typewriter 動畫中斷** → 快速切換訊息時，前一個 `typeText()` 的遞迴 chain 仍在執行（透過 `this.greetingEl` null check 保護，但文字可能短暫交錯）→ 可引入 `AbortController` 或 generation counter 來取消前一輪 → **優先級：低**
+- **DB Migration 缺失** → 本次用 `ALTER TABLE` 手動加欄位，沒有 Alembic migration 檔案，部署到其他環境需手動執行 SQL → 應建立 Alembic 基礎設施或至少記錄 migration SQL → **優先級：高**
+- **前端表單無上限驗證** → `widget_greeting_messages` Zod schema 只限每筆 100 字，但未限制筆數，理論上可無限新增 → 建議加 `.max(10)` 或類似上限 → **優先級：低**
+
+### 延伸學習
+
+- **CSS Animation State Machine**：本次用 class toggle 驅動動畫轉場，這是 CSS-first 動畫的經典模式。更複雜的場景可參考 [FLIP technique](https://aerotwist.com/blog/flip-your-animations/)（First-Last-Invert-Play）來處理佈局動畫
+- **Recursive setTimeout vs setInterval**：本次選用遞迴 `setTimeout`（每次 callback 結束才排下一個），比 `setInterval` 更安全 — 不會因為 callback 執行時間長而累積排程。這是前端定時任務的最佳實踐
+- **DDD 欄位擴展 Checklist**：新增一個「可選設定欄位」的標準路徑已高度模式化（Entity → Model → Repository mapping → Command → UseCase → Request/Response → Router），可考慮建立 code generator 或 snippet 加速
 
 ---
 
@@ -195,7 +231,7 @@ Vite Library Mode IIFE、Tenant Feature Gate Pattern、Avatar 動態載入、Age
 
 ### 潛在隱憂
 
-- **JSON 欄位無 schema 驗證** → 前端送進 malformed rules（如缺 `dimension` 欄位）會在 `diagnose()` 時 KeyError。建議加 Pydantic model 驗證 PUT body → 優先級：中
+- ~~**JSON 欄位無 schema 驗證** → 前端送進 malformed rules（如缺 `dimension` 欄位）會在 `diagnose()` 時 KeyError。建議加 Pydantic model 驗證 PUT body → 優先級：中~~ ✅ 已修復：`SingleRuleSchema` / `ComboRuleSchema` Pydantic model 取代 `list[dict]`
 - **全域 singleton 無版本控制** → 多人同時編輯可能互蓋。若未來多管理員場景，考慮 optimistic lock（`updated_at` 比對） → 優先級：低
 
 ### 延伸學習
@@ -359,7 +395,7 @@ Query Model 反正規化、LLM 輸出正規化、Config 外部化
 
 ### 潛在隱憂
 
-- **4 表 JOIN 效能隨資料成長** — 目前 `token_usage_records` 資料量小，4 表 JOIN 無壓力。當記錄達 100k+ 時，`GROUP BY bot_id, model_used` 的排序成本會顯著增加。→ 建議：為 `token_usage_records` 建立 `(tenant_id, created_at)` 複合索引 + 考慮 date range 過濾參數 → 優先級：中
+- ~~**4 表 JOIN 效能隨資料成長** — 目前 `token_usage_records` 資料量小，4 表 JOIN 無壓力。當記錄達 100k+ 時，`GROUP BY bot_id, model_used` 的排序成本會顯著增加。→ 建議：為 `token_usage_records` 建立 `(tenant_id, created_at)` 複合索引 + 考慮 date range 過濾參數 → 優先級：中~~ ✅ 已修復：新增 `(tenant_id, bot_id, created_at)` 複合索引
 - **Router 層 SQL 膨脹風險** — direct-query 模式方便但可能導致 Router 層累積過多 raw SQL。若未來 /token-usage 需要更多維度（按日期區間、按 Provider 分組），SQL 會越來越長。→ 建議：抽出 `TokenUsageQueryService`（Application 層的 Query Service，不是 Use Case），專責統計查詢 → 優先級：低
 - **前端無 date range 過濾** — 目前拉全量資料渲染圖表，當資料量大時前端記憶體和渲染效能會受影響。→ 建議：後續加入日期區間 filter（後端 query parameter + 前端 DateRangePicker）→ 優先級：中
 
@@ -704,7 +740,7 @@ gRPC 遷移經歷三輪修復才真正生效，完整記錄如下：
 #### 潛在隱憂
 - **System Tenant 硬編碼風險**：目前 seed script 每次 drop_all 重建，system_tenant_id 會變動。正式環境需要固定 UUID 或配置化 → 建議：環境變數 `SYSTEM_TENANT_ID` 或 DB migration → 優先級：中
 - **跨租戶 find_all() 效能**：隨著租戶數增長，`find_all()` 無分頁會成為瓶頸 → 建議：加入 limit/offset 或 cursor-based pagination → 優先級：低
-- **前端缺少 role-based route guard**：目前 admin 頁面只靠 sidebar 隱藏，直接輸入 URL 仍可存取（後端有 role 檢查但前端無阻擋） → 建議：新增 `RequireRole` route wrapper → 優先級：中
+- ~~**前端缺少 role-based route guard**：目前 admin 頁面只靠 sidebar 隱藏，直接輸入 URL 仍可存取（後端有 role 檢查但前端無阻擋） → 建議：新增 `RequireRole` route wrapper → 優先級：中~~ ✅ 已修復：新增 `AdminRoute` 元件，非 admin 導向 `/chat`
 - **system_admin 的寫入隔離只靠 token 中的 tenant_id**：若 system_admin 構造惡意 request body 帶其他 tenant_id，寫入端點會用 `tenant.tenant_id`（from JWT）而非 body 中的值，這是安全的。但未來若有端點允許 body 指定 tenant_id，需特別注意 → 優先級：低
 
 #### 延伸學習
@@ -734,8 +770,8 @@ gRPC 遷移經歷三輪修復才真正生效，完整記錄如下：
 #### 潛在隱憂
 
 - **`asyncio.create_task()` 未被 await** → 若 app shutdown 時有大量 pending task，可能丟失最後幾筆 log → 可在 `lifespan` shutdown 階段加入 `await asyncio.gather(*pending_tasks)` → 優先級：低（診斷資料丟幾筆可接受）
-- **request_logs 表無自動清理** → 長期運行會持續增長 → 建議未來加 `created_at < 30d` 的定時清理 job 或 TTL 策略 → 優先級：中
-- **Log viewer API 無 auth** → 目前 log router 在 health 旁邊（always loaded），無需 JWT → 若部署到公開環境需加上 `system_admin` 角色檢查 → 優先級：中
+- ~~**request_logs 表無自動清理** → 長期運行會持續增長 → 建議未來加 `created_at < 30d` 的定時清理 job 或 TTL 策略 → 優先級：中~~ ✅ 已修復：DDD 4 層 Log Retention Policy（可配置保留天數 + 排程 + 手動觸發 + 前端 UI）
+- ~~**Log viewer API 無 auth** → 目前 log router 在 health 旁邊（always loaded），無需 JWT → 若部署到公開環境需加上 `system_admin` 角色檢查 → 優先級：中~~ ✅ 已修復（前次）：log router 已加 `require_role("system_admin")`
 - **JSON column 查詢效能** → `trace_steps` 用 JSON 欄位，目前只做整體存取沒問題，但若未來需 query 內部 step 名稱，MySQL JSON 查詢效能較差 → 優先級：低
 
 #### 延伸學習
@@ -937,7 +973,7 @@ gRPC 遷移經歷三輪修復才真正生效，完整記錄如下：
 
 ### 潛在隱憂
 
-- **N+1 盤點發現 3 處真正的 N+1**：Bot Repository `find_all_by_tenant()` 每個 bot 各查一次 KB IDs（最嚴重）、Feedback Repository `get_negative_with_context()` 每筆 feedback 查 2 次 message、Conversation Repository `save()` 每個 message 逐筆 lookup → 建議：P0 先修 Bot N+1（影響前端 Bot 管理頁）→ 優先級：中
+- ~~**Bot Repository N+1**：`find_all_by_tenant()` 每個 bot 各查一次 KB IDs~~ ✅ 已修復（`selectinload` 合併查詢）。剩餘 N+1：Feedback Repository `get_negative_with_context()` 每筆 feedback 查 2 次 message、Conversation Repository `save()` 每個 message 逐筆 lookup → 優先級：中
 - ~~**`find_chunk_ids_by_documents()` 已無呼叫者**~~ → **已刪除**（2026-02-27）：被 `find_chunk_ids_by_kb()` 取代，無呼叫者即為重構遺留物，直接移除
 - **Reprocess 背景任務無 retry 機制**：失敗後只記錄 `failed` 狀態，使用者需手動重試。若未來需要自動重試可考慮 Celery / ARQ task queue → 優先級：低
 
@@ -994,7 +1030,7 @@ gRPC 遷移經歷三輪修復才真正生效，完整記錄如下：
 ### 潛在隱憂
 
 - **Middleware 直接依賴 DI Container 實例**（`container.redis_client()` 在 `create_app` 中提前解析）→ 若 Redis 未就緒會影響 app 啟動 → 建議：改為 lazy init 或啟動 probe → 優先級：低
-- **Sliding Window Counter 精確度**：`ZADD` 用 `str(now)` 作 member，高併發下同一毫秒可能碰撞 → 改用 `{now}-{uuid}` 格式 → 優先級：中
+- ~~**Sliding Window Counter 精確度**：`ZADD` 用 `str(now)` 作 member，高併發下同一毫秒可能碰撞 → 改用 `{now}-{uuid}` 格式 → 優先級：中~~ ✅ 已修復：member 改為 `f"{now}-{uuid4().hex[:8]}"`
 - **Config Loader DB 查詢**：cache miss 時每次 request 會觸發 DB 查詢（含 null + tenant 兩次）→ 高流量下可能成為瓶頸 → 建議：批次載入 + local LRU cache → 優先級：中
 - **bcrypt rounds 寫死 12**：生產環境可能需要調高（但會增加 latency）→ 已透過 config 可配置，但缺乏文件提醒 → 優先級：低
 

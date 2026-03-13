@@ -1,13 +1,13 @@
 import { Given } from "../fixtures";
 
-const API_BASE = process.env.API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+const API_BASE = process.env.API_BASE_URL ?? "http://127.0.0.1:8001/api/v1";
 
 Given("租戶管理員已登入", async ({ page }) => {
-  // Login via user-login endpoint to get a user_access token
+  // Login via auth/login endpoint to get a user_access token
   let access_token = "";
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const res = await page.request.post(`${API_BASE}/auth/user-login`, {
-      data: { email: "admin@demo.com", password: "password123" },
+    const res = await page.request.post(`${API_BASE}/auth/login`, {
+      data: { account: "admin@demo.com", password: "password123" },
     });
     if (res.ok()) {
       const body = await res.json();

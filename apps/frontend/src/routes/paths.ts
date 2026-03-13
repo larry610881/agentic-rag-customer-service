@@ -24,4 +24,5 @@ export const ROUTES = {
   ADMIN_PROMPTS: "/admin/prompts",
   ADMIN_DIAGNOSTIC_RULES: "/admin/diagnostic-rules",
   ADMIN_RATE_LIMITS: "/admin/rate-limits",
+  ADMIN_LOG_RETENTION: "/admin/log-retention",
 } as const;

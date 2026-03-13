@@ -48,4 +48,5 @@ class UsageRecordModel(Base):
     __table_args__ = (
         Index("ix_token_usage_records_tenant_created", "tenant_id", "created_at"),
         Index("ix_token_usage_records_message_id", "message_id"),
+        Index("ix_token_usage_records_tenant_bot_created", "tenant_id", "bot_id", "created_at"),
     )

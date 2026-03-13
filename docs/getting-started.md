@@ -83,12 +83,10 @@ cd apps/frontend && npm run dev
 2. 設定 `.env`：
 
 ```env
-LLM_PROVIDER=qwen
 QWEN_API_KEY=sk-your-key
-LLM_MODEL=qwen-plus
 ```
 
-3. 重啟後端服務即可使用真實 LLM 回應。
+3. 在後台 UI「供應商設定」新增 Qwen Provider（model: `qwen-plus`），重啟後端即可使用真實 LLM 回應。
 
 ## 下一步
 

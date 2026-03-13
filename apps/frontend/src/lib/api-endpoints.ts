@@ -8,6 +8,7 @@ export const API_ENDPOINTS = {
     create: "/api/v1/tenants",
     config: (id: string) => `/api/v1/tenants/${id}/config`,
     widgetAvatar: (id: string) => `/api/v1/tenants/${id}/widget-avatar`,
+    agentModes: (id: string) => `/api/v1/tenants/${id}/agent-modes`,
   },
   knowledgeBases: {
     list: "/api/v1/knowledge-bases",
@@ -112,6 +113,8 @@ export const API_ENDPOINTS = {
     tokenUsage: "/api/v1/observability/token-usage",
     diagnosticRules: "/api/v1/observability/diagnostic-rules",
     resetDiagnosticRules: "/api/v1/observability/diagnostic-rules/reset",
+    logRetention: "/api/v1/observability/log-retention",
+    executeLogCleanup: "/api/v1/observability/log-retention/execute",
   },
   rateLimits: {
     byTenant: (tenantId: string) => `/api/v1/admin/rate-limits/${tenantId}`,

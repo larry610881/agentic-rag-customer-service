@@ -44,4 +44,4 @@ export const test = base.extend<{
   },
 });
 
-export const { Given, When, Then } = createBdd(test);
+export const { Given, When, Then, After } = createBdd(test);

@@ -9,8 +9,7 @@ import type {
   DocumentResponse,
   UploadDocumentResponse,
 } from "@/types/knowledge";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+import { API_BASE } from "@/lib/api-config";
 
 export function useDocuments(kbId: string) {
   const token = useAuthStore((s) => s.token);

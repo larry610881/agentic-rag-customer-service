@@ -383,6 +383,7 @@ class SendMessageUseCase:
         full_answer = ""
         tool_calls: list[dict[str, Any]] = []
         sources_list: list[dict[str, Any]] = []
+        refund_step_value: str | None = None
 
         t0 = time.perf_counter()
         async for event in agent.process_message_stream(
@@ -409,6 +410,9 @@ class SendMessageUseCase:
                 tool_calls = event.get("tool_calls", [])
             elif event["type"] == "sources":
                 sources_list = event.get("sources", [])
+            elif event["type"] == "refund_step":
+                refund_step_value = event.get("refund_step")
+                continue  # Internal metadata, not sent to client
             # Non-debug: hide "direct" tool_calls entirely, strip reasoning for others
             if event["type"] == "tool_calls" and not self._debug:
                 tcs = event.get("tool_calls", [])
@@ -431,11 +435,19 @@ class SendMessageUseCase:
         retrieved_chunks = sources_list if sources_list else None
 
         # Save conversation after streaming completes
+        # Persist refund_step metadata marker (same logic as execute())
+        tool_calls_to_save = tool_calls[:]
+        if refund_step_value:
+            tool_calls_to_save.append({
+                "tool_name": _REFUND_METADATA_MARKER,
+                "refund_step": refund_step_value,
+            })
+
         conversation.add_message("user", command.message)
-        conversation.add_message(
+        assistant_msg = conversation.add_message(
             "assistant",
             full_answer,
-            tool_calls=tool_calls,
+            tool_calls=tool_calls_to_save,
             latency_ms=latency_ms,
             retrieved_chunks=retrieved_chunks,
         )
@@ -471,6 +483,10 @@ class SendMessageUseCase:
                 )
             )
 
+        yield {
+            "type": "message_id",
+            "message_id": assistant_msg.id.value,
+        }
         yield {
             "type": "conversation_id",
             "conversation_id": conversation.id.value,

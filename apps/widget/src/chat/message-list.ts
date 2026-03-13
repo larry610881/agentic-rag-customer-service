@@ -1,4 +1,5 @@
 import type { Source } from "../types";
+import { getVisitorId } from "../visitor";
 
 /**
  * Message list renderer — manages DOM elements for chat messages.
@@ -117,7 +118,10 @@ export class MessageList {
           `${apiBase}/api/v1/widget/${shortCode}/feedback`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "X-Visitor-Id": getVisitorId(),
+            },
             body: JSON.stringify(body),
           },
         );

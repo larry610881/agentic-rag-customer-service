@@ -11,3 +11,18 @@ export function ProtectedRoute() {
 
   return <Outlet />;
 }
+
+export function AdminRoute() {
+  const token = useAuthStore((s) => s.token);
+  const role = useAuthStore((s) => s.role);
+
+  if (!token) {
+    return <Navigate to={ROUTES.LOGIN} replace />;
+  }
+
+  if (role !== "system_admin") {
+    return <Navigate to={ROUTES.CHAT} replace />;
+  }
+
+  return <Outlet />;
+}

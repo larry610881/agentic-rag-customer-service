@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.domain.bot.entity import (
     Bot,
@@ -281,21 +282,24 @@ class SQLAlchemyBotRepository(BotRepository):
     async def find_all(self) -> list[Bot]:
         stmt = (
             select(BotModel)
+            .options(selectinload(BotModel.knowledge_bases))
             .order_by(BotModel.created_at)
         )
         result = await self._session.execute(stmt)
         models = list(result.scalars().all())
         if not models:
             return []
-        kb_map = await self._get_all_kb_ids([m.id for m in models])
         return [
-            self._to_entity(m, kb_map.get(m.id, []))
+            self._to_entity(
+                m, [kb.knowledge_base_id for kb in m.knowledge_bases]
+            )
             for m in models
         ]
 
     async def find_all_by_tenant(self, tenant_id: str) -> list[Bot]:
         stmt = (
             select(BotModel)
+            .options(selectinload(BotModel.knowledge_bases))
             .where(BotModel.tenant_id == tenant_id)
             .order_by(BotModel.created_at)
         )
@@ -303,9 +307,10 @@ class SQLAlchemyBotRepository(BotRepository):
         models = list(result.scalars().all())
         if not models:
             return []
-        kb_map = await self._get_all_kb_ids([m.id for m in models])
         return [
-            self._to_entity(m, kb_map.get(m.id, []))
+            self._to_entity(
+                m, [kb.knowledge_base_id for kb in m.knowledge_bases]
+            )
             for m in models
         ]
 

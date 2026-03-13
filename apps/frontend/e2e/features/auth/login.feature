@@ -13,7 +13,7 @@ Feature: 使用者登入 (User Login)
   Scenario: 空白欄位顯示驗證錯誤
     Given 使用者在登入頁面
     When 使用者點擊登入按鈕
-    Then 應顯示帳號欄位驗證錯誤 "請輸入使用者名稱"
+    Then 應顯示帳號欄位驗證錯誤 "請輸入帳號"
     And 應顯示密碼欄位驗證錯誤 "請輸入密碼"
 
   Scenario: 錯誤帳號顯示失敗訊息

@@ -47,10 +47,15 @@
 
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
-| `LLM_PROVIDER` | `fake` | Provider：`fake` \| `openai` \| `anthropic` \| `qwen` \| `openrouter` |
-| `LLM_MODEL` | (per provider) | LLM 模型名稱 |
 | `LLM_MAX_TOKENS` | `1024` | 最大輸出 token 數 |
-| `LLM_BASE_URL` | (auto) | 自訂 base URL（留空自動偵測） |
+
+> LLM Provider 由資料庫 `ProviderSetting` 動態驅動，無需環境變數設定。
+
+### E2E 測試
+
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `E2E_MODE` | `false` | 設為 `true` 時啟用 FakeLLM + MetaSupervisor（無真實 LLM 呼叫） |
 
 ### API Keys
 
@@ -85,85 +90,30 @@
 |------|------|
 | `LLM_PRICING_JSON` | `{"model": {"input": price_per_1m, "output": price_per_1m}}` |
 
-## Provider 切換範例
+## Provider 設定
 
-### Qwen（免費）
+> LLM Provider 現由資料庫 `ProviderSetting` 動態管理（後台 UI 設定），不再需要環境變數。
+> 以下範例僅適用於 **Embedding Provider**（仍為 env-based）。
+
+### Embedding 範例
 
 ```env
-LLM_PROVIDER=qwen
-QWEN_API_KEY=sk-your-dashscope-key
-LLM_MODEL=qwen-plus
+# OpenAI Embedding
+EMBEDDING_PROVIDER=openai
+OPENAI_API_KEY=sk-xxx
+EMBEDDING_MODEL=text-embedding-3-small
 
+# Qwen Embedding
 EMBEDDING_PROVIDER=qwen
+QWEN_API_KEY=sk-your-dashscope-key
 EMBEDDING_MODEL=text-embedding-v3
 ```
 
 DashScope 國際站：https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 
-### OpenAI
+## E2E 測試模式
 
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-xxx
-LLM_MODEL=gpt-4o
-
-EMBEDDING_PROVIDER=openai
-EMBEDDING_MODEL=text-embedding-3-small
-```
-
-### Anthropic
-
-```env
-LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-xxx
-LLM_MODEL=claude-sonnet-4-20250514
-
-# Anthropic 無 Embedding，搭配 OpenAI Embedding
-EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=sk-xxx
-```
-
-### OpenRouter
-
-```env
-LLM_PROVIDER=openrouter
-OPENROUTER_API_KEY=sk-or-xxx
-LLM_MODEL=openai/gpt-4o
-
-# OpenRouter 無 Embedding，搭配其他 Embedding Provider
-EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=sk-xxx
-```
-
-### 混合使用
-
-可自由搭配不同 Provider 的 Embedding 與 LLM：
-
-```env
-# 用 OpenAI Embedding + Qwen LLM（最省錢組合）
-EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=sk-xxx
-
-LLM_PROVIDER=qwen
-QWEN_API_KEY=sk-xxx
-LLM_MODEL=qwen-plus
-```
-
-## Provider 預設值對照
-
-| Provider | Default Model | Base URL |
-|----------|---------------|----------|
-| openai | gpt-4o | `https://api.openai.com/v1` |
-| anthropic | claude-sonnet-4-20250514 | Anthropic 專用 |
-| qwen | qwen-plus | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` |
-| openrouter | openai/gpt-4o | `https://openrouter.ai/api/v1` |
-
-## 自訂 Base URL
-
-若需指向自建的 OpenAI 相容 API，可直接覆寫：
-
-```env
-LLM_PROVIDER=openai
-LLM_BASE_URL=https://your-proxy.example.com/v1
-OPENAI_API_KEY=sk-xxx
+```bash
+# 啟動後端（FakeLLM + MetaSupervisor，無需真實 API Key）
+E2E_MODE=true uv run uvicorn src.main:app --port 8000
 ```

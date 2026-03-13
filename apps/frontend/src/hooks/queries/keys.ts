@@ -75,6 +75,7 @@ export const queryKeys = {
     tokenUsage: (days: number, tenantId?: string) =>
       ["observability", "token-usage", days, tenantId ?? "all"] as const,
     diagnosticRules: ["observability", "diagnostic-rules"] as const,
+    logRetention: ["observability", "log-retention"] as const,
   },
   rateLimits: {
     byTenant: (tenantId: string) => ["rate-limits", tenantId] as const,

@@ -1,9 +1,14 @@
+"""Rate limit middleware — pure ASGI implementation.
+
+Uses pure ASGI instead of BaseHTTPMiddleware to preserve ContextVar
+propagation for streaming responses (same reason as RequestIDMiddleware).
+"""
+
+import json
 import logging
 
 from jose import JWTError, jwt
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from src.domain.ratelimit.rate_limiter_service import RateLimiterService
 from src.infrastructure.logging.trace import trace_step
@@ -34,33 +39,43 @@ def _resolve_endpoint_group(path: str) -> str | None:
     return None
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
+class RateLimitMiddleware:
+    """Pure ASGI rate-limit middleware.
+
+    Checks multi-layer rate limits (global → tenant/IP → user) before
+    forwarding the request.  On 429 it sends a JSON response directly
+    via ASGI ``send``.
+    """
+
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         rate_limiter: RateLimiterService,
         config_loader: RateLimitConfigLoader,
         jwt_secret_key: str,
         jwt_algorithm: str = "HS256",
         global_rpm: int = 1000,
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self._rate_limiter = rate_limiter
         self._config_loader = config_loader
         self._jwt_secret_key = jwt_secret_key
         self._jwt_algorithm = jwt_algorithm
         self._global_rpm = global_rpm
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
-        path = request.url.path
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path: str = scope.get("path", "")
         endpoint_group = _resolve_endpoint_group(path)
 
         if endpoint_group is None:
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
-        identity = self._extract_identity(request)
+        identity = self._extract_identity(scope)
         tenant_id = identity.get("tenant_id")
         user_id = identity.get("user_id")
         client_ip = identity.get("client_ip", "unknown")
@@ -69,7 +84,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             config = await self._config_loader.get_config(tenant_id, endpoint_group)
 
         # Multi-layer checks: global → tenant/IP → user
-        checks = []
+        checks: list[tuple[str, int]] = []
 
         # Layer 1: Global
         global_key = f"rl:global:{endpoint_group}:{WINDOW_SECONDS}"
@@ -99,34 +114,71 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 )
                 if not result.allowed:
                     retry_after = result.retry_after or 1
-                    return JSONResponse(
-                        status_code=429,
-                        content={
-                            "detail": (
-                                "Rate limit exceeded."
-                                f" Try again in {retry_after} seconds."
-                            )
-                        },
-                        headers={
-                            "Retry-After": str(retry_after),
-                            "X-RateLimit-Limit": str(limit),
-                            "X-RateLimit-Remaining": "0",
-                        },
+                    await self._send_429(
+                        send, retry_after, limit,
                     )
+                    return
                 min_remaining = min(min_remaining, result.remaining)
 
-        response = await call_next(request)
-        if min_remaining != float("inf"):
-            response.headers["X-RateLimit-Remaining"] = str(int(min_remaining))
-        return response
+        # Inject X-RateLimit-Remaining header into response
+        remaining_str = (
+            str(int(min_remaining))
+            if min_remaining != float("inf")
+            else None
+        )
 
-    def _extract_identity(self, request: Request) -> dict:
+        async def send_wrapper(message: dict) -> None:
+            if message["type"] == "http.response.start" and remaining_str:
+                raw_headers = list(message.get("headers", []))
+                raw_headers.append(
+                    (b"x-ratelimit-remaining", remaining_str.encode())
+                )
+                message = {**message, "headers": raw_headers}
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _send_429(send: Send, retry_after: int, limit: int) -> None:
+        body = json.dumps({
+            "detail": (
+                f"Rate limit exceeded. Try again in {retry_after} seconds."
+            )
+        }).encode()
+        await send({
+            "type": "http.response.start",
+            "status": 429,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"retry-after", str(retry_after).encode()),
+                (b"x-ratelimit-limit", str(limit).encode()),
+                (b"x-ratelimit-remaining", b"0"),
+            ],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": body,
+            "more_body": False,
+        })
+
+    def _extract_identity(self, scope: Scope) -> dict:
         """Lightweight JWT decode to extract tenant_id/user_id. No auth enforcement."""
+        headers = dict(scope.get("headers", []))
+        client = scope.get("client")
         result: dict = {
-            "client_ip": request.client.host if request.client else "unknown",
+            "client_ip": client[0] if client else "unknown",
         }
 
-        auth_header = request.headers.get("authorization", "")
+        # Fallback identity: X-Visitor-Id header (widget anonymous users)
+        visitor_id = headers.get(b"x-visitor-id", b"").decode()
+        if visitor_id:
+            result["user_id"] = f"visitor:{visitor_id}"
+
+        auth_header = headers.get(b"authorization", b"").decode()
         if not auth_header.startswith("Bearer "):
             return result
 

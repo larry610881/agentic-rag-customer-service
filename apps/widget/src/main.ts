@@ -8,6 +8,7 @@
  */
 
 import type { WidgetConfig } from "./types";
+import { getVisitorId } from "./visitor";
 import { Widget } from "./widget";
 
 (function () {
@@ -25,7 +26,9 @@ import { Widget } from "./widget";
   const configUrl = `${apiBase}/api/v1/widget/${shortCode}/config`;
 
   // Fetch bot config then initialize widget
-  fetch(configUrl)
+  fetch(configUrl, {
+    headers: { "X-Visitor-Id": getVisitorId() },
+  })
     .then((res) => {
       if (!res.ok) throw new Error(`Config fetch failed: HTTP ${res.status}`);
       return res.json();

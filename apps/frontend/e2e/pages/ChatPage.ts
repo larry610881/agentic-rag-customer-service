@@ -10,7 +10,7 @@ export class ChatPage {
     this.messageInput = page.getByLabel("訊息輸入");
     this.sendButton = page.getByRole("button", { name: /^傳送$|^傳送中/ });
     this.assistantMessages = page.locator(
-      ".bg-muted.text-muted-foreground .whitespace-pre-wrap",
+      ".justify-start .whitespace-pre-wrap",
     );
     this.thoughtPanel = page.getByText(/Agent Actions/);
   }
@@ -21,20 +21,32 @@ export class ChatPage {
 
   async goto() {
     await this.page.goto("/chat");
-    // If bot selection screen appears, click the first bot card
-    const botCard = this.page.getByText("E2E 測試機器人").first();
+
+    // Wait for BotSelector to finish loading (skeletons have no text in a11y tree)
+    // before trying to find the bot button.
+    const botHeading = this.page.getByText("選擇一個機器人開始對話");
+    const noBots = this.page.getByText("目前沒有可用的機器人");
+    const loadError = this.page.getByText("無法載入機器人");
+    await this.messageInput
+      .or(botHeading)
+      .or(noBots)
+      .or(loadError)
+      .first()
+      .waitFor({ state: "visible", timeout: 30000 });
+
+    // If bot selection screen appears, click the first matching bot card
     const inputVisible = await this.messageInput
       .isVisible()
       .catch(() => false);
     if (!inputVisible) {
-      try {
-        await botCard.waitFor({ state: "visible", timeout: 10000 });
-        await botCard.click();
-      } catch {
-        // Bot card not found, message input may already be visible
-      }
+      const botButton = this.page
+        .getByRole("button", { name: /E2E 測試機器人/ })
+        .first();
+      await botButton.waitFor({ state: "attached", timeout: 15000 });
+      // dispatchEvent bypasses viewport/scroll checks when many bots overflow
+      await botButton.dispatchEvent("click");
     }
-    await this.messageInput.waitFor({ state: "visible", timeout: 30000 });
+    await this.messageInput.waitFor({ state: "visible", timeout: 15000 });
   }
 
   async sendMessage(text: string) {
@@ -83,11 +95,12 @@ export class ChatPage {
   }
 
   async getCitations() {
-    const sourceHeader = this.page.getByText("Sources", { exact: true });
+    // UI renders "參考來源" as the citation section header
+    const sourceHeader = this.page.getByText("參考來源", { exact: true });
     const count = await sourceHeader.count();
     if (count === 0) return [];
     const sourceSection = sourceHeader.last().locator("..");
-    const cards = sourceSection.locator(".rounded-md.border");
+    const cards = sourceSection.locator("button");
     return cards.allTextContents();
   }
 }

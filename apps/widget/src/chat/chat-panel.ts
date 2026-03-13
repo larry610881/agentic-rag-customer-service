@@ -1,6 +1,7 @@
-import type { WidgetConfig } from "../types";
+import type { Source, WidgetConfig } from "../types";
 import { MessageList } from "./message-list";
 import { streamChat } from "./sse-client";
+import { getStatusHint, getToolLabel } from "./tool-labels";
 
 /**
  * Creates and manages the chat panel DOM and behavior.
@@ -16,6 +17,8 @@ export class ChatPanel {
   private conversationId: string | null = null;
   private lsKey: string;
   private activeController: AbortController | null = null;
+  private shortCode: string;
+  private apiBase: string;
 
   constructor(
     config: WidgetConfig,
@@ -26,6 +29,8 @@ export class ChatPanel {
     this.chatUrl = `${apiBase}/api/v1/widget/${shortCode}/chat/stream`;
     this.keepHistory = config.keep_history;
     this.lsKey = `widget_conv_${shortCode}`;
+    this.shortCode = shortCode;
+    this.apiBase = apiBase;
 
     // Restore conversation_id
     if (this.keepHistory) {
@@ -114,8 +119,12 @@ export class ChatPanel {
     this.input.value = "";
     this.messageList.addMessage("user", text);
 
-    const botBubble = this.messageList.addMessage("bot", "...");
+    const botBubble = this.messageList.addMessage("bot", "");
+    this.messageList.showStatusHint(botBubble, getStatusHint("react_thinking"));
     let fullText = "";
+    let pendingSources: Source[] = [];
+    let messageId: string | null = null;
+    let hasReceivedTokens = false;
 
     this.setSending(true);
 
@@ -129,8 +138,35 @@ export class ChatPanel {
       (event) => {
         switch (event.type) {
           case "token":
+            if (!hasReceivedTokens) {
+              hasReceivedTokens = true;
+            }
             fullText += event.content;
             this.messageList.updateBubble(botBubble, fullText);
+            break;
+          case "status": {
+            const hint = getStatusHint(event.status);
+            if (hint) {
+              this.messageList.showStatusHint(botBubble, hint);
+            }
+            break;
+          }
+          case "tool_calls": {
+            // Multi-step reasoning: show tool hint, clear previous text
+            const toolName = event.tool_calls[0]?.tool_name || "";
+            const label = getToolLabel(toolName);
+            fullText = "";
+            this.messageList.showStatusHint(
+              botBubble,
+              `\u{1f50d} ${label} 使用中...`,
+            );
+            break;
+          }
+          case "sources":
+            pendingSources = event.sources;
+            break;
+          case "message_id":
+            messageId = event.message_id;
             break;
           case "conversation_id":
             this.conversationId = event.conversation_id;
@@ -143,6 +179,20 @@ export class ChatPanel {
             }
             break;
           case "done":
+            // Render sources block
+            if (pendingSources.length) {
+              this.messageList.addSourcesBlock(botBubble, pendingSources);
+            }
+            // Render feedback buttons
+            if (messageId && this.conversationId) {
+              this.messageList.addFeedbackButtons(
+                botBubble,
+                messageId,
+                this.conversationId,
+                this.shortCode,
+                this.apiBase,
+              );
+            }
             this.setSending(false);
             break;
           case "error":

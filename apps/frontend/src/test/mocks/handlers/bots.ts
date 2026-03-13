@@ -3,7 +3,23 @@ import { mockBots, mockBot } from "@/test/fixtures/bot";
 
 const API_BASE = "http://localhost:8000";
 
+export const mockAvatarPresetsResponse = {
+  hiyori: {
+    type: "live2d",
+    url: "/static/models/live2d/hiyori/hiyori_free_t08.model3.json",
+    label: "Hiyori（2D 女性角色）",
+  },
+  "default-vrm": {
+    type: "vrm",
+    url: "/static/models/vrm/default.vrm",
+    label: "預設 3D 角色",
+  },
+};
+
 export const botHandlers = [
+  http.get(`${API_BASE}/api/v1/bots/avatar-presets`, () => {
+    return HttpResponse.json(mockAvatarPresetsResponse);
+  }),
   http.get(`${API_BASE}/api/v1/bots`, () => {
     return HttpResponse.json(mockBots);
   }),

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -11,9 +12,12 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import JSON
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.db.base import Base
+
+if TYPE_CHECKING:
+    from src.infrastructure.db.models.bot_knowledge_base_model import BotKnowledgeBaseModel
 
 TZDateTime = DateTime(timezone=True)
 
@@ -119,6 +123,10 @@ class BotModel(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    knowledge_bases: Mapped[list["BotKnowledgeBaseModel"]] = relationship(
+        "BotKnowledgeBaseModel", lazy="raise"
     )
 
     __table_args__ = (

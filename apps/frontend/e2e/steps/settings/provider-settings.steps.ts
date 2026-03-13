@@ -22,8 +22,7 @@ Then("應顯示新增供應商按鈕", async ({ page }) => {
   ).toBeVisible();
 });
 
-Then("應顯示全部、LLM、Embedding 分頁按鈕", async ({ settingsPage }) => {
-  await expect(settingsPage.tabAll).toBeVisible();
+Then("應顯示 LLM 與 API Key 分頁按鈕", async ({ settingsPage }) => {
   await expect(settingsPage.tabLLM).toBeVisible();
-  await expect(settingsPage.tabEmbedding).toBeVisible();
+  await expect(settingsPage.tabApiKey).toBeVisible();
 });

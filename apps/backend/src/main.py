@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 import traceback
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 # Early startup banner — printed before any heavy imports so Cloud Run
 # logs always contain at least this line even when the process crashes.
@@ -25,6 +27,7 @@ try:
         DocumentModel,
         FeedbackModel,
         KnowledgeBaseModel,
+        LogRetentionPolicyModel,
         McpServerModel,
         MessageModel,
         ProcessingTaskModel,
@@ -48,6 +51,31 @@ except Exception:
 logger = get_logger(__name__)
 
 
+async def _log_cleanup_loop(container: object) -> None:
+    """Background loop: check log retention policy and execute cleanup if due."""
+    while True:
+        await asyncio.sleep(3600)  # check every hour
+        try:
+            repo = container.log_retention_policy_repository()  # type: ignore[attr-defined]
+            policy = await repo.get()
+            if not policy or not policy.enabled:
+                continue
+            now = datetime.now(timezone.utc)
+            if policy.last_cleanup_at:
+                next_run = policy.last_cleanup_at + timedelta(
+                    hours=policy.cleanup_interval_hours
+                )
+                if now < next_run:
+                    continue
+                if now.hour != policy.cleanup_hour:
+                    continue
+            uc = container.execute_log_cleanup_use_case()  # type: ignore[attr-defined]
+            deleted = await uc.execute()
+            logger.info("log_cleanup.success", deleted_count=deleted)
+        except Exception:
+            logger.warning("log_cleanup.failed", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_logging(
@@ -60,7 +88,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log_level=settings.effective_log_level,
         enabled_modules=settings.enabled_modules,
     )
+
+    # Start background log cleanup
+    cleanup_task = asyncio.create_task(
+        _log_cleanup_loop(app.container)  # type: ignore[attr-defined]
+    )
+
     yield
+
+    # Stop background cleanup
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
     logger.info("app.shutdown")
     # Close Redis connection
     try:

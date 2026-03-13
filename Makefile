@@ -18,7 +18,7 @@ dev-ps:
 
 # ─── Dev Server ──────────────────────────────────────────────
 dev-backend:
-	cd apps/backend && uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+	cd apps/backend && uv run uvicorn src.main:app --reload --host 0.0.0.0 --port ${PORT:-8001}
 
 # ─── Install ─────────────────────────────────────────────────
 install:

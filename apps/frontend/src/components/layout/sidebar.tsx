@@ -21,6 +21,7 @@ import {
   FileText,
   Stethoscope,
   Gauge,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,7 @@ const systemAdminItems = [
   { href: "/admin/diagnostic-rules", label: "診斷規則", icon: Stethoscope },
   { href: "/admin/rate-limits", label: "速率限制", icon: Gauge },
   { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
+  { href: "/admin/log-retention", label: "日誌清理", icon: Trash2 },
   { href: "/admin/observability", label: "可觀測性", icon: Activity },
   { href: "/admin/token-usage", label: "Token 用量", icon: Coins },
   { href: "/admin/mcp-registry", label: "MCP 工具庫", icon: Puzzle },
@@ -84,7 +86,7 @@ export function Sidebar() {
           )}
         </Button>
       </div>
-      <nav className="flex flex-1 flex-col gap-1 p-2">
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto scrollbar-none p-2">
         {isSystemAdmin ? (
           <>
             <NavSection

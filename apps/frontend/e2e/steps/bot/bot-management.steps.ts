@@ -18,7 +18,10 @@ Then("應顯示機器人列表或空白狀態", async ({ page }) => {
 });
 
 Then("每個機器人應顯示名稱與狀態標籤", async ({ page }) => {
-  // If bots exist, verify cards have title and badge
+  // Wait for cards or empty state to appear
+  const content = page.locator("[data-slot='card'], :text('尚無機器人')");
+  await expect(content.first()).toBeVisible({ timeout: 10000 });
+
   const cards = page.locator("[data-slot='card']");
   const count = await cards.count();
   if (count > 0) {
@@ -26,7 +29,6 @@ Then("每個機器人應顯示名稱與狀態標籤", async ({ page }) => {
     await expect(firstCard.locator("[data-slot='card-title']")).toBeVisible();
     await expect(firstCard.locator("[data-slot='badge']").first()).toBeVisible();
   } else {
-    // Empty state is acceptable
     await expect(page.getByText("尚無機器人")).toBeVisible();
   }
 });

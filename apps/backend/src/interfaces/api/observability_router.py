@@ -13,6 +13,12 @@ from src.application.observability.diagnostic_rules_use_cases import (
     UpdateDiagnosticRulesCommand,
     UpdateDiagnosticRulesUseCase,
 )
+from src.application.observability.log_retention_use_cases import (
+    ExecuteLogCleanupUseCase,
+    GetLogRetentionPolicyUseCase,
+    UpdateLogRetentionPolicyCommand,
+    UpdateLogRetentionPolicyUseCase,
+)
 from src.container import Container
 from src.domain.observability.diagnostic import diagnose
 from src.infrastructure.db.engine import async_session_factory
@@ -21,6 +27,7 @@ from src.infrastructure.db.models.rag_eval_model import RAGEvalModel
 from src.infrastructure.db.models.rag_trace_model import RAGTraceModel
 from src.infrastructure.db.models.tenant_model import TenantModel
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
+from src.interfaces.api.deps import require_role
 
 router = APIRouter(prefix="/api/v1/observability", tags=["observability"])
 
@@ -199,9 +206,32 @@ async def get_token_usage(
 # -----------------------------------------------------------------------
 
 
+class SingleRuleSchema(BaseModel):
+    dimension: str
+    threshold: float
+    category: str
+    severity: str
+    message: str
+    suggestion: str
+
+
+class ComboRuleSchema(BaseModel):
+    dim_a: str
+    op_a: str
+    threshold_a: float
+    dim_b: str
+    op_b: str
+    threshold_b: float
+    category: str
+    severity: str
+    dimension: str
+    message: str
+    suggestion: str
+
+
 class _DiagnosticRulesBody(BaseModel):
-    single_rules: list[dict]
-    combo_rules: list[dict]
+    single_rules: list[SingleRuleSchema]
+    combo_rules: list[ComboRuleSchema]
 
 
 @router.get("/diagnostic-rules")
@@ -230,8 +260,8 @@ async def update_diagnostic_rules(
 ):
     config = await use_case.execute(
         UpdateDiagnosticRulesCommand(
-            single_rules=body.single_rules,
-            combo_rules=body.combo_rules,
+            single_rules=[r.model_dump() for r in body.single_rules],
+            combo_rules=[r.model_dump() for r in body.combo_rules],
         )
     )
     return {
@@ -256,3 +286,74 @@ async def reset_diagnostic_rules(
         "combo_rules": config.combo_rules,
         "updated_at": config.updated_at.isoformat(),
     }
+
+
+# -----------------------------------------------------------------------
+# Log Retention Policy CRUD + Execute
+# -----------------------------------------------------------------------
+
+
+class _LogRetentionBody(BaseModel):
+    enabled: bool = True
+    retention_days: int = 30
+    cleanup_hour: int = 3
+    cleanup_interval_hours: int = 24
+
+
+def _policy_to_dict(policy):
+    return {
+        "id": policy.id,
+        "enabled": policy.enabled,
+        "retention_days": policy.retention_days,
+        "cleanup_hour": policy.cleanup_hour,
+        "cleanup_interval_hours": policy.cleanup_interval_hours,
+        "last_cleanup_at": (
+            policy.last_cleanup_at.isoformat() if policy.last_cleanup_at else None
+        ),
+        "deleted_count_last": policy.deleted_count_last,
+        "updated_at": policy.updated_at.isoformat(),
+    }
+
+
+@router.get("/log-retention")
+@inject
+async def get_log_retention(
+    _: object = Depends(require_role("system_admin")),
+    use_case: GetLogRetentionPolicyUseCase = Depends(
+        Provide[Container.get_log_retention_policy_use_case]
+    ),
+):
+    policy = await use_case.execute()
+    return _policy_to_dict(policy)
+
+
+@router.put("/log-retention")
+@inject
+async def update_log_retention(
+    body: _LogRetentionBody,
+    _: object = Depends(require_role("system_admin")),
+    use_case: UpdateLogRetentionPolicyUseCase = Depends(
+        Provide[Container.update_log_retention_policy_use_case]
+    ),
+):
+    policy = await use_case.execute(
+        UpdateLogRetentionPolicyCommand(
+            enabled=body.enabled,
+            retention_days=body.retention_days,
+            cleanup_hour=body.cleanup_hour,
+            cleanup_interval_hours=body.cleanup_interval_hours,
+        )
+    )
+    return _policy_to_dict(policy)
+
+
+@router.post("/log-retention/execute")
+@inject
+async def execute_log_cleanup(
+    _: object = Depends(require_role("system_admin")),
+    use_case: ExecuteLogCleanupUseCase = Depends(
+        Provide[Container.execute_log_cleanup_use_case]
+    ),
+):
+    deleted = await use_case.execute()
+    return {"deleted_count": deleted}

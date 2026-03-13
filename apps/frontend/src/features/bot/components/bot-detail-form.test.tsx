@@ -1,10 +1,40 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { renderWithProviders } from "@/test/test-utils";
+import { server } from "@/test/mocks/server";
 import { BotDetailForm } from "@/features/bot/components/bot-detail-form";
 import { mockBot } from "@/test/fixtures/bot";
 import { useAuthStore } from "@/stores/use-auth-store";
+
+function setTenantPermissions(overrides: {
+  allowed_agent_modes?: string[];
+  allowed_widget_avatar?: boolean;
+}) {
+  const tenant = {
+    id: "tenant-1",
+    name: "Test Tenant",
+    plan: "pro",
+    allowed_agent_modes: overrides.allowed_agent_modes ?? ["router", "react"],
+    allowed_widget_avatar: overrides.allowed_widget_avatar ?? false,
+    monthly_token_limit: null,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  };
+  // Use wildcard origin to match both relative URLs (jsdom: http://localhost)
+  // and absolute URLs (MSW default: http://localhost:8000)
+  server.use(
+    http.get("*/api/v1/tenants", () => {
+      return HttpResponse.json([tenant]);
+    }),
+  );
+  useAuthStore.setState({
+    token: "test-token",
+    tenantId: "tenant-1",
+    tenants: [tenant],
+  });
+}
 
 describe("BotDetailForm", () => {
   const mockOnSave = vi.fn();
@@ -153,5 +183,124 @@ describe("BotDetailForm", () => {
     expect(
       screen.getByRole("button", { name: "刪除中..." }),
     ).toBeDisabled();
+  });
+
+  it("should render Widget tab content without crashing when avatar presets API returns object format", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <BotDetailForm
+        bot={mockBot}
+        onSave={mockOnSave}
+        onDelete={mockOnDelete}
+        isSaving={false}
+        isDeleting={false}
+      />,
+    );
+    await user.click(screen.getByRole("tab", { name: "Widget" }));
+    expect(screen.getByText("Web Widget")).toBeInTheDocument();
+    expect(screen.getByText("允許來源")).toBeInTheDocument();
+    expect(screen.getByText("對話歷史")).toBeInTheDocument();
+    expect(screen.getByText("Avatar 角色選擇")).toBeInTheDocument();
+    expect(screen.getByText("Widget 文字設定")).toBeInTheDocument();
+    expect(screen.getByText("嵌入碼")).toBeInTheDocument();
+  });
+
+  it("should render avatar preset options from object-format API response", async () => {
+    const user = userEvent.setup();
+    setTenantPermissions({ allowed_widget_avatar: true });
+    renderWithProviders(
+      <BotDetailForm
+        bot={mockBot}
+        onSave={mockOnSave}
+        onDelete={mockOnDelete}
+        isSaving={false}
+        isDeleting={false}
+      />,
+    );
+    await user.click(screen.getByRole("tab", { name: "Widget" }));
+    // Avatar select should render without crashing
+    // Multiple comboboxes exist (status + avatar), use getAllByRole
+    const comboboxes = screen.getAllByRole("combobox");
+    expect(comboboxes.length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Avatar 角色選擇")).toBeInTheDocument();
+  });
+
+  describe("tenant permission controls", () => {
+    it("should disable avatar select when allowed_widget_avatar is false", async () => {
+      const user = userEvent.setup();
+      setTenantPermissions({ allowed_widget_avatar: false });
+      renderWithProviders(
+        <BotDetailForm
+          bot={mockBot}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+      await user.click(screen.getByRole("tab", { name: "Widget" }));
+      expect(screen.getByText("Avatar 角色選擇")).toBeInTheDocument();
+      // Avatar section should indicate disabled state via tenant permission
+      await waitFor(() => {
+        expect(screen.getByText(/租戶未啟用此功能/)).toBeInTheDocument();
+      });
+    });
+
+    it("should enable avatar select when allowed_widget_avatar is true", async () => {
+      const user = userEvent.setup();
+      setTenantPermissions({ allowed_widget_avatar: true });
+      renderWithProviders(
+        <BotDetailForm
+          bot={mockBot}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+      await user.click(screen.getByRole("tab", { name: "Widget" }));
+      expect(screen.getByText("Avatar 角色選擇")).toBeInTheDocument();
+      // Wait for tenant data to load, then check disabled message is absent
+      await waitFor(() => {
+        expect(screen.queryByText(/租戶未啟用此功能/)).not.toBeInTheDocument();
+      });
+    });
+
+    it("should show disabled text for react when allowed_agent_modes is ['router']", async () => {
+      setTenantPermissions({ allowed_agent_modes: ["router"] });
+      renderWithProviders(
+        <BotDetailForm
+          bot={mockBot}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+      // Wait for tenant data to load and verify ReAct shows as disabled
+      await waitFor(() => {
+        expect(screen.getByText(/租戶未啟用/)).toBeInTheDocument();
+      });
+    });
+
+    it("should not disable react option when allowed_agent_modes includes react", async () => {
+      setTenantPermissions({ allowed_agent_modes: ["router", "react"] });
+      renderWithProviders(
+        <BotDetailForm
+          bot={mockBot}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+      // Wait for tenant data to load, then verify the visible disabled message
+      // paragraph is absent (ignore Radix hidden native <option> elements)
+      await waitFor(() => {
+        const disabledParagraphs = screen.queryAllByText(/租戶未啟用/)
+          .filter((el) => el.tagName !== "OPTION");
+        expect(disabledParagraphs).toHaveLength(0);
+      });
+    });
   });
 });

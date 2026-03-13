@@ -17,6 +17,11 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_recycle=300,
     pool_timeout=10,  # Fail fast instead of waiting 30s for a connection
+    connect_args={
+        # Auto-rollback sessions stuck in "idle in transaction" after 30s.
+        # Prevents connection pool exhaustion from leaked transactions.
+        "server_settings": {"idle_in_transaction_session_timeout": "30000"},
+    },
 )
 
 # Safety net: 確保 process exit 時（包括 SIGTERM → SystemExit）

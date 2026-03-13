@@ -19,7 +19,7 @@ Then("應顯示滿意度趨勢區塊", async ({ feedbackPage }) => {
   await expect(feedbackPage.trendChart).toBeVisible({ timeout: 10000 });
 });
 
-Then("應顯示 Token 成本統計區塊", async ({ feedbackPage }) => {
+Then("應顯示 Token 用量統計區塊", async ({ feedbackPage }) => {
   await expect(feedbackPage.costTable).toBeVisible({ timeout: 10000 });
 });
 

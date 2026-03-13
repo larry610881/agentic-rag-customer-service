@@ -4,7 +4,7 @@
 
 Monorepo 架構的 RAG AI Agent 電商客服平台。採用 DDD + TDD + BDD 開發方法論，後端 Python FastAPI + LangGraph，前端 React + Vite SPA。
 
-> **容器工具**：使用 Podman（非 Docker）。所有指令一律用 `podman` / `podman-compose`，禁止使用 `docker` / `docker-compose`。
+> **容器工具**：使用 Docker Engine（非 Docker Desktop）。所有指令一律用 `docker` / `docker compose`，禁止使用 `podman` / `podman-compose`。
 
 > DDD 架構紅線、測試規則、安全規範等詳見 `.claude/rules/` 下的自動套用規則。
 

@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import { Given, When, Then } from "../fixtures";
 
-const API_BASE = process.env.API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+const API_BASE = process.env.API_BASE_URL ?? "http://127.0.0.1:8001/api/v1";
 
 Given(
   "使用者已登入為 {string}",
@@ -10,7 +10,7 @@ Given(
     let access_token = "";
     for (let attempt = 1; attempt <= 3; attempt++) {
       const res = await page.request.post(`${API_BASE}/auth/login`, {
-        data: { username: tenantName, password: "password123" },
+        data: { account: tenantName, password: "password123" },
       });
       if (res.ok()) {
         const body = await res.json();
@@ -56,42 +56,33 @@ Given("使用者在知識庫頁面", async ({ knowledgePage }) => {
 When(
   "使用者切換至租戶 {string}",
   async ({ page }, tenantName: string) => {
-    // Backend uses JWT for tenant context, so switching tenant requires a new token.
-    // Read current token to look up the target tenant's ID.
-    const authRaw = await page.evaluate(() =>
-      localStorage.getItem("auth-storage"),
+    // Login directly as the target tenant (dev mode: account = tenant name)
+    const loginRes = await page.request.post(`${API_BASE}/auth/login`, {
+      data: { account: tenantName, password: "password123" },
+    });
+    if (!loginRes.ok()) {
+      throw new Error(`Login as "${tenantName}" failed (${loginRes.status()})`);
+    }
+    const { access_token } = await loginRes.json();
+
+    // Extract tenantId from JWT
+    const payload = JSON.parse(
+      Buffer.from(access_token.split(".")[1], "base64").toString(),
     );
-    const authState = JSON.parse(authRaw || "{}");
-    const currentToken = authState?.state?.token;
-    if (!currentToken) throw new Error("No auth token found");
+    const tenantId = payload.sub;
 
-    // Fetch tenants to find the target tenant's ID
-    const tenantsRes = await page.request.get(`${API_BASE}/tenants`, {
-      headers: { Authorization: `Bearer ${currentToken}` },
-    });
-    const tenants: Array<{ id: string; name: string }> =
-      await tenantsRes.json();
-    const target = tenants.find((t) => t.name === tenantName);
-    if (!target) throw new Error(`Tenant "${tenantName}" not found`);
-
-    // Get a new JWT token for the target tenant
-    const tokenRes = await page.request.post(`${API_BASE}/auth/token`, {
-      data: { tenant_id: target.id },
-    });
-    const { access_token } = await tokenRes.json();
-
-    // Update localStorage with new token and tenantId so next navigation uses it
+    // Update localStorage with new token and tenantId
     await page.evaluate(
-      ({ token, tenantId }: { token: string; tenantId: string }) => {
+      ({ token, tid }: { token: string; tid: string }) => {
         localStorage.setItem(
           "auth-storage",
           JSON.stringify({
-            state: { token, tenantId },
+            state: { token, tenantId: tid },
             version: 0,
           }),
         );
       },
-      { token: access_token, tenantId: target.id },
+      { token: access_token, tid: tenantId },
     );
   },
 );

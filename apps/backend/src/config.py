@@ -52,10 +52,11 @@ class Settings(BaseSettings):
     embedding_retry_after_multiplier: float = 1.0
     embedding_min_batch_size: int = 10
 
-    # LLM (independent from Embedding)
-    # "mock" = FakeLLMService; anything else = DynamicLLMServiceFactory (DB-driven)
-    llm_provider: str = "dynamic"
+    # LLM
     llm_max_tokens: int = 1024
+
+    # E2E testing: E2E_MODE=true → FakeLLM + MetaSupervisor (no real LLM calls)
+    e2e_mode: bool = False
 
     # Agent Timeout
     agent_llm_request_timeout: int = 120  # 單次 LLM API 請求 HTTP 超時（秒）

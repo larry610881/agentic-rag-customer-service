@@ -2,8 +2,7 @@ import { toast } from "sonner";
 
 import { useAuthStore } from "@/stores/use-auth-store";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
-
-const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+import { API_BASE } from "@/lib/api-config";
 
 export class ApiError extends Error {
   constructor(

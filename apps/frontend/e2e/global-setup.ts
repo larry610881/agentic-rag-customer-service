@@ -1,20 +1,21 @@
 import { request } from "@playwright/test";
 
-const API_BASE = process.env.API_BASE_URL ?? "http://127.0.0.1:8000";
+const API_BASE = process.env.API_BASE_URL ?? "http://127.0.0.1:8001";
 const MAX_RETRIES = 10;
 const RETRY_DELAY = 2000;
 
 /**
- * E2E Global Setup — Seeds all required data from an empty database.
+ * E2E Global Setup — Seeds all required data via API.
  *
  * Flow (all steps are idempotent):
- *   1. Wait for backend to be ready
- *   2. Create "Demo Store" tenant          (POST /api/v1/tenants, no auth)
- *   3. Login as "Demo Store"               (POST /api/v1/auth/login)
- *   4. Create 3 knowledge bases            (POST /api/v1/knowledge-bases, auth required)
- *   5. Create "E2E 測試機器人" bot          (POST /api/v1/bots, auth required)
- *   6. Create "Other Store" tenant          (POST /api/v1/tenants, no auth)
- *   7. Register tenant admin user           (POST /api/v1/auth/register, no auth)
+ *   1. Wait for backend to be ready            (GET /api/v1/health)
+ *   2. Login as system admin                   (POST /api/v1/auth/login)
+ *   3. Create "Demo Store" tenant              (POST /api/v1/tenants, system_admin auth)
+ *   4. Create "Other Store" tenant             (POST /api/v1/tenants, system_admin auth)
+ *   5. Login as "Demo Store"                   (POST /api/v1/auth/login, dev mode)
+ *   6. Create 3 knowledge bases                (POST /api/v1/knowledge-bases, tenant auth)
+ *   7. Create "E2E 測試機器人" bot              (POST /api/v1/bots, tenant auth)
+ *   8. Register tenant admin user              (POST /api/v1/auth/register, no auth)
  */
 async function globalSetup() {
   let context;
@@ -29,7 +30,7 @@ async function globalSetup() {
   let backendReady = false;
   for (let i = 1; i <= MAX_RETRIES; i++) {
     try {
-      const healthRes = await context.get(`${API_BASE}/api/v1/tenants`);
+      const healthRes = await context.get(`${API_BASE}/api/v1/health`);
       if (healthRes.ok()) {
         backendReady = true;
         break;
@@ -48,9 +49,25 @@ async function globalSetup() {
     return;
   }
 
-  // ── Step 2: Ensure "Demo Store" tenant exists ─────────────────────
+  // ── Step 2: Login as system admin ─────────────────────────────────
+  const sysLoginRes = await context.post(`${API_BASE}/api/v1/auth/login`, {
+    data: { account: "admin@system.com", password: "admin123" },
+  });
+  if (!sysLoginRes.ok()) {
+    console.error(
+      `[E2E Setup] System admin login failed (${sysLoginRes.status()}). Cannot seed.`,
+    );
+    await context.dispose();
+    return;
+  }
+  const { access_token: sysToken } = await sysLoginRes.json();
+  const sysHeaders = { Authorization: `Bearer ${sysToken}` };
+  console.log("[E2E Setup] Logged in as system admin");
+
+  // ── Step 3: Ensure "Demo Store" tenant exists ─────────────────────
   const createDemoRes = await context.post(`${API_BASE}/api/v1/tenants`, {
     data: { name: "Demo Store", plan: "starter" },
+    headers: sysHeaders,
   });
   if (createDemoRes.status() === 201) {
     console.log('[E2E Setup] Created tenant: "Demo Store"');
@@ -62,9 +79,24 @@ async function globalSetup() {
     );
   }
 
-  // ── Step 3: Login as "Demo Store" → get auth token ────────────────
+  // ── Step 4: Ensure "Other Store" tenant exists ────────────────────
+  const createOtherRes = await context.post(`${API_BASE}/api/v1/tenants`, {
+    data: { name: "Other Store", plan: "starter" },
+    headers: sysHeaders,
+  });
+  if (createOtherRes.status() === 201) {
+    console.log('[E2E Setup] Created tenant: "Other Store"');
+  } else if (createOtherRes.status() === 409) {
+    console.log('[E2E Setup] Tenant "Other Store" already exists, skipping.');
+  } else {
+    console.warn(
+      `[E2E Setup] Tenant "Other Store" creation returned ${createOtherRes.status()}`,
+    );
+  }
+
+  // ── Step 5: Login as "Demo Store" → get tenant auth token ─────────
   const loginRes = await context.post(`${API_BASE}/api/v1/auth/login`, {
-    data: { username: "Demo Store", password: "password123" },
+    data: { account: "Demo Store", password: "password123" },
   });
   if (!loginRes.ok()) {
     console.error(
@@ -83,7 +115,7 @@ async function globalSetup() {
   const demoStoreTenantId: string = jwtPayload.sub;
   console.log(`[E2E Setup] Logged in as "Demo Store" (tenant_id=${demoStoreTenantId})`);
 
-  // ── Step 4: Ensure 3 knowledge bases exist ────────────────────────
+  // ── Step 6: Ensure 3 knowledge bases exist ────────────────────────
   const kbRes = await context.get(`${API_BASE}/api/v1/knowledge-bases`, {
     headers,
   });
@@ -110,7 +142,7 @@ async function globalSetup() {
     }
   }
 
-  // ── Step 5: Ensure at least one active bot exists ─────────────────
+  // ── Step 7: Ensure at least one active bot exists ─────────────────
   const botsRes = await context.get(`${API_BASE}/api/v1/bots`, { headers });
   const bots: Array<{ name: string }> = botsRes.ok() ? await botsRes.json() : [];
 
@@ -145,21 +177,7 @@ async function globalSetup() {
     );
   }
 
-  // ── Step 6: Ensure "Other Store" tenant exists ────────────────────
-  const createOtherRes = await context.post(`${API_BASE}/api/v1/tenants`, {
-    data: { name: "Other Store", plan: "starter" },
-  });
-  if (createOtherRes.status() === 201) {
-    console.log('[E2E Setup] Created tenant: "Other Store"');
-  } else if (createOtherRes.status() === 409) {
-    console.log('[E2E Setup] Tenant "Other Store" already exists, skipping.');
-  } else {
-    console.warn(
-      `[E2E Setup] Tenant "Other Store" creation returned ${createOtherRes.status()}`,
-    );
-  }
-
-  // ── Step 7: Register tenant admin user (for journey tests J4-J8) ──
+  // ── Step 8: Register tenant admin user (for journey tests J4-J8) ──
   const registerRes = await context.post(`${API_BASE}/api/v1/auth/register`, {
     data: {
       email: "admin@demo.com",

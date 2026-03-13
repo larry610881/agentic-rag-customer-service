@@ -8,6 +8,9 @@ from src.infrastructure.db.models.diagnostic_rules_config_model import (
 from src.infrastructure.db.models.document_model import DocumentModel
 from src.infrastructure.db.models.feedback_model import FeedbackModel
 from src.infrastructure.db.models.knowledge_base_model import KnowledgeBaseModel
+from src.infrastructure.db.models.log_retention_policy_model import (
+    LogRetentionPolicyModel,
+)
 from src.infrastructure.db.models.mcp_server_model import McpServerModel
 from src.infrastructure.db.models.message_model import MessageModel
 from src.infrastructure.db.models.processing_task_model import ProcessingTaskModel
@@ -32,6 +35,7 @@ __all__ = [
     "UsageRecordModel",
     "ConversationModel",
     "DiagnosticRulesConfigModel",
+    "LogRetentionPolicyModel",
     "MessageModel",
     "BotModel",
     "BotKnowledgeBaseModel",

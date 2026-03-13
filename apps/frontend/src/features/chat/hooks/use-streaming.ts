@@ -6,8 +6,7 @@ import { useAuthStore } from "@/stores/use-auth-store";
 import { useChatStore } from "@/stores/use-chat-store";
 import { getToolLabel } from "@/constants/tool-labels";
 import type { Source, ToolCallInfo } from "@/types/chat";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+import { API_BASE } from "@/lib/api-config";
 
 const getToolHint = (toolName: string): string =>
   `\u{1f50d} ${getToolLabel(toolName)} 使用中`;
@@ -39,6 +38,7 @@ export function useStreaming() {
     setIsStreaming,
     setConversationId,
     setToolHint,
+    setAssistantMessageId,
   } = useChatStore();
 
   const sendMessage = useCallback(
@@ -123,6 +123,9 @@ export function useStreaming() {
             }
             break;
           }
+          case "message_id":
+            setAssistantMessageId(event.message_id as string);
+            break;
           case "conversation_id":
             setConversationId(event.conversation_id as string);
             break;
@@ -184,6 +187,7 @@ export function useStreaming() {
       setIsStreaming,
       setConversationId,
       setToolHint,
+      setAssistantMessageId,
     ],
   );
 

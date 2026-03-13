@@ -134,6 +134,12 @@ class MetaSupervisorService(AgentService):
             tenant_id, kb_id, user_message, history,
             metadata=metadata,
         )
+        # Yield tool_calls so execute_stream can persist them
+        if response.tool_calls:
+            yield {"type": "tool_calls", "tool_calls": response.tool_calls}
+        # Yield refund_step metadata so execute_stream can persist it for next turn
+        if response.refund_step:
+            yield {"type": "refund_step", "refund_step": response.refund_step}
         yield {"type": "token", "content": response.answer}
         if response.sources:
             yield {
