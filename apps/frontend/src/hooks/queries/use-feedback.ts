@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { apiFetch } from "@/lib/api-client";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { queryKeys } from "@/hooks/queries/keys";
@@ -31,6 +32,7 @@ export function useSubmitFeedback() {
     },
     onError: (_error, variables) => {
       setMessageFeedback(variables.message_id, undefined);
+      toast.error("回饋提交失敗，請稍後重試");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
