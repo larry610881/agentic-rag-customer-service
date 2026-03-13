@@ -27,3 +27,9 @@ Feature: 對話紀錄依 bot_id 隔離
     Given 租戶 "tenant-001" 嘗試使用屬於 "tenant-002" 的 bot "bot-xyz"
     When 透過 Use Case 發送訊息
     Then 應拋出 DomainException 且訊息包含 "does not belong to tenant"
+
+  Scenario: System Admin 可查看其他租戶 Bot 的對話
+    Given 系統管理員查詢租戶 "tenant-001" 的 bot "bot-abc" 的對話
+    And 該 bot 有 2 筆對話
+    When 以 system admin 身份列出該 bot 的對話
+    Then 應回傳 2 筆對話

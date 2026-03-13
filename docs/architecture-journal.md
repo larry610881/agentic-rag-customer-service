@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Avatar 預覽 + System Admin 跨租戶授權 — Router 層 tenant_id 解析 + 元件複用策略](#avatar-預覽--system-admin-跨租戶授權--router-層-tenant_id-解析--元件複用策略)
 - [Avatar 真實渲染 — CDN 動態載入策略 + Widget/SPA 雙軌 Renderer 架構](#avatar-真實渲染--cdn-動態載入策略--widgetspa-雙軌-renderer-架構)
 - [Web Bot Widget + Avatar — IIFE Library Mode + Tenant Feature Gate + Agent Team 3 並行](#web-bot-widget--avatar--iife-library-mode--tenant-feature-gate--agent-team-3-並行)
 - [System Admin UI 重構 — 保留租戶 Pattern + ErrorReporter Port/Adapter + Agent Team 並行](#system-admin-ui-重構--保留租戶-pattern--errorreporter-portadapter--agent-team-並行)
@@ -58,6 +59,29 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Avatar 預覽 + System Admin 跨租戶授權 — Router 層 tenant_id 解析 + 元件複用策略
+
+> **Sprint 來源**：Avatar 預覽 + System Admin Bot 跨租戶修復
+> **本次相關主題**：Router 層授權邏輯、effective_tenant_id Pattern、前端 Renderer 複用
+
+### 做得好的地方
+
+- **Router 層攔截，Use Case 層不動**：system_admin 的 tenant_id 轉換只在 `agent_router.py` 和 `conversation_router.py`（Interfaces 層）處理，`SendMessageUseCase` 的 `_load_bot_config()` 跨租戶驗證邏輯完全不變。這符合 DDD 的分層原則 — 授權是 Interfaces 層關注點，Domain 層只管業務規則。
+- **effective_tenant_id Pattern**：在 Router 進入 Use Case 前解析「實際要用的 tenant_id」，而非在 Use Case 內部加 if/else。這讓 Use Case 保持單一職責，不需要知道「誰在呼叫」。
+- **前端 AvatarPreview 完全複用現有 Renderer**：`createLive2DRenderer` 和 `createVRMRenderer` 已在 `avatar-panel.tsx`（Chat 頁面）使用過，新的 `avatar-preview.tsx` 用相同的 dynamic import + dispose cleanup pattern，零重複實作。
+
+### 潛在隱憂
+
+- **system_admin 權限擴散風險**：目前用 `tenant.role == "system_admin"` 判斷，分散在 `agent_router.py` 和 `conversation_router.py`。若未來更多 router 需要同樣邏輯，應提取為共用 dependency（如 `resolve_effective_tenant(tenant, bot_id)`）。→ 建議提取時機：第 3 個 router 需要時。→ 優先級：低
+- **AvatarPreview 每次 props 變化都重建 Renderer**：`useEffect` 依賴 `[avatarType, avatarModelUrl]`，若使用者快速切換角色會頻繁 init/dispose（pixi.js Application 建立成本不低）。→ 建議：加 debounce 或 `useDeferredValue`，但目前 Select 操作頻率低，可暫不處理。→ 優先級：低
+
+### 延伸學習
+
+- **Gateway Pattern（API Gateway 授權轉換）**：本次的 effective_tenant_id 就是簡化版的 Gateway Pattern — 在入口處將外部身份轉為內部操作身份。在微服務架構中，API Gateway 常做類似的事：根據 JWT role 決定下游請求帶哪個 tenant context。
+- **若想深入**：搜尋「API Gateway identity mapping」或參考 Sam Newman《Building Microservices》第 10 章 Security。
 
 ---
 

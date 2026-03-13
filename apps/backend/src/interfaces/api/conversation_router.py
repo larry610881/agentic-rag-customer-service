@@ -6,6 +6,7 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.conversation.get_conversation_use_case import (
     GetConversationUseCase,
 )
@@ -51,9 +52,15 @@ async def list_conversations(
     use_case: ListConversationsUseCase = Depends(
         Provide[Container.list_conversations_use_case]
     ),
+    get_bot: GetBotUseCase = Depends(Provide[Container.get_bot_use_case]),
 ) -> list[ConversationSummaryResponse]:
+    effective_tenant_id = tenant.tenant_id
+    if tenant.role == "system_admin" and bot_id:
+        bot = await get_bot.execute(bot_id)
+        effective_tenant_id = bot.tenant_id
+
     conversations = await use_case.execute(
-        tenant_id=tenant.tenant_id, bot_id=bot_id
+        tenant_id=effective_tenant_id, bot_id=bot_id
     )
     return [
         ConversationSummaryResponse(
@@ -78,7 +85,7 @@ async def get_conversation(
     conversation = await use_case.execute(conversation_id=conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    if conversation.tenant_id != tenant.tenant_id:
+    if tenant.role != "system_admin" and conversation.tenant_id != tenant.tenant_id:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return ConversationDetailResponse(
         id=conversation.id.value,

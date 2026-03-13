@@ -192,3 +192,51 @@ def execute_send_with_cross_tenant_bot(context):
 def verify_domain_exception(context, expected_msg):
     assert context["error"] is not None, "Expected DomainException but none was raised"
     assert expected_msg in context["error"].message
+
+
+# ── Scenario 6: System Admin 可查看其他租戶 Bot 的對話 ──
+
+
+@given(
+    parsers.parse(
+        '系統管理員查詢租戶 "{bot_tenant_id}" 的 bot "{bot_id}" 的對話'
+    )
+)
+def setup_system_admin_query(context, bot_tenant_id, bot_id):
+    context["bot_tenant_id"] = bot_tenant_id
+    context["bot_id"] = bot_id
+
+
+@given(parsers.parse("該 bot 有 {count:d} 筆對話"))
+def setup_bot_conversations(context, count):
+    bot_tenant_id = context["bot_tenant_id"]
+    bot_id = context["bot_id"]
+
+    conversations = [
+        Conversation(tenant_id=bot_tenant_id, bot_id=bot_id)
+        for _ in range(count)
+    ]
+
+    mock_repo = AsyncMock()
+
+    async def mock_find_by_tenant(tid, *, bot_id=None):
+        if bot_id is not None:
+            return [c for c in conversations if c.bot_id == bot_id]
+        return conversations
+
+    mock_repo.find_by_tenant = AsyncMock(side_effect=mock_find_by_tenant)
+
+    context["mock_repo"] = mock_repo
+    context["use_case"] = ListConversationsUseCase(
+        conversation_repository=mock_repo
+    )
+
+
+@when("以 system admin 身份列出該 bot 的對話", target_fixture="result")
+def system_admin_list_conversations(context):
+    # system_admin 的 effective_tenant_id 是 bot 的 tenant_id（由 router 層解析）
+    return _run(
+        context["use_case"].execute(
+            context["bot_tenant_id"], bot_id=context["bot_id"]
+        )
+    )

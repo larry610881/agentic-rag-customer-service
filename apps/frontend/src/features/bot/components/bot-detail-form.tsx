@@ -6,7 +6,9 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { Copy, Check, ChevronRight, Globe } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
+import { useTenants } from "@/hooks/queries/use-tenants";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
+import { PUBLIC_API_URL } from "@/lib/api-config";
 import { queryKeys } from "@/hooks/queries/keys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +35,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
+import { AvatarPreview } from "./avatar-preview";
 import { ModelSelect } from "./model-select";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import type { Bot, UpdateBotRequest } from "@/types/bot";
@@ -205,20 +208,25 @@ export function BotDetailForm({
 
   // Tenant permission check for agent modes
   const tenantId = useAuthStore((s) => s.tenantId);
-  const tenants = useAuthStore((s) => s.tenants);
-  const currentTenant = tenants.find((t) => t.id === tenantId);
+  const token = useAuthStore((s) => s.token);
+  const { data: fetchedTenants } = useTenants();
+  const currentTenant = fetchedTenants?.find((t) => t.id === tenantId);
   const allowedModes = currentTenant?.allowed_agent_modes ?? ["router"];
   const allowedWidgetAvatar = currentTenant?.allowed_widget_avatar ?? false;
-  const token = useAuthStore((s) => s.token);
 
   const { data: avatarPresets } = useQuery({
     queryKey: queryKeys.bots.avatarPresets,
-    queryFn: () =>
-      apiFetch<AvatarPreset[]>(
+    queryFn: async () => {
+      const raw = await apiFetch<Record<string, Omit<AvatarPreset, "name">>>(
         API_ENDPOINTS.bots.avatarPresets,
         {},
         token ?? undefined,
-      ),
+      );
+      return Object.entries(raw).map(([name, preset]) => ({
+        name,
+        ...preset,
+      }));
+    },
     enabled: !!token,
   });
 
@@ -1029,6 +1037,12 @@ export function BotDetailForm({
                         />
                       </div>
                     )}
+                    {allowedWidgetAvatar && (
+                      <AvatarPreview
+                        avatarType={watch("avatar_type") as "none" | "live2d" | "vrm"}
+                        avatarModelUrl={watch("avatar_model_url") || ""}
+                      />
+                    )}
                   </div>
                 );
               }}
@@ -1080,10 +1094,10 @@ export function BotDetailForm({
             <div className="flex flex-col gap-2">
               <div className="flex items-start gap-2">
                 <pre className="flex-1 whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs font-mono select-all">
-                  {`<script src="${import.meta.env.VITE_API_URL || "http://localhost:8000"}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light">\n</script>`}
+                  {`<script src="${PUBLIC_API_URL}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light">\n</script>`}
                 </pre>
                 <WebhookCopyButton
-                  url={`<script src="${import.meta.env.VITE_API_URL || "http://localhost:8000"}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light">\n</script>`}
+                  url={`<script src="${PUBLIC_API_URL}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light">\n</script>`}
                   label="嵌入碼"
                 />
               </div>
@@ -1103,12 +1117,12 @@ export function BotDetailForm({
               <div className="flex items-center gap-2">
                 <Input
                   readOnly
-                  value={`${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/v1/webhook/line/${bot.short_code}`}
+                  value={`${PUBLIC_API_URL}/api/v1/webhook/line/${bot.short_code}`}
                   className="font-mono text-sm"
                   onClick={(e) => (e.target as HTMLInputElement).select()}
                 />
                 <WebhookCopyButton
-                  url={`${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/v1/webhook/line/${bot.short_code}`}
+                  url={`${PUBLIC_API_URL}/api/v1/webhook/line/${bot.short_code}`}
                 />
               </div>
               <p className="text-sm text-muted-foreground">

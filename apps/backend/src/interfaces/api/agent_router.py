@@ -12,6 +12,7 @@ from src.application.agent.send_message_use_case import (
     SendMessageCommand,
     SendMessageUseCase,
 )
+from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
@@ -69,10 +70,16 @@ async def agent_chat(
     record_usage: RecordUsageUseCase = Depends(
         Provide[Container.record_usage_use_case]
     ),
+    get_bot: GetBotUseCase = Depends(Provide[Container.get_bot_use_case]),
 ) -> ChatResponse:
+    effective_tenant_id = tenant.tenant_id
+    if tenant.role == "system_admin" and request.bot_id:
+        bot = await get_bot.execute(request.bot_id)
+        effective_tenant_id = bot.tenant_id
+
     result = await use_case.execute(
         SendMessageCommand(
-            tenant_id=tenant.tenant_id,
+            tenant_id=effective_tenant_id,
             kb_id=request.knowledge_base_id or "",
             message=request.message,
             conversation_id=request.conversation_id,
@@ -130,9 +137,15 @@ async def agent_chat_stream(
     record_usage: RecordUsageUseCase = Depends(
         Provide[Container.record_usage_use_case]
     ),
+    get_bot: GetBotUseCase = Depends(Provide[Container.get_bot_use_case]),
 ) -> StreamingResponse:
+    effective_tenant_id = tenant.tenant_id
+    if tenant.role == "system_admin" and request.bot_id:
+        bot = await get_bot.execute(request.bot_id)
+        effective_tenant_id = bot.tenant_id
+
     command = SendMessageCommand(
-        tenant_id=tenant.tenant_id,
+        tenant_id=effective_tenant_id,
         kb_id=request.knowledge_base_id or "",
         message=request.message,
         conversation_id=request.conversation_id,
