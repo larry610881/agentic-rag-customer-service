@@ -985,58 +985,60 @@ export function BotDetailForm({
                 })();
 
                 return (
-                  <div className="flex flex-col gap-3">
-                    <Select
-                      value={selectValue}
-                      onValueChange={(v) => {
-                        if (v === "__none__") {
-                          avatarField.onChange("none");
-                          setValue("avatar_model_url", "");
-                        } else if (v === "__custom__") {
-                          avatarField.onChange("vrm");
-                          setValue("avatar_model_url", "");
-                        } else if (v.startsWith("preset:")) {
-                          const presetName = v.replace("preset:", "");
-                          const preset = avatarPresets?.find((p) => p.name === presetName);
-                          if (preset) {
-                            avatarField.onChange(preset.type);
-                            setValue("avatar_model_url", preset.url);
+                  <div className="flex items-start gap-6">
+                    <div className="flex flex-col gap-3">
+                      <Select
+                        value={selectValue}
+                        onValueChange={(v) => {
+                          if (v === "__none__") {
+                            avatarField.onChange("none");
+                            setValue("avatar_model_url", "");
+                          } else if (v === "__custom__") {
+                            avatarField.onChange("vrm");
+                            setValue("avatar_model_url", "");
+                          } else if (v.startsWith("preset:")) {
+                            const presetName = v.replace("preset:", "");
+                            const preset = avatarPresets?.find((p) => p.name === presetName);
+                            if (preset) {
+                              avatarField.onChange(preset.type);
+                              setValue("avatar_model_url", preset.url);
+                            }
                           }
-                        }
-                      }}
-                      disabled={!allowedWidgetAvatar}
-                    >
-                      <SelectTrigger className="w-64">
-                        <SelectValue placeholder="選擇角色" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">無角色</SelectItem>
-                        {avatarPresets?.map((preset) => (
-                          <SelectItem
-                            key={preset.name}
-                            value={`preset:${preset.name}`}
-                          >
-                            {preset.label}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value="__custom__">自訂 URL（進階）</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {!allowedWidgetAvatar && (
-                      <p className="text-xs text-muted-foreground">
-                        租戶未啟用此功能，請聯絡系統管理員開啟 Widget Avatar 權限。
-                      </p>
-                    )}
-                    {selectValue === "__custom__" && (
-                      <div className="flex flex-col gap-2">
-                        <Label htmlFor="avatar-model-url">模型 URL</Label>
-                        <Input
-                          id="avatar-model-url"
-                          {...register("avatar_model_url")}
-                          placeholder="https://example.com/model.vrm"
-                        />
-                      </div>
-                    )}
+                        }}
+                        disabled={!allowedWidgetAvatar}
+                      >
+                        <SelectTrigger className="w-64">
+                          <SelectValue placeholder="選擇角色" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">無角色</SelectItem>
+                          {avatarPresets?.map((preset) => (
+                            <SelectItem
+                              key={preset.name}
+                              value={`preset:${preset.name}`}
+                            >
+                              {preset.label}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="__custom__">自訂 URL（進階）</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {!allowedWidgetAvatar && (
+                        <p className="text-xs text-muted-foreground">
+                          租戶未啟用此功能，請聯絡系統管理員開啟 Widget Avatar 權限。
+                        </p>
+                      )}
+                      {selectValue === "__custom__" && (
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="avatar-model-url">模型 URL</Label>
+                          <Input
+                            id="avatar-model-url"
+                            {...register("avatar_model_url")}
+                            placeholder="https://example.com/model.vrm"
+                          />
+                        </div>
+                      )}
+                    </div>
                     {allowedWidgetAvatar && (
                       <AvatarPreview
                         avatarType={watch("avatar_type") as "none" | "live2d" | "vrm"}

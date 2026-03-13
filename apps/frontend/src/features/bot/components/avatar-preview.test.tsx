@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen } from "@testing-library/react";
 import { AvatarPreview } from "./avatar-preview";
 
 const mockLive2DDispose = vi.fn();
@@ -12,6 +12,28 @@ vi.mock("@/features/chat/lib/live2d-renderer", () => ({
 vi.mock("@/features/chat/lib/vrm-renderer", () => ({
   createVRMRenderer: vi.fn().mockResolvedValue({ dispose: mockVRMDispose }),
 }));
+
+// Mock ResizeObserver — jsdom doesn't support it.
+// Immediately call the callback with non-zero dimensions to simulate visible container.
+class MockResizeObserver {
+  private callback: ResizeObserverCallback;
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+  }
+  observe(target: Element) {
+    // Simulate non-zero layout on next microtask
+    Promise.resolve().then(() => {
+      this.callback(
+        [{ contentRect: { width: 200, height: 200 } } as ResizeObserverEntry],
+        this,
+      );
+    });
+  }
+  unobserve() {}
+  disconnect() {}
+}
+
+vi.stubGlobal("ResizeObserver", MockResizeObserver);
 
 describe("AvatarPreview", () => {
   beforeEach(() => {
@@ -46,7 +68,6 @@ describe("AvatarPreview", () => {
 
     expect(screen.getByTestId("avatar-preview")).toBeInTheDocument();
 
-    // Wait for async init
     await vi.waitFor(() => {
       expect(createLive2DRenderer).toHaveBeenCalledWith(
         expect.any(HTMLElement),

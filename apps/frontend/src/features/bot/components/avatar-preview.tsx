@@ -6,6 +6,28 @@ interface AvatarPreviewProps {
   avatarModelUrl: string;
 }
 
+/** Wait until element has non-zero dimensions (tab switch / layout settle) */
+function waitForLayout(el: HTMLElement, signal: AbortSignal): Promise<boolean> {
+  if (el.clientWidth > 0 && el.clientHeight > 0) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          ro.disconnect();
+          resolve(true);
+          return;
+        }
+      }
+    });
+    signal.addEventListener("abort", () => {
+      ro.disconnect();
+      resolve(false);
+    });
+    ro.observe(el);
+  });
+}
+
 export function AvatarPreview({ avatarType, avatarModelUrl }: AvatarPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<RendererHandle | null>(null);
@@ -16,9 +38,13 @@ export function AvatarPreview({ avatarType, avatarModelUrl }: AvatarPreviewProps
     const container = containerRef.current;
     if (!container) return;
 
-    let cancelled = false;
+    const abortController = new AbortController();
 
     const init = async () => {
+      // Wait until container is visible and has dimensions
+      const ready = await waitForLayout(container, abortController.signal);
+      if (!ready || abortController.signal.aborted) return;
+
       try {
         let handle: RendererHandle;
         if (avatarType === "live2d") {
@@ -33,7 +59,7 @@ export function AvatarPreview({ avatarType, avatarModelUrl }: AvatarPreviewProps
           handle = await createVRMRenderer(container, avatarModelUrl);
         }
 
-        if (cancelled) {
+        if (abortController.signal.aborted) {
           handle.dispose();
           return;
         }
@@ -46,7 +72,7 @@ export function AvatarPreview({ avatarType, avatarModelUrl }: AvatarPreviewProps
     init();
 
     return () => {
-      cancelled = true;
+      abortController.abort();
       rendererRef.current?.dispose();
       rendererRef.current = null;
       while (container.firstChild) {
@@ -61,7 +87,7 @@ export function AvatarPreview({ avatarType, avatarModelUrl }: AvatarPreviewProps
     <div
       data-testid="avatar-preview"
       ref={containerRef}
-      className="h-[200px] w-full overflow-hidden rounded-lg border bg-muted/30"
+      className="h-[200px] w-[200px] shrink-0 overflow-hidden rounded-lg"
     />
   );
 }
