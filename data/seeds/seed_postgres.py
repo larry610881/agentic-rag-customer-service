@@ -41,10 +41,6 @@ from src.infrastructure.auth.bcrypt_password_service import (
 from src.infrastructure.db.base import Base  # noqa: E402
 from src.infrastructure.db.models import *  # noqa: E402, F401, F403 — register all models
 
-# ── Deterministic IDs ──────────────────────────────────────────
-JOYINKITCHEN_TENANT_ID = str(uuid5(NAMESPACE_DNS, "joyinkitchen"))
-SPRINGFAIR_TENANT_ID = str(uuid5(NAMESPACE_DNS, "springfair"))
-
 MIGRATIONS = [
     "ALTER TABLE bots ADD COLUMN IF NOT EXISTS enabled_tools JSON NOT NULL DEFAULT ('[]')",
     "ALTER TABLE bots ADD COLUMN IF NOT EXISTS rag_top_k INTEGER NOT NULL DEFAULT 5",
@@ -83,16 +79,18 @@ MIGRATIONS = [
 # ── Tenants ────────────────────────────────────────────────────
 TENANTS = [
     {"id": SYSTEM_TENANT_ID, "name": SYSTEM_TENANT_NAME, "plan": "system"},
-    {"id": JOYINKITCHEN_TENANT_ID, "name": "窩廚房", "plan": "starter"},
-    {"id": SPRINGFAIR_TENANT_ID, "name": "春季展", "plan": "starter"},
 ]
 
 # ── Users ──────────────────────────────────────────────────────
 USERS = [
     {"email": "admin@system.com", "password": "admin123", "role": "system_admin", "tenant_id": SYSTEM_TENANT_ID},
-    {"email": "admin@joyinkitchen.com", "password": "joy123", "role": "tenant_admin", "tenant_id": JOYINKITCHEN_TENANT_ID},
-    {"email": "admin@springfair.com", "password": "spring123", "role": "tenant_admin", "tenant_id": SPRINGFAIR_TENANT_ID},
 ]
+
+# ── Knowledge Bases ───────────────────────────────────────────
+KNOWLEDGE_BASES = []
+
+# ── Bots ──────────────────────────────────────────────────────
+BOTS = []
 
 # ── Provider Settings ─────────────────────────────────────────
 PROVIDER_SETTINGS = [
@@ -191,8 +189,8 @@ async def seed() -> None:
                     "id": t["id"],
                     "name": t["name"],
                     "plan": t["plan"],
-                    "allowed_agent_modes": '["router", "react"]',
-                    "allowed_widget_avatar": False,
+                    "allowed_agent_modes": json.dumps(["router", "react", "supervisor"]) if t["plan"] == "system" else '["router", "react"]',
+                    "allowed_widget_avatar": True,
                     "created_at": now,
                     "updated_at": now,
                 })
@@ -248,6 +246,101 @@ async def seed() -> None:
                     "created_at": now,
                     "updated_at": now,
                 })
+
+            # ── Knowledge Bases ────────────────────────────
+            for kb in KNOWLEDGE_BASES:
+                kb_id = str(uuid5(NAMESPACE_DNS, f"{kb['tenant_id']}:{kb['name']}"))
+                await session.execute(text("""
+                    INSERT INTO knowledge_bases (id, tenant_id, name, description, kb_type, created_at, updated_at)
+                    VALUES (:id, :tenant_id, :name, :description, 'user', :created_at, :updated_at)
+                    ON CONFLICT (id) DO NOTHING
+                """), {
+                    "id": kb_id,
+                    "tenant_id": kb["tenant_id"],
+                    "name": kb["name"],
+                    "description": kb["description"],
+                    "created_at": now,
+                    "updated_at": now,
+                })
+
+            # ── Bots ──────────────────────────────────────
+            for bot in BOTS:
+                bot_id = str(uuid5(NAMESPACE_DNS, f"{bot['tenant_id']}:{bot['name']}"))
+                short_code = bot_id.replace("-", "")[:8]
+                await session.execute(text("""
+                    INSERT INTO bots (id, short_code, tenant_id, name, description,
+                        is_active, system_prompt, enabled_tools, llm_provider, llm_model,
+                        agent_mode, mcp_servers, mcp_bindings, max_tool_calls, audit_mode,
+                        eval_depth, base_prompt, router_prompt, react_prompt,
+                        widget_enabled, widget_allowed_origins, widget_keep_history,
+                        avatar_type, avatar_model_url, widget_welcome_message, widget_placeholder_text,
+                        show_sources, temperature, max_tokens, history_limit,
+                        frequency_penalty, reasoning_effort, rag_top_k, rag_score_threshold,
+                        created_at, updated_at)
+                    VALUES (:id, :short_code, :tenant_id, :name, :description,
+                        :is_active, :system_prompt, :enabled_tools, :llm_provider, :llm_model,
+                        :agent_mode, :mcp_servers, :mcp_bindings, :max_tool_calls, :audit_mode,
+                        :eval_depth, :base_prompt, :router_prompt, :react_prompt,
+                        :widget_enabled, :widget_allowed_origins, :widget_keep_history,
+                        :avatar_type, :avatar_model_url, :widget_welcome_message, :widget_placeholder_text,
+                        :show_sources, :temperature, :max_tokens, :history_limit,
+                        :frequency_penalty, :reasoning_effort, :rag_top_k, :rag_score_threshold,
+                        :created_at, :updated_at)
+                    ON CONFLICT (id) DO NOTHING
+                """), {
+                    "id": bot_id,
+                    "short_code": short_code,
+                    "tenant_id": bot["tenant_id"],
+                    "name": bot["name"],
+                    "description": bot["description"],
+                    "is_active": True,
+                    "system_prompt": "",
+                    "enabled_tools": json.dumps(bot["enabled_tools"]),
+                    "llm_provider": bot["llm_provider"],
+                    "llm_model": bot["llm_model"],
+                    "agent_mode": bot["agent_mode"],
+                    "mcp_servers": "[]",
+                    "mcp_bindings": "[]",
+                    "max_tool_calls": 5,
+                    "audit_mode": "minimal",
+                    "eval_depth": "L1",
+                    "base_prompt": "",
+                    "router_prompt": "",
+                    "react_prompt": "",
+                    "widget_enabled": False,
+                    "widget_allowed_origins": "[]",
+                    "widget_keep_history": True,
+                    "avatar_type": "none",
+                    "avatar_model_url": "",
+                    "widget_welcome_message": "",
+                    "widget_placeholder_text": "",
+                    "show_sources": True,
+                    "temperature": 0.3,
+                    "max_tokens": 1024,
+                    "history_limit": 10,
+                    "frequency_penalty": 0.0,
+                    "reasoning_effort": "medium",
+                    "rag_top_k": 5,
+                    "rag_score_threshold": 0.3,
+                    "created_at": now,
+                    "updated_at": now,
+                })
+
+            # ── Bot-KB 關聯 ───────────────────────────────
+            for bot in BOTS:
+                bot_id = str(uuid5(NAMESPACE_DNS, f"{bot['tenant_id']}:{bot['name']}"))
+                for kb in KNOWLEDGE_BASES:
+                    if kb["tenant_id"] == bot["tenant_id"]:
+                        kb_id = str(uuid5(NAMESPACE_DNS, f"{kb['tenant_id']}:{kb['name']}"))
+                        await session.execute(text("""
+                            INSERT INTO bot_knowledge_bases (bot_id, knowledge_base_id, created_at)
+                            VALUES (:bot_id, :kb_id, :created_at)
+                            ON CONFLICT DO NOTHING
+                        """), {
+                            "bot_id": bot_id,
+                            "kb_id": kb_id,
+                            "created_at": now,
+                        })
 
     await engine.dispose()
 
