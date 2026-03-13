@@ -51,6 +51,8 @@ class UpdateBotCommand:
     avatar_model_url: object = _UNSET
     widget_welcome_message: object = _UNSET
     widget_placeholder_text: object = _UNSET
+    widget_greeting_messages: object = _UNSET
+    widget_greeting_animation: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
 
@@ -79,6 +81,7 @@ class UpdateBotUseCase:
             "widget_enabled", "widget_keep_history",
             "avatar_type", "avatar_model_url",
             "widget_welcome_message", "widget_placeholder_text",
+            "widget_greeting_animation",
             "base_prompt", "router_prompt", "react_prompt",
             "line_channel_secret", "line_channel_access_token",
         )
@@ -93,6 +96,8 @@ class UpdateBotUseCase:
             bot.enabled_tools = list(command.enabled_tools)  # type: ignore[arg-type]
         if command.widget_allowed_origins is not _UNSET:
             bot.widget_allowed_origins = list(command.widget_allowed_origins)  # type: ignore[arg-type]
+        if command.widget_greeting_messages is not _UNSET:
+            bot.widget_greeting_messages = list(command.widget_greeting_messages)  # type: ignore[arg-type]
         if command.mcp_servers is not _UNSET:
             bot.mcp_servers = [
                 McpServerConfig(

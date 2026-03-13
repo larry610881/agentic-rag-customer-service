@@ -67,6 +67,8 @@ class CreateBotRequest(BaseModel):
     avatar_model_url: str = ""
     widget_welcome_message: str = ""
     widget_placeholder_text: str = ""
+    widget_greeting_messages: list[str] = []
+    widget_greeting_animation: str = "fade"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -106,6 +108,8 @@ class UpdateBotRequest(BaseModel):
     avatar_model_url: str | None = None
     widget_welcome_message: str | None = None
     widget_placeholder_text: str | None = None
+    widget_greeting_messages: list[str] | None = None
+    widget_greeting_animation: str | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -148,6 +152,8 @@ class BotResponse(BaseModel):
     avatar_model_url: str
     widget_welcome_message: str
     widget_placeholder_text: str
+    widget_greeting_messages: list[str]
+    widget_greeting_animation: str
     line_channel_secret: str | None
     line_channel_access_token: str | None
     created_at: str
@@ -212,6 +218,8 @@ def _to_response(bot) -> BotResponse:
         avatar_model_url=bot.avatar_model_url,
         widget_welcome_message=bot.widget_welcome_message,
         widget_placeholder_text=bot.widget_placeholder_text,
+        widget_greeting_messages=bot.widget_greeting_messages,
+        widget_greeting_animation=bot.widget_greeting_animation,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
         created_at=bot.created_at.isoformat(),
@@ -281,6 +289,8 @@ async def create_bot(
             avatar_model_url=body.avatar_model_url,
             widget_welcome_message=body.widget_welcome_message,
             widget_placeholder_text=body.widget_placeholder_text,
+            widget_greeting_messages=body.widget_greeting_messages,
+            widget_greeting_animation=body.widget_greeting_animation,
             base_prompt=body.base_prompt,
             router_prompt=body.router_prompt,
             react_prompt=body.react_prompt,

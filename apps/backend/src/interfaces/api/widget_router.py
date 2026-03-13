@@ -4,13 +4,17 @@ import json
 import logging
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.application.agent.send_message_use_case import (
     SendMessageCommand,
     SendMessageUseCase,
+)
+from src.application.conversation.submit_feedback_use_case import (
+    SubmitFeedbackCommand,
+    SubmitFeedbackUseCase,
 )
 from src.container import Container
 from src.domain.bot.entity import Bot
@@ -28,6 +32,14 @@ class WidgetChatRequest(BaseModel):
     metadata: dict | None = None  # 預留：未來帶身份 token 時用
 
 
+class WidgetFeedbackRequest(BaseModel):
+    conversation_id: str
+    message_id: str
+    rating: str  # "thumbs_up" | "thumbs_down"
+    comment: str | None = None
+    tags: list[str] = []
+
+
 class WidgetConfigResponse(BaseModel):
     name: str
     description: str
@@ -36,6 +48,8 @@ class WidgetConfigResponse(BaseModel):
     avatar_model_url: str = ""
     welcome_message: str = ""
     placeholder_text: str = ""
+    greeting_messages: list[str] = []
+    greeting_animation: str = "fade"
 
 
 async def validate_widget_bot(
@@ -80,6 +94,7 @@ def _set_cors_headers(response, origin: str | None, bot: Bot) -> None:
 
 @router.options("/{short_code}/chat/stream")
 @router.options("/{short_code}/config")
+@router.options("/{short_code}/feedback")
 @inject
 async def widget_cors_preflight(
     short_code: str,
@@ -106,12 +121,15 @@ async def widget_cors_preflight(
 async def widget_config(
     short_code: str,
     request: Request,
+    response: Response,
     bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
     tenant_repo: TenantRepository = Depends(Provide[Container.tenant_repository]),
 ) -> WidgetConfigResponse:
     """Public endpoint: get bot display config."""
     origin = request.headers.get("origin")
     bot = await validate_widget_bot(short_code, origin, bot_repo)
+
+    _set_cors_headers(response, origin, bot)
 
     # Check tenant permission for widget avatar
     avatar_type = bot.avatar_type
@@ -129,6 +147,8 @@ async def widget_config(
         avatar_model_url=avatar_model_url,
         welcome_message=bot.widget_welcome_message,
         placeholder_text=bot.widget_placeholder_text,
+        greeting_messages=bot.widget_greeting_messages,
+        greeting_animation=bot.widget_greeting_animation,
     )
 
 
@@ -179,3 +199,34 @@ async def widget_chat_stream(
     )
     _set_cors_headers(response, origin, bot)
     return response
+
+
+@router.post("/{short_code}/feedback", status_code=201)
+@inject
+async def widget_feedback(
+    short_code: str,
+    body: WidgetFeedbackRequest,
+    request: Request,
+    response: Response,
+    bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
+    use_case: SubmitFeedbackUseCase = Depends(
+        Provide[Container.submit_feedback_use_case]
+    ),
+) -> dict:
+    """Public endpoint: submit feedback from widget."""
+    origin = request.headers.get("origin")
+    bot = await validate_widget_bot(short_code, origin, bot_repo)
+
+    command = SubmitFeedbackCommand(
+        tenant_id=bot.tenant_id,
+        conversation_id=body.conversation_id,
+        message_id=body.message_id,
+        channel="widget",
+        rating=body.rating,
+        comment=body.comment,
+        tags=body.tags,
+    )
+    await use_case.execute(command)
+
+    _set_cors_headers(response, origin, bot)
+    return {"success": True}

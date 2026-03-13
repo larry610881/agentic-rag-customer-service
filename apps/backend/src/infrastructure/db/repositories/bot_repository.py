@@ -92,6 +92,8 @@ class SQLAlchemyBotRepository(BotRepository):
             avatar_model_url=model.avatar_model_url or "",
             widget_welcome_message=model.widget_welcome_message or "",
             widget_placeholder_text=model.widget_placeholder_text or "",
+            widget_greeting_messages=list(model.widget_greeting_messages or []),
+            widget_greeting_animation=model.widget_greeting_animation or "fade",
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
             created_at=model.created_at,
@@ -178,6 +180,8 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.avatar_model_url = bot.avatar_model_url
                 existing.widget_welcome_message = bot.widget_welcome_message
                 existing.widget_placeholder_text = bot.widget_placeholder_text
+                existing.widget_greeting_messages = bot.widget_greeting_messages
+                existing.widget_greeting_animation = bot.widget_greeting_animation
                 existing.line_channel_secret = bot.line_channel_secret
                 existing.line_channel_access_token = bot.line_channel_access_token
                 existing.temperature = bot.llm_params.temperature
@@ -238,6 +242,8 @@ class SQLAlchemyBotRepository(BotRepository):
                     avatar_model_url=bot.avatar_model_url,
                     widget_welcome_message=bot.widget_welcome_message,
                     widget_placeholder_text=bot.widget_placeholder_text,
+                    widget_greeting_messages=bot.widget_greeting_messages,
+                    widget_greeting_animation=bot.widget_greeting_animation,
                     line_channel_secret=bot.line_channel_secret,
                     line_channel_access_token=bot.line_channel_access_token,
                     temperature=bot.llm_params.temperature,

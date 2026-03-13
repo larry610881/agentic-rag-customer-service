@@ -84,6 +84,12 @@ class BotModel(Base):
     widget_placeholder_text: Mapped[str] = mapped_column(
         String(200), nullable=False, default=""
     )
+    widget_greeting_messages: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    widget_greeting_animation: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="fade"
+    )
     line_channel_secret: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )

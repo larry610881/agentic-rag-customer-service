@@ -378,6 +378,11 @@
   color: #64748b;
   font-style: italic;
   font-size: 13px;
+  animation: aw-pulse 1.5s ease-in-out infinite;
+}
+@keyframes aw-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 /* ── Sources ───────────────────────────────────────────────── */

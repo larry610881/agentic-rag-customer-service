@@ -50,6 +50,8 @@ class CreateBotCommand:
     avatar_model_url: str = ""
     widget_welcome_message: str = ""
     widget_placeholder_text: str = ""
+    widget_greeting_messages: list[str] = field(default_factory=list)
+    widget_greeting_animation: str = "fade"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -130,6 +132,8 @@ class CreateBotUseCase:
             avatar_model_url=command.avatar_model_url,
             widget_welcome_message=command.widget_welcome_message,
             widget_placeholder_text=command.widget_placeholder_text,
+            widget_greeting_messages=list(command.widget_greeting_messages),
+            widget_greeting_animation=command.widget_greeting_animation,
             base_prompt=command.base_prompt,
             router_prompt=command.router_prompt,
             react_prompt=command.react_prompt,

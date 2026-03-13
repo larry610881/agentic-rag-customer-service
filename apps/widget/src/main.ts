@@ -40,6 +40,8 @@ import { Widget } from "./widget";
         avatar_model_url: data.avatar_model_url || "",
         welcome_message: data.welcome_message || "",
         placeholder_text: data.placeholder_text || "",
+        greeting_messages: data.greeting_messages || [],
+        greeting_animation: data.greeting_animation || "fade",
       };
 
       new Widget(config, apiBase, shortCode);
