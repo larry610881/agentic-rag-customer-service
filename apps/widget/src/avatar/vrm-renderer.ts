@@ -7,17 +7,15 @@ declare const THREE: any;
 /**
  * CDN URLs for Three.js stack.
  *
- * Using three@0.160.1 because it is the last version that ships
- * `examples/js/loaders/GLTFLoader.js` as a script-tag-compatible global.
- * Newer versions (0.161+) only provide ESM addons, which cannot be loaded
- * via <script> tags in our IIFE widget context.
+ * three@0.160+ removed `examples/js/` (UMD script-tag builds).
+ * We use three@0.150.0 which still ships `build/three.min.js` as a global,
+ * and self-host GLTFLoader.js (from r128, compatible with three globals).
+ * three-vrm@2.1.0 supports three r128-r160.
  */
 const CDN_THREE =
-  "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js";
-const CDN_GLTF_LOADER =
-  "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/js/loaders/GLTFLoader.js";
+  "https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js";
 const CDN_THREE_VRM =
-  "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.3/lib/three-vrm.min.js";
+  "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@2.1.0/lib/three-vrm.min.js";
 
 /**
  * VRM avatar renderer.
@@ -54,8 +52,8 @@ export class VRMRenderer implements AvatarRenderer {
 
       // Load Three.js core first
       await loadScript(CDN_THREE);
-      // GLTFLoader registers itself on THREE.GLTFLoader
-      await loadScript(CDN_GLTF_LOADER);
+      // GLTFLoader (self-hosted, r128 UMD — registers on THREE.GLTFLoader)
+      await loadScript(`${this.apiBase}/static/libs/GLTFLoader.js`);
       // @pixiv/three-vrm UMD exposes THREEVRM global
       await loadScript(CDN_THREE_VRM);
 

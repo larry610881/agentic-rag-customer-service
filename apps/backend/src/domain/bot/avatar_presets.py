@@ -29,4 +29,39 @@ PRESET_AVATARS = {
         "url": "/static/models/vrm/VRM1_Constraint_Twist_Sample.vrm",
         "label": "VRM 範例角色",
     },
+    "chibi-chef": {
+        "type": "glb",
+        "url": "/static/models/avatars/chibi-chef.glb",
+        "label": "Q版小廚師（3D 卡通風）",
+    },
+    "frying-pan": {
+        "type": "glb",
+        "url": "/static/models/avatars/frying-pan.glb",
+        "label": "平底鍋（Q版廚具）",
+    },
+    "pot-stew": {
+        "type": "glb",
+        "url": "/static/models/avatars/pot-stew.glb",
+        "label": "燉鍋（Q版廚具）",
+    },
+    "cooking-spatula": {
+        "type": "glb",
+        "url": "/static/models/avatars/cooking-spatula.glb",
+        "label": "鍋鏟（Q版廚具）",
+    },
+    "whisk": {
+        "type": "glb",
+        "url": "/static/models/avatars/whisk.glb",
+        "label": "打蛋器（Q版廚具）",
+    },
+    "cooking-knife": {
+        "type": "glb",
+        "url": "/static/models/avatars/cooking-knife.glb",
+        "label": "菜刀（Q版廚具）",
+    },
+    "rolling-pin": {
+        "type": "glb",
+        "url": "/static/models/avatars/rollingPin.glb",
+        "label": "擀麵棍（Q版廚具）",
+    },
 }

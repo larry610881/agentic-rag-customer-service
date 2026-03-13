@@ -27,6 +27,11 @@ export async function loadAvatar(
     return new VRMRenderer(modelUrl, apiBase);
   }
 
+  if (config.avatar_type === "glb") {
+    const { GLBRenderer } = await import("./glb-renderer");
+    return new GLBRenderer(modelUrl, apiBase);
+  }
+
   console.warn(`[widget] Unknown avatar_type: ${config.avatar_type}`);
   return null;
 }

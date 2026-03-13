@@ -21,7 +21,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="text-center mb-8 absolute top-12">
-        <h1 className="text-4xl font-heading font-bold tracking-widest text-primary">RAG 客服系統</h1>
+        <h1 className="text-4xl font-heading font-bold tracking-widest text-primary">AI 應用 Team</h1>
         <p className="text-muted-foreground mt-2 text-sm tracking-wider">智能客服平台</p>
       </div>
       <LoginForm />

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { RendererHandle } from "@/features/chat/lib/live2d-renderer";
 
 interface AvatarPreviewProps {
-  avatarType: "none" | "live2d" | "vrm";
+  avatarType: "none" | "live2d" | "vrm" | "glb";
   avatarModelUrl: string;
 }
 
@@ -52,6 +52,11 @@ export function AvatarPreview({ avatarType, avatarModelUrl }: AvatarPreviewProps
             "@/features/chat/lib/live2d-renderer"
           );
           handle = await createLive2DRenderer(container, avatarModelUrl);
+        } else if (avatarType === "glb") {
+          const { createGLBRenderer } = await import(
+            "@/features/chat/lib/glb-renderer"
+          );
+          handle = await createGLBRenderer(container, avatarModelUrl);
         } else {
           const { createVRMRenderer } = await import(
             "@/features/chat/lib/vrm-renderer"

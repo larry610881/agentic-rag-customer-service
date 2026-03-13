@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Copy, Check, ChevronRight, Globe } from "lucide-react";
+import { Copy, Check, ChevronRight, Globe, Plus, Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
 import { useTenants } from "@/hooks/queries/use-tenants";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
@@ -84,10 +84,12 @@ const botFormSchema = z.object({
   widget_enabled: z.boolean().default(false),
   widget_allowed_origins: z.string().default(""),
   widget_keep_history: z.boolean().default(true),
-  avatar_type: z.enum(["none", "live2d", "vrm"]).default("none"),
+  avatar_type: z.enum(["none", "live2d", "vrm", "glb"]).default("none"),
   avatar_model_url: z.string().default(""),
   widget_welcome_message: z.string().max(500).default(""),
   widget_placeholder_text: z.string().max(200).default(""),
+  widget_greeting_messages: z.array(z.string().max(100)).default([]),
+  widget_greeting_animation: z.enum(["fade", "slide", "typewriter"]).default("fade"),
   line_channel_secret: z.string().nullable().optional(),
   line_channel_access_token: z.string().nullable().optional(),
 });
@@ -274,6 +276,8 @@ export function BotDetailForm({
       avatar_model_url: bot.avatar_model_url ?? "",
       widget_welcome_message: bot.widget_welcome_message ?? "",
       widget_placeholder_text: bot.widget_placeholder_text ?? "",
+      widget_greeting_messages: bot.widget_greeting_messages ?? [],
+      widget_greeting_animation: bot.widget_greeting_animation ?? "fade",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     },
@@ -281,6 +285,7 @@ export function BotDetailForm({
 
   const enabledTools = watch("enabled_tools") ?? [];
   const agentMode = watch("agent_mode");
+  const greetingMessages = watch("widget_greeting_messages") ?? [];
   const mcpServers = watch("mcp_servers") ?? [];
 
   // MCP server tools metadata (shared with McpBindingsSection)
@@ -334,6 +339,8 @@ export function BotDetailForm({
       avatar_model_url: bot.avatar_model_url ?? "",
       widget_welcome_message: bot.widget_welcome_message ?? "",
       widget_placeholder_text: bot.widget_placeholder_text ?? "",
+      widget_greeting_messages: bot.widget_greeting_messages ?? [],
+      widget_greeting_animation: bot.widget_greeting_animation ?? "fade",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     });
@@ -1086,6 +1093,76 @@ export function BotDetailForm({
               )}
               <p className="text-xs text-muted-foreground">
                 Widget 輸入框的 placeholder 文字（最多 200 字）
+              </p>
+            </div>
+          </section>
+
+          {/* 歡迎招呼語 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">歡迎招呼語</h3>
+            <p className="text-xs text-muted-foreground">
+              聊天面板關閉時，按鈕旁會自動輪播這些招呼語氣泡，吸引訪客開啟對話。
+            </p>
+            <div className="flex flex-col gap-2">
+              {greetingMessages.map((_msg: string, idx: number) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Input
+                    value={greetingMessages[idx]}
+                    onChange={(e) => {
+                      const updated = [...greetingMessages];
+                      updated[idx] = e.target.value;
+                      setValue("widget_greeting_messages", updated, { shouldDirty: true });
+                    }}
+                    placeholder={`招呼語 ${idx + 1}`}
+                    maxLength={100}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const updated = greetingMessages.filter((_: string, i: number) => i !== idx);
+                      setValue("widget_greeting_messages", updated, { shouldDirty: true });
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="self-start"
+                onClick={() => {
+                  setValue("widget_greeting_messages", [...greetingMessages, ""], { shouldDirty: true });
+                }}
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                新增招呼語
+              </Button>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>動畫效果</Label>
+              <Controller
+                name="widget_greeting_animation"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fade">淡入淡出 (Fade)</SelectItem>
+                      <SelectItem value="slide">滑動 (Slide)</SelectItem>
+                      <SelectItem value="typewriter">打字機 (Typewriter)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                招呼語輪播時的切換動畫效果
               </p>
             </div>
           </section>

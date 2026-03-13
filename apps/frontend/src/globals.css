@@ -157,3 +157,6 @@
 .dark ::-webkit-scrollbar { width: 6px; }
 .dark ::-webkit-scrollbar-track { background: transparent; }
 .dark ::-webkit-scrollbar-thumb { background: oklch(0.75 0.15 195 / 40%); border-radius: 3px; }
+
+/* Prevent nested scrollbars: hide scrollbar on body (app uses flex h-screen layout) */
+html, body { overflow: hidden; height: 100%; }

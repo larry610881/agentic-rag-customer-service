@@ -29,6 +29,7 @@ from src.infrastructure.logging.trace import flush_trace, init_trace
 logger = get_logger(__name__)
 
 WIDGET_PATH_PREFIX = "/api/v1/widget/"
+STATIC_PATH_PREFIX = "/static/"
 
 
 class CORSMiddlewareWithExclusions:
@@ -37,6 +38,10 @@ class CORSMiddlewareWithExclusions:
     Widget endpoints handle their own dynamic CORS based on
     ``bot.widget_allowed_origins``, so they must not be intercepted
     by the global CORS middleware.
+
+    Static files (``/static/``) are served with permissive CORS
+    (``Access-Control-Allow-Origin: *``) so that widget embeds on
+    any domain can load models, textures, and scripts.
     """
 
     def __init__(self, app: ASGIApp, **cors_kwargs: object) -> None:
@@ -46,12 +51,34 @@ class CORSMiddlewareWithExclusions:
         self._cors = CORSMiddleware(app, **cors_kwargs)  # type: ignore[arg-type]
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and scope.get("path", "").startswith(
-            WIDGET_PATH_PREFIX
-        ):
+        if scope["type"] != "http":
+            await self._cors(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+
+        if path.startswith(WIDGET_PATH_PREFIX):
+            # Widget API handles its own CORS
             await self._app(scope, receive, send)
+        elif path.startswith(STATIC_PATH_PREFIX):
+            # Static files: inject permissive CORS headers
+            await self._serve_static_with_cors(scope, receive, send)
         else:
             await self._cors(scope, receive, send)
+
+    async def _serve_static_with_cors(
+        self, scope: Scope, receive: Receive, send: Send,
+    ) -> None:
+        """Wrap static file responses with Access-Control-Allow-Origin: *."""
+
+        async def send_with_cors(message: object) -> None:
+            if isinstance(message, dict) and message.get("type") == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers.append((b"access-control-allow-origin", b"*"))
+                message = {**message, "headers": headers}
+            await send(message)  # type: ignore[arg-type]
+
+        await self._app(scope, receive, send_with_cors)
 
 
 def extract_tenant_id(authorization: str) -> str | None:

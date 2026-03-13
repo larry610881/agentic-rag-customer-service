@@ -49,6 +49,11 @@ export function AvatarPanel() {
             "@/features/chat/lib/live2d-renderer"
           );
           handle = await createLive2DRenderer(container, avatarModelUrl);
+        } else if (avatarType === "glb") {
+          const { createGLBRenderer } = await import(
+            "@/features/chat/lib/glb-renderer"
+          );
+          handle = await createGLBRenderer(container, avatarModelUrl);
         } else {
           const { createVRMRenderer } = await import(
             "@/features/chat/lib/vrm-renderer"

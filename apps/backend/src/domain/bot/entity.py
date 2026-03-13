@@ -72,10 +72,12 @@ class Bot:
     widget_enabled: bool = False
     widget_allowed_origins: list[str] = field(default_factory=list)
     widget_keep_history: bool = True
-    avatar_type: str = "none"              # "none" | "live2d" | "vrm"
+    avatar_type: str = "none"              # "none" | "live2d" | "vrm" | "glb"
     avatar_model_url: str = ""
     widget_welcome_message: str = ""
     widget_placeholder_text: str = ""
+    widget_greeting_messages: list[str] = field(default_factory=list)
+    widget_greeting_animation: str = "fade"  # fade | slide | typewriter
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     created_at: datetime = field(
