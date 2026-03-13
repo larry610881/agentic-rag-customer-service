@@ -2,6 +2,9 @@ from src.infrastructure.db.models.bot_knowledge_base_model import BotKnowledgeBa
 from src.infrastructure.db.models.bot_model import BotModel
 from src.infrastructure.db.models.chunk_model import ChunkModel
 from src.infrastructure.db.models.conversation_model import ConversationModel
+from src.infrastructure.db.models.diagnostic_rules_config_model import (
+    DiagnosticRulesConfigModel,
+)
 from src.infrastructure.db.models.document_model import DocumentModel
 from src.infrastructure.db.models.feedback_model import FeedbackModel
 from src.infrastructure.db.models.knowledge_base_model import KnowledgeBaseModel
@@ -28,6 +31,7 @@ __all__ = [
     "ProcessingTaskModel",
     "UsageRecordModel",
     "ConversationModel",
+    "DiagnosticRulesConfigModel",
     "MessageModel",
     "BotModel",
     "BotKnowledgeBaseModel",
