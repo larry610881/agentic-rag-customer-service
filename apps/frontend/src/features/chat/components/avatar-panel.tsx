@@ -2,6 +2,28 @@ import { useEffect, useRef } from "react";
 import { useChatStore } from "@/stores/use-chat-store";
 import type { RendererHandle } from "@/features/chat/lib/live2d-renderer";
 
+/** Wait until element has non-zero dimensions (layout settle) */
+function waitForLayout(el: HTMLElement, signal: AbortSignal): Promise<boolean> {
+  if (el.clientWidth > 0 && el.clientHeight > 0) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          ro.disconnect();
+          resolve(true);
+          return;
+        }
+      }
+    });
+    signal.addEventListener("abort", () => {
+      ro.disconnect();
+      resolve(false);
+    });
+    ro.observe(el);
+  });
+}
+
 export function AvatarPanel() {
   const avatarType = useChatStore((s) => s.avatarType);
   const avatarModelUrl = useChatStore((s) => s.avatarModelUrl);
@@ -14,9 +36,12 @@ export function AvatarPanel() {
     const container = containerRef.current;
     if (!container) return;
 
-    let cancelled = false;
+    const abortController = new AbortController();
 
     const init = async () => {
+      const ready = await waitForLayout(container, abortController.signal);
+      if (!ready || abortController.signal.aborted) return;
+
       try {
         let handle: RendererHandle;
         if (avatarType === "live2d") {
@@ -31,7 +56,7 @@ export function AvatarPanel() {
           handle = await createVRMRenderer(container, avatarModelUrl);
         }
 
-        if (cancelled) {
+        if (abortController.signal.aborted) {
           handle.dispose();
           return;
         }
@@ -44,7 +69,7 @@ export function AvatarPanel() {
     init();
 
     return () => {
-      cancelled = true;
+      abortController.abort();
       rendererRef.current?.dispose();
       rendererRef.current = null;
       while (container.firstChild) {

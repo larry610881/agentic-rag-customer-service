@@ -15,6 +15,25 @@ vi.mock("@/features/chat/lib/vrm-renderer", () => ({
   createVRMRenderer: mockCreateVRM,
 }));
 
+// Mock ResizeObserver — jsdom doesn't support it
+class MockResizeObserver {
+  private callback: ResizeObserverCallback;
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+  }
+  observe(target: Element) {
+    Promise.resolve().then(() => {
+      this.callback(
+        [{ contentRect: { width: 200, height: 200 } } as ResizeObserverEntry],
+        this,
+      );
+    });
+  }
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal("ResizeObserver", MockResizeObserver);
+
 // Import after mocks
 import { AvatarPanel } from "./avatar-panel";
 
