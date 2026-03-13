@@ -17,6 +17,7 @@ from src.application.bot.list_bots_use_case import ListBotsUseCase
 from src.application.bot.update_bot_use_case import UpdateBotCommand, UpdateBotUseCase
 from src.container import Container
 from src.domain.bot.avatar_presets import PRESET_AVATARS
+from src.domain.platform.value_objects import ProviderName
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 
@@ -30,6 +31,42 @@ _VALID_EVAL_DEPTHS = {
     "L1+L2", "L1+L3", "L2+L3",
     "L1+L2+L3",
 }
+_VALID_LLM_PROVIDERS = {p.value for p in ProviderName}
+
+
+def _validate_llm_fields(
+    llm_provider: str | None,
+    llm_model: str | None,
+    eval_provider: str | None,
+    eval_model: str | None,
+) -> None:
+    """Validate LLM/eval provider and model field combinations."""
+    # llm_provider validation
+    if llm_provider and llm_provider not in _VALID_LLM_PROVIDERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"llm_provider must be one of "
+            f"{sorted(_VALID_LLM_PROVIDERS)} or empty",
+        )
+    # llm_model requires llm_provider
+    if llm_model and not llm_provider:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="llm_model requires llm_provider to be set",
+        )
+    # eval_provider validation
+    if eval_provider and eval_provider not in _VALID_LLM_PROVIDERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"eval_provider must be one of "
+            f"{sorted(_VALID_LLM_PROVIDERS)} or empty",
+        )
+    # eval_model requires eval_provider
+    if eval_model and not eval_provider:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="eval_model requires eval_provider to be set",
+        )
 
 
 class CreateBotRequest(BaseModel):
@@ -255,6 +292,10 @@ async def create_bot(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
         )
+    _validate_llm_fields(
+        body.llm_provider, body.llm_model,
+        body.eval_provider, body.eval_model,
+    )
     bot = await use_case.execute(
         CreateBotCommand(
             tenant_id=tenant.tenant_id,
@@ -380,6 +421,10 @@ async def update_bot(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
         )
+    _validate_llm_fields(
+        body.llm_provider, body.llm_model,
+        body.eval_provider, body.eval_model,
+    )
     command = _build_update_command(bot_id, body)
     try:
         bot = await use_case.execute(command)

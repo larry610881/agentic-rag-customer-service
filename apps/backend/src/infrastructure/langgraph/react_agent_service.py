@@ -36,6 +36,33 @@ from src.infrastructure.llm.dynamic_llm_factory import DynamicLLMServiceProxy
 logger = structlog.get_logger(__name__)
 
 
+def _backfill_tool_output(
+    tool_calls_emitted: list[dict[str, Any]],
+    msg: Any,
+    content_str: str,
+) -> None:
+    """Match a ToolMessage to its tool_call entry and backfill output.
+
+    Tries tool_call_id match first (precise), falls back to tool_name (legacy).
+    """
+    msg_tc_id = getattr(msg, "tool_call_id", "") or ""
+
+    # 1. Try precise match by tool_call_id
+    if msg_tc_id:
+        for tc in tool_calls_emitted:
+            if tc.get("tool_call_id") == msg_tc_id and "tool_output" not in tc:
+                tc["tool_output"] = content_str
+                return
+
+    # 2. Fallback: match by tool_name (backward compatibility)
+    tool_name = getattr(msg, "name", "") or ""
+    if tool_name:
+        for tc in reversed(tool_calls_emitted):
+            if tc.get("tool_name") == tool_name and "tool_output" not in tc:
+                tc["tool_output"] = content_str
+                return
+
+
 class ReActAgentService(AgentService):
     def __init__(
         self,
@@ -458,6 +485,9 @@ class ReActAgentService(AgentService):
                                                     for tc in msg.tool_calls:
                                                         entry: dict[str, Any] = {
                                                             "tool_name": tc["name"],
+                                                            "tool_call_id": tc.get(
+                                                                "id", ""
+                                                            ),
                                                             "reasoning": "",
                                                         }
                                                         if audit_mode == "full":
@@ -520,13 +550,11 @@ class ReActAgentService(AgentService):
                                                 if msg.content
                                                 else ""
                                             )
-                                            for tc in reversed(tool_calls_emitted):
-                                                if (
-                                                    tc.get("tool_name") == msg.name
-                                                    and "tool_output" not in tc
-                                                ):
-                                                    tc["tool_output"] = content_str
-                                                    break
+                                            _backfill_tool_output(
+                                                tool_calls_emitted,
+                                                msg,
+                                                content_str,
+                                            )
                                         # Extract sources from tool results
                                         if hasattr(msg, "content") and msg.content:
                                             _emitted_sources = False
@@ -631,6 +659,7 @@ class ReActAgentService(AgentService):
                         for tc in msg.tool_calls:
                             entry: dict[str, Any] = {
                                 "tool_name": tc["name"],
+                                "tool_call_id": tc.get("id", ""),
                                 "reasoning": "",
                             }
                             if audit_mode == "full":
@@ -646,8 +675,7 @@ class ReActAgentService(AgentService):
             elif isinstance(msg, ToolMessage):
                 if audit_mode == "full":
                     content = str(msg.content)[:500] if msg.content else ""
-                    if tool_calls:
-                        tool_calls[-1]["tool_output"] = content
+                    _backfill_tool_output(tool_calls, msg, content)
                 # Extract sources from tool results
                 if hasattr(msg, "content") and msg.content:
                     _found = False

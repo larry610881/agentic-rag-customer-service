@@ -60,3 +60,15 @@ Feature: RAG 品質評估
   Scenario: EvalResult 平均分數計算
     Given 一個包含多維度的 EvalResult
     Then avg_score 應為各維度分數的平均值
+
+  Scenario: _parse_scores 百分比分數正規化為 0-1
+    Given 一個 RAG 評估用例使用 mock LLM
+    And LLM 回傳含百分比 chunk_scores 的評估結果
+    When 執行 L1 評估查詢 "退貨政策" 和 chunks ["退貨原文"]
+    Then chunk_scores 的 score 應在 0-1 範圍內
+
+  Scenario: _parse_scores malformed JSON 回傳空 dict
+    Given 一個 RAG 評估用例使用 mock LLM
+    And LLM 回傳無效 JSON
+    When 執行 L1 評估查詢 "退貨政策" 和 chunks ["退貨原文"]
+    Then 評估結果的各維度分數應為 0.0

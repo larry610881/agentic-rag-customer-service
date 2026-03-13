@@ -362,3 +362,43 @@ def check_avg_score(context):
     er = context["eval_result"]
     expected = (0.8 + 0.6) / 2
     assert er.avg_score == pytest.approx(expected, abs=0.001)
+
+
+# ── C9/C10: Pydantic validation scenarios ──
+
+
+@given("LLM 回傳含百分比 chunk_scores 的評估結果")
+def mock_percentage_chunk_scores(context):
+    resp = MagicMock()
+    resp.text = json.dumps({
+        "context_precision": 0.8,
+        "context_recall": 0.7,
+        "chunk_scores": [
+            {"index": 0, "score": "85%", "reason": "高度相關"},
+            {"index": 1, "score": 70, "reason": "部分相關"},
+        ],
+        "explanation": "百分比測試",
+    })
+    context["llm_service"].generate.return_value = resp
+
+
+@given("LLM 回傳無效 JSON")
+def mock_malformed_json(context):
+    resp = MagicMock()
+    resp.text = "this is not valid json {{"
+    context["llm_service"].generate.return_value = resp
+
+
+@then("chunk_scores 的 score 應在 0-1 範圍內")
+def check_normalized_scores(result):
+    cp = [d for d in result.dimensions if d.name == "context_precision"]
+    assert len(cp) == 1
+    if cp[0].metadata and "chunk_scores" in cp[0].metadata:
+        for cs in cp[0].metadata["chunk_scores"]:
+            assert 0.0 <= cs["score"] <= 1.0, f"Score {cs['score']} out of range"
+
+
+@then("評估結果的各維度分數應為 0.0")
+def check_zero_scores(result):
+    for dim in result.dimensions:
+        assert dim.score == 0.0

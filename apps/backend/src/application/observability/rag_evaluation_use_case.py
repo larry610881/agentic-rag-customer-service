@@ -4,13 +4,50 @@
 支援 3 層深度：L1 (per-RAG call) / L2 (end-to-end) / L3 (agent decisions)
 """
 
+from __future__ import annotations
+
 import structlog
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from src.domain.observability.evaluation import EvalDimension, EvalResult
 from src.domain.observability.trace_record import RAGTraceRecord
 from src.domain.rag.services import LLMService
 
 logger = structlog.get_logger(__name__)
+
+
+# ── Pydantic models for _parse_scores validation ──
+
+
+class ChunkScoreItem(BaseModel):
+    index: int = 0
+    score: float = 0.0
+    reason: str = ""
+
+    @field_validator("score", mode="before")
+    @classmethod
+    def normalize_score(cls, v: object) -> float:
+        if isinstance(v, str):
+            v = v.replace("%", "").strip()
+        val = float(v)  # type: ignore[arg-type]
+        return round(val / 100.0, 4) if val > 1.0 else round(val, 4)
+
+
+class DimensionScore(BaseModel):
+    score: float = 0.0
+    explanation: str = ""
+
+
+class EvalScores(BaseModel):
+    context_precision: float | DimensionScore = 0.0
+    context_recall: float | DimensionScore = 0.0
+    faithfulness: float | DimensionScore = 0.0
+    relevancy: float | DimensionScore = 0.0
+    agent_efficiency: float | DimensionScore = 0.0
+    tool_selection: float | DimensionScore = 0.0
+    chunk_scores: list[ChunkScoreItem] = []
+    explanation: str = ""
+    model_config = ConfigDict(extra="ignore")
 
 # Evaluation prompts
 _L1_PROMPT = (
@@ -228,56 +265,19 @@ class RAGEvaluationUseCase:
         根據 has_rag_sources 智慧跳過 L1（MCP-only 無 RAG 檢索語義），
         根據 agent_mode 決定是否包含 L3。
         """
-        # Determine actual dimensions to evaluate
         actual_l1 = run_l1 and has_rag_sources
         actual_l3 = run_l3 and agent_mode == "react"
 
-        sections: list[str] = []
-        expected_keys: list[str] = []
-
-        # L1 section
-        if actual_l1:
-            chunks_text = (
-                "\n---\n".join(f"[{i}] {c}" for i, c in enumerate(chunks))
-                if chunks
-                else "(無檢索結果)"
-            )
-            sections.append(
-                f"## L1 檢索品質\n檢索到的內容（依序編號）：\n{chunks_text}\n\n"
-                "請評估：\n"
-                "- context_precision (0-1): 檢索結果與查詢的整體相關程度\n"
-                "- context_recall (0-1): 檢索結果是否涵蓋回答所需的所有資訊\n"
-                "- chunk_scores: 逐條 chunk 相關性，格式 "
-                '[{"index": 0, "score": 0.9, "reason": "..."}]'
-            )
-            expected_keys.extend(["context_precision", "context_recall"])
-
-        # L2 section
-        if run_l2:
-            ctx = all_context or "(無上下文)"
-            sections.append(
-                f"## L2 回答品質\n使用的上下文：\n{ctx}\n\n"
-                f"最終回答：\n{answer}\n\n"
-                "請評估：\n"
-                "- faithfulness (0-1): 回答是否忠於提供的上下文，沒有幻覺\n"
-                "- relevancy (0-1): 回答是否切中用戶問題"
-            )
-            expected_keys.extend(["faithfulness", "relevancy"])
-
-        # L3 section
-        if actual_l3:
-            decisions = "\n".join([
-                f"- 工具: {tc.get('tool_name', 'unknown')}, "
-                f"輸入: {tc.get('tool_input', 'N/A')}"
-                for tc in tool_calls
-            ])
-            sections.append(
-                f"## L3 Agent 決策\nAgent 決策過程：\n{decisions}\n\n"
-                "請評估：\n"
-                "- agent_efficiency (0-1): 迴圈次數是否合理，有無重複查詢\n"
-                "- tool_selection (0-1): 工具選擇是否恰當"
-            )
-            expected_keys.extend(["agent_efficiency", "tool_selection"])
+        sections, expected_keys = self._build_eval_sections(
+            actual_l1=actual_l1,
+            run_l2=run_l2,
+            actual_l3=actual_l3,
+            query=query,
+            chunks=chunks,
+            all_context=all_context,
+            answer=answer,
+            tool_calls=tool_calls,
+        )
 
         if not expected_keys:
             return EvalResult(
@@ -289,7 +289,6 @@ class RAGEvaluationUseCase:
                 model_used=getattr(self._llm_service, "model_name", "unknown"),
             )
 
-        # Assemble single prompt
         prompt = (
             f"你是一個 RAG 品質評估專家。請評估以下查詢的品質。\n\n"
             f"用戶查詢：{query}\n\n"
@@ -303,43 +302,14 @@ class RAGEvaluationUseCase:
             + "}"
         )
 
-        # Determine layer label
-        layers = []
-        if actual_l1:
-            layers.append("L1")
-        if run_l2:
-            layers.append("L2")
-        if actual_l3:
-            layers.append("L3")
-        layer_label = "+".join(layers)
+        layer_label = self._determine_layer_label(actual_l1, run_l2, actual_l3)
 
         try:
             result = await self._llm_service.generate(
                 "你是 RAG 品質評估專家", prompt, ""
             )
             scores = self._parse_scores(result.text)
-            chunk_scores = scores.get("chunk_scores")
-            dimensions = []
-            for key in expected_keys:
-                meta = None
-                if key == "context_precision" and chunk_scores:
-                    meta = {"chunk_scores": chunk_scores}
-                # Support per-dimension {score, explanation} objects
-                dim_val = scores.get(key, 0.0)
-                if isinstance(dim_val, dict):
-                    dim_score = float(dim_val.get("score", 0.0))
-                    dim_expl = dim_val.get("explanation", "")
-                else:
-                    dim_score = float(dim_val) if dim_val else 0.0
-                    dim_expl = scores.get("explanation", "")
-                dimensions.append(
-                    EvalDimension(
-                        name=key,
-                        score=dim_score,
-                        explanation=dim_expl,
-                        metadata=meta,
-                    )
-                )
+            dimensions = self._extract_dimensions(scores, expected_keys)
         except Exception as exc:
             logger.warning("eval.combined.failed", error=str(exc))
             dimensions = [
@@ -357,8 +327,109 @@ class RAGEvaluationUseCase:
         )
 
     @staticmethod
+    def _build_eval_sections(
+        *,
+        actual_l1: bool,
+        run_l2: bool,
+        actual_l3: bool,
+        query: str,
+        chunks: list[str],
+        all_context: str,
+        answer: str,
+        tool_calls: list[dict],
+    ) -> tuple[list[str], list[str]]:
+        """Build prompt sections and expected keys for combined eval."""
+        sections: list[str] = []
+        expected_keys: list[str] = []
+
+        if actual_l1:
+            chunks_text = (
+                "\n---\n".join(f"[{i}] {c}" for i, c in enumerate(chunks))
+                if chunks
+                else "(無檢索結果)"
+            )
+            sections.append(
+                f"## L1 檢索品質\n檢索到的內容（依序編號）：\n{chunks_text}\n\n"
+                "請評估：\n"
+                "- context_precision (0-1): 檢索結果與查詢的整體相關程度\n"
+                "- context_recall (0-1): 檢索結果是否涵蓋回答所需的所有資訊\n"
+                "- chunk_scores: 逐條 chunk 相關性，格式 "
+                '[{"index": 0, "score": 0.9, "reason": "..."}]'
+            )
+            expected_keys.extend(["context_precision", "context_recall"])
+
+        if run_l2:
+            ctx = all_context or "(無上下文)"
+            sections.append(
+                f"## L2 回答品質\n使用的上下文：\n{ctx}\n\n"
+                f"最終回答：\n{answer}\n\n"
+                "請評估：\n"
+                "- faithfulness (0-1): 回答是否忠於提供的上下文，沒有幻覺\n"
+                "- relevancy (0-1): 回答是否切中用戶問題"
+            )
+            expected_keys.extend(["faithfulness", "relevancy"])
+
+        if actual_l3:
+            decisions = "\n".join([
+                f"- 工具: {tc.get('tool_name', 'unknown')}, "
+                f"輸入: {tc.get('tool_input', 'N/A')}"
+                for tc in tool_calls
+            ])
+            sections.append(
+                f"## L3 Agent 決策\nAgent 決策過程：\n{decisions}\n\n"
+                "請評估：\n"
+                "- agent_efficiency (0-1): 迴圈次數是否合理，有無重複查詢\n"
+                "- tool_selection (0-1): 工具選擇是否恰當"
+            )
+            expected_keys.extend(["agent_efficiency", "tool_selection"])
+
+        return sections, expected_keys
+
+    @staticmethod
+    def _determine_layer_label(
+        actual_l1: bool, run_l2: bool, actual_l3: bool,
+    ) -> str:
+        """Compute layer label like 'L1+L2'."""
+        layers = []
+        if actual_l1:
+            layers.append("L1")
+        if run_l2:
+            layers.append("L2")
+        if actual_l3:
+            layers.append("L3")
+        return "+".join(layers)
+
+    @staticmethod
+    def _extract_dimensions(
+        scores: dict, expected_keys: list[str],
+    ) -> list[EvalDimension]:
+        """Extract EvalDimension list from parsed scores."""
+        chunk_scores = scores.get("chunk_scores")
+        dimensions = []
+        for key in expected_keys:
+            meta = None
+            if key == "context_precision" and chunk_scores:
+                meta = {"chunk_scores": chunk_scores}
+            dim_val = scores.get(key, 0.0)
+            if isinstance(dim_val, dict):
+                dim_score = float(dim_val.get("score", 0.0))
+                dim_expl = dim_val.get("explanation", "")
+            else:
+                dim_score = float(dim_val) if dim_val else 0.0
+                dim_expl = scores.get("explanation", "")
+            dimensions.append(
+                EvalDimension(
+                    name=key,
+                    score=dim_score,
+                    explanation=dim_expl,
+                    metadata=meta,
+                )
+            )
+        return dimensions
+
+    @staticmethod
     def _parse_scores(text: str) -> dict:
-        """Parse JSON scores from LLM response."""
+        """Parse JSON scores from LLM response with Pydantic validation."""
         import json
         import re
 
@@ -371,20 +442,22 @@ class RAGEvaluationUseCase:
         except json.JSONDecodeError:
             return {}
 
-        # Normalize chunk_scores: ensure score is float
-        if "chunk_scores" in data and isinstance(data["chunk_scores"], list):
-            for cs in data["chunk_scores"]:
-                if isinstance(cs, dict) and "score" in cs:
-                    raw = cs["score"]
-                    if isinstance(raw, str):
-                        raw = raw.replace("%", "").strip()
-                    try:
-                        val = float(raw)
-                        # If LLM returned 0-100 scale, normalize to 0-1
-                        if val > 1.0:
-                            val = val / 100.0
-                        cs["score"] = round(val, 4)
-                    except (ValueError, TypeError):
-                        cs["score"] = 0.0
-
-        return data
+        try:
+            parsed = EvalScores.model_validate(data)
+            return parsed.model_dump()
+        except Exception:
+            # Fallback: return raw data with basic chunk_scores normalization
+            if "chunk_scores" in data and isinstance(data["chunk_scores"], list):
+                for cs in data["chunk_scores"]:
+                    if isinstance(cs, dict) and "score" in cs:
+                        raw = cs["score"]
+                        if isinstance(raw, str):
+                            raw = raw.replace("%", "").strip()
+                        try:
+                            val = float(raw)
+                            if val > 1.0:
+                                val = val / 100.0
+                            cs["score"] = round(val, 4)
+                        except (ValueError, TypeError):
+                            cs["score"] = 0.0
+            return data
