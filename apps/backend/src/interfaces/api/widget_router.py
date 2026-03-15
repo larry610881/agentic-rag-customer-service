@@ -16,7 +16,7 @@ from src.application.conversation.submit_feedback_use_case import (
     SubmitFeedbackCommand,
     SubmitFeedbackUseCase,
 )
-from src.application.observability.report_error_use_case import (
+from src.application.observability.error_event_use_cases import (
     ReportErrorCommand,
     ReportErrorUseCase,
 )
