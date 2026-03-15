@@ -114,6 +114,25 @@ export class ChatPanel {
     const text = this.input.value.trim();
     if (!text) return;
 
+    // --- TEST TRIGGER: remove before production ---
+    if (text === "test") {
+      this.input.value = "";
+      this.messageList.addMessage("bot", "[Test] Widget 模擬錯誤已送出");
+      fetch(`${this.apiBase}/api/v1/error-events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "widget",
+          error_type: "TestError",
+          message: "手動測試：Widget 模擬 JS 錯誤",
+          path: window.location.pathname,
+          user_agent: navigator.userAgent,
+        }),
+      }).catch(() => {});
+      return;
+    }
+    // --- END TEST TRIGGER ---
+
     this.input.value = "";
     this.messageList.addMessage("user", text);
 

@@ -146,6 +146,29 @@ export function useStreaming() {
         }
       };
 
+      // --- TEST TRIGGER: remove before production ---
+      if (message === "test-front") {
+        appendToAssistantMessage("[Test] 前端模擬錯誤已送出");
+        fetch(`${API_BASE}/api/v1/error-events`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            source: "frontend",
+            error_type: "TestError",
+            message: "手動測試：前端模擬 JS 錯誤",
+            path: window.location.pathname,
+            user_agent: navigator.userAgent,
+          }),
+        }).catch(() => {});
+        finalizeAssistantMessage([], []);
+        setIsStreaming(false);
+        return;
+      }
+      // --- END TEST TRIGGER ---
+
       try {
         await fetchSSE(
           `${API_BASE}${API_ENDPOINTS.agent.chatStream}`,

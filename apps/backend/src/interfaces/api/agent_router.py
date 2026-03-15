@@ -1,10 +1,11 @@
 """Agent Chat API 端點"""
 
+import asyncio
 import json
 import logging
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -15,7 +16,9 @@ from src.application.agent.send_message_use_case import (
 from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
+from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.streaming_errors import classify_streaming_error
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +77,10 @@ async def agent_chat(
 ) -> ChatResponse:
     effective_tenant_id = tenant.tenant_id
     if tenant.role == "system_admin" and request.bot_id:
-        bot = await get_bot.execute(request.bot_id)
+        try:
+            bot = await get_bot.execute(request.bot_id)
+        except EntityNotFoundError:
+            raise HTTPException(status_code=404, detail="Bot not found")
         effective_tenant_id = bot.tenant_id
 
     result = await use_case.execute(
@@ -141,7 +147,10 @@ async def agent_chat_stream(
 ) -> StreamingResponse:
     effective_tenant_id = tenant.tenant_id
     if tenant.role == "system_admin" and request.bot_id:
-        bot = await get_bot.execute(request.bot_id)
+        try:
+            bot = await get_bot.execute(request.bot_id)
+        except EntityNotFoundError:
+            raise HTTPException(status_code=404, detail="Bot not found")
         effective_tenant_id = bot.tenant_id
 
     command = SendMessageCommand(
@@ -153,6 +162,32 @@ async def agent_chat_stream(
     )
 
     async def event_generator():
+        # --- TEST TRIGGER: remove before production ---
+        if command.message == "test-back":
+            from src.application.observability.error_event_use_cases import (
+                ReportErrorCommand,
+            )
+            from src.infrastructure.notification.dispatch_helper import (
+                dispatch_error_notification,
+            )
+
+            report_uc = Container.report_error_use_case()
+            event = await report_uc.execute(
+                ReportErrorCommand(
+                    source="backend",
+                    error_type="TestError",
+                    message="手動測試：後端模擬 500 錯誤",
+                    path="/chat/stream",
+                    method="POST",
+                    status_code=500,
+                )
+            )
+            asyncio.create_task(dispatch_error_notification(event))
+            yield f"data: {json.dumps({'type': 'error', 'message': '[Test] 後端模擬錯誤已觸發'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+        # --- END TEST TRIGGER ---
+
         usage_data: dict | None = None
         try:
             async for event in use_case.execute_stream(command):
@@ -162,9 +197,7 @@ async def agent_chat_stream(
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:
             logger.exception("agent.chat.stream.error")
-            error_msg = str(exc)
-            if "429" in error_msg:
-                error_msg = "API 額度已用完，請稍後再試"
+            error_msg = classify_streaming_error(exc)
             error_payload = {"type": "error", "message": error_msg}
             yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
