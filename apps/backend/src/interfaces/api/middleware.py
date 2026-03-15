@@ -30,6 +30,58 @@ logger = get_logger(__name__)
 
 WIDGET_PATH_PREFIX = "/api/v1/widget/"
 STATIC_PATH_PREFIX = "/static/"
+_STREAM_SUFFIXES = ("/stream", "/export")
+
+
+class RequestTimeoutMiddleware:
+    """Pure ASGI middleware — enforce per-request timeout.
+
+    Streaming endpoints (paths ending with /stream or /export) get a
+    longer timeout. Returns 504 Gateway Timeout on expiry.
+    """
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        timeout: int = 30,
+        stream_timeout: int = 180,
+    ) -> None:
+        self._app = app
+        self._timeout = timeout
+        self._stream_timeout = stream_timeout
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        is_stream = any(path.endswith(s) for s in _STREAM_SUFFIXES)
+        limit = self._stream_timeout if is_stream else self._timeout
+
+        try:
+            async with asyncio.timeout(limit):
+                await self._app(scope, receive, send)
+        except TimeoutError:
+            logger.warning(
+                "request.timeout",
+                path=path,
+                method=scope.get("method", ""),
+                timeout_seconds=limit,
+            )
+            await send({
+                "type": "http.response.start",
+                "status": 504,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                ],
+            })
+            body = json.dumps({"detail": "Request timeout"}).encode()
+            await send({
+                "type": "http.response.body",
+                "body": body,
+            })
 
 
 class CORSMiddlewareWithExclusions:
@@ -61,7 +113,7 @@ class CORSMiddlewareWithExclusions:
             # Widget API handles its own CORS
             await self._app(scope, receive, send)
         elif path.startswith(STATIC_PATH_PREFIX):
-            # Static files: inject permissive CORS headers
+            # Static files: permissive CORS
             await self._serve_static_with_cors(scope, receive, send)
         else:
             await self._cors(scope, receive, send)

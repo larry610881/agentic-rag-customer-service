@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     # E2E testing: E2E_MODE=true → FakeLLM + MetaSupervisor (no real LLM calls)
     e2e_mode: bool = False
 
+    # Request Timeout (global ASGI middleware)
+    request_timeout: int = 30  # 一般 API 請求超時（秒）
+    stream_request_timeout: int = 180  # SSE streaming 請求超時（秒）
+
     # Agent Timeout
     agent_llm_request_timeout: int = 120  # 單次 LLM API 請求 HTTP 超時（秒）
     agent_stream_timeout: int = 180  # 整個 Agent 迴圈（含多次工具呼叫）總超時（秒）

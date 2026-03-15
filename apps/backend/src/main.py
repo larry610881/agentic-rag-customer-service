@@ -133,10 +133,10 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     application.container = container  # type: ignore[attr-defined]
 
     from src.infrastructure.db.session_middleware import SessionCleanupMiddleware
-    from src.interfaces.api.middleware import RequestIDMiddleware
+    from src.interfaces.api.middleware import RequestIDMiddleware, RequestTimeoutMiddleware
 
     # Middleware order: last added = outermost in ASGI chain.
-    # Execution: SessionCleanup → RequestID → CORS → RateLimit → Route
+    # Execution: SessionCleanup → RequestID → Timeout → CORS → RateLimit → Route
     #
     # RequestID must run before RateLimit so that:
     # 1. request_id is set before any trace logging
@@ -162,6 +162,13 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
             jwt_algorithm=settings.jwt_algorithm,
             global_rpm=settings.rate_limit_global_rpm,
         )
+
+    # Request Timeout (between CORS and RequestID)
+    application.add_middleware(
+        RequestTimeoutMiddleware,
+        timeout=settings.request_timeout,
+        stream_timeout=settings.stream_request_timeout,
+    )
 
     from src.interfaces.api.middleware import CORSMiddlewareWithExclusions
 
