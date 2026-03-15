@@ -14,7 +14,7 @@ Feature: Notification Channel Management
 
   Scenario: Throttle 時間內不重複寄信
     Given 一個已啟用的 email 通知渠道且 throttle 為 15 分鐘
-    And 同一 fingerprint 在 10 分鐘前已發送過通知
+    And throttle 服務判定該 fingerprint 已被節流
     When 同一 fingerprint 的新錯誤觸發通知分派
     Then 不應呼叫 email sender
 

@@ -2,11 +2,6 @@ import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
 from src.application.agent.send_message_use_case import SendMessageUseCase
-from src.application.memory.extract_memory_use_case import ExtractMemoryUseCase
-from src.application.memory.load_memory_use_case import LoadMemoryUseCase
-from src.application.memory.resolve_identity_use_case import (
-    ResolveIdentityUseCase,
-)
 from src.application.agent.tool_registry import ToolRegistry
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
@@ -87,6 +82,11 @@ from src.application.knowledge.upload_document_use_case import (
     UploadDocumentUseCase,
 )
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
+from src.application.memory.extract_memory_use_case import ExtractMemoryUseCase
+from src.application.memory.load_memory_use_case import LoadMemoryUseCase
+from src.application.memory.resolve_identity_use_case import (
+    ResolveIdentityUseCase,
+)
 from src.application.observability.diagnostic_rules_use_cases import (
     GetDiagnosticRulesUseCase,
     ResetDiagnosticRulesUseCase,
@@ -197,9 +197,6 @@ from src.infrastructure.db.repositories.document_repository import (
 from src.infrastructure.db.repositories.error_event_repository import (
     SQLAlchemyErrorEventRepository,
 )
-from src.infrastructure.db.repositories.notification_channel_repository import (
-    SQLAlchemyNotificationChannelRepository,
-)
 from src.infrastructure.db.repositories.feedback_repository import (
     SQLAlchemyFeedbackRepository,
 )
@@ -209,14 +206,14 @@ from src.infrastructure.db.repositories.knowledge_base_repository import (
 from src.infrastructure.db.repositories.log_retention_policy_repository import (
     SQLAlchemyLogRetentionPolicyRepository,
 )
+from src.infrastructure.db.repositories.mcp_server_repository import (
+    SQLAlchemyMcpServerRepository,
+)
 from src.infrastructure.db.repositories.memory_fact_repository import (
     SQLAlchemyMemoryFactRepository,
 )
-from src.infrastructure.db.repositories.visitor_profile_repository import (
-    SQLAlchemyVisitorProfileRepository,
-)
-from src.infrastructure.db.repositories.mcp_server_repository import (
-    SQLAlchemyMcpServerRepository,
+from src.infrastructure.db.repositories.notification_channel_repository import (
+    SQLAlchemyNotificationChannelRepository,
 )
 from src.infrastructure.db.repositories.processing_task_repository import (
     SQLAlchemyProcessingTaskRepository,
@@ -239,6 +236,9 @@ from src.infrastructure.db.repositories.usage_repository import (
 from src.infrastructure.db.repositories.user_repository import (
     SQLAlchemyUserRepository,
 )
+from src.infrastructure.db.repositories.visitor_profile_repository import (
+    SQLAlchemyVisitorProfileRepository,
+)
 from src.infrastructure.db.session_middleware import get_tracked_session
 from src.infrastructure.embedding.dynamic_embedding_factory import (
     DynamicEmbeddingServiceFactory,
@@ -253,7 +253,6 @@ from src.infrastructure.embedding.openai_embedding_service import (
 from src.infrastructure.file_parser.default_file_parser_service import (
     DefaultFileParserService,
 )
-from src.infrastructure.storage.local_file_storage import LocalFileStorageService
 from src.infrastructure.langgraph.langgraph_agent_service import (
     LangGraphAgentService,
 )
@@ -269,9 +268,6 @@ from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWo
 from src.infrastructure.language_detection import (
     LangdetectLanguageDetectionService,
 )
-from src.infrastructure.memory.llm_memory_extraction_service import (
-    LLMMemoryExtractionService,
-)
 from src.infrastructure.line.line_messaging_service import HttpxLineMessagingService
 from src.infrastructure.line.line_messaging_service_factory import (
     HttpxLineMessagingServiceFactory,
@@ -282,12 +278,17 @@ from src.infrastructure.llm.dynamic_llm_factory import (
 )
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
 from src.infrastructure.logging.db_error_reporter import DBErrorReporter
-from src.infrastructure.notification.email_sender import EmailNotificationSender
 from src.infrastructure.mcp.cached_tool_loader import CachedMCPToolLoader
+from src.infrastructure.memory.llm_memory_extraction_service import (
+    LLMMemoryExtractionService,
+)
+from src.infrastructure.notification.email_sender import EmailNotificationSender
+from src.infrastructure.notification.redis_throttle import RedisNotificationThrottle
 from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
 from src.infrastructure.sentiment.keyword_sentiment_service import (
     KeywordSentimentService,
 )
+from src.infrastructure.storage.local_file_storage import LocalFileStorageService
 from src.infrastructure.text_splitter.content_aware_text_splitter_service import (
     ContentAwareTextSplitterService,
 )
@@ -451,6 +452,11 @@ class Container(containers.DeclarativeContainer):
     notification_channel_repository = providers.Factory(
         SQLAlchemyNotificationChannelRepository,
         session=db_session,
+    )
+
+    notification_throttle_service = providers.Singleton(
+        RedisNotificationThrottle,
+        redis_client=redis_client,
     )
 
     encryption_service = providers.Singleton(
@@ -1043,8 +1049,7 @@ class Container(containers.DeclarativeContainer):
     dispatch_notification_use_case = providers.Factory(
         DispatchNotificationUseCase,
         channel_repo=notification_channel_repository,
-        error_event_repo=error_event_repository,
-        encryption_service=encryption_service,
+        throttle_service=notification_throttle_service,
         dispatcher=notification_dispatcher,
     )
 

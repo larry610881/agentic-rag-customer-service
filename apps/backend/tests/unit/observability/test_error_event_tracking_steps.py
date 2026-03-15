@@ -1,7 +1,7 @@
 """BDD Step Definitions — Error Event Tracking."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -27,8 +27,8 @@ from src.domain.observability.notification import (
     NotificationChannel,
     NotificationChannelRepository,
     NotificationSender,
+    NotificationThrottleService,
 )
-from src.domain.platform.services import EncryptionService
 
 scenarios("unit/observability/error_event_tracking.feature")
 
@@ -232,16 +232,16 @@ def setup_enabled_channel(context):
     channel_repo = AsyncMock(spec=NotificationChannelRepository)
     channel_repo.list_enabled.return_value = [channel]
 
-    error_repo = AsyncMock(spec=ErrorEventRepository)
-    enc = AsyncMock(spec=EncryptionService)
+    throttle = AsyncMock(spec=NotificationThrottleService)
+    throttle.is_throttled.return_value = False
+    throttle.record_sent.return_value = None
 
     sender = AsyncMock(spec=NotificationSender)
     sender.channel_type.return_value = "email"
     dispatcher = NotificationDispatcher(senders={"email": sender})
 
     context["channel_repo"] = channel_repo
-    context["error_repo"] = error_repo
-    context["enc"] = enc
+    context["throttle"] = throttle
     context["dispatcher"] = dispatcher
     context["sender"] = sender
     context["fingerprint"] = compute_fingerprint(
@@ -249,10 +249,9 @@ def setup_enabled_channel(context):
     )
 
 
-@given("同一 fingerprint 的錯誤在 5 分鐘前已寄過通知")
-def setup_recent_notification(context):
-    five_min_ago = datetime.now(timezone.utc) - timedelta(minutes=5)
-    context["error_repo"].last_notified_at.return_value = five_min_ago
+@given("throttle 服務回報該 fingerprint 已被節流")
+def setup_throttled(context):
+    context["throttle"].is_throttled.return_value = True
 
 
 @when("同一 fingerprint 的新錯誤發生", target_fixture="dispatch_result")
@@ -267,8 +266,7 @@ def dispatch_throttled(context):
     )
     uc = DispatchNotificationUseCase(
         channel_repo=context["channel_repo"],
-        error_event_repo=context["error_repo"],
-        encryption_service=context["enc"],
+        throttle_service=context["throttle"],
         dispatcher=context["dispatcher"],
     )
     _run(uc.execute(event))

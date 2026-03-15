@@ -31,6 +31,6 @@ Feature: Error Event Tracking
 
   Scenario: 重複 fingerprint 不重複寄信（throttle）
     Given 通知渠道已啟用且 throttle 為 15 分鐘
-    And 同一 fingerprint 的錯誤在 5 分鐘前已寄過通知
+    And throttle 服務回報該 fingerprint 已被節流
     When 同一 fingerprint 的新錯誤發生
     Then 不應觸發新的通知

@@ -3,15 +3,16 @@
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import structlog
 
-from src.domain.observability.error_event import ErrorEvent, ErrorEventRepository
+from src.domain.observability.error_event import ErrorEvent
 from src.domain.observability.notification import (
     NotificationChannel,
     NotificationChannelRepository,
     NotificationSender,
+    NotificationThrottleService,
 )
 from src.domain.platform.services import EncryptionService
 from src.domain.shared.exceptions import EntityNotFoundError
@@ -162,27 +163,19 @@ class DispatchNotificationUseCase:
     def __init__(
         self,
         channel_repo: NotificationChannelRepository,
-        error_event_repo: ErrorEventRepository,
-        encryption_service: EncryptionService,
+        throttle_service: NotificationThrottleService,
         dispatcher: NotificationDispatcher,
     ) -> None:
         self._channel_repo = channel_repo
-        self._error_repo = error_event_repo
-        self._enc = encryption_service
+        self._throttle = throttle_service
         self._dispatcher = dispatcher
 
     async def execute(self, event: ErrorEvent) -> None:
         try:
             channels = await self._channel_repo.list_enabled()
-            now = datetime.now(timezone.utc)
-
             for ch in channels:
-                last = await self._error_repo.last_notified_at(
-                    event.fingerprint, ch.id
-                )
-                if last and (now - last) < timedelta(minutes=ch.throttle_minutes):
+                if await self._throttle.is_throttled(event.fingerprint, ch.id):
                     continue
-
                 subject = f"[Error] {event.error_type}: {event.message[:80]}"
                 body = (
                     f"Source: {event.source}\n"
@@ -192,8 +185,8 @@ class DispatchNotificationUseCase:
                     f"Message: {event.message}"
                 )
                 await self._dispatcher.send_to_channel(ch, subject, body)
-                await self._error_repo.record_notification(
-                    event.fingerprint, ch.id
+                await self._throttle.record_sent(
+                    event.fingerprint, ch.id, ch.throttle_minutes * 60
                 )
         except Exception:
             _logger.warning("notification.dispatch_failed", exc_info=True)

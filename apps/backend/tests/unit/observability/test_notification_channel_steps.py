@@ -1,7 +1,6 @@
 """BDD Step Definitions — Notification Channel Management."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -14,15 +13,12 @@ from src.application.observability.notification_use_cases import (
     NotificationDispatcher,
     SendTestNotificationUseCase,
 )
-from src.domain.observability.error_event import (
-    ErrorEvent,
-    ErrorEventRepository,
-    compute_fingerprint,
-)
+from src.domain.observability.error_event import ErrorEvent
 from src.domain.observability.notification import (
     NotificationChannel,
     NotificationChannelRepository,
     NotificationSender,
+    NotificationThrottleService,
 )
 from src.domain.platform.services import EncryptionService
 
@@ -99,19 +95,16 @@ def setup_enabled_email(context):
     channel_repo = AsyncMock(spec=NotificationChannelRepository)
     channel_repo.list_enabled.return_value = [channel]
 
-    error_repo = AsyncMock(spec=ErrorEventRepository)
-    error_repo.last_notified_at.return_value = None
-    error_repo.record_notification.return_value = None
-
-    enc = MagicMock(spec=EncryptionService)
+    throttle = AsyncMock(spec=NotificationThrottleService)
+    throttle.is_throttled.return_value = False
+    throttle.record_sent.return_value = None
 
     sender = AsyncMock(spec=NotificationSender)
     sender.channel_type.return_value = "email"
     dispatcher = NotificationDispatcher(senders={"email": sender})
 
     context["channel_repo"] = channel_repo
-    context["error_repo"] = error_repo
-    context["enc"] = enc
+    context["throttle"] = throttle
     context["dispatcher"] = dispatcher
     context["sender"] = sender
 
@@ -128,8 +121,7 @@ def dispatch_notification(context):
     )
     uc = DispatchNotificationUseCase(
         channel_repo=context["channel_repo"],
-        error_event_repo=context["error_repo"],
-        encryption_service=context["enc"],
+        throttle_service=context["throttle"],
         dispatcher=context["dispatcher"],
     )
     _run(uc.execute(event))
@@ -158,24 +150,23 @@ def setup_throttled_channel(context):
     channel_repo = AsyncMock(spec=NotificationChannelRepository)
     channel_repo.list_enabled.return_value = [channel]
 
-    error_repo = AsyncMock(spec=ErrorEventRepository)
-    enc = MagicMock(spec=EncryptionService)
+    throttle = AsyncMock(spec=NotificationThrottleService)
+    throttle.is_throttled.return_value = False
+    throttle.record_sent.return_value = None
 
     sender = AsyncMock(spec=NotificationSender)
     sender.channel_type.return_value = "email"
     dispatcher = NotificationDispatcher(senders={"email": sender})
 
     context["channel_repo"] = channel_repo
-    context["error_repo"] = error_repo
-    context["enc"] = enc
+    context["throttle"] = throttle
     context["dispatcher"] = dispatcher
     context["sender"] = sender
 
 
-@given("同一 fingerprint 在 10 分鐘前已發送過通知")
-def setup_recent_notif(context):
-    ten_min_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
-    context["error_repo"].last_notified_at.return_value = ten_min_ago
+@given("throttle 服務判定該 fingerprint 已被節流")
+def setup_throttled(context):
+    context["throttle"].is_throttled.return_value = True
 
 
 @when(
@@ -192,8 +183,7 @@ def dispatch_throttled_notif(context):
     )
     uc = DispatchNotificationUseCase(
         channel_repo=context["channel_repo"],
-        error_event_repo=context["error_repo"],
-        encryption_service=context["enc"],
+        throttle_service=context["throttle"],
         dispatcher=context["dispatcher"],
     )
     _run(uc.execute(event))
@@ -276,11 +266,9 @@ def setup_multi_channels(context):
     channel_repo = AsyncMock(spec=NotificationChannelRepository)
     channel_repo.list_enabled.return_value = [email_channel, slack_channel]
 
-    error_repo = AsyncMock(spec=ErrorEventRepository)
-    error_repo.last_notified_at.return_value = None
-    error_repo.record_notification.return_value = None
-
-    enc = MagicMock(spec=EncryptionService)
+    throttle = AsyncMock(spec=NotificationThrottleService)
+    throttle.is_throttled.return_value = False
+    throttle.record_sent.return_value = None
 
     email_sender = AsyncMock(spec=NotificationSender)
     email_sender.channel_type.return_value = "email"
@@ -292,8 +280,7 @@ def setup_multi_channels(context):
     )
 
     context["channel_repo"] = channel_repo
-    context["error_repo"] = error_repo
-    context["enc"] = enc
+    context["throttle"] = throttle
     context["dispatcher"] = dispatcher
     context["email_sender"] = email_sender
     context["slack_sender"] = slack_sender
@@ -310,8 +297,7 @@ def dispatch_multi(context):
     )
     uc = DispatchNotificationUseCase(
         channel_repo=context["channel_repo"],
-        error_event_repo=context["error_repo"],
-        encryption_service=context["enc"],
+        throttle_service=context["throttle"],
         dispatcher=context["dispatcher"],
     )
     _run(uc.execute(event))

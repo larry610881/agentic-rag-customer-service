@@ -1,5 +1,7 @@
 """Error Event API — public report + admin management."""
 
+import asyncio
+
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -12,6 +14,9 @@ from src.application.observability.error_event_use_cases import (
     ResolveErrorEventUseCase,
 )
 from src.container import Container
+from src.infrastructure.notification.dispatch_helper import (
+    dispatch_error_notification,
+)
 from src.interfaces.api.deps import require_role
 
 router = APIRouter(tags=["error-events"])
@@ -53,6 +58,7 @@ async def report_error(
             extra=body.extra,
         )
     )
+    asyncio.create_task(dispatch_error_notification(event))
     return {"id": event.id, "fingerprint": event.fingerprint}
 
 

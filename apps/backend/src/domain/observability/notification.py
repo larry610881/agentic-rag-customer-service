@@ -49,3 +49,15 @@ class NotificationSender(ABC):
 
     @abstractmethod
     def channel_type(self) -> str: ...
+
+
+class NotificationThrottleService(ABC):
+    """Throttle check via external store (e.g. Redis)."""
+
+    @abstractmethod
+    async def is_throttled(self, fingerprint: str, channel_id: str) -> bool: ...
+
+    @abstractmethod
+    async def record_sent(
+        self, fingerprint: str, channel_id: str, ttl_seconds: int
+    ) -> None: ...
