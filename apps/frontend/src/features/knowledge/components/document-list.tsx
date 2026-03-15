@@ -10,7 +10,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye } from "lucide-react";
 import type { DocumentResponse, DocumentQualityStat } from "@/types/knowledge";
 import { useReprocessDocument } from "@/hooks/queries/use-documents";
 import { ChunkPreviewPanel } from "./chunk-preview-panel";
@@ -101,7 +109,7 @@ export function DocumentList({
   isBatchReprocessing,
 }: DocumentListProps) {
   const [deleteTarget, setDeleteTarget] = useState<DocumentResponse | null>(null);
-  const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
+  const [chunkDoc, setChunkDoc] = useState<DocumentResponse | null>(null);
   const [reprocessTarget, setReprocessTarget] = useState<DocumentResponse | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
@@ -110,8 +118,6 @@ export function DocumentList({
   const statsMap = new Map(
     (qualityStats ?? []).map((s) => [s.document_id, s])
   );
-
-  const colCount = onDelete ? 8 : 7;
 
   const selectedFailedCount = useMemo(() => {
     return documents.filter(
@@ -245,15 +251,7 @@ export function DocumentList({
                 </td>
                 <td className="border-b px-4 py-2">
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="text-left hover:underline"
-                      onClick={() =>
-                        setExpandedDocId(expandedDocId === doc.id ? null : doc.id)
-                      }
-                    >
-                      {doc.filename}
-                    </button>
+                    <span>{doc.filename}</span>
                     {(statsMap.get(doc.id)?.negative_feedback_count ?? 0) > 0 && (
                       <span
                         className="inline-flex items-center rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
@@ -280,6 +278,16 @@ export function DocumentList({
                 </td>
                 {onDelete && (
                   <td className="border-b px-4 py-2 space-x-1">
+                    {doc.status === "processed" && doc.chunk_count > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setChunkDoc(doc)}
+                      >
+                        <Eye className="mr-1 h-4 w-4" />
+                        查看分塊
+                      </Button>
+                    )}
                     {(doc.status === "processed" ||
                       doc.status === "failed") && (
                       <Button
@@ -304,15 +312,6 @@ export function DocumentList({
                     >
                       刪除
                     </Button>
-                  </td>
-                )}
-                {expandedDocId === doc.id && (
-                  <td colSpan={colCount} className="px-0">
-                    <ChunkPreviewPanel
-                      kbId={kbId}
-                      docId={doc.id}
-                      open={true}
-                    />
                   </td>
                 )}
               </tr>
@@ -402,6 +401,19 @@ export function DocumentList({
           }
         }}
       />
+
+      {/* Chunk preview dialog */}
+      <Dialog open={!!chunkDoc} onOpenChange={(open) => { if (!open) setChunkDoc(null); }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{chunkDoc?.filename} — 分塊預覽</DialogTitle>
+            <DialogDescription>共 {chunkDoc?.chunk_count} 個分塊</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] -mx-6 px-6">
+            <ChunkPreviewPanel kbId={kbId} docId={chunkDoc?.id ?? ""} open={!!chunkDoc} />
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

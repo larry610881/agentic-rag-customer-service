@@ -3,12 +3,11 @@ import { ChatPanel } from "./chat/chat-panel";
 import { cls } from "./constants";
 import styles from "./styles/widget.css?inline";
 
-function reportWidgetError(apiBase: string, error: { type: string; message: string; stack?: string }) {
-  fetch(`${apiBase}/api/v1/error-events`, {
+function reportWidgetError(apiBase: string, shortCode: string, error: { type: string; message: string; stack?: string }) {
+  fetch(`${apiBase}/api/v1/widget/${shortCode}/error`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      source: "widget",
       error_type: error.type,
       message: error.message,
       stack_trace: error.stack,
@@ -89,7 +88,7 @@ export class Widget {
 
     // Error reporting
     window.addEventListener("error", (event) => {
-      reportWidgetError(apiBase, {
+      reportWidgetError(apiBase, shortCode, {
         type: event.error?.name || "Error",
         message: event.message,
         stack: event.error?.stack,
@@ -97,7 +96,7 @@ export class Widget {
     });
     window.addEventListener("unhandledrejection", (event) => {
       const reason = event.reason;
-      reportWidgetError(apiBase, {
+      reportWidgetError(apiBase, shortCode, {
         type: reason?.name || "UnhandledRejection",
         message: reason?.message || String(reason),
         stack: reason?.stack,

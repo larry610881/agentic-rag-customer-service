@@ -118,11 +118,10 @@ export class ChatPanel {
     if (text === "test") {
       this.input.value = "";
       this.messageList.addMessage("bot", "[Test] Widget 模擬錯誤已送出");
-      fetch(`${this.apiBase}/api/v1/error-events`, {
+      fetch(`${this.apiBase}/api/v1/widget/${this.shortCode}/error`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          source: "widget",
           error_type: "TestError",
           message: "手動測試：Widget 模擬 JS 錯誤",
           path: window.location.pathname,
@@ -223,11 +222,10 @@ export class ChatPanel {
       },
       (err) => {
         // Report connection error
-        fetch(`${this.apiBase}/api/v1/error-events`, {
+        fetch(`${this.apiBase}/api/v1/widget/${this.shortCode}/error`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            source: "widget",
             error_type: "ChatConnectionError",
             message: err.message,
             path: window.location.pathname,

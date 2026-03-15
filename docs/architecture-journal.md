@@ -1590,3 +1590,65 @@ graph TD
 - 後端新增：18 個檔案、~1500 行程式碼、11 BDD scenarios
 - 前端新增：7 個檔案、~1200 行程式碼
 - 總測試：438 backend + 164 frontend = 602 tests 全通過
+
+---
+
+## Chunk 預覽 Dialog + SQL 清除 + Widget Error CORS（2026-03-15）
+
+### 背景
+
+知識庫 Chunk 預覽有兩個 UX 問題：(1) `<td colSpan>` 塞在 `<tr>` 裡造成 HTML 結構錯誤+嚴重破版，(2) 點擊檔名展開的觸發方式不明顯（只有 `hover:underline`）。同時發現 backend SQL 上傳支援是半成品（白名單有但 parser 沒實作），widget 錯誤回報被全域 CORS 攔截。
+
+### 設計決策
+
+#### 1. Chunk 預覽：Inline 展開 → Dialog 模式
+
+**問題**：`<td colSpan>` 放在 `<tr>` 內部是無效 HTML（`<td>` 必須是 `<tr>` 的直接子元素），導致表格排版崩壞。
+
+**方案**：操作欄新增「查看分塊」按鈕（Eye icon），點擊後以 `<Dialog>` + `<ScrollArea max-h-[60vh]>` 彈窗顯示。按鈕僅在 `status === "processed" && chunk_count > 0` 時出現。
+
+**關鍵學習**：shadcn `ScrollArea` 需要明確的 `max-h` 才會產生捲軸，`flex-1` 在 Radix Dialog 的 grid 佈局下無效。
+
+#### 2. SQL 上傳支援移除
+
+**發現**：`upload_document_use_case.py` 白名單有 `application/sql`，但 `DefaultFileParserService._parsers` 沒有 SQL parser，上傳 `.sql` 會直接拋 `UnsupportedFileTypeError`。`services.py` 的 `SQLCleaningService`、`_SQL_TYPES`、4 個 regex 常數都是死代碼。
+
+**決定**：完整移除（白名單 + domain service + 2 測試檔）。若需要 SQL 分析，轉成 JSON 再上傳即可。
+
+#### 3. Widget Error Reporting CORS
+
+**問題**：Widget 嵌入在外部網站（如 localhost:7777），error fetch POST 到 `/api/v1/error-events` 被全域 CORS 擋（白名單只有 5173/5174/3000）。Widget 對話 API 正常是因為 `/api/v1/widget/*` 有自己的動態 CORS。
+
+**方案選擇**：
+
+| 方案 | 優缺點 |
+|------|--------|
+| A. 全域 CORS 加 `*` 例外 | 簡單但汙染 middleware，每加一個公開端點就多一條 |
+| **B. Widget router 新增端點** | **CORS 自動由 widget 動態處理，零 middleware 變更** |
+
+選 B：新增 `POST /api/v1/widget/{short_code}/error`，享有 widget router 既有的動態 CORS（從 DB `bot.widget_allowed_origins` 讀取）。Widget 客戶端改用新路徑。
+
+### CORS Middleware 全域跳過盤點
+
+```mermaid
+graph TD
+    A["Request"] --> B{"路徑判斷"}
+    B -->|"/api/v1/widget/*"| C["Widget Router<br>動態 CORS（DB 白名單）"]
+    B -->|"/static/*"| D["靜態資源<br>Access-Control-Allow-Origin: *"]
+    B -->|"其他"| E["全域 CORS<br>config.cors_origins 白名單"]
+```
+
+只有 2 個跳過路徑，都合理：widget 需動態白名單，static 是純資源載入。
+
+### 檔案清單
+
+| 檔案 | 動作 | 層級 |
+|------|------|------|
+| `frontend/.../document-list.tsx` | 移除 inline 展開 → Dialog+Eye 按鈕 | Interfaces |
+| `frontend/.../chunk-preview-panel.tsx` | 移除 border-t | Interfaces |
+| `backend/.../upload_document_use_case.py` | 移除 `application/sql` 白名單 | Application |
+| `backend/.../services.py` | 移除 SQLCleaningService + 死代碼 | Domain |
+| `backend/tests/...sql_preprocessing*` | 刪除 2 檔 | Test |
+| `backend/.../widget_router.py` | 新增 error endpoint + OPTIONS | Interfaces |
+| `widget/src/widget.ts` | reportWidgetError 改用 widget 路徑 | Widget |
+| `widget/src/chat/chat-panel.ts` | 2 處 error fetch 改用 widget 路徑 | Widget |

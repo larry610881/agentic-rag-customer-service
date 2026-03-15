@@ -24,7 +24,6 @@ _SUPPORTED_TYPES: set[str] = {
     "application/vnd.ms-excel",
     "application/rtf",
     "text/rtf",
-    "application/sql",
 }
 
 

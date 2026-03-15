@@ -16,6 +16,10 @@ from src.application.conversation.submit_feedback_use_case import (
     SubmitFeedbackCommand,
     SubmitFeedbackUseCase,
 )
+from src.application.observability.report_error_use_case import (
+    ReportErrorCommand,
+    ReportErrorUseCase,
+)
 from src.container import Container
 from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
@@ -38,6 +42,14 @@ class WidgetFeedbackRequest(BaseModel):
     rating: str  # "thumbs_up" | "thumbs_down"
     comment: str | None = None
     tags: list[str] = []
+
+
+class WidgetErrorRequest(BaseModel):
+    error_type: str
+    message: str
+    stack_trace: str | None = None
+    path: str | None = None
+    user_agent: str | None = None
 
 
 class WidgetConfigResponse(BaseModel):
@@ -94,6 +106,7 @@ def _set_cors_headers(response, origin: str | None, bot: Bot) -> None:
 @router.options("/{short_code}/chat/stream")
 @router.options("/{short_code}/config")
 @router.options("/{short_code}/feedback")
+@router.options("/{short_code}/error")
 @inject
 async def widget_cors_preflight(
     short_code: str,
@@ -220,3 +233,34 @@ async def widget_feedback(
 
     _set_cors_headers(response, origin, bot)
     return {"success": True}
+
+
+@router.post("/{short_code}/error", status_code=201)
+@inject
+async def widget_error_report(
+    short_code: str,
+    body: WidgetErrorRequest,
+    request: Request,
+    response: Response,
+    bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
+    use_case: ReportErrorUseCase = Depends(
+        Provide[Container.report_error_use_case]
+    ),
+) -> dict:
+    """Public endpoint: report errors from widget."""
+    origin = request.headers.get("origin")
+    bot = await validate_widget_bot(short_code, origin, bot_repo)
+
+    event = await use_case.execute(
+        ReportErrorCommand(
+            source="widget",
+            error_type=body.error_type,
+            message=body.message,
+            stack_trace=body.stack_trace,
+            path=body.path,
+            user_agent=body.user_agent,
+        )
+    )
+
+    _set_cors_headers(response, origin, bot)
+    return {"id": event.id, "fingerprint": event.fingerprint}

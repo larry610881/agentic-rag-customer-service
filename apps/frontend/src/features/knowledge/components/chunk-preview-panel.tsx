@@ -45,7 +45,7 @@ export function ChunkPreviewPanel({ kbId, docId, open }: ChunkPreviewPanelProps)
 
   if (isLoading) {
     return (
-      <div className="border-t px-4 py-3 text-sm text-muted-foreground">
+      <div className="px-4 py-3 text-sm text-muted-foreground">
         載入分塊預覽...
       </div>
     );
@@ -53,14 +53,14 @@ export function ChunkPreviewPanel({ kbId, docId, open }: ChunkPreviewPanelProps)
 
   if (!data || data.chunks.length === 0) {
     return (
-      <div className="border-t px-4 py-3 text-sm text-muted-foreground">
+      <div className="px-4 py-3 text-sm text-muted-foreground">
         無分塊資料
       </div>
     );
   }
 
   return (
-    <div className="border-t px-4 py-3" data-testid="chunk-preview-panel">
+    <div className="px-4 py-3" data-testid="chunk-preview-panel">
       <p className="mb-2 text-sm text-muted-foreground">
         共 {data.total} 個分塊（顯示前 {data.chunks.length} 個）
       </p>
