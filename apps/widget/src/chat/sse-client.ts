@@ -53,6 +53,18 @@ export function streamChat(
     })
     .catch((err: Error) => {
       if (err.name !== "AbortError") {
+        // Report to error tracking
+        fetch(`${url.replace(/\/api\/.*$/, "")}/api/v1/error-events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source: "widget",
+            error_type: "SSEError",
+            message: err.message,
+            path: window.location.pathname,
+            user_agent: navigator.userAgent,
+          }),
+        }).catch(() => {});
         onError(err);
       }
     });

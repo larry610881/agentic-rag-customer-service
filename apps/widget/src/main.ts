@@ -3,7 +3,8 @@
  *
  * Usage:
  *   <script src="https://your-api.com/static/widget.js"
- *           data-bot="ab3Kx9">
+ *           data-bot="ab3Kx9"
+ *           crossorigin="anonymous">
  *   </script>
  */
 
@@ -39,8 +40,6 @@ import { Widget } from "./widget";
         name: data.name || "Chat",
         description: data.description || "",
         keep_history: data.keep_history !== false,
-        avatar_type: data.avatar_type || "none",
-        avatar_model_url: data.avatar_model_url || "",
         welcome_message: data.welcome_message || "",
         placeholder_text: data.placeholder_text || "",
         greeting_messages: data.greeting_messages || [],

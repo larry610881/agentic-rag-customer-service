@@ -25,4 +25,6 @@ export const ROUTES = {
   ADMIN_DIAGNOSTIC_RULES: "/admin/diagnostic-rules",
   ADMIN_RATE_LIMITS: "/admin/rate-limits",
   ADMIN_LOG_RETENTION: "/admin/log-retention",
+  ADMIN_ERROR_EVENTS: "/admin/error-events",
+  ADMIN_NOTIFICATION_CHANNELS: "/admin/notification-channels",
 } as const;

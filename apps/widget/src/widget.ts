@@ -1,17 +1,31 @@
-import type { AvatarRenderer, WidgetConfig } from "./types";
+import type { WidgetConfig } from "./types";
 import { ChatPanel } from "./chat/chat-panel";
-import { loadAvatar } from "./avatar/avatar-manager";
+import { cls } from "./constants";
 import styles from "./styles/widget.css?inline";
+
+function reportWidgetError(apiBase: string, error: { type: string; message: string; stack?: string }) {
+  fetch(`${apiBase}/api/v1/error-events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: "widget",
+      error_type: error.type,
+      message: error.message,
+      stack_trace: error.stack,
+      path: window.location.pathname,
+      user_agent: navigator.userAgent,
+    }),
+  }).catch(() => { /* swallow */ });
+}
 
 /**
  * Main widget controller.
- * Manages the FAB, chat panel, and optional avatar renderer.
+ * Manages the FAB, chat panel, and greeting bubble.
  */
 export class Widget {
   private root: HTMLElement;
   private fab: HTMLButtonElement;
   private chatPanel: ChatPanel;
-  private avatar: AvatarRenderer | null = null;
   private isOpen = false;
   private greetingEl: HTMLElement | null = null;
   private greetingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -34,33 +48,35 @@ export class Widget {
 
     // FAB
     this.fab = document.createElement("button");
-    this.fab.className = "aw-fab";
+    this.fab.className = cls("fab");
     this.fab.setAttribute("aria-label", "Open chat");
 
-    // Chat icon — filled bubble with typing dots
+    // Chat icon — custom image or default SVG bubble
     const chatIcon = document.createElement("span");
-    chatIcon.className = "aw-fab__icon-chat";
-    chatIcon.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+    chatIcon.className = cls("fab__icon-chat");
+    if (config.fab_icon_url) {
+      const iconUrl = config.fab_icon_url.startsWith("http")
+        ? config.fab_icon_url
+        : `${apiBase}${config.fab_icon_url}`;
+      chatIcon.innerHTML = `<img class="${cls("fab__icon-custom")}" src="${iconUrl}" alt="Chat" width="32" height="32" />`;
+    } else {
+      chatIcon.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
       <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
       <circle cx="8" cy="10" r="1.2" fill="#fff"/>
       <circle cx="12" cy="10" r="1.2" fill="#fff"/>
       <circle cx="16" cy="10" r="1.2" fill="#fff"/>
     </svg>`;
+    }
 
     // Close icon — X
     const closeIcon = document.createElement("span");
-    closeIcon.className = "aw-fab__icon-close";
+    closeIcon.className = cls("fab__icon-close");
     closeIcon.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
       <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
     </svg>`;
 
     this.fab.appendChild(chatIcon);
     this.fab.appendChild(closeIcon);
-
-    // Avatar FAB variant — gradient background when avatar is enabled
-    if (config.avatar_type && config.avatar_type !== "none") {
-      this.fab.classList.add("aw-fab--avatar");
-    }
 
     this.fab.addEventListener("click", () => this.toggle());
     this.root.appendChild(this.fab);
@@ -71,8 +87,22 @@ export class Widget {
     );
     this.root.appendChild(this.chatPanel.element);
 
-    // Load avatar if needed
-    this.initAvatar();
+    // Error reporting
+    window.addEventListener("error", (event) => {
+      reportWidgetError(apiBase, {
+        type: event.error?.name || "Error",
+        message: event.message,
+        stack: event.error?.stack,
+      });
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+      const reason = event.reason;
+      reportWidgetError(apiBase, {
+        type: reason?.name || "UnhandledRejection",
+        message: reason?.message || String(reason),
+        stack: reason?.stack,
+      });
+    });
 
     // Start greeting bubble (delayed)
     if (config.greeting_messages && config.greeting_messages.length > 0) {
@@ -84,38 +114,18 @@ export class Widget {
     }
   }
 
-  private async initAvatar(): Promise<void> {
-    this.avatar = await loadAvatar(this.config, this.apiBase);
-    if (!this.avatar) return;
-
-    // Replace the round FAB with full-size avatar character
-    this.fab.innerHTML = "";
-    this.fab.classList.remove("aw-fab--avatar");
-    this.fab.classList.add("aw-fab--avatar-live");
-
-    // Mount avatar renderer into the FAB container
-    const avatarContainer = document.createElement("div");
-    avatarContainer.className = "aw-fab__avatar";
-    this.fab.appendChild(avatarContainer);
-
-    // Shift panel above the avatar character
-    this.chatPanel.element.classList.add("aw-panel--above-avatar");
-
-    await this.avatar.mount(avatarContainer);
-  }
-
   private toggle(): void {
     this.isOpen = !this.isOpen;
 
     if (this.isOpen) {
-      this.chatPanel.element.classList.add("aw-panel--open");
-      this.fab.classList.add("aw-fab--open");
+      this.chatPanel.element.classList.add(cls("panel--open"));
+      this.fab.classList.add(cls("fab--open"));
       this.fab.setAttribute("aria-label", "Close chat");
       this.chatPanel.focus();
       this.stopGreeting();
     } else {
-      this.chatPanel.element.classList.remove("aw-panel--open");
-      this.fab.classList.remove("aw-fab--open");
+      this.chatPanel.element.classList.remove(cls("panel--open"));
+      this.fab.classList.remove(cls("fab--open"));
       this.fab.setAttribute("aria-label", "Open chat");
       this.restartGreeting();
     }
@@ -130,7 +140,7 @@ export class Widget {
     if (!messages.length) return;
 
     this.greetingEl = document.createElement("div");
-    this.greetingEl.className = "aw-greeting";
+    this.greetingEl.className = cls("greeting");
     this.greetingEl.addEventListener("click", () => {
       if (!this.isOpen) this.toggle();
     });
@@ -171,11 +181,11 @@ export class Widget {
 
     if (animation === "typewriter") {
       this.greetingEl.textContent = "";
-      this.greetingEl.classList.add("aw-greeting--visible");
+      this.greetingEl.classList.add(cls("greeting--visible"));
       this.typeText(this.greetingEl, text, 0);
     } else {
       this.greetingEl.textContent = text;
-      this.greetingEl.classList.add("aw-greeting--visible");
+      this.greetingEl.classList.add(cls("greeting--visible"));
     }
   }
 
@@ -193,22 +203,22 @@ export class Widget {
     if (!this.greetingEl) return;
 
     if (animation === "fade") {
-      this.greetingEl.classList.add("aw-greeting--fade-out");
+      this.greetingEl.classList.add(cls("greeting--fade-out"));
       setTimeout(() => {
         if (!this.greetingEl) return;
         this.greetingEl.textContent = text;
-        this.greetingEl.classList.remove("aw-greeting--fade-out");
+        this.greetingEl.classList.remove(cls("greeting--fade-out"));
         onDone();
       }, 300);
     } else if (animation === "slide") {
-      this.greetingEl.classList.add("aw-greeting--slide-out");
+      this.greetingEl.classList.add(cls("greeting--slide-out"));
       setTimeout(() => {
         if (!this.greetingEl) return;
         this.greetingEl.textContent = text;
-        this.greetingEl.classList.remove("aw-greeting--slide-out");
-        this.greetingEl.classList.add("aw-greeting--slide-in");
+        this.greetingEl.classList.remove(cls("greeting--slide-out"));
+        this.greetingEl.classList.add(cls("greeting--slide-in"));
         setTimeout(() => {
-          this.greetingEl?.classList.remove("aw-greeting--slide-in");
+          this.greetingEl?.classList.remove(cls("greeting--slide-in"));
           onDone();
         }, 300);
       }, 300);
@@ -226,7 +236,7 @@ export class Widget {
       this.greetingTimer = null;
     }
     if (this.greetingEl) {
-      this.greetingEl.classList.remove("aw-greeting--visible");
+      this.greetingEl.classList.remove(cls("greeting--visible"));
     }
   }
 

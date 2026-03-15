@@ -22,6 +22,8 @@ import {
   Stethoscope,
   Gauge,
   Trash2,
+  AlertTriangle,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -50,6 +52,8 @@ const systemAdminItems = [
   { href: "/admin/observability", label: "可觀測性", icon: Activity },
   { href: "/admin/token-usage", label: "Token 用量", icon: Coins },
   { href: "/admin/mcp-registry", label: "MCP 工具庫", icon: Puzzle },
+  { href: "/admin/error-events", label: "錯誤追蹤", icon: AlertTriangle },
+  { href: "/admin/notification-channels", label: "通知渠道", icon: Bell },
 ];
 
 export function Sidebar() {

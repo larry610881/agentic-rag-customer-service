@@ -182,3 +182,19 @@ class RequestIDMiddleware:
                         error_detail=error_detail,
                     )
                 )
+
+                if error_detail:
+                    from src.infrastructure.logging.error_event_writer import (
+                        write_error_event,
+                    )
+
+                    asyncio.create_task(
+                        write_error_event(
+                            error_detail=error_detail,
+                            request_id=request_id,
+                            method=method,
+                            path=path,
+                            status_code=status_code,
+                            tenant_id=tenant_id,
+                        )
+                    )

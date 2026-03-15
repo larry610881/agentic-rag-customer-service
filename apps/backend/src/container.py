@@ -92,10 +92,25 @@ from src.application.observability.diagnostic_rules_use_cases import (
     ResetDiagnosticRulesUseCase,
     UpdateDiagnosticRulesUseCase,
 )
+from src.application.observability.error_event_use_cases import (
+    GetErrorEventUseCase,
+    ListErrorEventsUseCase,
+    ReportErrorUseCase,
+    ResolveErrorEventUseCase,
+)
 from src.application.observability.log_retention_use_cases import (
     ExecuteLogCleanupUseCase,
     GetLogRetentionPolicyUseCase,
     UpdateLogRetentionPolicyUseCase,
+)
+from src.application.observability.notification_use_cases import (
+    CreateChannelUseCase,
+    DeleteChannelUseCase,
+    DispatchNotificationUseCase,
+    ListChannelsUseCase,
+    NotificationDispatcher,
+    SendTestNotificationUseCase,
+    UpdateChannelUseCase,
 )
 from src.application.observability.rag_evaluation_use_case import (
     RAGEvaluationUseCase,
@@ -179,6 +194,12 @@ from src.infrastructure.db.repositories.diagnostic_rules_config_repository impor
 from src.infrastructure.db.repositories.document_repository import (
     SQLAlchemyDocumentRepository,
 )
+from src.infrastructure.db.repositories.error_event_repository import (
+    SQLAlchemyErrorEventRepository,
+)
+from src.infrastructure.db.repositories.notification_channel_repository import (
+    SQLAlchemyNotificationChannelRepository,
+)
 from src.infrastructure.db.repositories.feedback_repository import (
     SQLAlchemyFeedbackRepository,
 )
@@ -261,6 +282,7 @@ from src.infrastructure.llm.dynamic_llm_factory import (
 )
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
 from src.infrastructure.logging.db_error_reporter import DBErrorReporter
+from src.infrastructure.notification.email_sender import EmailNotificationSender
 from src.infrastructure.mcp.cached_tool_loader import CachedMCPToolLoader
 from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
 from src.infrastructure.sentiment.keyword_sentiment_service import (
@@ -298,6 +320,8 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.mcp_router",
             "src.interfaces.api.mcp_server_router",
             "src.interfaces.api.observability_router",
+            "src.interfaces.api.error_event_router",
+            "src.interfaces.api.notification_router",
             "src.interfaces.api.system_prompt_router",
             "src.interfaces.api.widget_router",
             "src.interfaces.api.deps",
@@ -416,6 +440,16 @@ class Container(containers.DeclarativeContainer):
 
     log_retention_policy_repository = providers.Factory(
         SQLAlchemyLogRetentionPolicyRepository,
+        session=db_session,
+    )
+
+    error_event_repository = providers.Factory(
+        SQLAlchemyErrorEventRepository,
+        session=db_session,
+    )
+
+    notification_channel_repository = providers.Factory(
+        SQLAlchemyNotificationChannelRepository,
         session=db_session,
     )
 
@@ -940,6 +974,78 @@ class Container(containers.DeclarativeContainer):
     execute_log_cleanup_use_case = providers.Factory(
         ExecuteLogCleanupUseCase,
         log_retention_policy_repository=log_retention_policy_repository,
+    )
+
+    # --- Observability: Error Events ---
+
+    report_error_use_case = providers.Factory(
+        ReportErrorUseCase,
+        error_event_repo=error_event_repository,
+    )
+
+    list_error_events_use_case = providers.Factory(
+        ListErrorEventsUseCase,
+        error_event_repo=error_event_repository,
+    )
+
+    get_error_event_use_case = providers.Factory(
+        GetErrorEventUseCase,
+        error_event_repo=error_event_repository,
+    )
+
+    resolve_error_event_use_case = providers.Factory(
+        ResolveErrorEventUseCase,
+        error_event_repo=error_event_repository,
+    )
+
+    # --- Observability: Notification Channels ---
+
+    email_notification_sender = providers.Singleton(
+        EmailNotificationSender,
+    )
+
+    notification_dispatcher = providers.Singleton(
+        NotificationDispatcher,
+        senders=providers.Dict({
+            "email": email_notification_sender,
+        }),
+    )
+
+    list_channels_use_case = providers.Factory(
+        ListChannelsUseCase,
+        channel_repo=notification_channel_repository,
+    )
+
+    create_channel_use_case = providers.Factory(
+        CreateChannelUseCase,
+        channel_repo=notification_channel_repository,
+        encryption_service=encryption_service,
+    )
+
+    update_channel_use_case = providers.Factory(
+        UpdateChannelUseCase,
+        channel_repo=notification_channel_repository,
+        encryption_service=encryption_service,
+    )
+
+    delete_channel_use_case = providers.Factory(
+        DeleteChannelUseCase,
+        channel_repo=notification_channel_repository,
+    )
+
+    test_channel_use_case = providers.Factory(
+        SendTestNotificationUseCase,
+        channel_repo=notification_channel_repository,
+        encryption_service=encryption_service,
+        dispatcher=notification_dispatcher,
+    )
+
+    dispatch_notification_use_case = providers.Factory(
+        DispatchNotificationUseCase,
+        channel_repo=notification_channel_repository,
+        error_event_repo=error_event_repository,
+        encryption_service=encryption_service,
+        dispatcher=notification_dispatcher,
     )
 
     # --- Memory ---

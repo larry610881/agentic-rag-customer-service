@@ -1,4 +1,5 @@
 import type { Source, WidgetConfig } from "../types";
+import { cls } from "../constants";
 import { MessageList } from "./message-list";
 import { streamChat } from "./sse-client";
 import { getStatusHint, getToolLabel } from "./tool-labels";
@@ -43,18 +44,18 @@ export class ChatPanel {
 
     // Build DOM
     this.element = document.createElement("div");
-    this.element.className = "aw-panel";
+    this.element.className = cls("panel");
 
     // Header
     const header = document.createElement("div");
-    header.className = "aw-header";
+    header.className = cls("header");
 
     const nameSpan = document.createElement("span");
-    nameSpan.className = "aw-header__name";
+    nameSpan.className = cls("header__name");
     nameSpan.textContent = config.name || "Chat";
 
     const closeBtn = document.createElement("button");
-    closeBtn.className = "aw-header__close";
+    closeBtn.className = cls("header__close");
     closeBtn.setAttribute("aria-label", "Close chat");
     closeBtn.innerHTML = "&times;";
     closeBtn.addEventListener("click", onClose);
@@ -65,20 +66,17 @@ export class ChatPanel {
 
     // Messages
     const messagesEl = document.createElement("div");
-    messagesEl.className = "aw-messages";
-    if (config.avatar_type && config.avatar_type !== "none") {
-      messagesEl.classList.add("aw-messages--has-avatar");
-    }
+    messagesEl.className = cls("messages");
     this.element.appendChild(messagesEl);
     this.messageList = new MessageList(messagesEl);
 
     // Input area
     const inputArea = document.createElement("div");
-    inputArea.className = "aw-input-area";
+    inputArea.className = cls("input-area");
 
     this.input = document.createElement("input");
     this.input.type = "text";
-    this.input.className = "aw-input";
+    this.input.className = cls("input");
     this.input.placeholder =
       config.placeholder_text || "輸入訊息...";
     this.input.addEventListener("keydown", (e) => {
@@ -89,7 +87,7 @@ export class ChatPanel {
     });
 
     this.sendBtn = document.createElement("button");
-    this.sendBtn.className = "aw-send-btn";
+    this.sendBtn.className = cls("send-btn");
     this.sendBtn.textContent = "送出";
     this.sendBtn.addEventListener("click", () => this.sendMessage());
 
@@ -107,9 +105,9 @@ export class ChatPanel {
     this.input.focus();
   }
 
-  /** Returns the messages container for inserting avatar area before it. */
+  /** Returns the messages container element. */
   getMessagesContainer(): HTMLElement {
-    return this.element.querySelector(".aw-messages") as HTMLElement;
+    return this.element.querySelector(`.${cls("messages")}`) as HTMLElement;
   }
 
   private sendMessage(): void {
@@ -204,7 +202,19 @@ export class ChatPanel {
             break;
         }
       },
-      () => {
+      (err) => {
+        // Report connection error
+        fetch(`${this.apiBase}/api/v1/error-events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source: "widget",
+            error_type: "ChatConnectionError",
+            message: err.message,
+            path: window.location.pathname,
+            user_agent: navigator.userAgent,
+          }),
+        }).catch(() => {});
         this.messageList.updateBubble(botBubble, "連線失敗，請稍後再試");
         this.setSending(false);
       },

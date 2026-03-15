@@ -7,7 +7,6 @@ export const API_ENDPOINTS = {
     list: "/api/v1/tenants",
     create: "/api/v1/tenants",
     config: (id: string) => `/api/v1/tenants/${id}/config`,
-    widgetAvatar: (id: string) => `/api/v1/tenants/${id}/widget-avatar`,
     agentModes: (id: string) => `/api/v1/tenants/${id}/agent-modes`,
   },
   knowledgeBases: {
@@ -48,7 +47,6 @@ export const API_ENDPOINTS = {
     detail: (id: string) => `/api/v1/bots/${id}`,
     update: (id: string) => `/api/v1/bots/${id}`,
     delete: (id: string) => `/api/v1/bots/${id}`,
-    avatarPresets: "/api/v1/bots/avatar-presets",
   },
   conversations: {
     list: (botId?: string | null) =>
@@ -118,5 +116,18 @@ export const API_ENDPOINTS = {
   },
   rateLimits: {
     byTenant: (tenantId: string) => `/api/v1/admin/rate-limits/${tenantId}`,
+  },
+  errorEvents: {
+    report: "/api/v1/error-events",
+    list: "/api/v1/admin/error-events",
+    detail: (id: string) => `/api/v1/admin/error-events/${id}`,
+    resolve: (id: string) => `/api/v1/admin/error-events/${id}/resolve`,
+  },
+  notificationChannels: {
+    list: "/api/v1/admin/notification-channels",
+    create: "/api/v1/admin/notification-channels",
+    update: (id: string) => `/api/v1/admin/notification-channels/${id}`,
+    delete: (id: string) => `/api/v1/admin/notification-channels/${id}`,
+    test: (id: string) => `/api/v1/admin/notification-channels/${id}/test`,
   },
 } as const;

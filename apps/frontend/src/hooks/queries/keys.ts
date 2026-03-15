@@ -22,7 +22,6 @@ export const queryKeys = {
   bots: {
     all: (tenantId: string) => ["bots", tenantId] as const,
     detail: (botId: string) => ["bots", "detail", botId] as const,
-    avatarPresets: ["bots", "avatar-presets"] as const,
   },
   conversations: {
     all: (tenantId: string, botId?: string | null) =>
@@ -79,5 +78,12 @@ export const queryKeys = {
   },
   rateLimits: {
     byTenant: (tenantId: string) => ["rate-limits", tenantId] as const,
+  },
+  errorEvents: {
+    all: (filters?: object) => ["error-events", filters ?? {}] as const,
+    detail: (id: string) => ["error-events", "detail", id] as const,
+  },
+  notificationChannels: {
+    all: ["notification-channels"] as const,
   },
 };

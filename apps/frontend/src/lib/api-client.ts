@@ -67,6 +67,17 @@ export async function apiFetch<T>(
       useAuthStore.getState().logout();
     }
     const body = await res.text();
+    if (res.status >= 500) {
+      import("@/lib/error-reporter").then(({ errorReporter }) => {
+        errorReporter.report({
+          source: "frontend",
+          error_type: `HTTP_${res.status}`,
+          message: body,
+          path: path,
+          user_agent: navigator.userAgent,
+        });
+      });
+    }
     throw new ApiError(res.status, body);
   }
   if (res.status === 204) {

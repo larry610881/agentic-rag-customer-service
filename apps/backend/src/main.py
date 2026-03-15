@@ -40,6 +40,9 @@ try:
         TenantModel,
         UsageRecordModel,
         UserModel,
+        ErrorEventModel,
+        ErrorNotificationLogModel,
+        NotificationChannelModel,
     )
     from src.infrastructure.logging import get_logger, setup_logging
 
@@ -266,6 +269,16 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         )
 
         application.include_router(observability_router)
+
+        from src.interfaces.api.error_event_router import (
+            router as error_event_router,
+        )
+        from src.interfaces.api.notification_router import (
+            router as notification_router,
+        )
+
+        application.include_router(error_event_router)
+        application.include_router(notification_router)
 
         from src.interfaces.api.widget_router import router as widget_router
 

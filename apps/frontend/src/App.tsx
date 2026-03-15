@@ -32,6 +32,8 @@ const AdminPromptsPage = lazy(() => import("@/pages/admin-prompts"));
 const AdminDiagnosticRulesPage = lazy(() => import("@/pages/admin-diagnostic-rules"));
 const AdminRateLimitsPage = lazy(() => import("@/pages/admin-rate-limits"));
 const AdminLogRetentionPage = lazy(() => import("@/pages/admin-log-retention"));
+const AdminErrorEventsPage = lazy(() => import("@/pages/admin-error-events"));
+const AdminNotificationChannelsPage = lazy(() => import("@/pages/admin-notification-channels"));
 
 function PageFallback() {
   return (
@@ -125,6 +127,14 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_LOG_RETENTION}
               element={<AdminLogRetentionPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_ERROR_EVENTS}
+              element={<AdminErrorEventsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_NOTIFICATION_CHANNELS}
+              element={<AdminNotificationChannelsPage />}
             />
           </Route>
         </Route>

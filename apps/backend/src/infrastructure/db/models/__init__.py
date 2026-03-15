@@ -27,7 +27,14 @@ from src.infrastructure.db.models.usage_record_model import UsageRecordModel
 from src.infrastructure.db.models.user_model import UserModel
 from src.infrastructure.db.models.visitor_identity_model import VisitorIdentityModel
 from src.infrastructure.db.models.visitor_profile_model import VisitorProfileModel
+from src.infrastructure.db.models.error_event_model import ErrorEventModel
+from src.infrastructure.db.models.error_notification_log_model import (
+    ErrorNotificationLogModel,
+)
 from src.infrastructure.db.models.memory_fact_model import MemoryFactModel
+from src.infrastructure.db.models.notification_channel_model import (
+    NotificationChannelModel,
+)
 
 __all__ = [
     "TenantModel",
@@ -54,4 +61,7 @@ __all__ = [
     "VisitorProfileModel",
     "VisitorIdentityModel",
     "MemoryFactModel",
+    "ErrorEventModel",
+    "ErrorNotificationLogModel",
+    "NotificationChannelModel",
 ]
