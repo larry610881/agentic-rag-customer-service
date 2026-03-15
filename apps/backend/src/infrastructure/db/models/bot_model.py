@@ -67,6 +67,9 @@ class BotModel(Base):
     base_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     router_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     react_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    fab_icon_url: Mapped[str] = mapped_column(
+        String(512), nullable=False, default="", server_default=""
+    )
     widget_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
@@ -75,12 +78,6 @@ class BotModel(Base):
     )
     widget_keep_history: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
-    )
-    avatar_type: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="none"
-    )
-    avatar_model_url: Mapped[str] = mapped_column(
-        String(512), nullable=False, default=""
     )
     widget_welcome_message: Mapped[str] = mapped_column(
         String(500), nullable=False, default=""
@@ -93,6 +90,15 @@ class BotModel(Base):
     )
     widget_greeting_animation: Mapped[str] = mapped_column(
         String(20), nullable=False, default="fade"
+    )
+    memory_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    memory_extraction_threshold: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3, server_default="3"
+    )
+    memory_extraction_prompt: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
     )
     line_channel_secret: Mapped[str | None] = mapped_column(
         String(255), nullable=True

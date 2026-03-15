@@ -25,6 +25,13 @@ from src.domain.shared.exceptions import DomainException
 from src.domain.tenant.repository import TenantRepository
 
 if TYPE_CHECKING:
+    from src.application.memory.extract_memory_use_case import (
+        ExtractMemoryUseCase,
+    )
+    from src.application.memory.load_memory_use_case import LoadMemoryUseCase
+    from src.application.memory.resolve_identity_use_case import (
+        ResolveIdentityUseCase,
+    )
     from src.application.observability.rag_evaluation_use_case import (
         RAGEvaluationUseCase,
     )
@@ -41,6 +48,8 @@ class SendMessageCommand:
     message: str = ""
     conversation_id: str | None = None
     bot_id: str | None = None
+    visitor_id: str | None = None
+    identity_source: str | None = None  # "widget" | "line"
 
 
 class SendMessageUseCase:
@@ -58,6 +67,9 @@ class SendMessageUseCase:
         rag_evaluation_use_case: "RAGEvaluationUseCase | None" = None,
         mcp_registry_repo: Any | None = None,
         encryption_service: EncryptionService | None = None,
+        resolve_identity_use_case: "ResolveIdentityUseCase | None" = None,
+        load_memory_use_case: "LoadMemoryUseCase | None" = None,
+        extract_memory_use_case: "ExtractMemoryUseCase | None" = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -71,6 +83,9 @@ class SendMessageUseCase:
         self._eval_use_case = rag_evaluation_use_case
         self._mcp_registry_repo = mcp_registry_repo
         self._encryption = encryption_service
+        self._resolve_identity = resolve_identity_use_case
+        self._load_memory = load_memory_use_case
+        self._extract_memory = extract_memory_use_case
 
     async def _load_bot_config(
         self, command: SendMessageCommand
@@ -188,6 +203,13 @@ class SendMessageUseCase:
 
         cfg["max_tool_calls"] = bot.max_tool_calls or 5
         cfg["audit_mode"] = getattr(bot, "audit_mode", "minimal")
+        cfg["memory_enabled"] = getattr(bot, "memory_enabled", False)
+        cfg["memory_extraction_threshold"] = getattr(
+            bot, "memory_extraction_threshold", 3
+        )
+        cfg["memory_extraction_prompt"] = getattr(
+            bot, "memory_extraction_prompt", ""
+        )
         cfg["eval_depth"] = getattr(bot, "eval_depth", "off")
         cfg["eval_provider"] = getattr(bot, "eval_provider", "")
         cfg["eval_model"] = getattr(bot, "eval_model", "")
@@ -240,6 +262,108 @@ class SendMessageUseCase:
             )
         return self._react_agent_service
 
+    async def _resolve_and_load_memory(
+        self, command: SendMessageCommand, bot_cfg: dict[str, Any]
+    ) -> str:
+        """Resolve visitor identity and load memory context.
+
+        Returns formatted memory prompt string (empty if disabled).
+        """
+        if not command.visitor_id or not command.identity_source:
+            return ""
+        if not bot_cfg.get("memory_enabled", False):
+            return ""
+        if not self._resolve_identity or not self._load_memory:
+            return ""
+
+        try:
+            from src.application.memory.load_memory_use_case import (
+                LoadMemoryCommand,
+            )
+            from src.application.memory.resolve_identity_use_case import (
+                ResolveIdentityCommand,
+            )
+
+            profile_id = await self._resolve_identity.execute(
+                ResolveIdentityCommand(
+                    tenant_id=command.tenant_id,
+                    source=command.identity_source,
+                    external_id=command.visitor_id,
+                )
+            )
+            memory_ctx = await self._load_memory.execute(
+                LoadMemoryCommand(profile_id=profile_id)
+            )
+            if memory_ctx.has_memory:
+                return memory_ctx.formatted_prompt
+        except Exception:
+            logger.warning("memory.load_failed", exc_info=True)
+        return ""
+
+    def _should_extract_memory(
+        self, bot_cfg: dict[str, Any], message_count: int
+    ) -> bool:
+        """Check if memory extraction should be triggered."""
+        if not bot_cfg.get("memory_enabled", False):
+            return False
+        threshold = bot_cfg.get("memory_extraction_threshold", 3)
+        if message_count < threshold * 2:
+            return False
+        return True
+
+    async def _fire_memory_extraction(
+        self,
+        command: SendMessageCommand,
+        bot_cfg: dict[str, Any],
+        conversation: Conversation,
+    ) -> None:
+        """Fire-and-forget memory extraction (background task)."""
+        if not command.visitor_id or not command.identity_source:
+            return
+        if not self._resolve_identity or not self._extract_memory:
+            return
+        if not self._should_extract_memory(bot_cfg, len(conversation.messages)):
+            return
+
+        try:
+            from src.application.memory.extract_memory_use_case import (
+                ExtractMemoryCommand,
+            )
+            from src.application.memory.resolve_identity_use_case import (
+                ResolveIdentityCommand,
+            )
+
+            profile_id = await self._resolve_identity.execute(
+                ResolveIdentityCommand(
+                    tenant_id=command.tenant_id,
+                    source=command.identity_source,
+                    external_id=command.visitor_id,
+                )
+            )
+
+            # Only pass the latest user+assistant pair for extraction
+            recent_messages = []
+            for msg in conversation.messages[-2:]:
+                recent_messages.append(
+                    {"role": msg.role, "content": msg.content}
+                )
+
+            asyncio.create_task(
+                self._extract_memory.execute(
+                    ExtractMemoryCommand(
+                        profile_id=profile_id,
+                        tenant_id=command.tenant_id,
+                        conversation_id=conversation.id.value,
+                        messages=recent_messages,
+                        extraction_prompt=bot_cfg.get(
+                            "memory_extraction_prompt", ""
+                        ),
+                    )
+                )
+            )
+        except Exception:
+            logger.warning("memory.extraction_dispatch_failed", exc_info=True)
+
     async def _resolve_history(
         self,
         history: list | None,
@@ -274,6 +398,15 @@ class SendMessageUseCase:
                 history, bot_cfg["history_limit"]
             )
         )
+
+        # Memory: resolve identity + load
+        memory_prompt = await self._resolve_and_load_memory(command, bot_cfg)
+        if memory_prompt:
+            history_context = (
+                memory_prompt + "\n\n" + history_context
+                if history_context
+                else memory_prompt
+            )
 
         agent = await self._resolve_agent_service(
             command.tenant_id, bot_cfg["agent_mode"]
@@ -327,6 +460,9 @@ class SendMessageUseCase:
 
         response.conversation_id = conversation.id.value
 
+        # Fire-and-forget: memory extraction
+        await self._fire_memory_extraction(command, bot_cfg, conversation)
+
         # Fire-and-forget: persist RAG trace
         trace_id = str(uuid4())
         await self._persist_trace(
@@ -374,6 +510,15 @@ class SendMessageUseCase:
                 history, bot_cfg["history_limit"]
             )
         )
+
+        # Memory: resolve identity + load
+        memory_prompt = await self._resolve_and_load_memory(command, bot_cfg)
+        if memory_prompt:
+            history_context = (
+                memory_prompt + "\n\n" + history_context
+                if history_context
+                else memory_prompt
+            )
 
         agent = await self._resolve_agent_service(
             command.tenant_id, bot_cfg["agent_mode"]
@@ -452,6 +597,9 @@ class SendMessageUseCase:
             retrieved_chunks=retrieved_chunks,
         )
         await self._conversation_repo.save(conversation)
+
+        # Fire-and-forget: memory extraction
+        await self._fire_memory_extraction(command, bot_cfg, conversation)
 
         trace_id = str(uuid4())
         await self._persist_trace(

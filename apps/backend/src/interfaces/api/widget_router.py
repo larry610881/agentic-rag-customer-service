@@ -19,7 +19,7 @@ from src.application.conversation.submit_feedback_use_case import (
 from src.container import Container
 from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
-from src.domain.tenant.repository import TenantRepository
+from src.interfaces.api.streaming_errors import classify_streaming_error
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +44,11 @@ class WidgetConfigResponse(BaseModel):
     name: str
     description: str
     keep_history: bool
-    avatar_type: str = "none"
-    avatar_model_url: str = ""
     welcome_message: str = ""
     placeholder_text: str = ""
     greeting_messages: list[str] = []
     greeting_animation: str = "fade"
+    fab_icon_url: str = ""
 
 
 async def validate_widget_bot(
@@ -123,7 +122,6 @@ async def widget_config(
     request: Request,
     response: Response,
     bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
-    tenant_repo: TenantRepository = Depends(Provide[Container.tenant_repository]),
 ) -> WidgetConfigResponse:
     """Public endpoint: get bot display config."""
     origin = request.headers.get("origin")
@@ -131,24 +129,15 @@ async def widget_config(
 
     _set_cors_headers(response, origin, bot)
 
-    # Check tenant permission for widget avatar
-    avatar_type = bot.avatar_type
-    avatar_model_url = bot.avatar_model_url
-    tenant = await tenant_repo.find_by_id(bot.tenant_id)
-    if not tenant or not tenant.allowed_widget_avatar:
-        avatar_type = "none"
-        avatar_model_url = ""
-
     return WidgetConfigResponse(
         name=bot.name,
         description=bot.description,
         keep_history=bot.widget_keep_history,
-        avatar_type=avatar_type,
-        avatar_model_url=avatar_model_url,
         welcome_message=bot.widget_welcome_message,
         placeholder_text=bot.widget_placeholder_text,
         greeting_messages=bot.widget_greeting_messages,
         greeting_animation=bot.widget_greeting_animation,
+        fab_icon_url=bot.fab_icon_url,
     )
 
 
@@ -167,11 +156,14 @@ async def widget_chat_stream(
     origin = request.headers.get("origin")
     bot = await validate_widget_bot(short_code, origin, bot_repo)
 
+    visitor_id = request.headers.get("x-visitor-id")
     command = SendMessageCommand(
         tenant_id=bot.tenant_id,
         bot_id=bot.id.value,
         message=body.message,
         conversation_id=body.conversation_id if bot.widget_keep_history else None,
+        visitor_id=visitor_id,
+        identity_source="widget" if visitor_id else None,
     )
 
     async def event_generator():
@@ -186,9 +178,7 @@ async def widget_chat_stream(
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:
             logger.exception("widget.chat.stream.error")
-            error_msg = str(exc)
-            if "429" in error_msg:
-                error_msg = "API 額度已用完，請稍後再試"
+            error_msg = classify_streaming_error(exc)
             error_payload = {"type": "error", "message": error_msg}
             yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"

@@ -47,12 +47,13 @@ class UpdateBotCommand:
     widget_enabled: object = _UNSET
     widget_allowed_origins: object = _UNSET
     widget_keep_history: object = _UNSET
-    avatar_type: object = _UNSET
-    avatar_model_url: object = _UNSET
     widget_welcome_message: object = _UNSET
     widget_placeholder_text: object = _UNSET
     widget_greeting_messages: object = _UNSET
     widget_greeting_animation: object = _UNSET
+    memory_enabled: object = _UNSET
+    memory_extraction_threshold: object = _UNSET
+    memory_extraction_prompt: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
 
@@ -79,10 +80,11 @@ class UpdateBotUseCase:
             "eval_provider", "eval_model", "eval_depth",
             "max_tool_calls",
             "widget_enabled", "widget_keep_history",
-            "avatar_type", "avatar_model_url",
             "widget_welcome_message", "widget_placeholder_text",
             "widget_greeting_animation",
             "base_prompt", "router_prompt", "react_prompt",
+            "memory_enabled", "memory_extraction_threshold",
+            "memory_extraction_prompt",
             "line_channel_secret", "line_channel_access_token",
         )
         for field in _DIRECT_FIELDS:

@@ -2,6 +2,11 @@ import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
 from src.application.agent.send_message_use_case import SendMessageUseCase
+from src.application.memory.extract_memory_use_case import ExtractMemoryUseCase
+from src.application.memory.load_memory_use_case import LoadMemoryUseCase
+from src.application.memory.resolve_identity_use_case import (
+    ResolveIdentityUseCase,
+)
 from src.application.agent.tool_registry import ToolRegistry
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
@@ -16,6 +21,7 @@ from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.bot.list_all_bots_use_case import ListAllBotsUseCase
 from src.application.bot.list_bots_use_case import ListBotsUseCase
 from src.application.bot.update_bot_use_case import UpdateBotUseCase
+from src.application.bot.upload_bot_icon_use_case import UploadBotIconUseCase
 from src.application.conversation.get_conversation_use_case import (
     GetConversationUseCase,
 )
@@ -182,6 +188,12 @@ from src.infrastructure.db.repositories.knowledge_base_repository import (
 from src.infrastructure.db.repositories.log_retention_policy_repository import (
     SQLAlchemyLogRetentionPolicyRepository,
 )
+from src.infrastructure.db.repositories.memory_fact_repository import (
+    SQLAlchemyMemoryFactRepository,
+)
+from src.infrastructure.db.repositories.visitor_profile_repository import (
+    SQLAlchemyVisitorProfileRepository,
+)
 from src.infrastructure.db.repositories.mcp_server_repository import (
     SQLAlchemyMcpServerRepository,
 )
@@ -220,6 +232,7 @@ from src.infrastructure.embedding.openai_embedding_service import (
 from src.infrastructure.file_parser.default_file_parser_service import (
     DefaultFileParserService,
 )
+from src.infrastructure.storage.local_file_storage import LocalFileStorageService
 from src.infrastructure.langgraph.langgraph_agent_service import (
     LangGraphAgentService,
 )
@@ -234,6 +247,9 @@ from src.infrastructure.langgraph.workers.fake_main_worker import FakeMainWorker
 from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWorker
 from src.infrastructure.language_detection import (
     LangdetectLanguageDetectionService,
+)
+from src.infrastructure.memory.llm_memory_extraction_service import (
+    LLMMemoryExtractionService,
 )
 from src.infrastructure.line.line_messaging_service import HttpxLineMessagingService
 from src.infrastructure.line.line_messaging_service_factory import (
@@ -413,6 +429,8 @@ class Container(containers.DeclarativeContainer):
     )
 
     error_reporter = providers.Singleton(DBErrorReporter)
+
+    file_storage_service = providers.Singleton(LocalFileStorageService)
 
     file_parser_service = providers.Singleton(DefaultFileParserService)
 
@@ -877,6 +895,12 @@ class Container(containers.DeclarativeContainer):
         cache_service=cache_service,
     )
 
+    upload_bot_icon_use_case = providers.Factory(
+        UploadBotIconUseCase,
+        bot_repository=bot_repository,
+        file_storage_service=file_storage_service,
+    )
+
     # --- Observability: RAG Evaluation ---
 
     rag_evaluation_use_case = providers.Factory(
@@ -918,6 +942,39 @@ class Container(containers.DeclarativeContainer):
         log_retention_policy_repository=log_retention_policy_repository,
     )
 
+    # --- Memory ---
+
+    visitor_profile_repository = providers.Factory(
+        SQLAlchemyVisitorProfileRepository,
+        session=db_session,
+    )
+
+    memory_fact_repository = providers.Factory(
+        SQLAlchemyMemoryFactRepository,
+        session=db_session,
+    )
+
+    memory_extraction_service = providers.Factory(
+        LLMMemoryExtractionService,
+        llm_service=llm_service,
+    )
+
+    resolve_identity_use_case = providers.Factory(
+        ResolveIdentityUseCase,
+        visitor_profile_repository=visitor_profile_repository,
+    )
+
+    load_memory_use_case = providers.Factory(
+        LoadMemoryUseCase,
+        memory_fact_repository=memory_fact_repository,
+    )
+
+    extract_memory_use_case = providers.Factory(
+        ExtractMemoryUseCase,
+        memory_fact_repository=memory_fact_repository,
+        extraction_service=memory_extraction_service,
+    )
+
     send_message_use_case = providers.Factory(
         SendMessageUseCase,
         agent_service=agent_service,
@@ -932,6 +989,9 @@ class Container(containers.DeclarativeContainer):
         rag_evaluation_use_case=rag_evaluation_use_case,
         mcp_registry_repo=mcp_server_repository,
         encryption_service=encryption_service,
+        resolve_identity_use_case=resolve_identity_use_case,
+        load_memory_use_case=load_memory_use_case,
+        extract_memory_use_case=extract_memory_use_case,
     )
 
     # --- Platform: Provider Settings ---

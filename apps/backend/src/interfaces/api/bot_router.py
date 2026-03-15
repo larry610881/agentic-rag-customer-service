@@ -3,7 +3,7 @@
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 
 from src.application.bot.create_bot_use_case import (
@@ -15,11 +15,15 @@ from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.bot.list_all_bots_use_case import ListAllBotsUseCase
 from src.application.bot.list_bots_use_case import ListBotsUseCase
 from src.application.bot.update_bot_use_case import UpdateBotCommand, UpdateBotUseCase
+from src.application.bot.upload_bot_icon_use_case import (
+    UploadBotIconCommand,
+    UploadBotIconUseCase,
+)
 from src.container import Container
-from src.domain.bot.avatar_presets import PRESET_AVATARS
 from src.domain.platform.value_objects import ProviderName
-from src.domain.shared.exceptions import EntityNotFoundError
+from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
 router = APIRouter(prefix="/api/v1/bots", tags=["bots"])
 
@@ -100,12 +104,13 @@ class CreateBotRequest(BaseModel):
     widget_enabled: bool = False
     widget_allowed_origins: list[str] = []
     widget_keep_history: bool = True
-    avatar_type: str = "none"
-    avatar_model_url: str = ""
     widget_welcome_message: str = ""
     widget_placeholder_text: str = ""
     widget_greeting_messages: list[str] = []
     widget_greeting_animation: str = "fade"
+    memory_enabled: bool = False
+    memory_extraction_threshold: int = 3
+    memory_extraction_prompt: str = ""
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -141,12 +146,13 @@ class UpdateBotRequest(BaseModel):
     widget_enabled: bool | None = None
     widget_allowed_origins: list[str] | None = None
     widget_keep_history: bool | None = None
-    avatar_type: str | None = None
-    avatar_model_url: str | None = None
     widget_welcome_message: str | None = None
     widget_placeholder_text: str | None = None
     widget_greeting_messages: list[str] | None = None
     widget_greeting_animation: str | None = None
+    memory_enabled: bool | None = None
+    memory_extraction_threshold: int | None = None
+    memory_extraction_prompt: str | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -182,15 +188,17 @@ class BotResponse(BaseModel):
     base_prompt: str
     router_prompt: str
     react_prompt: str
+    fab_icon_url: str
     widget_enabled: bool
     widget_allowed_origins: list[str]
     widget_keep_history: bool
-    avatar_type: str
-    avatar_model_url: str
     widget_welcome_message: str
     widget_placeholder_text: str
     widget_greeting_messages: list[str]
     widget_greeting_animation: str
+    memory_enabled: bool
+    memory_extraction_threshold: int
+    memory_extraction_prompt: str
     line_channel_secret: str | None
     line_channel_access_token: str | None
     created_at: str
@@ -248,15 +256,17 @@ def _to_response(bot) -> BotResponse:
         base_prompt=bot.base_prompt,
         router_prompt=bot.router_prompt,
         react_prompt=bot.react_prompt,
+        fab_icon_url=bot.fab_icon_url,
         widget_enabled=bot.widget_enabled,
         widget_allowed_origins=bot.widget_allowed_origins,
         widget_keep_history=bot.widget_keep_history,
-        avatar_type=bot.avatar_type,
-        avatar_model_url=bot.avatar_model_url,
         widget_welcome_message=bot.widget_welcome_message,
         widget_placeholder_text=bot.widget_placeholder_text,
         widget_greeting_messages=bot.widget_greeting_messages,
         widget_greeting_animation=bot.widget_greeting_animation,
+        memory_enabled=bot.memory_enabled,
+        memory_extraction_threshold=bot.memory_extraction_threshold,
+        memory_extraction_prompt=bot.memory_extraction_prompt,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
         created_at=bot.created_at.isoformat(),
@@ -326,8 +336,6 @@ async def create_bot(
             widget_enabled=body.widget_enabled,
             widget_allowed_origins=body.widget_allowed_origins,
             widget_keep_history=body.widget_keep_history,
-            avatar_type=body.avatar_type,
-            avatar_model_url=body.avatar_model_url,
             widget_welcome_message=body.widget_welcome_message,
             widget_placeholder_text=body.widget_placeholder_text,
             widget_greeting_messages=body.widget_greeting_messages,
@@ -335,6 +343,9 @@ async def create_bot(
             base_prompt=body.base_prompt,
             router_prompt=body.router_prompt,
             react_prompt=body.react_prompt,
+            memory_enabled=body.memory_enabled,
+            memory_extraction_threshold=body.memory_extraction_threshold,
+            memory_extraction_prompt=body.memory_extraction_prompt,
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
         )
@@ -342,16 +353,11 @@ async def create_bot(
     return _to_response(bot)
 
 
-@router.get("/avatar-presets")
-async def get_avatar_presets() -> dict:
-    """Public endpoint: list available avatar presets."""
-    return PRESET_AVATARS
-
-
-@router.get("", response_model=list[BotResponse])
+@router.get("", response_model=PaginatedResponse[BotResponse])
 @inject
 async def list_bots(
     tenant_id: str | None = Query(default=None),
+    pagination: PaginationQuery = Depends(),
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: ListBotsUseCase = Depends(
         Provide[Container.list_bots_use_case]
@@ -359,12 +365,28 @@ async def list_bots(
     list_all_use_case: ListAllBotsUseCase = Depends(
         Provide[Container.list_all_bots_use_case]
     ),
-) -> list[BotResponse]:
+) -> PaginatedResponse[BotResponse]:
+    limit = pagination.page_size
+    offset = (pagination.page - 1) * pagination.page_size
     if tenant.role == "system_admin":
-        bots = await list_all_use_case.execute(tenant_id=tenant_id)
+        bots = await list_all_use_case.execute(
+            tenant_id=tenant_id, limit=limit, offset=offset,
+        )
+        total = await list_all_use_case.count(tenant_id=tenant_id)
     else:
-        bots = await use_case.execute(tenant.tenant_id)
-    return [_to_response(b) for b in bots]
+        bots = await use_case.execute(
+            tenant.tenant_id, limit=limit, offset=offset,
+        )
+        total = await use_case.count(tenant.tenant_id)
+    from math import ceil
+    total_pages = ceil(total / pagination.page_size) if total > 0 else 0
+    return PaginatedResponse(
+        items=[_to_response(b) for b in bots],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        total_pages=total_pages,
+    )
 
 
 @router.get("/{bot_id}", response_model=BotResponse)
@@ -447,6 +469,56 @@ async def delete_bot(
 ) -> None:
     try:
         await use_case.execute(bot_id)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.message,
+        ) from None
+
+
+@router.post("/{bot_id}/icon", status_code=status.HTTP_200_OK)
+@inject
+async def upload_bot_icon(
+    bot_id: str,
+    file: UploadFile,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: UploadBotIconUseCase = Depends(
+        Provide[Container.upload_bot_icon_use_case]
+    ),
+) -> dict:
+    content = await file.read()
+    command = UploadBotIconCommand(
+        tenant_id=tenant.tenant_id,
+        bot_id=bot_id,
+        filename=file.filename or "unknown",
+        content=content,
+    )
+    try:
+        url = await use_case.execute(command)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=e.message,
+        ) from None
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.message,
+        ) from None
+    return {"fab_icon_url": url}
+
+
+@router.delete("/{bot_id}/icon", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def delete_bot_icon(
+    bot_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: UploadBotIconUseCase = Depends(
+        Provide[Container.upload_bot_icon_use_case]
+    ),
+) -> None:
+    try:
+        await use_case.delete(tenant.tenant_id, bot_id)
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

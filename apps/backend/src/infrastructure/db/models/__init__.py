@@ -25,6 +25,9 @@ from src.infrastructure.db.models.system_prompt_config_model import (
 from src.infrastructure.db.models.tenant_model import TenantModel
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
 from src.infrastructure.db.models.user_model import UserModel
+from src.infrastructure.db.models.visitor_identity_model import VisitorIdentityModel
+from src.infrastructure.db.models.visitor_profile_model import VisitorProfileModel
+from src.infrastructure.db.models.memory_fact_model import MemoryFactModel
 
 __all__ = [
     "TenantModel",
@@ -48,4 +51,7 @@ __all__ = [
     "RateLimitConfigModel",
     "RequestLogModel",
     "SystemPromptConfigModel",
+    "VisitorProfileModel",
+    "VisitorIdentityModel",
+    "MemoryFactModel",
 ]

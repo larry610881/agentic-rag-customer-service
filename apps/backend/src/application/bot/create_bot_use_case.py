@@ -46,12 +46,13 @@ class CreateBotCommand:
     widget_enabled: bool = False
     widget_allowed_origins: list[str] = field(default_factory=list)
     widget_keep_history: bool = True
-    avatar_type: str = "none"
-    avatar_model_url: str = ""
     widget_welcome_message: str = ""
     widget_placeholder_text: str = ""
     widget_greeting_messages: list[str] = field(default_factory=list)
     widget_greeting_animation: str = "fade"
+    memory_enabled: bool = False
+    memory_extraction_threshold: int = 3
+    memory_extraction_prompt: str = ""
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -128,8 +129,6 @@ class CreateBotUseCase:
             widget_enabled=command.widget_enabled,
             widget_allowed_origins=list(command.widget_allowed_origins),
             widget_keep_history=command.widget_keep_history,
-            avatar_type=command.avatar_type,
-            avatar_model_url=command.avatar_model_url,
             widget_welcome_message=command.widget_welcome_message,
             widget_placeholder_text=command.widget_placeholder_text,
             widget_greeting_messages=list(command.widget_greeting_messages),
@@ -137,6 +136,9 @@ class CreateBotUseCase:
             base_prompt=command.base_prompt,
             router_prompt=command.router_prompt,
             react_prompt=command.react_prompt,
+            memory_enabled=command.memory_enabled,
+            memory_extraction_threshold=command.memory_extraction_threshold,
+            memory_extraction_prompt=command.memory_extraction_prompt,
             line_channel_secret=command.line_channel_secret,
             line_channel_access_token=command.line_channel_access_token,
         )

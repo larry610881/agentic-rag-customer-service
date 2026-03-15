@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -86,15 +86,17 @@ class SQLAlchemyBotRepository(BotRepository):
             base_prompt=model.base_prompt or "",
             router_prompt=model.router_prompt or "",
             react_prompt=model.react_prompt or "",
+            fab_icon_url=model.fab_icon_url or "",
             widget_enabled=model.widget_enabled if model.widget_enabled is not None else False,
             widget_allowed_origins=list(model.widget_allowed_origins or []),
             widget_keep_history=model.widget_keep_history if model.widget_keep_history is not None else True,
-            avatar_type=model.avatar_type or "none",
-            avatar_model_url=model.avatar_model_url or "",
             widget_welcome_message=model.widget_welcome_message or "",
             widget_placeholder_text=model.widget_placeholder_text or "",
             widget_greeting_messages=list(model.widget_greeting_messages or []),
             widget_greeting_animation=model.widget_greeting_animation or "fade",
+            memory_enabled=model.memory_enabled if model.memory_enabled is not None else False,
+            memory_extraction_threshold=model.memory_extraction_threshold or 3,
+            memory_extraction_prompt=model.memory_extraction_prompt or "",
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
             created_at=model.created_at,
@@ -174,15 +176,17 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.base_prompt = bot.base_prompt
                 existing.router_prompt = bot.router_prompt
                 existing.react_prompt = bot.react_prompt
+                existing.fab_icon_url = bot.fab_icon_url
                 existing.widget_enabled = bot.widget_enabled
                 existing.widget_allowed_origins = bot.widget_allowed_origins
                 existing.widget_keep_history = bot.widget_keep_history
-                existing.avatar_type = bot.avatar_type
-                existing.avatar_model_url = bot.avatar_model_url
                 existing.widget_welcome_message = bot.widget_welcome_message
                 existing.widget_placeholder_text = bot.widget_placeholder_text
                 existing.widget_greeting_messages = bot.widget_greeting_messages
                 existing.widget_greeting_animation = bot.widget_greeting_animation
+                existing.memory_enabled = bot.memory_enabled
+                existing.memory_extraction_threshold = bot.memory_extraction_threshold
+                existing.memory_extraction_prompt = bot.memory_extraction_prompt
                 existing.line_channel_secret = bot.line_channel_secret
                 existing.line_channel_access_token = bot.line_channel_access_token
                 existing.temperature = bot.llm_params.temperature
@@ -236,15 +240,17 @@ class SQLAlchemyBotRepository(BotRepository):
                     base_prompt=bot.base_prompt,
                     router_prompt=bot.router_prompt,
                     react_prompt=bot.react_prompt,
+                    fab_icon_url=bot.fab_icon_url,
                     widget_enabled=bot.widget_enabled,
                     widget_allowed_origins=bot.widget_allowed_origins,
                     widget_keep_history=bot.widget_keep_history,
-                    avatar_type=bot.avatar_type,
-                    avatar_model_url=bot.avatar_model_url,
                     widget_welcome_message=bot.widget_welcome_message,
                     widget_placeholder_text=bot.widget_placeholder_text,
                     widget_greeting_messages=bot.widget_greeting_messages,
                     widget_greeting_animation=bot.widget_greeting_animation,
+                    memory_enabled=bot.memory_enabled,
+                    memory_extraction_threshold=bot.memory_extraction_threshold,
+                    memory_extraction_prompt=bot.memory_extraction_prompt,
                     line_channel_secret=bot.line_channel_secret,
                     line_channel_access_token=bot.line_channel_access_token,
                     temperature=bot.llm_params.temperature,
@@ -279,12 +285,24 @@ class SQLAlchemyBotRepository(BotRepository):
         kb_map = await self._get_all_kb_ids([model.id])
         return self._to_entity(model, kb_map.get(model.id, []))
 
-    async def find_all(self) -> list[Bot]:
+    async def find_all(
+        self,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Bot]:
         stmt = (
             select(BotModel)
             .options(selectinload(BotModel.knowledge_bases))
             .order_by(BotModel.created_at)
         )
+        if tenant_id is not None:
+            stmt = stmt.where(BotModel.tenant_id == tenant_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset is not None:
+            stmt = stmt.offset(offset)
         result = await self._session.execute(stmt)
         models = list(result.scalars().all())
         if not models:
@@ -296,13 +314,23 @@ class SQLAlchemyBotRepository(BotRepository):
             for m in models
         ]
 
-    async def find_all_by_tenant(self, tenant_id: str) -> list[Bot]:
+    async def find_all_by_tenant(
+        self,
+        tenant_id: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Bot]:
         stmt = (
             select(BotModel)
             .options(selectinload(BotModel.knowledge_bases))
             .where(BotModel.tenant_id == tenant_id)
             .order_by(BotModel.created_at)
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset is not None:
+            stmt = stmt.offset(offset)
         result = await self._session.execute(stmt)
         models = list(result.scalars().all())
         if not models:
@@ -313,6 +341,22 @@ class SQLAlchemyBotRepository(BotRepository):
             )
             for m in models
         ]
+
+    async def count_by_tenant(self, tenant_id: str) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(BotModel)
+            .where(BotModel.tenant_id == tenant_id)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
+
+    async def count_all(self, *, tenant_id: str | None = None) -> int:
+        stmt = select(func.count()).select_from(BotModel)
+        if tenant_id is not None:
+            stmt = stmt.where(BotModel.tenant_id == tenant_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
 
     async def delete(self, bot_id: str) -> None:
         async with atomic(self._session):
