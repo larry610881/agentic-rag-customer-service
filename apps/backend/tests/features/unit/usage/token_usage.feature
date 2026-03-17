@@ -15,6 +15,16 @@ Feature: Token Usage 追蹤
     Then 回傳的 LLMResult 應包含 TokenUsage
     And usage 的 total_tokens 應為 0
 
+  Scenario: RecordUsageUseCase 自動補算 estimated_cost
+    Given 一筆 TokenUsage 的 estimated_cost 為 0 但有 tokens
+    When 執行 RecordUsageUseCase
+    Then 儲存的 UsageRecord 的 estimated_cost 應大於 0
+
+  Scenario: RecordUsageUseCase 不覆蓋已有的 estimated_cost
+    Given 一筆 TokenUsage 已包含正確的 estimated_cost
+    When 執行 RecordUsageUseCase
+    Then 儲存的 UsageRecord 的 estimated_cost 應等於原始值
+
   Scenario: TokenUsage 支援累加
     Given 兩個 TokenUsage 物件
     When 將兩個 usage 相加

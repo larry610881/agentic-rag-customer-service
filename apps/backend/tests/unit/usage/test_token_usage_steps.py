@@ -7,7 +7,9 @@ import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from src.application.rag.query_rag_use_case import QueryRAGCommand, QueryRAGUseCase
+from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.domain.rag.value_objects import LLMResult, SearchResult, TokenUsage
+from src.domain.usage.repository import UsageRepository
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
 
 scenarios("unit/usage/token_usage.feature")
@@ -131,6 +133,68 @@ def verify_llm_result_has_usage(context):
 @then("usage 的 total_tokens 應為 0")
 def verify_zero_tokens(context):
     assert context["llm_result"].usage.total_tokens == 0
+
+
+# --- Scenario: RecordUsageUseCase 自動補算 estimated_cost ---
+
+
+@given("一筆 TokenUsage 的 estimated_cost 為 0 但有 tokens")
+def setup_zero_cost_usage(context):
+    context["mock_repo"] = AsyncMock(spec=UsageRepository)
+    context["use_case"] = RecordUsageUseCase(
+        usage_repository=context["mock_repo"],
+    )
+    # ReAct 路徑產出的 TokenUsage — cost=0 但 tokens 有值
+    context["usage"] = TokenUsage(
+        model="gpt-5.1-2025-11-13",
+        input_tokens=55764,
+        output_tokens=479,
+        total_tokens=56243,
+        estimated_cost=0.0,
+    )
+
+
+@when("執行 RecordUsageUseCase")
+def run_record_usage(context):
+    _run(
+        context["use_case"].execute(
+            tenant_id="tenant-001",
+            request_type="agent",
+            usage=context["usage"],
+            bot_id="bot-001",
+        )
+    )
+
+
+@then("儲存的 UsageRecord 的 estimated_cost 應大於 0")
+def verify_cost_filled(context):
+    saved = context["mock_repo"].save.call_args[0][0]
+    assert saved.estimated_cost > 0, f"expected > 0, got {saved.estimated_cost}"
+
+
+# --- Scenario: RecordUsageUseCase 不覆蓋已有的 estimated_cost ---
+
+
+@given("一筆 TokenUsage 已包含正確的 estimated_cost")
+def setup_existing_cost_usage(context):
+    context["mock_repo"] = AsyncMock(spec=UsageRepository)
+    context["use_case"] = RecordUsageUseCase(
+        usage_repository=context["mock_repo"],
+    )
+    context["usage"] = TokenUsage(
+        model="gpt-5.1",
+        input_tokens=1000,
+        output_tokens=500,
+        total_tokens=1500,
+        estimated_cost=0.00625,
+    )
+    context["original_cost"] = 0.00625
+
+
+@then("儲存的 UsageRecord 的 estimated_cost 應等於原始值")
+def verify_cost_preserved(context):
+    saved = context["mock_repo"].save.call_args[0][0]
+    assert abs(saved.estimated_cost - context["original_cost"]) < 1e-10
 
 
 # --- Scenario: TokenUsage 支援累加 ---
