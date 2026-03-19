@@ -1,17 +1,16 @@
-name: Deploy Backend to Cloud Run
+name: Deploy MCP JoyInKitchen to Cloud Run
 
 on:
   push:
     branches: [main]
     paths:
-      - 'apps/backend/**'
-      - 'apps/widget/**'
-      - '.github/workflows/deploy-backend.yml'
+      - 'mcp-servers/joyinkitchen/**'
+      - '.github/workflows/deploy-mcp-joyinkitchen.yml'
   workflow_dispatch:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  SERVICE_NAME: agentic-rag
+  SERVICE_NAME: mcp-joyinkitchen
   REGION: asia-east1
 
 jobs:
@@ -23,19 +22,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: apps/widget/package-lock.json
-
-      - name: Build Widget
-        run: |
-          cd apps/widget
-          npm ci
-          npm run build
 
       - name: Google Auth (Workload Identity Federation)
         uses: google-github-actions/auth@v2
@@ -58,7 +44,7 @@ jobs:
 
       - name: Build and Push Container
         run: |
-          cd apps/backend
+          cd mcp-servers/joyinkitchen
           docker build -t asia-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }} .
           docker push asia-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
 
@@ -70,22 +56,13 @@ jobs:
           image: asia-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
           env_vars: |
             DATABASE_URL_OVERRIDE=${{ secrets.DATABASE_URL_OVERRIDE }}
-            REDIS_URL_OVERRIDE=${{ secrets.REDIS_URL_OVERRIDE }}
-            QDRANT_URL=${{ secrets.QDRANT_URL }}
-            QDRANT_API_KEY=${{ secrets.QDRANT_API_KEY }}
-            JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
-            ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
-            CORS_ORIGINS=${{ vars.CORS_ORIGINS }}
-            RATE_LIMIT_ENABLED=${{ vars.RATE_LIMIT_ENABLED || 'true' }}
-            APP_ENV=production
-            LOG_LEVEL=INFO
+            MCP_PORT=9000
           flags: |
             --allow-unauthenticated
-            --port=8000
-            --memory=1Gi
+            --port=9000
+            --memory=512Mi
             --cpu=1
-            --cpu-boost
             --min-instances=0
-            --max-instances=5
+            --max-instances=3
             --vpc-connector=db-connector
             --vpc-egress=private-ranges-only

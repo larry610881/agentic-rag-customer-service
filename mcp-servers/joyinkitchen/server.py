@@ -6,6 +6,7 @@
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 
 import asyncpg
@@ -37,15 +38,22 @@ _pool: asyncpg.Pool | None = None
 async def _get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
-        _pool = await asyncpg.create_pool(
-            host=os.getenv("DB_HOST", "127.0.0.1"),
-            port=int(os.getenv("DB_PORT", "5432")),
-            user=os.getenv("DB_USER", "postgres"),
-            password=os.getenv("DB_PASSWORD", "postgres"),
-            database=os.getenv("DB_NAME", "agentic_rag"),
-            min_size=1,
-            max_size=5,
-        )
+        db_url = os.getenv("DATABASE_URL_OVERRIDE")
+        if db_url:
+            # 移除 SQLAlchemy driver prefix（如 postgresql+asyncpg://）
+            clean_url = re.sub(r"^postgresql\+\w+://", "postgresql://", db_url)
+            _pool = await asyncpg.create_pool(dsn=clean_url, min_size=1, max_size=5)
+        else:
+            # fallback 個別 env vars（本地開發）
+            _pool = await asyncpg.create_pool(
+                host=os.getenv("DB_HOST", "127.0.0.1"),
+                port=int(os.getenv("DB_PORT", "5432")),
+                user=os.getenv("DB_USER", "postgres"),
+                password=os.getenv("DB_PASSWORD", "postgres"),
+                database=os.getenv("DB_NAME", "agentic_rag"),
+                min_size=1,
+                max_size=5,
+            )
     return _pool
 
 
