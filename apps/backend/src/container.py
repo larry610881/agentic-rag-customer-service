@@ -1103,6 +1103,7 @@ class Container(containers.DeclarativeContainer):
         resolve_identity_use_case=resolve_identity_use_case,
         load_memory_use_case=load_memory_use_case,
         extract_memory_use_case=extract_memory_use_case,
+        get_diagnostic_rules_uc=get_diagnostic_rules_use_case,
     )
 
     # --- Platform: Provider Settings ---

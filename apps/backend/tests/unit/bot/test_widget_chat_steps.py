@@ -136,8 +136,8 @@ def send_widget_message(context, mock_bot_repo, mock_send_message_use_case, orig
         context["stream_events"] = []
 
 
-@when(parsers.parse('從來源 "{origin}" 以 short_code "{sc}" 發送 widget 訊息 "{message}"'))
-def send_widget_message_with_sc(context, mock_bot_repo, origin, sc, message):
+@when(parsers.parse('以不存在的 short_code "{sc}" 從來源 "{origin}" 發送 widget 訊息'))
+def send_widget_message_with_nonexistent_sc(context, mock_bot_repo, sc, origin):
     from src.interfaces.api.widget_router import validate_widget_bot
 
     mock_bot_repo.find_by_short_code = AsyncMock(return_value=None)

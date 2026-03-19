@@ -38,7 +38,7 @@ def all_kbs():
 def mock_kb_repo(all_kbs):
     repo = AsyncMock()
 
-    def _find_all_by_tenant(tid):
+    def _find_all_by_tenant(tid, **_kw):
         return [kb for kb in all_kbs if kb.tenant_id == tid]
 
     repo.find_all_by_tenant = AsyncMock(side_effect=_find_all_by_tenant)

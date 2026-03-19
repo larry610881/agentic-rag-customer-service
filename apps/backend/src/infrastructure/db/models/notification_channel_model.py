@@ -22,6 +22,12 @@ class NotificationChannelModel(Base):
     min_severity: Mapped[str] = mapped_column(
         String(20), nullable=False, default="all"
     )
+    notify_diagnostics: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    diagnostic_severity: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="critical", server_default="critical"
+    )
     updated_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

@@ -73,8 +73,12 @@ def setup_kbs(context):
     mock_repo = AsyncMock()
     mock_repo.find_all = AsyncMock(return_value=kbs)
     mock_repo.find_all_by_tenant = AsyncMock(
-        side_effect=lambda tid: [kb for kb in kbs if kb.tenant_id == tid]
+        side_effect=lambda tid, **_kw: [kb for kb in kbs if kb.tenant_id == tid]
     )
+    mock_repo.count_by_tenant = AsyncMock(
+        side_effect=lambda tid: len([kb for kb in kbs if kb.tenant_id == tid])
+    )
+    mock_repo.count_all = AsyncMock(return_value=len(kbs))
     context["kb_use_case"] = ListAllKnowledgeBasesUseCase(
         knowledge_base_repository=mock_repo,
     )
@@ -90,8 +94,12 @@ def setup_bots(context):
     mock_repo = AsyncMock()
     mock_repo.find_all = AsyncMock(return_value=bots)
     mock_repo.find_all_by_tenant = AsyncMock(
-        side_effect=lambda tid: [b for b in bots if b.tenant_id == tid]
+        side_effect=lambda tid, **_kw: [b for b in bots if b.tenant_id == tid]
     )
+    mock_repo.count_by_tenant = AsyncMock(
+        side_effect=lambda tid: len([b for b in bots if b.tenant_id == tid])
+    )
+    mock_repo.count_all = AsyncMock(return_value=len(bots))
     context["bot_use_case"] = ListAllBotsUseCase(bot_repository=mock_repo)
     context["all_bots"] = bots
 

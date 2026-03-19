@@ -2,7 +2,7 @@
 
 import json
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.conversation.entity import Conversation, Message
@@ -104,7 +104,12 @@ class SQLAlchemyConversationRepository(ConversationRepository):
         )
 
     async def find_by_tenant(
-        self, tenant_id: str, *, bot_id: str | None = None
+        self,
+        tenant_id: str,
+        *,
+        bot_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[Conversation]:
         stmt = (
             select(ConversationModel)
@@ -113,6 +118,10 @@ class SQLAlchemyConversationRepository(ConversationRepository):
         if bot_id is not None:
             stmt = stmt.where(ConversationModel.bot_id == bot_id)
         stmt = stmt.order_by(ConversationModel.created_at.desc())
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset is not None:
+            stmt = stmt.offset(offset)
         result = await self._session.execute(stmt)
         rows = result.scalars().all()
 
@@ -126,3 +135,16 @@ class SQLAlchemyConversationRepository(ConversationRepository):
             )
             for r in rows
         ]
+
+    async def count_by_tenant(
+        self, tenant_id: str, *, bot_id: str | None = None
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(ConversationModel)
+            .where(ConversationModel.tenant_id == tenant_id)
+        )
+        if bot_id is not None:
+            stmt = stmt.where(ConversationModel.bot_id == bot_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one()

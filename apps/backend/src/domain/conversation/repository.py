@@ -14,5 +14,15 @@ class ConversationRepository(ABC):
 
     @abstractmethod
     async def find_by_tenant(
-        self, tenant_id: str, *, bot_id: str | None = None
+        self,
+        tenant_id: str,
+        *,
+        bot_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[Conversation]: ...
+
+    @abstractmethod
+    async def count_by_tenant(
+        self, tenant_id: str, *, bot_id: str | None = None
+    ) -> int: ...

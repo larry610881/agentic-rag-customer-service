@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.auth.entity import User
@@ -61,19 +61,48 @@ class SQLAlchemyUserRepository(UserRepository):
             return None
         return self._to_entity(model)
 
-    async def find_all(self) -> list[User]:
+    async def find_all(
+        self,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[User]:
         stmt = select(UserModel).order_by(UserModel.created_at)
+        if tenant_id is not None:
+            stmt = stmt.where(UserModel.tenant_id == tenant_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset is not None:
+            stmt = stmt.offset(offset)
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
 
-    async def find_all_by_tenant(self, tenant_id: str) -> list[User]:
+    async def find_all_by_tenant(
+        self,
+        tenant_id: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[User]:
         stmt = (
             select(UserModel)
             .where(UserModel.tenant_id == tenant_id)
             .order_by(UserModel.created_at)
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset is not None:
+            stmt = stmt.offset(offset)
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def count_all(self, *, tenant_id: str | None = None) -> int:
+        stmt = select(func.count()).select_from(UserModel)
+        if tenant_id is not None:
+            stmt = stmt.where(UserModel.tenant_id == tenant_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
 
     async def delete(self, user_id: str) -> None:
         async with atomic(self._session):

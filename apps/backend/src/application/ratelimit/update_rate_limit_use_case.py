@@ -14,7 +14,7 @@ class InsufficientPermissionError(DomainException):
 
 @dataclass(frozen=True)
 class UpdateRateLimitCommand:
-    tenant_id: str
+    tenant_id: str | None
     endpoint_group: str
     requests_per_minute: int
     burst_size: int

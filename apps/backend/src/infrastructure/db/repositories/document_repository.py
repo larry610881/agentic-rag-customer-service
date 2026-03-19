@@ -143,15 +143,34 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         model = result.scalar_one_or_none()
         return self._to_entity(model) if model else None
 
-    async def find_all_by_kb(self, kb_id: str) -> list[Document]:
+    async def find_all_by_kb(
+        self,
+        kb_id: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Document]:
         stmt = (
             select(DocumentModel)
             .options(defer(DocumentModel.raw_content))
             .where(DocumentModel.kb_id == kb_id)
             .order_by(DocumentModel.created_at)
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset is not None:
+            stmt = stmt.offset(offset)
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def count_by_kb(self, kb_id: str) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(DocumentModel)
+            .where(DocumentModel.kb_id == kb_id)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
 
     # --- Chunk write methods (aggregate internal Entity) ---
 

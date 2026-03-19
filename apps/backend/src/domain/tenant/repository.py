@@ -14,4 +14,12 @@ class TenantRepository(ABC):
     async def find_by_name(self, name: str) -> Tenant | None: ...
 
     @abstractmethod
-    async def find_all(self) -> list[Tenant]: ...
+    async def find_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Tenant]: ...
+
+    @abstractmethod
+    async def count_all(self) -> int: ...

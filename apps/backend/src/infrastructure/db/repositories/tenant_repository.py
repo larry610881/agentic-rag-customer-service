@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.tenant.entity import Tenant
@@ -23,7 +23,6 @@ class SQLAlchemyTenantRepository(TenantRepository):
                 else ["router"]
             ),
             monthly_token_limit=model.monthly_token_limit,
-            allowed_widget_avatar=model.allowed_widget_avatar if model.allowed_widget_avatar is not None else False,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -36,7 +35,6 @@ class SQLAlchemyTenantRepository(TenantRepository):
                 plan=tenant.plan,
                 allowed_agent_modes=tenant.allowed_agent_modes,
                 monthly_token_limit=tenant.monthly_token_limit,
-                allowed_widget_avatar=tenant.allowed_widget_avatar,
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
             )
@@ -54,7 +52,21 @@ class SQLAlchemyTenantRepository(TenantRepository):
         model = result.scalar_one_or_none()
         return self._to_entity(model) if model else None
 
-    async def find_all(self) -> list[Tenant]:
+    async def find_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Tenant]:
         stmt = select(TenantModel).order_by(TenantModel.created_at)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset is not None:
+            stmt = stmt.offset(offset)
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def count_all(self) -> int:
+        stmt = select(func.count()).select_from(TenantModel)
+        result = await self._session.execute(stmt)
+        return result.scalar_one()

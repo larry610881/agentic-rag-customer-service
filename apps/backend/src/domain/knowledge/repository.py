@@ -12,11 +12,29 @@ class KnowledgeBaseRepository(ABC):
 
     @abstractmethod
     async def find_all_by_tenant(
-        self, tenant_id: str
+        self,
+        tenant_id: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[KnowledgeBase]: ...
 
     @abstractmethod
-    async def find_all(self) -> list[KnowledgeBase]: ...
+    async def find_all(
+        self,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[KnowledgeBase]: ...
+
+    @abstractmethod
+    async def count_by_tenant(self, tenant_id: str) -> int: ...
+
+    @abstractmethod
+    async def count_all(
+        self, *, tenant_id: str | None = None
+    ) -> int: ...
 
     @abstractmethod
     async def find_system_kbs(
@@ -37,7 +55,16 @@ class DocumentRepository(ABC):
     async def find_by_id(self, doc_id: str) -> Document | None: ...
 
     @abstractmethod
-    async def find_all_by_kb(self, kb_id: str) -> list[Document]: ...
+    async def find_all_by_kb(
+        self,
+        kb_id: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Document]: ...
+
+    @abstractmethod
+    async def count_by_kb(self, kb_id: str) -> int: ...
 
     @abstractmethod
     async def update_status(

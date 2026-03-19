@@ -79,8 +79,9 @@ def setup_users(context, mock_user_repo):
 
     mock_user_repo.find_all = AsyncMock(return_value=users)
     mock_user_repo.find_all_by_tenant = AsyncMock(
-        side_effect=lambda tid: [u for u in users if u.tenant_id == tid]
+        side_effect=lambda tid, **_kw: [u for u in users if u.tenant_id == tid]
     )
+    mock_user_repo.count_all = AsyncMock(return_value=len(users))
     mock_user_repo.find_by_id = AsyncMock(
         side_effect=lambda uid: by_id.get(uid)
     )

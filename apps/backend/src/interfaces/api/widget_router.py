@@ -12,6 +12,7 @@ from src.application.agent.send_message_use_case import (
     SendMessageCommand,
     SendMessageUseCase,
 )
+from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.application.conversation.submit_feedback_use_case import (
     SubmitFeedbackCommand,
     SubmitFeedbackUseCase,
@@ -164,6 +165,9 @@ async def widget_chat_stream(
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
     ),
+    record_usage: RecordUsageUseCase = Depends(
+        Provide[Container.record_usage_use_case]
+    ),
 ) -> StreamingResponse:
     """Public endpoint: SSE streaming chat."""
     origin = request.headers.get("origin")
@@ -180,10 +184,11 @@ async def widget_chat_stream(
     )
 
     async def event_generator():
+        usage_data: dict | None = None
         try:
             async for event in use_case.execute_stream(command):
-                # Skip usage events (internal)
                 if event.get("type") == "usage":
+                    usage_data = event
                     continue
                 # Filter out conversation_id when keep_history is disabled
                 if not bot.widget_keep_history and event.get("type") == "conversation_id":
@@ -195,6 +200,27 @@ async def widget_chat_stream(
             error_payload = {"type": "error", "message": error_msg}
             yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        # Record token usage after stream completes
+        if usage_data:
+            from src.domain.rag.value_objects import TokenUsage
+
+            usage = TokenUsage(
+                model=usage_data.get("model", "unknown"),
+                input_tokens=usage_data.get("input_tokens", 0),
+                output_tokens=usage_data.get("output_tokens", 0),
+                total_tokens=usage_data.get("total_tokens", 0),
+                estimated_cost=usage_data.get("estimated_cost", 0.0),
+            )
+            try:
+                await record_usage.execute(
+                    tenant_id=bot.tenant_id,
+                    request_type="agent",
+                    usage=usage,
+                    bot_id=bot.id.value,
+                )
+            except Exception:
+                logger.exception("widget.chat.stream.record_usage_error")
 
     response = StreamingResponse(
         event_generator(),

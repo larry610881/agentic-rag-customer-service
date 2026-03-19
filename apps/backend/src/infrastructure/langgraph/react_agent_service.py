@@ -243,7 +243,7 @@ class ReActAgentService(AgentService):
 
             return {"messages": [response]}
 
-        _tool_node = ToolNode(tools)
+        _tool_node = ToolNode(tools, handle_tool_errors=True)
 
         async def tools_node(state: MessagesState) -> dict:
             """Wraps ToolNode with logging."""
@@ -370,6 +370,66 @@ class ReActAgentService(AgentService):
             # 5. Parse response
             return self._parse_response(result, audit_mode=audit_mode)
 
+    @staticmethod
+    def _handle_text_chunk(
+        msg_chunk: AIMessageChunk,
+        metadata: dict[str, Any],
+        llm_generating_emitted: bool,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Handle a streaming text chunk from the LLM.
+
+        Returns (events_to_yield, updated_llm_generating_emitted).
+        """
+        events: list[dict[str, Any]] = []
+        if metadata.get("langgraph_node") != "agent":
+            return events, llm_generating_emitted
+        if not isinstance(msg_chunk, AIMessageChunk):
+            return events, llm_generating_emitted
+        if msg_chunk.content:
+            if not llm_generating_emitted:
+                events.append({"type": "status", "status": "llm_generating"})
+                llm_generating_emitted = True
+            content = (
+                msg_chunk.content
+                if isinstance(msg_chunk.content, str)
+                else str(msg_chunk.content)
+            )
+            events.append({"type": "token", "content": content})
+        return events, llm_generating_emitted
+
+    @staticmethod
+    def _handle_tool_call_chunk(
+        msg: AIMessage,
+        audit_mode: str,
+        call_count: int,
+        tool_calls_emitted: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Handle an AIMessage with tool_calls from the agent node.
+
+        Returns events to yield. Mutates tool_calls_emitted in place.
+        """
+        events: list[dict[str, Any]] = []
+        if audit_mode != "off":
+            tc_list: list[dict[str, Any]] = []
+            for tc in msg.tool_calls:
+                entry: dict[str, Any] = {
+                    "tool_name": tc["name"],
+                    "tool_call_id": tc.get("id", ""),
+                    "reasoning": "",
+                }
+                if audit_mode == "full":
+                    entry["tool_input"] = tc.get("args", {})
+                    entry["iteration"] = call_count
+                tc_list.append(entry)
+            tool_calls_emitted.extend(tc_list)
+            events.append({"type": "tool_calls", "tool_calls": tc_list})
+            for tc in msg.tool_calls:
+                events.append({
+                    "type": "status",
+                    "status": f"{tc['name']}_executing",
+                })
+        return events
+
     async def process_message_stream(
         self,
         tenant_id: str,
@@ -451,24 +511,16 @@ class ReActAgentService(AgentService):
                         mode, data = event
 
                         if mode == "messages":
-                            msg_chunk, metadata = data
-                            if metadata.get("langgraph_node") != "agent":
-                                continue
-                            if not isinstance(msg_chunk, AIMessageChunk):
-                                continue
-                            if msg_chunk.content:
-                                if not llm_generating_emitted:
-                                    yield {
-                                        "type": "status",
-                                        "status": "llm_generating",
-                                    }
-                                    llm_generating_emitted = True
-                                content = (
-                                    msg_chunk.content
-                                    if isinstance(msg_chunk.content, str)
-                                    else str(msg_chunk.content)
+                            msg_chunk, chunk_meta = data
+                            events, llm_generating_emitted = (
+                                self._handle_text_chunk(
+                                    msg_chunk,
+                                    chunk_meta,
+                                    llm_generating_emitted,
                                 )
-                                yield {"type": "token", "content": content}
+                            )
+                            for ev in events:
+                                yield ev
 
                         elif mode == "updates":
                             for node_name, node_output in data.items():
@@ -480,34 +532,13 @@ class ReActAgentService(AgentService):
                                             if msg.tool_calls:
                                                 call_count += 1
                                                 llm_generating_emitted = False
-                                                if audit_mode != "off":
-                                                    tc_list = []
-                                                    for tc in msg.tool_calls:
-                                                        entry: dict[str, Any] = {
-                                                            "tool_name": tc["name"],
-                                                            "tool_call_id": tc.get(
-                                                                "id", ""
-                                                            ),
-                                                            "reasoning": "",
-                                                        }
-                                                        if audit_mode == "full":
-                                                            entry["tool_input"] = tc.get(  # noqa: E501
-                                                                "args", {}
-                                                            )
-                                                            entry["iteration"] = (  # noqa: E501
-                                                                call_count
-                                                            )
-                                                        tc_list.append(entry)
-                                                    tool_calls_emitted.extend(tc_list)
-                                                    yield {
-                                                        "type": "tool_calls",
-                                                        "tool_calls": tc_list,
-                                                    }
-                                                    for tc in msg.tool_calls:
-                                                        yield {
-                                                            "type": "status",
-                                                            "status": f"{tc['name']}_executing",  # noqa: E501
-                                                        }
+                                                for ev in self._handle_tool_call_chunk(
+                                                    msg,
+                                                    audit_mode,
+                                                    call_count,
+                                                    tool_calls_emitted,
+                                                ):
+                                                    yield ev
                                             elif msg.content:
                                                 # Fallback: if messages mode didn't
                                                 # stream tokens (e.g. mock LLM without

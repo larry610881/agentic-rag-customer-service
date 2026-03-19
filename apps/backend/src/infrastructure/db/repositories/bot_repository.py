@@ -67,6 +67,9 @@ class SQLAlchemyBotRepository(BotRepository):
                         for t in s.get("tools", [])
                     ],
                     version=s.get("version", ""),
+                    transport=s.get("transport", "http"),
+                    command=s.get("command", ""),
+                    args=s.get("args", []),
                 )
                 for s in (model.mcp_servers or [])
             ],

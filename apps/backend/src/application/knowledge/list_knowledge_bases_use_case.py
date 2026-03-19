@@ -8,7 +8,15 @@ class ListKnowledgeBasesUseCase:
     ) -> None:
         self._knowledge_base_repository = knowledge_base_repository
 
-    async def execute(self, tenant_id: str) -> list[KnowledgeBase]:
+    async def execute(
+        self,
+        tenant_id: str,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[KnowledgeBase]:
         return await self._knowledge_base_repository.find_all_by_tenant(
-            tenant_id
+            tenant_id, limit=limit, offset=offset,
         )
+
+    async def count(self, tenant_id: str) -> int:
+        return await self._knowledge_base_repository.count_by_tenant(tenant_id)

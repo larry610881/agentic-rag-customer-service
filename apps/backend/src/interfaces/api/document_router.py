@@ -40,6 +40,7 @@ from src.domain.shared.exceptions import (
 )
 from src.infrastructure.logging.error_handler import safe_background_task
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
 router = APIRouter(
     prefix="/api/v1/knowledge-bases/{kb_id}/documents",
@@ -114,17 +115,29 @@ def _to_response(doc) -> DocumentResponse:
     )
 
 
-@router.get("", response_model=list[DocumentResponse])
+@router.get("", response_model=PaginatedResponse[DocumentResponse])
 @inject
 async def list_documents(
     kb_id: str,
+    pagination: PaginationQuery = Depends(),
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: ListDocumentsUseCase = Depends(
         Provide[Container.list_documents_use_case]
     ),
-) -> list[DocumentResponse]:
-    documents = await use_case.execute(kb_id)
-    return [_to_response(doc) for doc in documents]
+) -> PaginatedResponse[DocumentResponse]:
+    limit = pagination.page_size
+    offset = (pagination.page - 1) * pagination.page_size
+    documents = await use_case.execute(kb_id, limit=limit, offset=offset)
+    total = await use_case.count(kb_id)
+    from math import ceil
+    total_pages = ceil(total / pagination.page_size) if total > 0 else 0
+    return PaginatedResponse(
+        items=[_to_response(doc) for doc in documents],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        total_pages=total_pages,
+    )
 
 
 class DocumentQualityStatResponse(BaseModel):

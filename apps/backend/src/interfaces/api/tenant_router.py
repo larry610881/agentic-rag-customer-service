@@ -1,3 +1,5 @@
+from math import ceil
+
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -12,6 +14,7 @@ from src.container import Container
 from src.domain.shared.exceptions import DuplicateEntityError, EntityNotFoundError
 from src.domain.tenant.entity import Tenant
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
+from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
 router = APIRouter(prefix="/api/v1/tenants", tags=["tenants"])
 
@@ -29,17 +32,12 @@ class UpdateTenantConfigRequest(BaseModel):
     monthly_token_limit: int | None = None
 
 
-class UpdateTenantWidgetAvatarRequest(BaseModel):
-    allowed_widget_avatar: bool
-
-
 class TenantResponse(BaseModel):
     id: str
     name: str
     plan: str
     allowed_agent_modes: list[str]
     monthly_token_limit: int | None = None
-    allowed_widget_avatar: bool = False
     created_at: str
     updated_at: str
 
@@ -51,7 +49,6 @@ def _to_response(t: Tenant) -> TenantResponse:
         plan=t.plan,
         allowed_agent_modes=t.allowed_agent_modes,
         monthly_token_limit=t.monthly_token_limit,
-        allowed_widget_avatar=t.allowed_widget_avatar,
         created_at=t.created_at.isoformat(),
         updated_at=t.updated_at.isoformat(),
     )
@@ -77,9 +74,10 @@ async def create_tenant(
     return _to_response(tenant)
 
 
-@router.get("", response_model=list[TenantResponse])
+@router.get("", response_model=PaginatedResponse[TenantResponse])
 @inject
 async def list_tenants(
+    pagination: PaginationQuery = Depends(),
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: ListTenantsUseCase = Depends(
         Provide[Container.list_tenants_use_case]
@@ -87,13 +85,24 @@ async def list_tenants(
     get_tenant_uc: GetTenantUseCase = Depends(
         Provide[Container.get_tenant_use_case]
     ),
-) -> list[TenantResponse]:
+) -> PaginatedResponse[TenantResponse]:
+    limit = pagination.page_size
+    offset = (pagination.page - 1) * pagination.page_size
     if tenant.role == "system_admin":
-        tenants = await use_case.execute()
+        tenants = await use_case.execute(limit=limit, offset=offset)
+        total = await use_case.count()
     else:
         single = await get_tenant_uc.execute(tenant.tenant_id)
         tenants = [single]
-    return [_to_response(t) for t in tenants]
+        total = 1
+    total_pages = ceil(total / pagination.page_size) if total > 0 else 0
+    return PaginatedResponse(
+        items=[_to_response(t) for t in tenants],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        total_pages=total_pages,
+    )
 
 
 @router.get("/{tenant_id}", response_model=TenantResponse)
@@ -167,23 +176,3 @@ async def update_tenant_config(
     return _to_response(tenant)
 
 
-@router.patch("/{tenant_id}/widget-avatar", response_model=TenantResponse)
-@inject
-async def update_tenant_widget_avatar(
-    tenant_id: str,
-    body: UpdateTenantWidgetAvatarRequest,
-    _: CurrentTenant = Depends(require_role("system_admin")),
-    use_case: GetTenantUseCase = Depends(
-        Provide[Container.get_tenant_use_case]
-    ),
-    tenant_repo=Depends(Provide[Container.tenant_repository]),
-) -> TenantResponse:
-    try:
-        tenant = await use_case.execute(tenant_id)
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
-        ) from None
-    tenant.allowed_widget_avatar = body.allowed_widget_avatar
-    await tenant_repo.save(tenant)
-    return _to_response(tenant)

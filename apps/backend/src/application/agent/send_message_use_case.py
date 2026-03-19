@@ -32,6 +32,9 @@ if TYPE_CHECKING:
     from src.application.memory.resolve_identity_use_case import (
         ResolveIdentityUseCase,
     )
+    from src.application.observability.diagnostic_rules_use_cases import (
+        GetDiagnosticRulesUseCase,
+    )
     from src.application.observability.rag_evaluation_use_case import (
         RAGEvaluationUseCase,
     )
@@ -70,6 +73,7 @@ class SendMessageUseCase:
         resolve_identity_use_case: "ResolveIdentityUseCase | None" = None,
         load_memory_use_case: "LoadMemoryUseCase | None" = None,
         extract_memory_use_case: "ExtractMemoryUseCase | None" = None,
+        get_diagnostic_rules_uc: "GetDiagnosticRulesUseCase | None" = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -86,6 +90,7 @@ class SendMessageUseCase:
         self._resolve_identity = resolve_identity_use_case
         self._load_memory = load_memory_use_case
         self._extract_memory = extract_memory_use_case
+        self._get_diagnostic_rules_uc = get_diagnostic_rules_uc
 
     async def _load_bot_config(
         self, command: SendMessageCommand
@@ -152,7 +157,13 @@ class SendMessageUseCase:
         cfg["show_sources"] = bot.show_sources
         cfg["agent_mode"] = bot.agent_mode or "router"
         cfg["mcp_servers"] = [
-            {"url": s.url, "name": s.name, "enabled_tools": s.enabled_tools}
+            {
+                "url": s.url,
+                "name": s.name,
+                "enabled_tools": s.enabled_tools,
+                "transport": s.transport,
+                **({"command": s.command, "args": s.args} if s.transport == "stdio" else {}),
+            }
             for s in bot.mcp_servers
         ]
 
@@ -787,6 +798,9 @@ class SendMessageUseCase:
             )
             if result.dimensions:
                 await self._persist_eval(result)
+                await self._dispatch_diagnostic_if_needed(
+                    result, tenant_id, trace_id
+                )
 
         except Exception:
             logger.warning("eval.run_failed", exc_info=True)
@@ -824,6 +838,65 @@ class SendMessageUseCase:
                 await session.commit()
         except Exception:
             logger.warning("eval.persist_failed", exc_info=True)
+
+    async def _dispatch_diagnostic_if_needed(
+        self,
+        eval_result: Any,
+        tenant_id: str,
+        trace_id: str,
+    ) -> None:
+        """Check diagnostic rules and dispatch notifications if triggered."""
+        if self._get_diagnostic_rules_uc is None:
+            return
+        try:
+            from src.domain.observability.diagnostic import (
+                DiagnosticEvent,
+                diagnose,
+            )
+            from src.infrastructure.notification.dispatch_helper import (
+                dispatch_diagnostic_notification,
+            )
+
+            rule_config = await self._get_diagnostic_rules_uc.execute()
+            dims = [
+                {"name": d.name, "score": d.score}
+                for d in eval_result.dimensions
+            ]
+            hints = diagnose(dims, rule_config)
+            if not hints:
+                return
+
+            # Determine highest severity
+            severities = {h.severity for h in hints}
+            top_severity = (
+                "critical" if "critical" in severities else "warning"
+            )
+
+            # Only dispatch for critical/warning (skip info)
+            if top_severity not in ("critical", "warning"):
+                return
+
+            event = DiagnosticEvent(
+                fingerprint=(
+                    f"diag|{hints[0].dimension}|{top_severity}"
+                ),
+                severity=top_severity,
+                tenant_id=tenant_id,
+                trace_id=trace_id,
+                hints=[
+                    h for h in hints
+                    if h.severity in ("critical", "warning")
+                ],
+                eval_avg_score=round(eval_result.avg_score, 3),
+                eval_layer=eval_result.layer,
+            )
+            asyncio.create_task(
+                dispatch_diagnostic_notification(event)
+            )
+        except Exception:
+            logger.warning(
+                "eval.diagnostic_dispatch_failed", exc_info=True
+            )
 
     @staticmethod
     def _extract_metadata(conversation: Conversation) -> dict[str, Any]:

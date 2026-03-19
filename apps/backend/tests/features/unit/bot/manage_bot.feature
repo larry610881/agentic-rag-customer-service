@@ -28,3 +28,9 @@ Feature: 管理機器人
   Scenario: 列出租戶所有機器人
     When 列出租戶 "t-001" 的機器人
     Then 應回傳 1 個機器人
+
+  Scenario: 建立機器人不含 avatar 欄位
+    Given 租戶 "t-001" 存在
+    When 建立機器人名稱 "無 Avatar Bot"
+    Then 機器人回應不應包含 avatar_type 欄位
+    And 機器人回應不應包含 avatar_model_url 欄位

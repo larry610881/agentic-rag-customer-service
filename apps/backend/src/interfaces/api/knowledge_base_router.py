@@ -18,6 +18,7 @@ from src.application.knowledge.list_knowledge_bases_use_case import (
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
 router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["knowledge-bases"])
 
@@ -68,10 +69,11 @@ async def create_knowledge_base(
     )
 
 
-@router.get("", response_model=list[KnowledgeBaseResponse])
+@router.get("", response_model=PaginatedResponse[KnowledgeBaseResponse])
 @inject
 async def list_knowledge_bases(
     tenant_id: str | None = Query(default=None),
+    pagination: PaginationQuery = Depends(),
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: ListKnowledgeBasesUseCase = Depends(
         Provide[Container.list_knowledge_bases_use_case]
@@ -79,23 +81,39 @@ async def list_knowledge_bases(
     list_all_use_case: ListAllKnowledgeBasesUseCase = Depends(
         Provide[Container.list_all_knowledge_bases_use_case]
     ),
-) -> list[KnowledgeBaseResponse]:
+) -> PaginatedResponse[KnowledgeBaseResponse]:
+    limit = pagination.page_size
+    offset = (pagination.page - 1) * pagination.page_size
     if tenant.role == "system_admin":
-        kbs = await list_all_use_case.execute(tenant_id=tenant_id)
-    else:
-        kbs = await use_case.execute(tenant.tenant_id)
-    return [
-        KnowledgeBaseResponse(
-            id=kb.id.value,
-            tenant_id=kb.tenant_id,
-            name=kb.name,
-            description=kb.description,
-            document_count=kb.document_count,
-            created_at=kb.created_at.isoformat(),
-            updated_at=kb.updated_at.isoformat(),
+        kbs = await list_all_use_case.execute(
+            tenant_id=tenant_id, limit=limit, offset=offset,
         )
-        for kb in kbs
-    ]
+        total = await list_all_use_case.count(tenant_id=tenant_id)
+    else:
+        kbs = await use_case.execute(
+            tenant.tenant_id, limit=limit, offset=offset,
+        )
+        total = await use_case.count(tenant.tenant_id)
+    from math import ceil
+    total_pages = ceil(total / pagination.page_size) if total > 0 else 0
+    return PaginatedResponse(
+        items=[
+            KnowledgeBaseResponse(
+                id=kb.id.value,
+                tenant_id=kb.tenant_id,
+                name=kb.name,
+                description=kb.description,
+                document_count=kb.document_count,
+                created_at=kb.created_at.isoformat(),
+                updated_at=kb.updated_at.isoformat(),
+            )
+            for kb in kbs
+        ],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        total_pages=total_pages,
+    )
 
 
 @router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT)

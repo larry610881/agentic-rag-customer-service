@@ -11,10 +11,30 @@ class BotRepository(ABC):
     async def find_by_id(self, bot_id: str) -> Bot | None: ...
 
     @abstractmethod
-    async def find_all_by_tenant(self, tenant_id: str) -> list[Bot]: ...
+    async def find_all_by_tenant(
+        self,
+        tenant_id: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Bot]: ...
 
     @abstractmethod
-    async def find_all(self) -> list[Bot]: ...
+    async def find_all(
+        self,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Bot]: ...
+
+    @abstractmethod
+    async def count_by_tenant(self, tenant_id: str) -> int: ...
+
+    @abstractmethod
+    async def count_all(
+        self, *, tenant_id: str | None = None
+    ) -> int: ...
 
     @abstractmethod
     async def find_by_short_code(self, short_code: str) -> Bot | None: ...

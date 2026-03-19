@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
+from src.application.bot.create_bot_use_case import CreateBotCommand, CreateBotUseCase
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.bot.list_bots_use_case import ListBotsUseCase
@@ -152,3 +153,28 @@ def verify_bot_info(context):
 @then(parsers.parse("應回傳 {count:d} 個機器人"))
 def verify_bot_count(context, count):
     assert len(context["result_list"]) == count
+
+
+# --- 建立機器人不含 avatar 欄位 ---
+
+
+@given(parsers.parse('租戶 "{tenant_id}" 存在'))
+def tenant_exists(context, mock_bot_repo, tenant_id):
+    context["tenant_id"] = tenant_id
+    context["create_use_case"] = CreateBotUseCase(bot_repository=mock_bot_repo)
+
+
+@when(parsers.parse('建立機器人名稱 "{name}"'))
+def create_bot_without_avatar(context, name):
+    command = CreateBotCommand(tenant_id=context["tenant_id"], name=name)
+    context["created_bot"] = _run(context["create_use_case"].execute(command))
+
+
+@then("機器人回應不應包含 avatar_type 欄位")
+def verify_no_avatar_type(context):
+    assert not hasattr(context["created_bot"], "avatar_type")
+
+
+@then("機器人回應不應包含 avatar_model_url 欄位")
+def verify_no_avatar_model_url(context):
+    assert not hasattr(context["created_bot"], "avatar_model_url")

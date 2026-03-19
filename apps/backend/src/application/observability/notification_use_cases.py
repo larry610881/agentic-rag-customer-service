@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 import structlog
 
+from src.domain.observability.diagnostic import DiagnosticEvent
 from src.domain.observability.error_event import ErrorEvent
 from src.domain.observability.notification import (
     NotificationChannel,
@@ -38,6 +39,8 @@ class CreateChannelCommand:
     config: dict | None = None
     throttle_minutes: int = 15
     min_severity: str = "all"
+    notify_diagnostics: bool = False
+    diagnostic_severity: str = "critical"
 
 
 class CreateChannelUseCase:
@@ -60,6 +63,8 @@ class CreateChannelUseCase:
             config_encrypted=encrypted,
             throttle_minutes=command.throttle_minutes,
             min_severity=command.min_severity,
+            notify_diagnostics=command.notify_diagnostics,
+            diagnostic_severity=command.diagnostic_severity,
         )
         return await self._repo.save(channel)
 
@@ -72,6 +77,8 @@ class UpdateChannelCommand:
     config: dict | None = None
     throttle_minutes: int | None = None
     min_severity: str | None = None
+    notify_diagnostics: bool | None = None
+    diagnostic_severity: str | None = None
 
 
 class UpdateChannelUseCase:
@@ -99,6 +106,10 @@ class UpdateChannelUseCase:
             channel.throttle_minutes = command.throttle_minutes
         if command.min_severity is not None:
             channel.min_severity = command.min_severity
+        if command.notify_diagnostics is not None:
+            channel.notify_diagnostics = command.notify_diagnostics
+        if command.diagnostic_severity is not None:
+            channel.diagnostic_severity = command.diagnostic_severity
         channel.updated_at = datetime.now(timezone.utc)
         return await self._repo.save(channel)
 
@@ -174,6 +185,8 @@ class DispatchNotificationUseCase:
         try:
             channels = await self._channel_repo.list_enabled()
             for ch in channels:
+                if ch.min_severity == "off":
+                    continue
                 if await self._throttle.is_throttled(event.fingerprint, ch.id):
                     continue
                 subject = f"[Error] {event.error_type}: {event.message[:80]}"
@@ -190,3 +203,78 @@ class DispatchNotificationUseCase:
                 )
         except Exception:
             _logger.warning("notification.dispatch_failed", exc_info=True)
+
+
+class DispatchDiagnosticNotificationUseCase:
+    """Load enabled channels with notify_diagnostics=True, check throttle, dispatch."""
+
+    # Severity rank: lower = more severe. "all" accepts everything.
+    _SEVERITY_RANK = {"critical": 0, "warning": 1}
+
+    def __init__(
+        self,
+        channel_repo: NotificationChannelRepository,
+        throttle_service: NotificationThrottleService,
+        dispatcher: NotificationDispatcher,
+    ) -> None:
+        self._channel_repo = channel_repo
+        self._throttle = throttle_service
+        self._dispatcher = dispatcher
+
+    def _should_notify(self, channel_severity: str, event_severity: str) -> bool:
+        """Check if event severity meets channel's threshold.
+
+        channel_severity="critical"  → only critical
+        channel_severity="warning"   → warning + critical
+        channel_severity="all"       → everything
+        """
+        if channel_severity == "all":
+            return True
+        ch_rank = self._SEVERITY_RANK.get(channel_severity)
+        ev_rank = self._SEVERITY_RANK.get(event_severity)
+        if ch_rank is None or ev_rank is None:
+            return False  # unknown severity → skip
+        return ev_rank <= ch_rank  # event must be equal or more severe
+
+    async def execute(self, event: DiagnosticEvent) -> None:
+        try:
+            channels = await self._channel_repo.list_enabled()
+            for ch in channels:
+                if not ch.notify_diagnostics:
+                    continue
+                if not self._should_notify(ch.diagnostic_severity, event.severity):
+                    continue
+                if await self._throttle.is_throttled(event.fingerprint, ch.id):
+                    continue
+                subject = (
+                    f"[RAG {event.severity.upper()}] "
+                    f"{event.hints[0].dimension} 品質異常"
+                )
+                body = self._format_body(event)
+                await self._dispatcher.send_to_channel(ch, subject, body)
+                await self._throttle.record_sent(
+                    event.fingerprint, ch.id, ch.throttle_minutes * 60
+                )
+        except Exception:
+            _logger.warning(
+                "notification.diagnostic_dispatch_failed", exc_info=True
+            )
+
+    @staticmethod
+    def _format_body(event: DiagnosticEvent) -> str:
+        lines = [
+            f"Severity: {event.severity}",
+            f"Tenant: {event.tenant_id}",
+            f"Trace: {event.trace_id}",
+            f"Avg Score: {event.eval_avg_score:.2f}",
+            f"Layer: {event.eval_layer}",
+            f"Time: {event.created_at.isoformat()}",
+            "",
+            "--- Diagnostic Hints ---",
+        ]
+        for h in event.hints:
+            lines.append(
+                f"[{h.severity}] {h.dimension}: {h.message}\n"
+                f"  Suggestion: {h.suggestion}"
+            )
+        return "\n".join(lines)

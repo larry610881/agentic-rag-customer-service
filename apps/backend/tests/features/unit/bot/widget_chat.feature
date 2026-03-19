@@ -33,7 +33,7 @@ Feature: Widget 聊天 API 驗證
     And 錯誤訊息應包含 "Origin not allowed"
 
   Scenario: 機器人不存在時回傳 404
-    When 從來源 "https://shop.example.com" 以 short_code "nonexist" 發送 widget 訊息 "你好"
+    When 以不存在的 short_code "nonexist" 從來源 "https://shop.example.com" 發送 widget 訊息
     Then 應回傳錯誤碼 404
 
   Scenario: keep_history 為 false 時不回傳 conversation_id

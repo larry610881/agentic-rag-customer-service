@@ -13,7 +13,9 @@ class NotificationChannel:
     enabled: bool = False
     config_encrypted: str = "{}"
     throttle_minutes: int = 15
-    min_severity: str = "all"  # 'all' | '5xx_only'
+    min_severity: str = "all"  # 'all' | '5xx_only' | 'off'
+    notify_diagnostics: bool = False
+    diagnostic_severity: str = "critical"  # 'critical' | 'warning' | 'all'
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 

@@ -13,7 +13,6 @@ class Tenant:
         default_factory=lambda: ["router"]
     )
     monthly_token_limit: int | None = None
-    allowed_widget_avatar: bool = False
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

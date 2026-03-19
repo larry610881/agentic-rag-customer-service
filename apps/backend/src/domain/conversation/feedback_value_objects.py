@@ -17,5 +17,6 @@ class Rating(str, Enum):
 
 class Channel(str, Enum):
     WEB = "web"
+    WIDGET = "widget"
     LINE = "line"
     API = "api"

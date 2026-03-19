@@ -46,6 +46,13 @@ class DocumentProcessingError(DomainException):
         self.reason = reason
 
 
+class ValidationError(DomainException):
+    """Raised when a validation rule is violated."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
 class NoRelevantKnowledgeError(DomainException):
     """Raised when no relevant knowledge is found for a query."""
 

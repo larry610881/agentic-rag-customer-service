@@ -164,6 +164,8 @@ async def agent_chat_stream(
     async def event_generator():
         # --- TEST TRIGGER: remove before production ---
         if command.message == "test-back":
+            import traceback as _tb
+
             from src.application.observability.error_event_use_cases import (
                 ReportErrorCommand,
             )
@@ -171,15 +173,31 @@ async def agent_chat_stream(
                 dispatch_error_notification,
             )
 
+            # Simulate a realistic traceback
+            try:
+                raise RuntimeError(
+                    "QdrantClient: Connection refused (connect ECONNREFUSED 127.0.0.1:6334)"
+                )
+            except RuntimeError:
+                fake_stack = _tb.format_exc()
+
             report_uc = Container.report_error_use_case()
             event = await report_uc.execute(
                 ReportErrorCommand(
                     source="backend",
-                    error_type="TestError",
-                    message="手動測試：後端模擬 500 錯誤",
-                    path="/chat/stream",
+                    error_type="RuntimeError",
+                    message="QdrantClient: Connection refused (connect ECONNREFUSED 127.0.0.1:6334)",
+                    stack_trace=fake_stack,
+                    path="/api/v1/agent/chat/stream",
                     method="POST",
                     status_code=500,
+                    tenant_id=command.tenant_id,
+                    extra={
+                        "bot_id": command.bot_id,
+                        "qdrant_host": "localhost",
+                        "qdrant_port": 6334,
+                        "retry_count": 3,
+                    },
                 )
             )
             asyncio.create_task(dispatch_error_notification(event))

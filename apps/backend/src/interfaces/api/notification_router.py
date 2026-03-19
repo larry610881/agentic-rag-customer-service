@@ -29,6 +29,8 @@ class _CreateChannelBody(BaseModel):
     config: dict | None = None
     throttle_minutes: int = 15
     min_severity: str = "all"
+    notify_diagnostics: bool = False
+    diagnostic_severity: str = "critical"
 
 
 class _UpdateChannelBody(BaseModel):
@@ -37,6 +39,8 @@ class _UpdateChannelBody(BaseModel):
     config: dict | None = None
     throttle_minutes: int | None = None
     min_severity: str | None = None
+    notify_diagnostics: bool | None = None
+    diagnostic_severity: str | None = None
 
 
 def _channel_to_dict(ch):
@@ -47,6 +51,8 @@ def _channel_to_dict(ch):
         "enabled": ch.enabled,
         "throttle_minutes": ch.throttle_minutes,
         "min_severity": ch.min_severity,
+        "notify_diagnostics": ch.notify_diagnostics,
+        "diagnostic_severity": ch.diagnostic_severity,
         "updated_at": ch.updated_at.isoformat() if ch.updated_at else None,
         "created_at": ch.created_at.isoformat() if ch.created_at else None,
     }
@@ -81,6 +87,8 @@ async def create_channel(
             config=body.config,
             throttle_minutes=body.throttle_minutes,
             min_severity=body.min_severity,
+            notify_diagnostics=body.notify_diagnostics,
+            diagnostic_severity=body.diagnostic_severity,
         )
     )
     return _channel_to_dict(ch)
@@ -104,6 +112,8 @@ async def update_channel(
             config=body.config,
             throttle_minutes=body.throttle_minutes,
             min_severity=body.min_severity,
+            notify_diagnostics=body.notify_diagnostics,
+            diagnostic_severity=body.diagnostic_severity,
         )
     )
     return _channel_to_dict(ch)

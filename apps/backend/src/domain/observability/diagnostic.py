@@ -5,7 +5,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -15,6 +16,22 @@ class DiagnosticHint:
     dimension: str   # 觸發的維度名稱
     message: str     # 人類可讀的診斷描述
     suggestion: str  # 改善建議
+
+
+@dataclass
+class DiagnosticEvent:
+    """診斷告警事件 — 評估分數觸發規則後產生。"""
+
+    fingerprint: str  # "diag|{dimension}|{severity}"
+    severity: str  # "critical" | "warning"
+    tenant_id: str
+    trace_id: str
+    hints: list[DiagnosticHint]
+    eval_avg_score: float
+    eval_layer: str
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
 
 # -----------------------------------------------------------------------

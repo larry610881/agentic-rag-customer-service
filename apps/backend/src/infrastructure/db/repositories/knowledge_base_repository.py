@@ -69,7 +69,13 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             return None
         return self._to_entity(row[0], int(row[1]))
 
-    async def find_all(self) -> list[KnowledgeBase]:
+    async def find_all(
+        self,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[KnowledgeBase]:
         doc_sub = self._doc_count_subquery()
         stmt = (
             select(
@@ -79,10 +85,22 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             .outerjoin(doc_sub, KnowledgeBaseModel.id == doc_sub.c.kb_id)
             .order_by(KnowledgeBaseModel.created_at)
         )
+        if tenant_id is not None:
+            stmt = stmt.where(KnowledgeBaseModel.tenant_id == tenant_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset is not None:
+            stmt = stmt.offset(offset)
         result = await self._session.execute(stmt)
         return [self._to_entity(row[0], int(row[1])) for row in result.all()]
 
-    async def find_all_by_tenant(self, tenant_id: str) -> list[KnowledgeBase]:
+    async def find_all_by_tenant(
+        self,
+        tenant_id: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[KnowledgeBase]:
         doc_sub = self._doc_count_subquery()
         stmt = (
             select(
@@ -96,8 +114,31 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             )
             .order_by(KnowledgeBaseModel.created_at)
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset is not None:
+            stmt = stmt.offset(offset)
         result = await self._session.execute(stmt)
         return [self._to_entity(row[0], int(row[1])) for row in result.all()]
+
+    async def count_by_tenant(self, tenant_id: str) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(KnowledgeBaseModel)
+            .where(
+                KnowledgeBaseModel.tenant_id == tenant_id,
+                KnowledgeBaseModel.kb_type == "user",
+            )
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
+
+    async def count_all(self, *, tenant_id: str | None = None) -> int:
+        stmt = select(func.count()).select_from(KnowledgeBaseModel)
+        if tenant_id is not None:
+            stmt = stmt.where(KnowledgeBaseModel.tenant_id == tenant_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
 
     async def find_system_kbs(self, tenant_id: str) -> list[KnowledgeBase]:
         doc_sub = self._doc_count_subquery()

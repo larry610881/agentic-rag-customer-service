@@ -14,10 +14,27 @@ class UserRepository(ABC):
     async def find_by_email(self, email: str) -> User | None: ...
 
     @abstractmethod
-    async def find_all(self) -> list[User]: ...
+    async def find_all(
+        self,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[User]: ...
 
     @abstractmethod
-    async def find_all_by_tenant(self, tenant_id: str) -> list[User]: ...
+    async def find_all_by_tenant(
+        self,
+        tenant_id: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[User]: ...
+
+    @abstractmethod
+    async def count_all(
+        self, *, tenant_id: str | None = None
+    ) -> int: ...
 
     @abstractmethod
     async def delete(self, user_id: str) -> None: ...

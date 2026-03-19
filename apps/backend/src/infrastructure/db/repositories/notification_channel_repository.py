@@ -29,6 +29,8 @@ class SQLAlchemyNotificationChannelRepository(NotificationChannelRepository):
             config_encrypted=m.config_encrypted,
             throttle_minutes=m.throttle_minutes,
             min_severity=m.min_severity,
+            notify_diagnostics=m.notify_diagnostics,
+            diagnostic_severity=m.diagnostic_severity,
             updated_at=m.updated_at,
             created_at=m.created_at,
         )
@@ -47,6 +49,8 @@ class SQLAlchemyNotificationChannelRepository(NotificationChannelRepository):
                 existing.config_encrypted = channel.config_encrypted
                 existing.throttle_minutes = channel.throttle_minutes
                 existing.min_severity = channel.min_severity
+                existing.notify_diagnostics = channel.notify_diagnostics
+                existing.diagnostic_severity = channel.diagnostic_severity
                 existing.updated_at = datetime.now(timezone.utc)
             else:
                 self._session.add(
@@ -58,6 +62,8 @@ class SQLAlchemyNotificationChannelRepository(NotificationChannelRepository):
                         config_encrypted=channel.config_encrypted,
                         throttle_minutes=channel.throttle_minutes,
                         min_severity=channel.min_severity,
+                        notify_diagnostics=channel.notify_diagnostics,
+                        diagnostic_severity=channel.diagnostic_severity,
                         updated_at=channel.updated_at,
                         created_at=channel.created_at,
                     )

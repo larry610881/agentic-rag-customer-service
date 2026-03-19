@@ -14,7 +14,9 @@ from src.application.conversation.list_conversations_use_case import (
     ListConversationsUseCase,
 )
 from src.container import Container
+from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
 router = APIRouter(
     prefix="/api/v1/conversations",
@@ -44,33 +46,51 @@ class ConversationSummaryResponse(BaseModel):
     created_at: datetime
 
 
-@router.get("", response_model=list[ConversationSummaryResponse])
+@router.get("", response_model=PaginatedResponse[ConversationSummaryResponse])
 @inject
 async def list_conversations(
     bot_id: str | None = None,
+    pagination: PaginationQuery = Depends(),
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: ListConversationsUseCase = Depends(
         Provide[Container.list_conversations_use_case]
     ),
     get_bot: GetBotUseCase = Depends(Provide[Container.get_bot_use_case]),
-) -> list[ConversationSummaryResponse]:
+) -> PaginatedResponse[ConversationSummaryResponse]:
     effective_tenant_id = tenant.tenant_id
     if tenant.role == "system_admin" and bot_id:
-        bot = await get_bot.execute(bot_id)
+        try:
+            bot = await get_bot.execute(bot_id)
+        except EntityNotFoundError:
+            raise HTTPException(status_code=404, detail="Bot not found")
         effective_tenant_id = bot.tenant_id
 
+    limit = pagination.page_size
+    offset = (pagination.page - 1) * pagination.page_size
     conversations = await use_case.execute(
-        tenant_id=effective_tenant_id, bot_id=bot_id
+        tenant_id=effective_tenant_id, bot_id=bot_id,
+        limit=limit, offset=offset,
     )
-    return [
-        ConversationSummaryResponse(
-            id=c.id.value,
-            tenant_id=c.tenant_id,
-            bot_id=c.bot_id,
-            created_at=c.created_at,
-        )
-        for c in conversations
-    ]
+    total = await use_case.count(
+        tenant_id=effective_tenant_id, bot_id=bot_id,
+    )
+    from math import ceil
+    total_pages = ceil(total / pagination.page_size) if total > 0 else 0
+    return PaginatedResponse(
+        items=[
+            ConversationSummaryResponse(
+                id=c.id.value,
+                tenant_id=c.tenant_id,
+                bot_id=c.bot_id,
+                created_at=c.created_at,
+            )
+            for c in conversations
+        ],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        total_pages=total_pages,
+    )
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetailResponse)

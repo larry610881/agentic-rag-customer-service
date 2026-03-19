@@ -117,7 +117,7 @@ def setup_conversations_with_bot(context, tenant_id, total, bot_count, bot_id):
 
     mock_repo = AsyncMock()
 
-    async def mock_find_by_tenant(tid, *, bot_id=None):
+    async def mock_find_by_tenant(tid, *, bot_id=None, **_kw):
         if bot_id is not None:
             return [c for c in all_conversations if c.bot_id == bot_id]
         return all_conversations
@@ -219,7 +219,7 @@ def setup_bot_conversations(context, count):
 
     mock_repo = AsyncMock()
 
-    async def mock_find_by_tenant(tid, *, bot_id=None):
+    async def mock_find_by_tenant(tid, *, bot_id=None, **_kw):
         if bot_id is not None:
             return [c for c in conversations if c.bot_id == bot_id]
         return conversations
