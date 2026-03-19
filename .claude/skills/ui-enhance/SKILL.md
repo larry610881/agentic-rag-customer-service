@@ -1,3 +1,9 @@
+---
+name: ui-enhance
+description: Enhance a React component with design system tokens — add animations, shadows, micro-interactions, dark mode support using Tailwind + framer-motion
+disable-model-invocation: true
+---
+
 # UI 元件強化
 
 對指定的前端元件套用設計系統 tokens，加入動畫、深度、微互動，提升視覺質感。

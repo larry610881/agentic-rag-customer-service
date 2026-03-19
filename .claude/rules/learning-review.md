@@ -1,5 +1,9 @@
 ---
-# 全域套用（無 paths 前綴）
+paths:
+  - "apps/backend/src/**/*.py"
+  - "apps/frontend/src/**/*.ts"
+  - "apps/frontend/src/**/*.tsx"
+  - "docs/**"
 ---
 
 # 任務完成後：架構學習與隱憂分析（Learning Review）

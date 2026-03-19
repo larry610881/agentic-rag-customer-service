@@ -1,3 +1,9 @@
+---
+name: bdd-feature
+description: Generate Gherkin BDD feature files (English keywords + Traditional Chinese descriptions) with Step Definition stubs for backend pytest-bdd or frontend playwright-bdd
+disable-model-invocation: true
+---
+
 # BDD Feature 撰寫
 
 根據需求描述生成 BDD Feature 檔案（英文關鍵字 + 繁中描述），並同時產出 Step Definitions 骨架。自動判斷後端或前端。

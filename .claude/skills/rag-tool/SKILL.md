@@ -1,3 +1,9 @@
+---
+name: rag-tool
+description: Generate LangGraph Tool definition with Domain Interface, Infrastructure implementation, and BDD test scaffolding
+disable-model-invocation: true
+---
+
 # LangGraph Tool 建立
 
 根據指定的 Tool 需求，生成 LangGraph Tool 定義、Domain Interface、Infrastructure 實作、BDD 測試。

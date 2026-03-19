@@ -1,16 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(chmod *)",
-      "Bash(PGPASSWORD=postgres psql *)",
       "mcp__readme-beautifier__*"
     ],
     "deny": [
       "Read(.env)",
       "Read(.env.*)",
-      "Read(.env*.local)",
-      "Read(apps/backend/.env)",
-      "Read(apps/frontend/.env.local)"
+      "Read(.env*.local)"
     ]
   },
   "hooks": {

@@ -1,3 +1,9 @@
+---
+name: component
+description: Scaffold a new React component with TypeScript types, Vitest unit test, and project conventions (named export, functional component, RTL)
+disable-model-invocation: true
+---
+
 # 新增 React Component
 
 根據指定的元件名稱，生成完整的 React 元件檔案、型別定義與測試檔案，遵循專案既有模式。

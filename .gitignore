@@ -58,3 +58,11 @@ apps/frontend/test-results/
 
 # Build
 *.tsbuildinfo
+
+# GCP
+google-cloud-sdk/
+google-cloud-cli-*.tar.gz
+**/sa-key.json
+
+# Claude local overrides
+CLAUDE.local.md

@@ -1,3 +1,9 @@
+---
+name: ddd-feature
+description: Generate DDD 4-Layer feature scaffolding — Domain Entity, Application Use Case, Infrastructure Repository, Interfaces Router with BDD tests
+disable-model-invocation: true
+---
+
 # DDD 功能建立
 
 根據指定的功能需求，按照 DDD 4-Layer 架構生成完整的檔案骨架、BDD Feature、Unit Test。

@@ -1,3 +1,9 @@
+---
+name: tdd
+description: Guide a complete TDD Red-Green-Refactor cycle — write failing test first, implement to pass, then refactor. Auto-detects backend (pytest) or frontend (Vitest)
+disable-model-invocation: true
+---
+
 # TDD 工作流程
 
 引導完成一個完整的 TDD 紅綠重構循環。自動判斷後端（pytest）或前端（Vitest）。
