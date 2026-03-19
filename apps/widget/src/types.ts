@@ -3,12 +3,11 @@ export interface WidgetConfig {
   name: string;
   description: string;
   keep_history: boolean;
-  avatar_type: "none" | "live2d" | "vrm" | "glb";
-  avatar_model_url: string;
   welcome_message: string;
   placeholder_text: string;
   greeting_messages: string[];
   greeting_animation: "fade" | "slide" | "typewriter";
+  fab_icon_url?: string;
 }
 
 /** Source reference from RAG retrieval */
@@ -43,8 +42,3 @@ export interface ChatMessage {
   element?: HTMLElement;
 }
 
-/** Avatar renderer interface */
-export interface AvatarRenderer {
-  mount(container: HTMLElement): Promise<void>;
-  dispose(): void;
-}

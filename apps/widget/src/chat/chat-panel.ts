@@ -122,8 +122,14 @@ export class ChatPanel {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          error_type: "TestError",
-          message: "手動測試：Widget 模擬 JS 錯誤",
+          error_type: "NetworkError",
+          message: "Failed to fetch: SSE connection aborted after 30s timeout",
+          stack_trace: [
+            "NetworkError: Failed to fetch",
+            "    at ChatPanel.sendMessage (chat-panel.ts:135:22)",
+            "    at HTMLButtonElement.onclick (widget.ts:89:14)",
+            "    at EventTarget.dispatchEvent (<anonymous>)",
+          ].join("\n"),
           path: window.location.pathname,
           user_agent: navigator.userAgent,
         }),

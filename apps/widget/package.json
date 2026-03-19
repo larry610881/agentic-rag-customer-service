@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "postbuild": "cp dist/widget.js ../backend/static/widget.js"
+    "postbuild": "cp dist/widget.js ../backend/static/widget.js",
+    "test": "vitest run"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^4.1.0"
   }
 }

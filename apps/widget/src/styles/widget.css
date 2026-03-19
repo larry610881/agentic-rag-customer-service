@@ -24,6 +24,14 @@
   box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
 }
 
+/* FAB custom icon image */
+.aw-fab__icon-custom {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 /* FAB icon containers — dual-layer for chat/close toggle */
 .aw-fab__icon-chat,
 .aw-fab__icon-close {
@@ -50,48 +58,6 @@
 .aw-fab--open .aw-fab__icon-close {
   opacity: 1;
   transform: scale(1) rotate(0deg);
-}
-
-/* Avatar FAB variant — gradient placeholder before renderer loads */
-.aw-fab--avatar {
-  background: linear-gradient(135deg, #6366f1, #3b82f6);
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
-}
-.aw-fab--avatar:hover {
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
-}
-
-/* Avatar Live — full-size character replacing the round FAB */
-.aw-fab--avatar-live {
-  width: 150px;
-  height: 200px;
-  bottom: 12px;
-  right: 16px;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  padding: 0;
-  overflow: visible;
-}
-.aw-fab--avatar-live:hover {
-  transform: none;
-  box-shadow: none;
-  filter: brightness(1.08);
-}
-.aw-fab__avatar {
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.aw-fab__avatar canvas {
-  width: 100% !important;
-  height: 100% !important;
-}
-/* Panel position adjustment when avatar character is present */
-.aw-panel--above-avatar {
-  bottom: 220px;
-  right: 16px;
-  max-height: calc(100vh - 240px);
 }
 
 /* ── Greeting Bubble ───────────────────────────────────────── */
@@ -161,20 +127,6 @@
     transform: translateY(0);
   }
 }
-/* Avatar live mode — greeting bubble to the left of character */
-.aw-fab--avatar-live ~ .aw-greeting {
-  bottom: 80px;
-  right: 170px;
-  border-radius: 14px 14px 4px 14px;
-}
-/* Tail points right toward character */
-.aw-fab--avatar-live ~ .aw-greeting::after {
-  bottom: 12px;
-  right: -6px;
-  left: auto;
-  transform: rotate(45deg);
-}
-
 /* ── Panel ──────────────────────────────────────────────────── */
 
 .aw-panel {
@@ -230,21 +182,6 @@
 }
 .aw-header__close:hover {
   opacity: 1;
-}
-
-/* ── Avatar Area ────────────────────────────────────────────── */
-
-.aw-avatar {
-  flex-shrink: 0;
-  background: #f1f5f9;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-.aw-avatar canvas {
-  width: 100%;
-  height: 100%;
 }
 
 /* ── Messages ───────────────────────────────────────────────── */
@@ -333,43 +270,6 @@
 .aw-send-btn:disabled {
   background: #93c5fd;
   cursor: not-allowed;
-}
-
-/* ── Avatar Speech Bubble (bot messages when avatar is present) ── */
-.aw-messages--has-avatar .aw-bubble--bot {
-  position: relative;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px 16px 16px 4px;
-  margin-left: 8px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-}
-/* 左上角小三角 tail，指向上方 avatar */
-.aw-messages--has-avatar .aw-bubble--bot::before {
-  content: "";
-  position: absolute;
-  top: -6px;
-  left: 14px;
-  width: 12px;
-  height: 12px;
-  background: #fff;
-  border-left: 1px solid #e2e8f0;
-  border-top: 1px solid #e2e8f0;
-  transform: rotate(45deg);
-}
-/* 淡入動畫 */
-.aw-messages--has-avatar .aw-bubble--bot {
-  animation: aw-bubble-in 0.3s ease-out;
-}
-@keyframes aw-bubble-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* ── Status Hint ───────────────────────────────────────────── */
@@ -539,28 +439,14 @@
     max-width: 100vw;
     border-radius: 0;
   }
-  .aw-panel--above-avatar {
-    bottom: 0;
-    max-height: 100vh;
-  }
   .aw-fab {
     bottom: 16px;
     right: 16px;
-  }
-  .aw-fab--avatar-live {
-    width: 120px;
-    height: 160px;
-    bottom: 8px;
-    right: 8px;
   }
   .aw-greeting {
     bottom: 78px;
     right: 16px;
     max-width: 200px;
     font-size: 13px;
-  }
-  .aw-fab--avatar-live ~ .aw-greeting {
-    bottom: 60px;
-    right: 132px;
   }
 }
