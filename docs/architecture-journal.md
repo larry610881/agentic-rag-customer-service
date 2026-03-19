@@ -1652,3 +1652,41 @@ graph TD
 | `backend/.../widget_router.py` | 新增 error endpoint + OPTIONS | Interfaces |
 | `widget/src/widget.ts` | reportWidgetError 改用 widget 路徑 | Widget |
 | `widget/src/chat/chat-panel.ts` | 2 處 error fetch 改用 widget 路徑 | Widget |
+
+---
+
+## 2026-03-17 — Fix: estimated_cost 永遠 $0（RecordUsageUseCase fallback）
+
+### 問題
+
+Token usage records 的 `estimated_cost` 在 ReAct agent 路徑永遠是 `$0.0000`。
+
+### 根因分析
+
+兩條 agent 路徑的 cost 計算不一致：
+
+```mermaid
+graph TD
+    A["Router 路徑"] -->|"calculate_usage() 帶 pricing dict"| B["TokenUsage.estimated_cost ✅"]
+    C["ReAct 路徑"] -->|"extract_usage_from_langchain_messages()"| D["TokenUsage.estimated_cost = 0.0 ❌"]
+    B --> E["RecordUsageUseCase.execute()"]
+    D --> E
+    E --> F["UsageRecord → DB"]
+```
+
+`extract_usage_from_langchain_messages()` 從 LangChain `AIMessage.usage_metadata` 提取 token 數量，但**沒有 pricing dict**，直接用 `TokenUsage` 的預設 `estimated_cost=0.0`。
+
+### 修復策略：Application 層匯聚點 fallback
+
+在 `RecordUsageUseCase.execute()` 加入 cost fallback — 這是所有路徑（Router / ReAct / Widget）的唯一匯聚點。當 `cost=0` 但 `tokens>0` 時，從 `DEFAULT_MODELS` registry 重算：
+
+```python
+if cost == 0.0 and usage.total_tokens > 0:
+    cost = self._estimate_cost_from_registry(model, input_tokens, output_tokens)
+```
+
+### 學到的事
+
+1. **匯聚點修復 > 源頭修復**：ReAct 路徑的 `extract_usage_from_langchain_messages()` 也能加 pricing，但 `RecordUsageUseCase` 是所有路徑的唯一入口，一處修好全部都修好。未來新增第三種 agent 路徑也自動受益。
+2. **Domain registry 的複用價值**：`DEFAULT_MODELS`（Domain 層）+ `calculate_usage()`（Domain 層 pricing）組合，被 Application 層的 Use Case 呼叫 — DDD 層級合規，且 `calculate_usage()` 內建的 prefix fallback 自動處理帶日期後綴的 model name（如 `gpt-5.1-2025-11-13` → `gpt-5.1`）。
+3. **Bug fix 必留 regression test**：新增 2 個 BDD scenario 確保 fallback 正確觸發、已有 cost 不被覆蓋。
