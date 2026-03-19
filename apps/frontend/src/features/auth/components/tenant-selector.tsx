@@ -11,7 +11,8 @@ import { useEffect } from "react";
 
 export function TenantSelector() {
   const { tenantId, setTenantId, setTenants } = useAuthStore();
-  const { data: tenants } = useTenants();
+  const { data } = useTenants();
+  const tenants = data?.items;
 
   useEffect(() => {
     if (tenants && tenants.length > 0) {

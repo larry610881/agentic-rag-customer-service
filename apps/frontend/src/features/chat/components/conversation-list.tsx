@@ -4,9 +4,12 @@ import { Button } from "@/components/ui/button";
 import { useConversations, useConversation } from "@/hooks/queries/use-conversations";
 import { useChatStore } from "@/stores/use-chat-store";
 import { ConversationItem } from "./conversation-item";
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { usePagination } from "@/hooks/use-pagination";
 
 export function ConversationList() {
-  const { data: conversations } = useConversations();
+  const { page, setPage } = usePagination();
+  const { data } = useConversations(page);
   const conversationId = useChatStore((s) => s.conversationId);
   const botName = useChatStore((s) => s.botName);
   const clearBot = useChatStore((s) => s.clearBot);
@@ -66,8 +69,8 @@ export function ConversationList() {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-1 p-2">
-          {conversations && conversations.length > 0 ? (
-            conversations.map((c) => (
+          {data && data.items.length > 0 ? (
+            data.items.map((c) => (
               <ConversationItem
                 key={c.id}
                 conversation={c}
@@ -82,6 +85,15 @@ export function ConversationList() {
           )}
         </div>
       </div>
+      {data && (
+        <div className="border-t px-2 py-1">
+          <PaginationControls
+            page={page}
+            totalPages={data.total_pages}
+            onPageChange={setPage}
+          />
+        </div>
+      )}
     </div>
   );
 }

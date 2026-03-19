@@ -9,8 +9,6 @@ interface ChatState {
   knowledgeBaseId: string | null;
   botId: string | null;
   botName: string | null;
-  avatarType: string | null;
-  avatarModelUrl: string | null;
   toolHint: string | null;
   addUserMessage: (content: string) => void;
   startAssistantMessage: () => void;
@@ -23,7 +21,7 @@ interface ChatState {
   setToolHint: (hint: string | null) => void;
   setAssistantMessageId: (id: string) => void;
   setMessageFeedback: (messageId: string, rating: "thumbs_up" | "thumbs_down" | undefined) => void;
-  selectBot: (id: string, name: string, avatarType?: string, avatarModelUrl?: string) => void;
+  selectBot: (id: string, name: string) => void;
   clearBot: () => void;
   clearMessages: () => void;
   loadConversation: (detail: ConversationDetail) => void;
@@ -43,8 +41,6 @@ export const useChatStore = create<ChatState>((set) => ({
   knowledgeBaseId: null,
   botId: null,
   botName: null,
-  avatarType: null,
-  avatarModelUrl: null,
   toolHint: null,
 
   addUserMessage: (content) =>
@@ -129,12 +125,10 @@ export const useChatStore = create<ChatState>((set) => ({
         m.id === messageId ? { ...m, feedbackRating: rating } : m
       ),
     })),
-  selectBot: (id, name, avatarType, avatarModelUrl) =>
+  selectBot: (id, name) =>
     set({
       botId: id,
       botName: name,
-      avatarType: avatarType ?? "none",
-      avatarModelUrl: avatarModelUrl ?? "",
       messages: [],
       conversationId: null,
     }),
@@ -142,8 +136,6 @@ export const useChatStore = create<ChatState>((set) => ({
     set({
       botId: null,
       botName: null,
-      avatarType: null,
-      avatarModelUrl: null,
       messages: [],
       conversationId: null,
     }),

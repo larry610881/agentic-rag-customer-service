@@ -4,10 +4,8 @@ import {
   mockProviderSetting,
 } from "@/test/fixtures/provider-setting";
 
-const API_BASE = "http://localhost:8000";
-
 export const providerSettingHandlers = [
-  http.get(`${API_BASE}/api/v1/settings/providers`, ({ request }) => {
+  http.get("*/api/v1/settings/providers", ({ request }) => {
     const url = new URL(request.url);
     const type = url.searchParams.get("type");
     const filtered = type
@@ -16,7 +14,7 @@ export const providerSettingHandlers = [
     return HttpResponse.json(filtered);
   }),
   http.get(
-    `${API_BASE}/api/v1/settings/providers/:id`,
+    "*/api/v1/settings/providers/:id",
     ({ params }) => {
       const setting = mockProviderSettings.find(
         (p) => p.id === params.id,
@@ -28,7 +26,7 @@ export const providerSettingHandlers = [
     },
   ),
   http.post(
-    `${API_BASE}/api/v1/settings/providers`,
+    "*/api/v1/settings/providers",
     async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json(
@@ -47,7 +45,7 @@ export const providerSettingHandlers = [
     },
   ),
   http.put(
-    `${API_BASE}/api/v1/settings/providers/:id`,
+    "*/api/v1/settings/providers/:id",
     async ({ request, params }) => {
       const body = (await request.json()) as Record<string, unknown>;
       const existing = mockProviderSettings.find(
@@ -63,7 +61,7 @@ export const providerSettingHandlers = [
       });
     },
   ),
-  http.get(`${API_BASE}/api/v1/settings/providers/enabled-models`, () => {
+  http.get("*/api/v1/settings/providers/enabled-models", () => {
     const enabledModels = mockProviderSettings
       .filter((p) => p.is_enabled && p.provider_type === "llm")
       .flatMap((p) =>
@@ -78,11 +76,11 @@ export const providerSettingHandlers = [
       );
     return HttpResponse.json(enabledModels);
   }),
-  http.delete(`${API_BASE}/api/v1/settings/providers/:id`, () => {
+  http.delete("*/api/v1/settings/providers/:id", () => {
     return new HttpResponse(null, { status: 204 });
   }),
   http.post(
-    `${API_BASE}/api/v1/settings/providers/:id/test-connection`,
+    "*/api/v1/settings/providers/:id/test-connection",
     () => {
       return HttpResponse.json({
         success: true,

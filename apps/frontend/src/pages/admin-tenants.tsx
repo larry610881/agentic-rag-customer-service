@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useTenants } from "@/hooks/queries/use-tenants";
 import { TenantConfigDialog } from "@/features/admin/components/tenant-config-dialog";
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { usePagination } from "@/hooks/use-pagination";
 import type { Tenant } from "@/types/auth";
 import {
   Table,
@@ -17,12 +19,13 @@ import { Settings } from "lucide-react";
 const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
 export default function AdminTenantsPage() {
-  const { data: tenants, isLoading } = useTenants();
+  const { page, setPage } = usePagination();
+  const { data, isLoading } = useTenants(page);
   const [configTenant, setConfigTenant] = useState<Tenant | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   // Exclude system tenant from display
-  const realTenants = tenants?.filter((t) => t.id !== SYSTEM_TENANT_ID) ?? [];
+  const realTenants = data?.items?.filter((t) => t.id !== SYSTEM_TENANT_ID) ?? [];
 
   const handleConfig = (tenant: Tenant) => {
     setConfigTenant(tenant);
@@ -85,6 +88,14 @@ export default function AdminTenantsPage() {
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {data && (
+        <PaginationControls
+          page={page}
+          totalPages={data.total_pages}
+          onPageChange={setPage}
+        />
       )}
 
       <TenantConfigDialog

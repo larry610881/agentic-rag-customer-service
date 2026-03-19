@@ -146,7 +146,7 @@ export function AddMcpServerDialog() {
           新增 MCP Server
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>新增 MCP Server</DialogTitle>
           <DialogDescription>

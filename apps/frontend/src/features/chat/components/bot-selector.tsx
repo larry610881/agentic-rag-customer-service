@@ -12,10 +12,10 @@ import { useChatStore } from "@/stores/use-chat-store";
 import type { Bot } from "@/types/bot";
 
 export function BotSelector() {
-  const { data: bots, isLoading, isError } = useBots();
+  const { data, isLoading, isError } = useBots();
   const selectBot = useChatStore((s) => s.selectBot);
 
-  const activeBots = bots?.filter((b) => b.is_active) ?? [];
+  const activeBots = data?.items?.filter((b) => b.is_active) ?? [];
 
   if (isLoading) {
     return (
@@ -52,7 +52,7 @@ export function BotSelector() {
   }
 
   const handleSelect = (bot: Bot) => {
-    selectBot(bot.id, bot.name, bot.avatar_type, bot.avatar_model_url);
+    selectBot(bot.id, bot.name);
   };
 
   return (

@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { useAdminBots } from "@/hooks/queries/use-admin";
 import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
 import { AdminTenantFilter } from "@/features/admin/components/admin-tenant-filter";
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { usePagination } from "@/hooks/use-pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -16,7 +18,8 @@ import { Badge } from "@/components/ui/badge";
 
 export default function AdminBotsPage() {
   const [tenantId, setTenantId] = useState<string | undefined>();
-  const { data: bots, isLoading, isError } = useAdminBots(tenantId);
+  const { page, setPage } = usePagination();
+  const { data, isLoading, isError } = useAdminBots(tenantId, page);
   const tenantNameMap = useTenantNameMap();
 
   return (
@@ -41,11 +44,11 @@ export default function AdminBotsPage() {
         <p className="text-destructive">載入機器人失敗。</p>
       )}
 
-      {bots && bots.length === 0 && (
+      {data && data.items.length === 0 && (
         <p className="text-muted-foreground">目前沒有任何機器人。</p>
       )}
 
-      {bots && bots.length > 0 && (
+      {data && data.items.length > 0 && (
         <div className="rounded-md border">
           <Table>
             <TableHeader>
@@ -60,7 +63,7 @@ export default function AdminBotsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {bots.map((bot) => (
+              {data.items.map((bot) => (
                 <TableRow key={bot.id}>
                   <TableCell className="font-medium">
                     <Link
@@ -97,6 +100,14 @@ export default function AdminBotsPage() {
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {data && (
+        <PaginationControls
+          page={page}
+          totalPages={data.total_pages}
+          onPageChange={setPage}
+        />
       )}
     </div>
   );

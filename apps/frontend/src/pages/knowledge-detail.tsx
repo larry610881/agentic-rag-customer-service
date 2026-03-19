@@ -8,11 +8,14 @@ import {
   useBatchReprocessDocuments,
 } from "@/hooks/queries/use-documents";
 import { useDocumentQualityStats } from "@/hooks/queries/use-document-quality-stats";
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { usePagination } from "@/hooks/use-pagination";
 
 export default function KnowledgeDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { page, setPage } = usePagination();
 
-  const { data: documents, isLoading, error } = useDocuments(id!);
+  const { data, isLoading, error } = useDocuments(id!, page);
   const { data: qualityStats } = useDocumentQualityStats(id!);
   const deleteDocument = useDeleteDocument();
   const batchDelete = useBatchDeleteDocuments();
@@ -40,18 +43,25 @@ export default function KnowledgeDetailPage() {
           載入文件失敗，請重試。
         </p>
       )}
-      {documents && (
-        <DocumentList
-          kbId={id!}
-          documents={documents}
-          qualityStats={qualityStats}
-          onDelete={handleDelete}
-          onBatchDelete={handleBatchDelete}
-          onBatchReprocess={handleBatchReprocess}
-          isDeleting={deleteDocument.isPending}
-          isBatchDeleting={batchDelete.isPending}
-          isBatchReprocessing={batchReprocess.isPending}
-        />
+      {data && (
+        <>
+          <DocumentList
+            kbId={id!}
+            documents={data.items}
+            qualityStats={qualityStats}
+            onDelete={handleDelete}
+            onBatchDelete={handleBatchDelete}
+            onBatchReprocess={handleBatchReprocess}
+            isDeleting={deleteDocument.isPending}
+            isBatchDeleting={batchDelete.isPending}
+            isBatchReprocessing={batchReprocess.isPending}
+          />
+          <PaginationControls
+            page={page}
+            totalPages={data.total_pages}
+            onPageChange={setPage}
+          />
+        </>
       )}
     </div>
   );

@@ -1,13 +1,17 @@
 import { http, HttpResponse } from "msw";
 import { mockKnowledgeBases } from "@/test/fixtures/knowledge";
 
-const API_BASE = "http://localhost:8000";
-
 export const knowledgeBaseHandlers = [
-  http.get(`${API_BASE}/api/v1/knowledge-bases`, () => {
-    return HttpResponse.json(mockKnowledgeBases);
+  http.get("*/api/v1/knowledge-bases", () => {
+    return HttpResponse.json({
+      items: mockKnowledgeBases,
+      total: mockKnowledgeBases.length,
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
+    });
   }),
-  http.post(`${API_BASE}/api/v1/knowledge-bases`, async ({ request }) => {
+  http.post("*/api/v1/knowledge-bases", async ({ request }) => {
     const body = (await request.json()) as Record<string, string>;
     return HttpResponse.json(
       {

@@ -1,9 +1,12 @@
 import { useBots } from "@/hooks/queries/use-bots";
 import { BotCard } from "@/features/bot/components/bot-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { usePagination } from "@/hooks/use-pagination";
 
 export function BotList() {
-  const { data: bots, isLoading, isError } = useBots();
+  const { page, setPage } = usePagination();
+  const { data, isLoading, isError } = useBots(page);
 
   if (isLoading) {
     return (
@@ -19,7 +22,7 @@ export function BotList() {
     return <p className="text-destructive">載入機器人失敗。</p>;
   }
 
-  if (!bots || bots.length === 0) {
+  if (!data || data.items.length === 0) {
     return (
       <p className="text-muted-foreground">
         尚無機器人，請建立一個來開始使用。
@@ -28,10 +31,17 @@ export function BotList() {
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {bots.map((bot) => (
-        <BotCard key={bot.id} bot={bot} />
-      ))}
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {data.items.map((bot) => (
+          <BotCard key={bot.id} bot={bot} />
+        ))}
+      </div>
+      <PaginationControls
+        page={page}
+        totalPages={data.total_pages}
+        onPageChange={setPage}
+      />
     </div>
   );
 }

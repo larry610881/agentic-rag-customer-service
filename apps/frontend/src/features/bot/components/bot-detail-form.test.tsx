@@ -10,14 +10,12 @@ import { useAuthStore } from "@/stores/use-auth-store";
 
 function setTenantPermissions(overrides: {
   allowed_agent_modes?: string[];
-  allowed_widget_avatar?: boolean;
 }) {
   const tenant = {
     id: "tenant-1",
     name: "Test Tenant",
     plan: "pro",
     allowed_agent_modes: overrides.allowed_agent_modes ?? ["router", "react"],
-    allowed_widget_avatar: overrides.allowed_widget_avatar ?? false,
     monthly_token_limit: null,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
@@ -51,7 +49,6 @@ describe("BotDetailForm", () => {
           name: "Test Tenant",
           plan: "pro",
           allowed_agent_modes: ["router", "react"],
-          allowed_widget_avatar: false,
           monthly_token_limit: null,
           created_at: "2024-01-01T00:00:00Z",
           updated_at: "2024-01-01T00:00:00Z",
@@ -185,7 +182,38 @@ describe("BotDetailForm", () => {
     ).toBeDisabled();
   });
 
-  it("should render Widget tab content without crashing when avatar presets API returns object format", async () => {
+  it("should show FAB icon upload section in Widget tab", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <BotDetailForm
+        bot={mockBot}
+        onSave={mockOnSave}
+        onDelete={mockOnDelete}
+        isSaving={false}
+        isDeleting={false}
+      />,
+    );
+    await user.click(screen.getByRole("tab", { name: "Widget" }));
+    expect(screen.getByText("FAB 按鈕圖示")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /上傳圖片/ })).toBeInTheDocument();
+  });
+
+  it("should show placeholder when no icon uploaded", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <BotDetailForm
+        bot={mockBot}
+        onSave={mockOnSave}
+        onDelete={mockOnDelete}
+        isSaving={false}
+        isDeleting={false}
+      />,
+    );
+    await user.click(screen.getByRole("tab", { name: "Widget" }));
+    expect(screen.getByText("尚未上傳自訂圖示")).toBeInTheDocument();
+  });
+
+  it("should render Widget tab content without avatar section", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
@@ -200,72 +228,12 @@ describe("BotDetailForm", () => {
     expect(screen.getByText("Web Widget")).toBeInTheDocument();
     expect(screen.getByText("允許來源")).toBeInTheDocument();
     expect(screen.getByText("對話歷史")).toBeInTheDocument();
-    expect(screen.getByText("Avatar 角色選擇")).toBeInTheDocument();
+    expect(screen.queryByText("Avatar 角色選擇")).not.toBeInTheDocument();
     expect(screen.getByText("Widget 文字設定")).toBeInTheDocument();
     expect(screen.getByText("嵌入碼")).toBeInTheDocument();
   });
 
-  it("should render avatar preset options from object-format API response", async () => {
-    const user = userEvent.setup();
-    setTenantPermissions({ allowed_widget_avatar: true });
-    renderWithProviders(
-      <BotDetailForm
-        bot={mockBot}
-        onSave={mockOnSave}
-        onDelete={mockOnDelete}
-        isSaving={false}
-        isDeleting={false}
-      />,
-    );
-    await user.click(screen.getByRole("tab", { name: "Widget" }));
-    // Avatar select should render without crashing
-    // Multiple comboboxes exist (status + avatar), use getAllByRole
-    const comboboxes = screen.getAllByRole("combobox");
-    expect(comboboxes.length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText("Avatar 角色選擇")).toBeInTheDocument();
-  });
-
   describe("tenant permission controls", () => {
-    it("should disable avatar select when allowed_widget_avatar is false", async () => {
-      const user = userEvent.setup();
-      setTenantPermissions({ allowed_widget_avatar: false });
-      renderWithProviders(
-        <BotDetailForm
-          bot={mockBot}
-          onSave={mockOnSave}
-          onDelete={mockOnDelete}
-          isSaving={false}
-          isDeleting={false}
-        />,
-      );
-      await user.click(screen.getByRole("tab", { name: "Widget" }));
-      expect(screen.getByText("Avatar 角色選擇")).toBeInTheDocument();
-      // Avatar section should indicate disabled state via tenant permission
-      await waitFor(() => {
-        expect(screen.getByText(/租戶未啟用此功能/)).toBeInTheDocument();
-      });
-    });
-
-    it("should enable avatar select when allowed_widget_avatar is true", async () => {
-      const user = userEvent.setup();
-      setTenantPermissions({ allowed_widget_avatar: true });
-      renderWithProviders(
-        <BotDetailForm
-          bot={mockBot}
-          onSave={mockOnSave}
-          onDelete={mockOnDelete}
-          isSaving={false}
-          isDeleting={false}
-        />,
-      );
-      await user.click(screen.getByRole("tab", { name: "Widget" }));
-      expect(screen.getByText("Avatar 角色選擇")).toBeInTheDocument();
-      // Wait for tenant data to load, then check disabled message is absent
-      await waitFor(() => {
-        expect(screen.queryByText(/租戶未啟用此功能/)).not.toBeInTheDocument();
-      });
-    });
-
     it("should show disabled text for react when allowed_agent_modes is ['router']", async () => {
       setTenantPermissions({ allowed_agent_modes: ["router"] });
       renderWithProviders(

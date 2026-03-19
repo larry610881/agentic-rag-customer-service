@@ -1,36 +1,24 @@
 import { http, HttpResponse } from "msw";
 import { mockBots, mockBot } from "@/test/fixtures/bot";
 
-const API_BASE = "http://localhost:8000";
-
-export const mockAvatarPresetsResponse = {
-  hiyori: {
-    type: "live2d",
-    url: "/static/models/live2d/hiyori/hiyori_free_t08.model3.json",
-    label: "Hiyori（2D 女性角色）",
-  },
-  "default-vrm": {
-    type: "vrm",
-    url: "/static/models/vrm/default.vrm",
-    label: "預設 3D 角色",
-  },
-};
-
 export const botHandlers = [
-  http.get(`${API_BASE}/api/v1/bots/avatar-presets`, () => {
-    return HttpResponse.json(mockAvatarPresetsResponse);
+  http.get("*/api/v1/bots", () => {
+    return HttpResponse.json({
+      items: mockBots,
+      total: mockBots.length,
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
+    });
   }),
-  http.get(`${API_BASE}/api/v1/bots`, () => {
-    return HttpResponse.json(mockBots);
-  }),
-  http.get(`${API_BASE}/api/v1/bots/:botId`, ({ params }) => {
+  http.get("*/api/v1/bots/:botId", ({ params }) => {
     const bot = mockBots.find((b) => b.id === params.botId);
     if (!bot) {
       return new HttpResponse(null, { status: 404 });
     }
     return HttpResponse.json(bot);
   }),
-  http.post(`${API_BASE}/api/v1/bots`, async ({ request }) => {
+  http.post("*/api/v1/bots", async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     return HttpResponse.json(
       {
@@ -44,7 +32,7 @@ export const botHandlers = [
       { status: 201 },
     );
   }),
-  http.put(`${API_BASE}/api/v1/bots/:botId`, async ({ request, params }) => {
+  http.put("*/api/v1/bots/:botId", async ({ request, params }) => {
     const body = (await request.json()) as Record<string, unknown>;
     const existing = mockBots.find((b) => b.id === params.botId);
     if (!existing) {
@@ -56,7 +44,7 @@ export const botHandlers = [
       updated_at: new Date().toISOString(),
     });
   }),
-  http.delete(`${API_BASE}/api/v1/bots/:botId`, () => {
+  http.delete("*/api/v1/bots/:botId", () => {
     return new HttpResponse(null, { status: 204 });
   }),
 ];

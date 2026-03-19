@@ -4,20 +4,23 @@ import {
   mockConversationDetail,
 } from "@/test/fixtures/conversation";
 
-const API_BASE = "http://localhost:8000";
-
 export const conversationHandlers = [
-  http.get(`${API_BASE}/api/v1/conversations`, ({ request }) => {
+  http.get("*/api/v1/conversations", ({ request }) => {
     const url = new URL(request.url);
     const botId = url.searchParams.get("bot_id");
-    if (botId) {
-      const filtered = mockConversations.filter((c) => c.bot_id === botId);
-      return HttpResponse.json(filtered);
-    }
-    return HttpResponse.json(mockConversations);
+    const items = botId
+      ? mockConversations.filter((c) => c.bot_id === botId)
+      : mockConversations;
+    return HttpResponse.json({
+      items,
+      total: items.length,
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
+    });
   }),
   http.get(
-    `${API_BASE}/api/v1/conversations/:conversationId`,
+    "*/api/v1/conversations/:conversationId",
     ({ params }) => {
       if (params.conversationId === mockConversationDetail.id) {
         return HttpResponse.json(mockConversationDetail);

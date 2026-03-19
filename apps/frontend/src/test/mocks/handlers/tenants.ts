@@ -1,13 +1,17 @@
 import { http, HttpResponse } from "msw";
 import { mockTenants } from "@/test/fixtures/auth";
 
-const API_BASE = "http://localhost:8000";
-
 export const tenantHandlers = [
-  http.get(`${API_BASE}/api/v1/tenants`, () => {
-    return HttpResponse.json(mockTenants);
+  http.get("*/api/v1/tenants", () => {
+    return HttpResponse.json({
+      items: mockTenants,
+      total: mockTenants.length,
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
+    });
   }),
-  http.post(`${API_BASE}/api/v1/tenants`, async ({ request }) => {
+  http.post("*/api/v1/tenants", async ({ request }) => {
     const body = (await request.json()) as Record<string, string>;
     return HttpResponse.json(
       {
@@ -15,7 +19,6 @@ export const tenantHandlers = [
         name: body.name,
         plan: body.plan || "starter",
         allowed_agent_modes: ["router"],
-        allowed_widget_avatar: false,
         monthly_token_limit: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -23,7 +26,7 @@ export const tenantHandlers = [
       { status: 201 },
     );
   }),
-  http.patch(`${API_BASE}/api/v1/tenants/:tenantId/agent-modes`, async ({ request, params }) => {
+  http.patch("*/api/v1/tenants/:tenantId/agent-modes", async ({ request, params }) => {
     const body = (await request.json()) as { allowed_agent_modes: string[] };
     const tenant = mockTenants.find((t) => t.id === params.tenantId);
     if (!tenant) return new HttpResponse(null, { status: 404 });
@@ -33,17 +36,7 @@ export const tenantHandlers = [
       updated_at: new Date().toISOString(),
     });
   }),
-  http.patch(`${API_BASE}/api/v1/tenants/:tenantId/widget-avatar`, async ({ request, params }) => {
-    const body = (await request.json()) as { allowed_widget_avatar: boolean };
-    const tenant = mockTenants.find((t) => t.id === params.tenantId);
-    if (!tenant) return new HttpResponse(null, { status: 404 });
-    return HttpResponse.json({
-      ...tenant,
-      allowed_widget_avatar: body.allowed_widget_avatar,
-      updated_at: new Date().toISOString(),
-    });
-  }),
-  http.patch(`${API_BASE}/api/v1/tenants/:tenantId/config`, async ({ request, params }) => {
+  http.patch("*/api/v1/tenants/:tenantId/config", async ({ request, params }) => {
     const body = (await request.json()) as { monthly_token_limit: number | null };
     const tenant = mockTenants.find((t) => t.id === params.tenantId);
     if (!tenant) return new HttpResponse(null, { status: 404 });

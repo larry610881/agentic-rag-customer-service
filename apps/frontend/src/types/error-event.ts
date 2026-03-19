@@ -40,7 +40,9 @@ export interface NotificationChannel {
   enabled: boolean;
   config: Record<string, unknown>;
   throttle_minutes: number;
-  min_severity: "all" | "5xx_only";
+  min_severity: "all" | "5xx_only" | "off";
+  notify_diagnostics: boolean;
+  diagnostic_severity: "critical" | "warning" | "all";
   updated_at: string;
   created_at: string;
 }
@@ -52,4 +54,6 @@ export interface CreateChannelPayload {
   config: Record<string, unknown>;
   throttle_minutes?: number;
   min_severity?: string;
+  notify_diagnostics?: boolean;
+  diagnostic_severity?: string;
 }

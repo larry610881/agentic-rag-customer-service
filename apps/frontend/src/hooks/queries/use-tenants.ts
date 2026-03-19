@@ -4,14 +4,19 @@ import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { queryKeys } from "@/hooks/queries/keys";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { Tenant } from "@/types/auth";
+import type { PaginatedResponse } from "@/types/api";
 
-export function useTenants() {
+export function useTenants(page = 1, pageSize = 20) {
   const token = useAuthStore((s) => s.token);
 
   return useQuery({
-    queryKey: queryKeys.tenants.all,
+    queryKey: [...queryKeys.tenants.all, page, pageSize],
     queryFn: () =>
-      apiFetch<Tenant[]>(API_ENDPOINTS.tenants.list, {}, token ?? undefined),
+      apiFetch<PaginatedResponse<Tenant>>(
+        `${API_ENDPOINTS.tenants.list}?page=${page}&page_size=${pageSize}`,
+        {},
+        token ?? undefined,
+      ),
     enabled: !!token,
   });
 }

@@ -57,6 +57,8 @@ interface ChannelFormData {
   enabled: boolean;
   throttle_minutes: number;
   min_severity: string;
+  notify_diagnostics: boolean;
+  diagnostic_severity: string;
   // Email-specific
   smtp_host: string;
   smtp_port: number;
@@ -123,6 +125,8 @@ function ChannelFormDialog({
             enabled: channel.enabled,
             throttle_minutes: channel.throttle_minutes,
             min_severity: channel.min_severity,
+            notify_diagnostics: channel.notify_diagnostics ?? false,
+            diagnostic_severity: channel.diagnostic_severity ?? "critical",
             smtp_host: (channel.config.smtp_host as string) ?? "",
             smtp_port: (channel.config.smtp_port as number) ?? 587,
             smtp_use_tls: (channel.config.smtp_use_tls as boolean) ?? true,
@@ -140,6 +144,8 @@ function ChannelFormDialog({
             enabled: true,
             throttle_minutes: 5,
             min_severity: "all",
+            notify_diagnostics: false,
+            diagnostic_severity: "critical",
             smtp_host: "",
             smtp_port: 587,
             smtp_use_tls: true,
@@ -161,6 +167,8 @@ function ChannelFormDialog({
       config: buildConfig(data),
       throttle_minutes: data.throttle_minutes,
       min_severity: data.min_severity,
+      notify_diagnostics: data.notify_diagnostics,
+      diagnostic_severity: data.diagnostic_severity,
     };
 
     if (channel) {
@@ -239,16 +247,18 @@ function ChannelFormDialog({
             <Label>啟用</Label>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>節流間隔（分鐘）</Label>
+            <Input
+              type="number"
+              {...register("throttle_minutes", { valueAsNumber: true })}
+            />
+          </div>
+
+          <div className="space-y-3 border-t pt-3">
+            <h4 className="text-sm font-medium">錯誤通知</h4>
             <div className="space-y-2">
-              <Label>節流間隔（分鐘）</Label>
-              <Input
-                type="number"
-                {...register("throttle_minutes", { valueAsNumber: true })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>最低嚴重度</Label>
+              <Label>嚴重度篩選</Label>
               <Controller
                 name="min_severity"
                 control={control}
@@ -260,10 +270,50 @@ function ChannelFormDialog({
                     <SelectContent>
                       <SelectItem value="all">全部</SelectItem>
                       <SelectItem value="5xx_only">僅 5xx</SelectItem>
+                      <SelectItem value="off">關閉</SelectItem>
                     </SelectContent>
                   </Select>
                 )}
               />
+            </div>
+          </div>
+
+          <div className="space-y-3 border-t pt-3">
+            <h4 className="text-sm font-medium">RAG 品質告警</h4>
+            <div className="flex items-center gap-2">
+              <Controller
+                name="notify_diagnostics"
+                control={control}
+                render={({ field }) => (
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                )}
+              />
+              <Label>啟用診斷告警</Label>
+            </div>
+            <div className="space-y-2">
+              <Label>告警嚴重度</Label>
+              <Controller
+                name="diagnostic_severity"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="critical">僅 Critical</SelectItem>
+                      <SelectItem value="warning">Warning 以上</SelectItem>
+                      <SelectItem value="all">全部</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                評估分數低於診斷規則門檻時通知
+              </p>
             </div>
           </div>
 
@@ -397,7 +447,7 @@ export default function AdminNotificationChannelsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">通知渠道</h1>
           <p className="text-muted-foreground">
-            管理錯誤通知的發送渠道（Email / Slack / Teams）
+            管理錯誤通知與 RAG 品質告警的發送渠道
           </p>
         </div>
         <Button onClick={handleAdd}>
@@ -413,6 +463,7 @@ export default function AdminNotificationChannelsPage() {
               <TableHead>名稱</TableHead>
               <TableHead className="w-24">類型</TableHead>
               <TableHead className="w-24">狀態</TableHead>
+              <TableHead className="w-32">訂閱</TableHead>
               <TableHead className="w-32">節流（分鐘）</TableHead>
               <TableHead className="w-40">建立時間</TableHead>
               <TableHead className="w-40">操作</TableHead>
@@ -421,13 +472,13 @@ export default function AdminNotificationChannelsPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   載入中...
                 </TableCell>
               </TableRow>
             ) : !channels || channels.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   尚無通知渠道
                 </TableCell>
               </TableRow>
@@ -444,6 +495,16 @@ export default function AdminNotificationChannelsPage() {
                     <Badge variant={ch.enabled ? "default" : "outline"}>
                       {ch.enabled ? "啟用" : "停用"}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      {ch.min_severity !== "off" && (
+                        <Badge variant="secondary">錯誤</Badge>
+                      )}
+                      {ch.notify_diagnostics && (
+                        <Badge variant="outline">診斷</Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>{ch.throttle_minutes}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">

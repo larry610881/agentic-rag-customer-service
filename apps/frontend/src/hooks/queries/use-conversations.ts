@@ -8,17 +8,22 @@ import type {
   ConversationSummary,
   ConversationDetail,
 } from "@/types/conversation";
+import type { PaginatedResponse } from "@/types/api";
 
-export function useConversations() {
+export function useConversations(page = 1, pageSize = 20) {
   const token = useAuthStore((s) => s.token);
   const tenantId = useAuthStore((s) => s.tenantId);
   const botId = useChatStore((s) => s.botId);
 
+  const baseUrl = API_ENDPOINTS.conversations.list(botId);
+  const separator = baseUrl.includes("?") ? "&" : "?";
+  const url = `${baseUrl}${separator}page=${page}&page_size=${pageSize}`;
+
   return useQuery({
-    queryKey: queryKeys.conversations.all(tenantId ?? "", botId),
+    queryKey: [...queryKeys.conversations.all(tenantId ?? "", botId), page, pageSize],
     queryFn: () =>
-      apiFetch<ConversationSummary[]>(
-        API_ENDPOINTS.conversations.list(botId),
+      apiFetch<PaginatedResponse<ConversationSummary>>(
+        url,
         {},
         token ?? undefined,
       ),

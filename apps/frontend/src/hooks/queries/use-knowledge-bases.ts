@@ -5,16 +5,17 @@ import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { queryKeys } from "@/hooks/queries/keys";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { KnowledgeBase } from "@/types/knowledge";
+import type { PaginatedResponse } from "@/types/api";
 
-export function useKnowledgeBases() {
+export function useKnowledgeBases(page = 1, pageSize = 20) {
   const token = useAuthStore((s) => s.token);
   const tenantId = useAuthStore((s) => s.tenantId);
 
   return useQuery({
-    queryKey: queryKeys.knowledgeBases.all(tenantId ?? ""),
+    queryKey: [...queryKeys.knowledgeBases.all(tenantId ?? ""), page, pageSize],
     queryFn: () =>
-      apiFetch<KnowledgeBase[]>(
-        API_ENDPOINTS.knowledgeBases.list,
+      apiFetch<PaginatedResponse<KnowledgeBase>>(
+        `${API_ENDPOINTS.knowledgeBases.list}?page=${page}&page_size=${pageSize}`,
         {},
         token ?? undefined,
       ),

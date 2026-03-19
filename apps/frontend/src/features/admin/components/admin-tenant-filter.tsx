@@ -16,9 +16,9 @@ interface AdminTenantFilterProps {
 }
 
 export function AdminTenantFilter({ value, onChange, className }: AdminTenantFilterProps) {
-  const { data: tenants } = useTenants();
+  const { data } = useTenants();
 
-  const realTenants = tenants?.filter((t) => t.id !== SYSTEM_TENANT_ID) ?? [];
+  const realTenants = data?.items?.filter((t) => t.id !== SYSTEM_TENANT_ID) ?? [];
 
   return (
     <Select

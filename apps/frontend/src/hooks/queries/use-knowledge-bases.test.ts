@@ -22,8 +22,8 @@ describe("useKnowledgeBases", () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(result.current.data).toHaveLength(2);
-    expect(result.current.data?.[0].name).toBe("Product Documentation");
+    expect(result.current.data?.items).toHaveLength(2);
+    expect(result.current.data?.items?.[0].name).toBe("Product Documentation");
   });
 
   it("should not fetch when no tenant selected", () => {

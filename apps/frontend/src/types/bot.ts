@@ -9,6 +9,9 @@ export interface McpServerConfig {
   enabled_tools: string[];
   tools: McpToolMeta[];
   version: string;
+  transport?: "http" | "stdio";
+  command?: string;
+  args?: string[];
 }
 
 export interface Bot {
@@ -41,11 +44,10 @@ export interface Bot {
   base_prompt: string;
   router_prompt: string;
   react_prompt: string;
+  fab_icon_url: string;
   widget_enabled: boolean;
   widget_allowed_origins: string[];
   widget_keep_history: boolean;
-  avatar_type: "none" | "live2d" | "vrm" | "glb";
-  avatar_model_url: string;
   widget_welcome_message: string;
   widget_placeholder_text: string;
   widget_greeting_messages: string[];
@@ -86,8 +88,6 @@ export interface CreateBotRequest {
   widget_enabled?: boolean;
   widget_allowed_origins?: string[];
   widget_keep_history?: boolean;
-  avatar_type?: "none" | "live2d" | "vrm" | "glb";
-  avatar_model_url?: string;
   widget_welcome_message?: string;
   widget_placeholder_text?: string;
   widget_greeting_messages?: string[];
@@ -126,8 +126,6 @@ export interface UpdateBotRequest {
   widget_enabled?: boolean;
   widget_allowed_origins?: string[];
   widget_keep_history?: boolean;
-  avatar_type?: "none" | "live2d" | "vrm" | "glb";
-  avatar_model_url?: string;
   widget_welcome_message?: string;
   widget_placeholder_text?: string;
   widget_greeting_messages?: string[];

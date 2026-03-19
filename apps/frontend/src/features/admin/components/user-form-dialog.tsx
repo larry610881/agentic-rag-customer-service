@@ -42,8 +42,8 @@ export function UserFormDialog({
   isPending,
 }: UserFormDialogProps) {
   const isEditing = !!user;
-  const { data: tenants } = useTenants();
-  const realTenants = tenants?.filter((t) => t.id !== SYSTEM_TENANT_ID) ?? [];
+  const { data: tenantsData } = useTenants();
+  const realTenants = tenantsData?.items?.filter((t) => t.id !== SYSTEM_TENANT_ID) ?? [];
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

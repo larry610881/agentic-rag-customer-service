@@ -1,15 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useForm, Controller, type UseFormRegister } from "react-hook-form";
-import { useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Copy, Check, ChevronRight, Globe, Plus, Trash2 } from "lucide-react";
-import { apiFetch } from "@/lib/api-client";
+import { Copy, Check, ChevronRight, Globe, ImageIcon, Plus, Trash2, Upload } from "lucide-react";
 import { useTenants } from "@/hooks/queries/use-tenants";
-import { API_ENDPOINTS } from "@/lib/api-endpoints";
-import { PUBLIC_API_URL } from "@/lib/api-config";
-import { queryKeys } from "@/hooks/queries/keys";
+import { API_BASE, PUBLIC_API_URL } from "@/lib/api-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +31,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
-import { AvatarPreview } from "./avatar-preview";
 import { ModelSelect } from "./model-select";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import type { Bot, UpdateBotRequest } from "@/types/bot";
@@ -84,8 +79,6 @@ const botFormSchema = z.object({
   widget_enabled: z.boolean().default(false),
   widget_allowed_origins: z.string().default(""),
   widget_keep_history: z.boolean().default(true),
-  avatar_type: z.enum(["none", "live2d", "vrm", "glb"]).default("none"),
-  avatar_model_url: z.string().default(""),
   widget_welcome_message: z.string().max(500).default(""),
   widget_placeholder_text: z.string().max(200).default(""),
   widget_greeting_messages: z.array(z.string().max(100)).default([]),
@@ -102,13 +95,6 @@ interface BotDetailFormProps {
   onDelete: () => void;
   isSaving: boolean;
   isDeleting: boolean;
-}
-
-interface AvatarPreset {
-  name: string;
-  label: string;
-  type: "live2d" | "vrm";
-  url: string;
 }
 
 const TAB_KEYS = {
@@ -203,34 +189,16 @@ export function BotDetailForm({
   isSaving,
   isDeleting,
 }: BotDetailFormProps) {
-  const { data: knowledgeBases } = useKnowledgeBases();
+  const { data: kbData } = useKnowledgeBases();
   const { data: enabledModels } = useEnabledModels();
   const { data: systemPrompts } = useSystemPrompts();
   const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.KNOWLEDGE);
 
   // Tenant permission check for agent modes
   const tenantId = useAuthStore((s) => s.tenantId);
-  const token = useAuthStore((s) => s.token);
-  const { data: fetchedTenants } = useTenants();
-  const currentTenant = fetchedTenants?.find((t) => t.id === tenantId);
+  const { data: tenantsData } = useTenants();
+  const currentTenant = tenantsData?.items?.find((t) => t.id === tenantId);
   const allowedModes = currentTenant?.allowed_agent_modes ?? ["router"];
-  const allowedWidgetAvatar = currentTenant?.allowed_widget_avatar ?? false;
-
-  const { data: avatarPresets } = useQuery({
-    queryKey: queryKeys.bots.avatarPresets,
-    queryFn: async () => {
-      const raw = await apiFetch<Record<string, Omit<AvatarPreset, "name">>>(
-        API_ENDPOINTS.bots.avatarPresets,
-        {},
-        token ?? undefined,
-      );
-      return Object.entries(raw).map(([name, preset]) => ({
-        name,
-        ...preset,
-      }));
-    },
-    enabled: !!token,
-  });
 
   const {
     register,
@@ -272,8 +240,6 @@ export function BotDetailForm({
       widget_enabled: bot.widget_enabled ?? false,
       widget_allowed_origins: (bot.widget_allowed_origins ?? []).join("\n"),
       widget_keep_history: bot.widget_keep_history ?? true,
-      avatar_type: bot.avatar_type ?? "none",
-      avatar_model_url: bot.avatar_model_url ?? "",
       widget_welcome_message: bot.widget_welcome_message ?? "",
       widget_placeholder_text: bot.widget_placeholder_text ?? "",
       widget_greeting_messages: bot.widget_greeting_messages ?? [],
@@ -335,8 +301,6 @@ export function BotDetailForm({
       widget_enabled: bot.widget_enabled ?? false,
       widget_allowed_origins: (bot.widget_allowed_origins ?? []).join("\n"),
       widget_keep_history: bot.widget_keep_history ?? true,
-      avatar_type: bot.avatar_type ?? "none",
-      avatar_model_url: bot.avatar_model_url ?? "",
       widget_welcome_message: bot.widget_welcome_message ?? "",
       widget_placeholder_text: bot.widget_placeholder_text ?? "",
       widget_greeting_messages: bot.widget_greeting_messages ?? [],
@@ -611,7 +575,7 @@ export function BotDetailForm({
                 control={control}
                 render={({ field }) => (
                   <div className="flex flex-col gap-2">
-                    {knowledgeBases?.map((kb) => (
+                    {kbData?.items?.map((kb) => (
                       <label
                         key={kb.id}
                         className="flex items-center gap-2 text-sm"
@@ -633,7 +597,7 @@ export function BotDetailForm({
                         {kb.name}
                       </label>
                     ))}
-                    {(!knowledgeBases || knowledgeBases.length === 0) && (
+                    {(!kbData?.items || kbData.items.length === 0) && (
                       <p className="text-sm text-muted-foreground">
                         目前沒有可用的知識庫。
                       </p>
@@ -972,90 +936,98 @@ export function BotDetailForm({
             </p>
           </section>
 
-          {/* Avatar 角色選擇 */}
+          {/* FAB 按鈕圖示 */}
           <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">Avatar 角色選擇</h3>
-            <Controller
-              name="avatar_type"
-              control={control}
-              render={({ field: avatarField }) => {
-                // Build a combined select value for preset matching
-                const avatarUrl = watch("avatar_model_url");
-                const selectValue = (() => {
-                  if (avatarField.value === "none") return "__none__";
-                  // Check if current URL matches a preset
-                  const matched = avatarPresets?.find(
-                    (p) => p.type === avatarField.value && p.url === avatarUrl,
-                  );
-                  if (matched) return `preset:${matched.name}`;
-                  return "__custom__";
-                })();
-
-                return (
-                  <div className="flex items-start gap-6">
-                    <div className="flex flex-col gap-3">
-                      <Select
-                        value={selectValue}
-                        onValueChange={(v) => {
-                          if (v === "__none__") {
-                            avatarField.onChange("none");
-                            setValue("avatar_model_url", "");
-                          } else if (v === "__custom__") {
-                            avatarField.onChange("vrm");
-                            setValue("avatar_model_url", "");
-                          } else if (v.startsWith("preset:")) {
-                            const presetName = v.replace("preset:", "");
-                            const preset = avatarPresets?.find((p) => p.name === presetName);
-                            if (preset) {
-                              avatarField.onChange(preset.type);
-                              setValue("avatar_model_url", preset.url);
-                            }
+            <h3 className="text-lg font-semibold">FAB 按鈕圖示</h3>
+            <p className="text-sm text-muted-foreground">
+              自訂 FAB 按鈕的圖片（支援 PNG / JPG / WebP，最大 256KB）
+            </p>
+            <div className="flex items-center gap-4">
+              {bot.fab_icon_url ? (
+                <img
+                  src={`${API_BASE}${bot.fab_icon_url}`}
+                  alt="FAB icon"
+                  className="h-14 w-14 rounded-full object-cover border"
+                />
+              ) : (
+                <div className="flex h-14 w-14 items-center justify-center rounded-full border bg-muted">
+                  <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                </div>
+              )}
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-muted-foreground">
+                  {bot.fab_icon_url ? "已上傳自訂圖示" : "尚未上傳自訂圖示"}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const input = document.createElement("input");
+                      input.type = "file";
+                      input.accept = "image/png,image/jpeg,image/webp";
+                      input.onchange = async (e) => {
+                        const file = (e.target as HTMLInputElement).files?.[0];
+                        if (!file) return;
+                        const formData = new FormData();
+                        formData.append("file", file);
+                        const token = useAuthStore.getState().token;
+                        try {
+                          const res = await fetch(
+                            `${API_BASE}/api/v1/bots/${bot.id}/icon`,
+                            {
+                              method: "POST",
+                              headers: { Authorization: `Bearer ${token}` },
+                              body: formData,
+                            },
+                          );
+                          if (!res.ok) {
+                            const body = await res.json().catch(() => ({}));
+                            toast.error(body.detail || "上傳失敗");
+                            return;
                           }
-                        }}
-                        disabled={!allowedWidgetAvatar}
-                      >
-                        <SelectTrigger className="w-64">
-                          <SelectValue placeholder="選擇角色" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">無角色</SelectItem>
-                          {avatarPresets?.map((preset) => (
-                            <SelectItem
-                              key={preset.name}
-                              value={`preset:${preset.name}`}
-                            >
-                              {preset.label}
-                            </SelectItem>
-                          ))}
-                          <SelectItem value="__custom__">自訂 URL（進階）</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {!allowedWidgetAvatar && (
-                        <p className="text-xs text-muted-foreground">
-                          租戶未啟用此功能，請聯絡系統管理員開啟 Widget Avatar 權限。
-                        </p>
-                      )}
-                      {selectValue === "__custom__" && (
-                        <div className="flex flex-col gap-2">
-                          <Label htmlFor="avatar-model-url">模型 URL</Label>
-                          <Input
-                            id="avatar-model-url"
-                            {...register("avatar_model_url")}
-                            placeholder="https://example.com/model.vrm"
-                          />
-                        </div>
-                      )}
-                    </div>
-                    {allowedWidgetAvatar && (
-                      <AvatarPreview
-                        avatarType={watch("avatar_type") as "none" | "live2d" | "vrm"}
-                        avatarModelUrl={watch("avatar_model_url") || ""}
-                      />
-                    )}
-                  </div>
-                );
-              }}
-            />
+                          toast.success("FAB 圖示已上傳");
+                          window.location.reload();
+                        } catch {
+                          toast.error("上傳失敗");
+                        }
+                      };
+                      input.click();
+                    }}
+                  >
+                    <Upload className="mr-1 h-4 w-4" />
+                    上傳圖片
+                  </Button>
+                  {bot.fab_icon_url && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        const token = useAuthStore.getState().token;
+                        try {
+                          await fetch(
+                            `${API_BASE}/api/v1/bots/${bot.id}/icon`,
+                            {
+                              method: "DELETE",
+                              headers: { Authorization: `Bearer ${token}` },
+                            },
+                          );
+                          toast.success("FAB 圖示已移除");
+                          window.location.reload();
+                        } catch {
+                          toast.error("移除失敗");
+                        }
+                      }}
+                    >
+                      <Trash2 className="mr-1 h-4 w-4" />
+                      移除
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
           </section>
 
           {/* 歡迎訊息 + Placeholder */}
@@ -1173,10 +1145,10 @@ export function BotDetailForm({
             <div className="flex flex-col gap-2">
               <div className="flex items-start gap-2">
                 <pre className="flex-1 whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs font-mono select-all">
-                  {`<script src="${PUBLIC_API_URL}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light">\n</script>`}
+                  {`<script src="${PUBLIC_API_URL}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light"\n        crossorigin="anonymous">\n</script>`}
                 </pre>
                 <WebhookCopyButton
-                  url={`<script src="${PUBLIC_API_URL}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light">\n</script>`}
+                  url={`<script src="${PUBLIC_API_URL}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light"\n        crossorigin="anonymous">\n</script>`}
                   label="嵌入碼"
                 />
               </div>

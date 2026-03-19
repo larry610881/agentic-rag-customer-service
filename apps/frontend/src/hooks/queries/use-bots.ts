@@ -5,15 +5,20 @@ import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { queryKeys } from "@/hooks/queries/keys";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { Bot, CreateBotRequest, UpdateBotRequest } from "@/types/bot";
+import type { PaginatedResponse } from "@/types/api";
 
-export function useBots() {
+export function useBots(page = 1, pageSize = 20) {
   const token = useAuthStore((s) => s.token);
   const tenantId = useAuthStore((s) => s.tenantId);
 
   return useQuery({
-    queryKey: queryKeys.bots.all(tenantId ?? ""),
+    queryKey: [...queryKeys.bots.all(tenantId ?? ""), page, pageSize],
     queryFn: () =>
-      apiFetch<Bot[]>(API_ENDPOINTS.bots.list, {}, token ?? undefined),
+      apiFetch<PaginatedResponse<Bot>>(
+        `${API_ENDPOINTS.bots.list}?page=${page}&page_size=${pageSize}`,
+        {},
+        token ?? undefined,
+      ),
     enabled: !!token && !!tenantId,
   });
 }

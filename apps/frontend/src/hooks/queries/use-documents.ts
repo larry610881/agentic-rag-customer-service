@@ -9,23 +9,24 @@ import type {
   DocumentResponse,
   UploadDocumentResponse,
 } from "@/types/knowledge";
+import type { PaginatedResponse } from "@/types/api";
 import { API_BASE } from "@/lib/api-config";
 
-export function useDocuments(kbId: string) {
+export function useDocuments(kbId: string, page = 1, pageSize = 20) {
   const token = useAuthStore((s) => s.token);
 
   return useQuery({
-    queryKey: queryKeys.documents.all(kbId),
+    queryKey: [...queryKeys.documents.all(kbId), page, pageSize],
     queryFn: () =>
-      apiFetch<DocumentResponse[]>(
-        API_ENDPOINTS.documents.list(kbId),
+      apiFetch<PaginatedResponse<DocumentResponse>>(
+        `${API_ENDPOINTS.documents.list(kbId)}?page=${page}&page_size=${pageSize}`,
         {},
         token ?? undefined,
       ),
     enabled: !!kbId && !!token,
     refetchInterval: (query) => {
       const data = query.state.data;
-      if (data?.some((d) => d.status === "pending" || d.status === "processing")) {
+      if (data?.items?.some((d) => d.status === "pending" || d.status === "processing")) {
         return 5000;
       }
       return false;

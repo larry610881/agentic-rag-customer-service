@@ -14,12 +14,14 @@ export function useNotificationChannels() {
 
   return useQuery({
     queryKey: queryKeys.notificationChannels.all,
-    queryFn: () =>
-      apiFetch<NotificationChannel[]>(
+    queryFn: async () => {
+      const res = await apiFetch<{ items: NotificationChannel[] }>(
         API_ENDPOINTS.notificationChannels.list,
         {},
         token ?? undefined,
-      ),
+      );
+      return res.items;
+    },
     enabled: !!token && role === "system_admin",
   });
 }

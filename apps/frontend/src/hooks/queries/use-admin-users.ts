@@ -10,18 +10,22 @@ import type {
   UpdateUserRequest,
   ResetPasswordRequest,
 } from "@/types/user";
+import type { PaginatedResponse } from "@/types/api";
 
-export function useAdminUsers(tenantId?: string) {
+export function useAdminUsers(tenantId?: string, page = 1, pageSize = 20) {
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.role);
 
-  const url = tenantId
-    ? `${API_ENDPOINTS.adminUsers.list}?tenant_id=${tenantId}`
-    : API_ENDPOINTS.adminUsers.list;
+  const params = new URLSearchParams();
+  if (tenantId) params.set("tenant_id", tenantId);
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+  const url = `${API_ENDPOINTS.adminUsers.list}?${params.toString()}`;
 
   return useQuery({
-    queryKey: queryKeys.admin.users(tenantId),
-    queryFn: () => apiFetch<User[]>(url, {}, token ?? undefined),
+    queryKey: [...queryKeys.admin.users(tenantId), page, pageSize],
+    queryFn: () =>
+      apiFetch<PaginatedResponse<User>>(url, {}, token ?? undefined),
     enabled: !!token && role === "system_admin",
   });
 }

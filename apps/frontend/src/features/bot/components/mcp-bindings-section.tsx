@@ -51,13 +51,14 @@ export function McpBindingsSection({
 
   const handleAddFromRegistry = useCallback(
     (server: McpRegistration) => {
-      if (mcpServers.some((s) => s.url === server.url)) {
+      const allToolNames = server.available_tools.map((t) => t.name);
+      const isStdio = server.transport === "stdio";
+      if (mcpServers.some((s) => (isStdio ? s.command === server.command : s.url === server.url))) {
         toast.error("此 Server 已綁定");
         return;
       }
-      const allToolNames = server.available_tools.map((t) => t.name);
       const newServer: McpServerConfig = {
-        url: server.url,
+        url: isStdio ? "" : server.url,
         name: server.name,
         enabled_tools: allToolNames,
         tools: server.available_tools.map((t) => ({
@@ -65,11 +66,18 @@ export function McpBindingsSection({
           description: t.description,
         })),
         version: server.version ?? "",
+        ...(isStdio && {
+          transport: "stdio" as const,
+          command: server.command ?? "",
+          args: server.args ?? [],
+        }),
+        ...(!isStdio && { transport: "http" as const }),
       };
       onMcpServersChange([...mcpServers, newServer]);
+      const mapKey = isStdio ? server.command ?? server.name : server.url;
       setServerToolsMap((prev) => ({
         ...prev,
-        [server.url]: server.available_tools.map((t) => ({
+        [mapKey]: server.available_tools.map((t) => ({
           name: t.name,
           description: t.description,
           parameters: [],
@@ -296,6 +304,30 @@ export function McpBindingsSection({
                 </div>
                 {isExpanded && (
                   <div className="flex flex-col gap-1.5 mt-2 ml-6">
+                    {/* Select All / Deselect All */}
+                    {(() => {
+                      const allNames = toolsMeta.length > 0
+                        ? toolsMeta.map((t) => t.name)
+                        : server.enabled_tools;
+                      const allSelected = allNames.length > 0 && allNames.every((n) => server.enabled_tools.includes(n));
+                      return (
+                        <button
+                          type="button"
+                          className="text-xs text-primary hover:underline self-start mb-1"
+                          onClick={() => {
+                            const serverKey = server.transport === "stdio" ? server.command ?? server.name : server.url;
+                            const updated = mcpServers.map((s) => {
+                              const sKey = s.transport === "stdio" ? s.command ?? s.name : s.url;
+                              if (sKey !== serverKey) return s;
+                              return { ...s, enabled_tools: allSelected ? [] : [...allNames] };
+                            });
+                            onMcpServersChange(updated);
+                          }}
+                        >
+                          {allSelected ? "取消全選" : "全選"}
+                        </button>
+                      );
+                    })()}
                     {toolsMeta.length > 0
                       ? toolsMeta.map((tool) => (
                           <label

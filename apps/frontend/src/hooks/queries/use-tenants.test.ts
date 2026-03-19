@@ -18,8 +18,8 @@ describe("useTenants", () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(result.current.data).toHaveLength(2);
-    expect(result.current.data?.[0].name).toBe("Acme Corp");
+    expect(result.current.data?.items).toHaveLength(2);
+    expect(result.current.data?.items?.[0].name).toBe("Acme Corp");
   });
 
   it("should not fetch when no token", () => {

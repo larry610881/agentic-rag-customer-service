@@ -9,10 +9,8 @@ import {
   mockTokenCostStats,
 } from "@/test/fixtures/feedback";
 
-const API_BASE = "http://localhost:8000";
-
 export const feedbackHandlers = [
-  http.post(`${API_BASE}/api/v1/feedback`, async ({ request }) => {
+  http.post("*/api/v1/feedback", async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     return HttpResponse.json(
       {
@@ -27,28 +25,28 @@ export const feedbackHandlers = [
       { status: 201 },
     );
   }),
-  http.get(`${API_BASE}/api/v1/feedback`, () => {
+  http.get("*/api/v1/feedback", () => {
     return HttpResponse.json(mockFeedbackList);
   }),
-  http.get(`${API_BASE}/api/v1/feedback/stats`, () => {
+  http.get("*/api/v1/feedback/stats", () => {
     return HttpResponse.json(mockFeedbackStats);
   }),
-  http.get(`${API_BASE}/api/v1/feedback/conversation/:conversationId`, () => {
+  http.get("*/api/v1/feedback/conversation/:conversationId", () => {
     return HttpResponse.json(mockFeedbackList);
   }),
-  http.patch(`${API_BASE}/api/v1/feedback/:feedbackId/tags`, () => {
+  http.patch("*/api/v1/feedback/:feedbackId/tags", () => {
     return HttpResponse.json({ status: "ok" });
   }),
-  http.get(`${API_BASE}/api/v1/feedback/analysis/satisfaction-trend`, () => {
+  http.get("*/api/v1/feedback/analysis/satisfaction-trend", () => {
     return HttpResponse.json(mockSatisfactionTrend);
   }),
-  http.get(`${API_BASE}/api/v1/feedback/analysis/top-issues`, () => {
+  http.get("*/api/v1/feedback/analysis/top-issues", () => {
     return HttpResponse.json(mockTopIssues);
   }),
-  http.get(`${API_BASE}/api/v1/feedback/analysis/retrieval-quality`, () => {
+  http.get("*/api/v1/feedback/analysis/retrieval-quality", () => {
     return HttpResponse.json(mockRetrievalQuality);
   }),
-  http.get(`${API_BASE}/api/v1/feedback/analysis/token-cost`, () => {
+  http.get("*/api/v1/feedback/analysis/token-cost", () => {
     return HttpResponse.json(mockTokenCostStats);
   }),
 ];

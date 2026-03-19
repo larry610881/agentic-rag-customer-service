@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import {
   useErrorEvents,
   useResolveErrorEvent,
@@ -43,7 +43,14 @@ function sourceBadgeVariant(
 
 function ErrorEventDetail({ event }: { event: ErrorEvent }) {
   return (
-    <div className="space-y-3 rounded-md bg-muted/30 p-4 text-sm">
+    <div className="space-y-3 bg-muted/30 p-4 text-sm">
+      {/* Full message (table column truncates it) */}
+      <div>
+        <p className="font-medium mb-1">錯誤訊息</p>
+        <p className="text-sm break-all">{event.message}</p>
+      </div>
+
+      {/* Stack Trace */}
       {event.stack_trace && (
         <div>
           <p className="font-medium mb-1">Stack Trace</p>
@@ -52,7 +59,9 @@ function ErrorEventDetail({ event }: { event: ErrorEvent }) {
           </pre>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-2 text-xs">
+
+      {/* Metadata grid */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
         <div>
           <span className="text-muted-foreground">Fingerprint: </span>
           <span className="font-mono">{event.fingerprint}</span>
@@ -88,6 +97,8 @@ function ErrorEventDetail({ event }: { event: ErrorEvent }) {
           </div>
         )}
       </div>
+
+      {/* Extra data */}
       {event.extra && Object.keys(event.extra).length > 0 && (
         <div>
           <p className="font-medium mb-1">Extra</p>
@@ -96,6 +107,8 @@ function ErrorEventDetail({ event }: { event: ErrorEvent }) {
           </pre>
         </div>
       )}
+
+      {/* Resolved info */}
       {event.resolved && (
         <div className="text-xs text-muted-foreground">
           Resolved at {event.resolved_at} by {event.resolved_by}
@@ -175,7 +188,7 @@ export default function AdminErrorEventsPage() {
               <TableHead className="w-24">來源</TableHead>
               <TableHead className="w-40">錯誤類型</TableHead>
               <TableHead>訊息</TableHead>
-              <TableHead className="w-32">路徑</TableHead>
+              <TableHead className="w-48">路徑</TableHead>
               <TableHead className="w-24">狀態</TableHead>
               <TableHead className="w-40">時間</TableHead>
               <TableHead className="w-24">操作</TableHead>
@@ -196,69 +209,89 @@ export default function AdminErrorEventsPage() {
               </TableRow>
             ) : (
               events.map((event) => (
-                <TableRow key={event.id} className="group">
-                  <TableCell>
-                    <button
-                      className="p-0.5 hover:bg-muted rounded"
-                      onClick={() =>
-                        setExpandedId(expandedId === event.id ? null : event.id)
-                      }
-                    >
-                      {expandedId === event.id ? (
-                        <ChevronDown className="h-4 w-4" />
+                <Fragment key={event.id}>
+                  <TableRow
+                    className="group cursor-pointer"
+                    onClick={() =>
+                      setExpandedId(expandedId === event.id ? null : event.id)
+                    }
+                  >
+                    <TableCell>
+                      <span className="inline-flex p-0.5">
+                        {expandedId === event.id ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={sourceBadgeVariant(event.source)}>
+                        {event.source}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {event.error_type}
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate text-sm">
+                      {event.message}
+                    </TableCell>
+                    <TableCell className="max-w-[12rem]">
+                      {event.path ? (
+                        <button
+                          className="flex items-center gap-1 font-mono text-xs group/path max-w-full"
+                          title={event.path}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(event.path!);
+                            toast.success("已複製路徑");
+                          }}
+                        >
+                          <span className="truncate">{event.path}</span>
+                          <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover/path:opacity-50 transition-opacity duration-150" />
+                        </button>
                       ) : (
-                        <ChevronRight className="h-4 w-4" />
+                        <span className="text-muted-foreground text-xs">—</span>
                       )}
-                    </button>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={sourceBadgeVariant(event.source)}>
-                      {event.source}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {event.error_type}
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate text-sm">
-                    {event.message}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs truncate max-w-[8rem]">
-                    {event.path}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={event.resolved ? "outline" : "destructive"}>
-                      {event.resolved ? "已解決" : "未解決"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {new Date(event.created_at).toLocaleString("zh-TW")}
-                  </TableCell>
-                  <TableCell>
-                    {!event.resolved && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleResolve(event.id)}
-                        disabled={resolveMutation.isPending}
-                      >
-                        <CheckCircle2 className="h-4 w-4 mr-1" />
-                        解決
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={event.resolved ? "outline" : "destructive"}>
+                        {event.resolved ? "已解決" : "未解決"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {new Date(event.created_at).toLocaleString("zh-TW")}
+                    </TableCell>
+                    <TableCell>
+                      {!event.resolved && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleResolve(event.id);
+                          }}
+                          disabled={resolveMutation.isPending}
+                        >
+                          <CheckCircle2 className="h-4 w-4 mr-1" />
+                          解決
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                  {expandedId === event.id && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="p-0">
+                        <ErrorEventDetail event={event} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
               ))
             )}
           </TableBody>
         </Table>
       </div>
-
-      {/* Expanded detail row rendered below the table */}
-      {expandedId && events.find((e) => e.id === expandedId) && (
-        <ErrorEventDetail
-          event={events.find((e) => e.id === expandedId)!}
-        />
-      )}
 
       {/* Pagination */}
       {total > PAGE_SIZE && (

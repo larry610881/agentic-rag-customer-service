@@ -157,10 +157,23 @@ export function useStreaming() {
           },
           body: JSON.stringify({
             source: "frontend",
-            error_type: "TestError",
-            message: "手動測試：前端模擬 JS 錯誤",
+            error_type: "TypeError",
+            message: "Cannot read properties of undefined (reading 'map')",
+            stack_trace: [
+              "TypeError: Cannot read properties of undefined (reading 'map')",
+              "    at BotSelector (bot-selector.tsx:18:42)",
+              "    at renderWithHooks (react-dom.development.js:15486:18)",
+              "    at mountIndeterminateComponent (react-dom.development.js:20103:13)",
+              "    at beginWork (react-dom.development.js:21626:16)",
+              "    at HTMLUnknownElement.callCallback (react-dom.development.js:4164:14)",
+            ].join("\n"),
             path: window.location.pathname,
             user_agent: navigator.userAgent,
+            extra: {
+              component: "BotSelector",
+              react_version: "18.3.1",
+              build: "production",
+            },
           }),
         }).catch(() => {});
         finalizeAssistantMessage([], []);

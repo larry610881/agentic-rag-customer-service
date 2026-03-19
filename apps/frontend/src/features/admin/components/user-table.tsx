@@ -39,6 +39,8 @@ import {
   useDeleteUser,
   useResetPassword,
 } from "@/hooks/queries/use-admin-users";
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { usePagination } from "@/hooks/use-pagination";
 import type { User } from "@/types/user";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -49,7 +51,8 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function UserTable() {
   const [tenantId, setTenantId] = useState<string | undefined>();
-  const { data: users, isLoading, isError } = useAdminUsers(tenantId);
+  const { page, setPage } = usePagination();
+  const { data, isLoading, isError } = useAdminUsers(tenantId, page);
   const tenantNameMap = useTenantNameMap();
 
   const createUser = useCreateUser();
@@ -141,11 +144,11 @@ export function UserTable() {
 
       {isError && <p className="text-destructive">載入帳號失敗。</p>}
 
-      {users && users.length === 0 && (
+      {data && data.items.length === 0 && (
         <p className="text-muted-foreground">目前沒有任何帳號。</p>
       )}
 
-      {users && users.length > 0 && (
+      {data && data.items.length > 0 && (
         <div className="rounded-md border">
           <Table>
             <TableHeader>
@@ -158,7 +161,7 @@ export function UserTable() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {data.items.map((user) => (
                 <TableRow key={user.id}>
                   <TableCell className="font-medium">{user.email}</TableCell>
                   <TableCell>
@@ -216,6 +219,14 @@ export function UserTable() {
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {data && (
+        <PaginationControls
+          page={page}
+          totalPages={data.total_pages}
+          onPageChange={setPage}
+        />
       )}
 
       <UserFormDialog

@@ -77,6 +77,7 @@ export const queryKeys = {
     logRetention: ["observability", "log-retention"] as const,
   },
   rateLimits: {
+    defaults: ["rate-limits", "defaults"] as const,
     byTenant: (tenantId: string) => ["rate-limits", tenantId] as const,
   },
   errorEvents: {

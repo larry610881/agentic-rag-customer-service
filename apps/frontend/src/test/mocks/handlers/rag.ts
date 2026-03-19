@@ -1,13 +1,11 @@
 import { http, HttpResponse } from "msw";
 import { mockChatResponse } from "@/test/fixtures/chat";
 
-const API_BASE = "http://localhost:8000";
-
 export const ragHandlers = [
-  http.post(`${API_BASE}/api/v1/rag/query`, () => {
+  http.post("*/api/v1/rag/query", () => {
     return HttpResponse.json(mockChatResponse);
   }),
-  http.post(`${API_BASE}/api/v1/rag/query/stream`, () => {
+  http.post("*/api/v1/rag/query/stream", () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {

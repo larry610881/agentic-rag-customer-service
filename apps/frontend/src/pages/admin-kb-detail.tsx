@@ -23,11 +23,11 @@ import {
 
 export default function AdminKbDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: knowledgeBases, isLoading } = useAdminKnowledgeBases();
-  const { data: documents, isLoading: docsLoading } = useDocuments(id!);
+  const { data: kbData, isLoading } = useAdminKnowledgeBases();
+  const { data: docsData, isLoading: docsLoading } = useDocuments(id!);
   const tenantNameMap = useTenantNameMap();
 
-  const kb = knowledgeBases?.find((k) => k.id === id);
+  const kb = kbData?.items?.find((k) => k.id === id);
 
   if (isLoading) {
     return (
@@ -120,11 +120,11 @@ export default function AdminKbDetailPage() {
             </div>
           )}
 
-          {documents && documents.length === 0 && (
+          {docsData && docsData.items.length === 0 && (
             <p className="text-muted-foreground">此知識庫尚無文件。</p>
           )}
 
-          {documents && documents.length > 0 && (
+          {docsData && docsData.items.length > 0 && (
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -137,7 +137,7 @@ export default function AdminKbDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {documents.map((doc) => (
+                  {docsData.items.map((doc) => (
                     <TableRow key={doc.id}>
                       <TableCell className="font-medium">
                         {doc.filename}
