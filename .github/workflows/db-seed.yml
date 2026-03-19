@@ -1,0 +1,93 @@
+name: DB Reset & Seed
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: '輸入 RESET 確認清除並重建 DB'
+        required: true
+        type: string
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+
+jobs:
+  seed:
+    if: github.event.inputs.confirm == 'RESET'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Google Auth (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Parse DB credentials
+        run: |
+          DB_URL="${{ secrets.DATABASE_URL_OVERRIDE }}"
+          CLEAN_URL=$(echo "$DB_URL" | sed 's|postgresql+[a-z]*://|postgresql://|')
+          DB_USER=$(echo "$CLEAN_URL" | sed -n 's|postgresql://\([^:]*\):.*|\1|p')
+          DB_PASS=$(echo "$CLEAN_URL" | sed -n 's|postgresql://[^:]*:\([^@]*\)@.*|\1|p')
+          DB_HOST=$(echo "$CLEAN_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
+          DB_PORT=$(echo "$CLEAN_URL" | sed -n 's|.*:\([0-9]*\)/.*|\1|p')
+          DB_NAME=$(echo "$CLEAN_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
+          echo "DB_USER=$DB_USER" >> "$GITHUB_ENV"
+          echo "DB_HOST=$DB_HOST" >> "$GITHUB_ENV"
+          echo "DB_PORT=$DB_PORT" >> "$GITHUB_ENV"
+          echo "DB_NAME=$DB_NAME" >> "$GITHUB_ENV"
+          echo "::add-mask::$DB_PASS"
+          echo "DB_PASS=$DB_PASS" >> "$GITHUB_ENV"
+
+      - name: Setup SSH tunnel to DB VM
+        run: |
+          gcloud compute ssh db-services --zone=asia-east1-b \
+            --ssh-flag="-L 5499:${{ env.DB_HOST }}:${{ env.DB_PORT }}" \
+            --ssh-flag="-N" --ssh-flag="-f" \
+            -- true
+          sleep 3
+
+      - name: Set up Python + uv
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install backend dependencies
+        run: |
+          cd apps/backend
+          uv sync --no-dev
+
+      - name: Run seed_postgres.py (schema + base data)
+        run: |
+          cd apps/backend
+          DATABASE_URL_OVERRIDE="postgresql+asyncpg://${{ env.DB_USER }}:${{ env.DB_PASS }}@127.0.0.1:5499/${{ env.DB_NAME }}" \
+            uv run python ../../data/seeds/seed_postgres.py
+
+      - name: Seed platform data (bots, KB, MCP)
+        run: |
+          PGPASSWORD="${{ env.DB_PASS }}" psql \
+            -h 127.0.0.1 -p 5499 -U "${{ env.DB_USER }}" -d "${{ env.DB_NAME }}" \
+            -f apps/backend/seeds/platform_seed.sql
+
+      - name: Seed joyinkitchen data
+        run: |
+          PGPASSWORD="${{ env.DB_PASS }}" psql \
+            -h 127.0.0.1 -p 5499 -U "${{ env.DB_USER }}" -d "${{ env.DB_NAME }}" \
+            -f apps/backend/seeds/joyinkitchen_seed.sql
+
+      - name: Verify seed data
+        run: |
+          PGPASSWORD="${{ env.DB_PASS }}" psql \
+            -h 127.0.0.1 -p 5499 -U "${{ env.DB_USER }}" -d "${{ env.DB_NAME }}" \
+            -f apps/backend/seeds/verify_seed.sql

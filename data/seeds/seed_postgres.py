@@ -163,14 +163,30 @@ async def seed() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # 2. Run migrations
-    print("\n=== Running migrations ===")
+    # 2a. Run inline migrations
+    print("\n=== Running inline migrations ===")
     async with engine.begin() as conn:
         for stmt in MIGRATIONS:
             try:
                 await conn.execute(text(stmt))
             except Exception as e:
                 print(f"  SKIP: {stmt[:60]}... ({e})")
+
+    # 2b. Run migration SQL files
+    migration_dir = Path(__file__).resolve().parent.parent.parent / "apps" / "backend" / "migrations"
+    if migration_dir.exists():
+        print("\n=== Running migration SQL files ===")
+        for sql_file in sorted(migration_dir.glob("*.sql")):
+            print(f"  Running: {sql_file.name}")
+            sql = sql_file.read_text()
+            async with engine.begin() as conn:
+                for stmt in sql.split(";"):
+                    stmt = stmt.strip()
+                    if stmt and not stmt.startswith("--"):
+                        try:
+                            await conn.execute(text(stmt))
+                        except Exception as e:
+                            print(f"    SKIP: {stmt[:60]}... ({e})")
 
     # 3. Seed data
     print("\n=== Seeding data ===")
