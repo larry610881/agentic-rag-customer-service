@@ -1,5 +1,3 @@
-import functools
-
 from dependency_injector.wiring import Provide, inject
 from fastapi import (
     APIRouter,
@@ -22,9 +20,6 @@ from src.application.knowledge.get_document_quality_stats_use_case import (
 )
 from src.application.knowledge.list_documents_use_case import (
     ListDocumentsUseCase,
-)
-from src.application.knowledge.process_document_use_case import (
-    ProcessDocumentUseCase,
 )
 from src.application.knowledge.reprocess_document_use_case import (
     ReprocessDocumentUseCase,
@@ -201,9 +196,6 @@ async def upload_document(
     use_case: UploadDocumentUseCase = Depends(
         Provide[Container.upload_document_use_case]
     ),
-    process_use_case: ProcessDocumentUseCase = Depends(
-        Provide[Container.process_document_use_case]
-    ),
 ) -> UploadDocumentResponse:
     raw_content = await file.read()
     if len(raw_content) > MAX_FILE_SIZE:
@@ -236,10 +228,15 @@ async def upload_document(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from None
 
-    # Trigger async processing
+    # Lazy resolve: background task 必須從 Container 取得新 use case + 新 session，
+    # 不能使用 request-scoped 的注入實例（response 送回後 session 已關閉）。
+    async def _process(doc_id: str, task_id: str) -> None:
+        uc = Container.process_document_use_case()
+        await uc.execute(doc_id, task_id)
+
     background_tasks.add_task(
         safe_background_task,
-        process_use_case.execute,
+        _process,
         result.document.id.value,
         result.task.id.value,
         task_name="process_document",
@@ -358,12 +355,16 @@ async def batch_reprocess_documents(
     for doc_id in body.doc_ids:
         try:
             task = await use_case.begin_reprocess(doc_id, tenant.tenant_id)
-            execute_fn = functools.partial(
-                use_case.execute, doc_id, task.id.value,
-            )
+
+            async def _reprocess(d_id: str, t_id: str) -> None:
+                uc = Container.reprocess_document_use_case()
+                await uc.execute(d_id, t_id)
+
             background_tasks.add_task(
                 safe_background_task,
-                execute_fn,
+                _reprocess,
+                doc_id,
+                task.id.value,
                 task_name="reprocess_document",
             )
             tasks.append(
@@ -404,17 +405,29 @@ async def reprocess_document(
 ) -> ReprocessDocumentResponse:
     task = await use_case.begin_reprocess(doc_id, tenant.tenant_id)
 
-    execute_fn = functools.partial(
-        use_case.execute,
-        doc_id,
-        task.id.value,
-        chunk_size=body.chunk_size,
-        chunk_overlap=body.chunk_overlap,
-        chunk_strategy=body.chunk_strategy,
-    )
+    async def _reprocess(
+        d_id: str,
+        t_id: str,
+        chunk_size: int | None,
+        chunk_overlap: int | None,
+        chunk_strategy: str | None,
+    ) -> None:
+        uc = Container.reprocess_document_use_case()
+        await uc.execute(
+            d_id, t_id,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            chunk_strategy=chunk_strategy,
+        )
+
     background_tasks.add_task(
         safe_background_task,
-        execute_fn,
+        _reprocess,
+        doc_id,
+        task.id.value,
+        body.chunk_size,
+        body.chunk_overlap,
+        body.chunk_strategy,
         task_name="reprocess_document",
     )
     return ReprocessDocumentResponse(

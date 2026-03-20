@@ -37,6 +37,8 @@
 - [簡化 LLM Provider 架構 — Static Selector 移除 + Debug-Only UI 控制](#簡化-llm-provider-架構--static-selector-移除--debug-only-ui-控制)
 - [Multi-Tenant System Admin — 獨立 Tenant + 跨租戶唯讀總覽](#multi-tenant-system-admin--獨立-tenant--跨租戶唯讀總覽)
 - [Request Log Viewer — 異步 Fire-and-Forget 寫入 + Cross-Cutting 診斷工具](#request-log-viewer--異步-fire-and-forget-寫入--cross-cutting-診斷工具)
+- [Background Task Session Leak 第三次修復 — Lazy Resolve Pattern](#background-task-session-leak-第三次修復--lazy-resolve-pattern)
+- [Background Task Session 最佳實務研究 — Lazy Resolve 驗證 + arq 遷移規劃](#background-task-session-最佳實務研究--lazy-resolve-驗證--arq-遷移規劃)
 - [Embedding 全站單一模型 + API Key 管理 + 401 自動登出](#embedding-全站單一模型--api-key-管理--401-自動登出)
 - [Provider Settings 模型 DB 化 + Bot 模型選擇](#provider-settings-模型-db-化--bot-模型選擇)
 - [DeepSeek Provider 集成 + Provider Settings 兩層開關簡化](#deepseek-provider-集成--provider-settings-兩層開關簡化)
@@ -1690,3 +1692,130 @@ if cost == 0.0 and usage.total_tokens > 0:
 1. **匯聚點修復 > 源頭修復**：ReAct 路徑的 `extract_usage_from_langchain_messages()` 也能加 pricing，但 `RecordUsageUseCase` 是所有路徑的唯一入口，一處修好全部都修好。未來新增第三種 agent 路徑也自動受益。
 2. **Domain registry 的複用價值**：`DEFAULT_MODELS`（Domain 層）+ `calculate_usage()`（Domain 層 pricing）組合，被 Application 層的 Use Case 呼叫 — DDD 層級合規，且 `calculate_usage()` 內建的 prefix fallback 自動處理帶日期後綴的 model name（如 `gpt-5.1-2025-11-13` → `gpt-5.1`）。
 3. **Bug fix 必留 regression test**：新增 2 個 BDD scenario 確保 fallback 正確觸發、已有 cost 不被覆蓋。
+
+---
+
+## Background Task Session Leak 第三次修復 — Lazy Resolve Pattern
+
+> Sprint 來源：Bug Fix（2026-03-20）
+> 主題：FastAPI BackgroundTasks + DI Container session 生命週期
+
+### 背景
+
+知識庫文件上傳後永遠卡在「學習中」。Cloud Run log 顯示 `session.execute()` 在 background task 中失敗。
+這是**第三次** session leak 問題（Issue 1: BackgroundTasks 2026-03-09, Issue 2: BaseHTTPMiddleware 2026-03-13）。
+
+### 根因
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Router as "document_router"
+    participant MW as "SessionCleanupMiddleware"
+    participant BG as "BackgroundTask"
+    participant UC as "ProcessDocumentUseCase"
+
+    Client->>Router: POST /documents (upload)
+    Router->>UC: use_case.execute() ✅ (session alive)
+    Router->>BG: add_task(process_use_case.execute)
+    Router-->>Client: 201 Created
+    MW->>MW: session.close() 🔒
+    BG->>UC: process_use_case.execute() ❌ session closed!
+```
+
+`upload_document` 透過 `Depends(Provide[...])` 注入 `process_use_case`，其內部 repositories 持有 request-scoped session。Response 送回後 `SessionCleanupMiddleware` 關閉 session，但 background task 仍使用同一個已關閉的 session。
+
+### 修復：Lazy Resolve Pattern
+
+Background task callback 內從 Container 重新解析 use case，拿到全新 session：
+
+```python
+# Before: 使用注入的 use case（持有已關閉 session）
+background_tasks.add_task(safe_background_task, process_use_case.execute, ...)
+
+# After: lazy resolve — background task 內建立新 use case
+async def _process(doc_id: str, task_id: str) -> None:
+    uc = Container.process_document_use_case()
+    await uc.execute(doc_id, task_id)
+
+background_tasks.add_task(safe_background_task, _process, ...)
+```
+
+影響 3 個端點：`upload_document`、`batch_reprocess_documents`、`reprocess_document`。
+其中 reprocess 系列的 `begin_reprocess()` 仍在 request scope 內執行（需要 request session），只有 `execute()` 改為 lazy resolve。
+
+### 做得好
+
+- **三次 session leak 逐步收斂**：Issue 1 修了 BackgroundTasks 獨立 session scope，Issue 2 修了 middleware ContextVar 隔離，Issue 3 修了 DI 注入的 use case 持有舊 session — 攻擊面越來越小
+- **`safe_background_task` + `independent_session_scope()` 雙保險**：session scope 隔離 + lazy resolve 兩層防護
+
+### 潛在隱憂
+
+- **Container 直接呼叫**：`Container.process_document_use_case()` 繞過 FastAPI DI，如果 Container wiring 未初始化會失敗 — 但在 background task 階段 app 已啟動，風險低
+- **長期方案**：應引入 task queue（如 arq）徹底解耦，避免 FastAPI BackgroundTasks 的 session 生命週期陷阱
+
+### 學到的事
+
+1. **FastAPI `Depends` 注入的物件不能跨 request 生命週期使用** — background task 雖然在同一個 process 內，但 session 已被 middleware cleanup，DI 注入的物件等於「殭屍」
+2. **Lazy Resolve Pattern** 是 DI 容器在 background task 場景的標準解法：延遲到 task 執行時才解析依賴，確保拿到新的 session
+3. **三次 session leak 的攻擊面模型**：(1) session scope 隔離 (2) middleware task 隔離 (3) DI 物件生命週期 — 三個維度都需要防守
+
+---
+
+## Background Task Session 最佳實務研究 — Lazy Resolve 驗證 + arq 遷移規劃
+
+> **來源**：社群研究（2026-03-20）
+> **主題**：第三次 session leak 修復後，驗證 Lazy Resolve Pattern 是否為社群最佳實務
+
+### 研究結論
+
+Lazy Resolve 是 **immediate fix 的最佳解法**，社群共識一致推薦。但長期架構有三個層次：
+
+```mermaid
+graph LR
+    A["Level 1<br>Lazy Resolve ✅"] -->|"中期 S5-S6"| B["Level 3<br>arq Task Queue 🏆"]
+    A -.->|"不建議"| C["Level 2<br>yield dependency<br>重構 session 管理"]
+```
+
+### Level 1：Lazy Resolve（現行方案）
+
+社群驗證來源：
+- FastAPI Discussion #11321：「background task should create and manage its own, new database session」
+- FastAPI Discussion #11433：「creating a new database session inside of the background task by passing session_maker」
+- FastAPI Discussion #8502：「it's safer to simply create a new session for the background task」
+
+**結論**：正確且符合社群共識。
+
+### Level 2：yield dependency（不採用）
+
+FastAPI 的 yield dependency cleanup 在 background task 完成後才執行，理論上 session 天然存活。但我們用 ContextVar + Pure ASGI middleware（非 yield dependency），重構面太大且與 `SessionCleanupMiddleware` 衝突。ContextVar 方案在 SSE streaming 場景有獨立優勢，不值得為此重構。
+
+### Level 3：arq Task Queue（長期目標）
+
+社群對「文件處理」類重任務的共識：**不應該用 BackgroundTasks**。
+- Server crash = 任務丟失
+- CPU-intensive task 拖慢整個 API
+- 無法橫向擴展 worker
+
+arq 優於 Celery 的理由：原生 asyncio、Redis broker（已有）、輕量、內建 retry/timeout。
+
+### 做得好
+
+- **三層方案分析而非二選一**：避免「當前解法 vs 終極方案」的跳躍，Level 2 的排除理由明確（與現有 middleware 架構衝突）
+- **用社群一手資料驗證**：6 篇 FastAPI Discussion + 3 篇技術文章交叉比對
+
+### 遷移路線圖
+
+| 階段 | 方案 | 時程 |
+|------|------|------|
+| 現在 | Lazy Resolve ✅ 已實作 | Done |
+| S5-S6 | 引入 arq 處理文件處理/重處理 | 規劃中 |
+| 長期 | 所有 heavy background work 遷移到 arq worker | 未排程 |
+
+### 延伸學習
+
+| 主題 | 資源 |
+|------|------|
+| arq vs Celery 架構比較 | David Muraya blog、Medium 技術文 |
+| FastAPI yield dependency 生命週期 | Starlette BackgroundTask 原始碼 |
+| ContextVar vs yield dependency trade-off | FastAPI Discussion #12254 |
