@@ -32,9 +32,23 @@ async def safe_background_task(
     async with independent_session_scope():
         try:
             await coro_fn(*args)
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "background_task_failed",
                 task_name=resolved_name,
                 **context,
+            )
+
+            # 寫入 Error Tracking Dashboard
+            from src.infrastructure.logging.error_event_writer import (
+                write_error_event,
+            )
+
+            await write_error_event(
+                error_detail=f"{type(exc).__name__}: {exc}",
+                request_id=context.get("request_id", ""),
+                method="BACKGROUND",
+                path=f"background/{resolved_name}",
+                status_code=500,
+                tenant_id=context.get("tenant_id"),
             )

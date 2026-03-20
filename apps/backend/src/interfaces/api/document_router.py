@@ -240,6 +240,7 @@ async def upload_document(
         result.document.id.value,
         result.task.id.value,
         task_name="process_document",
+        tenant_id=tenant.tenant_id,
     )
 
     doc = result.document
@@ -366,6 +367,7 @@ async def batch_reprocess_documents(
                 doc_id,
                 task.id.value,
                 task_name="reprocess_document",
+                tenant_id=tenant.tenant_id,
             )
             tasks.append(
                 BatchReprocessTaskItem(document_id=doc_id, task_id=task.id.value)
@@ -429,6 +431,7 @@ async def reprocess_document(
         body.chunk_overlap,
         body.chunk_strategy,
         task_name="reprocess_document",
+        tenant_id=tenant.tenant_id,
     )
     return ReprocessDocumentResponse(
         status="accepted", document_id=doc_id, task_id=task.id.value
