@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [JSON Record-Based Chunking — Content-Type 感知分塊 + Parser/Splitter 職責分離](#json-record-based-chunking--content-type-感知分塊--parsersplitter-職責分離)
 - [Batch A 安全/品質修復 — Pydantic 結構化解析 + 精確 Tool Matching + Router 校驗](#batch-a-安全品質修復--pydantic-結構化解析--精確-tool-matching--router-校驗)
 - [Widget FAB Greeting Bubble — 跨端全棧 Feature Flag + CSS 動畫狀態機](#widget-fab-greeting-bubble--跨端全棧-feature-flag--css-動畫狀態機)
 - [Avatar 預覽 + System Admin 跨租戶授權 — Router 層 tenant_id 解析 + 元件複用策略](#avatar-預覽--system-admin-跨租戶授權--router-層-tenant_id-解析--元件複用策略)
@@ -1819,3 +1820,50 @@ arq 優於 Celery 的理由：原生 asyncio、Redis broker（已有）、輕量
 | arq vs Celery 架構比較 | David Muraya blog、Medium 技術文 |
 | FastAPI yield dependency 生命週期 | Starlette BackgroundTask 原始碼 |
 | ContextVar vs yield dependency trade-off | FastAPI Discussion #12254 |
+
+---
+
+## JSON Record-Based Chunking — Content-Type 感知分塊 + Parser/Splitter 職責分離
+
+> 來源：RAG 品質改善（非 Sprint 排程，窩廚房 JSON 資料匯入觸發）
+> 日期：2026-03-20
+
+### 問題
+
+JSON 檔案（lectors.json, products.json, courses.json）經過 `_parse_json()` 攤平為 `key: value\n` 純文字後，被 `RecursiveCharacterTextSplitter` 按 500 字元切割。一筆講師/商品的完整資料被切斷在欄位中間，產生大量殘缺 chunk，RAG 檢索品質極差。
+
+### 設計決策
+
+**Parser 與 Splitter 的職責邊界重劃**：
+
+舊設計中 `_parse_json()` 同時負責「解析」和「結構轉換」，把 JSON 攤平成純文字後結構資訊就丟失了，Splitter 無從按記錄邊界切割。
+
+新設計將 `_parse_json()` 改為只做「驗證 + 透傳原始 JSON」，結構化分塊的職責移到 `JsonRecordTextSplitterService`。這遵循了 CSV 已驗證的 pattern：`_parse_csv()` 也只做文字轉換，`CSVRowTextSplitterService` 負責按行分塊。
+
+```mermaid
+graph LR
+    A["FileParser<br>_parse_json()"] -->|"舊：攤平文字"| B["RecursiveSplitter<br>斷句"]
+    A -->|"新：原始 JSON"| C["JsonRecordSplitter<br>按物件邊界"]
+    C -->|"fallback"| B
+```
+
+### 做得好
+
+- **仿照 CSVRowTextSplitterService 的 pattern**：buffer + flush 邏輯、`_make_chunk` 靜態方法、metadata（record_start/record_end）格式完全一致，降低認知負擔
+- **fallback 設計**：非 array JSON（如單一 config object）自動降級到 recursive splitter，不會 crash
+- **巢狀 JSON 支援**：`{"items": [...]}` 格式自動找到第一個 array of objects，不需要 JSON 一定是 top-level array
+- **實測驗證**：用真實資料預估 — lectors 13 chunks、products 96 chunks、courses 324 chunks，數量與記錄數完全吻合
+
+### 潛在隱憂
+
+1. **單筆記錄超大時 chunk 也超大**：courses.json 平均每筆 885 chars，遠超 chunk_size=500，embedding 品質是否下降需觀察。可能需要二級分割（record 內再按段落切）
+2. **`_parse_json()` 行為變更影響範圍**：所有 `application/json` 上傳的文件都會受影響。如果有人上傳非 array 的 JSON config（且 fallback splitter 處理效果不佳），需要注意
+3. **Cloud Run BackgroundTask timeout**：courses.json（324 records）在 Cloud Run 上 embedding 時 background task 可能被 kill（Cloud Run 預設 request timeout），這不是 chunking 問題但在驗證時暴露了
+
+### 延伸學習
+
+| 主題 | 方向 |
+|------|------|
+| LangChain RecursiveJsonSplitter | 社群已有類似實作，可比較設計差異 |
+| Chunk size vs Embedding 品質 | 單筆 record > chunk_size 時，embedding 是否需要二級分割 |
+| Cloud Run BackgroundTask 限制 | Cloud Run CPU allocation 設定對 background task 的影響 |
