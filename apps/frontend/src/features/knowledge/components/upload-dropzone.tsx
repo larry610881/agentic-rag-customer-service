@@ -9,7 +9,7 @@ const ACCEPTED_TYPES: Record<string, { ext: string; label: string; strategy: str
   "text/plain":        { ext: ".txt",  label: "純文字",     strategy: "遞迴分塊" },
   "text/markdown":     { ext: ".md",   label: "Markdown",  strategy: "遞迴分塊" },
   "text/csv":          { ext: ".csv",  label: "CSV",       strategy: "逐列分塊" },
-  "application/json":  { ext: ".json", label: "JSON",      strategy: "遞迴分塊" },
+  "application/json":  { ext: ".json", label: "JSON",      strategy: "逐筆記錄分塊" },
   "text/xml":          { ext: ".xml",  label: "XML",       strategy: "遞迴分塊" },
   "application/xml":   { ext: ".xml",  label: "XML",       strategy: "遞迴分塊" },
   "text/html":         { ext: ".html", label: "HTML",      strategy: "遞迴分塊" },

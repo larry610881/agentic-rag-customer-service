@@ -296,6 +296,9 @@ from src.infrastructure.text_splitter.content_aware_text_splitter_service import
 from src.infrastructure.text_splitter.csv_row_text_splitter_service import (
     CSVRowTextSplitterService,
 )
+from src.infrastructure.text_splitter.json_record_text_splitter_service import (
+    JsonRecordTextSplitterService,
+)
 from src.infrastructure.text_splitter.recursive_text_splitter_service import (
     RecursiveTextSplitterService,
 )
@@ -496,6 +499,12 @@ class Container(containers.DeclarativeContainer):
         chunk_overlap=providers.Callable(lambda cfg: cfg.chunk_overlap, config),
     )
 
+    _json_splitter = providers.Singleton(
+        JsonRecordTextSplitterService,
+        chunk_size=providers.Callable(lambda cfg: cfg.chunk_size, config),
+        fallback=_recursive_splitter,
+    )
+
     text_splitter_service = providers.Selector(
         providers.Callable(lambda cfg: cfg.chunk_strategy, config),
         auto=providers.Singleton(
@@ -505,11 +514,13 @@ class Container(containers.DeclarativeContainer):
                 "application/vnd.openxmlformats-officedocument"
                 ".spreadsheetml.sheet": _csv_splitter,
                 "application/vnd.ms-excel": _csv_splitter,
+                "application/json": _json_splitter,
             }),
             default=_recursive_splitter,
         ),
         recursive=_recursive_splitter,
         csv_row=_csv_splitter,
+        json_record=_json_splitter,
     )
 
     # Static fallback embedding (model/base_url/key all from .env)

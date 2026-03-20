@@ -76,7 +76,7 @@ export function ReprocessDialog({
             <Label htmlFor="strategy">Strategy</Label>
             <Input
               id="strategy"
-              placeholder="例：recursive / csv_row / auto"
+              placeholder="例：recursive / csv_row / json_record / auto"
               value={strategy}
               onChange={(e) => setStrategy(e.target.value)}
             />

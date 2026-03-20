@@ -72,21 +72,9 @@ class DefaultFileParserService(FileParserService):
         return "\n".join(rows)
 
     def _parse_json(self, raw_bytes: bytes) -> str:
-        data = json.loads(raw_bytes.decode("utf-8"))
-        return self._extract_json_strings(data)
-
-    def _extract_json_strings(self, data: object) -> str:
-        if isinstance(data, str):
-            return data
-        if isinstance(data, dict):
-            parts = []
-            for key, value in data.items():
-                parts.append(f"{key}: {self._extract_json_strings(value)}")
-            return "\n".join(parts)
-        if isinstance(data, list):
-            parts = [self._extract_json_strings(item) for item in data]
-            return "\n".join(parts)
-        return str(data)
+        text = raw_bytes.decode("utf-8")
+        json.loads(text)  # validate JSON
+        return text  # preserve raw JSON for record-based splitting
 
     def _parse_xml(self, raw_bytes: bytes) -> str:
         root = ElementTree.fromstring(raw_bytes.decode("utf-8"))
