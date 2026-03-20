@@ -209,3 +209,5 @@ class ReprocessDocumentUseCase:
             await self._task_repo.update_status(
                 task_id, "failed", error_message=str(e)
             )
+            # Re-raise so safe_background_task can write to Error Tracking
+            raise

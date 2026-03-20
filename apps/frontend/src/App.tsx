@@ -1,39 +1,58 @@
-import { lazy, Suspense } from "react";
+import { type ComponentType, lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ROUTES } from "@/routes/paths";
 import { AdminRoute, ProtectedRoute } from "@/components/layout/protected-route";
 import { AppShell } from "@/components/layout/app-shell";
 
-const LoginPage = lazy(() => import("@/pages/login"));
-const ChatPage = lazy(() => import("@/pages/chat"));
-const BotsPage = lazy(() => import("@/pages/bots"));
-const BotDetailPage = lazy(() => import("@/pages/bot-detail"));
-const KnowledgePage = lazy(() => import("@/pages/knowledge"));
-const KnowledgeDetailPage = lazy(() => import("@/pages/knowledge-detail"));
-const FeedbackPage = lazy(() => import("@/pages/feedback"));
-const FeedbackBrowserPage = lazy(() => import("@/pages/feedback-browser"));
+/**
+ * Retry dynamic import once on chunk load failure (common after deployment).
+ * Marks sessionStorage to avoid infinite reload loops.
+ */
+function lazyWithRetry(factory: () => Promise<{ default: ComponentType }>) {
+  return lazy(() =>
+    factory().catch((err: unknown) => {
+      const key = "chunk_reload_" + factory.toString().slice(0, 64);
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, "1");
+        window.location.reload();
+        // Return a never-resolving promise so React doesn't render stale error
+        return new Promise(() => {});
+      }
+      throw err;
+    }),
+  );
+}
+
+const LoginPage = lazyWithRetry(() => import("@/pages/login"));
+const ChatPage = lazyWithRetry(() => import("@/pages/chat"));
+const BotsPage = lazyWithRetry(() => import("@/pages/bots"));
+const BotDetailPage = lazyWithRetry(() => import("@/pages/bot-detail"));
+const KnowledgePage = lazyWithRetry(() => import("@/pages/knowledge"));
+const KnowledgeDetailPage = lazyWithRetry(() => import("@/pages/knowledge-detail"));
+const FeedbackPage = lazyWithRetry(() => import("@/pages/feedback"));
+const FeedbackBrowserPage = lazyWithRetry(() => import("@/pages/feedback-browser"));
 const FeedbackConversationPage = lazy(
   () => import("@/pages/feedback-conversation"),
 );
-const ProvidersSettingsPage = lazy(() => import("@/pages/settings-providers"));
-const AdminLogsPage = lazy(() => import("@/pages/admin-logs"));
+const ProvidersSettingsPage = lazyWithRetry(() => import("@/pages/settings-providers"));
+const AdminLogsPage = lazyWithRetry(() => import("@/pages/admin-logs"));
 const AdminKnowledgeBasesPage = lazy(
   () => import("@/pages/admin-knowledge-bases"),
 );
-const AdminBotsPage = lazy(() => import("@/pages/admin-bots"));
-const AdminKbDetailPage = lazy(() => import("@/pages/admin-kb-detail"));
-const AdminBotDetailPage = lazy(() => import("@/pages/admin-bot-detail"));
-const AdminUsersPage = lazy(() => import("@/pages/admin-users"));
-const AdminObservabilityPage = lazy(() => import("@/pages/admin-observability"));
-const AdminTokenUsagePage = lazy(() => import("@/pages/admin-token-usage"));
-const AdminMcpRegistryPage = lazy(() => import("@/pages/admin-mcp-registry"));
-const AdminTenantsPage = lazy(() => import("@/pages/admin-tenants"));
-const AdminPromptsPage = lazy(() => import("@/pages/admin-prompts"));
-const AdminDiagnosticRulesPage = lazy(() => import("@/pages/admin-diagnostic-rules"));
-const AdminRateLimitsPage = lazy(() => import("@/pages/admin-rate-limits"));
-const AdminLogRetentionPage = lazy(() => import("@/pages/admin-log-retention"));
-const AdminErrorEventsPage = lazy(() => import("@/pages/admin-error-events"));
-const AdminNotificationChannelsPage = lazy(() => import("@/pages/admin-notification-channels"));
+const AdminBotsPage = lazyWithRetry(() => import("@/pages/admin-bots"));
+const AdminKbDetailPage = lazyWithRetry(() => import("@/pages/admin-kb-detail"));
+const AdminBotDetailPage = lazyWithRetry(() => import("@/pages/admin-bot-detail"));
+const AdminUsersPage = lazyWithRetry(() => import("@/pages/admin-users"));
+const AdminObservabilityPage = lazyWithRetry(() => import("@/pages/admin-observability"));
+const AdminTokenUsagePage = lazyWithRetry(() => import("@/pages/admin-token-usage"));
+const AdminMcpRegistryPage = lazyWithRetry(() => import("@/pages/admin-mcp-registry"));
+const AdminTenantsPage = lazyWithRetry(() => import("@/pages/admin-tenants"));
+const AdminPromptsPage = lazyWithRetry(() => import("@/pages/admin-prompts"));
+const AdminDiagnosticRulesPage = lazyWithRetry(() => import("@/pages/admin-diagnostic-rules"));
+const AdminRateLimitsPage = lazyWithRetry(() => import("@/pages/admin-rate-limits"));
+const AdminLogRetentionPage = lazyWithRetry(() => import("@/pages/admin-log-retention"));
+const AdminErrorEventsPage = lazyWithRetry(() => import("@/pages/admin-error-events"));
+const AdminNotificationChannelsPage = lazyWithRetry(() => import("@/pages/admin-notification-channels"));
 
 function PageFallback() {
   return (

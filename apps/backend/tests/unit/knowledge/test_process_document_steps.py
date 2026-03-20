@@ -177,11 +177,14 @@ def existing_task(context, mock_task_repo):
 
 @when("執行文件處理")
 def do_process(context, process_use_case):
-    _run(
-        process_use_case.execute(
-            context["doc_id"], context["task_id"]
+    try:
+        _run(
+            process_use_case.execute(
+                context["doc_id"], context["task_id"]
+            )
         )
-    )
+    except Exception as exc:
+        context["raised"] = exc
 
 
 @when("查詢該任務狀態")

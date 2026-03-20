@@ -247,3 +247,5 @@ class ProcessDocumentUseCase:
                 await self._doc_repo.update_status(document_id, "failed")
             except Exception:
                 log.exception("document.status_update.failed")
+            # Re-raise so safe_background_task can write to Error Tracking
+            raise

@@ -410,11 +410,14 @@ def processed_doc_will_fail(context):
 
 @when("執行重新處理（會失敗）")
 def do_reprocess_fail(context):
-    _run(
-        context["reprocess_use_case"].execute(
-            context["doc_id"], context["task_id"]
+    try:
+        _run(
+            context["reprocess_use_case"].execute(
+                context["doc_id"], context["task_id"]
+            )
         )
-    )
+    except Exception as exc:
+        context["raised"] = exc
 
 
 @then("ProcessingTask 狀態應更新為 failed")
