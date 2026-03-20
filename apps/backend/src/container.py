@@ -171,6 +171,7 @@ from src.domain.agent.team_supervisor import TeamSupervisor
 from src.infrastructure.auth.bcrypt_password_service import BcryptPasswordService
 from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.cache.redis_cache_service import RedisCacheService
+from src.infrastructure.concurrency import RedisConversationLock
 from src.infrastructure.conversation import (
     FullHistoryStrategy,
     RAGHistoryStrategy,
@@ -341,6 +342,11 @@ class Container(containers.DeclarativeContainer):
 
     cache_service = providers.Singleton(
         RedisCacheService,
+        redis_client=redis_client,
+    )
+
+    conversation_lock = providers.Singleton(
+        RedisConversationLock,
         redis_client=redis_client,
     )
 
@@ -1104,6 +1110,7 @@ class Container(containers.DeclarativeContainer):
         load_memory_use_case=load_memory_use_case,
         extract_memory_use_case=extract_memory_use_case,
         get_diagnostic_rules_uc=get_diagnostic_rules_use_case,
+        conversation_lock=conversation_lock,
     )
 
     # --- Platform: Provider Settings ---
@@ -1220,4 +1227,5 @@ class Container(containers.DeclarativeContainer):
         cache_ttl=providers.Callable(
             lambda cfg: cfg.cache_bot_ttl, config
         ),
+        conversation_lock=conversation_lock,
     )

@@ -100,6 +100,11 @@ class BotModel(Base):
     memory_extraction_prompt: Mapped[str] = mapped_column(
         Text, nullable=False, default="", server_default=""
     )
+    busy_reply_message: Mapped[str] = mapped_column(
+        String(500), nullable=False,
+        default="小編正在努力回覆中，請稍等一下喔～",
+        server_default="小編正在努力回覆中，請稍等一下喔～",
+    )
     line_channel_secret: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )

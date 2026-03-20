@@ -21,6 +21,7 @@ from src.domain.conversation.history_strategy import (
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.platform.repository import SystemPromptConfigRepository
 from src.domain.platform.services import EncryptionService
+from src.domain.shared.concurrency import ConversationLock
 from src.domain.shared.exceptions import DomainException
 from src.domain.tenant.repository import TenantRepository
 
@@ -74,6 +75,7 @@ class SendMessageUseCase:
         load_memory_use_case: "LoadMemoryUseCase | None" = None,
         extract_memory_use_case: "ExtractMemoryUseCase | None" = None,
         get_diagnostic_rules_uc: "GetDiagnosticRulesUseCase | None" = None,
+        conversation_lock: ConversationLock | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -91,6 +93,15 @@ class SendMessageUseCase:
         self._load_memory = load_memory_use_case
         self._extract_memory = extract_memory_use_case
         self._get_diagnostic_rules_uc = get_diagnostic_rules_uc
+        self._conversation_lock = conversation_lock
+
+    def _build_lock_key(self, command: SendMessageCommand) -> str:
+        """Build a lock key for the conversation."""
+        if command.conversation_id:
+            return f"conv_lock:{command.conversation_id}"
+        if command.visitor_id and command.bot_id:
+            return f"conv_lock:{command.visitor_id}:{command.bot_id}"
+        return ""
 
     async def _load_bot_config(
         self, command: SendMessageCommand
@@ -397,7 +408,26 @@ class SendMessageUseCase:
             history = history[-history_limit:]
         return history, history_context, router_context
 
+    async def _get_busy_reply_message(self, command: SendMessageCommand) -> str:
+        """Load bot's busy_reply_message for lock rejection."""
+        if command.bot_id and self._bot_repo:
+            bot = await self._bot_repo.find_by_id(command.bot_id)
+            if bot:
+                return bot.busy_reply_message
+        return "小編正在努力回覆中，請稍等一下喔～"
+
     async def execute(self, command: SendMessageCommand) -> AgentResponse:
+        # Acquire conversation lock
+        lock_key = self._build_lock_key(command)
+        if lock_key and self._conversation_lock:
+            async with self._conversation_lock.acquire(lock_key) as acquired:
+                if not acquired:
+                    busy_msg = await self._get_busy_reply_message(command)
+                    return AgentResponse(answer=busy_msg)
+                return await self._execute_inner(command)
+        return await self._execute_inner(command)
+
+    async def _execute_inner(self, command: SendMessageCommand) -> AgentResponse:
         conversation = await self._load_or_create_conversation(command)
 
         history = conversation.messages if conversation.messages else None
@@ -508,6 +538,24 @@ class SendMessageUseCase:
         return response
 
     async def execute_stream(
+        self, command: SendMessageCommand
+    ) -> AsyncIterator[dict[str, Any]]:
+        # Acquire conversation lock
+        lock_key = self._build_lock_key(command)
+        if lock_key and self._conversation_lock:
+            async with self._conversation_lock.acquire(lock_key) as acquired:
+                if not acquired:
+                    busy_msg = await self._get_busy_reply_message(command)
+                    yield {"type": "token", "content": busy_msg}
+                    yield {"type": "done"}
+                    return
+                async for event in self._execute_stream_inner(command):
+                    yield event
+                return
+        async for event in self._execute_stream_inner(command):
+            yield event
+
+    async def _execute_stream_inner(
         self, command: SendMessageCommand
     ) -> AsyncIterator[dict[str, Any]]:
         conversation = await self._load_or_create_conversation(command)

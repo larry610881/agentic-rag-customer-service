@@ -111,6 +111,7 @@ class CreateBotRequest(BaseModel):
     memory_enabled: bool = False
     memory_extraction_threshold: int = 3
     memory_extraction_prompt: str = ""
+    busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -153,6 +154,7 @@ class UpdateBotRequest(BaseModel):
     memory_enabled: bool | None = None
     memory_extraction_threshold: int | None = None
     memory_extraction_prompt: str | None = None
+    busy_reply_message: str | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -199,6 +201,7 @@ class BotResponse(BaseModel):
     memory_enabled: bool
     memory_extraction_threshold: int
     memory_extraction_prompt: str
+    busy_reply_message: str
     line_channel_secret: str | None
     line_channel_access_token: str | None
     created_at: str
@@ -267,6 +270,7 @@ def _to_response(bot) -> BotResponse:
         memory_enabled=bot.memory_enabled,
         memory_extraction_threshold=bot.memory_extraction_threshold,
         memory_extraction_prompt=bot.memory_extraction_prompt,
+        busy_reply_message=bot.busy_reply_message,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
         created_at=bot.created_at.isoformat(),
@@ -346,6 +350,7 @@ async def create_bot(
             memory_enabled=body.memory_enabled,
             memory_extraction_threshold=body.memory_extraction_threshold,
             memory_extraction_prompt=body.memory_extraction_prompt,
+            busy_reply_message=body.busy_reply_message,
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
         )

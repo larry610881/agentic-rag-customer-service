@@ -83,6 +83,7 @@ const botFormSchema = z.object({
   widget_placeholder_text: z.string().max(200).default(""),
   widget_greeting_messages: z.array(z.string().max(100)).default([]),
   widget_greeting_animation: z.enum(["fade", "slide", "typewriter"]).default("fade"),
+  busy_reply_message: z.string().max(500).default("小編正在努力回覆中，請稍等一下喔～"),
   line_channel_secret: z.string().nullable().optional(),
   line_channel_access_token: z.string().nullable().optional(),
 });
@@ -244,6 +245,7 @@ export function BotDetailForm({
       widget_placeholder_text: bot.widget_placeholder_text ?? "",
       widget_greeting_messages: bot.widget_greeting_messages ?? [],
       widget_greeting_animation: bot.widget_greeting_animation ?? "fade",
+      busy_reply_message: bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     },
@@ -305,6 +307,7 @@ export function BotDetailForm({
       widget_placeholder_text: bot.widget_placeholder_text ?? "",
       widget_greeting_messages: bot.widget_greeting_messages ?? [],
       widget_greeting_animation: bot.widget_greeting_animation ?? "fade",
+      busy_reply_message: bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
     });
@@ -1204,6 +1207,22 @@ export function BotDetailForm({
                   placeholder="輸入 LINE 存取權杖"
                 />
               </div>
+            </div>
+          </section>
+
+          {/* 忙碌中回覆訊息 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">忙碌中回覆訊息</h3>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-busy-reply">
+                當使用者連續發送訊息時，系統回覆的忙碌提示
+              </Label>
+              <Input
+                id="bot-busy-reply"
+                {...register("busy_reply_message")}
+                placeholder="小編正在努力回覆中，請稍等一下喔～"
+                maxLength={500}
+              />
             </div>
           </section>
         </TabsContent>

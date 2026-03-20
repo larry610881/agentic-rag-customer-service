@@ -54,6 +54,7 @@ class UpdateBotCommand:
     memory_enabled: object = _UNSET
     memory_extraction_threshold: object = _UNSET
     memory_extraction_prompt: object = _UNSET
+    busy_reply_message: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
 
@@ -85,6 +86,7 @@ class UpdateBotUseCase:
             "base_prompt", "router_prompt", "react_prompt",
             "memory_enabled", "memory_extraction_threshold",
             "memory_extraction_prompt",
+            "busy_reply_message",
             "line_channel_secret", "line_channel_access_token",
         )
         for field in _DIRECT_FIELDS:

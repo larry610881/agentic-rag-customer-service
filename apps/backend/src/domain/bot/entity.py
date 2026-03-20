@@ -80,6 +80,7 @@ class Bot:
     memory_enabled: bool = False
     memory_extraction_threshold: int = 3
     memory_extraction_prompt: str = ""
+    busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     created_at: datetime = field(

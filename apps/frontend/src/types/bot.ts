@@ -52,6 +52,7 @@ export interface Bot {
   widget_placeholder_text: string;
   widget_greeting_messages: string[];
   widget_greeting_animation: "fade" | "slide" | "typewriter";
+  busy_reply_message: string;
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
   created_at: string;
@@ -92,6 +93,7 @@ export interface CreateBotRequest {
   widget_placeholder_text?: string;
   widget_greeting_messages?: string[];
   widget_greeting_animation?: "fade" | "slide" | "typewriter";
+  busy_reply_message?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }
@@ -130,6 +132,7 @@ export interface UpdateBotRequest {
   widget_placeholder_text?: string;
   widget_greeting_messages?: string[];
   widget_greeting_animation?: "fade" | "slide" | "typewriter";
+  busy_reply_message?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
 }

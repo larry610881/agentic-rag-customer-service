@@ -21,6 +21,7 @@ from src.domain.conversation.feedback_value_objects import (
 from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
 from src.domain.shared.cache_service import CacheService
+from src.domain.shared.concurrency import ConversationLock
 from src.infrastructure.logging.setup import get_logger
 
 logger = get_logger(__name__)
@@ -70,6 +71,7 @@ class HandleWebhookUseCase:
         feedback_repository: FeedbackRepository | None = None,
         cache_service: CacheService | None = None,
         cache_ttl: int = 120,
+        conversation_lock: ConversationLock | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -80,6 +82,7 @@ class HandleWebhookUseCase:
         self._feedback_repo = feedback_repository
         self._cache_service = cache_service
         self._cache_ttl = cache_ttl
+        self._conversation_lock = conversation_lock
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
         """Redis 快取查 Bot（by ID），預設 120 秒 TTL。"""
@@ -209,51 +212,84 @@ class HandleWebhookUseCase:
         for event in ctx.events:
             if not event.message_text:
                 continue
-            t0 = time.monotonic()
 
-            llm_params: dict = {
-                "temperature": bot.llm_params.temperature,
-                "max_tokens": bot.llm_params.max_tokens,
-                "frequency_penalty": bot.llm_params.frequency_penalty,
-            }
-            if bot.llm_provider:
-                llm_params["provider_name"] = bot.llm_provider
-            if bot.llm_model:
-                llm_params["model"] = bot.llm_model
+            lock_key = f"conv_lock:{event.user_id}:{bot.id.value}"
 
-            result = await self._agent_service.process_message(
-                tenant_id=bot.tenant_id,
-                kb_id=bot.knowledge_base_ids[0] if bot.knowledge_base_ids else "",
-                user_message=event.message_text,
-                kb_ids=bot.knowledge_base_ids,
-                system_prompt=bot.system_prompt or None,
-                enabled_tools=bot.enabled_tools,
-                llm_params=llm_params,
-            )
-            t1 = time.monotonic()
-
-            message_id = str(uuid4())
-            await line_service.reply_with_quick_reply(
-                event.reply_token, result.answer, message_id
-            )
-            t2 = time.monotonic()
-
-            logger.info(
-                "line.webhook.timing",
-                user_id=event.user_id,
-                short_code=ctx.short_code,
-                llm_provider=bot.llm_provider or "(default)",
-                llm_model=bot.llm_model or "(default)",
-                process_message_ms=round((t1 - t0) * 1000),
-                reply_ms=round((t2 - t1) * 1000),
-                total_ms=round((t2 - t0) * 1000),
-                answer_len=len(result.answer),
-            )
+            # Try to acquire conversation lock
+            if self._conversation_lock:
+                async with self._conversation_lock.acquire(lock_key) as acquired:
+                    if not acquired:
+                        await line_service.reply_text(
+                            event.reply_token, bot.busy_reply_message
+                        )
+                        continue
+                    await self._process_single_event(
+                        event, bot, line_service, ctx.short_code
+                    )
+            else:
+                await self._process_single_event(
+                    event, bot, line_service, ctx.short_code
+                )
 
         for pb_event in ctx.postback_events:
             await self.handle_postback(
                 pb_event, bot.tenant_id, line_service
             )
+
+    async def _process_single_event(
+        self,
+        event: LineTextMessageEvent,
+        bot: Bot,
+        line_service: LineMessagingService,
+        short_code: str,
+    ) -> None:
+        """Process a single LINE text message event."""
+        # Show loading animation
+        try:
+            await line_service.show_loading(event.user_id, 20)
+        except Exception:
+            logger.warning("line.show_loading_failed", exc_info=True)
+
+        t0 = time.monotonic()
+
+        llm_params: dict = {
+            "temperature": bot.llm_params.temperature,
+            "max_tokens": bot.llm_params.max_tokens,
+            "frequency_penalty": bot.llm_params.frequency_penalty,
+        }
+        if bot.llm_provider:
+            llm_params["provider_name"] = bot.llm_provider
+        if bot.llm_model:
+            llm_params["model"] = bot.llm_model
+
+        result = await self._agent_service.process_message(
+            tenant_id=bot.tenant_id,
+            kb_id=bot.knowledge_base_ids[0] if bot.knowledge_base_ids else "",
+            user_message=event.message_text,
+            kb_ids=bot.knowledge_base_ids,
+            system_prompt=bot.system_prompt or None,
+            enabled_tools=bot.enabled_tools,
+            llm_params=llm_params,
+        )
+        t1 = time.monotonic()
+
+        message_id = str(uuid4())
+        await line_service.reply_with_quick_reply(
+            event.reply_token, result.answer, message_id
+        )
+        t2 = time.monotonic()
+
+        logger.info(
+            "line.webhook.timing",
+            user_id=event.user_id,
+            short_code=short_code,
+            llm_provider=bot.llm_provider or "(default)",
+            llm_model=bot.llm_model or "(default)",
+            process_message_ms=round((t1 - t0) * 1000),
+            reply_ms=round((t2 - t1) * 1000),
+            total_ms=round((t2 - t0) * 1000),
+            answer_len=len(result.answer),
+        )
 
     async def execute_for_bot(
         self,

@@ -53,6 +53,7 @@ class CreateBotCommand:
     memory_enabled: bool = False
     memory_extraction_threshold: int = 3
     memory_extraction_prompt: str = ""
+    busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
 
@@ -139,6 +140,7 @@ class CreateBotUseCase:
             memory_enabled=command.memory_enabled,
             memory_extraction_threshold=command.memory_extraction_threshold,
             memory_extraction_prompt=command.memory_extraction_prompt,
+            busy_reply_message=command.busy_reply_message,
             line_channel_secret=command.line_channel_secret,
             line_channel_access_token=command.line_channel_access_token,
         )
