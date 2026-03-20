@@ -121,12 +121,14 @@ function ErrorEventDetail({ event }: { event: ErrorEvent }) {
 export default function AdminErrorEventsPage() {
   const [source, setSource] = useState("all");
   const [resolved, setResolved] = useState("all");
+  const [method, setMethod] = useState("all");
   const [offset, setOffset] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data, isLoading } = useErrorEvents({
     source,
     resolved,
+    method,
     limit: PAGE_SIZE,
     offset,
   });
@@ -172,6 +174,21 @@ export default function AdminErrorEventsPage() {
             <SelectItem value="all">全部狀態</SelectItem>
             <SelectItem value="false">未解決</SelectItem>
             <SelectItem value="true">已解決</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={method} onValueChange={(v) => { setMethod(v); setOffset(0); }}>
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder="類型" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部類型</SelectItem>
+            <SelectItem value="BACKGROUND">Background Task</SelectItem>
+            <SelectItem value="GET">GET</SelectItem>
+            <SelectItem value="POST">POST</SelectItem>
+            <SelectItem value="PUT">PUT</SelectItem>
+            <SelectItem value="PATCH">PATCH</SelectItem>
+            <SelectItem value="DELETE">DELETE</SelectItem>
           </SelectContent>
         </Select>
 

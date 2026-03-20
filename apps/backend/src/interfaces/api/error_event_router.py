@@ -73,6 +73,7 @@ async def list_error_events(
     resolved: bool | None = Query(default=None),
     fingerprint: str | None = Query(default=None),
     tenant_id: str | None = Query(default=None),
+    method: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     use_case: ListErrorEventsUseCase = Depends(
@@ -84,6 +85,7 @@ async def list_error_events(
         resolved=resolved,
         fingerprint=fingerprint,
         tenant_id=tenant_id,
+        method=method,
         limit=limit,
         offset=offset,
     )

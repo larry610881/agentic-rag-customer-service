@@ -12,6 +12,7 @@ import type {
 interface ErrorEventFilters {
   source?: string;
   resolved?: string;
+  method?: string;
   limit?: number;
   offset?: number;
 }
@@ -25,6 +26,8 @@ export function useErrorEvents(filters: ErrorEventFilters = {}) {
     params.set("source", filters.source);
   if (filters.resolved && filters.resolved !== "all")
     params.set("resolved", filters.resolved);
+  if (filters.method && filters.method !== "all")
+    params.set("method", filters.method);
   if (filters.limit) params.set("limit", String(filters.limit));
   if (filters.offset) params.set("offset", String(filters.offset));
 

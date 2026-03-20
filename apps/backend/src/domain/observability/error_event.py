@@ -65,6 +65,7 @@ class ErrorEventRepository(ABC):
         resolved: bool | None = None,
         fingerprint: str | None = None,
         tenant_id: str | None = None,
+        method: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[ErrorEvent], int]: ...

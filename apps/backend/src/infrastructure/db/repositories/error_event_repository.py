@@ -78,6 +78,7 @@ class SQLAlchemyErrorEventRepository(ErrorEventRepository):
         resolved: bool | None = None,
         fingerprint: str | None = None,
         tenant_id: str | None = None,
+        method: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[ErrorEvent], int]:
@@ -103,6 +104,11 @@ class SQLAlchemyErrorEventRepository(ErrorEventRepository):
             stmt = stmt.where(ErrorEventModel.tenant_id == tenant_id)
             count_stmt = count_stmt.where(
                 ErrorEventModel.tenant_id == tenant_id
+            )
+        if method is not None:
+            stmt = stmt.where(ErrorEventModel.method == method)
+            count_stmt = count_stmt.where(
+                ErrorEventModel.method == method
             )
 
         total = (await self._session.execute(count_stmt)).scalar() or 0
