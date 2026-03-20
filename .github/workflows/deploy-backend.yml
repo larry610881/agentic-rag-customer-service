@@ -85,6 +85,7 @@ jobs:
             --memory=1Gi
             --cpu=1
             --cpu-boost
+            --no-cpu-throttling
             --min-instances=0
             --max-instances=5
             --vpc-connector=db-connector

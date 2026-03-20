@@ -21,6 +21,9 @@ class McpServerConfig:
     enabled_tools: list[str] = field(default_factory=list)
     tools: list[McpToolMeta] = field(default_factory=list)
     version: str = ""
+    transport: str = "http"
+    command: str = ""
+    args: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

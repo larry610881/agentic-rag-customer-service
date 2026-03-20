@@ -160,6 +160,9 @@ class SQLAlchemyBotRepository(BotRepository):
                             for t in s.tools
                         ],
                         "version": s.version,
+                        "transport": s.transport,
+                        "command": s.command,
+                        "args": s.args,
                     }
                     for s in bot.mcp_servers
                 ]
@@ -224,6 +227,9 @@ class SQLAlchemyBotRepository(BotRepository):
                                 for t in s.tools
                             ],
                             "version": s.version,
+                            "transport": s.transport,
+                            "command": s.command,
+                            "args": s.args,
                         }
                         for s in bot.mcp_servers
                     ],
