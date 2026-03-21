@@ -32,6 +32,7 @@
 - [SQL 上傳修復 + 統一 Login API — 跨層 Bug Fix 與測試同步](#sql-上傳修復--統一-login-api--跨層-bug-fix-與測試同步)
 - [LINE Webhook 效能最佳化全鏈路 — gRPC + 連線池 + 並行查詢](#line-webhook-效能最佳化全鏈路--grpc--連線池--並行查詢)
 - [LINE Loading Animation + Webhook 效能最佳化](#line-loading-animation--webhook-效能最佳化)
+- [JoyInKitchen MCP 資料匯入 — MySQL Dump 解析 + PostgreSQL 建表 + MCP Tool 即時查詢](#joyinkitchen-mcp-資料匯入--mysql-dump-解析--postgresql-建表--mcp-tool-即時查詢)
 - [RAG Tool 重構 — 消除重複 LLM 呼叫](#rag-tool-重構--消除重複-llm-呼叫)
 - [RAG Pipeline 效能 Trace — 分段計時 Instrumentation](#rag-pipeline-效能-trace--分段計時-instrumentation)
 - [Streaming UX 分段 Hint + 寒暄路由優先修復](#streaming-ux-分段-hint--寒暄路由優先修復)
@@ -1867,3 +1868,42 @@ graph LR
 | LangChain RecursiveJsonSplitter | 社群已有類似實作，可比較設計差異 |
 | Chunk size vs Embedding 品質 | 單筆 record > chunk_size 時，embedding 是否需要二級分割 |
 | Cloud Run BackgroundTask 限制 | Cloud Run CPU allocation 設定對 background task 的影響 |
+
+---
+
+## JoyInKitchen MCP 資料匯入 — MySQL Dump 解析 + PostgreSQL 建表 + MCP Tool 即時查詢
+
+> **來源**：MCP Server 功能驗證（2026-03-21）
+> **範圍**：Infrastructure（scripts + GCP VM PostgreSQL）
+
+### 背景
+
+JoyInKitchen MCP Server（`mcp-servers/joyinkitchen/server.py`）提供 `search_products` / `search_courses` 兩個 Tool，直接用 asyncpg 對 PostgreSQL 下 raw SQL 查詢 9 張關聯表。但 GCP VM 上的 PostgreSQL 從未匯入這些表，導致 `relation "products" does not exist` 錯誤。
+
+### 問題拆解
+
+1. **已有 export 腳本**（`scripts/export_joyinkitchen.py`）：MySQL dump → 扁平化 JSON（給 RAG embedding 用）
+2. **缺少 import 腳本**：JSON 是扁平化的，但 MCP server 查的是原始關聯表結構（products + product_categories + product_product_category 等 9 張表）
+3. **需要直接解析 MySQL dump**：重用 export 腳本的 `parse_sql_values()` 解析器，在 PostgreSQL 建表 + 匯入原始資料
+
+### 做得好
+
+- **重用現有 SQL parser**：`import_joyinkitchen.py` 的 `parse_sql_values()` 與 export 腳本共用同一套解析邏輯（處理 SQL 跳脫字元 `\'`、`\\`、`\n` 等），避免重複實作
+- **連線參數設計**：支援 `DATABASE_URL`（整串）和 `DB_HOST/DB_PORT/DB_PASSWORD`（獨立參數）兩種方式，避免密碼含 `@` 時 URL 解析失敗的問題
+- **SSH tunnel 遠端匯入**：本地透過 `gcloud compute ssh` tunnel 直接操作 GCP VM 的 PostgreSQL，不需要把腳本傳上 VM
+- **批次插入 + ON CONFLICT DO NOTHING**：500 筆一批 executemany，且 idempotent（重複跑不會報錯）
+- **Serial sequence 重設**：匯入後自動 `setval(pg_get_serial_sequence(...), MAX(id))`，避免後續 INSERT 的 id 衝突
+
+### 潛在隱憂
+
+1. **MySQL → PostgreSQL 型別映射**：腳本用通用型別（VARCHAR、INT、TEXT），未處理 MySQL 特有的 `tinyint(1)` 布林語義。目前 MCP server 的 SQL 用 `= 1` 比對所以沒問題，但如果未來改用 boolean 欄位需注意
+2. **資料同步**：這是一次性匯入，窩廚房 MySQL 更新後需要重新跑。長期應考慮定期同步或 CDC
+3. **GCP VM 密碼管理**：DB 密碼目前硬編在 podman container env，未用 Secret Manager
+
+### 延伸學習
+
+| 主題 | 方向 |
+|------|------|
+| MySQL → PostgreSQL 遷移工具 | pgloader 可自動處理型別映射，比手寫腳本更健壯 |
+| CDC（Change Data Capture） | Debezium 或 GCP Datastream 做 MySQL → PostgreSQL 即時同步 |
+| MCP Server 資料層設計 | 目前是 raw SQL，考慮是否值得引入 ORM 或至少 query builder |
