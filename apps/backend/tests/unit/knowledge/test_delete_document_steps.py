@@ -43,10 +43,18 @@ def mock_vector_store():
 
 
 @pytest.fixture
-def delete_use_case(mock_doc_repo, mock_vector_store):
+def mock_file_storage():
+    storage = AsyncMock()
+    storage.delete = AsyncMock()
+    return storage
+
+
+@pytest.fixture
+def delete_use_case(mock_doc_repo, mock_vector_store, mock_file_storage):
     return DeleteDocumentUseCase(
         document_repository=mock_doc_repo,
         vector_store=mock_vector_store,
+        document_file_storage=mock_file_storage,
     )
 
 

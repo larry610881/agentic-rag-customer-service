@@ -102,6 +102,7 @@ class SQLAlchemyBotRepository(BotRepository):
             memory_extraction_prompt=model.memory_extraction_prompt or "",
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
+            line_show_sources=model.line_show_sources if model.line_show_sources is not None else False,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -195,6 +196,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.memory_extraction_prompt = bot.memory_extraction_prompt
                 existing.line_channel_secret = bot.line_channel_secret
                 existing.line_channel_access_token = bot.line_channel_access_token
+                existing.line_show_sources = bot.line_show_sources
                 existing.temperature = bot.llm_params.temperature
                 existing.max_tokens = bot.llm_params.max_tokens
                 existing.history_limit = bot.llm_params.history_limit
@@ -262,6 +264,7 @@ class SQLAlchemyBotRepository(BotRepository):
                     memory_extraction_prompt=bot.memory_extraction_prompt,
                     line_channel_secret=bot.line_channel_secret,
                     line_channel_access_token=bot.line_channel_access_token,
+                    line_show_sources=bot.line_show_sources,
                     temperature=bot.llm_params.temperature,
                     max_tokens=bot.llm_params.max_tokens,
                     history_limit=bot.llm_params.history_limit,

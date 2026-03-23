@@ -2,6 +2,8 @@ export interface Source {
   document_name: string;
   content_snippet: string;
   score: number;
+  chunk_id?: string;
+  document_id?: string;
 }
 
 export interface ToolCallInfo {

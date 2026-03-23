@@ -61,11 +61,19 @@ def tenant_id():
 
 
 @pytest.fixture
-def upload_use_case(mock_kb_repo, mock_doc_repo, mock_task_repo):
+def mock_file_storage():
+    storage = AsyncMock()
+    storage.save = AsyncMock(return_value="tenant-test-456/doc-id/test.pdf")
+    return storage
+
+
+@pytest.fixture
+def upload_use_case(mock_kb_repo, mock_doc_repo, mock_task_repo, mock_file_storage):
     return UploadDocumentUseCase(
         knowledge_base_repository=mock_kb_repo,
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
+        document_file_storage=mock_file_storage,
     )
 
 

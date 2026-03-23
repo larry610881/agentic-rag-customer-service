@@ -37,7 +37,7 @@ export class MessageList {
   }
 
   /** Add a sources block below the bot bubble. */
-  addSourcesBlock(bubble: HTMLElement, sources: Source[]): void {
+  addSourcesBlock(bubble: HTMLElement, sources: Source[], apiBase: string, shortCode: string): void {
     if (!sources.length) return;
 
     const block = document.createElement("div");
@@ -69,6 +69,17 @@ export class MessageList {
 
       item.appendChild(name);
       item.appendChild(snippet);
+
+      if (src.document_id) {
+        const link = document.createElement("a");
+        link.className = cls("sources__link");
+        link.textContent = "查看原文";
+        link.href = `${apiBase}/api/v1/widget/${shortCode}/documents/${src.document_id}/view`;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        item.appendChild(link);
+      }
+
       list.appendChild(item);
     }
 

@@ -23,6 +23,7 @@ class Source:
     content_snippet: str
     score: float
     chunk_id: str
+    document_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -30,6 +31,7 @@ class Source:
             "content_snippet": self.content_snippet,
             "score": self.score,
             "chunk_id": self.chunk_id,
+            "document_id": self.document_id,
         }
 
 

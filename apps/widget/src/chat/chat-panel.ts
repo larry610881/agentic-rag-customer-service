@@ -15,6 +15,7 @@ export class ChatPanel {
   private sendBtn: HTMLButtonElement;
   private chatUrl: string;
   private keepHistory: boolean;
+  private showSources: boolean;
   private conversationId: string | null = null;
   private lsKey: string;
   private activeController: AbortController | null = null;
@@ -29,6 +30,7 @@ export class ChatPanel {
   ) {
     this.chatUrl = `${apiBase}/api/v1/widget/${shortCode}/chat/stream`;
     this.keepHistory = config.keep_history;
+    this.showSources = config.show_sources;
     this.lsKey = `widget_conv_${shortCode}`;
     this.shortCode = shortCode;
     this.apiBase = apiBase;
@@ -202,8 +204,8 @@ export class ChatPanel {
             break;
           case "done":
             // Render sources block
-            if (pendingSources.length) {
-              this.messageList.addSourcesBlock(botBubble, pendingSources);
+            if (this.showSources && pendingSources.length) {
+              this.messageList.addSourcesBlock(botBubble, pendingSources, this.apiBase, this.shortCode);
             }
             // Render feedback buttons
             if (messageId && this.conversationId) {

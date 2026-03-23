@@ -29,6 +29,8 @@ export const API_ENDPOINTS = {
       `/api/v1/knowledge-bases/${kbId}/documents/batch-delete`,
     batchReprocess: (kbId: string) =>
       `/api/v1/knowledge-bases/${kbId}/documents/batch-reprocess`,
+    view: (kbId: string, docId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/documents/${docId}/view`,
   },
   tasks: {
     detail: (id: string) => `/api/v1/tasks/${id}`,

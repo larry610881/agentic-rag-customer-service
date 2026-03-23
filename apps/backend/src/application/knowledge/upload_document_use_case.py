@@ -6,6 +6,7 @@ from src.domain.knowledge.repository import (
     KnowledgeBaseRepository,
     ProcessingTaskRepository,
 )
+from src.domain.knowledge.services import DocumentFileStorageService
 from src.domain.knowledge.value_objects import DocumentId, ProcessingTaskId
 from src.domain.shared.exceptions import EntityNotFoundError, UnsupportedFileTypeError
 
@@ -48,10 +49,12 @@ class UploadDocumentUseCase:
         knowledge_base_repository: KnowledgeBaseRepository,
         document_repository: DocumentRepository,
         processing_task_repository: ProcessingTaskRepository,
+        document_file_storage: DocumentFileStorageService,
     ) -> None:
         self._kb_repo = knowledge_base_repository
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
+        self._file_storage = document_file_storage
 
     async def execute(self, command: UploadDocumentCommand) -> UploadDocumentResult:
         # Validate file type
@@ -75,6 +78,16 @@ class UploadDocumentUseCase:
             status="pending",
         )
         await self._doc_repo.save(document)
+
+        # Save file to storage
+        storage_path = await self._file_storage.save(
+            command.tenant_id,
+            document.id.value,
+            command.raw_content,
+            command.filename,
+        )
+        await self._doc_repo.update_storage_path(document.id.value, storage_path)
+        document.storage_path = storage_path
 
         # Create processing task
         task = ProcessingTask(

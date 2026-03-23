@@ -12,6 +12,10 @@ from src.application.agent.send_message_use_case import (
     SendMessageCommand,
     SendMessageUseCase,
 )
+from src.application.knowledge.view_document_use_case import (
+    ViewDocumentUseCase,
+)
+from src.domain.knowledge.repository import DocumentRepository
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.application.conversation.submit_feedback_use_case import (
     SubmitFeedbackCommand,
@@ -57,6 +61,7 @@ class WidgetConfigResponse(BaseModel):
     name: str
     description: str
     keep_history: bool
+    show_sources: bool = True
     welcome_message: str = ""
     placeholder_text: str = ""
     greeting_messages: list[str] = []
@@ -147,6 +152,7 @@ async def widget_config(
         name=bot.name,
         description=bot.description,
         keep_history=bot.widget_keep_history,
+        show_sources=bot.show_sources,
         welcome_message=bot.widget_welcome_message,
         placeholder_text=bot.widget_placeholder_text,
         greeting_messages=bot.widget_greeting_messages,
@@ -290,3 +296,48 @@ async def widget_error_report(
 
     _set_cors_headers(response, origin, bot)
     return {"id": event.id, "fingerprint": event.fingerprint}
+
+
+@router.get("/{short_code}/documents/{doc_id}/view")
+@inject
+async def widget_view_document(
+    short_code: str,
+    doc_id: str,
+    request: Request,
+    bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
+    doc_repo: DocumentRepository = Depends(
+        Provide[Container.document_repository]
+    ),
+    use_case: ViewDocumentUseCase = Depends(
+        Provide[Container.view_document_use_case]
+    ),
+) -> Response:
+    """Public endpoint: view original document file (inline, no download)."""
+    origin = request.headers.get("origin")
+    bot = await validate_widget_bot(short_code, origin, bot_repo)
+
+    if not bot.show_sources:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Source viewing is disabled for this bot",
+        )
+
+    # Verify document belongs to one of this bot's knowledge bases
+    doc = await doc_repo.find_by_id(doc_id)
+    if doc is None or doc.kb_id not in bot.knowledge_base_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    result = await use_case.execute(doc_id)
+
+    resp = Response(
+        content=result.content,
+        media_type=result.content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{result.filename}"'
+        },
+    )
+    _set_cors_headers(resp, origin, bot)
+    return resp

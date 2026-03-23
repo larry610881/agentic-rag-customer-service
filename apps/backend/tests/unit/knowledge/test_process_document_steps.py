@@ -86,6 +86,13 @@ def mock_file_parser():
 
 
 @pytest.fixture
+def mock_file_storage():
+    storage = AsyncMock()
+    storage.load = AsyncMock(side_effect=FileNotFoundError)
+    return storage
+
+
+@pytest.fixture
 def process_use_case(
     mock_doc_repo,
     mock_task_repo,
@@ -94,6 +101,7 @@ def process_use_case(
     mock_vector_store,
     mock_language_detector,
     mock_file_parser,
+    mock_file_storage,
 ):
     return ProcessDocumentUseCase(
         document_repository=mock_doc_repo,
@@ -103,6 +111,7 @@ def process_use_case(
         vector_store=mock_vector_store,
         language_detection_service=mock_language_detector,
         file_parser_service=mock_file_parser,
+        document_file_storage=mock_file_storage,
     )
 
 

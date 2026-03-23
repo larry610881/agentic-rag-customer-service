@@ -136,6 +136,7 @@ class LangGraphAgentService(AgentService):
                     content_snippet=s.get("content_snippet", ""),
                     score=s.get("score", 0.0),
                     chunk_id=s.get("chunk_id", ""),
+                    document_id=s.get("document_id", ""),
                 )
                 for s in raw_sources
             ]
@@ -210,6 +211,7 @@ class LangGraphAgentService(AgentService):
                 "document_name": s.get("document_name", ""),
                 "content_snippet": s.get("content_snippet", ""),
                 "score": s.get("score", 0.0),
+                "document_id": s.get("document_id", ""),
             }
             for s in raw
         ]

@@ -111,6 +111,9 @@ class BotModel(Base):
     line_channel_access_token: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
+    line_show_sources: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     temperature: Mapped[float] = mapped_column(Float, nullable=False, default=0.3)
     max_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=1024)
     history_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=10)

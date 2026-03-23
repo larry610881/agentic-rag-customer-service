@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     rag_score_threshold: float = 0.3
     rag_top_k: int = 5
 
+    # Document Storage
+    storage_backend: str = "local"  # "local" | "gcs"
+    gcs_bucket_name: str = ""
+
     # Text Splitter
     chunk_size: int = 500
     chunk_overlap: int = 100

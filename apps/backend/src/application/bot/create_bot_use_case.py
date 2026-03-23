@@ -56,6 +56,7 @@ class CreateBotCommand:
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
+    line_show_sources: bool = False
 
 
 class CreateBotUseCase:
@@ -143,6 +144,7 @@ class CreateBotUseCase:
             busy_reply_message=command.busy_reply_message,
             line_channel_secret=command.line_channel_secret,
             line_channel_access_token=command.line_channel_access_token,
+            line_show_sources=command.line_show_sources,
         )
         await self._bot_repo.save(bot)
         return bot

@@ -7,6 +7,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from src.application.knowledge.delete_document_use_case import (
@@ -27,6 +28,9 @@ from src.application.knowledge.reprocess_document_use_case import (
 from src.application.knowledge.upload_document_use_case import (
     UploadDocumentCommand,
     UploadDocumentUseCase,
+)
+from src.application.knowledge.view_document_use_case import (
+    ViewDocumentUseCase,
 )
 from src.container import Container
 from src.domain.shared.exceptions import (
@@ -82,6 +86,7 @@ class DocumentResponse(BaseModel):
     max_chunk_length: int
     quality_score: float
     quality_issues: list[str]
+    has_file: bool
     created_at: str
     updated_at: str
 
@@ -105,6 +110,7 @@ def _to_response(doc) -> DocumentResponse:
         max_chunk_length=doc.max_chunk_length,
         quality_score=doc.quality_score,
         quality_issues=doc.quality_issues,
+        has_file=bool(doc.storage_path or doc.raw_content),
         created_at=doc.created_at.isoformat(),
         updated_at=doc.updated_at.isoformat(),
     )
@@ -286,6 +292,36 @@ async def get_document_chunks(
             for c in result.chunks
         ],
         total=result.total,
+    )
+
+
+@router.get("/{doc_id}/view")
+@inject
+async def view_document(
+    kb_id: str,
+    doc_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: ViewDocumentUseCase = Depends(
+        Provide[Container.view_document_use_case]
+    ),
+) -> Response:
+    try:
+        result = await use_case.execute(doc_id)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+        ) from None
+
+    return Response(
+        content=result.content,
+        media_type=result.content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{result.filename}"'
+        },
     )
 
 

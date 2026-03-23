@@ -86,6 +86,7 @@ const botFormSchema = z.object({
   busy_reply_message: z.string().max(500).default("小編正在努力回覆中，請稍等一下喔～"),
   line_channel_secret: z.string().nullable().optional(),
   line_channel_access_token: z.string().nullable().optional(),
+  line_show_sources: z.boolean().default(false),
 });
 
 type BotFormValues = z.infer<typeof botFormSchema>;
@@ -248,6 +249,7 @@ export function BotDetailForm({
       busy_reply_message: bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
+      line_show_sources: bot.line_show_sources ?? false,
     },
   });
 
@@ -310,6 +312,7 @@ export function BotDetailForm({
       busy_reply_message: bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
+      line_show_sources: bot.line_show_sources ?? false,
     });
   }, [bot, reset]);
 
@@ -1208,6 +1211,20 @@ export function BotDetailForm({
                 />
               </div>
             </div>
+            <Controller
+              name="line_show_sources"
+              control={control}
+              render={({ field }) => (
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="line_show_sources">LINE 顯示來源引用</Label>
+                  <Switch
+                    id="line_show_sources"
+                    checked={field.value ?? false}
+                    onCheckedChange={field.onChange}
+                  />
+                </div>
+              )}
+            />
           </section>
 
           {/* 忙碌中回覆訊息 */}

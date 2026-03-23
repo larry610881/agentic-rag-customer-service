@@ -9,6 +9,7 @@ from src.domain.knowledge.services import (
     ChunkDeduplicationService,
     ChunkFilterService,
     ChunkQualityService,
+    DocumentFileStorageService,
     FileParserService,
     LanguageDetectionService,
     TextPreprocessor,
@@ -31,6 +32,7 @@ class ReprocessDocumentUseCase:
         vector_store: VectorStore,
         language_detection_service: LanguageDetectionService,
         file_parser_service: FileParserService,
+        document_file_storage: DocumentFileStorageService,
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
@@ -39,6 +41,7 @@ class ReprocessDocumentUseCase:
         self._vector_store = vector_store
         self._language_detector = language_detection_service
         self._file_parser = file_parser_service
+        self._file_storage = document_file_storage
 
     async def begin_reprocess(
         self, document_id: str, tenant_id: str
@@ -82,11 +85,23 @@ class ReprocessDocumentUseCase:
                 collection, {"document_id": document_id}
             )
 
+            # Load raw content: prefer file storage, fallback to DB BYTEA
+            raw_content = None
+            if document.storage_path:
+                try:
+                    raw_content = await self._file_storage.load(
+                        document.storage_path
+                    )
+                except FileNotFoundError:
+                    pass
+            if raw_content is None:
+                raw_content = document.raw_content
+
             # Re-parse from raw_content if available, else fallback to existing content
-            if document.raw_content:
+            if raw_content:
                 content = await asyncio.to_thread(
                     self._file_parser.parse,
-                    document.raw_content,
+                    raw_content,
                     document.content_type,
                 )
                 await self._doc_repo.update_content(document_id, content)

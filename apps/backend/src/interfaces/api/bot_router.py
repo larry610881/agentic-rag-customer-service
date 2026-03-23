@@ -114,6 +114,7 @@ class CreateBotRequest(BaseModel):
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
+    line_show_sources: bool = False
 
 
 class UpdateBotRequest(BaseModel):
@@ -157,6 +158,7 @@ class UpdateBotRequest(BaseModel):
     busy_reply_message: str | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
+    line_show_sources: bool | None = None
 
 
 class BotResponse(BaseModel):
@@ -204,6 +206,7 @@ class BotResponse(BaseModel):
     busy_reply_message: str
     line_channel_secret: str | None
     line_channel_access_token: str | None
+    line_show_sources: bool
     created_at: str
     updated_at: str
 
@@ -273,6 +276,7 @@ def _to_response(bot) -> BotResponse:
         busy_reply_message=bot.busy_reply_message,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
+        line_show_sources=bot.line_show_sources,
         created_at=bot.created_at.isoformat(),
         updated_at=bot.updated_at.isoformat(),
     )
@@ -353,6 +357,7 @@ async def create_bot(
             busy_reply_message=body.busy_reply_message,
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
+            line_show_sources=body.line_show_sources,
         )
     )
     return _to_response(bot)

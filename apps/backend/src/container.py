@@ -81,6 +81,9 @@ from src.application.knowledge.reprocess_document_use_case import (
 from src.application.knowledge.upload_document_use_case import (
     UploadDocumentUseCase,
 )
+from src.application.knowledge.view_document_use_case import (
+    ViewDocumentUseCase,
+)
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
 from src.application.memory.extract_memory_use_case import ExtractMemoryUseCase
 from src.application.memory.load_memory_use_case import LoadMemoryUseCase
@@ -289,6 +292,12 @@ from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
 from src.infrastructure.sentiment.keyword_sentiment_service import (
     KeywordSentimentService,
 )
+from src.infrastructure.storage.gcs_document_file_storage import (
+    GCSDocumentFileStorageService,
+)
+from src.infrastructure.storage.local_document_file_storage import (
+    LocalDocumentFileStorageService,
+)
 from src.infrastructure.storage.local_file_storage import LocalFileStorageService
 from src.infrastructure.text_splitter.content_aware_text_splitter_service import (
     ContentAwareTextSplitterService,
@@ -480,6 +489,15 @@ class Container(containers.DeclarativeContainer):
     error_reporter = providers.Singleton(DBErrorReporter)
 
     file_storage_service = providers.Singleton(LocalFileStorageService)
+
+    document_file_storage_service = providers.Selector(
+        config.provided.storage_backend,
+        local=providers.Singleton(LocalDocumentFileStorageService),
+        gcs=providers.Singleton(
+            GCSDocumentFileStorageService,
+            bucket_name=config.provided.gcs_bucket_name,
+        ),
+    )
 
     file_parser_service = providers.Singleton(DefaultFileParserService)
 
@@ -731,6 +749,7 @@ class Container(containers.DeclarativeContainer):
         DeleteDocumentUseCase,
         document_repository=document_repository,
         vector_store=vector_store,
+        document_file_storage=document_file_storage_service,
     )
 
     upload_document_use_case = providers.Factory(
@@ -738,6 +757,7 @@ class Container(containers.DeclarativeContainer):
         knowledge_base_repository=kb_repository,
         document_repository=document_repository,
         processing_task_repository=processing_task_repository,
+        document_file_storage=document_file_storage_service,
     )
 
     process_document_use_case = providers.Factory(
@@ -749,6 +769,7 @@ class Container(containers.DeclarativeContainer):
         vector_store=vector_store,
         language_detection_service=language_detection_service,
         file_parser_service=file_parser_service,
+        document_file_storage=document_file_storage_service,
     )
 
     get_processing_task_use_case = providers.Factory(
@@ -770,6 +791,13 @@ class Container(containers.DeclarativeContainer):
         vector_store=vector_store,
         language_detection_service=language_detection_service,
         file_parser_service=file_parser_service,
+        document_file_storage=document_file_storage_service,
+    )
+
+    view_document_use_case = providers.Factory(
+        ViewDocumentUseCase,
+        document_repository=document_repository,
+        document_file_storage=document_file_storage_service,
     )
 
     get_document_quality_stats_use_case = providers.Factory(

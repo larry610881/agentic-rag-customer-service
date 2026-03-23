@@ -21,6 +21,7 @@ export interface DocumentResponse {
   max_chunk_length: number;
   quality_score: number;
   quality_issues: string[];
+  has_file: boolean;
   created_at: string;
   updated_at: string;
 }

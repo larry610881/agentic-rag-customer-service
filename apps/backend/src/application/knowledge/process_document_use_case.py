@@ -9,6 +9,7 @@ from src.domain.knowledge.services import (
     ChunkDeduplicationService,
     ChunkFilterService,
     ChunkQualityService,
+    DocumentFileStorageService,
     FileParserService,
     LanguageDetectionService,
     TextPreprocessor,
@@ -30,6 +31,7 @@ class ProcessDocumentUseCase:
         vector_store: VectorStore,
         language_detection_service: LanguageDetectionService,
         file_parser_service: FileParserService,
+        document_file_storage: DocumentFileStorageService,
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
@@ -38,6 +40,7 @@ class ProcessDocumentUseCase:
         self._vector_store = vector_store
         self._language_detector = language_detection_service
         self._file_parser = file_parser_service
+        self._file_storage = document_file_storage
 
     async def execute(
         self, document_id: str, task_id: str
@@ -70,12 +73,24 @@ class ProcessDocumentUseCase:
                 document_id, "processing"
             )
 
+            # Load raw content: prefer file storage, fallback to DB BYTEA
+            raw_content = None
+            if document.storage_path:
+                try:
+                    raw_content = await self._file_storage.load(
+                        document.storage_path
+                    )
+                except FileNotFoundError:
+                    log.warning("document.file_storage.missing")
+            if raw_content is None:
+                raw_content = document.raw_content
+
             # Parse raw content → text (moved from upload for async processing)
-            if document.raw_content:
+            if raw_content:
                 t0 = time.perf_counter()
                 content = await asyncio.to_thread(
                     self._file_parser.parse,
-                    document.raw_content,
+                    raw_content,
                     document.content_type,
                 )
                 parse_ms = round((time.perf_counter() - t0) * 1000)

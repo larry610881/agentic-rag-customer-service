@@ -121,6 +121,7 @@ class QueryRAGUseCase:
                 content_snippet=r.payload["content"][:200],
                 score=r.score,
                 chunk_id=r.id,
+                document_id=r.payload.get("document_id", ""),
             )
             for r in results
         ]
@@ -191,6 +192,7 @@ class QueryRAGUseCase:
                 content_snippet=r.payload["content"][:200],
                 score=r.score,
                 chunk_id=r.id,
+                document_id=r.payload.get("document_id", ""),
             )
             for r in results
         ]
@@ -237,6 +239,7 @@ class QueryRAGUseCase:
                 content_snippet=r.payload["content"][:200],
                 score=r.score,
                 chunk_id=r.id,
+                document_id=r.payload.get("document_id", ""),
             )
             for r in results
         ]

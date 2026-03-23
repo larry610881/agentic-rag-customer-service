@@ -27,6 +27,7 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             content_type=model.content_type,
             content=model.content,
             raw_content=model.raw_content or b"" if "raw_content" not in sa_inspect(model).unloaded else b"",
+            storage_path=model.storage_path if "storage_path" not in sa_inspect(model).unloaded else "",
             status=model.status,
             chunk_count=model.chunk_count,
             avg_chunk_length=model.avg_chunk_length,
@@ -62,6 +63,7 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
                 content_type=document.content_type,
                 content=document.content,
                 raw_content=document.raw_content or None,
+                storage_path=document.storage_path,
                 status=document.status,
                 chunk_count=document.chunk_count,
                 created_at=document.created_at,
@@ -94,6 +96,20 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
                 update(DocumentModel)
                 .where(DocumentModel.id == doc_id)
                 .values(**values)
+            )
+            await self._session.execute(stmt)
+
+    async def update_storage_path(
+        self, doc_id: str, storage_path: str
+    ) -> None:
+        async with atomic(self._session):
+            stmt = (
+                update(DocumentModel)
+                .where(DocumentModel.id == doc_id)
+                .values(
+                    storage_path=storage_path,
+                    updated_at=datetime.now(timezone.utc),
+                )
             )
             await self._session.execute(stmt)
 

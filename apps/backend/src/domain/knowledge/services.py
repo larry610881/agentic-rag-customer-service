@@ -18,6 +18,27 @@ class FileParserService(ABC):
     def supported_types(self) -> set[str]: ...
 
 
+class DocumentFileStorageService(ABC):
+    """Port for document file storage — Infrastructure provides the adapter."""
+
+    @abstractmethod
+    async def save(
+        self, tenant_id: str, document_id: str, content: bytes, filename: str
+    ) -> str:
+        """Save document file, return relative storage path."""
+        ...
+
+    @abstractmethod
+    async def load(self, storage_path: str) -> bytes:
+        """Load document file by storage path."""
+        ...
+
+    @abstractmethod
+    async def delete(self, storage_path: str) -> None:
+        """Delete document file."""
+        ...
+
+
 class TextSplitterService(ABC):
     @abstractmethod
     def split(

@@ -80,6 +80,11 @@ class DocumentRepository(ABC):
     async def delete(self, doc_id: str) -> None: ...
 
     @abstractmethod
+    async def update_storage_path(
+        self, doc_id: str, storage_path: str
+    ) -> None: ...
+
+    @abstractmethod
     async def update_quality(
         self,
         doc_id: str,

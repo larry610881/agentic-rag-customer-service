@@ -177,6 +177,9 @@ def pending_doc_with_quality(context):
     mock_file_parser = MagicMock()
     mock_file_parser.parse.return_value = raw_text
 
+    mock_file_storage = AsyncMock()
+    mock_file_storage.load = AsyncMock(side_effect=FileNotFoundError)
+
     context["use_case"] = ProcessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
@@ -185,6 +188,7 @@ def pending_doc_with_quality(context):
         vector_store=mock_vector_store,
         language_detection_service=mock_language_detector,
         file_parser_service=mock_file_parser,
+        document_file_storage=mock_file_storage,
     )
     context["mock_doc_repo"] = mock_doc_repo
     context["doc_id"] = "doc-q1"
@@ -299,6 +303,9 @@ def processed_doc(context):
     mock_file_parser = MagicMock()
     mock_file_parser.parse.return_value = "Content for reprocessing. " * 20
 
+    mock_file_storage_rp = AsyncMock()
+    mock_file_storage_rp.load = AsyncMock(side_effect=FileNotFoundError)
+
     context["reprocess_use_case"] = ReprocessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
@@ -307,6 +314,7 @@ def processed_doc(context):
         vector_store=mock_vector_store,
         language_detection_service=mock_language_detector,
         file_parser_service=mock_file_parser,
+        document_file_storage=mock_file_storage_rp,
     )
     context["mock_doc_repo"] = mock_doc_repo
     context["mock_task_repo"] = mock_task_repo
@@ -394,6 +402,9 @@ def processed_doc_will_fail(context):
 
     mock_file_parser = MagicMock()
 
+    mock_file_storage_rp = AsyncMock()
+    mock_file_storage_rp.load = AsyncMock(side_effect=FileNotFoundError)
+
     context["reprocess_use_case"] = ReprocessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
@@ -402,6 +413,7 @@ def processed_doc_will_fail(context):
         vector_store=mock_vector_store,
         language_detection_service=mock_language_detector,
         file_parser_service=mock_file_parser,
+        document_file_storage=mock_file_storage_rp,
     )
     context["mock_task_repo"] = mock_task_repo
     context["doc_id"] = "doc-fail"

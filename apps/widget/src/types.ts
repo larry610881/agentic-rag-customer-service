@@ -3,6 +3,7 @@ export interface WidgetConfig {
   name: string;
   description: string;
   keep_history: boolean;
+  show_sources: boolean;
   welcome_message: string;
   placeholder_text: string;
   greeting_messages: string[];
@@ -15,6 +16,7 @@ export interface Source {
   document_name: string;
   content_snippet: string;
   score: number;
+  document_id?: string;
 }
 
 /** Tool call info from agent */

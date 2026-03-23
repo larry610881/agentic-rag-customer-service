@@ -4,6 +4,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
+import { API_BASE } from "@/lib/api-config";
 import type { Source } from "@/types/chat";
 
 interface CitationCardProps {
@@ -23,6 +24,20 @@ export function CitationCard({ source, index }: CitationCardProps) {
       </CollapsibleTrigger>
       <CollapsibleContent className="px-3 py-2">
         <p className="text-sm text-muted-foreground">{source.content_snippet}</p>
+        {source.document_id && (
+          <button
+            type="button"
+            className="mt-2 text-xs text-primary hover:underline underline-offset-4"
+            onClick={() => {
+              window.open(
+                `${API_BASE}/api/v1/knowledge-bases/_/documents/${source.document_id}/view`,
+                "_blank",
+              );
+            }}
+          >
+            查看原文
+          </button>
+        )}
       </CollapsibleContent>
     </Collapsible>
   );

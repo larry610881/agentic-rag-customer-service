@@ -57,6 +57,7 @@ class UpdateBotCommand:
     busy_reply_message: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
+    line_show_sources: object = _UNSET
 
 
 class UpdateBotUseCase:
@@ -88,6 +89,7 @@ class UpdateBotUseCase:
             "memory_extraction_prompt",
             "busy_reply_message",
             "line_channel_secret", "line_channel_access_token",
+            "line_show_sources",
         )
         for field in _DIRECT_FIELDS:
             val = getattr(command, field)

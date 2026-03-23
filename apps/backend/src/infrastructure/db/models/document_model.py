@@ -28,6 +28,9 @@ class DocumentModel(Base):
     raw_content: Mapped[bytes | None] = mapped_column(
         LargeBinary, nullable=True, default=None
     )
+    storage_path: Mapped[str] = mapped_column(
+        String(1000), nullable=False, default=""
+    )
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="pending"
     )

@@ -55,6 +55,7 @@ export interface Bot {
   busy_reply_message: string;
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
+  line_show_sources: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -96,6 +97,7 @@ export interface CreateBotRequest {
   busy_reply_message?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
+  line_show_sources?: boolean;
 }
 
 export interface UpdateBotRequest {
@@ -135,4 +137,5 @@ export interface UpdateBotRequest {
   busy_reply_message?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
+  line_show_sources?: boolean;
 }

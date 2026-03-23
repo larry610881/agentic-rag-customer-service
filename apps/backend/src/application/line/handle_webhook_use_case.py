@@ -273,9 +273,18 @@ class HandleWebhookUseCase:
         )
         t1 = time.monotonic()
 
+        # Build reply text — optionally append sources
+        reply_text = result.answer
+        if bot.line_show_sources and result.sources:
+            source_lines = []
+            for i, s in enumerate(result.sources[:3], 1):
+                score_pct = round(s.score * 100)
+                source_lines.append(f"{i}. {s.document_name}（{score_pct}%）")
+            reply_text += "\n\n📚 參考來源：\n" + "\n".join(source_lines)
+
         message_id = str(uuid4())
         await line_service.reply_with_quick_reply(
-            event.reply_token, result.answer, message_id
+            event.reply_token, reply_text, message_id
         )
         t2 = time.monotonic()
 

@@ -86,6 +86,7 @@ class Bot:
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
+    line_show_sources: bool = False
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
