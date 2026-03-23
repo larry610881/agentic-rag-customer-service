@@ -102,7 +102,8 @@ class ReActAgentService(AgentService):
                 top_k=rag_top_k,
                 score_threshold=rag_score_threshold,
             )
-            return result.get("context", "") or "知識庫中沒有找到相關資訊。"
+            import json as _json
+            return _json.dumps(result, ensure_ascii=False)
 
         return rag_query  # type: ignore[return-value]
 
