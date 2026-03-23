@@ -255,8 +255,16 @@ export function BotDetailForm({
 
   const enabledTools = watch("enabled_tools") ?? [];
   const agentMode = watch("agent_mode");
+  const showSources = watch("show_sources");
   const greetingMessages = watch("widget_greeting_messages") ?? [];
   const mcpServers = watch("mcp_servers") ?? [];
+
+  // LINE show_sources 連動：主開關關閉時，LINE 也關閉
+  useEffect(() => {
+    if (!showSources) {
+      setValue("line_show_sources", false);
+    }
+  }, [showSources, setValue]);
 
   // MCP server tools metadata (shared with McpBindingsSection)
   const [serverToolsMap, setServerToolsMap] = useState<Record<string, McpToolInfo[]>>({});
@@ -1215,13 +1223,23 @@ export function BotDetailForm({
               name="line_show_sources"
               control={control}
               render={({ field }) => (
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="line_show_sources">LINE 顯示來源引用</Label>
-                  <Switch
-                    id="line_show_sources"
-                    checked={field.value ?? false}
-                    onCheckedChange={field.onChange}
-                  />
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="line_show_sources" className={!showSources ? "text-muted-foreground" : ""}>
+                      LINE 顯示來源引用
+                    </Label>
+                    <Switch
+                      id="line_show_sources"
+                      checked={field.value ?? false}
+                      onCheckedChange={field.onChange}
+                      disabled={!showSources}
+                    />
+                  </div>
+                  {!showSources && (
+                    <p className="text-xs text-muted-foreground">
+                      需先在「基本設定」頁籤開啟「顯示資料來源」
+                    </p>
+                  )}
                 </div>
               )}
             />
