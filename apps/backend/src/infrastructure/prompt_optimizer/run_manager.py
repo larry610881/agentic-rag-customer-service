@@ -54,6 +54,7 @@ class ActiveRun:
     max_iterations: int = 0
     total_api_calls: int = 0
     stopped_reason: str = ""
+    progress_message: str = ""
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: datetime | None = None
     task: asyncio.Task | None = field(default=None, repr=False)
@@ -133,6 +134,7 @@ class RunManager:
         current_iteration: int | None = None,
         total_api_calls: int | None = None,
         stopped_reason: str | None = None,
+        progress_message: str | None = None,
     ) -> None:
         run = self._runs.get(run_id)
         if not run:
@@ -151,6 +153,8 @@ class RunManager:
             run.total_api_calls = total_api_calls
         if stopped_reason is not None:
             run.stopped_reason = stopped_reason
+        if progress_message is not None:
+            run.progress_message = progress_message
 
     def list_runs(self, tenant_id: str | None = None) -> list[ActiveRun]:
         runs = list(self._runs.values())

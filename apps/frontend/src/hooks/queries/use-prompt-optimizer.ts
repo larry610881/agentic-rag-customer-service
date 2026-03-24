@@ -39,6 +39,7 @@ export interface OptimizationRun {
   current_iteration: number;
   max_iterations: number;
   stopped_reason: string;
+  progress_message: string;
   started_at: string;
   completed_at: string | null;
 }

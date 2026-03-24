@@ -174,6 +174,14 @@ export default function AdminPromptOptimizerRunDetailPage() {
             </div>
           </div>
 
+          {/* Progress message */}
+          {isRunning && run?.progress_message && (
+            <div className="flex items-center gap-2 rounded border bg-muted/30 p-2 text-sm">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <span>{run.progress_message}</span>
+            </div>
+          )}
+
           {/* Stopped reason */}
           {run?.stopped_reason && (
             <div className="rounded border border-yellow-200 bg-yellow-50 p-2 text-sm text-yellow-700">
@@ -185,14 +193,6 @@ export default function AdminPromptOptimizerRunDetailPage() {
 
       {/* Score chart */}
       {scoreHistory.length > 0 && <ScoreChart data={scoreHistory} />}
-
-      {/* Loading indicator */}
-      {isRunning && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          正在執行中，每 3 秒自動更新...
-        </div>
-      )}
     </div>
   );
 }

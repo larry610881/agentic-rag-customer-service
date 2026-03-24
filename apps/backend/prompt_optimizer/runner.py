@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,6 +37,27 @@ class RunResult:
     )
 
 
+@dataclass
+class ProgressEvent:
+    """Progress callback event data."""
+
+    phase: str  # "eval_case" | "eval_done" | "mutating" | "iteration_done"
+    iteration: int = 0
+    max_iterations: int = 0
+    case_index: int = 0  # current case (1-based)
+    total_cases: int = 0
+    case_id: str = ""
+    score: float = 0.0
+    best_score: float = 0.0
+    baseline_score: float = 0.0
+    accepted: bool = False
+    message: str = ""
+
+
+# Type alias for progress callback
+OnProgress = Callable[[ProgressEvent], Awaitable[None]] | None
+
+
 class KarpathyLoopRunner:
     """Orchestrates the Karpathy Loop: eval → mutate → eval → keep/discard."""
 
@@ -54,7 +76,11 @@ class KarpathyLoopRunner:
         self._mutator = mutator or PromptMutator()
 
     async def run(
-        self, config: OptimizationConfig, dataset: Dataset, run_id: str = ""
+        self,
+        config: OptimizationConfig,
+        dataset: Dataset,
+        run_id: str = "",
+        on_progress: OnProgress = None,
     ) -> RunResult:
         """Execute the Karpathy optimization loop."""
         import uuid
@@ -63,13 +89,16 @@ class KarpathyLoopRunner:
             run_id = str(uuid.uuid4())
 
         target = config.target
+        total_cases = len(dataset.test_cases)
 
         # 1. Read baseline prompt
         baseline_prompt = self._read_prompt(target)
         logger.info("Baseline prompt loaded (%d chars)", len(baseline_prompt))
 
         # 2. Eval baseline
-        baseline_results = await self._eval_all(dataset, config)
+        baseline_results = await self._eval_all(
+            dataset, config, iteration=0, on_progress=on_progress,
+        )
         baseline_summary = self._evaluator.evaluate(
             dataset, baseline_results, dataset.metadata.cost_config
         )
@@ -81,7 +110,7 @@ class KarpathyLoopRunner:
             baseline_score=baseline_score,
             best_score=baseline_score,
             best_prompt=baseline_prompt,
-            total_api_calls=len(dataset.test_cases),
+            total_api_calls=total_cases,
         )
 
         # Record baseline as iteration 0
@@ -97,6 +126,19 @@ class KarpathyLoopRunner:
 
         logger.info("Baseline score: %.4f", baseline_score)
 
+        if on_progress:
+            await on_progress(ProgressEvent(
+                phase="iteration_done",
+                iteration=0,
+                max_iterations=config.max_iterations,
+                total_cases=total_cases,
+                score=baseline_score,
+                best_score=baseline_score,
+                baseline_score=baseline_score,
+                accepted=True,
+                message=f"Baseline: {baseline_score:.4f}",
+            ))
+
         # Dry run: stop here
         if config.dry_run:
             result.stopped_reason = "dry_run"
@@ -110,12 +152,20 @@ class KarpathyLoopRunner:
 
         for i in range(1, config.max_iterations + 1):
             # Check budget
-            if result.total_api_calls + len(dataset.test_cases) > config.budget:
+            if result.total_api_calls + total_cases > config.budget:
                 result.stopped_reason = "budget"
                 logger.info("Budget exhausted at iteration %d", i)
                 break
 
             # Mutate
+            if on_progress:
+                await on_progress(ProgressEvent(
+                    phase="mutating",
+                    iteration=i,
+                    max_iterations=config.max_iterations,
+                    message=f"第 {i} 輪：正在生成改進版提示詞...",
+                ))
+
             failed_cases = self._extract_failed_cases(
                 result.iterations[-1].eval_summary
             )
@@ -135,8 +185,10 @@ class KarpathyLoopRunner:
             self._write_prompt(target, candidate)
 
             # Eval candidate
-            eval_results = await self._eval_all(dataset, config)
-            result.total_api_calls += len(dataset.test_cases)
+            eval_results = await self._eval_all(
+                dataset, config, iteration=i, on_progress=on_progress,
+            )
+            result.total_api_calls += total_cases
             eval_summary = self._evaluator.evaluate(
                 dataset, eval_results, dataset.metadata.cost_config
             )
@@ -149,17 +201,14 @@ class KarpathyLoopRunner:
                 best_score = score
                 best_prompt = candidate
                 no_improve_count = 0
-                temperature = 0.7  # Reset temperature on improvement
+                temperature = 0.7
                 logger.info("Iteration %d: %.4f → ACCEPTED (new best)", i, score)
             else:
                 no_improve_count += 1
-                temperature = min(temperature + 0.1, 1.5)  # Escalate temperature
+                temperature = min(temperature + 0.1, 1.5)
                 logger.info(
                     "Iteration %d: %.4f → DISCARDED (no improve %d/%d)",
-                    i,
-                    score,
-                    no_improve_count,
-                    config.patience,
+                    i, score, no_improve_count, config.patience,
                 )
 
             result.iterations.append(
@@ -171,6 +220,19 @@ class KarpathyLoopRunner:
                     accepted=accepted,
                 )
             )
+
+            if on_progress:
+                await on_progress(ProgressEvent(
+                    phase="iteration_done",
+                    iteration=i,
+                    max_iterations=config.max_iterations,
+                    total_cases=total_cases,
+                    score=score,
+                    best_score=best_score,
+                    baseline_score=result.baseline_score,
+                    accepted=accepted,
+                    message=f"第 {i} 輪：{score:.4f} {'✓ 接受' if accepted else '✗ 放棄'}",
+                ))
 
             # Early stop: perfect score
             if best_score >= 1.0:
@@ -193,18 +255,30 @@ class KarpathyLoopRunner:
 
         logger.info(
             "Optimization complete: %.4f → %.4f (%s)",
-            baseline_score,
-            best_score,
-            result.stopped_reason,
+            baseline_score, best_score, result.stopped_reason,
         )
         return result
 
     async def _eval_all(
-        self, dataset: Dataset, config: OptimizationConfig
+        self,
+        dataset: Dataset,
+        config: OptimizationConfig,
+        iteration: int = 0,
+        on_progress: OnProgress = None,
     ) -> list[ChatResult]:
-        """Evaluate all test cases via API."""
+        """Evaluate all test cases via API, with per-case progress callback."""
         results = []
-        for tc in dataset.test_cases:
+        total = len(dataset.test_cases)
+        for idx, tc in enumerate(dataset.test_cases):
+            if on_progress:
+                await on_progress(ProgressEvent(
+                    phase="eval_case",
+                    iteration=iteration,
+                    case_index=idx + 1,
+                    total_cases=total,
+                    case_id=tc.id,
+                    message=f"第 {iteration} 輪：評估案例 {idx + 1}/{total} ({tc.id})",
+                ))
             try:
                 cr = await self._api.chat(
                     message=tc.question,
@@ -214,7 +288,6 @@ class KarpathyLoopRunner:
                 results.append(cr)
             except Exception as e:
                 logger.error("API call failed for case %s: %s", tc.id, e)
-                # Return empty result on failure
                 results.append(
                     ChatResult(
                         answer="",

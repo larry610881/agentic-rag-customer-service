@@ -237,8 +237,37 @@ class StartRunUseCase:
                 ),
             )
 
+            # Progress callback: update RunManager on each case/iteration
+            from prompt_optimizer.runner import ProgressEvent
+
+            async def _on_progress(evt: ProgressEvent) -> None:
+                self._run_manager.update_run(
+                    run_id,
+                    current_iteration=evt.iteration,
+                    baseline_score=evt.baseline_score,
+                    best_score=evt.best_score,
+                    progress_message=evt.message,
+                )
+                await self._run_manager.publish_progress(
+                    run_id,
+                    RunProgress(
+                        run_id=run_id,
+                        event=evt.phase,
+                        iteration=evt.iteration,
+                        max_iterations=evt.max_iterations,
+                        score=evt.score,
+                        best_score=evt.best_score,
+                        baseline_score=evt.baseline_score,
+                        message=evt.message,
+                    ),
+                )
+
+            result_holder: dict = {"api_calls": 0}
+
             # Run the optimization loop
-            result = await runner.run(config, cli_dataset, run_id=run_id)
+            result = await runner.run(
+                config, cli_dataset, run_id=run_id, on_progress=_on_progress
+            )
 
             # Save iterations to DB via sync history client
             if history_client:
@@ -476,6 +505,7 @@ class GetRunUseCase:
                     iterations[0].created_at.isoformat() if iterations else ""
                 )
             ),
+            "progress_message": active.progress_message if active else "",
             "iterations": [
                 {
                     "iteration": it.iteration,
