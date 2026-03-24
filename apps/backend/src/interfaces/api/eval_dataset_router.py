@@ -6,7 +6,7 @@ from math import ceil
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
 from src.application.eval_dataset.create_eval_dataset_use_case import (
@@ -533,16 +533,19 @@ class EstimateCostRequest(BaseModel):
 @inject
 async def run_single_eval(
     body: RunEvalRequest,
+    request: Request,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: RunSingleEvalUseCase = Depends(
         Provide[Container.run_single_eval_use_case]
     ),
 ) -> dict:
     """Run one eval cycle against current prompt (no optimization loop)."""
+    auth_header = request.headers.get("authorization", "")
+    api_token = auth_header.removeprefix("Bearer ").strip()
     command = RunEvalCommand(
         tenant_id=tenant.tenant_id,
         dataset_id=body.dataset_id,
-        api_token="",
+        api_token=api_token,
     )
     try:
         return await use_case.execute(command)
@@ -589,6 +592,7 @@ class RunValidationRequest(BaseModel):
 @inject
 async def run_validation_eval(
     body: RunValidationRequest,
+    request: Request,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: RunValidationEvalUseCase = Depends(
         Provide[Container.run_validation_eval_use_case]
@@ -600,10 +604,12 @@ async def run_validation_eval(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="repeats must be between 1 and 100",
         )
+    auth_header = request.headers.get("authorization", "")
+    api_token = auth_header.removeprefix("Bearer ").strip()
     command = RunValidationCommand(
         tenant_id=tenant.tenant_id,
         dataset_id=body.dataset_id,
-        api_token="",
+        api_token=api_token,
         repeats=body.repeats,
         bot_id=body.bot_id,
     )

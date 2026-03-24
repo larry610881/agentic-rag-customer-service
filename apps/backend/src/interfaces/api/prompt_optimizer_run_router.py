@@ -7,7 +7,7 @@ from math import ceil
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -129,16 +129,19 @@ class DiffResponse(BaseModel):
 @inject
 async def start_run(
     body: StartRunRequest,
+    request: Request,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: StartRunUseCase = Depends(
         Provide[Container.start_run_use_case]
     ),
 ) -> StartRunResponse:
     """Start an optimization run (async background task)."""
+    auth_header = request.headers.get("authorization", "")
+    api_token = auth_header.removeprefix("Bearer ").strip()
     command = StartRunCommand(
         tenant_id=tenant.tenant_id,
         dataset_id=body.dataset_id,
-        api_token="",  # Will use the caller's token context
+        api_token=api_token,
         max_iterations=body.max_iterations,
         patience=body.patience,
         budget=body.budget,
