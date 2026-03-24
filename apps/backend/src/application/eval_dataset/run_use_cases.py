@@ -544,6 +544,7 @@ class GetRunUseCase:
                 )
             ),
             "progress_message": active.progress_message if active else "",
+            "progress_log": active.progress_log if active else [],
             "iterations": [
                 {
                     "iteration": it.iteration,

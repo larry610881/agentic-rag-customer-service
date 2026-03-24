@@ -69,11 +69,9 @@ export default function AdminPromptOptimizerRunDetailPage() {
   const [pollingScoreHistory, setPollingScoreHistory] = useState<
     { iteration: number; score: number; bestScore: number }[]
   >([]);
-  const [progressLog, setProgressLog] = useState<string[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [expandedIter, setExpandedIter] = useState<number | null>(null);
   const startTimeRef = useRef(Date.now());
-  const prevMessageRef = useRef("");
 
   const status = run?.status ?? "unknown";
   const currentIteration = run?.current_iteration ?? 0;
@@ -128,20 +126,9 @@ export default function AdminPromptOptimizerRunDetailPage() {
     });
   }, [iterations, pollingScoreHistory]);
 
-  // Accumulate progress log
-  useEffect(() => {
-    const msg = run?.progress_message;
-    if (!msg || msg === prevMessageRef.current) return;
-    prevMessageRef.current = msg;
-    if (
-      msg.includes("Baseline") ||
-      msg.includes("✓ 接受") ||
-      msg.includes("✗ 放棄") ||
-      msg.includes("正在生成")
-    ) {
-      setProgressLog((prev) => [...prev, msg]);
-    }
-  }, [run?.progress_message]);
+  // Progress log from backend (complete history, no polling gaps)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const progressLog: string[] = (run as any)?.progress_log ?? [];
 
   const handleStop = useCallback(() => {
     if (!runId) return;
