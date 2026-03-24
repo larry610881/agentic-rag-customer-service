@@ -230,7 +230,7 @@ export function useStartOptimization() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { bot_id: string; dataset_id: string; max_iterations?: number }) =>
+    mutationFn: (data: { bot_id: string; dataset_id: string; max_iterations?: number; patience?: number; budget?: number }) =>
       apiFetch<OptimizationRun>(
         API_ENDPOINTS.promptOptimizer.runs.create,
         { method: "POST", body: JSON.stringify(data) },

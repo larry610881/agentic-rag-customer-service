@@ -95,6 +95,8 @@ export default function AdminPromptOptimizerStartPage() {
         bot_id: selectedBotId,
         dataset_id: selectedDatasetId,
         max_iterations: maxIterations,
+        patience,
+        budget: tokenBudget,
         ...(selectedModel ? { mutator_model: selectedModel } : {}),
       },
       {

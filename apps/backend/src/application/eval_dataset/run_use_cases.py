@@ -205,8 +205,18 @@ class StartRunUseCase:
                 RunHistoryClient(self._db_url) if self._db_url else None
             )
 
-            # Simple in-memory prompt storage for the runner
+            # Pre-load actual prompt from DB via sync client
             prompt_store: dict[str, str] = {}
+            if self._db_url:
+                try:
+                    from prompt_optimizer.db_client import PromptDBClient
+
+                    prompt_db = PromptDBClient(db_url=self._db_url)
+                    initial_prompt = prompt_db.read_prompt(target)
+                    prompt_store[target.field] = initial_prompt
+                    prompt_db.close()
+                except Exception as e:
+                    logger.warning("Failed to pre-load prompt: %s", e)
 
             def read_prompt(t: PromptTarget) -> str:
                 return prompt_store.get(t.field, "")
@@ -496,7 +506,11 @@ class GetRunUseCase:
                 if active
                 else (iterations[-1].iteration if iterations else 0)
             ),
-            "max_iterations": active.max_iterations if active else 0,
+            "max_iterations": (
+                active.max_iterations
+                if active
+                else (iterations[-1].iteration if iterations else 0)
+            ),
             "total_api_calls": active.total_api_calls if active else 0,
             "started_at": (
                 active.started_at.isoformat()
