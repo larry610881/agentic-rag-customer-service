@@ -69,11 +69,11 @@ export default function AdminPromptOptimizerRunDetailPage() {
     return () => clearInterval(timer);
   }, [progress?.status, run?.status]);
 
-  // SSE connection — only connect if run is still active
+  // SSE connection — only connect if run is still active (wait for run data to load)
   useEffect(() => {
     if (!runId) return;
-    const currentStatus = run?.status;
-    if (currentStatus && isFinishedStatus(currentStatus)) return;
+    if (!run) return; // Wait for API data before deciding
+    if (isFinishedStatus(run.status)) return;
 
     const es = new EventSource(
       `${API_BASE}/api/v1/prompt-optimizer/runs/${runId}/progress`,
