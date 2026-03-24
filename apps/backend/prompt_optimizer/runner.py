@@ -294,10 +294,27 @@ class KarpathyLoopRunner:
             cr = None
             for retry in range(max_retries + 1):
                 try:
+                    # Build conversation history first (if any)
+                    conv_id = None
+                    if tc.conversation_history:
+                        for hist_msg in tc.conversation_history:
+                            msg_content = (
+                                hist_msg.get("content", "")
+                                if isinstance(hist_msg, dict)
+                                else str(hist_msg)
+                            )
+                            hist_cr = await self._api.chat(
+                                message=msg_content,
+                                bot_id=dataset.metadata.bot_id or None,
+                                conversation_id=conv_id,
+                            )
+                            conv_id = hist_cr.conversation_id
+
+                    # Send actual test question
                     cr = await self._api.chat(
                         message=tc.question,
                         bot_id=dataset.metadata.bot_id or None,
-                        knowledge_base_id=None,
+                        conversation_id=conv_id,
                     )
                     break
                 except Exception as e:
