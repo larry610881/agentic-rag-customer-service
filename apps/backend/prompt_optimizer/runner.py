@@ -269,8 +269,11 @@ class KarpathyLoopRunner:
         config: OptimizationConfig,
         iteration: int = 0,
         on_progress: OnProgress = None,
+        max_retries: int = 2,
     ) -> list[ChatResult]:
-        """Evaluate all test cases via API, with per-case progress callback."""
+        """Evaluate all test cases via API, with per-case progress and retry."""
+        import asyncio as _asyncio
+
         results = []
         total = len(dataset.test_cases)
         for idx, tc in enumerate(dataset.test_cases):
@@ -283,25 +286,36 @@ class KarpathyLoopRunner:
                     case_id=tc.id,
                     message=f"第 {iteration} 輪：評估案例 {idx + 1}/{total} ({tc.id})",
                 ))
-            try:
-                cr = await self._api.chat(
-                    message=tc.question,
-                    bot_id=dataset.metadata.bot_id or None,
-                    knowledge_base_id=None,
-                )
-                results.append(cr)
-            except Exception as e:
-                logger.error("API call failed for case %s: %s", tc.id, e)
-                results.append(
-                    ChatResult(
-                        answer="",
-                        conversation_id="",
-                        tool_calls=[],
-                        sources=[],
-                        usage=None,
-                        latency_ms=0,
+            cr = None
+            for retry in range(max_retries + 1):
+                try:
+                    cr = await self._api.chat(
+                        message=tc.question,
+                        bot_id=dataset.metadata.bot_id or None,
+                        knowledge_base_id=None,
                     )
-                )
+                    break
+                except Exception as e:
+                    if retry < max_retries:
+                        logger.warning(
+                            "Retry %d/%d for case %s: %s",
+                            retry + 1, max_retries, tc.id, e,
+                        )
+                        await _asyncio.sleep(2)
+                    else:
+                        logger.error(
+                            "API call failed after %d attempts for case %s: %s",
+                            max_retries + 1, tc.id, e,
+                        )
+                        cr = ChatResult(
+                            answer="",
+                            conversation_id="",
+                            tool_calls=[],
+                            sources=[],
+                            usage={"error": str(e)},
+                            latency_ms=0,
+                        )
+            results.append(cr)  # type: ignore[arg-type]
         return results
 
     def _extract_failed_cases(self, summary: DatasetEvalSummary) -> list[FailedCase]:

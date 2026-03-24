@@ -160,6 +160,30 @@ class Evaluator:
 
     def _evaluate_case(self, tc: TestCase, cr: ChatResult) -> CaseResult:
         """Evaluate a single test case against its chat result."""
+        # Empty response = API failure → all assertions fail
+        if not cr.answer.strip():
+            error_msg = "AI 回答為空（API 呼叫可能失敗）"
+            if cr.usage and cr.usage.get("error"):
+                error_msg = f"API 錯誤：{cr.usage['error']}"
+            return CaseResult(
+                case_id=tc.id,
+                question=tc.question,
+                priority=tc.priority,
+                category=tc.category,
+                score=0.0,
+                passed_count=0,
+                total_count=len(tc.assertions),
+                assertion_results=[
+                    AssertionResult(
+                        passed=False,
+                        assertion_type="api_error",
+                        message=error_msg,
+                    )
+                ],
+                p0_failed=tc.priority == "P0",
+                answer_snippet="",
+            )
+
         ctx = AssertionContext(
             response_text=cr.answer,
             tool_calls=cr.tool_calls,
