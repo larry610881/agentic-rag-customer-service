@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -26,6 +27,7 @@ import { ROUTES } from "@/routes/paths";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { useTenants } from "@/hooks/queries/use-tenants";
 import { useBots } from "@/hooks/queries/use-bots";
+import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import {
   useEvalDatasets,
   useEstimateCost,
@@ -36,8 +38,6 @@ import type {
   ValidationResult,
   ValidationCaseResult,
 } from "@/hooks/queries/use-prompt-optimizer";
-
-const REPEAT_OPTIONS = [3, 5, 10];
 
 function PassRateBadge({ result }: { result: ValidationCaseResult }) {
   const pct = Math.round(result.pass_rate * 100);
@@ -68,11 +68,13 @@ export default function AdminPromptOptimizerValidatePage() {
   const [selectedBotId, setSelectedBotId] = useState("");
   const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [repeats, setRepeats] = useState(5);
+  const [selectedModel, setSelectedModel] = useState("");
 
   // Queries
   const { data: tenantsData } = useTenants(1, 100);
   const { data: botsData } = useBots(1, 100);
   const { data: datasetsData } = useEvalDatasets(1, 100);
+  const { data: enabledModels } = useEnabledModels();
   const { data: exchangeRate } = useExchangeRate("twd");
 
   // Mutations
@@ -83,6 +85,7 @@ export default function AdminPromptOptimizerValidatePage() {
   const tenants = tenantsData?.items ?? [];
   const bots = botsData?.items ?? [];
   const datasets = datasetsData?.items ?? [];
+  const models = enabledModels ?? [];
 
   const canStart = selectedBotId && selectedDatasetId;
 
@@ -99,7 +102,7 @@ export default function AdminPromptOptimizerValidatePage() {
     estimateCost.mutate({
       dataset_id: selectedDatasetId,
       bot_id: selectedBotId || undefined,
-      model_id: botModelId,
+      model_id: selectedModel || botModelId,
       max_iterations: 0,
       patience: 0,
       budget: 0,
@@ -222,23 +225,50 @@ export default function AdminPromptOptimizerValidatePage() {
 
             <div className="space-y-2">
               <Label>重複次數</Label>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={repeats}
+                onChange={(e) => {
+                  const v = Math.min(100, Math.max(1, Number(e.target.value) || 1));
+                  setRepeats(v);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                每個 case 重複評估 N 次，統計 pass rate（上限 100）
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>評估模型</Label>
               <Select
-                value={String(repeats)}
-                onValueChange={(v) => setRepeats(Number(v))}
+                value={selectedModel}
+                onValueChange={setSelectedModel}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="使用 Bot 預設模型" />
                 </SelectTrigger>
                 <SelectContent>
-                  {REPEAT_OPTIONS.map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      {n} 次
+                  {models.map((m) => (
+                    <SelectItem key={m.model_id} value={m.model_id}>
+                      <div className="flex items-center gap-2">
+                        <span>{m.display_name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {m.provider_name}
+                        </span>
+                        {m.price && (
+                          <span className="text-xs text-muted-foreground">
+                            {m.price}
+                          </span>
+                        )}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                每個 case 重複評估 N 次，統計 pass rate
+                不選則使用 Bot 設定的 LLM 模型
               </p>
             </div>
           </CardContent>

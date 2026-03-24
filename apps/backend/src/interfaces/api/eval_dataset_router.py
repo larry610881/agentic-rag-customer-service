@@ -595,10 +595,10 @@ async def run_validation_eval(
     ),
 ) -> dict:
     """Run N evaluation repeats and return PASS/FAIL verdict with per-case pass rates."""
-    if body.repeats < 1 or body.repeats > 20:
+    if body.repeats < 1 or body.repeats > 100:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="repeats must be between 1 and 20",
+            detail="repeats must be between 1 and 100",
         )
     command = RunValidationCommand(
         tenant_id=tenant.tenant_id,
