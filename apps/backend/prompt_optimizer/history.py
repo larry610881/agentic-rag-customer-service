@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 
@@ -57,7 +58,7 @@ class RunHistoryClient:
                     "passed_count": passed_count,
                     "total_count": total_count,
                     "is_best": is_best,
-                    "details": str(details) if details else None,
+                    "details": json.dumps(details) if details else None,
                 },
             )
             session.commit()
