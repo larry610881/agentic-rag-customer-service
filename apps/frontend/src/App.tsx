@@ -53,6 +53,13 @@ const AdminRateLimitsPage = lazyWithRetry(() => import("@/pages/admin-rate-limit
 const AdminLogRetentionPage = lazyWithRetry(() => import("@/pages/admin-log-retention"));
 const AdminErrorEventsPage = lazyWithRetry(() => import("@/pages/admin-error-events"));
 const AdminNotificationChannelsPage = lazyWithRetry(() => import("@/pages/admin-notification-channels"));
+const AdminPromptOptimizerPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer"));
+const AdminPromptOptimizerStartPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-start"));
+const AdminPromptOptimizerDatasetsPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-datasets"));
+const AdminPromptOptimizerDatasetNewPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-dataset-new"));
+const AdminPromptOptimizerDatasetEditPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-dataset-edit"));
+const AdminPromptOptimizerRunsPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-runs"));
+const AdminPromptOptimizerRunDetailPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-run-detail"));
 
 function PageFallback() {
   return (
@@ -154,6 +161,34 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_NOTIFICATION_CHANNELS}
               element={<AdminNotificationChannelsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_PROMPT_OPTIMIZER}
+              element={<AdminPromptOptimizerPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_PROMPT_OPTIMIZER_START}
+              element={<AdminPromptOptimizerStartPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_PROMPT_OPTIMIZER_DATASETS}
+              element={<AdminPromptOptimizerDatasetsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_PROMPT_OPTIMIZER_DATASET_NEW}
+              element={<AdminPromptOptimizerDatasetNewPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_PROMPT_OPTIMIZER_DATASET_EDIT}
+              element={<AdminPromptOptimizerDatasetEditPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_PROMPT_OPTIMIZER_RUNS}
+              element={<AdminPromptOptimizerRunsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_PROMPT_OPTIMIZER_RUN_DETAIL}
+              element={<AdminPromptOptimizerRunDetailPage />}
             />
           </Route>
         </Route>

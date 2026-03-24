@@ -1,0 +1,136 @@
+schema_version: "1.0"
+includes:
+  - "_security_base.yaml"
+
+metadata:
+  tenant_id: "tenant-example"
+  bot_id: "bot-saas"
+  target_prompt: "base_prompt"
+  agent_mode: "router"
+  description: "SaaS 客服場景"
+  cost_config:
+    token_budget: 2000
+    quality_weight: 0.85
+    cost_weight: 0.15
+
+default_assertions:
+  - type: "max_length"
+    params: { max_chars: 2000 }
+  - type: "language_match"
+    params: { expected: "zh-TW" }
+  - type: "token_count_under"
+    params: { max_tokens: 3000 }
+  - type: "output_tokens_under"
+    params: { max_tokens: 800 }
+
+test_cases:
+  # ── 功能詢問 (P0) ──
+  - id: "feature_inquiry_01"
+    question: "你們的系統可以做什麼？有哪些主要功能？"
+    priority: "P0"
+    category: "feature_inquiry"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "response_not_empty"
+      - type: "contains_any"
+        params: { keywords: ["功能", "特色", "支援"] }
+
+  - id: "feature_inquiry_02"
+    question: "你們有支援 API 串接嗎？文件在哪裡？"
+    priority: "P0"
+    category: "feature_inquiry"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["API", "串接", "文件", "整合"] }
+      - type: "has_citations"
+        params: { min_count: 1 }
+
+  # ── 問候 (P0) ──
+  - id: "greeting_01"
+    question: "你好，我想了解你們的產品"
+    priority: "P0"
+    category: "greeting"
+    assertions:
+      - type: "response_not_empty"
+      - type: "max_length"
+        params: { max_chars: 300 }
+      - type: "sentiment_positive"
+
+  # ── 方案比較 (P1) ──
+  - id: "plan_comparison_01"
+    question: "免費版和付費版有什麼差別？"
+    priority: "P1"
+    category: "plan_comparison"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["免費", "付費", "方案", "差異", "功能"] }
+      - type: "has_citations"
+        params: { min_count: 1 }
+
+  - id: "plan_comparison_02"
+    question: "企業版一個月多少錢？可以年繳打折嗎？"
+    priority: "P1"
+    category: "plan_comparison"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["價格", "費用", "方案", "年繳", "月繳"] }
+
+  # ── 技術支援 (P1) ──
+  - id: "tech_support_01"
+    question: "系統一直顯示連線逾時，怎麼辦？"
+    priority: "P1"
+    category: "tech_support"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["連線", "網路", "重新", "設定", "檢查"] }
+      - type: "response_not_empty"
+
+  - id: "tech_support_02"
+    question: "匯出報表的時候一直失敗，錯誤代碼是 ERR-5001"
+    priority: "P1"
+    category: "tech_support"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "response_not_empty"
+
+  # ── 帳號問題 (P1) ──
+  - id: "account_issue_01"
+    question: "我忘記密碼了，怎麼重設？"
+    priority: "P1"
+    category: "account"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["密碼", "重設", "重置", "忘記"] }
+
+  - id: "account_issue_02"
+    question: "可以新增子帳號給我的團隊成員嗎？"
+    priority: "P1"
+    category: "account"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["帳號", "成員", "權限", "新增"] }
+
+  # ── 超出範圍 (P1) ──
+  - id: "out_of_scope_01"
+    question: "你們可以幫我架一個購物網站嗎？"
+    priority: "P1"
+    category: "out_of_scope"
+    assertions:
+      - type: "contains_any"
+        params: { keywords: ["抱歉", "無法", "不在服務範圍"] }
+      - type: "not_contains"
+        params: { keywords: ["沒問題", "馬上幫您", "好的我來"] }

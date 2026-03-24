@@ -87,4 +87,10 @@ export const queryKeys = {
   notificationChannels: {
     all: ["notification-channels"] as const,
   },
+  promptOptimizer: {
+    datasets: ["prompt-optimizer", "datasets"] as const,
+    dataset: (id: string) => ["prompt-optimizer", "datasets", id] as const,
+    runs: ["prompt-optimizer", "runs"] as const,
+    run: (id: string) => ["prompt-optimizer", "runs", id] as const,
+  },
 };

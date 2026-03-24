@@ -44,6 +44,38 @@ from src.application.conversation.list_feedback_use_case import (
 from src.application.conversation.submit_feedback_use_case import (
     SubmitFeedbackUseCase,
 )
+from src.application.eval_dataset.create_eval_dataset_use_case import (
+    CreateEvalDatasetUseCase,
+)
+from src.application.eval_dataset.eval_use_cases import (
+    EstimateCostUseCase,
+    RunSingleEvalUseCase,
+)
+from src.application.eval_dataset.delete_eval_dataset_use_case import (
+    DeleteEvalDatasetUseCase,
+)
+from src.application.eval_dataset.get_eval_dataset_use_case import (
+    GetEvalDatasetUseCase,
+)
+from src.application.eval_dataset.list_eval_datasets_use_case import (
+    ListEvalDatasetsUseCase,
+)
+from src.application.eval_dataset.manage_test_cases_use_case import (
+    CreateTestCaseUseCase,
+    DeleteTestCaseUseCase,
+)
+from src.application.eval_dataset.run_use_cases import (
+    GetRunDiffUseCase,
+    GetRunReportUseCase,
+    GetRunUseCase,
+    ListRunsUseCase,
+    RollbackRunUseCase,
+    StartRunUseCase,
+    StopRunUseCase,
+)
+from src.application.eval_dataset.update_eval_dataset_use_case import (
+    UpdateEvalDatasetUseCase,
+)
 from src.application.health.health_check_use_case import HealthCheckUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
@@ -201,6 +233,13 @@ from src.infrastructure.db.repositories.document_repository import (
 from src.infrastructure.db.repositories.error_event_repository import (
     SQLAlchemyErrorEventRepository,
 )
+from src.infrastructure.db.repositories.eval_dataset_repository import (
+    SQLAlchemyEvalDatasetRepository,
+)
+from src.infrastructure.db.repositories.optimization_run_repository import (
+    SQLAlchemyOptimizationRunRepository,
+)
+from src.infrastructure.prompt_optimizer.run_manager import RunManager
 from src.infrastructure.db.repositories.feedback_repository import (
     SQLAlchemyFeedbackRepository,
 )
@@ -313,6 +352,25 @@ from src.infrastructure.text_splitter.recursive_text_splitter_service import (
 )
 
 
+class _AvgChunkSizeProvider:
+    """Async callable to query avg chunk size from DB for a tenant."""
+
+    def __init__(self, session):
+        self._session = session
+
+    async def __call__(self, tenant_id: str) -> int:
+        from sqlalchemy import text
+
+        result = await self._session.execute(
+            text(
+                "SELECT ROUND(AVG(LENGTH(content))) FROM chunks WHERE tenant_id = :tid"
+            ),
+            {"tid": tenant_id},
+        )
+        row = result.scalar()
+        return int(row) if row else 500
+
+
 class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
         modules=[
@@ -338,6 +396,8 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.notification_router",
             "src.interfaces.api.system_prompt_router",
             "src.interfaces.api.widget_router",
+            "src.interfaces.api.eval_dataset_router",
+            "src.interfaces.api.prompt_optimizer_run_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -464,6 +524,11 @@ class Container(containers.DeclarativeContainer):
 
     error_event_repository = providers.Factory(
         SQLAlchemyErrorEventRepository,
+        session=db_session,
+    )
+
+    eval_dataset_repository = providers.Factory(
+        SQLAlchemyEvalDatasetRepository,
         session=db_session,
     )
 
@@ -1096,6 +1161,107 @@ class Container(containers.DeclarativeContainer):
         channel_repo=notification_channel_repository,
         throttle_service=notification_throttle_service,
         dispatcher=notification_dispatcher,
+    )
+
+    # --- Eval Dataset (Prompt Optimizer) ---
+
+    create_eval_dataset_use_case = providers.Factory(
+        CreateEvalDatasetUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+    )
+
+    get_eval_dataset_use_case = providers.Factory(
+        GetEvalDatasetUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+    )
+
+    list_eval_datasets_use_case = providers.Factory(
+        ListEvalDatasetsUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+    )
+
+    update_eval_dataset_use_case = providers.Factory(
+        UpdateEvalDatasetUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+    )
+
+    delete_eval_dataset_use_case = providers.Factory(
+        DeleteEvalDatasetUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+    )
+
+    create_test_case_use_case = providers.Factory(
+        CreateTestCaseUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+    )
+
+    delete_test_case_use_case = providers.Factory(
+        DeleteTestCaseUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+    )
+
+    run_single_eval_use_case = providers.Factory(
+        RunSingleEvalUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+    )
+
+    estimate_cost_use_case = providers.Factory(
+        EstimateCostUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+        bot_repository=bot_repository,
+        system_prompt_config_repository=system_prompt_config_repository,
+        get_avg_chunk_size=providers.Factory(
+            _AvgChunkSizeProvider, session=db_session,
+        ),
+    )
+
+    # --- Optimization Runs ---
+
+    optimization_run_repository = providers.Factory(
+        SQLAlchemyOptimizationRunRepository,
+        session=db_session,
+    )
+
+    run_manager = providers.Singleton(RunManager)
+
+    start_run_use_case = providers.Factory(
+        StartRunUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+        run_manager=run_manager,
+        db_url=providers.Callable(lambda cfg: cfg.database_url, config),
+    )
+
+    list_runs_use_case = providers.Factory(
+        ListRunsUseCase,
+        optimization_run_repository=optimization_run_repository,
+        run_manager=run_manager,
+    )
+
+    get_run_use_case = providers.Factory(
+        GetRunUseCase,
+        optimization_run_repository=optimization_run_repository,
+        run_manager=run_manager,
+    )
+
+    stop_run_use_case = providers.Factory(
+        StopRunUseCase,
+        run_manager=run_manager,
+    )
+
+    rollback_run_use_case = providers.Factory(
+        RollbackRunUseCase,
+        optimization_run_repository=optimization_run_repository,
+        bot_repository=bot_repository,
+    )
+
+    get_run_report_use_case = providers.Factory(
+        GetRunReportUseCase,
+        optimization_run_repository=optimization_run_repository,
+    )
+
+    get_run_diff_use_case = providers.Factory(
+        GetRunDiffUseCase,
+        optimization_run_repository=optimization_run_repository,
     )
 
     # --- Memory ---

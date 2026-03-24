@@ -1,0 +1,286 @@
+schema_version: "1.0"
+includes:
+  - "_security_base.yaml"
+
+metadata:
+  tenant_id: "00000000-0000-0000-0000-000000000000"
+  bot_id: "86441a14-8940-45db-8bdf-00f4396363ad"
+  target_prompt: "react_prompt"
+  agent_mode: "react"
+  description: "窩廚房客服 — 料理課程 + 食材商品（ReAct + MCP Tools）"
+  cost_config:
+    token_budget: 2500
+    quality_weight: 0.85
+    cost_weight: 0.15
+
+default_assertions:
+  - type: "max_length"
+    params: { max_chars: 2000 }
+  - type: "language_match"
+    params: { expected: "zh-TW" }
+  - type: "token_count_under"
+    params: { max_tokens: 3500 }
+  - type: "output_tokens_under"
+    params: { max_tokens: 800 }
+  - type: "no_hallucination_markers"
+
+test_cases:
+  # ═══════════════════════════════════════
+  # 課程查詢 (query_courses via MCP)
+  # ═══════════════════════════════════════
+  - id: "course-browse-01"
+    question: "最近有什麼料理課程可以報名？"
+    priority: "P0"
+    category: "course/browse"
+    assertions:
+      - type: "contains_any"
+        params: { keywords: ["課程", "料理", "報名", "場次"] }
+      - type: "tool_was_called"
+        params: { tool_name: "query_courses" }
+      - type: "response_not_empty"
+
+  - id: "course-browse-02"
+    question: "有沒有親子料理課？"
+    priority: "P0"
+    category: "course/browse"
+    assertions:
+      - type: "contains_any"
+        params: { keywords: ["親子", "課程", "小朋友", "兒童"] }
+      - type: "tool_was_called"
+        params: { tool_name: "query_courses" }
+
+  - id: "course-price-01"
+    question: "親子課程大概多少錢？"
+    priority: "P1"
+    category: "course/price"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "query_courses" }
+      - type: "regex_match"
+        params: { pattern: "\\d+" }
+
+  - id: "course-vacancy-01"
+    question: "這週末的課還有名額嗎？"
+    priority: "P1"
+    category: "course/vacancy"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "query_courses" }
+      - type: "contains_any"
+        params: { keywords: ["名額", "報名", "額滿", "還有", "剩餘"] }
+
+  - id: "course-lector-01"
+    question: "有哪些老師在教課？"
+    priority: "P1"
+    category: "course/lector"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "query_courses" }
+      - type: "contains_any"
+        params: { keywords: ["老師", "講師", "主廚", "Chef"] }
+
+  - id: "course-category-01"
+    question: "你們有哪些課程分類？"
+    priority: "P1"
+    category: "course/category"
+    assertions:
+      - type: "contains_any"
+        params: { keywords: ["親子", "質感生活", "世界味蕾", "聰明料理", "歡聚食光", "季節特選"] }
+
+  - id: "course-detail-01"
+    question: "可以介紹一下世界味蕾系列的課程嗎？"
+    priority: "P1"
+    category: "course/detail"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "query_courses" }
+      - type: "contains_any"
+        params: { keywords: ["世界味蕾", "課程"] }
+
+  # ═══════════════════════════════════════
+  # 商品查詢 (query_products via MCP)
+  # ═══════════════════════════════════════
+  - id: "product-browse-01"
+    question: "你們有賣什麼食材？"
+    priority: "P0"
+    category: "product/browse"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "query_products" }
+      - type: "contains_any"
+        params: { keywords: ["商品", "食材", "產品", "推薦"] }
+      - type: "response_not_empty"
+
+  - id: "product-browse-02"
+    question: "有沒有冷凍宅配的商品？"
+    priority: "P1"
+    category: "product/browse"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "query_products" }
+      - type: "contains_any"
+        params: { keywords: ["冷凍", "宅配", "低溫", "商品"] }
+
+  - id: "product-price-01"
+    question: "橄欖油多少錢？"
+    priority: "P1"
+    category: "product/price"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "query_products" }
+      - type: "regex_match"
+        params: { pattern: "\\d+" }
+
+  - id: "product-recommend-01"
+    question: "推薦一些適合做義大利麵的食材"
+    priority: "P1"
+    category: "product/recommend"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "query_products" }
+      - type: "response_not_empty"
+
+  # ═══════════════════════════════════════
+  # RAG 知識庫查詢 (rag_query)
+  # ═══════════════════════════════════════
+  - id: "rag-policy-01"
+    question: "你們的退貨政策是什麼？"
+    priority: "P0"
+    category: "rag/policy"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["退貨", "退款", "退換貨", "政策"] }
+      - type: "has_citations"
+        params: { min_count: 1 }
+
+  - id: "rag-faq-01"
+    question: "課程可以轉讓給別人嗎？"
+    priority: "P1"
+    category: "rag/faq"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "response_not_empty"
+
+  - id: "rag-about-01"
+    question: "窩廚房是什麼？可以介紹一下嗎？"
+    priority: "P1"
+    category: "rag/about"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["窩廚房", "料理", "課程", "食材"] }
+
+  # ═══════════════════════════════════════
+  # 跨 Tool 場景（Agent 需判斷用哪個 tool）
+  # ═══════════════════════════════════════
+  - id: "cross-tool-01"
+    question: "我想學做甜點，有推薦的課程和相關食材嗎？"
+    priority: "P1"
+    category: "cross_tool"
+    assertions:
+      - type: "contains_any"
+        params: { keywords: ["課程", "甜點"] }
+      - type: "tool_call_count"
+        params: { min: 1, max: 5 }
+      - type: "response_not_empty"
+
+  - id: "cross-tool-02"
+    question: "週末想辦個家庭派對，你們有什麼課可以上？另外有沒有派對用的食材組合？"
+    priority: "P2"
+    category: "cross_tool"
+    assertions:
+      - type: "tool_call_count"
+        params: { min: 1, max: 5 }
+      - type: "contains_any"
+        params: { keywords: ["課程", "派對", "食材", "商品"] }
+
+  # ═══════════════════════════════════════
+  # 問候 & 寒暄
+  # ═══════════════════════════════════════
+  - id: "greeting-01"
+    question: "你好"
+    priority: "P0"
+    category: "greeting"
+    assertions:
+      - type: "tool_not_called"
+        params: { tool_name: "rag_query" }
+      - type: "tool_not_called"
+        params: { tool_name: "query_products" }
+      - type: "tool_not_called"
+        params: { tool_name: "query_courses" }
+      - type: "max_length"
+        params: { max_chars: 300 }
+      - type: "sentiment_positive"
+
+  - id: "greeting-02"
+    question: "謝謝你的幫忙！"
+    priority: "P1"
+    category: "greeting"
+    assertions:
+      - type: "tool_not_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["不客氣", "歡迎", "隨時", "很高興", "謝謝"] }
+      - type: "max_length"
+        params: { max_chars: 300 }
+
+  # ═══════════════════════════════════════
+  # 超出範圍
+  # ═══════════════════════════════════════
+  - id: "oos-01"
+    question: "今天台積電股價多少？"
+    priority: "P1"
+    category: "out_of_scope"
+    assertions:
+      - type: "contains_any"
+        params: { keywords: ["抱歉", "無法", "不在服務範圍", "只能協助"] }
+      - type: "not_contains"
+        params: { keywords: ["股價是", "目前報價", "漲", "跌"] }
+      - type: "tool_not_called"
+        params: { tool_name: "rag_query" }
+
+  - id: "oos-02"
+    question: "幫我寫一篇作文"
+    priority: "P1"
+    category: "out_of_scope"
+    assertions:
+      - type: "refused_gracefully"
+      - type: "not_contains"
+        params: { keywords: ["作文如下", "以下是作文"] }
+
+  # ═══════════════════════════════════════
+  # 多輪對話
+  # ═══════════════════════════════════════
+  - id: "multiturn-01"
+    question: "那價格呢？"
+    priority: "P1"
+    category: "multiturn"
+    conversation_history:
+      - role: "user"
+        content: "最近有什麼親子課程？"
+      - role: "assistant"
+        content: "目前有「親子手作披薩」和「親子甜點工坊」兩堂課程，都很適合帶小朋友一起來體驗！"
+    assertions:
+      - type: "regex_match"
+        params: { pattern: "\\d+" }
+      - type: "contains_any"
+        params: { keywords: ["價格", "元", "費用", "$", "NT"] }
+
+  - id: "multiturn-02"
+    question: "好，幫我查一下還有沒有名額"
+    priority: "P2"
+    category: "multiturn"
+    conversation_history:
+      - role: "user"
+        content: "週六有什麼課？"
+      - role: "assistant"
+        content: "這週六有「歡聚食光：地中海風味派對」下午 2 點場。"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "query_courses" }
+      - type: "contains_any"
+        params: { keywords: ["名額", "報名", "額滿", "還有"] }

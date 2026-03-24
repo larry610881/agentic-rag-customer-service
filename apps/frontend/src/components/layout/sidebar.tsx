@@ -24,6 +24,7 @@ import {
   Trash2,
   AlertTriangle,
   Bell,
+  Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,7 @@ const systemAdminItems = [
   { href: "/admin/mcp-registry", label: "MCP 工具庫", icon: Puzzle },
   { href: "/admin/error-events", label: "錯誤追蹤", icon: AlertTriangle },
   { href: "/admin/notification-channels", label: "通知渠道", icon: Bell },
+  { href: "/admin/prompt-optimizer", label: "Prompt 自動優化", icon: Wand2 },
 ];
 
 export function Sidebar() {

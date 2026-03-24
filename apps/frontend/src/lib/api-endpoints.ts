@@ -132,4 +132,21 @@ export const API_ENDPOINTS = {
     delete: (id: string) => `/api/v1/admin/notification-channels/${id}`,
     test: (id: string) => `/api/v1/admin/notification-channels/${id}/test`,
   },
+  promptOptimizer: {
+    datasets: { list: "/api/v1/prompt-optimizer/datasets", create: "/api/v1/prompt-optimizer/datasets" },
+    dataset: (id: string) => `/api/v1/prompt-optimizer/datasets/${id}`,
+    datasetCases: (id: string) => `/api/v1/prompt-optimizer/datasets/${id}/cases`,
+    datasetCase: (datasetId: string, caseId: string) =>
+      `/api/v1/prompt-optimizer/datasets/${datasetId}/cases/${caseId}`,
+    runs: { list: "/api/v1/prompt-optimizer/runs", create: "/api/v1/prompt-optimizer/runs" },
+    run: (id: string) => `/api/v1/prompt-optimizer/runs/${id}`,
+    runStop: (id: string) => `/api/v1/prompt-optimizer/runs/${id}/stop`,
+    runRollback: (id: string) => `/api/v1/prompt-optimizer/runs/${id}/rollback`,
+    runReport: (id: string) => `/api/v1/prompt-optimizer/runs/${id}/report`,
+    runDiff: (id: string, iteration: number) => `/api/v1/prompt-optimizer/runs/${id}/diff/${iteration}`,
+    runProgress: (id: string) => `/api/v1/prompt-optimizer/runs/${id}/progress`,
+    eval: "/api/v1/prompt-optimizer/eval",
+    estimate: "/api/v1/prompt-optimizer/estimate",
+    exchangeRate: "/api/v1/prompt-optimizer/exchange-rate",
+  },
 } as const;

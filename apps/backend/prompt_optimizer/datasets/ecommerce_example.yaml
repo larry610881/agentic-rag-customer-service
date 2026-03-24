@@ -1,0 +1,154 @@
+schema_version: "1.0"
+includes:
+  - "_security_base.yaml"
+
+metadata:
+  tenant_id: "tenant-example"
+  bot_id: "bot-ecommerce"
+  target_prompt: "base_prompt"
+  agent_mode: "router"
+  description: "電商客服基礎場景"
+  cost_config:
+    token_budget: 2000
+    quality_weight: 0.85
+    cost_weight: 0.15
+
+default_assertions:
+  - type: "max_length"
+    params: { max_chars: 2000 }
+  - type: "language_match"
+    params: { expected: "zh-TW" }
+  - type: "token_count_under"
+    params: { max_tokens: 3000 }
+  - type: "output_tokens_under"
+    params: { max_tokens: 800 }
+
+test_cases:
+  # ── 退貨政策 (P0) ──
+  - id: "refund_policy_01"
+    question: "我買的東西壞了，可以退貨嗎？"
+    priority: "P0"
+    category: "return_policy"
+    assertions:
+      - type: "contains_any"
+        params: { keywords: ["退貨", "退換貨", "退款"] }
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "has_citations"
+        params: { min_count: 1 }
+
+  - id: "refund_policy_02"
+    question: "商品已經拆封了還能退嗎？退貨運費誰出？"
+    priority: "P0"
+    category: "return_policy"
+    assertions:
+      - type: "contains_any"
+        params: { keywords: ["退貨", "退換", "運費"] }
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "has_citations"
+        params: { min_count: 1 }
+
+  # ── 問候/寒暄 (P0) ──
+  - id: "greeting_01"
+    question: "你好"
+    priority: "P0"
+    category: "greeting"
+    assertions:
+      - type: "tool_not_called"
+        params: { tool_name: "rag_query" }
+      - type: "max_length"
+        params: { max_chars: 200 }
+      - type: "response_not_empty"
+
+  - id: "greeting_02"
+    question: "請問有人在嗎？我想問一些問題"
+    priority: "P0"
+    category: "greeting"
+    assertions:
+      - type: "tool_not_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["您好", "你好", "歡迎", "請問", "可以幫"] }
+
+  # ── 商品推薦 (P1) ──
+  - id: "product_recommend_01"
+    question: "有什麼推薦的商品嗎？"
+    priority: "P1"
+    category: "product_recommendation"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "response_not_empty"
+
+  - id: "product_recommend_02"
+    question: "我想買送給媽媽的生日禮物，有沒有推薦？"
+    priority: "P1"
+    category: "product_recommendation"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "response_not_empty"
+      - type: "sentiment_positive"
+
+  # ── 超出範圍 (P1) ──
+  - id: "out_of_scope_01"
+    question: "今天台積電股價多少？"
+    priority: "P1"
+    category: "out_of_scope"
+    assertions:
+      - type: "contains_any"
+        params: { keywords: ["抱歉", "無法", "不在服務範圍"] }
+      - type: "not_contains"
+        params: { keywords: ["股價是", "目前報價", "收盤價"] }
+
+  - id: "out_of_scope_02"
+    question: "幫我寫一篇關於全球暖化的作文"
+    priority: "P1"
+    category: "out_of_scope"
+    assertions:
+      - type: "refused_gracefully"
+      - type: "tool_not_called"
+        params: { tool_name: "rag_query" }
+
+  # ── 訂單查詢 (P1) ──
+  - id: "order_status_01"
+    question: "我的訂單什麼時候會到？訂單編號是 A20260301001"
+    priority: "P1"
+    category: "order_status"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "response_not_empty"
+
+  # ── 價格詢問 (P1) ──
+  - id: "price_inquiry_01"
+    question: "這款藍牙耳機多少錢？有折扣嗎？"
+    priority: "P1"
+    category: "price_inquiry"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "response_not_empty"
+
+  # ── 物流/運送 (P1) ──
+  - id: "shipping_01"
+    question: "你們有提供宅配嗎？運費怎麼算？"
+    priority: "P1"
+    category: "shipping"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["運費", "宅配", "配送", "免運"] }
+
+  # ── 付款方式 (P1) ──
+  - id: "payment_01"
+    question: "可以用信用卡分期付款嗎？"
+    priority: "P1"
+    category: "payment"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["信用卡", "付款", "分期", "支付"] }

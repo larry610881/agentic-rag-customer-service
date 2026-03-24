@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTenants } from "@/hooks/queries/use-tenants";
 import { TenantConfigDialog } from "@/features/admin/components/tenant-config-dialog";
+import { CreateTenantDialog } from "@/features/admin/components/create-tenant-dialog";
 import { PaginationControls } from "@/components/shared/pagination-controls";
 import { usePagination } from "@/hooks/use-pagination";
 import type { Tenant } from "@/types/auth";
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Settings } from "lucide-react";
+import { Plus, Settings } from "lucide-react";
 
 const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -23,6 +24,7 @@ export default function AdminTenantsPage() {
   const { data, isLoading } = useTenants(page);
   const [configTenant, setConfigTenant] = useState<Tenant | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   // Exclude system tenant from display
   const realTenants = data?.items?.filter((t) => t.id !== SYSTEM_TENANT_ID) ?? [];
@@ -34,9 +36,15 @@ export default function AdminTenantsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">租戶管理</h1>
-        <p className="text-muted-foreground">管理租戶設定與資源上限</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">租戶管理</h1>
+          <p className="text-muted-foreground">管理租戶設定與資源上限</p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          新增租戶
+        </Button>
       </div>
 
       {isLoading ? (
@@ -103,6 +111,8 @@ export default function AdminTenantsPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
       />
+
+      <CreateTenantDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );
 }

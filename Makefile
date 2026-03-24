@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-ps dev-backend install test test-backend test-frontend lint lint-backend lint-frontend seed-data seed-knowledge
+.PHONY: dev-up dev-down dev-ps dev-backend install test test-backend test-frontend lint lint-backend lint-frontend seed-data seed-knowledge prompt-opt prompt-opt-import
 
 COMPOSE_FILE := infra/docker-compose.yml
 COMPOSE_DEV  := infra/docker-compose.dev.yml
@@ -59,3 +59,10 @@ seed-data:
 
 seed-knowledge:
 	cd apps/backend && uv run python ../../data/seeds/seed_knowledge.py
+
+# ─── Prompt Optimizer ─────────────────────────────────────
+prompt-opt:
+	cd apps/backend && uv run python -m prompt_optimizer $(ARGS)
+
+prompt-opt-import:
+	cd apps/backend && uv run python -m prompt_optimizer import $(ARGS)

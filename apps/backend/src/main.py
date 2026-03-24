@@ -25,11 +25,14 @@ try:
         ChunkModel,
         ConversationModel,
         DocumentModel,
+        ErrorEventModel,
+        ErrorNotificationLogModel,
         FeedbackModel,
         KnowledgeBaseModel,
         LogRetentionPolicyModel,
         McpServerModel,
         MessageModel,
+        NotificationChannelModel,
         ProcessingTaskModel,
         ProviderSettingModel,
         RAGEvalModel,
@@ -40,9 +43,6 @@ try:
         TenantModel,
         UsageRecordModel,
         UserModel,
-        ErrorEventModel,
-        ErrorNotificationLogModel,
-        NotificationChannelModel,
     )
     from src.infrastructure.logging import get_logger, setup_logging
 
@@ -133,7 +133,10 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     application.container = container  # type: ignore[attr-defined]
 
     from src.infrastructure.db.session_middleware import SessionCleanupMiddleware
-    from src.interfaces.api.middleware import RequestIDMiddleware, RequestTimeoutMiddleware
+    from src.interfaces.api.middleware import (
+        RequestIDMiddleware,
+        RequestTimeoutMiddleware,
+    )
 
     # Middleware order: last added = outermost in ASGI chain.
     # Execution: SessionCleanup → RequestID → Timeout → CORS → RateLimit → Route
@@ -290,6 +293,18 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.widget_router import router as widget_router
 
         application.include_router(widget_router)
+
+        from src.interfaces.api.eval_dataset_router import (
+            router as eval_dataset_router,
+        )
+
+        application.include_router(eval_dataset_router)
+
+        from src.interfaces.api.prompt_optimizer_run_router import (
+            router as prompt_optimizer_run_router,
+        )
+
+        application.include_router(prompt_optimizer_run_router)
 
     # Static files for widget.js
     import os

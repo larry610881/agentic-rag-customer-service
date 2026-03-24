@@ -26,7 +26,7 @@ export function useCreateTenant() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { name: string; slug: string }) =>
+    mutationFn: (data: { name: string; plan?: string }) =>
       apiFetch<Tenant>(
         API_ENDPOINTS.tenants.create,
         { method: "POST", body: JSON.stringify(data) },

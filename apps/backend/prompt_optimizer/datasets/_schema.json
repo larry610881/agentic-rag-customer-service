@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["metadata", "test_cases"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "includes": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "tenant_id": {"type": "string"},
+        "bot_id": {"type": "string"},
+        "target_prompt": {"type": "string"},
+        "agent_mode": {"type": "string"},
+        "description": {"type": "string"},
+        "cost_config": {
+          "type": "object",
+          "properties": {
+            "token_budget": {"type": "integer"},
+            "quality_weight": {"type": "number"},
+            "cost_weight": {"type": "number"}
+          }
+        }
+      }
+    },
+    "default_assertions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {"type": "string"},
+          "params": {"type": "object"}
+        }
+      }
+    },
+    "test_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "question"],
+        "properties": {
+          "id": {"type": "string"},
+          "question": {"type": "string"},
+          "priority": {"type": "string", "enum": ["P0", "P1", "P2"]},
+          "category": {"type": "string"},
+          "conversation_history": {"type": "array"},
+          "assertions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "type": {"type": "string"},
+                "params": {"type": "object"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

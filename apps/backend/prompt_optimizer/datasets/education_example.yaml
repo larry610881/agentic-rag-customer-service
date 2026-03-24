@@ -1,0 +1,132 @@
+schema_version: "1.0"
+includes:
+  - "_security_base.yaml"
+
+metadata:
+  tenant_id: "tenant-example"
+  bot_id: "bot-education"
+  target_prompt: "base_prompt"
+  agent_mode: "router"
+  description: "教育平台客服場景"
+  cost_config:
+    token_budget: 2000
+    quality_weight: 0.85
+    cost_weight: 0.15
+
+default_assertions:
+  - type: "max_length"
+    params: { max_chars: 2000 }
+  - type: "language_match"
+    params: { expected: "zh-TW" }
+  - type: "token_count_under"
+    params: { max_tokens: 3000 }
+  - type: "output_tokens_under"
+    params: { max_tokens: 800 }
+
+test_cases:
+  # ── 課程查詢 (P0) ──
+  - id: "course_query_01"
+    question: "請問你們有哪些程式設計的課程？"
+    priority: "P0"
+    category: "course_query"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "response_not_empty"
+      - type: "contains_any"
+        params: { keywords: ["課程", "程式", "開課"] }
+
+  - id: "course_query_02"
+    question: "有沒有適合初學者的 Python 課程？"
+    priority: "P0"
+    category: "course_query"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "has_citations"
+        params: { min_count: 1 }
+      - type: "contains_any"
+        params: { keywords: ["初學", "入門", "基礎", "Python"] }
+
+  # ── 問候 (P0) ──
+  - id: "greeting_01"
+    question: "嗨，我想了解一下你們的課程"
+    priority: "P0"
+    category: "greeting"
+    assertions:
+      - type: "response_not_empty"
+      - type: "max_length"
+        params: { max_chars: 300 }
+      - type: "sentiment_positive"
+
+  # ── 報名流程 (P1) ──
+  - id: "enrollment_01"
+    question: "怎麼報名課程？需要什麼資格嗎？"
+    priority: "P1"
+    category: "enrollment"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["報名", "註冊", "申請", "資格"] }
+
+  - id: "enrollment_02"
+    question: "課程可以退費嗎？報名後多久內可以取消？"
+    priority: "P1"
+    category: "enrollment"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["退費", "取消", "退款"] }
+      - type: "has_citations"
+        params: { min_count: 1 }
+
+  # ── 上課時間 (P1) ──
+  - id: "schedule_01"
+    question: "週末有開課嗎？平日晚上有沒有課？"
+    priority: "P1"
+    category: "schedule"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["週末", "平日", "時間", "上課"] }
+
+  - id: "schedule_02"
+    question: "如果我某堂課缺席了，可以補課嗎？"
+    priority: "P1"
+    category: "schedule"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "contains_any"
+        params: { keywords: ["補課", "缺席", "錄影", "重播"] }
+
+  # ── 超出範圍 (P1) ──
+  - id: "out_of_scope_01"
+    question: "可以幫我寫作業嗎？明天要交"
+    priority: "P1"
+    category: "out_of_scope"
+    assertions:
+      - type: "refused_gracefully"
+      - type: "tool_not_called"
+        params: { tool_name: "rag_query" }
+
+  - id: "out_of_scope_02"
+    question: "你覺得 AI 會不會取代人類？"
+    priority: "P1"
+    category: "out_of_scope"
+    assertions:
+      - type: "contains_any"
+        params: { keywords: ["抱歉", "無法", "不在服務範圍", "課程"] }
+
+  # ── 講師資訊 (P2) ──
+  - id: "instructor_01"
+    question: "Python 進階班的老師是誰？有什麼經歷？"
+    priority: "P2"
+    category: "instructor"
+    assertions:
+      - type: "tool_was_called"
+        params: { tool_name: "rag_query" }
+      - type: "response_not_empty"
