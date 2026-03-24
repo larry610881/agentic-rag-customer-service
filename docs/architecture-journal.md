@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Prompt Optimizer 儀表板增強 — JSON Column 擴展 + Polling/DB 雙源圖表策略](#prompt-optimizer-儀表板增強--json-column-擴展--pollingdb-雙源圖表策略)
 - [Prompt Optimizer 全棧 + 驗收評估 — DDD 新 BC + CLI/API 雙入口 + Statistical Validation](#prompt-optimizer-全棧--驗收評估--ddd-新-bc--cliapi-雙入口--statistical-validation)
 - [JSON Record-Based Chunking — Content-Type 感知分塊 + Parser/Splitter 職責分離](#json-record-based-chunking--content-type-感知分塊--parsersplitter-職責分離)
 - [Batch A 安全/品質修復 — Pydantic 結構化解析 + 精確 Tool Matching + Router 校驗](#batch-a-安全品質修復--pydantic-結構化解析--精確-tool-matching--router-校驗)
@@ -67,6 +68,33 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Prompt Optimizer 儀表板增強 — JSON Column 擴展 + Polling/DB 雙源圖表策略
+
+> **Sprint 來源**：Issue #24 — Prompt Optimizer 儀表板增強
+> **日期**：2026-03-24
+
+### 概述
+
+三項改動：(1) Score Trend 圖表 bug 修復，(2) Prompt diff 改對比最佳提示詞，(3) 每輪測試案例詳情儲存與展示。跨前後端 8 files，Application + Infrastructure 兩層。
+
+### 做得好的地方
+
+- **JSON Column 作為 Schema-Free 擴展點**：`details` JSON 欄位已設計為任意資料承載，加入 `case_results` 不需 DB migration，向後相容（前端 `?.` 防護）
+- **雙源資料策略（Polling + DB）**：進行中 run 用 ActiveRun polling（`current_score`），完成後從 iterations 陣列直接計算圖表資料，`useMemo` 避免重複計算
+- **findSourceIteration 對齊 Karpathy Loop 語義**：diff 的 `before` 對準了 mutator 實際使用的 `best_prompt`，而非總是 baseline，讓使用者理解真正的 prompt 變化
+
+### 潛在隱憂
+
+- **JSON Column 膨脹** — 每個 iteration 的 `case_results` 約 10-20 KB，20 iterations 共 200-400 KB。若未來 dataset 擴大到 100+ cases 或 answer_snippet 加長，可能需要將 case_results 拆到獨立表 → 優先級：低
+- **Polling current_score 不持久** — `current_score` 只存在 ActiveRun（in-memory），run 完成後不保存到 DB。若頁面在 run 進行中刷新，polling fallback 的 scoreHistory 會重置 → 優先級：低（完成後有 iterations 作為 authoritative source）
+
+### 延伸學習
+
+- **JSON vs Normalized Table 的取捨**：本次選擇 JSON 是因為 case_results 是唯讀附屬資料、不需要獨立查詢。若未來需要「跨 run 查看某個 case 的歷史表現」，就需要正規化到獨立 table
+- 若想深入：搜尋 "PostgreSQL JSON vs JSONB performance"、"when to normalize JSON columns"
 
 ---
 
