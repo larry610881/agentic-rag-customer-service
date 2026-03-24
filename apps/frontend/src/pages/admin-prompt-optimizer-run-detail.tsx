@@ -55,17 +55,25 @@ export default function AdminPromptOptimizerRunDetailPage() {
   const startTimeRef = useRef(Date.now());
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Elapsed timer
+  const isFinishedStatus = (s: string) =>
+    s === "completed" || s === "failed" || s === "stopped";
+
+  // Elapsed timer — stop when run is finished
   useEffect(() => {
+    const currentStatus = progress?.status ?? run?.status ?? "unknown";
+    if (isFinishedStatus(currentStatus)) return;
+
     const timer = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [progress?.status, run?.status]);
 
-  // SSE connection
+  // SSE connection — only connect if run is still active
   useEffect(() => {
     if (!runId) return;
+    const currentStatus = run?.status;
+    if (currentStatus && isFinishedStatus(currentStatus)) return;
 
     const es = new EventSource(
       `${API_BASE}/api/v1/prompt-optimizer/runs/${runId}/progress`,
@@ -97,7 +105,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
         setDiffData(data.diff);
       }
 
-      if (data.status === "completed" || data.status === "failed") {
+      if (isFinishedStatus(data.status)) {
         es.close();
       }
     };
@@ -110,7 +118,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
       es.close();
       eventSourceRef.current = null;
     };
-  }, [runId]);
+  }, [runId, run?.status]);
 
   const handleStop = useCallback(() => {
     if (!runId) return;
@@ -137,7 +145,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
   const elapsedStr = `${minutes}:${String(seconds).padStart(2, "0")}`;
 
   const isRunning = status === "running" || status === "connecting";
-  const isFinished = status === "completed" || status === "failed" || status === "stopped";
+  const isFinished = isFinishedStatus(status);
 
   const statusVariant =
     status === "completed"
