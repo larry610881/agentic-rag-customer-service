@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-03-11 (System Admin UI 重構 — 5 Phase 多功能需求變更)
+> 最後更新：2026-03-24 (Prompt Optimizer 全棧 + 驗收評估)
 
 ---
 
@@ -1168,3 +1168,6 @@
 | **Avatar 預覽 + System Admin Bot 跨租戶修復** | **✅ 完成** | **100%** | **9 files (3 NEW + 6 MODIFY): (1) Frontend avatar-preview.tsx 複用 createLive2DRenderer/createVRMRenderer + bot-detail-form 嵌入預覽, (2) Backend agent_router system_admin 用 bot.tenant_id 發訊息(chat+stream 兩 endpoint) + conversation_router 跨租戶查對話, (3) 3 BDD scenarios(system_admin_chat.feature 2 + conversation_bot_filter 1) + 5 frontend unit tests, 全量通過** |
 | **Chunk 預覽 Dialog + SQL 清除 + Widget Error CORS** | **✅ 完成** | **100%** | **跨前後端 8 files: (1) Frontend document-list.tsx 移除 HTML colSpan 破版→Dialog+ScrollArea 模式+Eye 按鈕, chunk-preview-panel.tsx 移除 border-t, (2) Backend upload_document_use_case.py+services.py 移除未實作 SQL 功能（SQLCleaningService+_SQL_TYPES+4 regex）+刪除 2 測試檔, (3) Widget error reporting 改走 /api/v1/widget/{shortCode}/error（widget_router 新增 endpoint+OPTIONS preflight），消除全域 CORS 跳過需求, 164 frontend tests pass** |
 | **Redis Lock 併發控制 + busy_reply_message** | **✅ 完成** | **100%** | **Issue #23: 6 NEW + 12 MODIFY files: (1) Domain ConversationLock ABC + Bot busy_reply_message, (2) Application SendMessageUseCase/HandleWebhookUseCase 加鎖 + LINE showLoadingAnimation, (3) Infrastructure RedisConversationLock (SET NX EX + 降級無鎖), (4) Interfaces bot_router schema + DI, (5) Frontend 型別+Admin 表單+Fixture, 4 BDD scenarios + 6 unit tests, 460 backend + 164 frontend tests pass** |
+| **Prompt Optimizer 全棧功能** | **✅ 完成** | **100%** | **83 files (+11,875 lines): Backend DDD 4-Layer eval_dataset BC (Domain entity/repo + Application 12 use cases + Infrastructure models/repos/run_manager + Interfaces 2 routers), prompt_optimizer CLI package (Karpathy Loop runner/evaluator/mutator/assertions 26種/api_client/dataset YAML), 3 migrations + GCP sync SQL + 3 dataset seed (85 test cases), Frontend 7 pages + 6 components + hooks, 4 BDD features (28 scenarios), 517 backend + 164 frontend tests pass** |
+| **驗收評估（Validation Eval）** | **✅ 完成** | **100%** | **14 files (+1,002 lines): ValidationEvaluator (per-case pass rate 聚合, P0=100%/P1≥80%/P2≥60%), ValidationSummary + unstable case 標記, API POST /validate + CLI validate 子指令 + Frontend 驗收頁面, 7 BDD scenarios, 517 backend + 164 frontend tests pass** |
+| **Widget show_sources 型別修復** | **✅ 完成** | **100%** | **1 file: widget/src/main.ts WidgetConfig 物件補齊 show_sources 欄位，修復 Cloud Run deploy TypeScript build 錯誤** |

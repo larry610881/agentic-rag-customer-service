@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Prompt Optimizer 全棧 + 驗收評估 — DDD 新 BC + CLI/API 雙入口 + Statistical Validation](#prompt-optimizer-全棧--驗收評估--ddd-新-bc--cliapi-雙入口--statistical-validation)
 - [JSON Record-Based Chunking — Content-Type 感知分塊 + Parser/Splitter 職責分離](#json-record-based-chunking--content-type-感知分塊--parsersplitter-職責分離)
 - [Batch A 安全/品質修復 — Pydantic 結構化解析 + 精確 Tool Matching + Router 校驗](#batch-a-安全品質修復--pydantic-結構化解析--精確-tool-matching--router-校驗)
 - [Widget FAB Greeting Bubble — 跨端全棧 Feature Flag + CSS 動畫狀態機](#widget-fab-greeting-bubble--跨端全棧-feature-flag--css-動畫狀態機)
@@ -1907,3 +1908,83 @@ JoyInKitchen MCP Server（`mcp-servers/joyinkitchen/server.py`）提供 `search_
 | MySQL → PostgreSQL 遷移工具 | pgloader 可自動處理型別映射，比手寫腳本更健壯 |
 | CDC（Change Data Capture） | Debezium 或 GCP Datastream 做 MySQL → PostgreSQL 即時同步 |
 | MCP Server 資料層設計 | 目前是 raw SQL，考慮是否值得引入 ORM 或至少 query builder |
+
+---
+
+## Prompt Optimizer 全棧 + 驗收評估 — DDD 新 BC + CLI/API 雙入口 + Statistical Validation
+
+> **Sprint 來源**：Prompt Optimizer 功能開發（2026-03-24）
+> **範圍**：新增 eval_dataset Bounded Context + prompt_optimizer CLI package + 驗收評估
+
+### 主題
+
+建立 Prompt Optimizer 全棧功能，包含三個主要部分：
+1. **Eval Dataset 管理**（DDD 4-Layer CRUD）— 測試集 + 測試案例
+2. **Karpathy Loop 自動優化**（CLI package）— 迭代式 prompt 改進
+3. **驗收評估**（Validation Eval）— 重複 N 次統計穩定性
+
+### 架構決策
+
+#### 1. CLI Package vs DDD Application Layer 的雙軌設計
+
+```mermaid
+graph LR
+    A["CLI<br>prompt_optimizer/"] -->|"直接操作 DB<br>(sync psycopg2)"| B["PostgreSQL"]
+    C["Web API<br>src/interfaces/"] -->|"DDD 4-Layer<br>(async asyncpg)"| B
+    A -->|"HTTP 呼叫"| D["Agent API<br>/api/v1/agent/chat"]
+    C -->|"內部呼叫"| D
+```
+
+CLI (`prompt_optimizer/`) 和 Web API (`src/`) 共用 evaluator/assertions 邏輯，但 DB 存取路徑不同：
+- CLI 用 **sync SQLAlchemy**（psycopg2）直連 DB，適合本地開發/CI
+- Web API 走 DDD 4-Layer async 路徑，適合 production
+
+這是刻意的設計取捨：CLI 不依賴 FastAPI app，可獨立跑。
+
+#### 2. 驗收評估的 Per-Case Pass Rate 聚合
+
+```mermaid
+graph TD
+    A["ValidationEvaluator.validate()"] --> B["跑 N 次 eval_fn"]
+    B --> C["每次得到 DatasetEvalSummary"]
+    C --> D["Per-case 聚合"]
+    D --> E["P0: pass_rate == 1.0?"]
+    D --> F["P1: pass_rate >= 0.8?"]
+    D --> G["P2: pass_rate >= 0.6?"]
+    E --> H["ValidationSummary<br>verdict: PASS/FAIL"]
+    F --> H
+    G --> H
+```
+
+選擇 **per-case pass rate** 而非 dataset-level score 聚合的原因：
+- 直接回答「這個案例多穩定？」而非模糊的「整體分數多少」
+- P0 安全案例用嚴格模式（1 次 fail = fail），不會被平均掉
+- 「不穩定但通過」的 case 可以被標記出來觀察
+
+#### 3. Assertion 系統的可擴展設計
+
+26 個 assertion 分 5 類（Format/Content/Behavior/Quality+Cost/Security），使用 registry pattern：
+- `ASSERTION_REGISTRY: dict[str, Callable]` — 新增 assertion 只需加一個函式 + 註冊
+- 每個 assertion 是純函式 `(ctx, params) -> AssertionResult`，易於測試
+- Dataset YAML 用 `type` + `params` 宣告式定義，不綁定程式碼
+
+### 做得好
+
+1. **ValidationEvaluator 與 Evaluator 解耦**：新增的 `ValidationEvaluator` 包裝 `Evaluator`，不修改原有邏輯，N=1 時行為完全不變
+2. **BDD 先行**：7 個 validation scenarios 先寫再實作，0.08s 跑完
+3. **pg_dump unicode escape 踩坑修復**：JSON 中的 `\uXXXX` 和 `\n` 在 psql pipe 模式下被誤解析，最終改用 Python SQLAlchemy 直接 export UTF-8 安全的 SQL
+4. **GCP DB 同步一條龍**：migration DDL + seed data 合併為單一 SQL 檔，可重複執行（ON CONFLICT DO NOTHING）
+
+### 潛在隱憂
+
+1. **驗收評估是同步 API**：N=5 × 38 cases = 190 次 API 呼叫，可能超時。大型 dataset 應改為 background task + WebSocket 進度回報
+2. **CLI 與 Web API 的 Dataset 模型不完全一致**：CLI 用 `prompt_optimizer.dataset.Dataset`，Web 用 `src.domain.eval_dataset.entity.EvalDataset`，中間有轉換邏輯，維護成本較高
+3. **P0 strict 模式可能過於嚴格**：LLM 天生有隨機性，100% pass rate 在某些邊界 case 可能很難達到，需觀察實際使用情況決定是否放寬到 95%
+
+### 延伸學習
+
+| 主題 | 方向 |
+|------|------|
+| Statistical significance | 考慮 Wilson score interval 替代簡單 pass rate，小樣本時更可靠 |
+| Background validation | 改用 arq task queue 做背景驗收，支援大型 dataset |
+| Assertion 自動生成 | 從歷史對話自動提取 assertion（如「回答必須包含價格」），降低手動建立成本 |
