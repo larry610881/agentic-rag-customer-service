@@ -74,7 +74,7 @@ class KarpathyLoopRunner:
         self._read_prompt = db_read_prompt
         self._write_prompt = db_write_prompt
         self._evaluator = evaluator or Evaluator()
-        self._mutator = mutator or PromptMutator()
+        self._mutator = mutator
 
     async def run(
         self,
@@ -145,6 +145,11 @@ class KarpathyLoopRunner:
         # Dry run: stop here
         if config.dry_run:
             result.stopped_reason = "dry_run"
+            return result
+
+        if not self._mutator:
+            result.stopped_reason = "no_mutator"
+            logger.error("No mutator available (missing LLM API key?), stopping after baseline")
             return result
 
         # 3. Optimization loop

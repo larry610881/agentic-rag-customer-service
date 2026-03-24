@@ -57,6 +57,7 @@ const STOPPED_REASON_LABELS: Record<string, string> = {
   max_iterations: "已達最大迭代次數",
   converged: "已達滿分，提前完成",
   dry_run: "試跑模式，僅評估基線",
+  no_mutator: "缺少 LLM API Key，無法生成改進版提示詞，僅完成基線評估",
 };
 
 const isFinishedStatus = (s: string) =>
