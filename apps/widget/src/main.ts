@@ -40,6 +40,7 @@ import { Widget } from "./widget";
         name: data.name || "Chat",
         description: data.description || "",
         keep_history: data.keep_history !== false,
+        show_sources: data.show_sources !== false,
         welcome_message: data.welcome_message || "",
         placeholder_text: data.placeholder_text || "",
         greeting_messages: data.greeting_messages || [],
