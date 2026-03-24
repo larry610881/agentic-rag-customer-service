@@ -16,6 +16,16 @@ import {
 import { ScoreChart } from "@/features/admin/components/prompt-optimizer/score-chart";
 import { PromptDiff } from "@/features/admin/components/prompt-optimizer/prompt-diff";
 
+const STATUS_LABELS: Record<string, string> = {
+  completed: "已完成",
+  running: "執行中",
+  failed: "失敗",
+  pending: "等待中",
+  stopped: "已停止",
+  connecting: "連線中",
+  unknown: "未知",
+};
+
 interface SSEProgress {
   current_iteration: number;
   max_iterations: number;
@@ -152,7 +162,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
           </Button>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
             <Activity className="h-6 w-6" />
-            優化執行詳情
+            執行詳情
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Run ID: {runId}
@@ -170,7 +180,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
               ) : (
                 <Square className="mr-2 h-4 w-4" />
               )}
-              Stop & Keep Best
+              停止並保留最佳結果
             </Button>
           )}
           {isFinished && (
@@ -190,24 +200,26 @@ export default function AdminPromptOptimizerRunDetailPage() {
       {/* Progress section */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-base">Progress</CardTitle>
-          <Badge variant={statusVariant}>{status}</Badge>
+          <CardTitle className="text-base">執行進度</CardTitle>
+          <Badge variant={statusVariant}>
+            {STATUS_LABELS[status] || status}
+          </Badge>
         </CardHeader>
         <CardContent className="space-y-4">
           <Progress value={percent} />
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>
-              Iteration {currentIteration} / {maxIterations}
+              第 {currentIteration} / {maxIterations} 輪
             </span>
-            <span>Elapsed: {elapsedStr}</span>
+            <span>已用時間：{elapsedStr}</span>
           </div>
           <div className="flex gap-6 text-sm">
             <div>
-              <span className="text-muted-foreground">Current Score: </span>
+              <span className="text-muted-foreground">當前分數：</span>
               <span className="font-medium">{currentScore.toFixed(3)}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Best Score: </span>
+              <span className="text-muted-foreground">最佳分數：</span>
               <span className="font-medium text-green-400">
                 {bestScore.toFixed(3)}
               </span>
@@ -224,7 +236,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
         <PromptDiff
           before={diffData.before}
           after={diffData.after}
-          title="Latest Prompt Change"
+          title="最新 Prompt 變更"
         />
       )}
     </div>

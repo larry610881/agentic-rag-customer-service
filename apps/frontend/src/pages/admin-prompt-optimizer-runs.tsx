@@ -113,7 +113,7 @@ export default function AdminPromptOptimizerRunsPage() {
             </TableHeader>
             <TableBody>
               {runs.map((run) => (
-                <TableRow key={run.id || run.run_id}>
+                <TableRow key={run.run_id || run.id || run.run_id}>
                   <TableCell>
                     <Badge variant={run.run_type === "validation" ? "secondary" : "outline"}>
                       {run.run_type === "validation" ? "驗收" : "優化"}
@@ -144,7 +144,7 @@ export default function AdminPromptOptimizerRunsPage() {
                           navigate(
                             ROUTES.ADMIN_PROMPT_OPTIMIZER_RUN_DETAIL.replace(
                               ":runId",
-                              run.id,
+                              run.run_id || run.id,
                             ),
                           )
                         }
@@ -156,7 +156,7 @@ export default function AdminPromptOptimizerRunsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRollback(run.id)}
+                          onClick={() => handleRollback(run.run_id || run.id)}
                           disabled={rollbackMutation.isPending}
                         >
                           {rollbackMutation.isPending ? (
