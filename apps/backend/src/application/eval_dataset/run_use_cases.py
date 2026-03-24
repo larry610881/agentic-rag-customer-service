@@ -23,6 +23,7 @@ class StartRunCommand:
     tenant_id: str
     dataset_id: str
     api_token: str
+    refresh_token: str = ""
     max_iterations: int = 20
     patience: int = 5
     budget: int = 200
@@ -198,6 +199,7 @@ class StartRunUseCase:
             api_client = AgentAPIClient(
                 base_url=config.api_base_url,
                 jwt_token=config.api_token,
+                refresh_token=command.refresh_token,
             )
 
             # Use sync RunHistoryClient for DB persistence (its own connection)

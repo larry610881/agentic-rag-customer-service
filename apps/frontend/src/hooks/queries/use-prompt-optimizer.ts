@@ -227,13 +227,14 @@ export function useOptimizationRunPolling(id: string) {
 
 export function useStartOptimization() {
   const token = useAuthStore((s) => s.token);
+  const refreshToken = useAuthStore((s) => s.refreshToken);
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (data: { bot_id: string; dataset_id: string; max_iterations?: number; patience?: number; budget?: number }) =>
       apiFetch<OptimizationRun>(
         API_ENDPOINTS.promptOptimizer.runs.create,
-        { method: "POST", body: JSON.stringify(data) },
+        { method: "POST", body: JSON.stringify({ ...data, refresh_token: refreshToken ?? "" }) },
         token ?? undefined,
       ),
     onSuccess: () => {

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -20,7 +23,15 @@ class ChatResult:
 
 
 class AgentAPIClient:
-    def __init__(self, base_url: str, jwt_token: str, timeout: int = 60):
+    def __init__(
+        self,
+        base_url: str,
+        jwt_token: str,
+        refresh_token: str = "",
+        timeout: int = 60,
+    ):
+        self._base_url = base_url
+        self._refresh_token = refresh_token
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=timeout,
@@ -29,6 +40,28 @@ class AgentAPIClient:
                 "Content-Type": "application/json",
             },
         )
+
+    async def _refresh_access_token(self) -> bool:
+        """Exchange refresh token for a new access token (same as frontend)."""
+        if not self._refresh_token:
+            return False
+        try:
+            resp = await self._client.post(
+                "/api/v1/auth/refresh",
+                json={"refresh_token": self._refresh_token},
+            )
+            if resp.status_code != 200:
+                logger.warning("Token refresh failed: %d", resp.status_code)
+                return False
+            data = resp.json()
+            new_access = data["access_token"]
+            self._refresh_token = data.get("refresh_token", self._refresh_token)
+            self._client.headers["Authorization"] = f"Bearer {new_access}"
+            logger.info("Access token refreshed successfully")
+            return True
+        except Exception as e:
+            logger.warning("Token refresh error: %s", e)
+            return False
 
     async def chat(
         self,
@@ -47,6 +80,16 @@ class AgentAPIClient:
 
         start = time.monotonic()
         resp = await self._client.post("/api/v1/agent/chat", json=payload)
+
+        # Auto-refresh on 401 (same behavior as frontend)
+        if resp.status_code == 401:
+            refreshed = await self._refresh_access_token()
+            if refreshed:
+                start = time.monotonic()
+                resp = await self._client.post(
+                    "/api/v1/agent/chat", json=payload
+                )
+
         latency_ms = int((time.monotonic() - start) * 1000)
         resp.raise_for_status()
         data = resp.json()

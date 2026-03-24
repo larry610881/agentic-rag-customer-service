@@ -40,6 +40,7 @@ router = APIRouter(
 
 class StartRunRequest(BaseModel):
     dataset_id: str
+    refresh_token: str = ""
     max_iterations: int = 20
     patience: int = 5
     budget: int = 200
@@ -144,6 +145,7 @@ async def start_run(
         tenant_id=tenant.tenant_id,
         dataset_id=body.dataset_id,
         api_token=api_token,
+        refresh_token=body.refresh_token,
         max_iterations=body.max_iterations,
         patience=body.patience,
         budget=body.budget,
