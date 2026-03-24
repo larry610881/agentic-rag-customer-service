@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Wand2, Play, Database, History } from "lucide-react";
+import { Wand2, Play, Database, History, ShieldCheck } from "lucide-react";
 import { ROUTES } from "@/routes/paths";
 
 export default function AdminPromptOptimizerPage() {
@@ -7,6 +7,7 @@ export default function AdminPromptOptimizerPage() {
     { title: "啟動優化", description: "選擇 Bot 與情境集，開始自動優化", icon: Play, href: ROUTES.ADMIN_PROMPT_OPTIMIZER_START },
     { title: "情境集管理", description: "建立與管理評估用的測試情境集", icon: Database, href: ROUTES.ADMIN_PROMPT_OPTIMIZER_DATASETS },
     { title: "歷史紀錄", description: "查看過往優化紀錄與 Rollback", icon: History, href: ROUTES.ADMIN_PROMPT_OPTIMIZER_RUNS },
+    { title: "驗收評估", description: "重複 N 次評估，驗證 prompt 穩定性", icon: ShieldCheck, href: ROUTES.ADMIN_PROMPT_OPTIMIZER_VALIDATE },
   ];
 
   return (

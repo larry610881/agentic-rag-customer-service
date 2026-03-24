@@ -200,6 +200,103 @@ def cmd_rollback(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_validate(args: argparse.Namespace) -> None:
+    """Run N evals and produce PASS/FAIL verdict."""
+    from prompt_optimizer.api_client import AgentAPIClient, ChatResult
+    from prompt_optimizer.dataset import DatasetLoader
+    from prompt_optimizer.db_client import PromptDBClient
+    from prompt_optimizer.evaluator import Evaluator
+    from prompt_optimizer.validation_evaluator import ValidationEvaluator
+
+    # Load dataset
+    if args.dataset:
+        dataset_path = Path(args.dataset)
+        if not dataset_path.is_absolute():
+            dataset_path = Path(__file__).parent / dataset_path
+        loader = DatasetLoader()
+        dataset = loader.load(dataset_path)
+    elif args.dataset_id:
+        if not args.db_url:
+            print("ERROR: --db-url is required with --dataset-id", file=sys.stderr)
+            sys.exit(1)
+        db_client = PromptDBClient(db_url=args.db_url)
+        dataset = db_client.read_dataset(args.dataset_id)
+        db_client.close()
+    else:
+        print("ERROR: --dataset or --dataset-id is required", file=sys.stderr)
+        sys.exit(1)
+
+    print(
+        f"Dataset: {dataset.metadata.description} ({len(dataset.test_cases)} cases)"
+    )
+    print(f"Repeats: {args.repeats}")
+    print()
+
+    api_client = AgentAPIClient(
+        base_url=args.api_url, jwt_token=args.api_token or ""
+    )
+
+    bot_id = dataset.metadata.bot_id or args.bot_id or None
+
+    async def _eval_fn() -> list[ChatResult]:
+        results: list[ChatResult] = []
+        for tc in dataset.test_cases:
+            try:
+                cr = await api_client.chat(message=tc.question, bot_id=bot_id)
+                results.append(cr)
+            except Exception as e:
+                print(f"  ERROR: {tc.id}: {e}")
+                results.append(
+                    ChatResult(
+                        answer="", conversation_id="", tool_calls=[],
+                        sources=[], usage=None, latency_ms=0,
+                    )
+                )
+        return results
+
+    async def _run():
+        validator = ValidationEvaluator(evaluator=Evaluator())
+        return await validator.validate(dataset, _eval_fn, n_repeats=args.repeats)
+
+    try:
+        summary = asyncio.run(_run())
+    finally:
+        asyncio.run(api_client.close())
+
+    # Print report
+    icon = "\u2705" if summary.verdict == "PASS" else "\u274c"
+    print(f"{'=' * 50}")
+    print(f"{icon} Verdict: {summary.verdict}")
+    print(
+        f"   {summary.passed_cases}/{summary.total_cases} cases passed "
+        f"({summary.unstable_cases} unstable)"
+    )
+    print(f"{'=' * 50}")
+
+    if summary.p0_failures:
+        print(f"\n\U0001f534 P0 Failures:")
+        for cid in summary.p0_failures:
+            cr = next(c for c in summary.case_results if c.case_id == cid)
+            print(f"  {cid} — pass rate {cr.pass_rate:.0%} (need 100%)")
+
+    failed_non_p0 = [
+        c for c in summary.case_results if not c.passed and c.priority != "P0"
+    ]
+    if failed_non_p0:
+        print(f"\n\U0001f7e1 Failed Cases:")
+        for c in failed_non_p0:
+            print(
+                f"  {c.priority} {c.case_id} — "
+                f"pass rate {c.pass_rate:.0%} (need {c.threshold:.0%})"
+            )
+
+    unstable = [c for c in summary.case_results if c.unstable]
+    if unstable:
+        print(f"\n\u26a0\ufe0f  Unstable (passed but <100%):")
+        for c in unstable:
+            print(f"  {c.priority} {c.case_id} — pass rate {c.pass_rate:.0%}")
+
+
 def cmd_report(args: argparse.Namespace) -> None:
     """Show report for a past run."""
     from prompt_optimizer.history import RunHistoryClient
@@ -286,6 +383,23 @@ def main() -> None:
     import_parser.add_argument("--file", required=True, help="Path to YAML dataset file")
     import_parser.add_argument("--db-url", required=True, help="Database URL")
 
+    # validate
+    val_parser = subparsers.add_parser(
+        "validate", help="Validation eval: run N times → PASS/FAIL"
+    )
+    val_parser.add_argument("--dataset", default="", help="Path to dataset YAML")
+    val_parser.add_argument("--dataset-id", default="", help="Dataset ID from DB")
+    val_parser.add_argument(
+        "--api-url", default="http://localhost:8001", help="Backend API URL"
+    )
+    val_parser.add_argument("--api-token", default="", help="JWT token")
+    val_parser.add_argument("--db-url", default="", help="Database URL")
+    val_parser.add_argument("--bot-id", default="", help="Bot ID override")
+    val_parser.add_argument("--tenant-id", default="", help="Tenant ID override")
+    val_parser.add_argument(
+        "--repeats", type=int, default=5, help="Number of evaluation repeats"
+    )
+
     args = parser.parse_args()
     setup_logging(args.verbose)
 
@@ -297,6 +411,8 @@ def main() -> None:
         cmd_report(args)
     elif args.command == "import":
         cmd_import(args)
+    elif args.command == "validate":
+        cmd_validate(args)
 
 
 if __name__ == "__main__":

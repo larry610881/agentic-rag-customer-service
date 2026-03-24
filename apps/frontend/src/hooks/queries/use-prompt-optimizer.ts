@@ -281,6 +281,45 @@ export function useEstimateCost() {
   });
 }
 
+// --- Validation Eval ---
+
+export interface ValidationCaseResult {
+  case_id: string;
+  question: string;
+  priority: string;
+  pass_rate: number;
+  threshold: number;
+  passed: boolean;
+  unstable: boolean;
+  run_scores: number[];
+}
+
+export interface ValidationResult {
+  dataset_id: string;
+  dataset_name: string;
+  verdict: "PASS" | "FAIL";
+  num_repeats: number;
+  total_cases: number;
+  passed_cases: number;
+  failed_cases: number;
+  unstable_cases: number;
+  p0_failures: string[];
+  case_results: ValidationCaseResult[];
+}
+
+export function useRunValidation() {
+  const token = useAuthStore((s) => s.token);
+
+  return useMutation({
+    mutationFn: (data: { dataset_id: string; bot_id?: string; repeats?: number }) =>
+      apiFetch<ValidationResult>(
+        API_ENDPOINTS.promptOptimizer.validate,
+        { method: "POST", body: JSON.stringify(data) },
+        token ?? undefined,
+      ),
+  });
+}
+
 export interface ExchangeRateData {
   from: string;
   to: string;

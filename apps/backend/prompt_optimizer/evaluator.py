@@ -53,6 +53,38 @@ def calculate_final_score(
     return quality_weight * quality_score + cost_weight * cost_score
 
 
+@dataclass
+class ValidationCaseResult:
+    """Per-case result from N-repeat validation evaluation."""
+
+    case_id: str
+    question: str
+    priority: str  # P0 / P1 / P2
+    pass_rate: float  # 0.0 ~ 1.0
+    threshold: float  # P0=1.0, P1=0.8, P2=0.6
+    passed: bool  # pass_rate >= threshold
+    run_scores: list[float] = field(default_factory=list)  # per-run case scores
+    unstable: bool = False  # passed but pass_rate < 1.0
+
+
+@dataclass
+class ValidationSummary:
+    """Aggregated result from N-repeat validation evaluation."""
+
+    verdict: str  # "PASS" | "FAIL"
+    num_repeats: int
+    total_cases: int
+    passed_cases: int
+    failed_cases: int
+    unstable_cases: int  # passed but not 100%
+    case_results: list[ValidationCaseResult] = field(default_factory=list)
+    p0_failures: list[str] = field(default_factory=list)  # P0 case IDs that failed
+
+
+# Validation pass rate thresholds per priority
+VALIDATION_THRESHOLDS = {"P0": 1.0, "P1": 0.8, "P2": 0.6}
+
+
 class Evaluator:
     """Runs binary assertions against API responses and computes scores."""
 

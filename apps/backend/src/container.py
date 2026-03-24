@@ -50,6 +50,7 @@ from src.application.eval_dataset.create_eval_dataset_use_case import (
 from src.application.eval_dataset.eval_use_cases import (
     EstimateCostUseCase,
     RunSingleEvalUseCase,
+    RunValidationEvalUseCase,
 )
 from src.application.eval_dataset.delete_eval_dataset_use_case import (
     DeleteEvalDatasetUseCase,
@@ -1213,6 +1214,11 @@ class Container(containers.DeclarativeContainer):
         get_avg_chunk_size=providers.Factory(
             _AvgChunkSizeProvider, session=db_session,
         ),
+    )
+
+    run_validation_eval_use_case = providers.Factory(
+        RunValidationEvalUseCase,
+        eval_dataset_repository=eval_dataset_repository,
     )
 
     # --- Optimization Runs ---

@@ -21,6 +21,8 @@ from src.application.eval_dataset.eval_use_cases import (
     EstimateCostUseCase,
     RunEvalCommand,
     RunSingleEvalUseCase,
+    RunValidationCommand,
+    RunValidationEvalUseCase,
 )
 from src.application.eval_dataset.get_eval_dataset_use_case import (
     GetEvalDatasetUseCase,
@@ -568,6 +570,41 @@ async def estimate_cost(
         max_iterations=body.max_iterations,
         patience=body.patience,
         budget=body.budget,
+    )
+    try:
+        return await use_case.execute(command)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from e
+
+
+class RunValidationRequest(BaseModel):
+    dataset_id: str
+    bot_id: str = ""
+    repeats: int = 5
+
+
+@router.post("/validate")
+@inject
+async def run_validation_eval(
+    body: RunValidationRequest,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: RunValidationEvalUseCase = Depends(
+        Provide[Container.run_validation_eval_use_case]
+    ),
+) -> dict:
+    """Run N evaluation repeats and return PASS/FAIL verdict with per-case pass rates."""
+    if body.repeats < 1 or body.repeats > 20:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="repeats must be between 1 and 20",
+        )
+    command = RunValidationCommand(
+        tenant_id=tenant.tenant_id,
+        dataset_id=body.dataset_id,
+        api_token="",
+        repeats=body.repeats,
     )
     try:
         return await use_case.execute(command)

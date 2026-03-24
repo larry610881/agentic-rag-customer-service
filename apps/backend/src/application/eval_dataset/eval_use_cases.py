@@ -433,3 +433,137 @@ class EstimateCostUseCase:
             "no_rag_case_count": no_rag_case_count,
             "rag_case_ratio": round(rag_ratio, 2),
         }
+
+
+@dataclass(frozen=True)
+class RunValidationCommand:
+    tenant_id: str
+    dataset_id: str
+    api_token: str
+    repeats: int = 5
+
+
+class RunValidationEvalUseCase:
+    """Validation eval: run N times → per-case pass rate → PASS/FAIL verdict."""
+
+    def __init__(
+        self,
+        eval_dataset_repository: EvalDatasetRepository,
+        api_base_url: str = "http://localhost:8001",
+    ) -> None:
+        self._dataset_repo = eval_dataset_repository
+        self._api_base_url = api_base_url
+
+    async def execute(self, command: RunValidationCommand) -> dict:
+        from prompt_optimizer.api_client import AgentAPIClient, ChatResult
+        from prompt_optimizer.dataset import (
+            Assertion,
+            CostConfigData,
+            Dataset as CLIDataset,
+            DatasetMetadata,
+            TestCase,
+        )
+        from prompt_optimizer.evaluator import Evaluator
+        from prompt_optimizer.validation_evaluator import ValidationEvaluator
+
+        dataset = await self._dataset_repo.find_by_id(command.dataset_id)
+        if dataset is None:
+            raise EntityNotFoundError("EvalDataset", command.dataset_id)
+
+        # Build CLI-compatible dataset
+        test_cases = tuple(
+            TestCase(
+                id=tc.case_id,
+                question=tc.question,
+                priority=tc.priority,
+                category=tc.category,
+                assertions=tuple(
+                    Assertion(type=a["type"], params=a.get("params", {}))
+                    for a in tc.assertions
+                ),
+                conversation_history=tuple(tc.conversation_history),
+            )
+            for tc in dataset.test_cases
+        )
+
+        cost_cfg = dataset.cost_config or {}
+        cli_dataset = CLIDataset(
+            metadata=DatasetMetadata(
+                tenant_id=command.tenant_id,
+                bot_id=dataset.bot_id or "",
+                target_prompt=dataset.target_prompt,
+                agent_mode=dataset.agent_mode,
+                description=dataset.description,
+                cost_config=CostConfigData(
+                    token_budget=cost_cfg.get("token_budget", 2000),
+                    quality_weight=cost_cfg.get("quality_weight", 0.85),
+                    cost_weight=cost_cfg.get("cost_weight", 0.15),
+                ),
+            ),
+            test_cases=test_cases,
+            default_assertions=tuple(
+                Assertion(type=a["type"], params=a.get("params", {}))
+                for a in (dataset.default_assertions or [])
+            ),
+        )
+
+        api_client = AgentAPIClient(
+            base_url=self._api_base_url,
+            jwt_token=command.api_token,
+        )
+
+        async def _eval_fn() -> list[ChatResult]:
+            results: list[ChatResult] = []
+            for tc in cli_dataset.test_cases:
+                try:
+                    cr = await api_client.chat(
+                        message=tc.question,
+                        bot_id=cli_dataset.metadata.bot_id or None,
+                    )
+                    results.append(cr)
+                except Exception as e:
+                    logger.error("Validation API call failed for %s: %s", tc.id, e)
+                    results.append(
+                        ChatResult(
+                            answer="",
+                            conversation_id="",
+                            tool_calls=[],
+                            sources=[],
+                            usage=None,
+                            latency_ms=0,
+                        )
+                    )
+            return results
+
+        try:
+            validator = ValidationEvaluator(evaluator=Evaluator())
+            summary = await validator.validate(
+                cli_dataset, _eval_fn, n_repeats=command.repeats
+            )
+
+            return {
+                "dataset_id": command.dataset_id,
+                "dataset_name": dataset.name,
+                "verdict": summary.verdict,
+                "num_repeats": summary.num_repeats,
+                "total_cases": summary.total_cases,
+                "passed_cases": summary.passed_cases,
+                "failed_cases": summary.failed_cases,
+                "unstable_cases": summary.unstable_cases,
+                "p0_failures": summary.p0_failures,
+                "case_results": [
+                    {
+                        "case_id": cr.case_id,
+                        "question": cr.question,
+                        "priority": cr.priority,
+                        "pass_rate": cr.pass_rate,
+                        "threshold": cr.threshold,
+                        "passed": cr.passed,
+                        "unstable": cr.unstable,
+                        "run_scores": cr.run_scores,
+                    }
+                    for cr in summary.case_results
+                ],
+            }
+        finally:
+            await api_client.close()

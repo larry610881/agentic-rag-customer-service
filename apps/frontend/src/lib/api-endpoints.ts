@@ -147,6 +147,7 @@ export const API_ENDPOINTS = {
     runProgress: (id: string) => `/api/v1/prompt-optimizer/runs/${id}/progress`,
     eval: "/api/v1/prompt-optimizer/eval",
     estimate: "/api/v1/prompt-optimizer/estimate",
+    validate: "/api/v1/prompt-optimizer/validate",
     exchangeRate: "/api/v1/prompt-optimizer/exchange-rate",
   },
 } as const;
