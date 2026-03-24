@@ -103,6 +103,7 @@ export default function AdminPromptOptimizerRunsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>類型</TableHead>
                 <TableHead>狀態</TableHead>
                 <TableHead>迭代次數</TableHead>
                 <TableHead>最佳分數</TableHead>
@@ -112,14 +113,21 @@ export default function AdminPromptOptimizerRunsPage() {
             </TableHeader>
             <TableBody>
               {runs.map((run) => (
-                <TableRow key={run.id}>
+                <TableRow key={run.id || run.run_id}>
+                  <TableCell>
+                    <Badge variant={run.run_type === "validation" ? "secondary" : "outline"}>
+                      {run.run_type === "validation" ? "驗收" : "優化"}
+                    </Badge>
+                  </TableCell>
                   <TableCell>
                     <Badge variant={statusVariant(run.status)}>
                       {STATUS_LABELS[run.status] || run.status}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {run.current_iteration} / {run.max_iterations}
+                    {run.run_type === "validation"
+                      ? `${run.current_iteration || 1} 次重複`
+                      : `${run.current_iteration} / ${run.max_iterations}`}
                   </TableCell>
                   <TableCell>
                     {run.best_score != null

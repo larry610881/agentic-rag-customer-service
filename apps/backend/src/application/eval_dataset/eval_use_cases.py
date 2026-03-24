@@ -441,6 +441,7 @@ class RunValidationCommand:
     dataset_id: str
     api_token: str
     repeats: int = 5
+    bot_id: str = ""
 
 
 class RunValidationEvalUseCase:
@@ -449,9 +450,11 @@ class RunValidationEvalUseCase:
     def __init__(
         self,
         eval_dataset_repository: EvalDatasetRepository,
+        optimization_run_repository=None,
         api_base_url: str = "http://localhost:8001",
     ) -> None:
         self._dataset_repo = eval_dataset_repository
+        self._run_repo = optimization_run_repository
         self._api_base_url = api_base_url
 
     async def execute(self, command: RunValidationCommand) -> dict:
@@ -469,6 +472,9 @@ class RunValidationEvalUseCase:
         dataset = await self._dataset_repo.find_by_id(command.dataset_id)
         if dataset is None:
             raise EntityNotFoundError("EvalDataset", command.dataset_id)
+
+        # bot_id: command override > dataset default
+        effective_bot_id = command.bot_id or dataset.bot_id or ""
 
         # Build CLI-compatible dataset
         test_cases = tuple(
@@ -490,7 +496,7 @@ class RunValidationEvalUseCase:
         cli_dataset = CLIDataset(
             metadata=DatasetMetadata(
                 tenant_id=command.tenant_id,
-                bot_id=dataset.bot_id or "",
+                bot_id=effective_bot_id,
                 target_prompt=dataset.target_prompt,
                 agent_mode=dataset.agent_mode,
                 description=dataset.description,
@@ -541,7 +547,49 @@ class RunValidationEvalUseCase:
                 cli_dataset, _eval_fn, n_repeats=command.repeats
             )
 
+            # Save to history
+            import uuid
+            from datetime import datetime, timezone
+
+            run_id = str(uuid.uuid4())
+            if self._run_repo:
+                from src.domain.eval_dataset.run_entity import OptimizationIteration
+
+                overall_pass_rate = (
+                    summary.passed_cases / summary.total_cases
+                    if summary.total_cases > 0
+                    else 0.0
+                )
+                iteration = OptimizationIteration(
+                    id=str(uuid.uuid4()),
+                    run_id=run_id,
+                    iteration=0,
+                    tenant_id=command.tenant_id,
+                    target_field=dataset.target_prompt,
+                    bot_id=effective_bot_id or None,
+                    prompt_snapshot="",
+                    score=overall_pass_rate,
+                    passed_count=summary.passed_cases,
+                    total_count=summary.total_cases,
+                    is_best=True,
+                    details={
+                        "type": "validation",
+                        "repeats": summary.num_repeats,
+                        "verdict": summary.verdict,
+                        "unstable_cases": summary.unstable_cases,
+                        "p0_failures": summary.p0_failures,
+                        "dataset_id": command.dataset_id,
+                        "dataset_name": dataset.name,
+                    },
+                    created_at=datetime.now(timezone.utc),
+                )
+                try:
+                    await self._run_repo.save_iteration(iteration)
+                except Exception as e:
+                    logger.warning("Failed to save validation history: %s", e)
+
             return {
+                "run_id": run_id,
                 "dataset_id": command.dataset_id,
                 "dataset_name": dataset.name,
                 "verdict": summary.verdict,

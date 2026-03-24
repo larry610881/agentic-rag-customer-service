@@ -81,7 +81,8 @@ class SQLAlchemyOptimizationRunRepository(OptimizationRunRepository):
                    MAX(CASE WHEN is_best THEN score ELSE 0 END) as best_score,
                    MAX(iteration) as total_iterations,
                    MIN(created_at) as started_at,
-                   MAX(created_at) as last_updated_at
+                   MAX(created_at) as last_updated_at,
+                   MAX(CASE WHEN details IS NOT NULL THEN details->>'type' ELSE NULL END) as run_type
             FROM prompt_opt_runs
             {base_where}
             GROUP BY run_id, tenant_id, target_field, bot_id

@@ -11,7 +11,10 @@ export interface EvalDataset {
   id: string;
   name: string;
   description: string;
-  case_count: number;
+  bot_id: string | null;
+  target_prompt: string;
+  agent_mode: string;
+  test_case_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -27,8 +30,10 @@ export interface TestCase {
 
 export interface OptimizationRun {
   id: string;
+  run_id: string;
   bot_id: string;
   dataset_id: string;
+  run_type: "optimization" | "validation";
   status: string;
   current_iteration: number;
   max_iterations: number;

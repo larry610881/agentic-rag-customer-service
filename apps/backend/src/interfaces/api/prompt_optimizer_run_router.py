@@ -58,6 +58,7 @@ class RunSummaryResponse(BaseModel):
     dataset_name: str
     target_field: str
     bot_id: str | None
+    run_type: str = "optimization"  # "optimization" | "validation"
     status: str
     baseline_score: float
     best_score: float

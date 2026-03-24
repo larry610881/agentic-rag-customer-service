@@ -605,6 +605,7 @@ async def run_validation_eval(
         dataset_id=body.dataset_id,
         api_token="",
         repeats=body.repeats,
+        bot_id=body.bot_id,
     )
     try:
         return await use_case.execute(command)

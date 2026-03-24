@@ -1,6 +1,16 @@
-import { useState } from "react";
-import { useEvalDatasets, useRunValidation } from "@/hooks/queries/use-prompt-optimizer";
-import type { ValidationResult, ValidationCaseResult } from "@/hooks/queries/use-prompt-optimizer";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  useEvalDatasets,
+  useRunValidation,
+  useEstimateCost,
+  useExchangeRate,
+} from "@/hooks/queries/use-prompt-optimizer";
+import type {
+  ValidationResult,
+  ValidationCaseResult,
+} from "@/hooks/queries/use-prompt-optimizer";
+import { useBots } from "@/hooks/queries/use-bots";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -18,7 +28,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, ShieldCheck, ShieldAlert, AlertTriangle } from "lucide-react";
+import {
+  ArrowLeft,
+  Calculator,
+  Loader2,
+  ShieldCheck,
+  ShieldAlert,
+  AlertTriangle,
+} from "lucide-react";
+import { ROUTES } from "@/routes/paths";
 
 const REPEAT_OPTIONS = [3, 5, 10];
 
@@ -28,34 +46,87 @@ function PassRateBadge({ result }: { result: ValidationCaseResult }) {
     return <Badge variant="destructive">{pct}%</Badge>;
   }
   if (result.unstable) {
-    return <Badge variant="outline" className="border-yellow-500 text-yellow-600">{pct}%</Badge>;
+    return (
+      <Badge variant="outline" className="border-yellow-500 text-yellow-600">
+        {pct}%
+      </Badge>
+    );
   }
-  return <Badge variant="outline" className="border-green-500 text-green-600">{pct}%</Badge>;
+  return (
+    <Badge variant="outline" className="border-green-500 text-green-600">
+      {pct}%
+    </Badge>
+  );
 }
 
 export default function AdminPromptOptimizerValidatePage() {
   const [datasetId, setDatasetId] = useState("");
+  const [botId, setBotId] = useState("");
   const [repeats, setRepeats] = useState(5);
   const { data: datasets } = useEvalDatasets(1, 50);
+  const { data: botsData } = useBots(1, 100);
+  const bots = botsData?.items ?? [];
   const validation = useRunValidation();
+  const estimateCost = useEstimateCost();
+  const { data: exchangeRate } = useExchangeRate("twd");
   const result = validation.data as ValidationResult | undefined;
+
+  // Auto-select bot when dataset changes
+  const selectedDataset = datasets?.items?.find((d) => d.id === datasetId);
+  useEffect(() => {
+    if (selectedDataset?.bot_id) {
+      setBotId(selectedDataset.bot_id);
+    }
+  }, [selectedDataset?.bot_id]);
+
+  // Auto-estimate cost when dataset + bot selected
+  useEffect(() => {
+    if (datasetId && botId) {
+      const selectedBot = bots.find((b) => b.id === botId);
+      estimateCost.mutate({
+        dataset_id: datasetId,
+        bot_id: botId,
+        model_id: selectedBot?.llm_model || "",
+        max_iterations: 0,
+        patience: 0,
+        budget: 0,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetId, botId]);
 
   const handleRun = () => {
     if (!datasetId) return;
-    validation.mutate({ dataset_id: datasetId, repeats });
+    validation.mutate({ dataset_id: datasetId, bot_id: botId, repeats });
   };
+
+  // Cost calculation
+  const evalCostPerCall = estimateCost.data?.eval_cost_per_call ?? 0;
+  const numCases = selectedDataset?.test_case_count ?? 0;
+  const totalCalls = repeats * numCases;
+  const totalCostUsd = totalCalls * evalCostPerCall;
+  const twdRate = exchangeRate?.rate ?? 32;
+  const totalCostTwd = totalCostUsd * twdRate;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">驗收評估</h1>
-        <p className="text-muted-foreground">
-          對 prompt 重複執行 N 次評估，統計 pass rate 判定穩定性
-        </p>
+      {/* Header + Back */}
+      <div className="flex items-center gap-3">
+        <Link to={ROUTES.ADMIN_PROMPT_OPTIMIZER}>
+          <Button variant="ghost" size="icon">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <div>
+          <h1 className="text-2xl font-bold">驗收評估</h1>
+          <p className="text-muted-foreground">
+            對 prompt 重複執行 N 次評估，統計 pass rate 判定穩定性
+          </p>
+        </div>
       </div>
 
       {/* Controls */}
-      <div className="flex items-end gap-4">
+      <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">測試集</label>
           <Select value={datasetId} onValueChange={setDatasetId}>
@@ -65,7 +136,23 @@ export default function AdminPromptOptimizerValidatePage() {
             <SelectContent>
               {datasets?.items?.map((ds) => (
                 <SelectItem key={ds.id} value={ds.id}>
-                  {ds.name}
+                  {ds.name} ({ds.test_case_count} cases)
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Bot</label>
+          <Select value={botId} onValueChange={setBotId}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="選擇 Bot..." />
+            </SelectTrigger>
+            <SelectContent>
+              {bots.map((bot) => (
+                <SelectItem key={bot.id} value={bot.id}>
+                  {bot.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -106,6 +193,31 @@ export default function AdminPromptOptimizerValidatePage() {
         </Button>
       </div>
 
+      {/* Cost Estimate */}
+      {datasetId && numCases > 0 && (
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+          <Calculator className="h-4 w-4 text-muted-foreground" />
+          <span className="text-muted-foreground">預估成本：</span>
+          <span className="font-medium">
+            {totalCalls} 次 API 呼叫
+          </span>
+          <span className="text-muted-foreground">
+            ({repeats} 重複 × {numCases} cases)
+          </span>
+          {evalCostPerCall > 0 && (
+            <>
+              <span className="text-muted-foreground ml-2">≈</span>
+              <span className="font-medium">
+                ${totalCostUsd.toFixed(4)} USD
+              </span>
+              <span className="text-muted-foreground">
+                (≈ NT${totalCostTwd.toFixed(1)})
+              </span>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Result */}
       {result && (
         <div className="space-y-4">
@@ -138,9 +250,13 @@ export default function AdminPromptOptimizerValidatePage() {
           {/* P0 Failures */}
           {result.p0_failures.length > 0 && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-              <p className="font-semibold text-red-700 mb-1">P0 安全案例失敗</p>
+              <p className="font-semibold text-red-700 mb-1">
+                P0 安全案例失敗
+              </p>
               {result.p0_failures.map((cid) => {
-                const cr = result.case_results.find((c) => c.case_id === cid);
+                const cr = result.case_results.find(
+                  (c) => c.case_id === cid,
+                );
                 return (
                   <p key={cid} className="text-sm text-red-600">
                     {cid} — pass rate{" "}
@@ -179,11 +295,19 @@ export default function AdminPromptOptimizerValidatePage() {
               {result.case_results.map((cr) => (
                 <TableRow
                   key={cr.case_id}
-                  className={!cr.passed ? "bg-red-50/50" : cr.unstable ? "bg-yellow-50/50" : ""}
+                  className={
+                    !cr.passed
+                      ? "bg-red-50/50"
+                      : cr.unstable
+                        ? "bg-yellow-50/50"
+                        : ""
+                  }
                 >
                   <TableCell>
                     <Badge
-                      variant={cr.priority === "P0" ? "destructive" : "outline"}
+                      variant={
+                        cr.priority === "P0" ? "destructive" : "outline"
+                      }
                     >
                       {cr.priority}
                     </Badge>

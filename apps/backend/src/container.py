@@ -1216,16 +1216,17 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
-    run_validation_eval_use_case = providers.Factory(
-        RunValidationEvalUseCase,
-        eval_dataset_repository=eval_dataset_repository,
-    )
-
     # --- Optimization Runs ---
 
     optimization_run_repository = providers.Factory(
         SQLAlchemyOptimizationRunRepository,
         session=db_session,
+    )
+
+    run_validation_eval_use_case = providers.Factory(
+        RunValidationEvalUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+        optimization_run_repository=optimization_run_repository,
     )
 
     run_manager = providers.Singleton(RunManager)
