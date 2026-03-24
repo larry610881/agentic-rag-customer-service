@@ -296,9 +296,15 @@ export default function AdminPromptOptimizerRunDetailPage() {
             <CardTitle className="text-base">提示詞變更紀錄</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {iterations.map((it) => {
+            {(() => {
+              // Find the single global best iteration (highest score)
+              const globalBestIter = iterations.reduce((best, it) =>
+                it.score > best.score ? it : best
+              , iterations[0]);
+              return iterations.map((it) => {
               const accepted = it.details?.accepted !== false;
               const isExpanded = expandedIter === it.iteration;
+              const isGlobalBest = it.iteration === globalBestIter.iteration;
 
               return (
                 <div key={it.iteration} className="rounded border">
@@ -319,7 +325,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
                     <span className="text-muted-foreground">
                       ({it.passed_count}/{it.total_count} 通過)
                     </span>
-                    {it.is_best && (
+                    {isGlobalBest && (
                       <Badge variant="default" className="shrink-0">最佳</Badge>
                     )}
                     {it.iteration > 0 && (
@@ -417,7 +423,8 @@ export default function AdminPromptOptimizerRunDetailPage() {
                   )}
                 </div>
               );
-            })}
+            });
+            })()}
           </CardContent>
         </Card>
       )}
