@@ -96,26 +96,27 @@ export default function AdminPromptOptimizerRunDetailPage() {
     if (baselineScore > 0) {
       setPollingScoreHistory((prev) => {
         if (prev.some((p) => p.iteration === 0)) return prev;
-        return [{ iteration: 0, score: baselineScore, bestScore: baselineScore }, ...prev];
+        return [{ iteration: 0, score: baselineScore, bestScore: 0 }, ...prev];
       });
     }
     if (currentIteration > 0 && currentScore != null && currentScore > 0) {
       setPollingScoreHistory((prev) => {
         if (prev.some((p) => p.iteration === currentIteration)) return prev;
-        return [...prev, { iteration: currentIteration, score: currentScore, bestScore }];
+        return [...prev, { iteration: currentIteration, score: currentScore, bestScore: 0 }];
       });
     }
   }, [currentIteration, bestScore, baselineScore, currentScore, run, iterations.length]);
 
   const scoreHistory = useMemo(() => {
-    if (iterations.length > 0) {
-      let runningBest = 0;
-      return iterations.map((it) => {
-        if (it.score > runningBest) runningBest = it.score;
-        return { iteration: it.iteration, score: it.score, bestScore: runningBest };
-      });
-    }
-    return pollingScoreHistory;
+    const source = iterations.length > 0
+      ? iterations.map((it) => ({ iteration: it.iteration, score: it.score }))
+      : pollingScoreHistory.map((p) => ({ iteration: p.iteration, score: p.score }));
+    // Recompute running best from scratch so earlier points update when best improves
+    let runningBest = 0;
+    return source.map((p) => {
+      if (p.score > runningBest) runningBest = p.score;
+      return { iteration: p.iteration, score: p.score, bestScore: runningBest };
+    });
   }, [iterations, pollingScoreHistory]);
 
   // Accumulate progress log
