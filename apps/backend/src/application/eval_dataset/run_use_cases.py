@@ -206,15 +206,15 @@ class StartRunUseCase:
             )
 
             # Pre-load actual prompt from DB via sync client
+            from prompt_optimizer.db_client import PromptDBClient
+
             prompt_store: dict[str, str] = {}
+            prompt_db: PromptDBClient | None = None
             if self._db_url:
                 try:
-                    from prompt_optimizer.db_client import PromptDBClient
-
                     prompt_db = PromptDBClient(db_url=self._db_url)
                     initial_prompt = prompt_db.read_prompt(target)
                     prompt_store[target.field] = initial_prompt
-                    prompt_db.close()
                 except Exception as e:
                     logger.warning("Failed to pre-load prompt: %s", e)
 
@@ -223,6 +223,12 @@ class StartRunUseCase:
 
             def write_prompt(t: PromptTarget, prompt: str) -> None:
                 prompt_store[t.field] = prompt
+                # Also write to DB so API eval reads the candidate prompt
+                if prompt_db:
+                    try:
+                        prompt_db.write_prompt(t, prompt)
+                    except Exception as e:
+                        logger.warning("Failed to write prompt to DB: %s", e)
 
             from prompt_optimizer.mutator import PromptMutator
 
@@ -248,7 +254,7 @@ class StartRunUseCase:
             )
 
             # Progress callback: update RunManager on each case/iteration
-            from prompt_optimizer.runner import ProgressEvent
+            from prompt_optimizer.runner import IterationResult, ProgressEvent
 
             async def _on_progress(evt: ProgressEvent) -> None:
                 self._run_manager.update_run(
@@ -259,6 +265,13 @@ class StartRunUseCase:
                     best_score=evt.best_score if evt.best_score > 0 else None,
                     progress_message=evt.message,
                 )
+                # Append to score_log on iteration completion
+                if evt.phase == "iteration_done":
+                    active = self._run_manager.get_run(run_id)
+                    if active:
+                        active.score_log.append(
+                            {"iteration": evt.iteration, "score": evt.score}
+                        )
                 await self._run_manager.publish_progress(
                     run_id,
                     RunProgress(
@@ -273,60 +286,61 @@ class StartRunUseCase:
                     ),
                 )
 
-            result_holder: dict = {"api_calls": 0}
+            # Iteration callback: save each iteration to DB immediately
+            def _on_iteration(it: IterationResult) -> None:
+                if not history_client:
+                    return
+                history_client.save_iteration(
+                    run_id=run_id,
+                    iteration=it.iteration,
+                    tenant_id=command.tenant_id,
+                    target_field=ds["target_prompt"],
+                    bot_id=ds.get("bot_id"),
+                    prompt_snapshot=it.prompt_snapshot,
+                    score=it.eval_summary.final_score,
+                    passed_count=sum(
+                        1
+                        for cr in it.eval_summary.case_results
+                        if cr.score >= 1.0
+                    ),
+                    total_count=len(it.eval_summary.case_results),
+                    is_best=it.is_best,
+                    details={
+                        "quality_score": it.eval_summary.quality_score,
+                        "cost_score": it.eval_summary.cost_score,
+                        "avg_total_tokens": it.eval_summary.avg_total_tokens,
+                        "accepted": it.accepted,
+                        "case_results": [
+                            {
+                                "case_id": cr.case_id,
+                                "question": cr.question,
+                                "priority": cr.priority,
+                                "category": cr.category,
+                                "score": cr.score,
+                                "passed_count": cr.passed_count,
+                                "total_count": cr.total_count,
+                                "p0_failed": cr.p0_failed,
+                                "answer_snippet": cr.answer_snippet,
+                                "assertion_results": [
+                                    {
+                                        "passed": ar.passed,
+                                        "assertion_type": ar.assertion_type,
+                                        "message": ar.message,
+                                    }
+                                    for ar in cr.assertion_results
+                                ],
+                            }
+                            for cr in it.eval_summary.case_results
+                        ],
+                    },
+                )
 
             # Run the optimization loop
             result = await runner.run(
-                config, cli_dataset, run_id=run_id, on_progress=_on_progress
+                config, cli_dataset, run_id=run_id,
+                on_progress=_on_progress,
+                on_iteration=_on_iteration,
             )
-
-            # Save iterations to DB via sync history client
-            if history_client:
-                for it in result.iterations:
-                    history_client.save_iteration(
-                        run_id=run_id,
-                        iteration=it.iteration,
-                        tenant_id=command.tenant_id,
-                        target_field=ds["target_prompt"],
-                        bot_id=ds.get("bot_id"),
-                        prompt_snapshot=it.prompt_snapshot,
-                        score=it.eval_summary.final_score,
-                        passed_count=sum(
-                            1
-                            for cr in it.eval_summary.case_results
-                            if cr.score >= 1.0
-                        ),
-                        total_count=len(it.eval_summary.case_results),
-                        is_best=it.is_best,
-                        details={
-                            "quality_score": it.eval_summary.quality_score,
-                            "cost_score": it.eval_summary.cost_score,
-                            "avg_total_tokens": it.eval_summary.avg_total_tokens,
-                            "accepted": it.accepted,
-                            "case_results": [
-                                {
-                                    "case_id": cr.case_id,
-                                    "question": cr.question,
-                                    "priority": cr.priority,
-                                    "category": cr.category,
-                                    "score": cr.score,
-                                    "passed_count": cr.passed_count,
-                                    "total_count": cr.total_count,
-                                    "p0_failed": cr.p0_failed,
-                                    "answer_snippet": cr.answer_snippet,
-                                    "assertion_results": [
-                                        {
-                                            "passed": ar.passed,
-                                            "assertion_type": ar.assertion_type,
-                                            "message": ar.message,
-                                        }
-                                        for ar in cr.assertion_results
-                                    ],
-                                }
-                                for cr in it.eval_summary.case_results
-                            ],
-                        },
-                    )
 
             # Publish iteration progress for each
             for it in result.iterations:
@@ -387,6 +401,8 @@ class StartRunUseCase:
                 await api_client.close()
             if history_client:
                 history_client.close()
+            if prompt_db:
+                prompt_db.close()
 
 
 class ListRunsUseCase:
@@ -545,6 +561,7 @@ class GetRunUseCase:
             ),
             "progress_message": active.progress_message if active else "",
             "progress_log": active.progress_log if active else [],
+            "score_log": active.score_log if active else [],
             "iterations": [
                 {
                     "iteration": it.iteration,

@@ -57,6 +57,7 @@ class ActiveRun:
     stopped_reason: str = ""
     progress_message: str = ""
     progress_log: list[str] = field(default_factory=list)
+    score_log: list[dict] = field(default_factory=list)
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: datetime | None = None
     task: asyncio.Task | None = field(default=None, repr=False)

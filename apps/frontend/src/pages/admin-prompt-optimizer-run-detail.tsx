@@ -81,9 +81,6 @@ export default function AdminPromptOptimizerRunDetailPage() {
   const stopMutation = useStopOptimization();
   const applyMutation = useRollbackRun();
 
-  const [pollingScoreHistory, setPollingScoreHistory] = useState<
-    { iteration: number; score: number; bestScore: number }[]
-  >([]);
   const [elapsed, setElapsed] = useState(0);
   const [expandedIter, setExpandedIter] = useState<number | null>(null);
   const startTimeRef = useRef(Date.now());
@@ -108,38 +105,22 @@ export default function AdminPromptOptimizerRunDetailPage() {
     return () => clearInterval(timer);
   }, [isFinished]);
 
-  // Build score history from iterations (authoritative) or polling (fallback)
+  // Build score history from iterations (DB) or score_log (in-memory during run)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const currentScore = (run as any)?.current_score as number | undefined;
-
-  useEffect(() => {
-    if (!run || iterations.length > 0) return;
-    // Polling fallback: accumulate during active run (before iterations are in DB)
-    if (baselineScore > 0) {
-      setPollingScoreHistory((prev) => {
-        if (prev.some((p) => p.iteration === 0)) return prev;
-        return [{ iteration: 0, score: baselineScore, bestScore: 0 }, ...prev];
-      });
-    }
-    if (currentIteration > 0 && currentScore != null && currentScore > 0) {
-      setPollingScoreHistory((prev) => {
-        if (prev.some((p) => p.iteration === currentIteration)) return prev;
-        return [...prev, { iteration: currentIteration, score: currentScore, bestScore: 0 }];
-      });
-    }
-  }, [currentIteration, bestScore, baselineScore, currentScore, run, iterations.length]);
+  const scoreLog: { iteration: number; score: number }[] = (run as any)?.score_log ?? [];
 
   const scoreHistory = useMemo(() => {
+    // Prefer iterations from DB (includes during run now, since we save immediately)
+    // Fall back to score_log from ActiveRun (in-memory)
     const source = iterations.length > 0
       ? iterations.map((it) => ({ iteration: it.iteration, score: it.score }))
-      : pollingScoreHistory.map((p) => ({ iteration: p.iteration, score: p.score }));
-    // Recompute running best from scratch so earlier points update when best improves
+      : scoreLog;
     let runningBest = 0;
     return source.map((p) => {
       if (p.score > runningBest) runningBest = p.score;
       return { iteration: p.iteration, score: p.score, bestScore: runningBest };
     });
-  }, [iterations, pollingScoreHistory]);
+  }, [iterations, scoreLog]);
 
   // Progress log from backend (complete history, no polling gaps)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

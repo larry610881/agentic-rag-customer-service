@@ -54,8 +54,9 @@ class ProgressEvent:
     message: str = ""
 
 
-# Type alias for progress callback
+# Type alias for callbacks
 OnProgress = Callable[[ProgressEvent], Awaitable[None]] | None
+OnIteration = Callable[["IterationResult"], None] | None
 
 
 class KarpathyLoopRunner:
@@ -81,6 +82,7 @@ class KarpathyLoopRunner:
         dataset: Dataset,
         run_id: str = "",
         on_progress: OnProgress = None,
+        on_iteration: OnIteration = None,
     ) -> RunResult:
         """Execute the Karpathy optimization loop."""
         import uuid
@@ -114,15 +116,16 @@ class KarpathyLoopRunner:
         )
 
         # Record baseline as iteration 0
-        result.iterations.append(
-            IterationResult(
-                iteration=0,
-                prompt_snapshot=baseline_prompt,
-                eval_summary=baseline_summary,
-                is_best=True,
-                accepted=True,
-            )
+        baseline_iter = IterationResult(
+            iteration=0,
+            prompt_snapshot=baseline_prompt,
+            eval_summary=baseline_summary,
+            is_best=True,
+            accepted=True,
         )
+        result.iterations.append(baseline_iter)
+        if on_iteration:
+            on_iteration(baseline_iter)
 
         logger.info("Baseline score: %.4f", baseline_score)
 
@@ -211,15 +214,16 @@ class KarpathyLoopRunner:
                     i, score, no_improve_count, config.patience,
                 )
 
-            result.iterations.append(
-                IterationResult(
-                    iteration=i,
-                    prompt_snapshot=candidate,
-                    eval_summary=eval_summary,
-                    is_best=is_best,
-                    accepted=accepted,
-                )
+            iter_result = IterationResult(
+                iteration=i,
+                prompt_snapshot=candidate,
+                eval_summary=eval_summary,
+                is_best=is_best,
+                accepted=accepted,
             )
+            result.iterations.append(iter_result)
+            if on_iteration:
+                on_iteration(iter_result)
 
             if on_progress:
                 await on_progress(ProgressEvent(
