@@ -36,6 +36,15 @@ const STATUS_LABELS: Record<string, string> = {
   unknown: "未知",
 };
 
+const STOPPED_REASON_LABELS: Record<string, string> = {
+  user_stopped: "使用者手動停止，已保留最佳結果",
+  patience: "連續多輪未改善，提前停止",
+  budget: "API 呼叫預算已用盡",
+  max_iterations: "已達最大迭代次數",
+  converged: "已達滿分，提前完成",
+  dry_run: "試跑模式，僅評估基線",
+};
+
 const isFinishedStatus = (s: string) =>
   s === "completed" || s === "failed" || s === "stopped";
 
@@ -246,7 +255,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
           )}
           {run?.stopped_reason && (
             <div className="rounded border border-yellow-200 bg-yellow-50 p-2 text-sm text-yellow-700">
-              {run.stopped_reason}
+              {STOPPED_REASON_LABELS[run.stopped_reason] ?? run.stopped_reason}
             </div>
           )}
         </CardContent>
