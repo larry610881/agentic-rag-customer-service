@@ -81,6 +81,29 @@ describe("CaseResultsTable", () => {
     expect(screen.getByText("P0 FAIL")).toBeInTheDocument();
   });
 
+  it("API 錯誤案例（空回答 + score=0）應顯示 API 錯誤標記和警告", () => {
+    const apiErrorCase: CaseResultData[] = [
+      {
+        case_id: "case-err",
+        question: "測試問題",
+        priority: "P1",
+        category: "test",
+        score: 0,
+        passed_count: 0,
+        total_count: 2,
+        p0_failed: false,
+        answer_snippet: "",
+        assertion_results: [
+          { passed: false, assertion_type: "api_error", message: "API 錯誤：timeout" },
+        ],
+      },
+    ];
+    render(<CaseResultsTable caseResults={apiErrorCase} />);
+
+    expect(screen.getByText("API 錯誤")).toBeInTheDocument();
+    expect(screen.getByText(/1\/1 個案例 API 呼叫失敗/)).toBeInTheDocument();
+  });
+
   it("caseResults 為 undefined 時不渲染任何內容", () => {
     const { container } = render(
       <CaseResultsTable caseResults={undefined} />

@@ -35,6 +35,16 @@ export function CaseResultsTable({ caseResults }: CaseResultsTableProps) {
       <p className="mb-2 text-xs font-medium text-muted-foreground">
         測試案例結果
       </p>
+      {(() => {
+        const errorCount = caseResults.filter(
+          (c) => !c.answer_snippet && c.score === 0
+        ).length;
+        return errorCount > 0 ? (
+          <div className="mb-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-600 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+            {errorCount}/{caseResults.length} 個案例 API 呼叫失敗（回答為空）
+          </div>
+        ) : null;
+      })()}
       <div className="rounded border">
         {/* Header */}
         <div className="grid grid-cols-[1fr_60px_70px_70px_70px] gap-2 border-b bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground">
@@ -47,21 +57,26 @@ export function CaseResultsTable({ caseResults }: CaseResultsTableProps) {
         {/* Rows */}
         {caseResults.map((cr) => {
           const isExpanded = expandedCase === cr.case_id;
-          const statusLabel = cr.p0_failed
-            ? "P0 FAIL"
-            : cr.score >= 1
-              ? "PASS"
-              : "FAIL";
-          const statusColor = cr.p0_failed
-            ? "text-red-600 font-medium"
-            : cr.score >= 1
-              ? "text-green-600"
-              : "text-orange-500";
+          const isApiError = !cr.answer_snippet && cr.score === 0;
+          const statusLabel = isApiError
+            ? "API 錯誤"
+            : cr.p0_failed
+              ? "P0 FAIL"
+              : cr.score >= 1
+                ? "PASS"
+                : "FAIL";
+          const statusColor = isApiError
+            ? "text-red-500 font-medium"
+            : cr.p0_failed
+              ? "text-red-600 font-medium"
+              : cr.score >= 1
+                ? "text-green-600"
+                : "text-orange-500";
 
           return (
             <div key={cr.case_id} className="border-b last:border-b-0">
               <button
-                className="grid w-full grid-cols-[1fr_60px_70px_70px_70px] gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/50 transition-colors"
+                className={`grid w-full grid-cols-[1fr_60px_70px_70px_70px] gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/50 transition-colors ${isApiError ? "bg-red-50 dark:bg-red-950/20" : ""}`}
                 onClick={() =>
                   setExpandedCase(isExpanded ? null : cr.case_id)
                 }
