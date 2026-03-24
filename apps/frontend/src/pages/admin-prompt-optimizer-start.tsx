@@ -103,7 +103,7 @@ export default function AdminPromptOptimizerStartPage() {
           navigate(
             ROUTES.ADMIN_PROMPT_OPTIMIZER_RUN_DETAIL.replace(
               ":runId",
-              run.id,
+              run.run_id,
             ),
           );
         },

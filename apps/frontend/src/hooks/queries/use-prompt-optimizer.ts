@@ -29,17 +29,18 @@ export interface TestCase {
 }
 
 export interface OptimizationRun {
-  id: string;
   run_id: string;
   bot_id: string;
   dataset_id: string;
   run_type: "optimization" | "validation";
   status: string;
+  baseline_score: number;
+  best_score: number | null;
   current_iteration: number;
   max_iterations: number;
-  best_score: number | null;
-  created_at: string;
-  updated_at: string;
+  stopped_reason: string;
+  started_at: string;
+  completed_at: string | null;
 }
 
 export interface CostEstimate {
