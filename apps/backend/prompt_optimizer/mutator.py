@@ -29,8 +29,9 @@ class CostStats:
 class PromptMutator:
     """Uses an LLM to generate improved prompt variants based on failed test cases."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
+    def __init__(self, model: str = "gpt-4o-mini", api_key: str = ""):
         self._model_name = model
+        self._api_key = api_key or None  # None = use env var fallback
 
     async def mutate(
         self,
@@ -52,6 +53,7 @@ class PromptMutator:
         llm = ChatOpenAI(
             model=self._model_name,
             temperature=temperature,
+            api_key=self._api_key,
         )
 
         # Retry up to 3 times if LLM returns empty or identical prompt

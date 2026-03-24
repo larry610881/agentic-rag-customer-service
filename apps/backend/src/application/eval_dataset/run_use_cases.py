@@ -43,11 +43,15 @@ class StartRunUseCase:
         run_manager: RunManager,
         db_url: str = "",
         api_base_url: str = "http://localhost:8001",
+        provider_setting_repository=None,
+        encryption_service=None,
     ) -> None:
         self._dataset_repo = eval_dataset_repository
         self._run_manager = run_manager
         self._db_url = db_url
         self._api_base_url = api_base_url
+        self._provider_repo = provider_setting_repository
+        self._encryption = encryption_service
 
     async def execute(self, command: StartRunCommand) -> str:
         """Start an optimization run. Returns run_id."""
@@ -77,6 +81,14 @@ class StartRunUseCase:
             ],
         }
 
+        # Resolve mutator API key from provider_settings (before background task)
+        mutator_api_key = ""
+        if self._provider_repo and self._encryption:
+            try:
+                mutator_api_key = await self._resolve_llm_api_key()
+            except Exception as e:
+                logger.warning("Failed to resolve mutator API key: %s", e)
+
         run_id = self._run_manager.create_run(
             tenant_id=command.tenant_id,
             dataset_id=command.dataset_id,
@@ -87,14 +99,22 @@ class StartRunUseCase:
         )
 
         task = asyncio.create_task(
-            self._run_optimization(run_id, command, dataset_snapshot)
+            self._run_optimization(run_id, command, dataset_snapshot, mutator_api_key)
         )
         self._run_manager.set_task(run_id, task)
 
         return run_id
 
+    async def _resolve_llm_api_key(self) -> str:
+        """Resolve LLM API key from the first enabled LLM provider setting."""
+        settings = await self._provider_repo.list_all()
+        for s in settings:
+            if s.provider_type.value == "llm" and s.is_enabled and s.api_key_encrypted:
+                return self._encryption.decrypt(s.api_key_encrypted)
+        return ""
+
     async def _run_optimization(
-        self, run_id: str, command: StartRunCommand, ds: dict
+        self, run_id: str, command: StartRunCommand, ds: dict, mutator_api_key: str = ""
     ) -> None:
         """Background task: run the Karpathy optimization loop.
 
@@ -194,11 +214,16 @@ class StartRunUseCase:
             def write_prompt(t: PromptTarget, prompt: str) -> None:
                 prompt_store[t.field] = prompt
 
+            from prompt_optimizer.mutator import PromptMutator
+
+            mutator = PromptMutator(api_key=mutator_api_key) if mutator_api_key else None
+
             runner = KarpathyLoopRunner(
                 api_client=api_client,
                 db_read_prompt=read_prompt,
                 db_write_prompt=write_prompt,
                 evaluator=Evaluator(),
+                mutator=mutator,
             )
 
             # Publish started event

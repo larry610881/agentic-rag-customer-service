@@ -1236,6 +1236,8 @@ class Container(containers.DeclarativeContainer):
         eval_dataset_repository=eval_dataset_repository,
         run_manager=run_manager,
         db_url=providers.Callable(lambda cfg: cfg.database_url, config),
+        provider_setting_repository=provider_setting_repository,
+        encryption_service=encryption_service,
     )
 
     list_runs_use_case = providers.Factory(
