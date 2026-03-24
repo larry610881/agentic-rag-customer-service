@@ -722,16 +722,6 @@ export function BotDetailForm({
             </div>
           </section>
 
-          {/* 基礎 Prompt */}
-          <PromptOverrideField
-            id="bot-base-prompt"
-            label="基礎 Prompt"
-            description="留空則採用系統預設"
-            register={register}
-            fieldName="base_prompt"
-            systemDefault={systemPrompts?.base_prompt}
-          />
-
           {/* Router 模式 Prompt */}
           <PromptOverrideField
             id="bot-router-prompt"
