@@ -244,8 +244,8 @@ class StartRunUseCase:
                 self._run_manager.update_run(
                     run_id,
                     current_iteration=evt.iteration,
-                    baseline_score=evt.baseline_score,
-                    best_score=evt.best_score,
+                    baseline_score=evt.baseline_score if evt.baseline_score > 0 else None,
+                    best_score=evt.best_score if evt.best_score > 0 else None,
                     progress_message=evt.message,
                 )
                 await self._run_manager.publish_progress(
