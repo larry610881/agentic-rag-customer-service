@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Activity, ArrowLeft, Loader2, Square, FileText, CheckCircle2, XCircle } from "lucide-react";
+import {
+  Activity,
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  CheckCircle2,
+  FileText,
+  Loader2,
+  Square,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +23,7 @@ import {
   useStopOptimization,
 } from "@/hooks/queries/use-prompt-optimizer";
 import { ScoreChart } from "@/features/admin/components/prompt-optimizer/score-chart";
+import { PromptDiff } from "@/features/admin/components/prompt-optimizer/prompt-diff";
 
 const STATUS_LABELS: Record<string, string> = {
   completed: "已完成",
@@ -26,6 +37,17 @@ const STATUS_LABELS: Record<string, string> = {
 const isFinishedStatus = (s: string) =>
   s === "completed" || s === "failed" || s === "stopped";
 
+interface IterationData {
+  iteration: number;
+  score: number;
+  passed_count: number;
+  total_count: number;
+  is_best: boolean;
+  details: Record<string, unknown> | null;
+  prompt_snapshot: string;
+  created_at: string;
+}
+
 export default function AdminPromptOptimizerRunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
@@ -38,6 +60,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
   >([]);
   const [progressLog, setProgressLog] = useState<string[]>([]);
   const [elapsed, setElapsed] = useState(0);
+  const [expandedIter, setExpandedIter] = useState<number | null>(null);
   const startTimeRef = useRef(Date.now());
   const prevMessageRef = useRef("");
 
@@ -46,11 +69,13 @@ export default function AdminPromptOptimizerRunDetailPage() {
   const maxIterations = run?.max_iterations ?? 1;
   const bestScore = run?.best_score ?? 0;
   const baselineScore = run?.baseline_score ?? 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const iterations: IterationData[] = (run as any)?.iterations ?? [];
 
   const isRunning = status === "running";
   const isFinished = isFinishedStatus(status);
 
-  // Elapsed timer — stop when finished
+  // Elapsed timer
   useEffect(() => {
     if (isFinished) return;
     const timer = setInterval(() => {
@@ -59,17 +84,15 @@ export default function AdminPromptOptimizerRunDetailPage() {
     return () => clearInterval(timer);
   }, [isFinished]);
 
-  // Build score history from polling data (include iteration 0 = baseline)
+  // Build score history
   useEffect(() => {
     if (!run) return;
-    // Add baseline when baseline_score becomes non-zero
     if (baselineScore > 0) {
       setScoreHistory((prev) => {
         if (prev.some((p) => p.iteration === 0)) return prev;
         return [{ iteration: 0, score: baselineScore, bestScore: baselineScore }, ...prev];
       });
     }
-    // Add current iteration
     if (currentIteration > 0) {
       setScoreHistory((prev) => {
         if (prev.some((p) => p.iteration === currentIteration)) return prev;
@@ -78,13 +101,11 @@ export default function AdminPromptOptimizerRunDetailPage() {
     }
   }, [currentIteration, bestScore, baselineScore, run]);
 
-  // Accumulate progress log — keep iteration_done messages as history
+  // Accumulate progress log
   useEffect(() => {
     const msg = run?.progress_message;
     if (!msg || msg === prevMessageRef.current) return;
     prevMessageRef.current = msg;
-
-    // Only log iteration-level events (not per-case progress)
     if (
       msg.includes("Baseline") ||
       msg.includes("✓ 接受") ||
@@ -105,7 +126,6 @@ export default function AdminPromptOptimizerRunDetailPage() {
 
   const percent =
     maxIterations > 0 ? Math.round((currentIteration / maxIterations) * 100) : 0;
-
   const minutes = Math.floor(elapsed / 60);
   const seconds = elapsed % 60;
   const elapsedStr = `${minutes}:${String(seconds).padStart(2, "0")}`;
@@ -116,6 +136,8 @@ export default function AdminPromptOptimizerRunDetailPage() {
       : status === "failed"
         ? "destructive"
         : "secondary";
+
+  const baselinePrompt = iterations.find((it) => it.iteration === 0)?.prompt_snapshot ?? "";
 
   return (
     <div className="space-y-6 p-6">
@@ -135,9 +157,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
             <Activity className="h-6 w-6" />
             執行詳情
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Run ID: {runId}
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">Run ID: {runId}</p>
         </div>
         <div className="flex gap-2">
           {isRunning && (
@@ -166,46 +186,34 @@ export default function AdminPromptOptimizerRunDetailPage() {
         </div>
       </div>
 
-      {/* Progress section */}
+      {/* Progress */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base">執行進度</CardTitle>
-          <Badge variant={statusVariant}>
-            {STATUS_LABELS[status] || status}
-          </Badge>
+          <Badge variant={statusVariant}>{STATUS_LABELS[status] || status}</Badge>
         </CardHeader>
         <CardContent className="space-y-4">
           <Progress value={percent} />
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>
-              第 {currentIteration} / {maxIterations} 輪
-            </span>
+            <span>第 {currentIteration} / {maxIterations} 輪</span>
             <span>已用時間：{elapsedStr}</span>
           </div>
           <div className="flex gap-6 text-sm">
             <div>
               <span className="text-muted-foreground">基線分數：</span>
-              <span className="font-medium">
-                {baselineScore > 0 ? baselineScore.toFixed(3) : "—"}
-              </span>
+              <span className="font-medium">{baselineScore > 0 ? baselineScore.toFixed(3) : "—"}</span>
             </div>
             <div>
               <span className="text-muted-foreground">最佳分數：</span>
-              <span className="font-medium text-green-600">
-                {bestScore > 0 ? bestScore.toFixed(3) : "—"}
-              </span>
+              <span className="font-medium text-green-600">{bestScore > 0 ? bestScore.toFixed(3) : "—"}</span>
             </div>
           </div>
-
-          {/* Current progress message */}
           {isRunning && run?.progress_message && (
             <div className="flex items-center gap-2 rounded border bg-muted/30 p-2 text-sm">
               <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
               <span>{run.progress_message}</span>
             </div>
           )}
-
-          {/* Stopped reason */}
           {run?.stopped_reason && (
             <div className="rounded border border-yellow-200 bg-yellow-50 p-2 text-sm text-yellow-700">
               {run.stopped_reason}
@@ -214,7 +222,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Iteration log */}
+      {/* Execution log (during running) */}
       {progressLog.length > 0 && (
         <Card>
           <CardHeader>
@@ -243,6 +251,81 @@ export default function AdminPromptOptimizerRunDetailPage() {
 
       {/* Score chart */}
       {scoreHistory.length > 0 && <ScoreChart data={scoreHistory} />}
+
+      {/* Iteration prompt diffs (only when iterations loaded from DB) */}
+      {iterations.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">提示詞變更紀錄</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {iterations.map((it) => {
+              const accepted = it.details?.accepted !== false;
+              const isExpanded = expandedIter === it.iteration;
+
+              return (
+                <div key={it.iteration} className="rounded border">
+                  {/* Row header */}
+                  <button
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors"
+                    onClick={() => setExpandedIter(isExpanded ? null : it.iteration)}
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <Badge variant="outline" className="shrink-0">
+                      第 {it.iteration} 輪
+                    </Badge>
+                    <span className="font-medium">{it.score.toFixed(4)}</span>
+                    <span className="text-muted-foreground">
+                      ({it.passed_count}/{it.total_count} 通過)
+                    </span>
+                    {it.is_best && (
+                      <Badge variant="default" className="shrink-0">最佳</Badge>
+                    )}
+                    {it.iteration > 0 && (
+                      <Badge
+                        variant={accepted ? "outline" : "secondary"}
+                        className={accepted ? "border-green-500 text-green-600" : ""}
+                      >
+                        {accepted ? "接受" : "放棄"}
+                      </Badge>
+                    )}
+                  </button>
+
+                  {/* Expanded: show prompt diff */}
+                  {isExpanded && (
+                    <div className="border-t px-3 py-3">
+                      {it.iteration === 0 ? (
+                        <div>
+                          <p className="mb-2 text-xs font-medium text-muted-foreground">
+                            基線提示詞（原始）
+                          </p>
+                          <pre className="max-h-[400px] overflow-auto whitespace-pre-wrap rounded bg-muted/30 p-3 text-xs">
+                            {it.prompt_snapshot || "(空)"}
+                          </pre>
+                        </div>
+                      ) : baselinePrompt ? (
+                        <PromptDiff
+                          before={baselinePrompt}
+                          after={it.prompt_snapshot}
+                          title={`第 ${it.iteration} 輪 vs 基線`}
+                        />
+                      ) : (
+                        <pre className="max-h-[400px] overflow-auto whitespace-pre-wrap rounded bg-muted/30 p-3 text-xs">
+                          {it.prompt_snapshot || "(空)"}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -514,6 +514,7 @@ class GetRunUseCase:
                     "total_count": it.total_count,
                     "is_best": it.is_best,
                     "details": it.details,
+                    "prompt_snapshot": it.prompt_snapshot,
                     "created_at": it.created_at.isoformat(),
                 }
                 for it in iterations

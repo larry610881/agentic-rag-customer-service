@@ -77,6 +77,7 @@ class IterationResponse(BaseModel):
     total_count: int
     is_best: bool
     details: dict[str, Any] | None
+    prompt_snapshot: str = ""
     created_at: str
 
 
