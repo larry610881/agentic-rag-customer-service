@@ -199,6 +199,29 @@ export function useOptimizationRun(id: string) {
   });
 }
 
+/** Polling variant: auto-refetch every 3s while run is active */
+export function useOptimizationRunPolling(id: string) {
+  const token = useAuthStore((s) => s.token);
+
+  return useQuery({
+    queryKey: [...queryKeys.promptOptimizer.run(id), "polling"],
+    queryFn: () =>
+      apiFetch<OptimizationRun>(
+        API_ENDPOINTS.promptOptimizer.run(id),
+        {},
+        token ?? undefined,
+      ),
+    enabled: !!token && !!id,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === "completed" || status === "failed" || status === "stopped") {
+        return false;
+      }
+      return 3000;
+    },
+  });
+}
+
 // --- Run Mutations ---
 
 export function useStartOptimization() {

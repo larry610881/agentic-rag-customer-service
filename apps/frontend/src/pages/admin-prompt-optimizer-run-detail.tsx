@@ -8,13 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ROUTES } from "@/routes/paths";
-import { API_BASE } from "@/lib/api-config";
 import {
-  useOptimizationRun,
+  useOptimizationRunPolling,
   useStopOptimization,
 } from "@/hooks/queries/use-prompt-optimizer";
 import { ScoreChart } from "@/features/admin/components/prompt-optimizer/score-chart";
-import { PromptDiff } from "@/features/admin/components/prompt-optimizer/prompt-diff";
 
 const STATUS_LABELS: Record<string, string> = {
   completed: "已完成",
@@ -22,120 +20,67 @@ const STATUS_LABELS: Record<string, string> = {
   failed: "失敗",
   pending: "等待中",
   stopped: "已停止",
-  connecting: "連線中",
   unknown: "未知",
 };
 
-interface SSEProgress {
-  current_iteration: number;
-  max_iterations: number;
-  current_score: number;
-  best_score: number;
-  status: string;
-  diff?: { before: string; after: string };
-}
+const isFinishedStatus = (s: string) =>
+  s === "completed" || s === "failed" || s === "stopped";
 
 export default function AdminPromptOptimizerRunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
 
-  const { data: run } = useOptimizationRun(runId ?? "");
+  const { data: run } = useOptimizationRunPolling(runId ?? "");
   const stopMutation = useStopOptimization();
 
-  const [progress, setProgress] = useState<SSEProgress | null>(null);
   const [scoreHistory, setScoreHistory] = useState<
     { iteration: number; score: number; bestScore: number }[]
   >([]);
   const [elapsed, setElapsed] = useState(0);
-  const [diffData, setDiffData] = useState<{
-    before: string;
-    after: string;
-  } | null>(null);
-
   const startTimeRef = useRef(Date.now());
-  const eventSourceRef = useRef<EventSource | null>(null);
 
-  const isFinishedStatus = (s: string) =>
-    s === "completed" || s === "failed" || s === "stopped";
+  const status = run?.status ?? "unknown";
+  const currentIteration = run?.current_iteration ?? 0;
+  const maxIterations = run?.max_iterations ?? 1;
+  const bestScore = run?.best_score ?? 0;
+  const baselineScore = run?.baseline_score ?? 0;
 
-  // Elapsed timer — stop when run is finished
+  const isRunning = status === "running";
+  const isFinished = isFinishedStatus(status);
+
+  // Elapsed timer — stop when finished
   useEffect(() => {
-    const currentStatus = progress?.status ?? run?.status ?? "unknown";
-    if (isFinishedStatus(currentStatus)) return;
-
+    if (isFinished) return;
     const timer = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
     }, 1000);
     return () => clearInterval(timer);
-  }, [progress?.status, run?.status]);
+  }, [isFinished]);
 
-  // SSE connection — only connect if run is still active (wait for run data to load)
+  // Build score history from polling data
   useEffect(() => {
-    if (!runId) return;
-    if (!run) return; // Wait for API data before deciding
-    if (isFinishedStatus(run.status)) return;
-
-    const es = new EventSource(
-      `${API_BASE}/api/v1/prompt-optimizer/runs/${runId}/progress`,
-    );
-    eventSourceRef.current = es;
-
-    es.onmessage = (event) => {
-      const data: SSEProgress = JSON.parse(event.data);
-      setProgress(data);
-
-      if (data.current_iteration > 0) {
-        setScoreHistory((prev) => {
-          const exists = prev.some(
-            (p) => p.iteration === data.current_iteration,
-          );
-          if (exists) return prev;
-          return [
-            ...prev,
-            {
-              iteration: data.current_iteration,
-              score: data.current_score,
-              bestScore: data.best_score,
-            },
-          ];
-        });
-      }
-
-      if (data.diff) {
-        setDiffData(data.diff);
-      }
-
-      if (isFinishedStatus(data.status)) {
-        es.close();
-      }
-    };
-
-    es.onerror = () => {
-      es.close();
-    };
-
-    return () => {
-      es.close();
-      eventSourceRef.current = null;
-    };
-  }, [runId, run?.status]);
+    if (!run || currentIteration === 0) return;
+    setScoreHistory((prev) => {
+      const exists = prev.some((p) => p.iteration === currentIteration);
+      if (exists) return prev;
+      return [
+        ...prev,
+        {
+          iteration: currentIteration,
+          score: bestScore,
+          bestScore: bestScore,
+        },
+      ];
+    });
+  }, [currentIteration, bestScore, run]);
 
   const handleStop = useCallback(() => {
     if (!runId) return;
     stopMutation.mutate(runId, {
-      onSuccess: () => {
-        toast.success("已停止優化，保留最佳結果");
-        eventSourceRef.current?.close();
-      },
+      onSuccess: () => toast.success("已停止優化，保留最佳結果"),
       onError: () => toast.error("停止優化失敗"),
     });
   }, [runId, stopMutation]);
-
-  const currentIteration = progress?.current_iteration ?? run?.current_iteration ?? 0;
-  const maxIterations = progress?.max_iterations ?? run?.max_iterations ?? 1;
-  const currentScore = progress?.current_score ?? 0;
-  const bestScore = progress?.best_score ?? run?.best_score ?? 0;
-  const status = progress?.status ?? run?.status ?? "unknown";
 
   const percent =
     maxIterations > 0 ? Math.round((currentIteration / maxIterations) * 100) : 0;
@@ -143,9 +88,6 @@ export default function AdminPromptOptimizerRunDetailPage() {
   const minutes = Math.floor(elapsed / 60);
   const seconds = elapsed % 60;
   const elapsedStr = `${minutes}:${String(seconds).padStart(2, "0")}`;
-
-  const isRunning = status === "running" || status === "connecting";
-  const isFinished = isFinishedStatus(status);
 
   const statusVariant =
     status === "completed"
@@ -194,12 +136,10 @@ export default function AdminPromptOptimizerRunDetailPage() {
           {isFinished && (
             <Button
               variant="outline"
-              onClick={() =>
-                navigate(ROUTES.ADMIN_PROMPT_OPTIMIZER_RUNS)
-              }
+              onClick={() => navigate(ROUTES.ADMIN_PROMPT_OPTIMIZER_RUNS)}
             >
               <FileText className="mr-2 h-4 w-4" />
-              查看報告
+              返回列表
             </Button>
           )}
         </div>
@@ -223,29 +163,35 @@ export default function AdminPromptOptimizerRunDetailPage() {
           </div>
           <div className="flex gap-6 text-sm">
             <div>
-              <span className="text-muted-foreground">當前分數：</span>
-              <span className="font-medium">{currentScore.toFixed(3)}</span>
+              <span className="text-muted-foreground">基線分數：</span>
+              <span className="font-medium">{baselineScore.toFixed(3)}</span>
             </div>
             <div>
               <span className="text-muted-foreground">最佳分數：</span>
-              <span className="font-medium text-green-400">
+              <span className="font-medium text-green-600">
                 {bestScore.toFixed(3)}
               </span>
             </div>
           </div>
+
+          {/* Stopped reason */}
+          {run?.stopped_reason && (
+            <div className="rounded border border-yellow-200 bg-yellow-50 p-2 text-sm text-yellow-700">
+              {run.stopped_reason}
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Score chart */}
-      <ScoreChart data={scoreHistory} />
+      {scoreHistory.length > 0 && <ScoreChart data={scoreHistory} />}
 
-      {/* Prompt diff */}
-      {diffData && (
-        <PromptDiff
-          before={diffData.before}
-          after={diffData.after}
-          title="最新 Prompt 變更"
-        />
+      {/* Loading indicator */}
+      {isRunning && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          正在執行中，每 3 秒自動更新...
+        </div>
       )}
     </div>
   );
