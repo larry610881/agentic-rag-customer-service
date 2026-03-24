@@ -89,6 +89,7 @@ class RunDetailResponse(BaseModel):
     baseline_score: float
     best_score: float
     stopped_reason: str
+    progress_message: str = ""
     current_iteration: int
     max_iterations: int
     total_api_calls: int
