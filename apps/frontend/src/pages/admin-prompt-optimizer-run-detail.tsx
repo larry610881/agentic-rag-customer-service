@@ -99,11 +99,10 @@ export default function AdminPromptOptimizerRunDetailPage() {
         return [{ iteration: 0, score: baselineScore, bestScore: baselineScore }, ...prev];
       });
     }
-    if (currentIteration > 0) {
-      const iterScore = currentScore ?? bestScore;
+    if (currentIteration > 0 && currentScore != null && currentScore > 0) {
       setPollingScoreHistory((prev) => {
         if (prev.some((p) => p.iteration === currentIteration)) return prev;
-        return [...prev, { iteration: currentIteration, score: iterScore, bestScore }];
+        return [...prev, { iteration: currentIteration, score: currentScore, bestScore }];
       });
     }
   }, [currentIteration, bestScore, baselineScore, currentScore, run, iterations.length]);
