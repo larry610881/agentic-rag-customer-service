@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Activity, ArrowLeft, Loader2, Square, FileText } from "lucide-react";
+import { Activity, ArrowLeft, Loader2, Square, FileText, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -36,8 +36,10 @@ export default function AdminPromptOptimizerRunDetailPage() {
   const [scoreHistory, setScoreHistory] = useState<
     { iteration: number; score: number; bestScore: number }[]
   >([]);
+  const [progressLog, setProgressLog] = useState<string[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const startTimeRef = useRef(Date.now());
+  const prevMessageRef = useRef("");
 
   const status = run?.status ?? "unknown";
   const currentIteration = run?.current_iteration ?? 0;
@@ -57,22 +59,41 @@ export default function AdminPromptOptimizerRunDetailPage() {
     return () => clearInterval(timer);
   }, [isFinished]);
 
-  // Build score history from polling data
+  // Build score history from polling data (include iteration 0 = baseline)
   useEffect(() => {
-    if (!run || currentIteration === 0) return;
-    setScoreHistory((prev) => {
-      const exists = prev.some((p) => p.iteration === currentIteration);
-      if (exists) return prev;
-      return [
-        ...prev,
-        {
-          iteration: currentIteration,
-          score: bestScore,
-          bestScore: bestScore,
-        },
-      ];
-    });
-  }, [currentIteration, bestScore, run]);
+    if (!run) return;
+    // Add baseline when baseline_score becomes non-zero
+    if (baselineScore > 0) {
+      setScoreHistory((prev) => {
+        if (prev.some((p) => p.iteration === 0)) return prev;
+        return [{ iteration: 0, score: baselineScore, bestScore: baselineScore }, ...prev];
+      });
+    }
+    // Add current iteration
+    if (currentIteration > 0) {
+      setScoreHistory((prev) => {
+        if (prev.some((p) => p.iteration === currentIteration)) return prev;
+        return [...prev, { iteration: currentIteration, score: bestScore, bestScore }];
+      });
+    }
+  }, [currentIteration, bestScore, baselineScore, run]);
+
+  // Accumulate progress log — keep iteration_done messages as history
+  useEffect(() => {
+    const msg = run?.progress_message;
+    if (!msg || msg === prevMessageRef.current) return;
+    prevMessageRef.current = msg;
+
+    // Only log iteration-level events (not per-case progress)
+    if (
+      msg.includes("Baseline") ||
+      msg.includes("✓ 接受") ||
+      msg.includes("✗ 放棄") ||
+      msg.includes("正在生成")
+    ) {
+      setProgressLog((prev) => [...prev, msg]);
+    }
+  }, [run?.progress_message]);
 
   const handleStop = useCallback(() => {
     if (!runId) return;
@@ -164,20 +185,22 @@ export default function AdminPromptOptimizerRunDetailPage() {
           <div className="flex gap-6 text-sm">
             <div>
               <span className="text-muted-foreground">基線分數：</span>
-              <span className="font-medium">{baselineScore.toFixed(3)}</span>
+              <span className="font-medium">
+                {baselineScore > 0 ? baselineScore.toFixed(3) : "—"}
+              </span>
             </div>
             <div>
               <span className="text-muted-foreground">最佳分數：</span>
               <span className="font-medium text-green-600">
-                {bestScore.toFixed(3)}
+                {bestScore > 0 ? bestScore.toFixed(3) : "—"}
               </span>
             </div>
           </div>
 
-          {/* Progress message */}
+          {/* Current progress message */}
           {isRunning && run?.progress_message && (
             <div className="flex items-center gap-2 rounded border bg-muted/30 p-2 text-sm">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
               <span>{run.progress_message}</span>
             </div>
           )}
@@ -190,6 +213,33 @@ export default function AdminPromptOptimizerRunDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Iteration log */}
+      {progressLog.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">執行紀錄</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1.5 text-sm">
+              {progressLog.map((msg, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  {msg.includes("✓") ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+                  ) : msg.includes("✗") ? (
+                    <XCircle className="h-4 w-4 shrink-0 text-red-400" />
+                  ) : (
+                    <Activity className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                  <span className={msg.includes("✓") ? "text-green-700" : msg.includes("✗") ? "text-muted-foreground" : ""}>
+                    {msg}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Score chart */}
       {scoreHistory.length > 0 && <ScoreChart data={scoreHistory} />}
