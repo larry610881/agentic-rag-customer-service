@@ -107,7 +107,7 @@ class StartRunUseCase:
 
     async def _resolve_llm_api_key(self) -> str:
         """Resolve LLM API key from the first enabled LLM provider setting."""
-        settings = await self._provider_repo.list_all()
+        settings = await self._provider_repo.find_all()
         for s in settings:
             if s.provider_type.value == "llm" and s.is_enabled and s.api_key_encrypted:
                 return self._encryption.decrypt(s.api_key_encrypted)
