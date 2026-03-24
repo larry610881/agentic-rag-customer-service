@@ -6,9 +6,11 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCircle2,
+  Copy,
   FileText,
   Loader2,
   Square,
+  Upload,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -17,9 +19,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { ROUTES } from "@/routes/paths";
 import {
   useOptimizationRunPolling,
+  useRollbackRun,
   useStopOptimization,
 } from "@/hooks/queries/use-prompt-optimizer";
 import { ScoreChart } from "@/features/admin/components/prompt-optimizer/score-chart";
@@ -65,6 +79,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
 
   const { data: run } = useOptimizationRunPolling(runId ?? "");
   const stopMutation = useStopOptimization();
+  const applyMutation = useRollbackRun();
 
   const [pollingScoreHistory, setPollingScoreHistory] = useState<
     { iteration: number; score: number; bestScore: number }[]
@@ -137,6 +152,21 @@ export default function AdminPromptOptimizerRunDetailPage() {
       onError: () => toast.error("停止優化失敗"),
     });
   }, [runId, stopMutation]);
+
+  const handleCopyPrompt = useCallback((prompt: string) => {
+    navigator.clipboard.writeText(prompt).then(
+      () => toast.success("已複製提示詞到剪貼簿"),
+      () => toast.error("複製失敗"),
+    );
+  }, []);
+
+  const handleApplyPrompt = useCallback((iteration: number) => {
+    if (!runId) return;
+    applyMutation.mutate({ runId, iteration }, {
+      onSuccess: () => toast.success("已套用提示詞到機器人"),
+      onError: () => toast.error("套用失敗"),
+    });
+  }, [runId, applyMutation]);
 
   const percent =
     maxIterations > 0 ? Math.round((currentIteration / maxIterations) * 100) : 0;
@@ -351,6 +381,52 @@ export default function AdminPromptOptimizerRunDetailPage() {
                           </pre>
                         );
                       })()}
+
+                      {/* Action buttons: copy + apply */}
+                      {it.prompt_snapshot && isFinished && (
+                        <div className="mt-3 flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCopyPrompt(it.prompt_snapshot)}
+                          >
+                            <Copy className="mr-1.5 h-3.5 w-3.5" />
+                            複製提示詞
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                disabled={applyMutation.isPending}
+                              >
+                                {applyMutation.isPending ? (
+                                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Upload className="mr-1.5 h-3.5 w-3.5" />
+                                )}
+                                套用到機器人
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>確認套用提示詞</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  將第 {it.iteration} 輪的提示詞（分數：{it.score.toFixed(4)}）寫入機器人的 prompt 欄位。此操作會覆蓋目前的提示詞，確定要繼續嗎？
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>取消</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleApplyPrompt(it.iteration)}
+                                >
+                                  確認套用
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      )}
 
                       {/* Per-case test results */}
                       <CaseResultsTable

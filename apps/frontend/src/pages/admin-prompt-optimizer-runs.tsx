@@ -38,7 +38,7 @@ export default function AdminPromptOptimizerRunsPage() {
   const totalPages = data ? Math.ceil(data.total / 20) : 1;
 
   const handleRollback = (runId: string) => {
-    rollbackMutation.mutate(runId, {
+    rollbackMutation.mutate({ runId, iteration: 0 }, {
       onSuccess: () => toast.success("已回滾至優化前狀態"),
       onError: () => toast.error("回滾失敗"),
     });

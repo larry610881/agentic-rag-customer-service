@@ -264,10 +264,10 @@ export function useRollbackRun() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: ({ runId, iteration }: { runId: string; iteration: number }) =>
       apiFetch<OptimizationRun>(
-        API_ENDPOINTS.promptOptimizer.runRollback(id),
-        { method: "POST" },
+        API_ENDPOINTS.promptOptimizer.runRollback(runId),
+        { method: "POST", body: JSON.stringify({ iteration }) },
         token ?? undefined,
       ),
     onSuccess: () => {
