@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   useEvalDatasets,
@@ -71,29 +71,38 @@ export default function AdminPromptOptimizerValidatePage() {
   const { data: exchangeRate } = useExchangeRate("twd");
   const result = validation.data as ValidationResult | undefined;
 
-  // Auto-select bot when dataset changes
   const selectedDataset = datasets?.items?.find((d) => d.id === datasetId);
-  useEffect(() => {
-    if (selectedDataset?.bot_id) {
-      setBotId(selectedDataset.bot_id);
-    }
-  }, [selectedDataset?.bot_id]);
 
-  // Auto-estimate cost when dataset + bot selected
-  useEffect(() => {
-    if (datasetId && botId) {
-      const selectedBot = bots.find((b) => b.id === botId);
-      estimateCost.mutate({
-        dataset_id: datasetId,
-        bot_id: botId,
-        model_id: selectedBot?.llm_model || "",
-        max_iterations: 0,
-        patience: 0,
-        budget: 0,
-      });
+  const triggerEstimate = (dsId: string, bId: string) => {
+    if (!dsId || !bId) return;
+    const bot = bots.find((b) => b.id === bId);
+    estimateCost.mutate({
+      dataset_id: dsId,
+      bot_id: bId,
+      model_id: bot?.llm_model || "",
+      max_iterations: 0,
+      patience: 0,
+      budget: 0,
+    });
+  };
+
+  const handleDatasetChange = (dsId: string) => {
+    setDatasetId(dsId);
+    const ds = datasets?.items?.find((d) => d.id === dsId);
+    if (ds?.bot_id) {
+      setBotId(ds.bot_id);
+      triggerEstimate(dsId, ds.bot_id);
+    } else if (botId) {
+      triggerEstimate(dsId, botId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [datasetId, botId]);
+  };
+
+  const handleBotChange = (bId: string) => {
+    setBotId(bId);
+    if (datasetId) {
+      triggerEstimate(datasetId, bId);
+    }
+  };
 
   const handleRun = () => {
     if (!datasetId) return;
@@ -129,7 +138,7 @@ export default function AdminPromptOptimizerValidatePage() {
       <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">測試集</label>
-          <Select value={datasetId} onValueChange={setDatasetId}>
+          <Select value={datasetId} onValueChange={handleDatasetChange}>
             <SelectTrigger className="w-[360px]">
               <SelectValue placeholder="選擇測試集..." />
             </SelectTrigger>
@@ -145,7 +154,7 @@ export default function AdminPromptOptimizerValidatePage() {
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Bot</label>
-          <Select value={botId} onValueChange={setBotId}>
+          <Select value={botId} onValueChange={handleBotChange}>
             <SelectTrigger className="w-[220px]">
               <SelectValue placeholder="選擇 Bot..." />
             </SelectTrigger>
