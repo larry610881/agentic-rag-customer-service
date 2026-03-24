@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Activity,
@@ -24,6 +24,8 @@ import {
 } from "@/hooks/queries/use-prompt-optimizer";
 import { ScoreChart } from "@/features/admin/components/prompt-optimizer/score-chart";
 import { PromptDiff } from "@/features/admin/components/prompt-optimizer/prompt-diff";
+import { CaseResultsTable } from "@/features/admin/components/prompt-optimizer/case-results-table";
+import type { CaseResultData } from "@/features/admin/components/prompt-optimizer/case-results-table";
 
 const STATUS_LABELS: Record<string, string> = {
   completed: "已完成",
@@ -55,7 +57,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
   const { data: run } = useOptimizationRunPolling(runId ?? "");
   const stopMutation = useStopOptimization();
 
-  const [scoreHistory, setScoreHistory] = useState<
+  const [pollingScoreHistory, setPollingScoreHistory] = useState<
     { iteration: number; score: number; bestScore: number }[]
   >([]);
   const [progressLog, setProgressLog] = useState<string[]>([]);
@@ -84,22 +86,38 @@ export default function AdminPromptOptimizerRunDetailPage() {
     return () => clearInterval(timer);
   }, [isFinished]);
 
-  // Build score history
+  // Build score history from iterations (authoritative) or polling (fallback)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const currentScore = (run as any)?.current_score as number | undefined;
+
   useEffect(() => {
-    if (!run) return;
+    if (!run || iterations.length > 0) return;
+    // Polling fallback: accumulate during active run (before iterations are in DB)
     if (baselineScore > 0) {
-      setScoreHistory((prev) => {
+      setPollingScoreHistory((prev) => {
         if (prev.some((p) => p.iteration === 0)) return prev;
         return [{ iteration: 0, score: baselineScore, bestScore: baselineScore }, ...prev];
       });
     }
     if (currentIteration > 0) {
-      setScoreHistory((prev) => {
+      const iterScore = currentScore ?? bestScore;
+      setPollingScoreHistory((prev) => {
         if (prev.some((p) => p.iteration === currentIteration)) return prev;
-        return [...prev, { iteration: currentIteration, score: bestScore, bestScore }];
+        return [...prev, { iteration: currentIteration, score: iterScore, bestScore }];
       });
     }
-  }, [currentIteration, bestScore, baselineScore, run]);
+  }, [currentIteration, bestScore, baselineScore, currentScore, run, iterations.length]);
+
+  const scoreHistory = useMemo(() => {
+    if (iterations.length > 0) {
+      let runningBest = 0;
+      return iterations.map((it) => {
+        if (it.score > runningBest) runningBest = it.score;
+        return { iteration: it.iteration, score: it.score, bestScore: runningBest };
+      });
+    }
+    return pollingScoreHistory;
+  }, [iterations, pollingScoreHistory]);
 
   // Accumulate progress log
   useEffect(() => {
@@ -138,6 +156,18 @@ export default function AdminPromptOptimizerRunDetailPage() {
         : "secondary";
 
   const baselinePrompt = iterations.find((it) => it.iteration === 0)?.prompt_snapshot ?? "";
+
+  // Find the source prompt (best prompt) that was mutated from for a given iteration
+  const findSourceIteration = (currentIter: number): IterationData | null => {
+    for (let i = iterations.length - 1; i >= 0; i--) {
+      const it = iterations[i];
+      if (it.iteration >= currentIter) continue;
+      if (it.iteration === 0 || it.details?.accepted !== false) {
+        return it;
+      }
+    }
+    return iterations[0] ?? null;
+  };
 
   return (
     <div className="space-y-6 p-6">
@@ -295,7 +325,7 @@ export default function AdminPromptOptimizerRunDetailPage() {
                     )}
                   </button>
 
-                  {/* Expanded: show prompt diff */}
+                  {/* Expanded: show prompt diff + case results */}
                   {isExpanded && (
                     <div className="border-t px-3 py-3">
                       {it.iteration === 0 ? (
@@ -307,17 +337,29 @@ export default function AdminPromptOptimizerRunDetailPage() {
                             {it.prompt_snapshot || "(空)"}
                           </pre>
                         </div>
-                      ) : baselinePrompt ? (
-                        <PromptDiff
-                          before={baselinePrompt}
-                          after={it.prompt_snapshot}
-                          title={`第 ${it.iteration} 輪 vs 基線`}
-                        />
-                      ) : (
-                        <pre className="max-h-[400px] overflow-auto whitespace-pre-wrap rounded bg-muted/30 p-3 text-xs">
-                          {it.prompt_snapshot || "(空)"}
-                        </pre>
-                      )}
+                      ) : (() => {
+                        const source = findSourceIteration(it.iteration);
+                        const sourcePrompt = source?.prompt_snapshot ?? baselinePrompt;
+                        const sourceLabel = !source || source.iteration === 0
+                          ? "基線"
+                          : `最佳 (第 ${source.iteration} 輪)`;
+                        return sourcePrompt ? (
+                          <PromptDiff
+                            before={sourcePrompt}
+                            after={it.prompt_snapshot}
+                            title={`第 ${it.iteration} 輪 vs ${sourceLabel}`}
+                          />
+                        ) : (
+                          <pre className="max-h-[400px] overflow-auto whitespace-pre-wrap rounded bg-muted/30 p-3 text-xs">
+                            {it.prompt_snapshot || "(空)"}
+                          </pre>
+                        );
+                      })()}
+
+                      {/* Per-case test results */}
+                      <CaseResultsTable
+                        caseResults={it.details?.case_results as CaseResultData[] | undefined}
+                      />
                     </div>
                   )}
                 </div>

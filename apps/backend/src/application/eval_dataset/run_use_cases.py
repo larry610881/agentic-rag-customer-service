@@ -254,6 +254,7 @@ class StartRunUseCase:
                 self._run_manager.update_run(
                     run_id,
                     current_iteration=evt.iteration,
+                    current_score=evt.score if evt.score > 0 else None,
                     baseline_score=evt.baseline_score if evt.baseline_score > 0 else None,
                     best_score=evt.best_score if evt.best_score > 0 else None,
                     progress_message=evt.message,
@@ -302,6 +303,28 @@ class StartRunUseCase:
                             "cost_score": it.eval_summary.cost_score,
                             "avg_total_tokens": it.eval_summary.avg_total_tokens,
                             "accepted": it.accepted,
+                            "case_results": [
+                                {
+                                    "case_id": cr.case_id,
+                                    "question": cr.question,
+                                    "priority": cr.priority,
+                                    "category": cr.category,
+                                    "score": cr.score,
+                                    "passed_count": cr.passed_count,
+                                    "total_count": cr.total_count,
+                                    "p0_failed": cr.p0_failed,
+                                    "answer_snippet": cr.answer_snippet,
+                                    "assertion_results": [
+                                        {
+                                            "passed": ar.passed,
+                                            "assertion_type": ar.assertion_type,
+                                            "message": ar.message,
+                                        }
+                                        for ar in cr.assertion_results
+                                    ],
+                                }
+                                for cr in it.eval_summary.case_results
+                            ],
                         },
                     )
 
@@ -500,6 +523,7 @@ class GetRunUseCase:
             "status": status,
             "baseline_score": baseline_score,
             "best_score": best_score,
+            "current_score": active.current_score if active else None,
             "stopped_reason": active.stopped_reason if active else "",
             "current_iteration": (
                 active.current_iteration

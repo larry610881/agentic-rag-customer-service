@@ -50,6 +50,7 @@ class ActiveRun:
     status: str = "running"  # running | completed | stopped | failed
     baseline_score: float = 0.0
     best_score: float = 0.0
+    current_score: float = 0.0
     current_iteration: int = 0
     max_iterations: int = 0
     total_api_calls: int = 0
@@ -131,6 +132,7 @@ class RunManager:
         status: str | None = None,
         baseline_score: float | None = None,
         best_score: float | None = None,
+        current_score: float | None = None,
         current_iteration: int | None = None,
         total_api_calls: int | None = None,
         stopped_reason: str | None = None,
@@ -147,6 +149,8 @@ class RunManager:
             run.baseline_score = baseline_score
         if best_score is not None:
             run.best_score = best_score
+        if current_score is not None:
+            run.current_score = current_score
         if current_iteration is not None:
             run.current_iteration = current_iteration
         if total_api_calls is not None:
