@@ -1261,6 +1261,7 @@ class Container(containers.DeclarativeContainer):
         RollbackRunUseCase,
         optimization_run_repository=optimization_run_repository,
         bot_repository=bot_repository,
+        system_prompt_config_repository=system_prompt_config_repository,
     )
 
     get_run_report_use_case = providers.Factory(

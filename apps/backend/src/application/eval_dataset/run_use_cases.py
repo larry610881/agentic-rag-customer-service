@@ -588,12 +588,14 @@ class RollbackRunUseCase:
         self,
         optimization_run_repository: OptimizationRunRepository,
         bot_repository: BotRepository,
+        system_prompt_config_repository=None,
     ) -> None:
         self._run_repo = optimization_run_repository
         self._bot_repo = bot_repository
+        self._system_prompt_repo = system_prompt_config_repository
 
     async def execute(self, run_id: str, target_iteration: int) -> dict:
-        """Rollback bot prompt to a specific iteration's prompt."""
+        """Apply a specific iteration's prompt to bot or system config."""
         iterations = await self._run_repo.get_iterations(run_id)
         if not iterations:
             raise EntityNotFoundError("OptimizationRun", run_id)
@@ -610,19 +612,43 @@ class RollbackRunUseCase:
                 f"run={run_id}, iteration={target_iteration}",
             )
 
-        # Apply prompt to bot
+        applied = False
+
+        # Bot-level prompt
         if target.bot_id:
             bot = await self._bot_repo.find_by_id(target.bot_id)
             if bot:
                 setattr(bot, target.target_field, target.prompt_snapshot)
                 await self._bot_repo.save(bot)
+                applied = True
+                logger.info(
+                    "Applied iteration %d prompt to bot %s.%s",
+                    target_iteration, target.bot_id, target.target_field,
+                )
+
+        # System-level prompt
+        if not target.bot_id and self._system_prompt_repo:
+            config = await self._system_prompt_repo.get()
+            setattr(config, target.target_field, target.prompt_snapshot)
+            await self._system_prompt_repo.save(config)
+            applied = True
+            logger.info(
+                "Applied iteration %d prompt to system.%s",
+                target_iteration, target.target_field,
+            )
+
+        if not applied:
+            logger.warning(
+                "No target found to apply prompt: bot_id=%s, field=%s",
+                target.bot_id, target.target_field,
+            )
 
         return {
             "run_id": run_id,
             "iteration": target_iteration,
             "prompt_snapshot": target.prompt_snapshot,
             "score": target.score,
-            "applied": True,
+            "applied": applied,
         }
 
 
