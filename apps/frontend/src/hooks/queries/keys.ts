@@ -39,8 +39,8 @@ export const queryKeys = {
       ["feedback", "topIssues", tenantId, days] as const,
     retrievalQuality: (tenantId: string, days: number) =>
       ["feedback", "retrievalQuality", tenantId, days] as const,
-    tokenCost: (tenantId: string, days: number) =>
-      ["feedback", "tokenCost", tenantId, days] as const,
+    tokenCost: (tenantId: string, startDate: string, endDate: string) =>
+      ["feedback", "tokenCost", tenantId, startDate, endDate] as const,
   },
   providerSettings: {
     all: ["provider-settings"] as const,

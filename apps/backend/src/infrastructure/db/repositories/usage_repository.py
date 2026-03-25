@@ -101,10 +101,11 @@ class SQLAlchemyUsageRepository(UsageRepository):
         )
 
     async def get_model_cost_stats(
-        self, tenant_id: str, days: int = 30
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> list[ModelCostStat]:
-        since = datetime.now(timezone.utc) - timedelta(days=days)
-
         stmt = (
             select(
                 UsageRecordModel.model,
@@ -118,12 +119,13 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 MessageModel,
                 UsageRecordModel.message_id == MessageModel.id,
             )
-            .where(
-                UsageRecordModel.tenant_id == tenant_id,
-                UsageRecordModel.created_at >= since,
-            )
-            .group_by(UsageRecordModel.model)
+            .where(UsageRecordModel.tenant_id == tenant_id)
         )
+        if start_date:
+            stmt = stmt.where(UsageRecordModel.created_at >= start_date)
+        if end_date:
+            stmt = stmt.where(UsageRecordModel.created_at < end_date)
+        stmt = stmt.group_by(UsageRecordModel.model)
 
         result = await self._session.execute(stmt)
         rows = result.all()

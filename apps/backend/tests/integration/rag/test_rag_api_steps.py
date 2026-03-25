@@ -11,14 +11,8 @@ def ctx():
     return {}
 
 
-def _create_tenant_and_login(client, name: str) -> dict:
-    resp = client.post("/api/v1/tenants", json={"name": name})
-    assert resp.status_code == 201, resp.text
-    tenant_id = resp.json()["id"]
-    token_resp = client.post("/api/v1/auth/token", json={"tenant_id": tenant_id})
-    assert token_resp.status_code == 200, token_resp.text
-    token = token_resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}", "_tenant_id": tenant_id}
+def _create_tenant_and_login(create_tenant_login, name: str) -> dict:
+    return create_tenant_login(name)
 
 
 def _auth_only(headers: dict) -> dict:
@@ -31,8 +25,8 @@ def _auth_only(headers: dict) -> dict:
 
 
 @given(parsers.parse('已登入為租戶 "{name}"'))
-def login_as_tenant(ctx, client, name):
-    ctx["headers"] = _create_tenant_and_login(client, name)
+def login_as_tenant(ctx, create_tenant_login, name):
+    ctx["headers"] = _create_tenant_and_login(create_tenant_login, name)
 
 
 @given(parsers.parse('已建立知識庫 "{kb_name}"'))

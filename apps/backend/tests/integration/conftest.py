@@ -253,12 +253,27 @@ def client(app) -> APIHelper:
 
 
 @pytest.fixture
-def auth_headers(client) -> dict[str, str]:
+def auth_headers(client, app) -> dict[str, str]:
     """Create a test tenant + JWT token, return Authorization headers.
 
     Also stores ``_tenant_id`` in the returned dict for convenience.
+
+    POST /api/v1/tenants requires system_admin role, so we bootstrap
+    with a system_admin JWT created directly from the JWTService.
     """
-    resp = client.post("/api/v1/tenants", json={"name": "test-tenant"})
+    jwt_svc = app.container.jwt_service()
+    admin_token = jwt_svc.create_user_token(
+        user_id="admin-test",
+        tenant_id=None,
+        role="system_admin",
+    )
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    resp = client.post(
+        "/api/v1/tenants",
+        json={"name": "test-tenant"},
+        headers=admin_headers,
+    )
     assert resp.status_code == 201, resp.text
     tenant_id = resp.json()["id"]
 
@@ -267,3 +282,47 @@ def auth_headers(client) -> dict[str, str]:
     token = token_resp.json()["access_token"]
 
     return {"Authorization": f"Bearer {token}", "_tenant_id": tenant_id}
+
+
+@pytest.fixture
+def admin_headers(app) -> dict[str, str]:
+    """System admin JWT headers for endpoints requiring system_admin role."""
+    jwt_svc = app.container.jwt_service()
+    token = jwt_svc.create_user_token(
+        user_id="admin-test",
+        tenant_id=None,
+        role="system_admin",
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def create_tenant_login(client, app):
+    """Factory fixture: create a tenant with admin auth, return tenant headers.
+
+    Usage in steps: ``headers = create_tenant_login("my-tenant")``
+    Returns dict with ``Authorization`` and ``_tenant_id`` keys.
+    """
+
+    def _create(name: str) -> dict[str, str]:
+        jwt_svc = app.container.jwt_service()
+        admin_token = jwt_svc.create_user_token(
+            user_id="admin-test",
+            tenant_id=None,
+            role="system_admin",
+        )
+        resp = client.post(
+            "/api/v1/tenants",
+            json={"name": name},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 201, resp.text
+        tenant_id = resp.json()["id"]
+        token_resp = client.post(
+            "/api/v1/auth/token", json={"tenant_id": tenant_id}
+        )
+        assert token_resp.status_code == 200, token_resp.text
+        token = token_resp.json()["access_token"]
+        return {"Authorization": f"Bearer {token}", "_tenant_id": tenant_id}
+
+    return _create

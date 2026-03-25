@@ -22,9 +22,9 @@ scenarios("e2e/knowledge_rag_router_flow.feature")
     parsers.parse('已建立租戶 "{name}" 並取得 token'),
     target_fixture="ctx",
 )
-def setup_tenant(e2e_client, name):
+def setup_tenant(e2e_client, e2e_app, name):
     ctx = {}
-    ctx["headers"] = create_tenant_and_login(e2e_client, name)
+    ctx["headers"] = create_tenant_and_login(e2e_client, name, app=e2e_app)
     ctx["client"] = e2e_client
     return ctx
 

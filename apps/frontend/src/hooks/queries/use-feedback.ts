@@ -122,15 +122,15 @@ export function useRetrievalQuality(days = 30, limit = 20, offset = 0) {
   });
 }
 
-export function useTokenCostStats(days = 30) {
+export function useTokenCostStats(startDate: string, endDate: string) {
   const token = useAuthStore((s) => s.token);
   const tenantId = useAuthStore((s) => s.tenantId);
 
   return useQuery({
-    queryKey: queryKeys.feedback.tokenCost(tenantId ?? "", days),
+    queryKey: queryKeys.feedback.tokenCost(tenantId ?? "", startDate, endDate),
     queryFn: () =>
       apiFetch<ModelCostStat[]>(
-        `${API_ENDPOINTS.feedback.tokenCost}?days=${days}`,
+        `${API_ENDPOINTS.feedback.tokenCost}?start_date=${startDate}&end_date=${endDate}`,
         {},
         token ?? undefined,
       ),

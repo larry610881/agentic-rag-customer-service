@@ -293,13 +293,12 @@ def given_empty_response(ctx):
     ctx["chat_results"] = [_make_chat_result(answer="")]
 
 
-@then("該 case 應有 response_not_empty 以外的 assertions 結果")
+@then("該 case 應標記為 api_error 且 score 為 0")
 def then_empty_response_assertions(summary: DatasetEvalSummary):
     case = summary.case_results[0]
-    # response_not_empty should fail, max_length should pass
+    # Empty response → api_error short-circuit, score=0.0
     assert case.total_count == 2
-    results_by_type = {r.assertion_type: r.passed for r in case.assertion_results}
-    assert results_by_type["response_not_empty"] is False
-    assert results_by_type["max_length"] is True
-    # Overall: 1/2 passed
-    assert case.score == pytest.approx(0.5)
+    assert len(case.assertion_results) == 1
+    assert case.assertion_results[0].assertion_type == "api_error"
+    assert case.assertion_results[0].passed is False
+    assert case.score == pytest.approx(0.0)

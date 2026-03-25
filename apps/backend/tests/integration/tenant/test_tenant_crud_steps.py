@@ -17,8 +17,8 @@ def ctx():
 
 
 @given(parsers.parse('已存在租戶 "{name}"'))
-def create_existing_tenant(ctx, client, name):
-    resp = client.post("/api/v1/tenants", json={"name": name})
+def create_existing_tenant(ctx, client, admin_headers, name):
+    resp = client.post("/api/v1/tenants", json={"name": name}, headers=admin_headers)
     assert resp.status_code == 201, resp.text
     ctx.setdefault("tenants", {})[name] = resp.json()
 
@@ -29,26 +29,31 @@ def create_existing_tenant(ctx, client, name):
 
 
 @when(parsers.parse('我送出 POST /api/v1/tenants 名稱為 "{name}"'))
-def post_create_tenant(ctx, client, name):
-    ctx["response"] = client.post("/api/v1/tenants", json={"name": name})
+def post_create_tenant(ctx, client, admin_headers, name):
+    ctx["response"] = client.post(
+        "/api/v1/tenants", json={"name": name}, headers=admin_headers
+    )
 
 
 @when("我送出 GET /api/v1/tenants")
-def get_tenant_list(ctx, client):
-    ctx["response"] = client.get("/api/v1/tenants")
+def get_tenant_list(ctx, client, admin_headers):
+    ctx["response"] = client.get("/api/v1/tenants", headers=admin_headers)
 
 
 @when("我用該租戶 ID 送出 GET /api/v1/tenants/{id}")
-def get_tenant_by_id(ctx, client):
+def get_tenant_by_id(ctx, client, admin_headers):
     # Use the first tenant created in Given
     tenant = next(iter(ctx["tenants"].values()))
-    ctx["response"] = client.get(f"/api/v1/tenants/{tenant['id']}")
+    ctx["response"] = client.get(
+        f"/api/v1/tenants/{tenant['id']}", headers=admin_headers
+    )
 
 
 @when("我送出 GET /api/v1/tenants/non-existent-id")
-def get_tenant_not_found(ctx, client):
+def get_tenant_not_found(ctx, client, admin_headers):
     ctx["response"] = client.get(
-        "/api/v1/tenants/00000000-0000-0000-0000-000000000000"
+        "/api/v1/tenants/00000000-0000-0000-0000-000000000000",
+        headers=admin_headers,
     )
 
 
@@ -76,7 +81,9 @@ def check_tenant_fields(ctx, name, plan):
 @then(parsers.parse("回應包含 {count:d} 個租戶"))
 def check_tenant_count(ctx, count):
     body = ctx["response"].json()
-    assert len(body) == count
+    # list_tenants returns PaginatedResponse with "items" key
+    items = body.get("items", body) if isinstance(body, dict) else body
+    assert len(items) == count
 
 
 @then(parsers.parse('回應的 name 為 "{name}"'))

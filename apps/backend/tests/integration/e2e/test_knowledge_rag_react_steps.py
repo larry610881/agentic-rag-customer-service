@@ -23,12 +23,12 @@ scenarios("e2e/knowledge_rag_react_flow.feature")
     parsers.parse('已建立租戶 "{name}" 並取得 token 並啟用 react'),
     target_fixture="ctx",
 )
-def setup_tenant_react(e2e_react_client, name):
+def setup_tenant_react(e2e_react_client, e2e_app_react, name):
     ctx = {}
-    ctx["headers"] = create_tenant_and_login(e2e_react_client, name)
+    ctx["headers"] = create_tenant_and_login(e2e_react_client, name, app=e2e_app_react)
     ctx["client"] = e2e_react_client
-    # Enable react mode for this tenant
-    enable_react_mode(e2e_react_client, ctx["headers"])
+    # Enable react mode for this tenant (requires system_admin)
+    enable_react_mode(e2e_react_client, ctx["headers"], app=e2e_app_react)
     return ctx
 
 

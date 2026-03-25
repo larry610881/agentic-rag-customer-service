@@ -29,5 +29,8 @@ class UsageRepository(ABC):
 
     @abstractmethod
     async def get_model_cost_stats(
-        self, tenant_id: str, days: int = 30
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> list[ModelCostStat]: ...

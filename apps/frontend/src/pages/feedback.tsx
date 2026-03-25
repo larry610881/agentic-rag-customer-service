@@ -6,11 +6,10 @@ import {
   useFeedbackStats,
   useSatisfactionTrend,
   useTopIssues,
-  useTokenCostStats,
 } from "@/hooks/queries/use-feedback";
 import { FeedbackStatsSummary } from "@/features/feedback/components/feedback-stats-summary";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BotUsageSummaryCards } from "@/features/feedback/components/bot-usage-summary-cards";
+import { TokenUsageSection } from "@/features/feedback/components/token-usage-section";
 import { ROUTES } from "@/routes/paths";
 
 const ChartSkeleton = () => <Skeleton className="h-[300px] w-full rounded-lg" />;
@@ -41,8 +40,6 @@ export default function FeedbackPage() {
   const stats = useFeedbackStats();
   const trend = useSatisfactionTrend(30);
   const issues = useTopIssues(30, 10);
-  const costs = useTokenCostStats(30);
-
   return (
     <motion.div
       className="flex flex-col gap-6 p-6"
@@ -71,7 +68,7 @@ export default function FeedbackPage() {
         </Suspense>
       </motion.div>
       <motion.div variants={itemVariants}>
-        <BotUsageSummaryCards data={costs.data} isLoading={costs.isLoading} />
+        <TokenUsageSection />
       </motion.div>
     </motion.div>
   );

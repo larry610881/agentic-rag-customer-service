@@ -16,17 +16,9 @@ def ctx():
 # ---------------------------------------------------------------------------
 
 
-def _create_tenant_and_login(client, name: str) -> dict:
+def _create_tenant_and_login(create_tenant_login, name: str) -> dict:
     """Create a tenant and return auth headers + tenant_id."""
-    resp = client.post("/api/v1/tenants", json={"name": name})
-    assert resp.status_code == 201, resp.text
-    tenant_id = resp.json()["id"]
-
-    token_resp = client.post("/api/v1/auth/token", json={"tenant_id": tenant_id})
-    assert token_resp.status_code == 200, token_resp.text
-    token = token_resp.json()["access_token"]
-
-    return {"Authorization": f"Bearer {token}", "_tenant_id": tenant_id}
+    return create_tenant_login(name)
 
 
 # ---------------------------------------------------------------------------
@@ -35,8 +27,8 @@ def _create_tenant_and_login(client, name: str) -> dict:
 
 
 @given(parsers.parse('已登入為租戶 "{name}"'))
-def login_as_tenant(ctx, client, name):
-    headers = _create_tenant_and_login(client, name)
+def login_as_tenant(ctx, create_tenant_login, name):
+    headers = _create_tenant_and_login(create_tenant_login, name)
     ctx["headers"] = headers
     ctx["tenant_id"] = headers["_tenant_id"]
 
@@ -54,8 +46,8 @@ def create_kb_for_current_tenant(ctx, client, kb_name):
 
 
 @given(parsers.parse('租戶 "{name}" 有知識庫 "{kb_name}"'))
-def create_tenant_with_kb(ctx, client, name, kb_name):
-    headers = _create_tenant_and_login(client, name)
+def create_tenant_with_kb(ctx, client, create_tenant_login, name, kb_name):
+    headers = _create_tenant_and_login(create_tenant_login, name)
     ctx.setdefault("tenant_headers", {})[name] = headers
 
     auth = {k: v for k, v in headers.items() if not k.startswith("_")}
@@ -138,11 +130,13 @@ def check_kb_fields(ctx, name):
 @then(parsers.parse("回應包含 {count:d} 個知識庫"))
 def check_kb_count(ctx, count):
     body = ctx["response"].json()
-    assert len(body) == count
+    items = body.get("items", body) if isinstance(body, dict) else body
+    assert len(items) == count
 
 
 @then(parsers.parse('回應只包含 "{kb_name}"'))
 def check_kb_isolation(ctx, kb_name):
     body = ctx["response"].json()
-    names = [kb["name"] for kb in body]
+    items = body.get("items", body) if isinstance(body, dict) else body
+    names = [kb["name"] for kb in items]
     assert names == [kb_name], f"Expected only [{kb_name}], got {names}"

@@ -1,6 +1,6 @@
 """回饋 API 端點"""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends
@@ -358,13 +358,30 @@ async def get_retrieval_quality(
 )
 @inject
 async def get_token_cost(
-    days: int = 30,
+    start_date: date | None = None,
+    end_date: date | None = None,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetTokenCostStatsUseCase = Depends(
         Provide[Container.get_token_cost_stats_use_case]
     ),
 ) -> list[ModelCostStatResponse]:
-    stats = await use_case.execute(tenant.tenant_id, days)
+    # Default: last 30 days if neither provided
+    if start_date is None and end_date is None:
+        dt_end = datetime.now(timezone.utc)
+        dt_start = dt_end - timedelta(days=30)
+    else:
+        dt_start = (
+            datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+            if start_date
+            else None
+        )
+        dt_end = (
+            datetime.combine(end_date, datetime.min.time(), tzinfo=timezone.utc)
+            if end_date
+            else None
+        )
+
+    stats = await use_case.execute(tenant.tenant_id, dt_start, dt_end)
     return [
         ModelCostStatResponse(
             model=s.model,

@@ -16,16 +16,9 @@ def ctx():
 # ---------------------------------------------------------------------------
 
 
-def _login(client, tenant_name: str) -> dict:
+def _login(create_tenant_login, tenant_name: str) -> dict:
     """Create tenant + get JWT → return full context dict."""
-    resp = client.post("/api/v1/tenants", json={"name": tenant_name})
-    assert resp.status_code == 201, resp.text
-    tenant_id = resp.json()["id"]
-
-    token_resp = client.post("/api/v1/auth/token", json={"tenant_id": tenant_id})
-    assert token_resp.status_code == 200, token_resp.text
-    token = token_resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}", "_tenant_id": tenant_id}
+    return create_tenant_login(tenant_name)
 
 
 def _auth(headers: dict) -> dict:
@@ -52,8 +45,8 @@ def _upload_file(client, kb_id: str, filename: str, headers: dict):
 
 
 @given(parsers.parse('已登入為租戶 "{name}" 並建立知識庫 "{kb_name}"'))
-def setup_tenant_and_kb(ctx, client, name, kb_name):
-    headers = _login(client, name)
+def setup_tenant_and_kb(ctx, client, create_tenant_login, name, kb_name):
+    headers = _login(create_tenant_login, name)
     ctx["headers"] = headers
 
     resp = client.post(
@@ -123,7 +116,8 @@ def check_upload_response(ctx):
 @then(parsers.parse("回應包含 {count:d} 個文件"))
 def check_document_count(ctx, count):
     body = ctx["response"].json()
-    assert len(body) == count
+    items = body.get("items", body) if isinstance(body, dict) else body
+    assert len(items) == count
 
 
 @then("再查詢文件列表為空")
@@ -133,4 +127,6 @@ def verify_empty_after_delete(ctx, client):
         headers=_auth(ctx["headers"]),
     )
     assert resp.status_code == 200
-    assert len(resp.json()) == 0
+    body = resp.json()
+    items = body.get("items", body) if isinstance(body, dict) else body
+    assert len(items) == 0

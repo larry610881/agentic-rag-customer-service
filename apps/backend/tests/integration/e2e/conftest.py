@@ -155,9 +155,21 @@ def e2e_react_client(e2e_app_react):
 # -----------------------------------------------------------------------
 
 
-def create_tenant_and_login(client, name: str) -> dict:
-    """Create tenant + get JWT, return headers dict with _tenant_id."""
-    resp = client.post("/api/v1/tenants", json={"name": name})
+def create_tenant_and_login(client, name: str, app=None) -> dict:
+    """Create tenant + get JWT, return headers dict with _tenant_id.
+
+    If ``app`` is provided, bootstraps a system_admin JWT first
+    (required when the tenant endpoint needs authentication).
+    """
+    headers = {}
+    if app is not None:
+        jwt_svc = app.container.jwt_service()
+        admin_token = jwt_svc.create_user_token(
+            user_id="admin-test", tenant_id=None, role="system_admin",
+        )
+        headers = {"Authorization": f"Bearer {admin_token}"}
+
+    resp = client.post("/api/v1/tenants", json={"name": name}, headers=headers)
     assert resp.status_code == 201, resp.text
     tenant_id = resp.json()["id"]
 
@@ -248,12 +260,19 @@ def send_chat(
     return {"status_code": resp.status_code, **resp.json()}
 
 
-def enable_react_mode(client, headers: dict) -> None:
-    """PATCH tenant to allow react agent mode."""
+def enable_react_mode(client, headers: dict, app=None) -> None:
+    """PATCH tenant to allow react agent mode (requires system_admin)."""
     tenant_id = headers["_tenant_id"]
+    patch_headers = auth_only(headers)
+    if app is not None:
+        jwt_svc = app.container.jwt_service()
+        admin_token = jwt_svc.create_user_token(
+            user_id="admin-test", tenant_id=None, role="system_admin",
+        )
+        patch_headers = {"Authorization": f"Bearer {admin_token}"}
     resp = client.patch(
         f"/api/v1/tenants/{tenant_id}/agent-modes",
         json={"allowed_agent_modes": ["router", "react"]},
-        headers=auth_only(headers),
+        headers=patch_headers,
     )
     assert resp.status_code == 200, resp.text

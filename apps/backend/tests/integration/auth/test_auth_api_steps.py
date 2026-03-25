@@ -17,8 +17,10 @@ def ctx():
 
 
 @given(parsers.parse('已存在租戶 "{name}"'))
-def create_tenant(ctx, client, name):
-    resp = client.post("/api/v1/tenants", json={"name": name})
+def create_tenant(ctx, client, admin_headers, name):
+    resp = client.post(
+        "/api/v1/tenants", json={"name": name}, headers=admin_headers
+    )
     assert resp.status_code == 201, resp.text
     ctx["tenant_id"] = resp.json()["id"]
 

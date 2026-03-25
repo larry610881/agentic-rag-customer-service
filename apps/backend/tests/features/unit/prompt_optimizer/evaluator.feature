@@ -31,4 +31,4 @@ Feature: Evaluator
     Given 一個 test case
     And API 回應為空字串
     When 我執行評估
-    Then 該 case 應有 response_not_empty 以外的 assertions 結果
+    Then 該 case 應標記為 api_error 且 score 為 0
