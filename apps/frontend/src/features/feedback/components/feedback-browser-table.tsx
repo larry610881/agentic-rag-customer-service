@@ -56,6 +56,7 @@ export function FeedbackBrowserTable({
   onPageChange,
 }: FeedbackBrowserTableProps) {
   const [ratingFilter, setRatingFilter] = useState<"all" | Rating>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   if (isLoading) {
     return (
@@ -70,10 +71,17 @@ export function FeedbackBrowserTable({
     );
   }
 
-  const filtered =
-    ratingFilter === "all"
-      ? (data ?? [])
-      : (data ?? []).filter((f) => f.rating === ratingFilter);
+  const filtered = (data ?? []).filter((f) => {
+    if (ratingFilter !== "all" && f.rating !== ratingFilter) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const matchComment = f.comment?.toLowerCase().includes(q);
+      const matchBot = f.bot_name?.toLowerCase().includes(q);
+      const matchTag = f.tags.some((t) => t.toLowerCase().includes(q));
+      if (!matchComment && !matchBot && !matchTag) return false;
+    }
+    return true;
+  });
 
   const serverTotal = total ?? filtered.length;
   const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
@@ -82,6 +90,17 @@ export function FeedbackBrowserTable({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>回饋瀏覽器</CardTitle>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="搜尋留言、機器人、標籤..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              onPageChange(0);
+            }}
+            className="h-9 w-48 rounded-md border bg-transparent px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          />
         <Select
           value={ratingFilter}
           onValueChange={(v) => {
@@ -98,6 +117,7 @@ export function FeedbackBrowserTable({
             <SelectItem value="thumbs_down">負面</SelectItem>
           </SelectContent>
         </Select>
+        </div>
       </CardHeader>
       <CardContent>
         {filtered.length === 0 ? (

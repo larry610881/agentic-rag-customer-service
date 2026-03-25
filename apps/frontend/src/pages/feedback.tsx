@@ -53,7 +53,7 @@ export default function FeedbackPage() {
       <motion.div variants={itemVariants} className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold font-heading tracking-wide text-primary">回饋分析</h2>
         <Button variant="outline" asChild>
-          <Link to={ROUTES.FEEDBACK_BROWSER}>差評瀏覽器</Link>
+          <Link to={ROUTES.FEEDBACK_BROWSER}>回饋瀏覽器</Link>
         </Button>
       </motion.div>
       <motion.div variants={itemVariants}>

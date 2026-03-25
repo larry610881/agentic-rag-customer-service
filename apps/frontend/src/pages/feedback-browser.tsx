@@ -20,7 +20,7 @@ export default function FeedbackBrowserPage() {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <h2 className="text-2xl font-semibold">差評瀏覽器</h2>
+        <h2 className="text-2xl font-semibold">回饋瀏覽器</h2>
       </div>
       <FeedbackBrowserTable
         data={data}

@@ -35,13 +35,13 @@ class GetFeedbackStatsUseCase:
                 d = json.loads(cached)
                 return FeedbackStats(**d)
 
-        total = await self._feedback_repo.count_by_tenant_and_rating(
-            tenant_id
-        )
         thumbs_up = await self._feedback_repo.count_by_tenant_and_rating(
             tenant_id, Rating.THUMBS_UP
         )
-        thumbs_down = total - thumbs_up
+        thumbs_down = await self._feedback_repo.count_by_tenant_and_rating(
+            tenant_id, Rating.THUMBS_DOWN
+        )
+        total = thumbs_up + thumbs_down
 
         satisfaction_rate = (
             round(thumbs_up / total * 100, 1) if total > 0 else 0.0
