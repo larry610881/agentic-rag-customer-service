@@ -16,6 +16,7 @@ class ConversationModel(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
     bot_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    visitor_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,
@@ -25,4 +26,5 @@ class ConversationModel(Base):
     __table_args__ = (
         Index("ix_conversations_tenant_id", "tenant_id"),
         Index("ix_conversations_tenant_bot", "tenant_id", "bot_id"),
+        Index("ix_conversations_visitor_bot", "visitor_id", "bot_id"),
     )

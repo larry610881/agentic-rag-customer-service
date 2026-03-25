@@ -1438,6 +1438,7 @@ class Container(containers.DeclarativeContainer):
             lambda cfg: cfg.line_default_kb_id, config
         ),
         feedback_repository=feedback_repository,
+        conversation_repository=conversation_repository,
         cache_service=cache_service,
         cache_ttl=providers.Callable(
             lambda cfg: cfg.cache_bot_ttl, config

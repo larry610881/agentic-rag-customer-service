@@ -27,9 +27,12 @@ class SQLAlchemyConversationRepository(ConversationRepository):
                     id=conversation.id.value,
                     tenant_id=conversation.tenant_id,
                     bot_id=conversation.bot_id,
+                    visitor_id=conversation.visitor_id,
                     created_at=conversation.created_at,
                 )
                 self._session.add(model)
+            elif conversation.visitor_id and not existing.visitor_id:
+                existing.visitor_id = conversation.visitor_id
 
             if conversation.messages:
                 # Bulk check: fetch all existing message IDs in one query
@@ -99,6 +102,7 @@ class SQLAlchemyConversationRepository(ConversationRepository):
             id=ConversationId(value=model.id),
             tenant_id=model.tenant_id,
             bot_id=model.bot_id,
+            visitor_id=model.visitor_id,
             messages=messages,
             created_at=model.created_at,
         )
@@ -148,3 +152,67 @@ class SQLAlchemyConversationRepository(ConversationRepository):
             stmt = stmt.where(ConversationModel.bot_id == bot_id)
         result = await self._session.execute(stmt)
         return result.scalar_one()
+
+    async def find_latest_by_visitor(
+        self, visitor_id: str, bot_id: str
+    ) -> Conversation | None:
+        """Find the most recent conversation for a visitor + bot pair."""
+        stmt = (
+            select(ConversationModel)
+            .where(
+                ConversationModel.visitor_id == visitor_id,
+                ConversationModel.bot_id == bot_id,
+            )
+            .order_by(ConversationModel.created_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+
+        # Load messages
+        msg_stmt = (
+            select(MessageModel)
+            .where(MessageModel.conversation_id == model.id)
+            .order_by(MessageModel.created_at)
+        )
+        msg_result = await self._session.execute(msg_stmt)
+        msg_rows = msg_result.scalars().all()
+
+        messages = [
+            Message(
+                id=MessageId(value=r.id),
+                conversation_id=r.conversation_id,
+                role=r.role,
+                content=r.content,
+                tool_calls=json.loads(r.tool_calls_json),
+                latency_ms=r.latency_ms,
+                retrieved_chunks=(
+                    json.loads(r.retrieved_chunks)
+                    if r.retrieved_chunks is not None
+                    else None
+                ),
+                created_at=r.created_at,
+            )
+            for r in msg_rows
+        ]
+
+        return Conversation(
+            id=ConversationId(value=model.id),
+            tenant_id=model.tenant_id,
+            bot_id=model.bot_id,
+            visitor_id=model.visitor_id,
+            messages=messages,
+            created_at=model.created_at,
+        )
+
+    async def find_conversation_id_by_message(
+        self, message_id: str
+    ) -> str | None:
+        """Look up which conversation a message belongs to."""
+        stmt = select(MessageModel.conversation_id).where(
+            MessageModel.id == message_id
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()

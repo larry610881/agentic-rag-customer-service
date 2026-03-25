@@ -4,13 +4,14 @@ import dataclasses
 import json
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from src.domain.agent.services import AgentService
 from src.domain.bot.entity import Bot, BotLLMParams
 from src.domain.bot.repository import BotRepository
 from src.domain.bot.value_objects import BotId, BotShortCode
+from src.domain.conversation.entity import Conversation
 from src.domain.conversation.feedback_entity import Feedback
 from src.domain.conversation.feedback_repository import FeedbackRepository
 from src.domain.conversation.feedback_value_objects import (
@@ -18,6 +19,7 @@ from src.domain.conversation.feedback_value_objects import (
     FeedbackId,
     Rating,
 )
+from src.domain.conversation.repository import ConversationRepository
 from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
 from src.domain.shared.cache_service import CacheService
@@ -69,9 +71,11 @@ class HandleWebhookUseCase:
         default_tenant_id: str = "",
         default_kb_id: str = "",
         feedback_repository: FeedbackRepository | None = None,
+        conversation_repository: ConversationRepository | None = None,
         cache_service: CacheService | None = None,
         cache_ttl: int = 120,
         conversation_lock: ConversationLock | None = None,
+        conversation_timeout_minutes: int = 30,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -80,9 +84,11 @@ class HandleWebhookUseCase:
         self._default_tenant_id = default_tenant_id
         self._default_kb_id = default_kb_id
         self._feedback_repo = feedback_repository
+        self._conversation_repo = conversation_repository
         self._cache_service = cache_service
         self._cache_ttl = cache_ttl
         self._conversation_lock = conversation_lock
+        self._conversation_timeout = timedelta(minutes=conversation_timeout_minutes)
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
         """Redis 快取查 Bot（by ID），預設 120 秒 TTL。"""
@@ -236,6 +242,27 @@ class HandleWebhookUseCase:
                 pb_event, bot.tenant_id, line_service
             )
 
+    async def _resolve_conversation(
+        self, user_id: str, bot: Bot
+    ) -> Conversation:
+        """Find or create conversation for a LINE user, with timeout segmentation."""
+        if self._conversation_repo:
+            existing = await self._conversation_repo.find_latest_by_visitor(
+                user_id, bot.id.value
+            )
+            if existing and existing.messages:
+                last_msg = existing.messages[-1]
+                elapsed = datetime.now(timezone.utc) - last_msg.created_at
+                if elapsed < self._conversation_timeout:
+                    return existing
+
+        # New conversation
+        return Conversation(
+            tenant_id=bot.tenant_id,
+            bot_id=bot.id.value,
+            visitor_id=user_id,
+        )
+
     async def _process_single_event(
         self,
         event: LineTextMessageEvent,
@@ -251,6 +278,12 @@ class HandleWebhookUseCase:
             logger.warning("line.show_loading_failed", exc_info=True)
 
         t0 = time.monotonic()
+
+        # Resolve conversation (timeout-based segmentation)
+        conversation = await self._resolve_conversation(event.user_id, bot)
+
+        # Extract history from existing conversation
+        history = conversation.messages if conversation.messages else None
 
         llm_params: dict = {
             "temperature": bot.llm_params.temperature,
@@ -270,8 +303,29 @@ class HandleWebhookUseCase:
             system_prompt=bot.system_prompt or None,
             enabled_tools=bot.enabled_tools,
             llm_params=llm_params,
+            history=history,
         )
         t1 = time.monotonic()
+
+        # Save messages to conversation
+        user_msg = conversation.add_message("user", event.message_text)
+        assistant_msg = conversation.add_message(
+            "assistant",
+            result.answer,
+            tool_calls=[
+                {"tool_name": tc.tool_name, "reasoning": tc.reasoning}
+                for tc in result.tool_calls
+            ],
+            latency_ms=round((t1 - t0) * 1000),
+            retrieved_chunks=[
+                {"document_name": s.document_name, "content_snippet": s.content_snippet, "score": s.score}
+                for s in result.sources
+            ] if result.sources else None,
+        )
+
+        # Persist conversation + messages
+        if self._conversation_repo:
+            await self._conversation_repo.save(conversation)
 
         # Build reply text — optionally append sources
         reply_text = result.answer
@@ -282,7 +336,7 @@ class HandleWebhookUseCase:
                 source_lines.append(f"{i}. {s.document_name}（{score_pct}%）")
             reply_text += "\n\n📚 參考來源：\n" + "\n".join(source_lines)
 
-        message_id = str(uuid4())
+        message_id = assistant_msg.id.value
         await line_service.reply_with_quick_reply(
             event.reply_token, reply_text, message_id
         )
@@ -347,10 +401,19 @@ class HandleWebhookUseCase:
         if existing is not None:
             return
 
+        # Look up conversation_id from message
+        conversation_id = ""
+        if self._conversation_repo:
+            conversation_id = (
+                await self._conversation_repo.find_conversation_id_by_message(
+                    message_id
+                )
+            ) or ""
+
         feedback = Feedback(
             id=FeedbackId(),
             tenant_id=tenant_id,
-            conversation_id="",
+            conversation_id=conversation_id,
             message_id=message_id,
             user_id=event.user_id,
             channel=Channel.LINE,

@@ -26,6 +26,7 @@ class Conversation:
     id: ConversationId = field(default_factory=ConversationId)
     tenant_id: str = ""
     bot_id: str | None = None
+    visitor_id: str | None = None  # External user ID (LINE user_id, widget visitor)
     messages: list[Message] = field(default_factory=list)
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
