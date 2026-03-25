@@ -9,18 +9,27 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { DailyUsageStat } from "@/types/token-usage";
 
-interface UsageDailyLineChartProps {
-  data: DailyUsageStat[] | undefined;
-  isLoading: boolean;
+interface TrendDataPoint {
+  label: string;
+  total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
 }
 
-export function UsageDailyLineChart({ data, isLoading }: UsageDailyLineChartProps) {
+interface UsageTrendLineChartProps {
+  data: TrendDataPoint[] | undefined;
+  isLoading: boolean;
+  mode: "month" | "year";
+}
+
+export function UsageTrendLineChart({ data, isLoading, mode }: UsageTrendLineChartProps) {
+  const title = mode === "month" ? "每日用量趨勢" : "每月用量趨勢";
+
   if (isLoading) {
     return (
       <Card>
-        <CardHeader><CardTitle>每日用量趨勢</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
         <CardContent><Skeleton className="h-[300px] w-full" /></CardContent>
       </Card>
     );
@@ -29,7 +38,7 @@ export function UsageDailyLineChart({ data, isLoading }: UsageDailyLineChartProp
   if (!data?.length) {
     return (
       <Card>
-        <CardHeader><CardTitle>每日用量趨勢</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
         <CardContent>
           <p className="py-12 text-center text-muted-foreground">尚無趨勢資料</p>
         </CardContent>
@@ -37,18 +46,12 @@ export function UsageDailyLineChart({ data, isLoading }: UsageDailyLineChartProp
     );
   }
 
-  // Format dates for display (MM/DD)
-  const chartData = data.map((d) => ({
-    ...d,
-    label: d.date.slice(5), // "03-25" from "2026-03-25"
-  }));
-
   return (
     <Card>
-      <CardHeader><CardTitle>每日用量趨勢</CardTitle></CardHeader>
+      <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={chartData}>
+          <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 5%)" />
             <XAxis dataKey="label" fontSize={12} stroke="oklch(1 0 0 / 40%)" />
             <YAxis fontSize={12} stroke="oklch(1 0 0 / 40%)" />
@@ -60,25 +63,42 @@ export function UsageDailyLineChart({ data, isLoading }: UsageDailyLineChartProp
               }}
               formatter={(value: number, name: string) => [
                 value.toLocaleString(),
-                name === "input_tokens" ? "輸入" : name === "output_tokens" ? "輸出" : "總量",
+                name === "total_tokens"
+                  ? "總量"
+                  : name === "input_tokens"
+                    ? "輸入"
+                    : "輸出",
               ]}
             />
-            <Line
-              type="monotone"
-              dataKey="input_tokens"
-              stroke="oklch(0.65 0.20 250)"
-              strokeWidth={2}
-              dot={false}
-              name="input_tokens"
-            />
-            <Line
-              type="monotone"
-              dataKey="output_tokens"
-              stroke="oklch(0.70 0.18 150)"
-              strokeWidth={2}
-              dot={false}
-              name="output_tokens"
-            />
+            {mode === "month" ? (
+              <Line
+                type="monotone"
+                dataKey="total_tokens"
+                stroke="oklch(0.65 0.20 250)"
+                strokeWidth={2}
+                dot={false}
+                name="total_tokens"
+              />
+            ) : (
+              <>
+                <Line
+                  type="monotone"
+                  dataKey="input_tokens"
+                  stroke="oklch(0.65 0.20 250)"
+                  strokeWidth={2}
+                  dot={false}
+                  name="input_tokens"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="output_tokens"
+                  stroke="oklch(0.70 0.18 150)"
+                  strokeWidth={2}
+                  dot={false}
+                  name="output_tokens"
+                />
+              </>
+            )}
           </LineChart>
         </ResponsiveContainer>
       </CardContent>

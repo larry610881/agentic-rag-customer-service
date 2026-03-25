@@ -11,6 +11,7 @@ from src.domain.usage.value_objects import (
     BotUsageStat,
     DailyUsageStat,
     ModelCostStat,
+    MonthlyUsageStat,
     UsageSummary,
 )
 from src.infrastructure.db.atomic import atomic
@@ -221,6 +222,44 @@ class SQLAlchemyUsageRepository(UsageRepository):
         return [
             DailyUsageStat(
                 date=str(row.dt),
+                input_tokens=row.sum_input or 0,
+                output_tokens=row.sum_output or 0,
+                total_tokens=row.sum_total or 0,
+                estimated_cost=round(float(row.sum_cost or 0), 4),
+                message_count=row.cnt,
+            )
+            for row in result.all()
+        ]
+
+    async def get_monthly_usage_stats(
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[MonthlyUsageStat]:
+        month_col = func.to_char(UsageRecordModel.created_at, 'YYYY-MM').label("month")
+
+        stmt = (
+            select(
+                month_col,
+                func.count().label("cnt"),
+                func.sum(UsageRecordModel.input_tokens).label("sum_input"),
+                func.sum(UsageRecordModel.output_tokens).label("sum_output"),
+                func.sum(UsageRecordModel.total_tokens).label("sum_total"),
+                func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
+            )
+            .where(UsageRecordModel.tenant_id == tenant_id)
+        )
+        if start_date:
+            stmt = stmt.where(UsageRecordModel.created_at >= start_date)
+        if end_date:
+            stmt = stmt.where(UsageRecordModel.created_at < end_date)
+        stmt = stmt.group_by(month_col).order_by(month_col)
+
+        result = await self._session.execute(stmt)
+        return [
+            MonthlyUsageStat(
+                month=row.month,
                 input_tokens=row.sum_input or 0,
                 output_tokens=row.sum_output or 0,
                 total_tokens=row.sum_total or 0,

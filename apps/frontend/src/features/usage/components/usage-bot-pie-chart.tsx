@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Cell,
   Pie,
@@ -20,79 +20,107 @@ const COLORS = [
   "oklch(0.65 0.18 50)",
 ];
 
-interface UsageBotPieChartProps {
+type ViewMode = "bot" | "model";
+
+interface UsagePieChartProps {
   data: BotUsageStat[] | undefined;
   isLoading: boolean;
 }
 
-export function UsageBotPieChart({ data, isLoading }: UsageBotPieChartProps) {
-  const botData = useMemo(() => {
-    if (!data?.length) return [];
-    const map = new Map<string, { name: string; tokens: number }>();
-    for (const row of data) {
-      const key = row.bot_id ?? "__none__";
-      const name = row.bot_name ?? "未指定";
-      const prev = map.get(key);
-      map.set(key, {
-        name,
-        tokens: (prev?.tokens ?? 0) + row.total_tokens,
-      });
-    }
-    return Array.from(map.values()).sort((a, b) => b.tokens - a.tokens);
-  }, [data]);
+function aggregate(
+  data: BotUsageStat[],
+  viewMode: ViewMode,
+): { name: string; tokens: number }[] {
+  const map = new Map<string, { name: string; tokens: number }>();
+  for (const row of data) {
+    const key = viewMode === "bot" ? (row.bot_id ?? "__none__") : row.model;
+    const name = viewMode === "bot" ? (row.bot_name ?? "未指定") : row.model;
+    const prev = map.get(key);
+    map.set(key, {
+      name,
+      tokens: (prev?.tokens ?? 0) + row.total_tokens,
+    });
+  }
+  return Array.from(map.values()).sort((a, b) => b.tokens - a.tokens);
+}
+
+export function UsagePieChart({ data, isLoading }: UsagePieChartProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>("bot");
+
+  const chartData = useMemo(
+    () => (data?.length ? aggregate(data, viewMode) : []),
+    [data, viewMode],
+  );
 
   if (isLoading) {
     return (
       <Card>
-        <CardHeader><CardTitle>Bot Token 佔比</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Token 佔比</CardTitle></CardHeader>
         <CardContent><Skeleton className="h-[300px] w-full" /></CardContent>
-      </Card>
-    );
-  }
-
-  if (!botData.length) {
-    return (
-      <Card>
-        <CardHeader><CardTitle>Bot Token 佔比</CardTitle></CardHeader>
-        <CardContent>
-          <p className="py-12 text-center text-muted-foreground">尚無資料</p>
-        </CardContent>
       </Card>
     );
   }
 
   return (
     <Card>
-      <CardHeader><CardTitle>Bot Token 佔比</CardTitle></CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle>Token 佔比</CardTitle>
+        <div className="flex gap-1 rounded-md border p-0.5">
+          <button
+            className={`rounded px-3 py-1 text-xs transition-colors ${
+              viewMode === "bot"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setViewMode("bot")}
+          >
+            按 Bot
+          </button>
+          <button
+            className={`rounded px-3 py-1 text-xs transition-colors ${
+              viewMode === "model"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setViewMode("model")}
+          >
+            按 Model
+          </button>
+        </div>
+      </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
-            <Pie
-              data={botData}
-              dataKey="tokens"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={100}
-              label={({ name, percent }) =>
-                `${name} ${(percent * 100).toFixed(0)}%`
-              }
-              labelLine={false}
-            >
-              {botData.map((_, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} fillOpacity={0.85} />
-              ))}
-            </Pie>
-            <Tooltip
-              contentStyle={{
-                background: "oklch(0.14 0.02 250)",
-                border: "1px solid oklch(0.75 0.15 195 / 20%)",
-                borderRadius: "8px",
-              }}
-              formatter={(value: number) => [value.toLocaleString(), "Tokens"]}
-            />
-          </PieChart>
-        </ResponsiveContainer>
+        {!chartData.length ? (
+          <p className="py-12 text-center text-muted-foreground">尚無資料</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={chartData}
+                dataKey="tokens"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={100}
+                label={({ name, percent }) =>
+                  `${name} ${(percent * 100).toFixed(0)}%`
+                }
+                labelLine={false}
+              >
+                {chartData.map((_, i) => (
+                  <Cell key={i} fill={COLORS[i % COLORS.length]} fillOpacity={0.85} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  background: "oklch(0.14 0.02 250)",
+                  border: "1px solid oklch(0.75 0.15 195 / 20%)",
+                  borderRadius: "8px",
+                }}
+                formatter={(value: number) => [value.toLocaleString(), "Tokens"]}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        )}
       </CardContent>
     </Card>
   );

@@ -10,7 +10,7 @@ import {
 type Mode = "month" | "year";
 
 interface TokenPeriodSelectorProps {
-  onChange: (startDate: string, endDate: string) => void;
+  onChange: (startDate: string, endDate: string, mode: "month" | "year") => void;
 }
 
 function getMonthOptions() {
@@ -62,7 +62,7 @@ export function TokenPeriodSelector({ onChange }: TokenPeriodSelectorProps) {
     setMode(m);
     const value = m === "month" ? monthValue : yearValue;
     const range = computeDateRange(m, value);
-    onChange(range.startDate, range.endDate);
+    onChange(range.startDate, range.endDate, m);
   };
 
   const handleValueChange = (value: string) => {
@@ -72,7 +72,7 @@ export function TokenPeriodSelector({ onChange }: TokenPeriodSelectorProps) {
       setYearValue(value);
     }
     const range = computeDateRange(mode, value);
-    onChange(range.startDate, range.endDate);
+    onChange(range.startDate, range.endDate, mode);
   };
 
   return (

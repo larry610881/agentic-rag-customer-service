@@ -47,6 +47,8 @@ export const queryKeys = {
       ["usage", "by-bot", tenantId, startDate, endDate] as const,
     daily: (tenantId: string, startDate: string, endDate: string) =>
       ["usage", "daily", tenantId, startDate, endDate] as const,
+    monthly: (tenantId: string, startDate: string, endDate: string) =>
+      ["usage", "monthly", tenantId, startDate, endDate] as const,
   },
   providerSettings: {
     all: ["provider-settings"] as const,

@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { useBotUsage, useDailyUsage } from "@/hooks/queries/use-usage";
+import { useBotUsage, useDailyUsage, useMonthlyUsage } from "@/hooks/queries/use-usage";
 import { TokenPeriodSelector } from "@/features/feedback/components/token-period-selector";
 import { UsageSummaryCards } from "@/features/usage/components/usage-summary-cards";
-import { UsageDailyLineChart } from "@/features/usage/components/usage-daily-line-chart";
-import { UsageBotPieChart } from "@/features/usage/components/usage-bot-pie-chart";
-import { UsageBotBarChart } from "@/features/usage/components/usage-bot-bar-chart";
+import { UsageTrendLineChart } from "@/features/usage/components/usage-daily-line-chart";
+import { UsagePieChart } from "@/features/usage/components/usage-bot-pie-chart";
+import { UsageMonthlyBarChart } from "@/features/usage/components/usage-bot-bar-chart";
+import type { DailyUsageStat, MonthlyUsageStat } from "@/types/token-usage";
 
 function getDefaultRange() {
   const now = new Date();
@@ -15,6 +16,30 @@ function getDefaultRange() {
   const next = new Date(y, m, 1);
   const endDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-01`;
   return { startDate, endDate };
+}
+
+function toTrendData(
+  mode: "month" | "year",
+  daily: DailyUsageStat[] | undefined,
+  monthly: MonthlyUsageStat[] | undefined,
+) {
+  if (mode === "month" && daily?.length) {
+    return daily.map((d) => ({
+      label: d.date.slice(5), // "03-25"
+      total_tokens: d.total_tokens,
+      input_tokens: d.input_tokens,
+      output_tokens: d.output_tokens,
+    }));
+  }
+  if (mode === "year" && monthly?.length) {
+    return monthly.map((d) => ({
+      label: d.month.slice(5) + "月", // "03月"
+      total_tokens: d.total_tokens,
+      input_tokens: d.input_tokens,
+      output_tokens: d.output_tokens,
+    }));
+  }
+  return undefined;
 }
 
 const containerVariants = {
@@ -29,11 +54,16 @@ const itemVariants = {
 
 export default function TokenUsagePage() {
   const defaults = getDefaultRange();
+  const [mode, setMode] = useState<"month" | "year">("month");
   const [startDate, setStartDate] = useState(defaults.startDate);
   const [endDate, setEndDate] = useState(defaults.endDate);
 
   const botUsage = useBotUsage(startDate, endDate);
   const dailyUsage = useDailyUsage(startDate, endDate);
+  const monthlyUsage = useMonthlyUsage(startDate, endDate);
+
+  const trendData = toTrendData(mode, dailyUsage.data, monthlyUsage.data);
+  const trendLoading = mode === "month" ? dailyUsage.isLoading : monthlyUsage.isLoading;
 
   return (
     <motion.div
@@ -47,9 +77,10 @@ export default function TokenUsagePage() {
           Token 用量
         </h2>
         <TokenPeriodSelector
-          onChange={(s, e) => {
+          onChange={(s, e, m) => {
             setStartDate(s);
             setEndDate(e);
+            setMode(m);
           }}
         />
       </motion.div>
@@ -59,13 +90,19 @@ export default function TokenUsagePage() {
       </motion.div>
 
       <motion.div variants={itemVariants}>
-        <UsageDailyLineChart data={dailyUsage.data} isLoading={dailyUsage.isLoading} />
+        <UsageTrendLineChart data={trendData} isLoading={trendLoading} mode={mode} />
       </motion.div>
 
-      <motion.div variants={itemVariants} className="grid gap-6 lg:grid-cols-2">
-        <UsageBotPieChart data={botUsage.data} isLoading={botUsage.isLoading} />
-        <UsageBotBarChart data={botUsage.data} isLoading={botUsage.isLoading} />
-      </motion.div>
+      {mode === "year" ? (
+        <motion.div variants={itemVariants} className="grid gap-6 lg:grid-cols-2">
+          <UsageMonthlyBarChart data={monthlyUsage.data} isLoading={monthlyUsage.isLoading} />
+          <UsagePieChart data={botUsage.data} isLoading={botUsage.isLoading} />
+        </motion.div>
+      ) : (
+        <motion.div variants={itemVariants}>
+          <UsagePieChart data={botUsage.data} isLoading={botUsage.isLoading} />
+        </motion.div>
+      )}
     </motion.div>
   );
 }

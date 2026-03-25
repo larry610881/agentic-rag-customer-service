@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from src.application.usage.query_bot_usage_use_case import QueryBotUsageUseCase
 from src.application.usage.query_daily_usage_use_case import QueryDailyUsageUseCase
+from src.application.usage.query_monthly_usage_use_case import QueryMonthlyUsageUseCase
 from src.application.usage.query_usage_use_case import QueryUsageUseCase
 from src.container import Container
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
@@ -142,6 +143,53 @@ async def get_daily_usage(
     return [
         DailyUsageStatResponse(
             date=s.date,
+            input_tokens=s.input_tokens,
+            output_tokens=s.output_tokens,
+            total_tokens=s.total_tokens,
+            estimated_cost=s.estimated_cost,
+            message_count=s.message_count,
+        )
+        for s in stats
+    ]
+
+
+class MonthlyUsageStatResponse(BaseModel):
+    month: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    estimated_cost: float
+    message_count: int
+
+
+@router.get("/monthly", response_model=list[MonthlyUsageStatResponse])
+@inject
+async def get_monthly_usage(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: QueryMonthlyUsageUseCase = Depends(
+        Provide[Container.query_monthly_usage_use_case]
+    ),
+) -> list[MonthlyUsageStatResponse]:
+    if start_date is None and end_date is None:
+        dt_end = datetime.now(timezone.utc)
+        dt_start = dt_end - timedelta(days=365)
+    else:
+        dt_start = (
+            datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+            if start_date
+            else None
+        )
+        dt_end = (
+            datetime.combine(end_date, datetime.min.time(), tzinfo=timezone.utc)
+            if end_date
+            else None
+        )
+    stats = await use_case.execute(tenant.tenant_id, dt_start, dt_end)
+    return [
+        MonthlyUsageStatResponse(
+            month=s.month,
             input_tokens=s.input_tokens,
             output_tokens=s.output_tokens,
             total_tokens=s.total_tokens,

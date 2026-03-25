@@ -202,6 +202,7 @@ from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
 from src.application.usage.query_bot_usage_use_case import QueryBotUsageUseCase
 from src.application.usage.query_daily_usage_use_case import QueryDailyUsageUseCase
+from src.application.usage.query_monthly_usage_use_case import QueryMonthlyUsageUseCase
 from src.application.usage.query_usage_use_case import QueryUsageUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.config import Settings
@@ -949,6 +950,11 @@ class Container(containers.DeclarativeContainer):
 
     query_daily_usage_use_case = providers.Factory(
         QueryDailyUsageUseCase,
+        usage_repository=usage_repository,
+    )
+
+    query_monthly_usage_use_case = providers.Factory(
+        QueryMonthlyUsageUseCase,
         usage_repository=usage_repository,
     )
 

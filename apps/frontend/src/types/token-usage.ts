@@ -30,3 +30,12 @@ export interface DailyUsageStat {
   estimated_cost: number;
   message_count: number;
 }
+
+export interface MonthlyUsageStat {
+  month: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated_cost: number;
+  message_count: number;
+}

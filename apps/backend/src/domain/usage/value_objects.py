@@ -52,3 +52,15 @@ class DailyUsageStat:
     total_tokens: int
     estimated_cost: float
     message_count: int
+
+
+@dataclass(frozen=True)
+class MonthlyUsageStat:
+    """Monthly aggregated token usage (for yearly report)."""
+
+    month: str  # "YYYY-MM"
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    estimated_cost: float
+    message_count: int

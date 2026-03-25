@@ -8,6 +8,7 @@ from src.domain.usage.value_objects import (
     BotUsageStat,
     DailyUsageStat,
     ModelCostStat,
+    MonthlyUsageStat,
     UsageSummary,
 )
 
@@ -55,3 +56,11 @@ class UsageRepository(ABC):
         start_date: datetime | None = None,
         end_date: datetime | None = None,
     ) -> list[DailyUsageStat]: ...
+
+    @abstractmethod
+    async def get_monthly_usage_stats(
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[MonthlyUsageStat]: ...

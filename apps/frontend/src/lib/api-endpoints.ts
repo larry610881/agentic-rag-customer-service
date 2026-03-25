@@ -71,6 +71,7 @@ export const API_ENDPOINTS = {
   usage: {
     byBot: "/api/v1/usage/by-bot",
     daily: "/api/v1/usage/daily",
+    monthly: "/api/v1/usage/monthly",
   },
   providerSettings: {
     list: "/api/v1/settings/providers",
