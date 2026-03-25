@@ -9,7 +9,6 @@ import {
 } from "@/hooks/queries/use-feedback";
 import { FeedbackStatsSummary } from "@/features/feedback/components/feedback-stats-summary";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TokenUsageSection } from "@/features/feedback/components/token-usage-section";
 import { ROUTES } from "@/routes/paths";
 
 const ChartSkeleton = () => <Skeleton className="h-[300px] w-full rounded-lg" />;
@@ -66,9 +65,6 @@ export default function FeedbackPage() {
         <Suspense fallback={<ChartSkeleton />}>
           <TopIssuesChart data={issues.data} isLoading={issues.isLoading} />
         </Suspense>
-      </motion.div>
-      <motion.div variants={itemVariants}>
-        <TokenUsageSection />
       </motion.div>
     </motion.div>
   );

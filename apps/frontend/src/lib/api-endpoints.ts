@@ -68,6 +68,10 @@ export const API_ENDPOINTS = {
     retrievalQuality: "/api/v1/feedback/analysis/retrieval-quality",
     tokenCost: "/api/v1/feedback/analysis/token-cost",
   },
+  usage: {
+    byBot: "/api/v1/usage/by-bot",
+    daily: "/api/v1/usage/daily",
+  },
   providerSettings: {
     list: "/api/v1/settings/providers",
     create: "/api/v1/settings/providers",

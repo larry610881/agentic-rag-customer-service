@@ -42,6 +42,12 @@ export const queryKeys = {
     tokenCost: (tenantId: string, startDate: string, endDate: string) =>
       ["feedback", "tokenCost", tenantId, startDate, endDate] as const,
   },
+  usage: {
+    byBot: (tenantId: string, startDate: string, endDate: string) =>
+      ["usage", "by-bot", tenantId, startDate, endDate] as const,
+    daily: (tenantId: string, startDate: string, endDate: string) =>
+      ["usage", "daily", tenantId, startDate, endDate] as const,
+  },
   providerSettings: {
     all: ["provider-settings"] as const,
     byType: (type: string) =>

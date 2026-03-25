@@ -37,6 +37,7 @@ const generalNavItems = [
   { href: "/bots", label: "機器人", icon: Bot },
   { href: "/knowledge", label: "知識庫", icon: BookOpen },
   { href: "/feedback", label: "回饋分析", icon: BarChart3 },
+  { href: "/token-usage", label: "Token 用量", icon: Coins },
 ];
 
 const systemAdminItems = [

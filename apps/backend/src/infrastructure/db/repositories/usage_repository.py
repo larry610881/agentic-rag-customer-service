@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.usage.entity import UsageRecord
 from src.domain.usage.repository import UsageRepository
-from src.domain.usage.value_objects import ModelCostStat, UsageSummary
+from src.domain.usage.value_objects import (
+    BotUsageStat,
+    DailyUsageStat,
+    ModelCostStat,
+    UsageSummary,
+)
 from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.message_model import MessageModel
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
@@ -140,4 +145,87 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 estimated_cost=round(float(row.sum_cost or 0), 4),
             )
             for row in rows
+        ]
+
+    async def get_bot_usage_stats(
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[BotUsageStat]:
+        from src.infrastructure.db.models.bot_model import BotModel
+
+        stmt = (
+            select(
+                UsageRecordModel.bot_id,
+                BotModel.name.label("bot_name"),
+                UsageRecordModel.model,
+                func.count().label("cnt"),
+                func.sum(UsageRecordModel.input_tokens).label("sum_input"),
+                func.sum(UsageRecordModel.output_tokens).label("sum_output"),
+                func.sum(UsageRecordModel.total_tokens).label("sum_total"),
+                func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
+            )
+            .outerjoin(BotModel, UsageRecordModel.bot_id == BotModel.id)
+            .where(UsageRecordModel.tenant_id == tenant_id)
+        )
+        if start_date:
+            stmt = stmt.where(UsageRecordModel.created_at >= start_date)
+        if end_date:
+            stmt = stmt.where(UsageRecordModel.created_at < end_date)
+        stmt = stmt.group_by(
+            UsageRecordModel.bot_id, BotModel.name, UsageRecordModel.model
+        )
+
+        result = await self._session.execute(stmt)
+        return [
+            BotUsageStat(
+                bot_id=row.bot_id,
+                bot_name=row.bot_name,
+                model=row.model,
+                input_tokens=row.sum_input or 0,
+                output_tokens=row.sum_output or 0,
+                total_tokens=row.sum_total or 0,
+                estimated_cost=round(float(row.sum_cost or 0), 4),
+                message_count=row.cnt,
+            )
+            for row in result.all()
+        ]
+
+    async def get_daily_usage_stats(
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[DailyUsageStat]:
+        date_col = func.date(UsageRecordModel.created_at).label("dt")
+
+        stmt = (
+            select(
+                date_col,
+                func.count().label("cnt"),
+                func.sum(UsageRecordModel.input_tokens).label("sum_input"),
+                func.sum(UsageRecordModel.output_tokens).label("sum_output"),
+                func.sum(UsageRecordModel.total_tokens).label("sum_total"),
+                func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
+            )
+            .where(UsageRecordModel.tenant_id == tenant_id)
+        )
+        if start_date:
+            stmt = stmt.where(UsageRecordModel.created_at >= start_date)
+        if end_date:
+            stmt = stmt.where(UsageRecordModel.created_at < end_date)
+        stmt = stmt.group_by(date_col).order_by(date_col)
+
+        result = await self._session.execute(stmt)
+        return [
+            DailyUsageStat(
+                date=str(row.dt),
+                input_tokens=row.sum_input or 0,
+                output_tokens=row.sum_output or 0,
+                total_tokens=row.sum_total or 0,
+                estimated_cost=round(float(row.sum_cost or 0), 4),
+                message_count=row.cnt,
+            )
+            for row in result.all()
         ]

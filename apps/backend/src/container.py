@@ -200,6 +200,8 @@ from src.application.ratelimit.update_rate_limit_use_case import (
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
+from src.application.usage.query_bot_usage_use_case import QueryBotUsageUseCase
+from src.application.usage.query_daily_usage_use_case import QueryDailyUsageUseCase
 from src.application.usage.query_usage_use_case import QueryUsageUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.config import Settings
@@ -937,6 +939,16 @@ class Container(containers.DeclarativeContainer):
 
     query_usage_use_case = providers.Factory(
         QueryUsageUseCase,
+        usage_repository=usage_repository,
+    )
+
+    query_bot_usage_use_case = providers.Factory(
+        QueryBotUsageUseCase,
+        usage_repository=usage_repository,
+    )
+
+    query_daily_usage_use_case = providers.Factory(
+        QueryDailyUsageUseCase,
         usage_repository=usage_repository,
     )
 

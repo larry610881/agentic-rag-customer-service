@@ -6,6 +6,7 @@ export const ROUTES = {
   BOT_DETAIL: "/bots/:id",
   KNOWLEDGE: "/knowledge",
   KNOWLEDGE_DETAIL: "/knowledge/:id",
+  TOKEN_USAGE: "/token-usage",
   FEEDBACK: "/feedback",
   FEEDBACK_BROWSER: "/feedback/browser",
   FEEDBACK_CONVERSATION: "/feedback/:conversationId",

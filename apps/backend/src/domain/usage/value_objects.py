@@ -26,3 +26,29 @@ class ModelCostStat:
     output_tokens: int
     avg_latency_ms: float
     estimated_cost: float
+
+
+@dataclass(frozen=True)
+class BotUsageStat:
+    """Per-bot token usage stats (tenant-scoped)."""
+
+    bot_id: str | None
+    bot_name: str | None
+    model: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    estimated_cost: float
+    message_count: int
+
+
+@dataclass(frozen=True)
+class DailyUsageStat:
+    """Daily aggregated token usage (for trend chart)."""
+
+    date: str  # YYYY-MM-DD
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    estimated_cost: float
+    message_count: int

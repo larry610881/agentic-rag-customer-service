@@ -4,7 +4,12 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 from src.domain.usage.entity import UsageRecord
-from src.domain.usage.value_objects import ModelCostStat, UsageSummary
+from src.domain.usage.value_objects import (
+    BotUsageStat,
+    DailyUsageStat,
+    ModelCostStat,
+    UsageSummary,
+)
 
 
 class UsageRepository(ABC):
@@ -34,3 +39,19 @@ class UsageRepository(ABC):
         start_date: datetime | None = None,
         end_date: datetime | None = None,
     ) -> list[ModelCostStat]: ...
+
+    @abstractmethod
+    async def get_bot_usage_stats(
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[BotUsageStat]: ...
+
+    @abstractmethod
+    async def get_daily_usage_stats(
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[DailyUsageStat]: ...
