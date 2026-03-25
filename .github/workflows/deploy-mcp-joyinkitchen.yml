@@ -62,7 +62,7 @@ jobs:
             --port=9000
             --memory=512Mi
             --cpu=1
-            --min-instances=0
+            --min-instances=1
             --max-instances=3
             --vpc-connector=db-connector
             --vpc-egress=private-ranges-only

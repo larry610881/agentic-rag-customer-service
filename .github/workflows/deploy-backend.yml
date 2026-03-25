@@ -86,7 +86,7 @@ jobs:
             --cpu=1
             --cpu-boost
             --no-cpu-throttling
-            --min-instances=0
+            --min-instances=1
             --max-instances=5
             --vpc-connector=db-connector
             --vpc-egress=private-ranges-only
