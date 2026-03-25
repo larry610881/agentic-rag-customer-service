@@ -5,6 +5,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { API_BASE } from "@/lib/api-config";
+import { useAuthStore } from "@/stores/use-auth-store";
 import type { Source } from "@/types/chat";
 
 interface CitationCardProps {
@@ -13,6 +14,18 @@ interface CitationCardProps {
 }
 
 export function CitationCard({ source, index }: CitationCardProps) {
+  const token = useAuthStore((s) => s.token);
+
+  const handleViewDocument = async () => {
+    const url = `${API_BASE}/api/v1/knowledge-bases/_/documents/${source.document_id}/view`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    window.open(URL.createObjectURL(blob), "_blank");
+  };
+
   return (
     <Collapsible>
       <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted">
@@ -28,12 +41,7 @@ export function CitationCard({ source, index }: CitationCardProps) {
           <button
             type="button"
             className="mt-2 text-xs text-primary hover:underline underline-offset-4"
-            onClick={() => {
-              window.open(
-                `${API_BASE}/api/v1/knowledge-bases/_/documents/${source.document_id}/view`,
-                "_blank",
-              );
-            }}
+            onClick={handleViewDocument}
           >
             查看原文
           </button>
