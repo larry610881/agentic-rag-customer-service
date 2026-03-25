@@ -78,7 +78,8 @@ export function FeedbackBrowserTable({
       const matchComment = f.comment?.toLowerCase().includes(q);
       const matchBot = f.bot_name?.toLowerCase().includes(q);
       const matchTag = f.tags.some((t) => t.toLowerCase().includes(q));
-      if (!matchComment && !matchBot && !matchTag) return false;
+      const matchChannel = (CHANNEL_LABELS[f.channel] ?? f.channel).toLowerCase().includes(q);
+      if (!matchComment && !matchBot && !matchTag && !matchChannel) return false;
     }
     return true;
   });
@@ -175,11 +176,15 @@ export function FeedbackBrowserTable({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" asChild>
-                        <Link to={`/feedback/${fb.conversation_id}`}>
-                          <ExternalLink className="h-4 w-4" />
-                        </Link>
-                      </Button>
+                      {fb.conversation_id ? (
+                        <Button variant="ghost" size="icon" asChild>
+                          <Link to={`/feedback/${fb.conversation_id}`}>
+                            <ExternalLink className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
