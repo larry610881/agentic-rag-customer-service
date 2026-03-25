@@ -27,25 +27,26 @@ class RedisConversationLock(ConversationLock):
     ) -> AsyncIterator[bool]:
         lock_value = uuid4().hex
         acquired = False
+        # Phase 1: acquire lock (Redis errors → degrade to no-lock)
         try:
             result = await self._redis.set(
                 lock_key, lock_value, nx=True, ex=timeout
             )
             acquired = result is not None
-            yield acquired
         except Exception:
-            # Redis down → degrade to no-lock
             logger.warning(
                 "concurrency.redis_unavailable",
                 lock_key=lock_key,
                 msg="Redis 不可用，降級為無鎖模式",
             )
-            yield True
-            return
+            acquired = True
+            lock_value = ""  # no lock to release
+        # Phase 2: yield + cleanup (separated from except to avoid generator issues)
+        try:
+            yield acquired
         finally:
-            if acquired:
+            if acquired and lock_value:
                 try:
-                    # Only delete if we still own the lock
                     current = await self._redis.get(lock_key)
                     if current == lock_value.encode():
                         await self._redis.delete(lock_key)
