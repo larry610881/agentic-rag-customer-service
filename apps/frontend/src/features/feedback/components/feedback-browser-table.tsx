@@ -32,6 +32,22 @@ interface FeedbackBrowserTableProps {
 
 const PAGE_SIZE = 10;
 
+const TAG_LABELS: Record<string, string> = {
+  irrelevant: "不相關",
+  incorrect: "不正確",
+  incomplete: "不完整",
+  offensive: "語氣不好",
+  slow: "回應太慢",
+  hallucination: "幻覺",
+  other: "其他",
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  web: "網頁",
+  line: "LINE",
+  widget: "Widget",
+};
+
 export function FeedbackBrowserTable({
   data,
   isLoading,
@@ -106,7 +122,12 @@ export function FeedbackBrowserTable({
                 {filtered.map((fb) => (
                   <TableRow key={fb.id}>
                     <TableCell className="whitespace-nowrap text-sm">
-                      {new Date(fb.created_at).toLocaleDateString("zh-TW")}
+                      {new Date(fb.created_at).toLocaleString("zh-TW", {
+                        month: "2-digit",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </TableCell>
                     <TableCell className="text-sm">
                       {fb.bot_name ?? "-"}
@@ -120,7 +141,7 @@ export function FeedbackBrowserTable({
                         {fb.rating === "thumbs_up" ? "+" : "-"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm">{fb.channel}</TableCell>
+                    <TableCell className="text-sm">{CHANNEL_LABELS[fb.channel] ?? fb.channel}</TableCell>
                     <TableCell className="max-w-[200px] truncate text-sm">
                       {fb.comment ?? "-"}
                     </TableCell>
@@ -128,7 +149,7 @@ export function FeedbackBrowserTable({
                       <div className="flex flex-wrap gap-1">
                         {fb.tags.map((tag) => (
                           <Badge key={tag} variant="outline" className="text-xs">
-                            {tag}
+                            {TAG_LABELS[tag] ?? tag}
                           </Badge>
                         ))}
                       </div>
