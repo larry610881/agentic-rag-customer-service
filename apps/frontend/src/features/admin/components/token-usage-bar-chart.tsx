@@ -63,7 +63,7 @@ export function TokenUsageBarChart({ data, isLoading }: TokenUsageBarChartProps)
       <CardHeader><CardTitle>Token 用量（按 Bot）</CardTitle></CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData}>
+          <BarChart data={chartData} barSize={12}>
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 5%)" />
             <XAxis dataKey="bot" fontSize={12} stroke="oklch(1 0 0 / 40%)" />
             <YAxis fontSize={12} stroke="oklch(1 0 0 / 40%)" />
@@ -90,6 +90,7 @@ export function TokenUsageBarChart({ data, isLoading }: TokenUsageBarChartProps)
               stackId="tokens"
               fill="var(--chart-hex-2)"
               name="output_tokens"
+              radius={[2, 2, 0, 0]}
             />
           </BarChart>
         </ResponsiveContainer>

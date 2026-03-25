@@ -5,7 +5,6 @@ import { TokenPeriodSelector } from "@/features/feedback/components/token-period
 import { UsageSummaryCards } from "@/features/usage/components/usage-summary-cards";
 import { UsageTrendLineChart } from "@/features/usage/components/usage-daily-line-chart";
 import { UsagePieChart } from "@/features/usage/components/usage-bot-pie-chart";
-import { UsageMonthlyBarChart } from "@/features/usage/components/usage-bot-bar-chart";
 import type { DailyUsageStat, MonthlyUsageStat } from "@/types/token-usage";
 
 function getDefaultRange() {
@@ -25,7 +24,7 @@ function toTrendData(
 ) {
   if (mode === "month" && daily?.length) {
     return daily.map((d) => ({
-      label: d.date.slice(5), // "03-25"
+      label: d.date.slice(5),
       total_tokens: d.total_tokens,
       input_tokens: d.input_tokens,
       output_tokens: d.output_tokens,
@@ -33,7 +32,7 @@ function toTrendData(
   }
   if (mode === "year" && monthly?.length) {
     return monthly.map((d) => ({
-      label: d.month.slice(5) + "月", // "03月"
+      label: d.month.slice(5) + "月",
       total_tokens: d.total_tokens,
       input_tokens: d.input_tokens,
       output_tokens: d.output_tokens,
@@ -90,19 +89,17 @@ export default function TokenUsagePage() {
       </motion.div>
 
       <motion.div variants={itemVariants}>
-        <UsageTrendLineChart data={trendData} isLoading={trendLoading} mode={mode} />
+        <UsageTrendLineChart
+          data={trendData}
+          monthlyData={monthlyUsage.data}
+          isLoading={trendLoading}
+          mode={mode}
+        />
       </motion.div>
 
-      {mode === "year" ? (
-        <motion.div variants={itemVariants} className="grid gap-6 lg:grid-cols-2">
-          <UsageMonthlyBarChart data={monthlyUsage.data} isLoading={monthlyUsage.isLoading} />
-          <UsagePieChart data={botUsage.data} isLoading={botUsage.isLoading} />
-        </motion.div>
-      ) : (
-        <motion.div variants={itemVariants}>
-          <UsagePieChart data={botUsage.data} isLoading={botUsage.isLoading} />
-        </motion.div>
-      )}
+      <motion.div variants={itemVariants}>
+        <UsagePieChart data={botUsage.data} isLoading={botUsage.isLoading} />
+      </motion.div>
     </motion.div>
   );
 }
