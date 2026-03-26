@@ -83,20 +83,17 @@ export function TopIssuesChart({ data, isLoading }: TopIssuesChartProps) {
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={localizedData} layout="vertical" barSize={16}>
+          <BarChart data={localizedData} barSize={16}>
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 5%)" />
             <XAxis
-              type="number"
+              dataKey="label"
+              fontSize={12}
+              stroke="oklch(1 0 0 / 40%)"
+            />
+            <YAxis
               fontSize={12}
               stroke="oklch(1 0 0 / 40%)"
               allowDecimals={false}
-            />
-            <YAxis
-              type="category"
-              dataKey="label"
-              width={100}
-              fontSize={12}
-              stroke="oklch(1 0 0 / 40%)"
             />
             <Tooltip
               formatter={(value: number) => [value, "次數"]}
@@ -106,7 +103,7 @@ export function TopIssuesChart({ data, isLoading }: TopIssuesChartProps) {
                 borderRadius: "8px",
               }}
             />
-            <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+            <Bar dataKey="count" radius={[4, 4, 0, 0]}>
               {localizedData.map((_, index) => (
                 <Cell
                   key={index}
