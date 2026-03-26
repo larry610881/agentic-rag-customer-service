@@ -44,12 +44,19 @@ class FeedbackRepository(ABC):
 
     @abstractmethod
     async def get_daily_trend(
-        self, tenant_id: str, days: int = 30
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> list[DailyFeedbackStat]: ...
 
     @abstractmethod
     async def get_top_tags(
-        self, tenant_id: str, days: int = 30, limit: int = 10
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        limit: int = 10,
     ) -> list[TagCount]: ...
 
     @abstractmethod

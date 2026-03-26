@@ -1,7 +1,7 @@
 """回饋分析 API BDD Step Definitions"""
 
 import asyncio
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -147,15 +147,19 @@ def tenant_has_no_data(context, tenant_id):
 
 @when(parsers.parse("查詢滿意度趨勢（{days:d} 天）"))
 def query_trend(context, days):
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=days)
     context["result"] = _run(
-        context["trend_uc"].execute(context["tenant_id"], days)
+        context["trend_uc"].execute(context["tenant_id"], start, end)
     )
 
 
 @when(parsers.parse("查詢差評根因（{days:d} 天，top {limit:d}）"))
 def query_issues(context, days, limit):
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=days)
     context["result"] = _run(
-        context["issues_uc"].execute(context["tenant_id"], days, limit)
+        context["issues_uc"].execute(context["tenant_id"], start, end, limit)
     )
 
 

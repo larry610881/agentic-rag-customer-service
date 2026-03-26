@@ -33,10 +33,10 @@ export const queryKeys = {
     byConversation: (conversationId: string) =>
       ["feedback", "conversation", conversationId] as const,
     list: (tenantId: string) => ["feedback", "list", tenantId] as const,
-    trend: (tenantId: string, days: number) =>
-      ["feedback", "trend", tenantId, days] as const,
-    topIssues: (tenantId: string, days: number) =>
-      ["feedback", "topIssues", tenantId, days] as const,
+    trend: (tenantId: string, startDate: string, endDate: string) =>
+      ["feedback", "trend", tenantId, startDate, endDate] as const,
+    topIssues: (tenantId: string, startDate: string, endDate: string) =>
+      ["feedback", "topIssues", tenantId, startDate, endDate] as const,
     retrievalQuality: (tenantId: string, days: number) =>
       ["feedback", "retrievalQuality", tenantId, days] as const,
     tokenCost: (tenantId: string, startDate: string, endDate: string) =>

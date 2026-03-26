@@ -74,15 +74,15 @@ export function useFeedbackList(limit = 50, offset = 0) {
   });
 }
 
-export function useSatisfactionTrend(days = 30) {
+export function useSatisfactionTrend(startDate: string, endDate: string) {
   const token = useAuthStore((s) => s.token);
   const tenantId = useAuthStore((s) => s.tenantId);
 
   return useQuery({
-    queryKey: queryKeys.feedback.trend(tenantId ?? "", days),
+    queryKey: queryKeys.feedback.trend(tenantId ?? "", startDate, endDate),
     queryFn: () =>
       apiFetch<DailyFeedbackStat[]>(
-        `${API_ENDPOINTS.feedback.satisfactionTrend}?days=${days}`,
+        `${API_ENDPOINTS.feedback.satisfactionTrend}?start_date=${startDate}&end_date=${endDate}`,
         {},
         token ?? undefined,
       ),
@@ -90,15 +90,15 @@ export function useSatisfactionTrend(days = 30) {
   });
 }
 
-export function useTopIssues(days = 30, limit = 10) {
+export function useTopIssues(startDate: string, endDate: string, limit = 10) {
   const token = useAuthStore((s) => s.token);
   const tenantId = useAuthStore((s) => s.tenantId);
 
   return useQuery({
-    queryKey: queryKeys.feedback.topIssues(tenantId ?? "", days),
+    queryKey: queryKeys.feedback.topIssues(tenantId ?? "", startDate, endDate),
     queryFn: () =>
       apiFetch<TagCount[]>(
-        `${API_ENDPOINTS.feedback.topIssues}?days=${days}&limit=${limit}`,
+        `${API_ENDPOINTS.feedback.topIssues}?start_date=${startDate}&end_date=${endDate}&limit=${limit}`,
         {},
         token ?? undefined,
       ),

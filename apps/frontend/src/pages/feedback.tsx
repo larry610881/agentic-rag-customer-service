@@ -26,12 +26,6 @@ const TopIssuesChart = lazy(() =>
   })),
 );
 
-function computeDays(startDate: string, endDate: string): number {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-}
-
 function getDefaultRange() {
   const now = new Date();
   const y = now.getFullYear();
@@ -57,11 +51,9 @@ export default function FeedbackPage() {
   const [startDate, setStartDate] = useState(defaults.startDate);
   const [endDate, setEndDate] = useState(defaults.endDate);
 
-  const days = computeDays(startDate, endDate);
-
   const stats = useFeedbackStats();
-  const trend = useSatisfactionTrend(days);
-  const issues = useTopIssues(days, 10);
+  const trend = useSatisfactionTrend(startDate, endDate);
+  const issues = useTopIssues(startDate, endDate, 10);
 
   return (
     <motion.div

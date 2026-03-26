@@ -133,9 +133,11 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
             model.tags = json.dumps(merged, ensure_ascii=False)
 
     async def get_daily_trend(
-        self, tenant_id: str, days: int = 30
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> list[DailyFeedbackStat]:
-        since = datetime.now(timezone.utc) - timedelta(days=days)
         stmt = (
             select(
                 func.date(FeedbackModel.created_at).label("dt"),
@@ -147,13 +149,14 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
                 .filter(FeedbackModel.rating == Rating.THUMBS_DOWN.value)
                 .label("negative"),
             )
-            .where(
-                FeedbackModel.tenant_id == tenant_id,
-                FeedbackModel.created_at >= since,
-            )
+            .where(FeedbackModel.tenant_id == tenant_id)
             .group_by(func.date(FeedbackModel.created_at))
             .order_by(func.date(FeedbackModel.created_at))
         )
+        if start_date:
+            stmt = stmt.where(FeedbackModel.created_at >= start_date)
+        if end_date:
+            stmt = stmt.where(FeedbackModel.created_at < end_date)
         result = await self._session.execute(stmt)
         rows = result.all()
         return [
@@ -170,17 +173,23 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
         ]
 
     async def get_top_tags(
-        self, tenant_id: str, days: int = 30, limit: int = 10
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        limit: int = 10,
     ) -> list[TagCount]:
-        since = datetime.now(timezone.utc) - timedelta(days=days)
         stmt = (
             select(FeedbackModel.tags)
             .where(
                 FeedbackModel.tenant_id == tenant_id,
                 FeedbackModel.rating == Rating.THUMBS_DOWN.value,
-                FeedbackModel.created_at >= since,
             )
         )
+        if start_date:
+            stmt = stmt.where(FeedbackModel.created_at >= start_date)
+        if end_date:
+            stmt = stmt.where(FeedbackModel.created_at < end_date)
         result = await self._session.execute(stmt)
         rows = result.scalars().all()
 

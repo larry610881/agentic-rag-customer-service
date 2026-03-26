@@ -285,13 +285,29 @@ async def update_feedback_tags(
 )
 @inject
 async def get_satisfaction_trend(
-    days: int = 30,
+    start_date: date | None = None,
+    end_date: date | None = None,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetSatisfactionTrendUseCase = Depends(
         Provide[Container.get_satisfaction_trend_use_case]
     ),
 ) -> list[DailyFeedbackStatResponse]:
-    stats = await use_case.execute(tenant.tenant_id, days)
+    if start_date is None and end_date is None:
+        dt_end = datetime.now(timezone.utc)
+        dt_start = dt_end - timedelta(days=30)
+    else:
+        dt_start = (
+            datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+            if start_date
+            else None
+        )
+        dt_end = (
+            datetime.combine(end_date, datetime.min.time(), tzinfo=timezone.utc)
+            if end_date
+            else None
+        )
+
+    stats = await use_case.execute(tenant.tenant_id, dt_start, dt_end)
     return [
         DailyFeedbackStatResponse(
             date=s.date,
@@ -310,14 +326,30 @@ async def get_satisfaction_trend(
 )
 @inject
 async def get_top_issues(
-    days: int = 30,
+    start_date: date | None = None,
+    end_date: date | None = None,
     limit: int = 10,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetTopIssuesUseCase = Depends(
         Provide[Container.get_top_issues_use_case]
     ),
 ) -> list[TagCountResponse]:
-    tags = await use_case.execute(tenant.tenant_id, days, limit)
+    if start_date is None and end_date is None:
+        dt_end = datetime.now(timezone.utc)
+        dt_start = dt_end - timedelta(days=30)
+    else:
+        dt_start = (
+            datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+            if start_date
+            else None
+        )
+        dt_end = (
+            datetime.combine(end_date, datetime.min.time(), tzinfo=timezone.utc)
+            if end_date
+            else None
+        )
+
+    tags = await use_case.execute(tenant.tenant_id, dt_start, dt_end, limit)
     return [TagCountResponse(tag=t.tag, count=t.count) for t in tags]
 
 
