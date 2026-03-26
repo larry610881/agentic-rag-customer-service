@@ -313,7 +313,9 @@ class HandleWebhookUseCase:
             "assistant",
             result.answer,
             tool_calls=[
-                {"tool_name": tc.tool_name, "reasoning": tc.reasoning}
+                {"tool_name": tc.get("tool_name", ""), "reasoning": tc.get("reasoning", "")}
+                if isinstance(tc, dict) else
+                {"tool_name": tc.tool_name, "reasoning": getattr(tc, "reasoning", "")}
                 for tc in result.tool_calls
             ],
             latency_ms=round((t1 - t0) * 1000),
