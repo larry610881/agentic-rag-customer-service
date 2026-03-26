@@ -4,11 +4,10 @@ These tests exercise complete user flows: tenant → KB → document → Bot →
 Real DB, mock Qdrant/Embedding/LLM for deterministic behaviour.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from dependency_injector import providers
-from langchain_core.messages import AIMessage
 
 from src.domain.rag.value_objects import SearchResult
 from src.infrastructure.cache.in_memory_cache_service import InMemoryCacheService
@@ -16,13 +15,13 @@ from src.infrastructure.embedding.fake_embedding_service import FakeEmbeddingSer
 
 
 # -----------------------------------------------------------------------
-# E2E app fixture — Router mode (mock agent via container selector)
+# E2E app fixture (mock agent via container selector)
 # -----------------------------------------------------------------------
 
 
 @pytest.fixture
 def e2e_app(test_engine):
-    """E2E app: real DB + real chunking + mock Qdrant + mock LLM (router)."""
+    """E2E app: real DB + real chunking + mock Qdrant + mock LLM."""
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from src.main import create_app
@@ -77,77 +76,16 @@ def e2e_app(test_engine):
 
 
 # -----------------------------------------------------------------------
-# E2E app fixture — ReAct mode (mock LLM via provider override)
-# -----------------------------------------------------------------------
-
-
-def _build_react_mock_llm():
-    """Create a fresh MagicMock LLM with rag_query → answer side_effect."""
-    mock_llm = MagicMock()
-    mock_llm.bind_tools.return_value = mock_llm
-    mock_llm.ainvoke = AsyncMock(
-        side_effect=[
-            # Step 1: agent calls rag_query tool
-            AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "name": "rag_query",
-                        "args": {"query": "退貨流程是什麼？"},
-                        "id": "call_e2e_1",
-                    }
-                ],
-            ),
-            # Step 2: agent produces final answer
-            AIMessage(
-                content="根據查詢結果：退貨流程說明 — 30 天內可退貨，保留包裝。"
-            ),
-        ]
-    )
-    return mock_llm
-
-
-@pytest.fixture
-def e2e_app_react(e2e_app):
-    """E2E app with mocked ReAct LLM for deterministic tool-call cycles.
-
-    Overrides react_agent_service provider with a patched singleton so that
-    every SendMessageUseCase gets the same service with mock _resolve_llm_model.
-    """
-    container = e2e_app.container
-
-    # Get a real service instance, then patch its _resolve_llm_model
-    service = container.react_agent_service()
-    mock_llm = _build_react_mock_llm()
-    service._resolve_llm_model = AsyncMock(return_value=mock_llm)
-
-    # Override the provider so all consumers get this patched instance
-    container.react_agent_service.override(providers.Object(service))
-
-    yield e2e_app
-
-    container.react_agent_service.reset_override()
-
-
-# -----------------------------------------------------------------------
 # E2E API clients
 # -----------------------------------------------------------------------
 
 
 @pytest.fixture
 def e2e_client(e2e_app):
-    """APIHelper bound to e2e_app (Router mode)."""
+    """APIHelper bound to e2e_app."""
     from tests.integration.conftest import APIHelper
 
     return APIHelper(e2e_app)
-
-
-@pytest.fixture
-def e2e_react_client(e2e_app_react):
-    """APIHelper bound to e2e_app_react (ReAct mode)."""
-    from tests.integration.conftest import APIHelper
-
-    return APIHelper(e2e_app_react)
 
 
 # -----------------------------------------------------------------------
@@ -221,14 +159,12 @@ def create_bot(
     headers: dict,
     name: str,
     kb_ids: list[str],
-    agent_mode: str = "router",
     **kwargs,
 ) -> str:
     """Create a Bot bound to KBs, return bot ID."""
     body = {
         "name": name,
         "knowledge_base_ids": kb_ids,
-        "agent_mode": agent_mode,
         **kwargs,
     }
     resp = client.post(
@@ -260,19 +196,3 @@ def send_chat(
     return {"status_code": resp.status_code, **resp.json()}
 
 
-def enable_react_mode(client, headers: dict, app=None) -> None:
-    """PATCH tenant to allow react agent mode (requires system_admin)."""
-    tenant_id = headers["_tenant_id"]
-    patch_headers = auth_only(headers)
-    if app is not None:
-        jwt_svc = app.container.jwt_service()
-        admin_token = jwt_svc.create_user_token(
-            user_id="admin-test", tenant_id=None, role="system_admin",
-        )
-        patch_headers = {"Authorization": f"Bearer {admin_token}"}
-    resp = client.patch(
-        f"/api/v1/tenants/{tenant_id}/agent-modes",
-        json={"allowed_agent_modes": ["router", "react"]},
-        headers=patch_headers,
-    )
-    assert resp.status_code == 200, resp.text

@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     container = Container()
 
-    # E2E mode: override llm_service so react_agent_service also uses FakeLLM
+    # E2E mode: override llm_service so agent_service also uses FakeLLM
     if container.config().e2e_mode:
         container.llm_service.override(container._static_llm_service)
 

@@ -13,13 +13,11 @@ export function SystemPromptEditor() {
   const updateMutation = useUpdateSystemPrompts();
 
   const [basePrompt, setBasePrompt] = useState("");
-  const [routerPrompt, setRouterPrompt] = useState("");
   const [reactPrompt, setReactPrompt] = useState("");
 
   useEffect(() => {
     if (config) {
       setBasePrompt(config.base_prompt);
-      setRouterPrompt(config.router_mode_prompt);
       setReactPrompt(config.react_mode_prompt);
     }
   }, [config]);
@@ -28,7 +26,7 @@ export function SystemPromptEditor() {
     try {
       await updateMutation.mutateAsync({
         base_prompt: basePrompt,
-        router_mode_prompt: routerPrompt,
+        router_mode_prompt: config?.router_mode_prompt ?? "",
         react_mode_prompt: reactPrompt,
       });
       toast.success("系統提示詞已更新");
@@ -65,20 +63,6 @@ export function SystemPromptEditor() {
           <code className="rounded bg-muted px-1">{"{now}"}</code> 當前時間、
           <code className="rounded bg-muted px-1">{"{weekday_zh}"}</code> 中文星期。
           例：「今天是 {"{today}"}（{"{weekday_zh}"}）」
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="sys-router-prompt">Router 模式 Prompt</Label>
-        <Textarea
-          id="sys-router-prompt"
-          rows={4}
-          value={routerPrompt}
-          onChange={(e) => setRouterPrompt(e.target.value)}
-          placeholder="Router 模式專用指令"
-        />
-        <p className="text-xs text-muted-foreground">
-          使用 Router 模式時附加的提示詞。
         </p>
       </div>
 

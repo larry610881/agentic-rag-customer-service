@@ -300,9 +300,6 @@ from src.infrastructure.embedding.openai_embedding_service import (
 from src.infrastructure.file_parser.default_file_parser_service import (
     DefaultFileParserService,
 )
-from src.infrastructure.langgraph.langgraph_agent_service import (
-    LangGraphAgentService,
-)
 from src.infrastructure.langgraph.meta_supervisor_service import (
     MetaSupervisorService,
 )
@@ -997,18 +994,12 @@ class Container(containers.DeclarativeContainer):
             sentiment_service=sentiment_service,
         ),
         real=providers.Factory(
-            LangGraphAgentService,
+            ReActAgentService,
             llm_service=llm_service,
             rag_tool=rag_tool,
+            tool_registry=tool_registry,
+            cached_tool_loader=cached_tool_loader,
         ),
-    )
-
-    react_agent_service = providers.Factory(
-        ReActAgentService,
-        llm_service=llm_service,
-        rag_tool=rag_tool,
-        tool_registry=tool_registry,
-        cached_tool_loader=cached_tool_loader,
     )
 
     # --- Conversation History Strategy ---
@@ -1332,8 +1323,6 @@ class Container(containers.DeclarativeContainer):
         bot_repository=bot_repository,
         history_strategy=history_strategy,
         debug=providers.Callable(lambda cfg: cfg.debug, config),
-        react_agent_service=react_agent_service,
-        tenant_repository=tenant_repository,
         system_prompt_config_repository=system_prompt_config_repository,
         trace_session_factory=trace_session_factory,
         rag_evaluation_use_case=rag_evaluation_use_case,

@@ -34,7 +34,6 @@ export interface Bot {
   llm_provider: string;
   llm_model: string;
   show_sources: boolean;
-  agent_mode: "router" | "react";
   audit_mode: "off" | "minimal" | "full";
   eval_provider: string;
   eval_model: string;
@@ -42,8 +41,6 @@ export interface Bot {
   mcp_servers: McpServerConfig[];
   max_tool_calls: number;
   base_prompt: string;
-  router_prompt: string;
-  react_prompt: string;
   fab_icon_url: string;
   widget_enabled: boolean;
   widget_allowed_origins: string[];
@@ -77,7 +74,6 @@ export interface CreateBotRequest {
   llm_provider?: string;
   llm_model?: string;
   show_sources?: boolean;
-  agent_mode?: "router" | "react";
   audit_mode?: "off" | "minimal" | "full";
   eval_provider?: string;
   eval_model?: string;
@@ -85,8 +81,6 @@ export interface CreateBotRequest {
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
   base_prompt?: string;
-  router_prompt?: string;
-  react_prompt?: string;
   widget_enabled?: boolean;
   widget_allowed_origins?: string[];
   widget_keep_history?: boolean;
@@ -117,7 +111,6 @@ export interface UpdateBotRequest {
   llm_provider?: string;
   llm_model?: string;
   show_sources?: boolean;
-  agent_mode?: "router" | "react";
   audit_mode?: "off" | "minimal" | "full";
   eval_provider?: string;
   eval_model?: string;
@@ -125,8 +118,6 @@ export interface UpdateBotRequest {
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
   base_prompt?: string;
-  router_prompt?: string;
-  react_prompt?: string;
   widget_enabled?: boolean;
   widget_allowed_origins?: string[];
   widget_keep_history?: boolean;

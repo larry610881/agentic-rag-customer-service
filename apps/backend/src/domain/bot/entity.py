@@ -61,7 +61,6 @@ class Bot:
     llm_provider: str = ""
     llm_model: str = ""
     show_sources: bool = True
-    agent_mode: str = "router"
     mcp_servers: list[McpServerConfig] = field(default_factory=list)
     mcp_bindings: list[BotMcpBinding] = field(default_factory=list)
     max_tool_calls: int = 5
@@ -70,8 +69,6 @@ class Bot:
     eval_model: str = ""  # Eval LLM model
     eval_depth: str = "L1"  # "off" | any combo of "L1", "L2", "L3" joined by "+"
     base_prompt: str = ""       # 空 = 用系統預設
-    router_prompt: str = ""     # 空 = 用系統預設
-    react_prompt: str = ""      # 空 = 用系統預設
     fab_icon_url: str = ""
     widget_enabled: bool = False
     widget_allowed_origins: list[str] = field(default_factory=list)

@@ -33,7 +33,6 @@ class UpdateBotCommand:
     llm_provider: object = _UNSET
     llm_model: object = _UNSET
     show_sources: object = _UNSET
-    agent_mode: object = _UNSET
     audit_mode: object = _UNSET
     eval_provider: object = _UNSET
     eval_model: object = _UNSET
@@ -42,8 +41,6 @@ class UpdateBotCommand:
     mcp_bindings: object = _UNSET
     max_tool_calls: object = _UNSET
     base_prompt: object = _UNSET
-    router_prompt: object = _UNSET
-    react_prompt: object = _UNSET
     widget_enabled: object = _UNSET
     widget_allowed_origins: object = _UNSET
     widget_keep_history: object = _UNSET
@@ -78,13 +75,13 @@ class UpdateBotUseCase:
             "name", "description", "is_active",
             "system_prompt",
             "llm_provider", "llm_model", "show_sources",
-            "agent_mode", "audit_mode",
+            "audit_mode",
             "eval_provider", "eval_model", "eval_depth",
             "max_tool_calls",
             "widget_enabled", "widget_keep_history",
             "widget_welcome_message", "widget_placeholder_text",
             "widget_greeting_animation",
-            "base_prompt", "router_prompt", "react_prompt",
+            "base_prompt",
             "memory_enabled", "memory_extraction_threshold",
             "memory_extraction_prompt",
             "busy_reply_message",

@@ -174,7 +174,6 @@ def post_create_bot_with_mcp(ctx, client):
         "/api/v1/bots",
         json={
             "name": "MCP Bot",
-            "agent_mode": "react",
             "mcp_servers": _MCP_SERVERS_FIXTURE,
         },
         headers=_auth_only(ctx["headers"]),
@@ -216,7 +215,6 @@ def post_create_bot_full(ctx, client):
         "/api/v1/bots",
         json={
             "name": "Full Bot",
-            "agent_mode": "react",
             "audit_mode": "full",
             "max_tool_calls": 10,
             "mcp_servers": [

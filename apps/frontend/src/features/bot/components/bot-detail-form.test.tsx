@@ -1,38 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { renderWithProviders } from "@/test/test-utils";
-import { server } from "@/test/mocks/server";
 import { BotDetailForm } from "@/features/bot/components/bot-detail-form";
 import { mockBot } from "@/test/fixtures/bot";
 import { useAuthStore } from "@/stores/use-auth-store";
-
-function setTenantPermissions(overrides: {
-  allowed_agent_modes?: string[];
-}) {
-  const tenant = {
-    id: "tenant-1",
-    name: "Test Tenant",
-    plan: "pro",
-    allowed_agent_modes: overrides.allowed_agent_modes ?? ["router", "react"],
-    monthly_token_limit: null,
-    created_at: "2024-01-01T00:00:00Z",
-    updated_at: "2024-01-01T00:00:00Z",
-  };
-  // Use wildcard origin to match both relative URLs (jsdom: http://localhost)
-  // and absolute URLs (MSW default: http://localhost:8000)
-  server.use(
-    http.get("*/api/v1/tenants", () => {
-      return HttpResponse.json([tenant]);
-    }),
-  );
-  useAuthStore.setState({
-    token: "test-token",
-    tenantId: "tenant-1",
-    tenants: [tenant],
-  });
-}
 
 describe("BotDetailForm", () => {
   const mockOnSave = vi.fn();
@@ -48,7 +20,6 @@ describe("BotDetailForm", () => {
           id: "tenant-1",
           name: "Test Tenant",
           plan: "pro",
-          allowed_agent_modes: ["router", "react"],
           monthly_token_limit: null,
           created_at: "2024-01-01T00:00:00Z",
           updated_at: "2024-01-01T00:00:00Z",
@@ -233,42 +204,4 @@ describe("BotDetailForm", () => {
     expect(screen.getByText("嵌入碼")).toBeInTheDocument();
   });
 
-  describe("tenant permission controls", () => {
-    it("should show disabled text for react when allowed_agent_modes is ['router']", async () => {
-      setTenantPermissions({ allowed_agent_modes: ["router"] });
-      renderWithProviders(
-        <BotDetailForm
-          bot={mockBot}
-          onSave={mockOnSave}
-          onDelete={mockOnDelete}
-          isSaving={false}
-          isDeleting={false}
-        />,
-      );
-      // Wait for tenant data to load and verify ReAct shows as disabled
-      await waitFor(() => {
-        expect(screen.getByText(/租戶未啟用/)).toBeInTheDocument();
-      });
-    });
-
-    it("should not disable react option when allowed_agent_modes includes react", async () => {
-      setTenantPermissions({ allowed_agent_modes: ["router", "react"] });
-      renderWithProviders(
-        <BotDetailForm
-          bot={mockBot}
-          onSave={mockOnSave}
-          onDelete={mockOnDelete}
-          isSaving={false}
-          isDeleting={false}
-        />,
-      );
-      // Wait for tenant data to load, then verify the visible disabled message
-      // paragraph is absent (ignore Radix hidden native <option> elements)
-      await waitFor(() => {
-        const disabledParagraphs = screen.queryAllByText(/租戶未啟用/)
-          .filter((el) => el.tagName !== "OPTION");
-        expect(disabledParagraphs).toHaveLength(0);
-      });
-    });
-  });
 });

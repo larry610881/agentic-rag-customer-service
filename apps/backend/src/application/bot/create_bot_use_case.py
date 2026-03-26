@@ -32,7 +32,6 @@ class CreateBotCommand:
     llm_provider: str = ""
     llm_model: str = ""
     show_sources: bool = True
-    agent_mode: str = "router"
     audit_mode: str = "minimal"
     eval_provider: str = ""
     eval_model: str = ""
@@ -41,8 +40,6 @@ class CreateBotCommand:
     mcp_bindings: list[dict] = field(default_factory=list)
     max_tool_calls: int = 5
     base_prompt: str = ""
-    router_prompt: str = ""
-    react_prompt: str = ""
     widget_enabled: bool = False
     widget_allowed_origins: list[str] = field(default_factory=list)
     widget_keep_history: bool = True
@@ -105,7 +102,6 @@ class CreateBotUseCase:
             llm_provider=command.llm_provider,
             llm_model=command.llm_model,
             show_sources=command.show_sources,
-            agent_mode=command.agent_mode,
             audit_mode=command.audit_mode,
             eval_provider=command.eval_provider,
             eval_model=command.eval_model,
@@ -136,8 +132,6 @@ class CreateBotUseCase:
             widget_greeting_messages=list(command.widget_greeting_messages),
             widget_greeting_animation=command.widget_greeting_animation,
             base_prompt=command.base_prompt,
-            router_prompt=command.router_prompt,
-            react_prompt=command.react_prompt,
             memory_enabled=command.memory_enabled,
             memory_extraction_threshold=command.memory_extraction_threshold,
             memory_extraction_prompt=command.memory_extraction_prompt,

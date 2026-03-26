@@ -57,7 +57,6 @@ export default function AdminBotsPage() {
                 <TableHead>說明</TableHead>
                 <TableHead>狀態</TableHead>
                 <TableHead>租戶</TableHead>
-                <TableHead>Agent</TableHead>
                 <TableHead>LLM</TableHead>
                 <TableHead>建立時間</TableHead>
               </TableRow>
@@ -83,11 +82,6 @@ export default function AdminBotsPage() {
                   </TableCell>
                   <TableCell>
                     {tenantNameMap.get(bot.tenant_id) ?? bot.tenant_id.slice(0, 8)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={bot.agent_mode === "react" ? "default" : "outline"}>
-                      {bot.agent_mode === "react" ? "ReAct" : "Router"}
-                    </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {bot.llm_model || bot.llm_provider || "-"}

@@ -66,7 +66,7 @@ class RunSingleEvalUseCase:
                 tenant_id=command.tenant_id,
                 bot_id=dataset.bot_id or "",
                 target_prompt=dataset.target_prompt,
-                agent_mode=dataset.agent_mode,
+                agent_mode="react",
                 description=dataset.description,
                 cost_config=CostConfigData(
                     token_budget=cost_cfg.get("token_budget", 2000),
@@ -321,7 +321,6 @@ class EstimateCostUseCase:
         rag_context_tokens = 0
         rag_top_k = 5
         avg_chunk_chars = DEFAULT_AVG_CHUNK_CHARS
-        bot_agent_mode = "router"
 
         # 1. Prompt tokens + RAG config from bot + system config
         tenant_id = ""
@@ -329,7 +328,6 @@ class EstimateCostUseCase:
             try:
                 bot = await self._bot_repo.find_by_id(bot_id)
                 if bot:
-                    bot_agent_mode = bot.agent_mode
                     rag_top_k = bot.llm_params.rag_top_k if hasattr(bot, "llm_params") else 5
                     tenant_id = bot.tenant_id
 
@@ -341,10 +339,6 @@ class EstimateCostUseCase:
                     if self._prompt_config_repo:
                         sys_config = await self._prompt_config_repo.get()
                         sys_chars = len(sys_config.base_prompt or "")
-                        if bot_agent_mode == "router":
-                            sys_chars += len(sys_config.router_mode_prompt or "")
-                        elif bot_agent_mode == "react":
-                            sys_chars += len(sys_config.react_mode_prompt or "")
 
                     prompt_tokens = int((bot_prompt_chars + sys_chars) / CHARS_PER_TOKEN)
             except Exception as e:
@@ -498,7 +492,7 @@ class RunValidationEvalUseCase:
                 tenant_id=command.tenant_id,
                 bot_id=effective_bot_id,
                 target_prompt=dataset.target_prompt,
-                agent_mode=dataset.agent_mode,
+                agent_mode="react",
                 description=dataset.description,
                 cost_config=CostConfigData(
                     token_budget=cost_cfg.get("token_budget", 2000),

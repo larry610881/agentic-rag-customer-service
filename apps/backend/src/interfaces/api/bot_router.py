@@ -28,7 +28,6 @@ from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQ
 router = APIRouter(prefix="/api/v1/bots", tags=["bots"])
 
 
-_VALID_AGENT_MODES = {"router", "react"}
 _VALID_AUDIT_MODES = {"off", "minimal", "full"}
 _VALID_EVAL_DEPTHS = {
     "off", "L1", "L2", "L3",
@@ -90,7 +89,6 @@ class CreateBotRequest(BaseModel):
     llm_provider: str = ""
     llm_model: str = ""
     show_sources: bool = True
-    agent_mode: str = "router"
     audit_mode: str = "minimal"
     eval_provider: str = ""
     eval_model: str = ""
@@ -99,8 +97,6 @@ class CreateBotRequest(BaseModel):
     mcp_bindings: list[dict[str, Any]] = []
     max_tool_calls: int = 5
     base_prompt: str = ""
-    router_prompt: str = ""
-    react_prompt: str = ""
     widget_enabled: bool = False
     widget_allowed_origins: list[str] = []
     widget_keep_history: bool = True
@@ -134,7 +130,6 @@ class UpdateBotRequest(BaseModel):
     llm_provider: str | None = None
     llm_model: str | None = None
     show_sources: bool | None = None
-    agent_mode: str | None = None
     audit_mode: str | None = None
     eval_provider: str | None = None
     eval_model: str | None = None
@@ -143,8 +138,6 @@ class UpdateBotRequest(BaseModel):
     mcp_bindings: list[dict[str, Any]] | None = None
     max_tool_calls: int | None = None
     base_prompt: str | None = None
-    router_prompt: str | None = None
-    react_prompt: str | None = None
     widget_enabled: bool | None = None
     widget_allowed_origins: list[str] | None = None
     widget_keep_history: bool | None = None
@@ -181,7 +174,6 @@ class BotResponse(BaseModel):
     llm_provider: str
     llm_model: str
     show_sources: bool
-    agent_mode: str
     audit_mode: str
     eval_provider: str
     eval_model: str
@@ -190,8 +182,6 @@ class BotResponse(BaseModel):
     mcp_bindings: list[dict[str, Any]]
     max_tool_calls: int
     base_prompt: str
-    router_prompt: str
-    react_prompt: str
     fab_icon_url: str
     widget_enabled: bool
     widget_allowed_origins: list[str]
@@ -232,7 +222,6 @@ def _to_response(bot) -> BotResponse:
         llm_provider=bot.llm_provider,
         llm_model=bot.llm_model,
         show_sources=bot.show_sources,
-        agent_mode=bot.agent_mode,
         audit_mode=bot.audit_mode,
         eval_provider=bot.eval_provider,
         eval_model=bot.eval_model,
@@ -260,8 +249,6 @@ def _to_response(bot) -> BotResponse:
         ],
         max_tool_calls=bot.max_tool_calls,
         base_prompt=bot.base_prompt,
-        router_prompt=bot.router_prompt,
-        react_prompt=bot.react_prompt,
         fab_icon_url=bot.fab_icon_url,
         widget_enabled=bot.widget_enabled,
         widget_allowed_origins=bot.widget_allowed_origins,
@@ -295,11 +282,6 @@ async def create_bot(
         Provide[Container.create_bot_use_case]
     ),
 ) -> BotResponse:
-    if body.agent_mode not in _VALID_AGENT_MODES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"agent_mode must be one of {sorted(_VALID_AGENT_MODES)}",
-        )
     if body.audit_mode not in _VALID_AUDIT_MODES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -333,7 +315,6 @@ async def create_bot(
             llm_provider=body.llm_provider,
             llm_model=body.llm_model,
             show_sources=body.show_sources,
-            agent_mode=body.agent_mode,
             audit_mode=body.audit_mode,
             eval_provider=body.eval_provider,
             eval_model=body.eval_model,
@@ -349,8 +330,6 @@ async def create_bot(
             widget_greeting_messages=body.widget_greeting_messages,
             widget_greeting_animation=body.widget_greeting_animation,
             base_prompt=body.base_prompt,
-            router_prompt=body.router_prompt,
-            react_prompt=body.react_prompt,
             memory_enabled=body.memory_enabled,
             memory_extraction_threshold=body.memory_extraction_threshold,
             memory_extraction_prompt=body.memory_extraction_prompt,
@@ -438,11 +417,6 @@ async def update_bot(
         Provide[Container.update_bot_use_case]
     ),
 ) -> BotResponse:
-    if body.agent_mode is not None and body.agent_mode not in _VALID_AGENT_MODES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"agent_mode must be one of {sorted(_VALID_AGENT_MODES)}",
-        )
     if body.audit_mode is not None and body.audit_mode not in _VALID_AUDIT_MODES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

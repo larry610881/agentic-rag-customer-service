@@ -20,8 +20,6 @@ class GetSystemPromptsUseCase:
 @dataclass(frozen=True)
 class UpdateSystemPromptsCommand:
     base_prompt: str = ""
-    router_mode_prompt: str = ""
-    react_mode_prompt: str = ""
 
 
 class UpdateSystemPromptsUseCase:
@@ -35,8 +33,6 @@ class UpdateSystemPromptsUseCase:
     ) -> SystemPromptConfig:
         config = await self._repo.get()
         config.base_prompt = command.base_prompt
-        config.router_mode_prompt = command.router_mode_prompt
-        config.react_mode_prompt = command.react_mode_prompt
         config.updated_at = datetime.now(timezone.utc)
         await self._repo.save(config)
         return config

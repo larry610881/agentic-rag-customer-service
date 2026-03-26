@@ -46,9 +46,6 @@ class BotModel(Base):
     show_sources: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
-    agent_mode: Mapped[str] = mapped_column(
-        String(10), nullable=False, default="router"
-    )
     mcp_servers: Mapped[list] = mapped_column(
         JSON, nullable=False, default=list
     )
@@ -65,8 +62,6 @@ class BotModel(Base):
         String(20), nullable=False, default="L1", server_default="L1"
     )
     base_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    router_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    react_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     fab_icon_url: Mapped[str] = mapped_column(
         String(512), nullable=False, default="", server_default=""
     )

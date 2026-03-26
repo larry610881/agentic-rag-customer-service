@@ -91,14 +91,6 @@ export default function AdminBotDetailPage() {
               <dd className="mt-1 font-medium">{tenantName}</dd>
             </div>
             <div>
-              <dt className="text-sm text-muted-foreground">Agent 模式</dt>
-              <dd className="mt-1">
-                <Badge variant={bot.agent_mode === "react" ? "default" : "outline"}>
-                  {bot.agent_mode === "react" ? "ReAct" : "Router"}
-                </Badge>
-              </dd>
-            </div>
-            <div>
               <dt className="text-sm text-muted-foreground">LLM</dt>
               <dd className="mt-1 font-medium">{bot.llm_model || bot.llm_provider || "-"}</dd>
             </div>
@@ -182,12 +174,8 @@ export default function AdminBotDetailPage() {
             <CardContent className="flex flex-col gap-6 pt-6">
               <PromptField label="Base Prompt" value={bot.base_prompt} />
               <PromptField label="System Prompt" value={bot.system_prompt} />
-              <PromptField label="Router Prompt" value={bot.router_prompt} />
-              <PromptField label="ReAct Prompt" value={bot.react_prompt} />
               {!bot.base_prompt &&
-                !bot.system_prompt &&
-                !bot.router_prompt &&
-                !bot.react_prompt && (
+                !bot.system_prompt && (
                   <p className="text-muted-foreground">未設定任何 Prompt。</p>
                 )}
             </CardContent>
@@ -264,7 +252,6 @@ export default function AdminBotDetailPage() {
                     )
                   }
                 />
-                <FieldRow label="Agent Mode" value={bot.agent_mode} />
                 <FieldRow label="Audit Mode" value={bot.audit_mode} />
                 <FieldRow label="Eval Depth" value={bot.eval_depth || "-"} />
                 <FieldRow label="Eval Provider" value={bot.eval_provider || "-"} />

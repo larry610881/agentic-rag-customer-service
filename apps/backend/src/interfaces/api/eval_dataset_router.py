@@ -61,7 +61,6 @@ class CreateDatasetRequest(BaseModel):
     bot_id: str | None = None
     description: str = ""
     target_prompt: str = "base_prompt"
-    agent_mode: str = "router"
     default_assertions: list[dict[str, Any]] | None = None
     cost_config: dict[str, Any] | None = None
     include_security: bool = True
@@ -71,7 +70,6 @@ class UpdateDatasetRequest(BaseModel):
     name: str | None = None
     description: str | None = None
     target_prompt: str | None = None
-    agent_mode: str | None = None
     default_assertions: list[dict[str, Any]] | None = None
     cost_config: dict[str, Any] | None = None
     include_security: bool | None = None
@@ -107,7 +105,6 @@ class DatasetResponse(BaseModel):
     name: str
     description: str
     target_prompt: str
-    agent_mode: str
     default_assertions: list[dict[str, Any]]
     cost_config: dict[str, Any]
     include_security: bool
@@ -124,7 +121,6 @@ class DatasetSummaryResponse(BaseModel):
     name: str
     description: str
     target_prompt: str
-    agent_mode: str
     include_security: bool
     test_case_count: int
     created_at: str
@@ -157,7 +153,6 @@ def _to_response(ds: EvalDataset) -> DatasetResponse:
         name=ds.name,
         description=ds.description,
         target_prompt=ds.target_prompt,
-        agent_mode=ds.agent_mode,
         default_assertions=ds.default_assertions,
         cost_config=ds.cost_config,
         include_security=ds.include_security,
@@ -176,7 +171,6 @@ def _to_summary(ds: EvalDataset) -> DatasetSummaryResponse:
         name=ds.name,
         description=ds.description,
         target_prompt=ds.target_prompt,
-        agent_mode=ds.agent_mode,
         include_security=ds.include_security,
         test_case_count=len(ds.test_cases),
         created_at=ds.created_at.isoformat(),
@@ -234,7 +228,6 @@ async def create_dataset(
         bot_id=body.bot_id,
         description=body.description,
         target_prompt=body.target_prompt,
-        agent_mode=body.agent_mode,
         default_assertions=body.default_assertions,
         cost_config=body.cost_config,
         include_security=body.include_security,
@@ -277,7 +270,6 @@ async def update_dataset(
             name=body.name,
             description=body.description,
             target_prompt=body.target_prompt,
-            agent_mode=body.agent_mode,
             default_assertions=body.default_assertions,
             cost_config=body.cost_config,
             include_security=body.include_security,
@@ -355,7 +347,6 @@ async def import_dataset_from_yaml(
             bot_id=ds.metadata.bot_id or None,
             description=ds.metadata.description,
             target_prompt=ds.metadata.target_prompt,
-            agent_mode=ds.metadata.agent_mode,
             default_assertions=[
                 {"type": a.type, "params": a.params} for a in ds.default_assertions
             ],
@@ -429,7 +420,7 @@ async def export_dataset(
             tenant_id=ds_entity.tenant_id,
             bot_id=ds_entity.bot_id or "",
             target_prompt=ds_entity.target_prompt,
-            agent_mode=ds_entity.agent_mode,
+            agent_mode="react",
             description=ds_entity.description,
             cost_config=CostConfigData(
                 token_budget=cost_raw.get("token_budget", 2000),

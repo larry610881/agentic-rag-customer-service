@@ -13,7 +13,6 @@ class UpdateEvalDatasetCommand:
     name: str | None = None
     description: str | None = None
     target_prompt: str | None = None
-    agent_mode: str | None = None
     default_assertions: list[dict[str, Any]] | None = None
     cost_config: dict[str, Any] | None = None
     include_security: bool | None = None
@@ -34,8 +33,6 @@ class UpdateEvalDatasetUseCase:
             dataset.description = command.description
         if command.target_prompt is not None:
             dataset.target_prompt = command.target_prompt
-        if command.agent_mode is not None:
-            dataset.agent_mode = command.agent_mode
         if command.default_assertions is not None:
             dataset.default_assertions = command.default_assertions
         if command.cost_config is not None:

@@ -54,7 +54,6 @@ def _make_bot(mcp_bindings=None, tenant_id="t-1"):
         id=BotId(value="bot-1"),
         tenant_id=tenant_id,
         name="test-bot",
-        agent_mode="react",
         mcp_bindings=mcp_bindings or [],
     )
 

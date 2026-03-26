@@ -45,8 +45,6 @@ class SystemPromptConfig:
 
     id: str = "default"
     base_prompt: str = ""
-    router_mode_prompt: str = ""
-    react_mode_prompt: str = ""
     updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

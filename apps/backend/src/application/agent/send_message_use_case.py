@@ -23,7 +23,6 @@ from src.domain.platform.repository import SystemPromptConfigRepository
 from src.domain.platform.services import EncryptionService
 from src.domain.shared.concurrency import ConversationLock
 from src.domain.shared.exceptions import DomainException
-from src.domain.tenant.repository import TenantRepository
 
 if TYPE_CHECKING:
     from src.application.memory.extract_memory_use_case import (
@@ -64,8 +63,6 @@ class SendMessageUseCase:
         bot_repository: BotRepository | None = None,
         history_strategy: ConversationHistoryStrategy | None = None,
         debug: bool = False,
-        react_agent_service: AgentService | None = None,
-        tenant_repository: TenantRepository | None = None,
         system_prompt_config_repository: SystemPromptConfigRepository | None = None,
         trace_session_factory: Any | None = None,
         rag_evaluation_use_case: "RAGEvaluationUseCase | None" = None,
@@ -82,8 +79,6 @@ class SendMessageUseCase:
         self._bot_repo = bot_repository
         self._history_strategy = history_strategy
         self._debug = debug
-        self._react_agent_service = react_agent_service
-        self._tenant_repo = tenant_repository
         self._trace_session_factory = trace_session_factory
         self._sys_prompt_repo = system_prompt_config_repository
         self._eval_use_case = rag_evaluation_use_case
@@ -117,7 +112,6 @@ class SendMessageUseCase:
             "rag_top_k": None,
             "rag_score_threshold": None,
             "show_sources": True,
-            "agent_mode": "router",
         }
         if not (command.bot_id and self._bot_repo):
             # No bot — still resolve system prompts from DB
@@ -125,7 +119,6 @@ class SendMessageUseCase:
                 sys_cfg = await self._sys_prompt_repo.get()
                 cfg["system_prompt"] = assemble_prompt(
                     base_prompt=sys_cfg.base_prompt,
-                    mode_prompt=sys_cfg.router_mode_prompt,
                 )
             return cfg
         bot = await self._bot_repo.find_by_id(command.bot_id)
@@ -134,7 +127,6 @@ class SendMessageUseCase:
                 sys_cfg = await self._sys_prompt_repo.get()
                 cfg["system_prompt"] = assemble_prompt(
                     base_prompt=sys_cfg.base_prompt,
-                    mode_prompt=sys_cfg.router_mode_prompt,
                 )
             return cfg
         if bot.tenant_id != command.tenant_id:
@@ -166,7 +158,6 @@ class SendMessageUseCase:
         cfg["rag_top_k"] = bot.llm_params.rag_top_k
         cfg["rag_score_threshold"] = bot.llm_params.rag_score_threshold
         cfg["show_sources"] = bot.show_sources
-        cfg["agent_mode"] = bot.agent_mode or "router"
         cfg["mcp_servers"] = [
             {
                 "url": s.url,
@@ -238,51 +229,17 @@ class SendMessageUseCase:
 
         # Resolve prompt overrides: Bot → SystemPromptConfig → Seed
         base_prompt = ""
-        mode_prompt = ""
         if self._sys_prompt_repo:
             sys_cfg = await self._sys_prompt_repo.get()
             base_prompt = bot.base_prompt or sys_cfg.base_prompt
-            mode = cfg["agent_mode"]
-            if mode == "react":
-                mode_prompt = bot.react_prompt or sys_cfg.react_mode_prompt
-            else:
-                mode_prompt = bot.router_prompt or sys_cfg.router_mode_prompt
 
         # Pre-assemble the full system prompt (agent services use it directly)
         cfg["system_prompt"] = assemble_prompt(
             bot_prompt=bot.system_prompt,
-            mode=cfg["agent_mode"],
             base_prompt=base_prompt,
-            mode_prompt=mode_prompt,
         )
 
         return cfg
-
-    async def _resolve_agent_service(
-        self, tenant_id: str, agent_mode: str
-    ) -> AgentService:
-        """Select agent service based on bot's agent_mode and tenant permissions."""
-        if agent_mode == "router":
-            return self._agent_service
-
-        # Check tenant allows the requested mode
-        if self._tenant_repo:
-            tenant = await self._tenant_repo.find_by_id(tenant_id)
-            if tenant and agent_mode not in tenant.allowed_agent_modes:
-                logger.warning(
-                    "agent.mode_fallback",
-                    tenant_id=tenant_id,
-                    requested_mode=agent_mode,
-                    allowed_modes=tenant.allowed_agent_modes,
-                    msg="Bot 設定的 agent_mode 不在租戶允許範圍內，降級為 router",
-                )
-                return self._agent_service
-
-        if self._react_agent_service is None:
-            raise DomainException(
-                "ReAct agent mode is not available"
-            )
-        return self._react_agent_service
 
     async def _resolve_and_load_memory(
         self, command: SendMessageCommand, bot_cfg: dict[str, Any]
@@ -449,12 +406,8 @@ class SendMessageUseCase:
                 else memory_prompt
             )
 
-        agent = await self._resolve_agent_service(
-            command.tenant_id, bot_cfg["agent_mode"]
-        )
-
         t0 = time.perf_counter()
-        response = await agent.process_message(
+        response = await self._agent_service.process_message(
             tenant_id=command.tenant_id,
             kb_id=bot_cfg["kb_id"],
             user_message=command.message,
@@ -529,7 +482,6 @@ class SendMessageUseCase:
                     tool_calls=response.tool_calls,
                     tenant_id=command.tenant_id,
                     trace_id=trace_id,
-                    agent_mode=bot_cfg["agent_mode"],
                     eval_provider=bot_cfg.get("eval_provider", ""),
                     eval_model=bot_cfg.get("eval_model", ""),
                 )
@@ -579,10 +531,6 @@ class SendMessageUseCase:
                 else memory_prompt
             )
 
-        agent = await self._resolve_agent_service(
-            command.tenant_id, bot_cfg["agent_mode"]
-        )
-
         # Stream from agent service
         full_answer = ""
         tool_calls: list[dict[str, Any]] = []
@@ -590,7 +538,7 @@ class SendMessageUseCase:
         refund_step_value: str | None = None
 
         t0 = time.perf_counter()
-        async for event in agent.process_message_stream(
+        async for event in self._agent_service.process_message_stream(
             tenant_id=command.tenant_id,
             kb_id=bot_cfg["kb_id"],
             user_message=command.message,
@@ -684,7 +632,6 @@ class SendMessageUseCase:
                     tool_calls=tool_calls,
                     tenant_id=command.tenant_id,
                     trace_id=trace_id,
-                    agent_mode=bot_cfg["agent_mode"],
                     eval_provider=bot_cfg.get("eval_provider", ""),
                     eval_model=bot_cfg.get("eval_model", ""),
                 )
@@ -763,7 +710,6 @@ class SendMessageUseCase:
         tool_calls: list[dict[str, Any]],
         tenant_id: str,
         trace_id: str,
-        agent_mode: str,
         eval_provider: str = "",
         eval_model: str = "",
     ) -> None:
@@ -840,7 +786,7 @@ class SendMessageUseCase:
                 run_l2=run_l2,
                 run_l3=run_l3,
                 has_rag_sources=has_rag_sources,
-                agent_mode=agent_mode,
+                agent_mode="react",
                 tenant_id=tenant_id,
                 trace_id=trace_id,
             )

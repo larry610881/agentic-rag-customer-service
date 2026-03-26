@@ -8,7 +8,6 @@ export interface Tenant {
   id: string;
   name: string;
   plan: string;
-  allowed_agent_modes: string[];
   monthly_token_limit: number | null;
   created_at: string;
   updated_at: string;

@@ -13,7 +13,6 @@ export interface EvalDataset {
   description: string;
   bot_id: string | null;
   target_prompt: string;
-  agent_mode: string;
   test_case_count: number;
   created_at: string;
   updated_at: string;

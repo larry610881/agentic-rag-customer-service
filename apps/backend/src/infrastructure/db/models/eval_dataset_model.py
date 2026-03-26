@@ -19,7 +19,6 @@ class EvalDatasetModel(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     target_prompt: Mapped[str] = mapped_column(String(50), nullable=False, default="base_prompt")
-    agent_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="router")
     default_assertions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     cost_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     include_security: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

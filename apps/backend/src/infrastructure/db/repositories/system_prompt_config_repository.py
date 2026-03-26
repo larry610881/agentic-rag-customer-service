@@ -20,8 +20,6 @@ class SQLAlchemySystemPromptConfigRepository(SystemPromptConfigRepository):
         return SystemPromptConfig(
             id=model.id,
             base_prompt=model.base_prompt,
-            router_mode_prompt=model.router_mode_prompt,
-            react_mode_prompt=model.react_mode_prompt,
             updated_at=model.updated_at,
         )
 
@@ -46,16 +44,12 @@ class SQLAlchemySystemPromptConfigRepository(SystemPromptConfigRepository):
             )
             if existing:
                 existing.base_prompt = config.base_prompt
-                existing.router_mode_prompt = config.router_mode_prompt
-                existing.react_mode_prompt = config.react_mode_prompt
                 existing.updated_at = datetime.now(timezone.utc)
             else:
                 self._session.add(
                     SystemPromptConfigModel(
                         id=config.id,
                         base_prompt=config.base_prompt,
-                        router_mode_prompt=config.router_mode_prompt,
-                        react_mode_prompt=config.react_mode_prompt,
                         updated_at=config.updated_at,
                     )
                 )

@@ -18,23 +18,12 @@ export const tenantHandlers = [
         id: "tenant-new",
         name: body.name,
         plan: body.plan || "starter",
-        allowed_agent_modes: ["router"],
         monthly_token_limit: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
       { status: 201 },
     );
-  }),
-  http.patch("*/api/v1/tenants/:tenantId/agent-modes", async ({ request, params }) => {
-    const body = (await request.json()) as { allowed_agent_modes: string[] };
-    const tenant = mockTenants.find((t) => t.id === params.tenantId);
-    if (!tenant) return new HttpResponse(null, { status: 404 });
-    return HttpResponse.json({
-      ...tenant,
-      allowed_agent_modes: body.allowed_agent_modes,
-      updated_at: new Date().toISOString(),
-    });
   }),
   http.patch("*/api/v1/tenants/:tenantId/config", async ({ request, params }) => {
     const body = (await request.json()) as { monthly_token_limit: number | null };

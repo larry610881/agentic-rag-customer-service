@@ -5,9 +5,9 @@
 BEGIN;
 SET session_replication_role = 'replica';
 
--- tenants (7 columns)
-INSERT INTO tenants (id, name, plan, allowed_agent_modes, monthly_token_limit, created_at, updated_at)
-VALUES ('00000000-0000-0000-0000-000000000000', '系統', 'system', '["router", "react", "supervisor"]', NULL, '2026-03-16 05:52:21', '2026-03-16 05:52:21')
+-- tenants (6 columns)
+INSERT INTO tenants (id, name, plan, monthly_token_limit, created_at, updated_at)
+VALUES ('00000000-0000-0000-0000-000000000000', '系統', 'system', NULL, '2026-03-16 05:52:21', '2026-03-16 05:52:21')
 ON CONFLICT (id) DO NOTHING;
 
 -- users (7 columns)
@@ -20,12 +20,12 @@ INSERT INTO knowledge_bases (id, tenant_id, name, description, kb_type, created_
 VALUES ('99cfb632-a195-4d08-a80a-924cfc08173d', '00000000-0000-0000-0000-000000000000', '窩廚房', 'demo', 'user', '2026-03-17 01:10:59', '2026-03-17 01:10:59')
 ON CONFLICT (id) DO NOTHING;
 
--- bots (45 columns)
-INSERT INTO bots (id, short_code, tenant_id, name, description, is_active, system_prompt, enabled_tools, llm_provider, llm_model, show_sources, agent_mode, mcp_servers, mcp_bindings, max_tool_calls, audit_mode, eval_provider, eval_model, eval_depth, base_prompt, router_prompt, react_prompt, fab_icon_url, widget_enabled, widget_allowed_origins, widget_keep_history, widget_welcome_message, widget_placeholder_text, widget_greeting_messages, widget_greeting_animation, memory_enabled, memory_extraction_threshold, memory_extraction_prompt, busy_reply_message, line_channel_secret, line_channel_access_token, temperature, max_tokens, history_limit, frequency_penalty, reasoning_effort, rag_top_k, rag_score_threshold, created_at, updated_at)
-VALUES ('100492a9-e711-4dab-a3a0-67ef33a4e3e2', 'IJgMCORo', '00000000-0000-0000-0000-000000000000', '測試工具', '', true, '', '["rag_query"]', 'openai', 'gpt-5.1', true, 'react', '[{"url": "", "name": "npx", "enabled_tools": ["weather_forecast", "weather_archive", "air_quality", "marine_weather", "elevation", "flood_forecast", "seasonal_forecast", "climate_projection", "ensemble_forecast", "geocoding", "dwd_icon_forecast", "gfs_forecast", "meteofrance_forecast", "ecmwf_forecast", "jma_forecast", "metno_forecast", "gem_forecast"], "tools": [], "version": ""}]', '[]', 5, 'off', '', '', 'L1', '', '', '', '', false, '[]', true, '', '', '[]', 'fade', false, 3, '', '小編正在努力回覆中，請稍等一下喔～', NULL, NULL, 0.3, 1024, 10, 0, 'medium', 5, 0.3, '2026-03-17 02:05:23', '2026-03-17 02:47:13')
+-- bots (42 columns)
+INSERT INTO bots (id, short_code, tenant_id, name, description, is_active, system_prompt, enabled_tools, llm_provider, llm_model, show_sources, mcp_servers, mcp_bindings, max_tool_calls, audit_mode, eval_provider, eval_model, eval_depth, base_prompt, fab_icon_url, widget_enabled, widget_allowed_origins, widget_keep_history, widget_welcome_message, widget_placeholder_text, widget_greeting_messages, widget_greeting_animation, memory_enabled, memory_extraction_threshold, memory_extraction_prompt, busy_reply_message, line_channel_secret, line_channel_access_token, temperature, max_tokens, history_limit, frequency_penalty, reasoning_effort, rag_top_k, rag_score_threshold, created_at, updated_at)
+VALUES ('100492a9-e711-4dab-a3a0-67ef33a4e3e2', 'IJgMCORo', '00000000-0000-0000-0000-000000000000', '測試工具', '', true, '', '["rag_query"]', 'openai', 'gpt-5.1', true, '[{"url": "", "name": "npx", "enabled_tools": ["weather_forecast", "weather_archive", "air_quality", "marine_weather", "elevation", "flood_forecast", "seasonal_forecast", "climate_projection", "ensemble_forecast", "geocoding", "dwd_icon_forecast", "gfs_forecast", "meteofrance_forecast", "ecmwf_forecast", "jma_forecast", "metno_forecast", "gem_forecast"], "tools": [], "version": ""}]', '[]', 5, 'off', '', '', 'L1', '', '', false, '[]', true, '', '', '[]', 'fade', false, 3, '', '小編正在努力回覆中，請稍等一下喔～', NULL, NULL, 0.3, 1024, 10, 0, 'medium', 5, 0.3, '2026-03-17 02:05:23', '2026-03-17 02:47:13')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO bots (id, short_code, tenant_id, name, description, is_active, system_prompt, enabled_tools, llm_provider, llm_model, show_sources, agent_mode, mcp_servers, mcp_bindings, max_tool_calls, audit_mode, eval_provider, eval_model, eval_depth, base_prompt, router_prompt, react_prompt, fab_icon_url, widget_enabled, widget_allowed_origins, widget_keep_history, widget_welcome_message, widget_placeholder_text, widget_greeting_messages, widget_greeting_animation, memory_enabled, memory_extraction_threshold, memory_extraction_prompt, busy_reply_message, line_channel_secret, line_channel_access_token, temperature, max_tokens, history_limit, frequency_penalty, reasoning_effort, rag_top_k, rag_score_threshold, created_at, updated_at)
+INSERT INTO bots (id, short_code, tenant_id, name, description, is_active, system_prompt, enabled_tools, llm_provider, llm_model, show_sources, mcp_servers, mcp_bindings, max_tool_calls, audit_mode, eval_provider, eval_model, eval_depth, base_prompt, fab_icon_url, widget_enabled, widget_allowed_origins, widget_keep_history, widget_welcome_message, widget_placeholder_text, widget_greeting_messages, widget_greeting_animation, memory_enabled, memory_extraction_threshold, memory_extraction_prompt, busy_reply_message, line_channel_secret, line_channel_access_token, temperature, max_tokens, history_limit, frequency_penalty, reasoning_effort, rag_top_k, rag_score_threshold, created_at, updated_at)
 VALUES ('86441a14-8940-45db-8bdf-00f4396363ad', 'SpOwiz2x', '00000000-0000-0000-0000-000000000000', '窩廚房客服', 'DEMO
 ', true, '# 窩小幫 — 桂冠窩廚房智慧客服助手
 
@@ -37,7 +37,7 @@ VALUES ('86441a14-8940-45db-8bdf-00f4396363ad', 'SpOwiz2x', '00000000-0000-0000-
 - 適度用「～」「！」增加親和力，不要生硬客服口吻
 - **回答控制在 50～100 字，能一句話說完就不要兩句**
 - 需要列舉多項資訊時（如多堂課程），最多 150 字，用條列呈現
-- 先直接回答 → 有需要再延伸推薦 1 個相關內容（不要每次都推）', '["rag_query"]', 'openai', 'gpt-5.1', false, 'react', '[{"url": "http://localhost:9000/mcp", "name": "http://localhost:9000/mcp", "enabled_tools": ["search_products", "search_courses"], "tools": [], "version": ""}]', '[]', 5, 'full', 'openai', 'gpt-5.1', 'L1+L2+L3', '', '', '', '', true, '["http://localhost:7777"]', true, '', '', '["歡迎來到窩廚房~"]', 'fade', false, 3, '', '窩小幫正在努力回覆中，請稍等一下喔～', NULL, NULL, 0.3, 1024, 10, 0, 'medium', 5, 0.3, '2026-03-17 01:12:19', '2026-03-17 02:28:47')
+- 先直接回答 → 有需要再延伸推薦 1 個相關內容（不要每次都推）', '["rag_query"]', 'openai', 'gpt-5.1', false, '[{"url": "http://localhost:9000/mcp", "name": "http://localhost:9000/mcp", "enabled_tools": ["search_products", "search_courses"], "tools": [], "version": ""}]', '[]', 5, 'full', 'openai', 'gpt-5.1', 'L1+L2+L3', '', '', true, '["http://localhost:7777"]', true, '', '', '["歡迎來到窩廚房~"]', 'fade', false, 3, '', '窩小幫正在努力回覆中，請稍等一下喔～', NULL, NULL, 0.3, 1024, 10, 0, 'medium', 5, 0.3, '2026-03-17 01:12:19', '2026-03-17 02:28:47')
 ON CONFLICT (id) DO NOTHING;
 
 -- bot_knowledge_bases (3 columns)
@@ -74,16 +74,17 @@ INSERT INTO provider_settings (id, provider_type, provider_name, display_name, i
 VALUES ('82950ca1-dc14-4980-a892-388a0cda08df', 'llm', 'deepseek', 'DeepSeek', false, '', '', '[{"model_id": "deepseek-chat", "display_name": "DeepSeek V3.2", "is_default": true, "is_enabled": true, "price": "$0.27/$1.10", "description": "", "input_price": 0.27, "output_price": 1.1}, {"model_id": "deepseek-reasoner", "display_name": "DeepSeek R1", "is_default": false, "is_enabled": false, "price": "$0.55/$2.19", "description": "", "input_price": 0.55, "output_price": 2.19}]', '{}', '2026-03-16 05:52:21', '2026-03-17 01:10:47')
 ON CONFLICT (id) DO NOTHING;
 
--- system_prompt_configs (5 columns)
-INSERT INTO system_prompt_configs (id, base_prompt, router_mode_prompt, react_mode_prompt, updated_at)
+-- system_prompt_configs (3 columns)
+INSERT INTO system_prompt_configs (id, base_prompt, updated_at)
 VALUES ('default', '你是一個專業的客服助手，用友善且專業的語氣與用戶對話。
 行為準則：
 1. 回答必須基於提供的工具結果或知識庫內容，不可自行編造或幻覺。
 2. 如果沒有相關資訊，誠實告知用戶，不要強行引用不相關的內容。
 3. 回答應簡潔完整，避免冗餘但不遺漏重要資訊。
 4. 保持一致的品牌語調，親切但專業。
-5.今天是{today}', '如果有提供工具結果，請根據工具結果回答用戶的問題，確保準確、完整。
-如果沒有工具結果，或工具結果與用戶問題無關，請自然地回應用戶（例如打招呼、閒聊）。', '推理策略：
+5.今天是{today}
+
+推理策略：
 1. 你擁有多個工具可以查詢即時資料（課程、商品、知識庫等）。收到用戶問題後，優先考慮是否需要呼叫工具取得最新資訊。
 2. 涉及課程、商品、價格、名額、時間、講師等具體資訊時，必須使用工具查詢，不可憑記憶回答。
 3. 每次只呼叫必要的工具，避免重複查詢相同內容。同一個工具不要用不同參數重複呼叫。

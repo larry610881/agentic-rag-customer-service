@@ -66,7 +66,6 @@ class StartRunUseCase:
             "description": dataset.description,
             "bot_id": dataset.bot_id,
             "target_prompt": dataset.target_prompt,
-            "agent_mode": dataset.agent_mode,
             "default_assertions": list(dataset.default_assertions or []),
             "cost_config": dict(dataset.cost_config or {}),
             "test_cases": [
@@ -163,7 +162,7 @@ class StartRunUseCase:
                     tenant_id=command.tenant_id,
                     bot_id=ds.get("bot_id") or "",
                     target_prompt=ds["target_prompt"],
-                    agent_mode=ds.get("agent_mode", "router"),
+                    agent_mode="react",
                     description=ds.get("description", ""),
                     cost_config=CostConfigData(
                         token_budget=cost_cfg.get("token_budget", 2000),

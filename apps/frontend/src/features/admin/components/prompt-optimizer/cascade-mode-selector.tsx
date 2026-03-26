@@ -16,8 +16,6 @@ interface CascadeModeSelectorProps {
 
 const TARGET_FIELDS = [
   { value: "base_prompt", label: "基礎 Prompt" },
-  { value: "router_prompt", label: "Router 模式 Prompt" },
-  { value: "react_prompt", label: "ReAct 模式 Prompt" },
   { value: "system_prompt", label: "系統 Prompt" },
 ] as const;
 
@@ -93,13 +91,12 @@ export function CascadeModeSelector({
         <div className="space-y-2 rounded-md border bg-muted/30 p-3">
           <p className="text-sm font-medium">串聯順序</p>
           <div className="flex items-center gap-2 text-sm">
-            <span className="rounded bg-primary/10 px-2 py-0.5">模式 Prompt</span>
-            <span className="text-xs text-muted-foreground">(Router/ReAct)</span>
+            <span className="rounded bg-primary/10 px-2 py-0.5">基礎 Prompt</span>
             <span className="text-muted-foreground">→</span>
             <span className="rounded bg-primary/10 px-2 py-0.5">Bot 系統 Prompt</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            先優化模式 Prompt 取得最佳版本，鎖定後再優化 Bot 專屬 Prompt。基礎 Prompt 為系統保護層，不納入串聯優化。
+            先優化基礎 Prompt 取得最佳版本，鎖定後再優化 Bot 專屬 Prompt。
           </p>
         </div>
       )}

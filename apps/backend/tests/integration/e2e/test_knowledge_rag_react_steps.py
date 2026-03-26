@@ -6,7 +6,6 @@ from tests.integration.e2e.conftest import (
     create_bot,
     create_kb,
     create_tenant_and_login,
-    enable_react_mode,
     send_chat,
     upload_doc,
 )
@@ -23,12 +22,10 @@ scenarios("e2e/knowledge_rag_react_flow.feature")
     parsers.parse('已建立租戶 "{name}" 並取得 token 並啟用 react'),
     target_fixture="ctx",
 )
-def setup_tenant_react(e2e_react_client, e2e_app_react, name):
+def setup_tenant_react(e2e_client, e2e_app, name):
     ctx = {}
-    ctx["headers"] = create_tenant_and_login(e2e_react_client, name, app=e2e_app_react)
-    ctx["client"] = e2e_react_client
-    # Enable react mode for this tenant (requires system_admin)
-    enable_react_mode(e2e_react_client, ctx["headers"], app=e2e_app_react)
+    ctx["headers"] = create_tenant_and_login(e2e_client, name, app=e2e_app)
+    ctx["client"] = e2e_client
     return ctx
 
 
@@ -59,7 +56,6 @@ def setup_bot(ctx, name, mode):
         ctx["headers"],
         name,
         [ctx["kb_id"]],
-        agent_mode=mode,
     )
 
 
@@ -74,7 +70,6 @@ def setup_bot_audit(ctx, name, mode, audit):
         ctx["headers"],
         name,
         [ctx["kb_id"]],
-        agent_mode=mode,
         audit_mode=audit,
     )
 
@@ -90,7 +85,6 @@ def setup_bot_max_calls(ctx, name, mode, max_calls):
         ctx["headers"],
         name,
         [ctx["kb_id"]],
-        agent_mode=mode,
         max_tool_calls=max_calls,
     )
 

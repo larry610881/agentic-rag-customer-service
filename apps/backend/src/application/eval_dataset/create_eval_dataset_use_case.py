@@ -13,7 +13,6 @@ class CreateEvalDatasetCommand:
     bot_id: str | None = None
     description: str = ""
     target_prompt: str = "base_prompt"
-    agent_mode: str = "router"
     default_assertions: list[dict[str, Any]] | None = None
     cost_config: dict[str, Any] | None = None
     include_security: bool = True
@@ -31,7 +30,6 @@ class CreateEvalDatasetUseCase:
             name=command.name,
             description=command.description,
             target_prompt=command.target_prompt,
-            agent_mode=command.agent_mode,
             default_assertions=command.default_assertions or [],
             cost_config=command.cost_config or {},
             include_security=command.include_security,

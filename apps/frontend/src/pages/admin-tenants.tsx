@@ -58,7 +58,6 @@ export default function AdminTenantsPage() {
               <TableRow>
                 <TableHead>名稱</TableHead>
                 <TableHead>方案</TableHead>
-                <TableHead>Agent 模式</TableHead>
                 <TableHead>月 Token 上限</TableHead>
                 <TableHead>建立時間</TableHead>
                 <TableHead className="w-[80px]">操作</TableHead>
@@ -70,9 +69,6 @@ export default function AdminTenantsPage() {
                   <TableCell className="font-medium">{tenant.name}</TableCell>
                   <TableCell>
                     <Badge variant="outline">{tenant.plan}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {tenant.allowed_agent_modes.join(", ")}
                   </TableCell>
                   <TableCell>
                     {tenant.monthly_token_limit != null

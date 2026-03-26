@@ -255,7 +255,7 @@ class RAGEvaluationUseCase:
         run_l2: bool = False,
         run_l3: bool = False,
         has_rag_sources: bool = False,
-        agent_mode: str = "router",
+        agent_mode: str = "react",
         tenant_id: str = "",
         trace_id: str | None = None,
         message_id: str | None = None,

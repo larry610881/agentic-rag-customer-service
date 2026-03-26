@@ -7,7 +7,6 @@ export const API_ENDPOINTS = {
     list: "/api/v1/tenants",
     create: "/api/v1/tenants",
     config: (id: string) => `/api/v1/tenants/${id}/config`,
-    agentModes: (id: string) => `/api/v1/tenants/${id}/agent-modes`,
   },
   knowledgeBases: {
     list: "/api/v1/knowledge-bases",

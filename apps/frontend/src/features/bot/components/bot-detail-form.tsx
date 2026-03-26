@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { useForm, Controller, type UseFormRegister } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Copy, Check, ChevronRight, Globe, ImageIcon, Plus, Trash2, Upload } from "lucide-react";
-import { useTenants } from "@/hooks/queries/use-tenants";
+import { Copy, Check, Globe, ImageIcon, Plus, Trash2, Upload } from "lucide-react";
 import { API_BASE, PUBLIC_API_URL } from "@/lib/api-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +36,6 @@ import type { Bot, UpdateBotRequest } from "@/types/bot";
 import type { McpToolInfo } from "@/types/mcp";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { McpBindingsSection } from "./mcp-bindings-section";
-import { useSystemPrompts } from "@/hooks/queries/use-system-prompts";
 
 const AVAILABLE_TOOLS = [
   { value: "rag_query", label: "知識庫查詢" },
@@ -60,7 +58,6 @@ const botFormSchema = z.object({
   rag_top_k: z.coerce.number().int().min(1).max(20),
   rag_score_threshold: z.coerce.number().min(0).max(1),
   show_sources: z.boolean(),
-  agent_mode: z.enum(["router", "react"]),
   audit_mode: z.enum(["off", "minimal", "full"]),
   eval_provider: z.string().optional(),
   eval_model: z.string().optional(),
@@ -74,8 +71,6 @@ const botFormSchema = z.object({
   })),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
   base_prompt: z.string().default(""),
-  router_prompt: z.string().default(""),
-  react_prompt: z.string().default(""),
   widget_enabled: z.boolean().default(false),
   widget_allowed_origins: z.string().default(""),
   widget_keep_history: z.boolean().default(true),
@@ -130,60 +125,6 @@ function WebhookCopyButton({ url, label = "Webhook URL" }: { url: string; label?
   );
 }
 
-function PromptOverrideField({
-  id,
-  label,
-  description,
-  register,
-  fieldName,
-  systemDefault,
-}: {
-  id: string;
-  label: string;
-  description: string;
-  register: UseFormRegister<BotFormValues>;
-  fieldName: "base_prompt" | "router_prompt" | "react_prompt";
-  systemDefault?: string;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const placeholder = systemDefault
-    ? systemDefault.slice(0, 80) + (systemDefault.length > 80 ? "..." : "")
-    : "";
-
-  return (
-    <section className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={id}>
-          {label}（{description}）
-        </Label>
-        {systemDefault && (
-          <button
-            type="button"
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setExpanded(!expanded)}
-          >
-            <ChevronRight
-              className={`h-3 w-3 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
-            />
-            查看目前系統預設
-          </button>
-        )}
-        {expanded && systemDefault && (
-          <pre className="whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs text-muted-foreground max-h-40 overflow-y-auto">
-            {systemDefault}
-          </pre>
-        )}
-      </div>
-      <Textarea
-        id={id}
-        {...register(fieldName)}
-        rows={5}
-        placeholder={placeholder}
-      />
-    </section>
-  );
-}
-
 export function BotDetailForm({
   bot,
   onSave,
@@ -193,14 +134,7 @@ export function BotDetailForm({
 }: BotDetailFormProps) {
   const { data: kbData } = useKnowledgeBases();
   const { data: enabledModels } = useEnabledModels();
-  const { data: systemPrompts } = useSystemPrompts();
   const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.KNOWLEDGE);
-
-  // Tenant permission check for agent modes
-  const tenantId = useAuthStore((s) => s.tenantId);
-  const { data: tenantsData } = useTenants();
-  const currentTenant = tenantsData?.items?.find((t) => t.id === tenantId);
-  const allowedModes = currentTenant?.allowed_agent_modes ?? ["router"];
 
   const {
     register,
@@ -229,7 +163,6 @@ export function BotDetailForm({
       rag_top_k: bot.rag_top_k,
       rag_score_threshold: bot.rag_score_threshold,
       show_sources: bot.show_sources,
-      agent_mode: bot.agent_mode ?? "router",
       audit_mode: bot.audit_mode ?? "minimal",
       eval_provider: bot.eval_provider ?? "",
       eval_model: bot.eval_model ?? "",
@@ -237,8 +170,6 @@ export function BotDetailForm({
       mcp_servers: bot.mcp_servers ?? [],
       max_tool_calls: bot.max_tool_calls ?? 5,
       base_prompt: bot.base_prompt ?? "",
-      router_prompt: bot.router_prompt ?? "",
-      react_prompt: bot.react_prompt ?? "",
       widget_enabled: bot.widget_enabled ?? false,
       widget_allowed_origins: (bot.widget_allowed_origins ?? []).join("\n"),
       widget_keep_history: bot.widget_keep_history ?? true,
@@ -254,7 +185,6 @@ export function BotDetailForm({
   });
 
   const enabledTools = watch("enabled_tools") ?? [];
-  const agentMode = watch("agent_mode");
   const showSources = watch("show_sources");
   const greetingMessages = watch("widget_greeting_messages") ?? [];
   const mcpServers = watch("mcp_servers") ?? [];
@@ -300,7 +230,6 @@ export function BotDetailForm({
       rag_top_k: bot.rag_top_k,
       rag_score_threshold: bot.rag_score_threshold,
       show_sources: bot.show_sources,
-      agent_mode: bot.agent_mode ?? "router",
       audit_mode: bot.audit_mode ?? "minimal",
       eval_provider: bot.eval_provider ?? "",
       eval_model: bot.eval_model ?? "",
@@ -308,8 +237,6 @@ export function BotDetailForm({
       mcp_servers: bot.mcp_servers ?? [],
       max_tool_calls: bot.max_tool_calls ?? 5,
       base_prompt: bot.base_prompt ?? "",
-      router_prompt: bot.router_prompt ?? "",
-      react_prompt: bot.react_prompt ?? "",
       widget_enabled: bot.widget_enabled ?? false,
       widget_allowed_origins: (bot.widget_allowed_origins ?? []).join("\n"),
       widget_keep_history: bot.widget_keep_history ?? true,
@@ -415,37 +342,6 @@ export function BotDetailForm({
 
         {/* Tab 1: RAG 知識庫 */}
         <TabsContent value={TAB_KEYS.KNOWLEDGE} className="flex flex-col gap-6 pt-4">
-          {/* Agent 模式 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">Agent 模式</h3>
-            <p className="text-sm text-muted-foreground">
-              Router 使用純 RAG 查詢；ReAct 額外支援 MCP Tools（如資料庫查詢）。
-            </p>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="bot-agent-mode">模式</Label>
-              <Controller
-                name="agent_mode"
-                control={control}
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger id="bot-agent-mode" className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="router">Router（純 RAG）</SelectItem>
-                      <SelectItem
-                        value="react"
-                        disabled={!allowedModes.includes("react")}
-                      >
-                        ReAct（RAG + Tools）{!allowedModes.includes("react") && " — 租戶未啟用"}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
-          </section>
-
           {/* Audit 模式 */}
           <section className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold">Audit 記錄模式</h3>
@@ -667,17 +563,15 @@ export function BotDetailForm({
             </section>
           )}
 
-          {/* MCP 設定 (ReAct 模式才顯示) */}
-          {agentMode === "react" && (
-            <McpBindingsSection
-              mcpServers={mcpServers}
-              onMcpServersChange={(servers) => setValue("mcp_servers", servers)}
-              serverToolsMap={serverToolsMap}
-              setServerToolsMap={setServerToolsMap}
-              registerMaxToolCalls={register("max_tool_calls")}
-              maxToolCallsError={errors.max_tool_calls?.message}
-            />
-          )}
+          {/* MCP 設定 */}
+          <McpBindingsSection
+            mcpServers={mcpServers}
+            onMcpServersChange={(servers) => setValue("mcp_servers", servers)}
+            serverToolsMap={serverToolsMap}
+            setServerToolsMap={setServerToolsMap}
+            registerMaxToolCalls={register("max_tool_calls")}
+            maxToolCallsError={errors.max_tool_calls?.message}
+          />
 
           {/* 回覆顯示設定 */}
           <section className="flex flex-col gap-4">
@@ -722,25 +616,6 @@ export function BotDetailForm({
             </div>
           </section>
 
-          {/* Router 模式 Prompt */}
-          <PromptOverrideField
-            id="bot-router-prompt"
-            label="Router 模式 Prompt"
-            description="留空則採用系統預設"
-            register={register}
-            fieldName="router_prompt"
-            systemDefault={systemPrompts?.router_mode_prompt}
-          />
-
-          {/* ReAct 模式 Prompt */}
-          <PromptOverrideField
-            id="bot-react-prompt"
-            label="ReAct 模式 Prompt"
-            description="留空則採用系統預設"
-            register={register}
-            fieldName="react_prompt"
-            systemDefault={systemPrompts?.react_mode_prompt}
-          />
         </TabsContent>
 
         {/* Tab 3: LLM 參數 */}

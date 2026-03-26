@@ -53,7 +53,6 @@ class SQLAlchemyBotRepository(BotRepository):
             llm_provider=model.llm_provider or "",
             llm_model=model.llm_model or "",
             show_sources=model.show_sources,
-            agent_mode=model.agent_mode or "router",
             mcp_servers=[
                 McpServerConfig(
                     url=s.get("url", ""),
@@ -87,8 +86,6 @@ class SQLAlchemyBotRepository(BotRepository):
             eval_model=model.eval_model or "",
             eval_depth=model.eval_depth or "L1",
             base_prompt=model.base_prompt or "",
-            router_prompt=model.router_prompt or "",
-            react_prompt=model.react_prompt or "",
             fab_icon_url=model.fab_icon_url or "",
             widget_enabled=model.widget_enabled if model.widget_enabled is not None else False,
             widget_allowed_origins=list(model.widget_allowed_origins or []),
@@ -150,7 +147,6 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.llm_provider = bot.llm_provider
                 existing.llm_model = bot.llm_model
                 existing.show_sources = bot.show_sources
-                existing.agent_mode = bot.agent_mode
                 existing.mcp_servers = [
                     {
                         "url": s.url,
@@ -181,8 +177,6 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.eval_model = bot.eval_model
                 existing.eval_depth = bot.eval_depth
                 existing.base_prompt = bot.base_prompt
-                existing.router_prompt = bot.router_prompt
-                existing.react_prompt = bot.react_prompt
                 existing.fab_icon_url = bot.fab_icon_url
                 existing.widget_enabled = bot.widget_enabled
                 existing.widget_allowed_origins = bot.widget_allowed_origins
@@ -218,7 +212,6 @@ class SQLAlchemyBotRepository(BotRepository):
                     llm_provider=bot.llm_provider,
                     llm_model=bot.llm_model,
                     show_sources=bot.show_sources,
-                    agent_mode=bot.agent_mode,
                     mcp_servers=[
                         {
                             "url": s.url,
@@ -249,8 +242,6 @@ class SQLAlchemyBotRepository(BotRepository):
                     eval_model=bot.eval_model,
                     eval_depth=bot.eval_depth,
                     base_prompt=bot.base_prompt,
-                    router_prompt=bot.router_prompt,
-                    react_prompt=bot.react_prompt,
                     fab_icon_url=bot.fab_icon_url,
                     widget_enabled=bot.widget_enabled,
                     widget_allowed_origins=bot.widget_allowed_origins,

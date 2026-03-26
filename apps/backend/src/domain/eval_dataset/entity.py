@@ -27,7 +27,6 @@ class EvalDataset:
     name: str = ""
     description: str = ""
     target_prompt: str = "base_prompt"
-    agent_mode: str = "router"
     default_assertions: list[dict[str, Any]] = field(default_factory=list)
     cost_config: dict[str, Any] = field(default_factory=dict)
     include_security: bool = True
