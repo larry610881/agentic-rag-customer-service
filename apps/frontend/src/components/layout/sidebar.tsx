@@ -64,10 +64,15 @@ export function Sidebar() {
   const isCollapsed = useSidebarStore((s) => s.isCollapsed);
   const toggle = useSidebarStore((s) => s.toggle);
   const role = useAuthStore((s) => s.role);
+  const tenants = useAuthStore((s) => s.tenants);
+  const tenantId = useAuthStore((s) => s.tenantId);
   const [adminOpen, setAdminOpen] = useState(true);
   const [generalOpen, setGeneralOpen] = useState(true);
 
   const isSystemAdmin = role === "system_admin";
+  const sidebarTitle = isSystemAdmin
+    ? "系統管理"
+    : (tenants.find((t) => t.id === tenantId)?.name ?? "AI 客服");
 
   return (
     <aside
@@ -78,7 +83,9 @@ export function Sidebar() {
     >
       <div className="flex h-14 items-center justify-between border-b border-primary/20 px-3">
         {!isCollapsed && (
-          <h1 className="truncate text-lg font-semibold font-heading tracking-wider text-primary">AI 應用 Team</h1>
+          <h1 className="truncate text-lg font-semibold font-heading tracking-wider text-primary">
+            {sidebarTitle}
+          </h1>
         )}
         <Button
           variant="ghost"

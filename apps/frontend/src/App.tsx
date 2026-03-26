@@ -73,9 +73,15 @@ function PageFallback() {
 
 export function App() {
   return (
-    <Suspense fallback={<PageFallback />}>
-      <Routes>
-        <Route path={ROUTES.LOGIN} element={<LoginPage />} />
+    <Routes>
+      <Route
+        path={ROUTES.LOGIN}
+        element={
+          <Suspense fallback={<PageFallback />}>
+            <LoginPage />
+          </Suspense>
+        }
+      />
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>
@@ -206,6 +212,5 @@ export function App() {
         />
         <Route path="*" element={<Navigate to={ROUTES.CHAT} replace />} />
       </Routes>
-    </Suspense>
   );
 }
