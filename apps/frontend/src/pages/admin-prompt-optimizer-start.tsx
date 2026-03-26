@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ModelSelect } from "@/components/shared/model-select";
 import { ROUTES } from "@/routes/paths";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { useTenants } from "@/hooks/queries/use-tenants";
@@ -270,31 +271,26 @@ export default function AdminPromptOptimizerStartPage() {
 
               <div className="space-y-2">
                 <Label>Mutator 模型</Label>
-                <Select
-                  value={selectedModel}
-                  onValueChange={setSelectedModel}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="選擇模型（用於生成優化提示詞）" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {models.map((m) => (
-                      <SelectItem key={m.model_id} value={m.model_id}>
-                        <div className="flex items-center gap-2">
-                          <span>{m.display_name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {m.provider_name}
-                          </span>
-                          {m.price && (
-                            <span className="text-xs text-muted-foreground">
-                              {m.price}
-                            </span>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ModelSelect
+                  value={
+                    selectedModel
+                      ? (models.find((m) => m.model_id === selectedModel)
+                          ? `${models.find((m) => m.model_id === selectedModel)!.provider_name}:${selectedModel}`
+                          : "")
+                      : ""
+                  }
+                  onValueChange={(combined) => {
+                    if (combined === "__none__") {
+                      setSelectedModel("");
+                    } else {
+                      const [, modelId] = combined.split(":");
+                      setSelectedModel(modelId);
+                    }
+                  }}
+                  enabledModels={enabledModels}
+                  allowEmpty
+                  placeholder="選擇模型（用於生成優化提示詞）"
+                />
                 <p className="text-xs text-muted-foreground">
                   用於分析失敗案例並生成改進版提示詞的 LLM 模型。建議選擇性價比高的模型。
                 </p>

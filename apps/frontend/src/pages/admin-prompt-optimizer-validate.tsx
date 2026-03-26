@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ModelSelect } from "@/components/shared/model-select";
 import { ROUTES } from "@/routes/paths";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { useTenants } from "@/hooks/queries/use-tenants";
@@ -242,31 +243,26 @@ export default function AdminPromptOptimizerValidatePage() {
 
             <div className="space-y-2">
               <Label>評估模型</Label>
-              <Select
-                value={selectedModel}
-                onValueChange={setSelectedModel}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="使用 Bot 預設模型" />
-                </SelectTrigger>
-                <SelectContent>
-                  {models.map((m) => (
-                    <SelectItem key={m.model_id} value={m.model_id}>
-                      <div className="flex items-center gap-2">
-                        <span>{m.display_name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {m.provider_name}
-                        </span>
-                        {m.price && (
-                          <span className="text-xs text-muted-foreground">
-                            {m.price}
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ModelSelect
+                value={
+                  selectedModel
+                    ? (models.find((m) => m.model_id === selectedModel)
+                        ? `${models.find((m) => m.model_id === selectedModel)!.provider_name}:${selectedModel}`
+                        : "")
+                    : ""
+                }
+                onValueChange={(combined) => {
+                  if (combined === "__none__") {
+                    setSelectedModel("");
+                  } else {
+                    const [, modelId] = combined.split(":");
+                    setSelectedModel(modelId);
+                  }
+                }}
+                enabledModels={enabledModels}
+                allowEmpty
+                placeholder="使用 Bot 預設模型"
+              />
               <p className="text-xs text-muted-foreground">
                 不選則使用 Bot 設定的 LLM 模型
               </p>

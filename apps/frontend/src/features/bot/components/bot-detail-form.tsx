@@ -31,7 +31,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
-import { ModelSelect } from "./model-select";
+import { ModelSelect } from "@/components/shared/model-select";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import type { Bot, UpdateBotRequest } from "@/types/bot";
 import type { McpToolInfo } from "@/types/mcp";
