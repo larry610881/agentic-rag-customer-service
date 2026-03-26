@@ -216,12 +216,29 @@ async def list_feedback(
 @router.get("/stats", response_model=FeedbackStatsResponse)
 @inject
 async def get_feedback_stats(
+    start_date: date | None = None,
+    end_date: date | None = None,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetFeedbackStatsUseCase = Depends(
         Provide[Container.get_feedback_stats_use_case]
     ),
 ) -> FeedbackStatsResponse:
-    stats = await use_case.execute(tenant.tenant_id)
+    if start_date is None and end_date is None:
+        dt_end = datetime.now(timezone.utc)
+        dt_start = dt_end - timedelta(days=30)
+    else:
+        dt_start = (
+            datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+            if start_date
+            else None
+        )
+        dt_end = (
+            datetime.combine(end_date, datetime.min.time(), tzinfo=timezone.utc)
+            if end_date
+            else None
+        )
+
+    stats = await use_case.execute(tenant.tenant_id, dt_start, dt_end)
     return FeedbackStatsResponse(
         total=stats.total,
         thumbs_up=stats.thumbs_up,

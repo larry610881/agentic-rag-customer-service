@@ -29,7 +29,8 @@ export const queryKeys = {
     detail: (id: string) => ["conversations", "detail", id] as const,
   },
   feedback: {
-    stats: (tenantId: string) => ["feedback", "stats", tenantId] as const,
+    stats: (tenantId: string, startDate: string, endDate: string) =>
+      ["feedback", "stats", tenantId, startDate, endDate] as const,
     byConversation: (conversationId: string) =>
       ["feedback", "conversation", conversationId] as const,
     list: (tenantId: string) => ["feedback", "list", tenantId] as const,

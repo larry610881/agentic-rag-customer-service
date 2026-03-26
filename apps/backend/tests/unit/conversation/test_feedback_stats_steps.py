@@ -29,7 +29,7 @@ def context():
 def setup_feedback_data(context):
     mock_feedback_repo = AsyncMock(spec=FeedbackRepository)
 
-    async def mock_count(tenant_id, rating=None):
+    async def mock_count(tenant_id, rating=None, start_date=None, end_date=None):
         if rating is None:
             return 10
         if rating == Rating.THUMBS_UP:

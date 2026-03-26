@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import asdict, dataclass
+from datetime import datetime
 
 from src.domain.conversation.feedback_repository import FeedbackRepository
 from src.domain.conversation.feedback_value_objects import Rating
@@ -27,8 +28,17 @@ class GetFeedbackStatsUseCase:
         self._cache_service = cache_service
         self._cache_ttl = cache_ttl
 
-    async def execute(self, tenant_id: str) -> FeedbackStats:
+    async def execute(
+        self,
+        tenant_id: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> FeedbackStats:
         cache_key = f"feedback_stats:{tenant_id}"
+        if start_date:
+            cache_key += f":{start_date.isoformat()}"
+        if end_date:
+            cache_key += f":{end_date.isoformat()}"
         if self._cache_service is not None:
             cached = await self._cache_service.get(cache_key)
             if cached is not None:
@@ -36,10 +46,10 @@ class GetFeedbackStatsUseCase:
                 return FeedbackStats(**d)
 
         thumbs_up = await self._feedback_repo.count_by_tenant_and_rating(
-            tenant_id, Rating.THUMBS_UP
+            tenant_id, Rating.THUMBS_UP, start_date=start_date, end_date=end_date
         )
         thumbs_down = await self._feedback_repo.count_by_tenant_and_rating(
-            tenant_id, Rating.THUMBS_DOWN
+            tenant_id, Rating.THUMBS_DOWN, start_date=start_date, end_date=end_date
         )
         total = thumbs_up + thumbs_down
 

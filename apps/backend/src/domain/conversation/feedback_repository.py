@@ -34,7 +34,11 @@ class FeedbackRepository(ABC):
 
     @abstractmethod
     async def count_by_tenant_and_rating(
-        self, tenant_id: str, rating: Rating | None = None
+        self,
+        tenant_id: str,
+        rating: Rating | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> int: ...
 
     @abstractmethod

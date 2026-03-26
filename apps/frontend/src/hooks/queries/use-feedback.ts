@@ -36,21 +36,21 @@ export function useSubmitFeedback() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.feedback.stats(tenantId ?? ""),
+        queryKey: ["feedback", "stats", tenantId ?? ""],
       });
     },
   });
 }
 
-export function useFeedbackStats() {
+export function useFeedbackStats(startDate: string, endDate: string) {
   const token = useAuthStore((s) => s.token);
   const tenantId = useAuthStore((s) => s.tenantId);
 
   return useQuery({
-    queryKey: queryKeys.feedback.stats(tenantId ?? ""),
+    queryKey: queryKeys.feedback.stats(tenantId ?? "", startDate, endDate),
     queryFn: () =>
       apiFetch<FeedbackStats>(
-        API_ENDPOINTS.feedback.stats,
+        `${API_ENDPOINTS.feedback.stats}?start_date=${startDate}&end_date=${endDate}`,
         {},
         token ?? undefined,
       ),

@@ -107,13 +107,21 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
         return [self._to_entity(r) for r in result.scalars().all()]
 
     async def count_by_tenant_and_rating(
-        self, tenant_id: str, rating: Rating | None = None
+        self,
+        tenant_id: str,
+        rating: Rating | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> int:
         stmt = select(func.count()).select_from(FeedbackModel).where(
             FeedbackModel.tenant_id == tenant_id
         )
         if rating is not None:
             stmt = stmt.where(FeedbackModel.rating == rating.value)
+        if start_date:
+            stmt = stmt.where(FeedbackModel.created_at >= start_date)
+        if end_date:
+            stmt = stmt.where(FeedbackModel.created_at < end_date)
         result = await self._session.execute(stmt)
         return result.scalar_one()
 

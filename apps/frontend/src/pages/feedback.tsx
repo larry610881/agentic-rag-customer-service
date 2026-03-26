@@ -51,7 +51,7 @@ export default function FeedbackPage() {
   const [startDate, setStartDate] = useState(defaults.startDate);
   const [endDate, setEndDate] = useState(defaults.endDate);
 
-  const stats = useFeedbackStats();
+  const stats = useFeedbackStats(startDate, endDate);
   const trend = useSatisfactionTrend(startDate, endDate);
   const issues = useTopIssues(startDate, endDate, 10);
 
