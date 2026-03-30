@@ -33,6 +33,12 @@ class UsageRecordModel(Base):
     estimated_cost: Mapped[float] = mapped_column(
         Float, nullable=False, default=0.0
     )
+    cache_read_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    cache_creation_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
     message_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True
     )

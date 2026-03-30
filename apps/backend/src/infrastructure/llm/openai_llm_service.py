@@ -123,18 +123,34 @@ class OpenAILLMService(LLMService):
             data = resp.json()
             text = data["choices"][0]["message"]["content"]
             usage_data = data.get("usage", {})
+
+            # Extract cache tokens (DeepSeek vs OpenAI)
+            ds_hit = usage_data.get("prompt_cache_hit_tokens", 0)
+            ds_miss = usage_data.get("prompt_cache_miss_tokens", 0)
+            if ds_hit or ds_miss:
+                input_tokens = ds_miss
+                cache_read = ds_hit
+            else:
+                prompt_details = usage_data.get("prompt_tokens_details") or {}
+                cached = prompt_details.get("cached_tokens", 0)
+                raw_input = usage_data.get("prompt_tokens", 0)
+                cache_read = cached
+                input_tokens = raw_input - cache_read
+
             usage = calculate_usage(
                 model=self._model,
-                input_tokens=usage_data.get("prompt_tokens", 0),
+                input_tokens=input_tokens,
                 output_tokens=usage_data.get("completion_tokens", 0),
                 pricing=self._pricing,
+                cache_read_tokens=cache_read,
             )
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
             log.info(
                 "llm.openai.done",
                 latency_ms=elapsed_ms,
-                input_tokens=usage_data.get("prompt_tokens", 0),
+                input_tokens=input_tokens,
                 output_tokens=usage_data.get("completion_tokens", 0),
+                cache_read_tokens=cache_read,
             )
             return LLMResult(text=text, usage=usage)
         except httpx.HTTPStatusError as e:
@@ -201,17 +217,32 @@ class OpenAILLMService(LLMService):
                     # Capture usage from final chunk (stream_options)
                     if usage_collector is not None and event.get("usage"):
                         u = event["usage"]
+                        # Extract cache tokens (DeepSeek vs OpenAI)
+                        _ds_hit = u.get("prompt_cache_hit_tokens", 0)
+                        _ds_miss = u.get("prompt_cache_miss_tokens", 0)
+                        if _ds_hit or _ds_miss:
+                            _inp = _ds_miss
+                            _cr = _ds_hit
+                        else:
+                            _details = u.get("prompt_tokens_details") or {}
+                            _cached = _details.get("cached_tokens", 0)
+                            _raw = u.get("prompt_tokens", 0)
+                            _cr = _cached
+                            _inp = _raw - _cr
                         usage = calculate_usage(
                             model=self._model,
-                            input_tokens=u.get("prompt_tokens", 0),
+                            input_tokens=_inp,
                             output_tokens=u.get("completion_tokens", 0),
                             pricing=self._pricing,
+                            cache_read_tokens=_cr,
                         )
                         usage_collector["model"] = usage.model
                         usage_collector["input_tokens"] = usage.input_tokens
                         usage_collector["output_tokens"] = usage.output_tokens
                         usage_collector["total_tokens"] = usage.total_tokens
                         usage_collector["estimated_cost"] = usage.estimated_cost
+                        usage_collector["cache_read_tokens"] = usage.cache_read_tokens
+                        usage_collector["cache_creation_tokens"] = usage.cache_creation_tokens
                         elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
                         logger.info(
                             "llm.openai.stream.done",

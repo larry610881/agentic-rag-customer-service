@@ -68,10 +68,17 @@ class AnthropicLLMService(LLMService):
             if context.strip()
             else user_message
         )
+        # Use structured system block with cache_control for prompt caching
         body: dict = {
             "model": self._model,
             "max_tokens": max_tokens if max_tokens is not None else self._max_tokens,
-            "system": system_prompt,
+            "system": [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             "messages": [{"role": "user", "content": content}],
         }
         if temperature is not None:
@@ -107,11 +114,15 @@ class AnthropicLLMService(LLMService):
             data = resp.json()
             text = data["content"][0]["text"]
             usage_data = data.get("usage", {})
+            cache_read = usage_data.get("cache_read_input_tokens", 0)
+            cache_creation = usage_data.get("cache_creation_input_tokens", 0)
             usage = calculate_usage(
                 model=self._model,
                 input_tokens=usage_data.get("input_tokens", 0),
                 output_tokens=usage_data.get("output_tokens", 0),
                 pricing=self._pricing,
+                cache_read_tokens=cache_read,
+                cache_creation_tokens=cache_creation,
             )
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
             log.info(
@@ -119,6 +130,8 @@ class AnthropicLLMService(LLMService):
                 latency_ms=elapsed_ms,
                 input_tokens=usage_data.get("input_tokens", 0),
                 output_tokens=usage_data.get("output_tokens", 0),
+                cache_read_tokens=cache_read,
+                cache_creation_tokens=cache_creation,
             )
             return LLMResult(text=text, usage=usage)
         except Exception:
@@ -146,6 +159,8 @@ class AnthropicLLMService(LLMService):
         body["stream"] = True
         input_tokens = 0
         output_tokens = 0
+        cache_read_tokens = 0
+        cache_creation_tokens = 0
         async with self._client.stream(
             "POST",
             f"{self._base_url}/messages",
@@ -165,6 +180,8 @@ class AnthropicLLMService(LLMService):
                         msg = event.get("message", {})
                         u = msg.get("usage", {})
                         input_tokens = u.get("input_tokens", 0)
+                        cache_read_tokens = u.get("cache_read_input_tokens", 0)
+                        cache_creation_tokens = u.get("cache_creation_input_tokens", 0)
                     # Capture usage from message_delta
                     elif event.get("type") == "message_delta":
                         u = event.get("usage", {})
@@ -175,15 +192,19 @@ class AnthropicLLMService(LLMService):
                         if text:
                             yield text
         # Write final usage to collector
-        if usage_collector is not None and (input_tokens or output_tokens):
+        if usage_collector is not None and (input_tokens or output_tokens or cache_read_tokens):
             usage = calculate_usage(
                 model=self._model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 pricing=self._pricing,
+                cache_read_tokens=cache_read_tokens,
+                cache_creation_tokens=cache_creation_tokens,
             )
             usage_collector["model"] = usage.model
             usage_collector["input_tokens"] = usage.input_tokens
             usage_collector["output_tokens"] = usage.output_tokens
             usage_collector["total_tokens"] = usage.total_tokens
             usage_collector["estimated_cost"] = usage.estimated_cost
+            usage_collector["cache_read_tokens"] = usage.cache_read_tokens
+            usage_collector["cache_creation_tokens"] = usage.cache_creation_tokens

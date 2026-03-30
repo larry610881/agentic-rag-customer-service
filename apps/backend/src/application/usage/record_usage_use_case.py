@@ -36,6 +36,8 @@ class RecordUsageUseCase:
             output_tokens=usage.output_tokens,
             total_tokens=usage.total_tokens,
             estimated_cost=cost,
+            cache_read_tokens=usage.cache_read_tokens,
+            cache_creation_tokens=usage.cache_creation_tokens,
             bot_id=bot_id,
         )
         await self._repo.save(record)
@@ -49,8 +51,13 @@ class RecordUsageUseCase:
         for provider_models in DEFAULT_MODELS.values():
             for m in provider_models.get("llm", []):
                 if m.get("input_price", 0) > 0 or m.get("output_price", 0) > 0:
-                    pricing[m["model_id"]] = {
+                    entry: dict[str, float] = {
                         "input": m["input_price"],
                         "output": m["output_price"],
                     }
+                    if m.get("cache_read_price", 0) > 0:
+                        entry["cache_read"] = m["cache_read_price"]
+                    if m.get("cache_creation_price", 0) > 0:
+                        entry["cache_creation"] = m["cache_creation_price"]
+                    pricing[m["model_id"]] = entry
         return calculate_usage(model, input_tokens, output_tokens, pricing).estimated_cost

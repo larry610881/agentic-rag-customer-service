@@ -44,6 +44,8 @@ class TokenUsage:
     output_tokens: int
     total_tokens: int
     estimated_cost: float = 0.0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
 
     @staticmethod
     def zero(model: str = "unknown") -> TokenUsage:
@@ -62,6 +64,8 @@ class TokenUsage:
             output_tokens=self.output_tokens + other.output_tokens,
             total_tokens=self.total_tokens + other.total_tokens,
             estimated_cost=self.estimated_cost + other.estimated_cost,
+            cache_read_tokens=self.cache_read_tokens + other.cache_read_tokens,
+            cache_creation_tokens=self.cache_creation_tokens + other.cache_creation_tokens,
         )
 
 

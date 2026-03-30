@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Cache-Aware Token 計費 — Provider-Agnostic 正規化 + 4 段計費公式擴展](#cache-aware-token-計費--provider-agnostic-正規化--4-段計費公式擴展)
 - [Prompt Optimizer 儀表板增強 — JSON Column 擴展 + Polling/DB 雙源圖表策略](#prompt-optimizer-儀表板增強--json-column-擴展--pollingdb-雙源圖表策略)
 - [Prompt Optimizer 全棧 + 驗收評估 — DDD 新 BC + CLI/API 雙入口 + Statistical Validation](#prompt-optimizer-全棧--驗收評估--ddd-新-bc--cliapi-雙入口--statistical-validation)
 - [JSON Record-Based Chunking — Content-Type 感知分塊 + Parser/Splitter 職責分離](#json-record-based-chunking--content-type-感知分塊--parsersplitter-職責分離)
@@ -68,6 +69,37 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Cache-Aware Token 計費 — Provider-Agnostic 正規化 + 4 段計費公式擴展
+
+**來源**：P0（計費準確性修正）+ P1（Anthropic Prompt Caching 啟用）
+**日期**：2026-03-30
+**涉及層級**：Domain → Application → Infrastructure（跨 3 層 + DB Migration）
+
+### 背景
+
+LLM API 實際回傳 4 段 token（input / output / cache_read / cache_creation），但系統只記 2 段。
+OpenAI / DeepSeek 的 cache 已自動生效但系統用全價算（帳面偏高），Anthropic 未啟用 cache（真的在多付錢）。
+
+### 做得好的地方
+
+- **Provider-Agnostic 正規化**：每個 LLMService 負責將 `input_tokens` 正規化為「非快取 input」，`calculate_usage()` 不需要知道來源供應商。OpenAI `prompt_tokens - cached_tokens`、Anthropic `input_tokens`（原值）、DeepSeek `prompt_cache_miss_tokens`，統一後公式只有一個
+- **完全向後相容**：新增的 `cache_read_tokens` / `cache_creation_tokens` 全部 `default=0`，既有 10 個 BDD scenarios 零修改全過，DB migration 用 `ADD COLUMN IF NOT EXISTS DEFAULT 0`
+- **pricing dict 可擴展設計**：`cache_read` / `cache_creation` 作為可選 key，未設定時有合理預設值（input × 10% / input × 125%），不破壞既有 pricing 結構
+- **DeepSeek 相容處理**：DeepSeek 用 OpenAI-compatible endpoint，在 `OpenAILLMService` 中偵測 `prompt_cache_hit_tokens` 欄位自動切換提取邏輯，不需額外 service class
+
+### 潛在隱憂
+
+- **Anthropic `input_tokens` 語意差異** → Anthropic 的 `input_tokens` 不含 cache（三段互斥加總），其他供應商的 `prompt_tokens` 含 cache（子集關係）。正規化策略雖然解決了 `calculate_usage` 的統一性，但如果未來有人直接讀 DB 的 `input_tokens` 欄位做跨供應商比較，會得到不一致的數字 → 建議：若做跨供應商報表，用 `input_tokens + cache_read_tokens + cache_creation_tokens` 作為「總 input」→ 優先級：低
+- **LangChain `input_token_details` 結構未標準化** → LangChain 的 `usage_metadata.input_token_details` 在不同 provider/版本的 key 名稱不同（Anthropic: `cache_read`、OpenAI: `cached`），目前用 `or` fallback 處理，但 LangChain 升版可能改動 → 建議：升版時跑 integration test 驗證 → 優先級：中
+- **Anthropic cache 靜默失敗** → System prompt 低於模型門檻（Sonnet 4.6: 2,048 tokens）時 cache request 仍成功但 `cache_creation_input_tokens = 0`，沒有 error → 建議：加 log warning 當 cache_creation = 0 且 system prompt 夠長時提示 → 優先級：低
+
+### 延伸學習
+
+- **Strategy Pattern for Pricing**：目前用 pricing dict 的可選 key 區分計費邏輯，若未來供應商計費規則更複雜（如 Google 按時間計費 storage），可考慮抽出 `PricingStrategy` interface per provider
+- **若想深入**：搜尋「Multi-Provider LLM Cost Tracking」、「Anthropic Prompt Caching Best Practices」
 
 ---
 

@@ -75,6 +75,9 @@ MIGRATIONS = [
     "ALTER TABLE bots ADD COLUMN IF NOT EXISTS widget_welcome_message VARCHAR(500) NOT NULL DEFAULT ''",
     "ALTER TABLE bots ADD COLUMN IF NOT EXISTS widget_placeholder_text VARCHAR(200) NOT NULL DEFAULT ''",
     "ALTER TABLE bots ADD COLUMN IF NOT EXISTS busy_reply_message VARCHAR(500) NOT NULL DEFAULT '小編正在努力回覆中，請稍等一下喔～'",
+    # Cache-aware token billing
+    "ALTER TABLE token_usage_records ADD COLUMN IF NOT EXISTS cache_read_tokens INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE token_usage_records ADD COLUMN IF NOT EXISTS cache_creation_tokens INTEGER NOT NULL DEFAULT 0",
 ]
 
 # ── Tenants ────────────────────────────────────────────────────

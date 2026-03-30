@@ -19,6 +19,8 @@ def extract_usage_from_langchain_messages(
     """
     total_input = 0
     total_output = 0
+    total_cache_read = 0
+    total_cache_creation = 0
     model_name = "unknown"
 
     for msg in messages:
@@ -30,13 +32,21 @@ def extract_usage_from_langchain_messages(
         total_input += meta.get("input_tokens", 0)
         total_output += meta.get("output_tokens", 0)
 
+        # Extract cache tokens from LangChain input_token_details
+        details = meta.get("input_token_details") or {}
+        if details:
+            # Anthropic: cache_read / cache_creation
+            # OpenAI: cached
+            total_cache_read += details.get("cache_read", 0) or details.get("cached", 0)
+            total_cache_creation += details.get("cache_creation", 0)
+
         resp_meta = getattr(msg, "response_metadata", None) or {}
         if resp_meta.get("model_name"):
             model_name = resp_meta["model_name"]
         elif resp_meta.get("model"):
             model_name = resp_meta["model"]
 
-    total = total_input + total_output
+    total = total_input + total_output + total_cache_read + total_cache_creation
     if total == 0:
         return None
 
@@ -45,6 +55,8 @@ def extract_usage_from_langchain_messages(
         input_tokens=total_input,
         output_tokens=total_output,
         total_tokens=total,
+        cache_read_tokens=total_cache_read,
+        cache_creation_tokens=total_cache_creation,
     )
 
 
@@ -58,6 +70,8 @@ def extract_usage_from_accumulated(acc: dict[str, Any]) -> TokenUsage | None:
         output_tokens=acc.get("output_tokens", 0),
         total_tokens=acc.get("total_tokens", 0),
         estimated_cost=acc.get("estimated_cost", 0.0),
+        cache_read_tokens=acc.get("cache_read_tokens", 0),
+        cache_creation_tokens=acc.get("cache_creation_tokens", 0),
     )
 
 
@@ -72,4 +86,6 @@ def build_usage_event(usage: TokenUsage | None) -> dict[str, Any] | None:
         "output_tokens": usage.output_tokens,
         "total_tokens": usage.total_tokens,
         "estimated_cost": usage.estimated_cost,
+        "cache_read_tokens": usage.cache_read_tokens,
+        "cache_creation_tokens": usage.cache_creation_tokens,
     }
