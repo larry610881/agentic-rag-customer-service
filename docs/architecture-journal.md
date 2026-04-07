@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Cache Token 追蹤修復 — Provider 語意差異正規化 + Fallback 成本完整性](#cache-token-追蹤修復--provider-語意差異正規化--fallback-成本完整性)
 - [Cache-Aware Token 計費 — Provider-Agnostic 正規化 + 4 段計費公式擴展](#cache-aware-token-計費--provider-agnostic-正規化--4-段計費公式擴展)
 - [Prompt Optimizer 儀表板增強 — JSON Column 擴展 + Polling/DB 雙源圖表策略](#prompt-optimizer-儀表板增強--json-column-擴展--pollingdb-雙源圖表策略)
 - [Prompt Optimizer 全棧 + 驗收評估 — DDD 新 BC + CLI/API 雙入口 + Statistical Validation](#prompt-optimizer-全棧--驗收評估--ddd-新-bc--cliapi-雙入口--statistical-validation)
@@ -69,6 +70,35 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Cache Token 追蹤修復 — Provider 語意差異正規化 + Fallback 成本完整性
+
+**來源**：Bug Fix（Token 計費正確性）
+**日期**：2026-04-07
+**涉及層級**：Infrastructure → Application → Interfaces（後端跨 3 層 + 前端 type/component）
+
+### 本次相關主題
+
+Provider-Specific Token 語意正規化、Streaming 路徑資料完整性、Fallback 成本計算
+
+### 做得好的地方
+
+- **根因分析徹底**：從一個 streaming cache tokens 遺失的表面 bug，追溯到 provider 間 `input_tokens` 語意差異（Anthropic 排除 cache / OpenAI 包含 cache），再發現 fallback 成本計算也未傳 cache tokens，共修復 3 個關聯 bug
+- **正規化在提取層統一處理**：不需要 Strategy Pattern，只在 `extract_usage_from_langchain_messages()` 一處偵測 provider 風格並正規化，下游 TokenUsage VO / pricing / DB 全部不需改動
+- **重用現有函式**：stream 路徑改用已存在的 `extract_usage_from_accumulated()` 而非手動建構，消除重複邏輯
+- **Regression tests 覆蓋 provider 差異**：分別為 OpenAI 和 Anthropic 風格建立獨立 BDD scenario，確保正規化邏輯可驗證
+
+### 潛在隱憂
+
+- **LangChain 版本升級風險** — `usage_metadata.input_token_details` 的 key 名稱（`cache_read` vs `cached`）是 LangChain 內部實作，未來版本可能變動 → 建議：升級 LangChain 時優先跑 token usage 相關測試 → 優先級：中
+- **Google Gemini 未驗證** — `langchain-google-genai` 的 `input_token_details` 格式尚未實測，可能需要額外 key（如 `cached_content`）→ 建議：接入 Gemini 時補充 regression test → 優先級：低
+
+### 延伸學習
+
+- **Token Accounting Semantics**：不同 LLM provider 對「input tokens」的定義不同，這是多 provider 系統必須面對的正規化問題。類似於金融系統中不同幣別的換算 — 必須在入口統一，而非在每個消費端各自處理
+- 若想深入：搜尋 "LangChain usage_metadata provider differences"、"Anthropic prompt caching billing"
 
 ---
 
