@@ -222,24 +222,21 @@ async def agent_chat_stream(
 
         # Record usage after stream completes
         if usage_data:
-            from src.domain.rag.value_objects import TokenUsage
-
-            usage = TokenUsage(
-                model=usage_data.get("model", "unknown"),
-                input_tokens=usage_data.get("input_tokens", 0),
-                output_tokens=usage_data.get("output_tokens", 0),
-                total_tokens=usage_data.get("total_tokens", 0),
-                estimated_cost=usage_data.get("estimated_cost", 0.0),
+            from src.infrastructure.langgraph.usage import (
+                extract_usage_from_accumulated,
             )
-            try:
-                await record_usage.execute(
-                    tenant_id=tenant.tenant_id,
-                    request_type="agent",
-                    usage=usage,
-                    bot_id=request.bot_id,
-                )
-            except Exception:
-                logger.exception("agent.chat.stream.record_usage_error")
+
+            usage = extract_usage_from_accumulated(usage_data)
+            if usage is not None:
+                try:
+                    await record_usage.execute(
+                        tenant_id=tenant.tenant_id,
+                        request_type="agent",
+                        usage=usage,
+                        bot_id=request.bot_id,
+                    )
+                except Exception:
+                    logger.exception("agent.chat.stream.record_usage_error")
 
     return StreamingResponse(
         event_generator(),

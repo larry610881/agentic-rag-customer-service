@@ -26,6 +26,7 @@ class RecordUsageUseCase:
         if cost == 0.0 and usage.total_tokens > 0:
             cost = self._estimate_cost_from_registry(
                 usage.model, usage.input_tokens, usage.output_tokens,
+                usage.cache_read_tokens, usage.cache_creation_tokens,
             )
 
         record = UsageRecord(
@@ -44,7 +45,11 @@ class RecordUsageUseCase:
 
     @staticmethod
     def _estimate_cost_from_registry(
-        model: str, input_tokens: int, output_tokens: int,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        cache_read_tokens: int = 0,
+        cache_creation_tokens: int = 0,
     ) -> float:
         """從 DEFAULT_MODELS registry 查定價，計算成本。"""
         pricing: dict[str, dict[str, float]] = {}
@@ -60,4 +65,8 @@ class RecordUsageUseCase:
                     if m.get("cache_creation_price", 0) > 0:
                         entry["cache_creation"] = m["cache_creation_price"]
                     pricing[m["model_id"]] = entry
-        return calculate_usage(model, input_tokens, output_tokens, pricing).estimated_cost
+        return calculate_usage(
+            model, input_tokens, output_tokens, pricing,
+            cache_read_tokens=cache_read_tokens,
+            cache_creation_tokens=cache_creation_tokens,
+        ).estimated_cost

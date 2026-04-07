@@ -49,6 +49,8 @@ export function TokenUsageDetailTable({ data, isLoading }: TokenUsageDetailTable
               <TableHead className="text-right">訊息數</TableHead>
               <TableHead className="text-right">輸入 Tokens</TableHead>
               <TableHead className="text-right">輸出 Tokens</TableHead>
+              <TableHead className="text-right">Cache Read</TableHead>
+              <TableHead className="text-right">Cache Write</TableHead>
               <TableHead className="text-right">預估成本</TableHead>
             </TableRow>
           </TableHeader>
@@ -66,6 +68,12 @@ export function TokenUsageDetailTable({ data, isLoading }: TokenUsageDetailTable
                 </TableCell>
                 <TableCell className="text-right">
                   {row.output_tokens.toLocaleString()}
+                </TableCell>
+                <TableCell className="text-right">
+                  {row.cache_read_tokens.toLocaleString()}
+                </TableCell>
+                <TableCell className="text-right">
+                  {row.cache_creation_tokens.toLocaleString()}
                 </TableCell>
                 <TableCell className="text-right">
                   ${row.estimated_cost.toFixed(4)}

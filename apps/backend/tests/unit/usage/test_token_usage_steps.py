@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
+from langchain_core.messages import AIMessage
+
 from src.application.rag.query_rag_use_case import QueryRAGCommand, QueryRAGUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.domain.rag.value_objects import LLMResult, SearchResult, TokenUsage
@@ -236,3 +238,156 @@ def verify_output_sum(context):
 @then("結果的 estimated_cost 應為兩者之和")
 def verify_cost_sum(context):
     assert abs(context["sum_usage"].estimated_cost - 0.003) < 1e-10
+
+
+# --- Scenario: extract_usage_from_accumulated 保留 cache tokens ---
+
+
+@given("一個包含 cache tokens 的 accumulated usage dict")
+def setup_accumulated_with_cache(context):
+    context["acc"] = {
+        "model": "claude-sonnet-4-6",
+        "input_tokens": 1000,
+        "output_tokens": 200,
+        "total_tokens": 1700,
+        "estimated_cost": 0.01,
+        "cache_read_tokens": 400,
+        "cache_creation_tokens": 100,
+    }
+
+
+@when("用 extract_usage_from_accumulated 轉換")
+def run_extract_accumulated(context):
+    from src.infrastructure.langgraph.usage import extract_usage_from_accumulated
+
+    context["result"] = extract_usage_from_accumulated(context["acc"])
+
+
+@then("結果應包含 cache_read_tokens 和 cache_creation_tokens")
+def verify_accumulated_cache(context):
+    result = context["result"]
+    assert result.cache_read_tokens == 400
+    assert result.cache_creation_tokens == 100
+    assert result.input_tokens == 1000
+    assert result.output_tokens == 200
+
+
+# --- Scenario: OpenAI 風格 — input_tokens 包含 cached ---
+
+
+@given("一組 OpenAI 風格的 AIMessage 其 input_tokens 包含 cached")
+def setup_openai_messages(context):
+    from unittest.mock import MagicMock
+
+    msg = MagicMock(spec=AIMessage)
+    # OpenAI: input_tokens=1000 (includes 300 cached), output_tokens=200
+    msg.usage_metadata = {
+        "input_tokens": 1000,
+        "output_tokens": 200,
+        "input_token_details": {"cached": 300},
+    }
+    msg.response_metadata = {"model_name": "gpt-5.1"}
+    context["messages"] = [msg]
+
+
+@when("用 extract_usage_from_langchain_messages 提取")
+def run_extract_langchain(context):
+    from src.infrastructure.langgraph.usage import (
+        extract_usage_from_langchain_messages,
+    )
+
+    context["result"] = extract_usage_from_langchain_messages(context["messages"])
+
+
+@then("input_tokens 應已扣除 cached 避免重複計算")
+def verify_openai_input_normalized(context):
+    # 1000 (raw) - 300 (cached) = 700 (non-cached input)
+    assert context["result"].input_tokens == 700
+
+
+@then("cache_read_tokens 應等於 cached 數量")
+def verify_openai_cache_read(context):
+    assert context["result"].cache_read_tokens == 300
+
+
+# --- Scenario: Anthropic 風格 — input_tokens 不含 cache ---
+
+
+@given("一組 Anthropic 風格的 AIMessage 其 input_tokens 不含 cache")
+def setup_anthropic_messages(context):
+    from unittest.mock import MagicMock
+
+    msg = MagicMock(spec=AIMessage)
+    # Anthropic: input_tokens=500 (excludes cache), cache_read=300, cache_creation=100
+    msg.usage_metadata = {
+        "input_tokens": 500,
+        "output_tokens": 200,
+        "input_token_details": {"cache_read": 300, "cache_creation": 100},
+    }
+    msg.response_metadata = {"model_name": "claude-sonnet-4-6"}
+    context["messages"] = [msg]
+
+
+@when("用 extract_usage_from_langchain_messages 提取", target_fixture="result")
+def run_extract_langchain_anthropic(context):
+    from src.infrastructure.langgraph.usage import (
+        extract_usage_from_langchain_messages,
+    )
+
+    context["result"] = extract_usage_from_langchain_messages(context["messages"])
+
+
+@then("input_tokens 應維持原始值不扣除")
+def verify_anthropic_input_preserved(context):
+    assert context["result"].input_tokens == 500
+
+
+@then("cache_read_tokens 應等於 cache_read 數量")
+def verify_anthropic_cache_read(context):
+    assert context["result"].cache_read_tokens == 300
+
+
+@then("cache_creation_tokens 應等於 cache_creation 數量")
+def verify_anthropic_cache_creation(context):
+    assert context["result"].cache_creation_tokens == 100
+
+
+# --- Scenario: RecordUsageUseCase fallback 成本計算含 cache tokens ---
+
+
+@given("一筆含 cache tokens 但 estimated_cost 為 0 的 TokenUsage")
+def setup_cache_usage_zero_cost(context):
+    context["mock_repo"] = AsyncMock(spec=UsageRepository)
+    context["use_case"] = RecordUsageUseCase(
+        usage_repository=context["mock_repo"],
+    )
+    # Anthropic 風格：input=500(非快取), cache_read=300, cache_creation=100
+    context["usage"] = TokenUsage(
+        model="claude-sonnet-4-6",
+        input_tokens=500,
+        output_tokens=200,
+        total_tokens=1100,
+        estimated_cost=0.0,
+        cache_read_tokens=300,
+        cache_creation_tokens=100,
+    )
+    # 計算只含 input+output 的基準成本（不含 cache）
+    from src.domain.rag.pricing import calculate_usage
+
+    base = calculate_usage(
+        model="claude-sonnet-4-6",
+        input_tokens=500,
+        output_tokens=200,
+        pricing={"claude-sonnet-4-6": {"input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_creation": 3.75}},
+    )
+    context["base_cost"] = base.estimated_cost
+
+
+@then("儲存的成本應高於只算 input+output 的成本")
+def verify_fallback_includes_cache(context):
+    saved = context["mock_repo"].save.call_args[0][0]
+    base_cost = context["base_cost"]
+    assert saved.estimated_cost > base_cost, (
+        f"expected > {base_cost}, got {saved.estimated_cost} "
+        f"(cache tokens should add to cost)"
+    )

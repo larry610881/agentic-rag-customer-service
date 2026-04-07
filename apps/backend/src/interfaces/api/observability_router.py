@@ -156,6 +156,8 @@ async def get_token_usage(
                 func.sum(UsageRecordModel.output_tokens).label("output_tokens"),
                 func.sum(UsageRecordModel.total_tokens).label("total_tokens"),
                 func.sum(UsageRecordModel.estimated_cost).label("estimated_cost"),
+                func.sum(UsageRecordModel.cache_read_tokens).label("cache_read_tokens"),
+                func.sum(UsageRecordModel.cache_creation_tokens).label("cache_creation_tokens"),
                 func.count().label("message_count"),
             )
             .outerjoin(
@@ -194,6 +196,8 @@ async def get_token_usage(
                 "output_tokens": r.output_tokens or 0,
                 "total_tokens": r.total_tokens or 0,
                 "estimated_cost": float(r.estimated_cost or 0),
+                "cache_read_tokens": r.cache_read_tokens or 0,
+                "cache_creation_tokens": r.cache_creation_tokens or 0,
                 "message_count": r.message_count or 0,
             }
             for r in rows

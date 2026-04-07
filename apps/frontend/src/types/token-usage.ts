@@ -8,6 +8,8 @@ export interface TenantBotUsageStat {
   output_tokens: number;
   total_tokens: number;
   estimated_cost: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
   message_count: number;
 }
 

@@ -35,10 +35,17 @@ def extract_usage_from_langchain_messages(
         # Extract cache tokens from LangChain input_token_details
         details = meta.get("input_token_details") or {}
         if details:
-            # Anthropic: cache_read / cache_creation
-            # OpenAI: cached
-            total_cache_read += details.get("cache_read", 0) or details.get("cached", 0)
+            # Anthropic: cache_read / cache_creation (input_tokens 不含 cache)
+            # OpenAI/DeepSeek: cached (input_tokens 已含 cached，需扣除)
+            cache_read = details.get("cache_read", 0)
+            cached = details.get("cached", 0)
+            this_cache_read = cache_read or cached
+            total_cache_read += this_cache_read
             total_cache_creation += details.get("cache_creation", 0)
+
+            # 正規化：OpenAI 系的 input_tokens 包含 cached，需扣除避免重複計算
+            if cached and not cache_read:
+                total_input -= this_cache_read
 
         resp_meta = getattr(msg, "response_metadata", None) or {}
         if resp_meta.get("model_name"):
