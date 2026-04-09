@@ -35,6 +35,7 @@ _VALID_EVAL_DEPTHS = {
     "L1+L2+L3",
 }
 _VALID_LLM_PROVIDERS = {p.value for p in ProviderName}
+_VALID_KNOWLEDGE_MODES = {"rag", "wiki"}
 
 
 def _validate_llm_fields(
@@ -111,6 +112,7 @@ class CreateBotRequest(BaseModel):
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     line_show_sources: bool = False
+    knowledge_mode: str = "rag"
 
 
 class UpdateBotRequest(BaseModel):
@@ -152,6 +154,7 @@ class UpdateBotRequest(BaseModel):
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     line_show_sources: bool | None = None
+    knowledge_mode: str | None = None
 
 
 class BotResponse(BaseModel):
@@ -197,6 +200,7 @@ class BotResponse(BaseModel):
     line_channel_secret: str | None
     line_channel_access_token: str | None
     line_show_sources: bool
+    knowledge_mode: str
     created_at: str
     updated_at: str
 
@@ -264,6 +268,7 @@ def _to_response(bot) -> BotResponse:
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
         line_show_sources=bot.line_show_sources,
+        knowledge_mode=bot.knowledge_mode,
         created_at=bot.created_at.isoformat(),
         updated_at=bot.updated_at.isoformat(),
     )
@@ -291,6 +296,12 @@ async def create_bot(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
+        )
+    if body.knowledge_mode not in _VALID_KNOWLEDGE_MODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"knowledge_mode must be one of "
+            f"{sorted(_VALID_KNOWLEDGE_MODES)}",
         )
     _validate_llm_fields(
         body.llm_provider, body.llm_model,
@@ -337,6 +348,7 @@ async def create_bot(
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
             line_show_sources=body.line_show_sources,
+            knowledge_mode=body.knowledge_mode,
         )
     )
     return _to_response(bot)
@@ -426,6 +438,15 @@ async def update_bot(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
+        )
+    if (
+        body.knowledge_mode is not None
+        and body.knowledge_mode not in _VALID_KNOWLEDGE_MODES
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"knowledge_mode must be one of "
+            f"{sorted(_VALID_KNOWLEDGE_MODES)}",
         )
     _validate_llm_fields(
         body.llm_provider, body.llm_model,

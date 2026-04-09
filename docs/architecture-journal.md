@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Sprint W.1 — LLM Wiki Knowledge Mode 骨架（新 BC + Bot 欄位純加法）](#sprint-w1--llm-wiki-knowledge-mode-骨架新-bc--bot-欄位純加法)
 - [Cache Token 追蹤修復 — Provider 語意差異正規化 + Fallback 成本完整性](#cache-token-追蹤修復--provider-語意差異正規化--fallback-成本完整性)
 - [Cache-Aware Token 計費 — Provider-Agnostic 正規化 + 4 段計費公式擴展](#cache-aware-token-計費--provider-agnostic-正規化--4-段計費公式擴展)
 - [Prompt Optimizer 儀表板增強 — JSON Column 擴展 + Polling/DB 雙源圖表策略](#prompt-optimizer-儀表板增強--json-column-擴展--pollingdb-雙源圖表策略)
@@ -70,6 +71,42 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Sprint W.1 — LLM Wiki Knowledge Mode 骨架（新 BC + Bot 欄位純加法）
+
+**來源**：Sprint W.1（Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26)）
+**日期**：2026-04-09
+**涉及層級**：Domain → Application → Infrastructure → Interfaces（後端跨 4 層 + 新 BC + 6 BDD scenarios）
+
+### 本次相關主題
+
+新 Bounded Context 導入、純加法變更（Additive Change）、PostgreSQL JSONB 聚合根儲存、多租戶 FK 層級隔離、Sentinel Pattern 欄位擴展
+
+### 做得好的地方
+
+- **純加法變更零破壞**：整個 Sprint W.1 是「只加不改」— 既有 RAG 流程完全不動，既有 bot 透過 `knowledge_mode` 預設 `"rag"` 保持 backward compatible，544 個既有 unit test 零回歸。這是 DDD 「開放封閉原則」的教科書案例
+- **新 BC 以業務語意命名**：`wiki` BC 而非 `graph` / `knowledge_graph`，避免與未來可能的 Graph DB 實作細節耦合。Entity 名稱 (`WikiGraph` / `WikiNode` / `WikiEdge` / `WikiCluster`) 直接對應 Graphify 的概念，讓跨團隊溝通零歧義
+- **聚合根 1:1 bot 約束在 schema 層強制**：`wiki_graphs.bot_id` 加 `UNIQUE` constraint（非 application 層檢查），確保任何繞過 use case 的 INSERT 路徑都無法破壞不變量。這是「資料庫作為最後一道防線」的原則體現
+- **JSONB 儲存策略 vs 正規化表的取捨**：nodes/edges/backlinks/clusters 全部放 JSONB 而非拆 4 張表。理由：MVP 階段不需要跨 graph 查詢，整圖讀取是主要場景，JSONB 單次 SELECT 即得全部資料 + GIN index 保留未來結構查詢能力。若未來要做 cross-graph 分析再遷移
+- **三層防線驗證 knowledge_mode**：Interfaces 層 400 早期拒絕 + Application 層 ValidationError + Domain 層 `VALID_KNOWLEDGE_MODES` 常數。任何繞過 API 的路徑（CLI / background task）依然會被 use case 擋下
+- **Integration test 手動 `session.flush()` 解鎖 FK ordering**：SQLAlchemy 的 topological sort 對於「同一 session 內多個 add」不保證按 FK 順序 flush，測試裡 parent 插入後 `await session.flush()` 強制送 INSERT，比 relationship 宣告更直接且不污染 production model
+- **模型 field 名稱避開 `metadata` 衝突**：SQLAlchemy Declarative Base 的 `metadata` 是保留屬性，用 Python `wiki_metadata` + column name `"metadata"` 雙層命名繞過，既不污染 JSON schema 又保持 DB 欄位語意
+
+### 潛在隱憂
+
+- **wiki_graphs.bot_id UNIQUE 會阻擋 bot 切回 rag 後的歷史保留**：若使用者 bot 先切 wiki 編譯 → 改回 rag → 又改回 wiki，無法保留舊 WikiGraph（會被 UNIQUE 約束擋下 INSERT）→ 建議：W.2 編譯前先 `delete_by_bot_id` 清空，或改為軟刪除（加 `deleted_at`）→ 優先級：中
+- **JSONB GIN index 尚未使用**：目前 query 都用 `find_by_id` / `find_by_bot_id` 直接拿整圖，GIN index 建立但未被查詢用到。W.3 的 `graph_navigator` 若不走 JSONB path operator 而是 Python 端遍歷，這個 index 會變死索引 → 建議：W.3 評估是否需要 `jsonb_path_query` 查特定節點 → 優先級：低
+- **`wiki_graphs.kb_id` FK 與 Bot 的 `knowledge_base_ids[]` 設計不一致**：Bot 可綁定多個 KB（透過 `bot_knowledge_bases` 關聯表），但 `wiki_graphs.kb_id` 只支援單一 KB。MVP 這麼設計是為了簡化，但未來如果要對 bot 的所有 KB 編一份 Wiki，schema 需要改成 `wiki_graph_kbs` 關聯表 → 建議：W.2 實作編譯時先明確只支援 bot 的第一個 KB（或全部合併），決策寫進 plan → 優先級：中
+- **測試檔案重複的 `_seed_tenant_bot_kb` helper**：如果 W.2/W.3 又要寫 integration test，這個 seed helper 會被複製到多處 → 建議：抽到 `tests/integration/wiki/conftest.py` fixture 供 wiki 系列測試共享 → 優先級：低
+
+### 延伸學習
+
+- **Additive Change 策略**：Martin Fowler 的 _Parallel Change_ (Expand-Contract) 是這類純加法變更的系統化模式。本次 W.1 是 Expand 階段（加 `knowledge_mode` 預設為舊行為），W.3 整合 tool 時會進入 Migrate 階段（切換流量），W.4 前端放出切換 UI 才算 Contract 階段完成。搜尋：_Martin Fowler Parallel Change_
+- **Bounded Context 何時該新開**：Eric Evans 的 DDD 原則：當一個概念**在同一個 Ubiquitous Language 裡有多種意義**或**生命週期獨立於其他聚合**時，就該新 BC。Wiki 和 Knowledge 在業務上都叫「知識」但查詢機制完全不同，且 Wiki 的編譯週期獨立於文件 CRUD，新 BC 成立。反例：如果只是 Knowledge 多加個 `representation` 欄位，就不該開 BC
+- **JSONB vs 正規化表的 Decision Matrix**：Martin Kleppmann _Designing Data-Intensive Applications_ 第 2 章的 document model vs relational model 對比。選 JSONB 的三個前提：(1) 整筆讀寫是主要操作，(2) 巢狀結構不會被多個 query 以不同角度 slice，(3) 不需要跨文件 JOIN。Wiki Graph 三項全中
+- **思考題**：假設未來 W.2 發現 LLM 編譯出的 graph 太大（單個 JSONB > 10MB），你會：(A) 改 JSONB 壓縮（PostgreSQL 14+ 內建 LZ4）、(B) 拆成 wiki_nodes/wiki_edges 兩張正規化表、還是 (C) 直接把 JSONB 丟到 S3 只在 DB 存 metadata？每個選項的 trade-off 是什麼？（提示：思考「寫放大」、「查詢 latency」、「備份還原成本」、「事務一致性」四個維度）
 
 ---
 

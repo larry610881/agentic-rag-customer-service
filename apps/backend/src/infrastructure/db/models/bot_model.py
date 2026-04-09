@@ -122,6 +122,9 @@ class BotModel(Base):
     rag_score_threshold: Mapped[float] = mapped_column(
         Float, nullable=False, default=0.3
     )
+    knowledge_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="rag", server_default="rag"
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

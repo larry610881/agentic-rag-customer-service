@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 
 from src.domain.bot.entity import (
+    VALID_KNOWLEDGE_MODES,
     Bot,
     BotLLMParams,
     BotMcpBinding,
@@ -11,6 +12,7 @@ from src.domain.bot.entity import (
 )
 from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
+from src.domain.shared.exceptions import ValidationError
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,7 @@ class CreateBotCommand:
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     line_show_sources: bool = False
+    knowledge_mode: str = "rag"  # "rag" | "wiki"
 
 
 class CreateBotUseCase:
@@ -66,6 +69,11 @@ class CreateBotUseCase:
         self._encryption = encryption_service
 
     async def execute(self, command: CreateBotCommand) -> Bot:
+        if command.knowledge_mode not in VALID_KNOWLEDGE_MODES:
+            raise ValidationError(
+                f"knowledge_mode must be one of {list(VALID_KNOWLEDGE_MODES)}, "
+                f"got {command.knowledge_mode!r}"
+            )
         # Build MCP bindings with encrypted env_values
         mcp_bindings = []
         for b in command.mcp_bindings:
@@ -139,6 +147,7 @@ class CreateBotUseCase:
             line_channel_secret=command.line_channel_secret,
             line_channel_access_token=command.line_channel_access_token,
             line_show_sources=command.line_show_sources,
+            knowledge_mode=command.knowledge_mode,
         )
         await self._bot_repo.save(bot)
         return bot

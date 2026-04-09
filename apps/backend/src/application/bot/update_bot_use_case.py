@@ -2,11 +2,17 @@
 
 from dataclasses import dataclass, replace
 
-from src.domain.bot.entity import Bot, BotMcpBinding, McpServerConfig, McpToolMeta
+from src.domain.bot.entity import (
+    VALID_KNOWLEDGE_MODES,
+    Bot,
+    BotMcpBinding,
+    McpServerConfig,
+    McpToolMeta,
+)
 from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
 from src.domain.shared.cache_service import CacheService
-from src.domain.shared.exceptions import EntityNotFoundError
+from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 
 _UNSET = object()
 
@@ -55,6 +61,7 @@ class UpdateBotCommand:
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
     line_show_sources: object = _UNSET
+    knowledge_mode: object = _UNSET
 
 
 class UpdateBotUseCase:
@@ -87,6 +94,7 @@ class UpdateBotUseCase:
             "busy_reply_message",
             "line_channel_secret", "line_channel_access_token",
             "line_show_sources",
+            "knowledge_mode",
         )
         for field in _DIRECT_FIELDS:
             val = getattr(command, field)
@@ -168,6 +176,14 @@ class UpdateBotUseCase:
         return result
 
     async def execute(self, command: UpdateBotCommand) -> Bot:
+        if (
+            command.knowledge_mode is not _UNSET
+            and command.knowledge_mode not in VALID_KNOWLEDGE_MODES
+        ):
+            raise ValidationError(
+                f"knowledge_mode must be one of {list(VALID_KNOWLEDGE_MODES)}, "
+                f"got {command.knowledge_mode!r}"
+            )
         bot = await self._bot_repo.find_by_id(command.bot_id)
         if bot is None:
             raise EntityNotFoundError("Bot", command.bot_id)

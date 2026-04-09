@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-03-24 (Prompt Optimizer 全棧 + 驗收評估)
+> 最後更新：2026-04-09 (Sprint W.1 完成 — Domain + Migration + Bot 欄位就位)
 
 ---
 
@@ -1062,6 +1062,97 @@
 
 ---
 
+## Sprint W：LLM Wiki Knowledge Mode（新增）— Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26)
+
+**Goal**：為每個 Bot 提供「RAG」與「LLM Wiki」二選一的知識表徵策略，以 PostgreSQL JSONB 儲存 Wiki Graph，保留現有 RAG 流程完全不動
+
+**動機**：Karpathy「編譯知識」概念，Graphify（MIT）產品化實作，官方宣稱查詢階段 token 消耗降 71.5x。適合「文件少但問題精準」的租戶場景（FAQ / 產品手冊），與 RAG 依場景二選一。
+
+**範圍**：
+- ✅ 獨立新 Bounded Context：`wiki`
+- ✅ 二選一模式（rag | wiki），**不做 Hybrid**
+- ✅ 手動觸發編譯，全量重編
+- ⏭️ Hybrid 模式、增量編譯、半自動/全自動編譯 → Post-MVP Roadmap
+- 參考 Plan：`.claude/plans/luminous-launching-lobster.md`
+
+### W.1 Domain + Migration + Bot 欄位（最小可驗證）✅ 完成 (2026-04-09)
+
+**目標**：資料模型就位，Bot 可設定 knowledge_mode 但功能不生效
+
+- ✅ `apps/backend/migrations/add_wiki_system.sql` — 新增 `wiki_graphs` 表 + `bots.knowledge_mode` 欄位 + GIN index
+- ✅ `domain/wiki/entity.py` — WikiGraph / WikiNode / WikiEdge / WikiCluster
+- ✅ `domain/wiki/value_objects.py` — WikiGraphId / WikiNodeId / EdgeConfidence / WikiStatus
+- ✅ `domain/wiki/repository.py` — WikiGraphRepository ABC（強制 tenant_id 隔離）
+- ✅ `infrastructure/db/models/wiki_graph_model.py` — JSONB columns + unique bot_id 約束
+- ✅ `infrastructure/db/repositories/wiki_graph_repository.py` — SQLAlchemy impl + `atomic()` 包寫入
+- ✅ `domain/bot/entity.py` 新增 `knowledge_mode: str = "rag"` + `VALID_KNOWLEDGE_MODES` 常數
+- ✅ `application/bot/create_bot_use_case.py` 加 `knowledge_mode` + Domain validation
+- ✅ `application/bot/update_bot_use_case.py` 加 `knowledge_mode: object = _UNSET` + validation
+- ✅ `interfaces/api/bot_router.py` Create/Update Request + Response + 400 驗證
+- ✅ Bot Repository `_to_entity` + INSERT + UPDATE 三處映射
+- ✅ Container 註冊 `wiki_graph_repository`
+- ✅ BDD：`tests/features/unit/bot/bot_knowledge_mode.feature`（6 scenarios）+ steps
+- ✅ Unit tests：wiki entity + VO + status（12 tests）
+- ✅ Integration test：wiki_graphs 表 CRUD + tenant isolation + JSONB 儲存（6 tests）
+- ✅ 驗收：597 passed（544 unit + 53 integration）、新檔案 lint 全 clean、覆蓋率不降
+- ⚠️ 2 個 pre-existing 失敗（usage cache_read_tokens NOT NULL、e2e 缺 OPENAI_API_KEY）— 已驗證與本次無關（stash 測試確認）
+
+### W.2 Wiki 編譯 Pipeline（核心技術）
+
+**目標**：可手動觸發 Wiki 編譯，把 KB 裡的文件編譯成 WikiGraph
+
+- ⬜ **先做**：clone `https://github.com/safishamsi/graphify` 到 `~/source/repos/graphify-ref/`（僅參考，不進 repo）
+- ⬜ 讀 Graphify 的 Pass 2 prompt 設計與 `graph.json` schema
+- ⬜ `infrastructure/wiki/llm_wiki_compiler.py` — 呼叫既有 `LLMService` port，**不依賴 Claude Code subagent**
+  - 參考 Graphify prompt 改寫為繁中客服場景版本
+  - 回傳結構化 JSON（entities + relationships + EXTRACTED/INFERRED/AMBIGUOUS 標籤）
+- ⬜ `infrastructure/wiki/graph_builder.py` — NetworkX + Leiden community detection
+- ⬜ `application/wiki/compile_wiki_use_case.py`
+  - 讀取 KB 文件 → parser → compiler → 存 JSONB
+  - **必須** wrap in `independent_session_scope()`
+  - 使用 `ProcessingTask` 追蹤進度
+  - Token 計費走 `extract_usage_from_langchain_messages()`
+- ⬜ `interfaces/api/wiki_router.py`
+  - `POST /api/v1/bots/{bot_id}/wiki/compile` — `safe_background_task()` 包裝
+  - `GET /api/v1/bots/{bot_id}/wiki/status` — ProcessingTask 進度
+- ⬜ BDD：`compile_wiki.feature`
+- ⬜ Unit tests：compiler service（mock LLM）、graph_builder（純函式）
+- ⬜ Integration test：端到端編譯（小 fixture）
+- ⬜ 驗收：手動觸發編譯、wiki_graphs 表有資料、status 可查
+
+### W.3 Wiki 查詢 + ReAct Tool 整合
+
+**目標**：ReAct agent 依 bot.knowledge_mode 自動切換 tool，wiki 模式可實際對話
+
+- ⬜ `infrastructure/wiki/graph_navigator.py` — `find_related_nodes(keywords, max_depth)`
+- ⬜ `application/wiki/query_wiki_use_case.py` — QueryWikiCommand + retrieve()
+- ⬜ `infrastructure/langgraph/tools.py` 新增 `WikiQueryTool` class（對應 `RAGQueryTool`）
+- ⬜ `infrastructure/langgraph/react_agent_service.py`
+  - 新增 `_build_wiki_lc_tool()` (對應 `_build_rag_lc_tool()`)
+  - 修改 tools 組裝為 `if / elif` 分派（二選一，非 Hybrid）
+- ⬜ `send_message_use_case._load_bot_config()` 新增 `knowledge_mode` 傳遞
+- ⬜ `container.py` 註冊 `wiki_query_use_case`、`wiki_query_tool`
+- ⬜ BDD：`query_wiki.feature` — 完整「設定 wiki 模式 → 編譯 → 對話」
+- ⬜ Unit tests：graph_navigator、WikiQueryTool
+- ⬜ 驗收：後端 BDD 全綠，curl 對話測試可取得 wiki 結果
+
+### W.4 前端 UI + E2E
+
+**目標**：前端可設定模式、觸發編譯、查看進度
+
+- ⬜ `apps/frontend/src/features/bot/components/bot-detail-form.tsx`
+  - Zod schema 加 `knowledge_mode: z.enum(["rag", "wiki"]).default("rag")`
+  - 在「知識庫」tab 加 `<Controller>` + `<Select>`
+  - wiki 模式顯示「編譯 Wiki」按鈕 + 狀態 badge
+- ⬜ `apps/frontend/src/lib/api-endpoints.ts` 加 wiki endpoints
+- ⬜ `apps/frontend/src/hooks/queries/use-wiki.ts` — useCompileWiki + useWikiStatus
+- ⬜ Unit test：`bot-detail-form.test.tsx` 加 wiki 選擇測試
+- ⬜ E2E：`e2e/features/bot/bot_knowledge_mode.feature`
+  - Scenario：建 bot → 設 wiki → 編譯 → 對話 → 驗證來源
+- ⬜ 驗收：前端 E2E 全綠、UI 可操作完整流程
+
+---
+
 ## 已知邊緣問題（Edge Cases）
 
 > 以下為已識別的邊緣問題。E3-E11（除 E7）已在 E3 Sprint 批次修復。
@@ -1173,3 +1264,4 @@
 | **Widget show_sources 型別修復** | **✅ 完成** | **100%** | **1 file: widget/src/main.ts WidgetConfig 物件補齊 show_sources 欄位，修復 Cloud Run deploy TypeScript build 錯誤** |
 | **Prompt Optimizer 儀表板增強** | **✅ 完成** | **100%** | **Issue #24: 8 files (+479 lines): (1) 修復 Score Trend 圖表 — useMemo 從 iterations 計算每輪實際分數+running best, ActiveRun 加 current_score, (2) Prompt diff 改對比最佳提示詞(findSourceIteration), (3) details JSON 存 case_results(per-case pass/fail+answer_snippet+assertion_results), 新元件 CaseResultsTable 可展開查看案例詳情, 2 BDD scenarios + 4 frontend unit tests, 519 backend + 168 frontend tests pass** |
 | **Cache Token 追蹤修復 + 系統層 Cache 明細** | **✅ 完成** | **100%** | **8 files: 修復 3 個 bug — (1) stream 路徑遺失 cache tokens（agent_router→extract_usage_from_accumulated）, (2) OpenAI 系 LangGraph input_tokens 含 cached 重複計算（usage.py 正規化扣除）, (3) RecordUsageUseCase fallback 成本不含 cache tokens。新增系統層 token-usage API + 明細表 cache_read/creation_tokens 欄位。4 新 BDD regression scenarios, 526 backend tests pass** |
+| **Sprint W: LLM Wiki Knowledge Mode** | **🔄 進行中** | **25% (W.1 ✅)** | **Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26): W.1 完成（Domain+Migration+Bot 欄位，18 新 tests），W.2-W.4 待開工。獨立新 BC `wiki`, JSONB 儲存, RAG/Wiki 二選一（不做 Hybrid）, Plan: `.claude/plans/luminous-launching-lobster.md`** |

@@ -247,6 +247,9 @@ from src.infrastructure.prompt_optimizer.run_manager import RunManager
 from src.infrastructure.db.repositories.feedback_repository import (
     SQLAlchemyFeedbackRepository,
 )
+from src.infrastructure.db.repositories.wiki_graph_repository import (
+    SQLAlchemyWikiGraphRepository,
+)
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
 )
@@ -505,6 +508,11 @@ class Container(containers.DeclarativeContainer):
 
     mcp_server_repository = providers.Factory(
         SQLAlchemyMcpServerRepository,
+        session=db_session,
+    )
+
+    wiki_graph_repository = providers.Factory(
+        SQLAlchemyWikiGraphRepository,
         session=db_session,
     )
 

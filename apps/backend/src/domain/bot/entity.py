@@ -46,6 +46,10 @@ class BotLLMParams:
     rag_score_threshold: float = 0.3
 
 
+# Valid Bot.knowledge_mode values — RAG / Wiki 二選一，不做 Hybrid
+VALID_KNOWLEDGE_MODES = ("rag", "wiki")
+
+
 @dataclass
 class Bot:
     id: BotId = field(default_factory=BotId)
@@ -56,6 +60,7 @@ class Bot:
     is_active: bool = True
     system_prompt: str = ""
     knowledge_base_ids: list[str] = field(default_factory=list)
+    knowledge_mode: str = "rag"  # "rag" | "wiki" — 預設 RAG backward compatible
     llm_params: BotLLMParams = field(default_factory=BotLLMParams)
     enabled_tools: list[str] = field(default_factory=lambda: ["rag_query"])
     llm_provider: str = ""

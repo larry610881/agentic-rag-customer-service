@@ -26,7 +26,7 @@
     "Stop": [{
       "hooks": [{
         "type": "prompt",
-        "prompt": "檢查 $ARGUMENTS，確認：1. 所有當前 Sprint 任務完成 2. 測試通過 3. 已 commit 4. SPRINT_TODOLIST.md 已更新（若有任務狀態變更，需同步更新 todolist 並 commit）5. 若本次 session 完成了非 trivial 功能開發任務（必須同時滿足：(a) 修改了 src/ 下的程式碼，且 (b) 跨 2+ DDD 層 或 跨前後端 或 新增 BDD scenario），檢查學習筆記是否已追加至 docs/architecture-journal.md。注意：純文件整理、config 修改、todolist 更新、hook 設定等不算非 trivial。回傳 {\"ok\": true} 或 {\"ok\": false, \"reason\": \"原因\"}",
+        "prompt": "檢查 $ARGUMENTS 判斷本次 session 是否妥善收尾（重點是『收尾合理』，而非『一定要完成實作』）。\n\n## 先分類 session 類型\n\n**A. 非實作類 session**（自然豁免，直接回傳 ok: true）：\n- 規劃 / 設計 / 架構探索 / 寫 plan 檔案\n- 建 GitHub Issue、更新 SPRINT_TODOLIST.md\n- 只修改 .claude/ 設定（hook、rules、settings、commands）\n- 只修改 docs/ 或根目錄 .md 文件\n- 純諮詢問答 / 程式碼導讀 / 研究某個 library\n- 使用者中途打斷 / 主動喊停 / 明確說『先這樣』\n\n**B. 實作類 session**（修改了 apps/backend/src/ 或 apps/frontend/src/ 的程式碼）：\n套用以下檢查：\n1. 測試通過（unit/integration/e2e 至少跑過一次，或已說明為何跳過）\n2. 已 commit（除非使用者明確說不要 commit）\n3. SPRINT_TODOLIST.md 若有任務狀態變動已同步\n4. 若屬非 trivial（跨 2+ DDD 層 或 跨前後端 或 新增 BDD scenario），learning 筆記已追加至 docs/architecture-journal.md\n\n## 回傳規則\n\n- 類型 A：**一律** {\"ok\": true}\n- 類型 B 全部條件滿足：{\"ok\": true}\n- 類型 B 有缺漏：{\"ok\": false, \"reason\": \"具體說明缺什麼\"}\n\n## 重要原則\n\n- 規劃期自然停頓不是 blocker，不要強迫使用者立即開始實作\n- 若使用者剛明確要求停止或即將切換到另一個話題，視為類型 A\n- 若無法判斷類型，預設為類型 A（寧可放行也不要誤判阻塞）\n- reason 必須具體指出哪個檔案 / 哪個動作缺失，不接受空泛敘述\n\n回傳 JSON：{\"ok\": true} 或 {\"ok\": false, \"reason\": \"...\"}",
         "timeout": 30
       }]
     }]
