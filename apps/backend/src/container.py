@@ -13,6 +13,7 @@ from src.application.auth.update_user_use_case import UpdateUserUseCase
 from src.application.bot.create_bot_use_case import CreateBotUseCase
 from src.application.wiki.compile_wiki_use_case import CompileWikiUseCase
 from src.application.wiki.get_wiki_status_use_case import GetWikiStatusUseCase
+from src.application.wiki.query_wiki_use_case import QueryWikiUseCase
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.bot.list_all_bots_use_case import ListAllBotsUseCase
@@ -252,6 +253,7 @@ from src.infrastructure.db.repositories.feedback_repository import (
 from src.infrastructure.db.repositories.wiki_graph_repository import (
     SQLAlchemyWikiGraphRepository,
 )
+from src.infrastructure.wiki.keyword_bfs_navigator import KeywordBFSNavigator
 from src.infrastructure.wiki.llm_wiki_compiler import LLMWikiCompilerService
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
@@ -312,7 +314,7 @@ from src.infrastructure.langgraph.meta_supervisor_service import (
 from src.infrastructure.langgraph.react_agent_service import (
     ReActAgentService,
 )
-from src.infrastructure.langgraph.tools import RAGQueryTool
+from src.infrastructure.langgraph.tools import RAGQueryTool, WikiQueryTool
 from src.infrastructure.langgraph.workers.fake_main_worker import FakeMainWorker
 from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWorker
 from src.infrastructure.language_detection import (
@@ -980,6 +982,29 @@ class Container(containers.DeclarativeContainer):
 
     cached_tool_loader = providers.Singleton(CachedMCPToolLoader)
 
+    # --- Wiki Navigators (Strategy Pattern) ---
+    # MVP only registers keyword_bfs. Post-MVP: add cluster_picker, hybrid,
+    # embedding, substring as drop-in.
+    keyword_bfs_navigator = providers.Factory(
+        KeywordBFSNavigator,
+        llm_service=llm_service,
+    )
+
+    wiki_navigators = providers.Dict(
+        keyword_bfs=keyword_bfs_navigator,
+    )
+
+    query_wiki_use_case = providers.Factory(
+        QueryWikiUseCase,
+        wiki_graph_repository=wiki_graph_repository,
+        navigators=wiki_navigators,
+    )
+
+    wiki_query_tool = providers.Factory(
+        WikiQueryTool,
+        query_wiki_use_case=query_wiki_use_case,
+    )
+
     # --- Agent Service ---
 
     sentiment_service = providers.Singleton(KeywordSentimentService)
@@ -1011,6 +1036,7 @@ class Container(containers.DeclarativeContainer):
             rag_tool=rag_tool,
             tool_registry=tool_registry,
             cached_tool_loader=cached_tool_loader,
+            wiki_tool=wiki_query_tool,
         ),
     )
 

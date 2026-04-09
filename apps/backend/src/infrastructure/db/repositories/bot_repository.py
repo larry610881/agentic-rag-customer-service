@@ -101,6 +101,9 @@ class SQLAlchemyBotRepository(BotRepository):
             line_channel_access_token=model.line_channel_access_token,
             line_show_sources=model.line_show_sources if model.line_show_sources is not None else False,
             knowledge_mode=model.knowledge_mode or "rag",
+            wiki_navigation_strategy=(
+                model.wiki_navigation_strategy or "keyword_bfs"
+            ),
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -200,6 +203,9 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.rag_top_k = bot.llm_params.rag_top_k
                 existing.rag_score_threshold = bot.llm_params.rag_score_threshold
                 existing.knowledge_mode = bot.knowledge_mode
+                existing.wiki_navigation_strategy = (
+                    bot.wiki_navigation_strategy
+                )
                 existing.updated_at = datetime.now(timezone.utc)
             else:
                 model = BotModel(
@@ -266,6 +272,7 @@ class SQLAlchemyBotRepository(BotRepository):
                     rag_top_k=bot.llm_params.rag_top_k,
                     rag_score_threshold=bot.llm_params.rag_score_threshold,
                     knowledge_mode=bot.knowledge_mode,
+                    wiki_navigation_strategy=bot.wiki_navigation_strategy,
                     created_at=bot.created_at,
                     updated_at=bot.updated_at,
                 )

@@ -125,6 +125,12 @@ class BotModel(Base):
     knowledge_mode: Mapped[str] = mapped_column(
         String(20), nullable=False, default="rag", server_default="rag"
     )
+    wiki_navigation_strategy: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="keyword_bfs",
+        server_default="keyword_bfs",
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

@@ -216,6 +216,11 @@ class SendMessageUseCase:
 
         cfg["max_tool_calls"] = bot.max_tool_calls or 5
         cfg["audit_mode"] = getattr(bot, "audit_mode", "minimal")
+        cfg["knowledge_mode"] = getattr(bot, "knowledge_mode", "rag")
+        cfg["wiki_navigation_strategy"] = getattr(
+            bot, "wiki_navigation_strategy", "keyword_bfs"
+        )
+        cfg["bot_id"] = bot.id.value
         cfg["memory_enabled"] = getattr(bot, "memory_enabled", False)
         cfg["memory_extraction_threshold"] = getattr(
             bot, "memory_extraction_threshold", 3
@@ -424,6 +429,11 @@ class SendMessageUseCase:
             mcp_servers=bot_cfg.get("mcp_servers"),
             max_tool_calls=bot_cfg.get("max_tool_calls", 5),
             audit_mode=bot_cfg.get("audit_mode", "minimal"),
+            knowledge_mode=bot_cfg.get("knowledge_mode", "rag"),
+            wiki_navigation_strategy=bot_cfg.get(
+                "wiki_navigation_strategy", "keyword_bfs"
+            ),
+            bot_id=bot_cfg.get("bot_id", ""),
         )
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
@@ -555,6 +565,11 @@ class SendMessageUseCase:
             mcp_servers=bot_cfg.get("mcp_servers"),
             max_tool_calls=bot_cfg.get("max_tool_calls", 5),
             audit_mode=bot_cfg.get("audit_mode", "minimal"),
+            knowledge_mode=bot_cfg.get("knowledge_mode", "rag"),
+            wiki_navigation_strategy=bot_cfg.get(
+                "wiki_navigation_strategy", "keyword_bfs"
+            ),
+            bot_id=bot_cfg.get("bot_id", ""),
         ):
             if event["type"] == "token":
                 full_answer += event["content"]

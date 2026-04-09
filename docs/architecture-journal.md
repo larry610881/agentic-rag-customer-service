@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Sprint W.3 — Wiki 查詢 + ReAct 整合（Strategy Pattern + KeywordBFSNavigator）](#sprint-w3--wiki-查詢--react-整合strategy-pattern--keywordbfsnavigator)
 - [Sprint W.2 — Wiki 編譯 Pipeline（Graphify-derived Prompt + Louvain Clustering）](#sprint-w2--wiki-編譯-pipelinegraphify-derived-prompt--louvain-clustering)
 - [Sprint W.1 — LLM Wiki Knowledge Mode 骨架（新 BC + Bot 欄位純加法）](#sprint-w1--llm-wiki-knowledge-mode-骨架新-bc--bot-欄位純加法)
 - [Cache Token 追蹤修復 — Provider 語意差異正規化 + Fallback 成本完整性](#cache-token-追蹤修復--provider-語意差異正規化--fallback-成本完整性)
@@ -72,6 +73,48 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Sprint W.3 — Wiki 查詢 + ReAct 整合（Strategy Pattern + KeywordBFSNavigator）
+
+**來源**：Sprint W.3（Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26)）
+**日期**：2026-04-09
+**涉及層級**：Domain → Application → Infrastructure → Interfaces（後端跨 4 層）+ ReAct agent 整合
+
+### 本次相關主題
+
+Strategy Pattern (Port/Adapter)、Graceful Degradation、ReAct Tool Composition、Schema Compatibility、推翻初始決策、產品定位演進預留
+
+### 做得好的地方
+
+- **Strategy Pattern 預留為產品定位演進的關鍵投資**：W.3 原本只需要寫一個 navigator class，但花時間設計 `GraphNavigator` ABC + `wiki_navigators` Dict + `wiki_navigation_strategy` bot 欄位，未來新增 4 個 strategy（cluster_picker / hybrid / embedding / substring）將是 drop-in 不改既有程式碼。這個額外成本約 30 行 code，但換來的是「不用重構就能切換產品定位」的彈性 — 例如未來把 wiki 包裝成「企業文件 AI 助理」子產品，只需要新增 ClusterPickerNavigator，現有 query_wiki_use_case / wiki_query_tool / react agent 全部不用改。Strategy Pattern 在此處的價值不是「美學」而是**真實業務場景的可選性保險**
+- **回傳 schema 嚴格對齊 RAGQueryTool**：WikiQueryTool 的 `{success, context, sources}` 結構與 RAGQueryTool 完全一致，包括 sources 元素的 `{document_name, content_snippet, score, chunk_id, document_id}` 五個欄位。這個決定讓既有的 `_load_bot_config → process_message → _parse_response → evaluation pipeline` 整條鏈路**零修改**就能跑 wiki 模式。即使 wiki 的「節點」與 rag 的「chunk」概念不同，把節點 label/summary 包成 content_snippet 也能正常被 L2 faithfulness evaluation 讀取
+- **Graceful Degradation 三層防線**：
+  1. WikiGraph 不存在 → 回「尚未編譯」context（不 throw）
+  2. status compiling/pending/failed → 回對應狀態訊息（不 throw）
+  3. LLM 抽關鍵字失敗 → 降級到 unigram 字串匹配（不 throw）
+  
+  原則：**use case 對 agent 永遠回 success: True**，讓 LLM 能把錯誤訊息轉述給使用者，而不是讓 agent 整條對話崩潰。只有 config-level error（未知 strategy）才會 throw ValidationError，因為那是系統 bug 應該 fail fast
+- **推翻 BFS 連通分量 → Louvain → 又補上 KeywordBFSNavigator 的演算法選擇歷程**：W.2 走過 BFS → Louvain 的修正，W.3 又面臨 navigator 演算法選擇。設計過程中提出 4 個方案讓使用者比較（純字串/LLM 關鍵字/Cluster picker/Hybrid），詳細解釋每個方案的優劣 + cost 估算 + 適用場景，最終決定 #1 並把其他列入 Post-MVP roadmap。**設計決策的透明度直接影響團隊未來的可維護性**
+- **closure pattern 對應 RAG tool 的精確複製**：`_build_wiki_lc_tool()` 和 `_build_rag_lc_tool()` 結構幾乎一比一對應 — 都是 closure 注入 context、@tool 裝飾、json.dumps 回傳。這讓未來看 code 的人能立刻理解「兩個工具是 sibling 不是替代」，也降低 ReAct agent 切換的心智負擔
+- **process_message 簽章新增參數採向後相容默認值**：`knowledge_mode: str = "rag"` 預設保持既有行為，所有既有測試零修改通過。這也是 W.1 開始就堅持的「純加法變更」原則的延續
+
+### 潛在隱憂
+
+- **KeywordBFSNavigator 的關鍵字抽取 prompt 是硬編碼**：目前 system prompt 寫死在 navigator class 裡，未來若要針對不同租戶語料調整（例如金融客服 vs 電商客服）就需要改 code → 建議：把 prompt 移到 system_prompt_config 表，per-tenant 可覆寫 → 優先級：低（MVP 用通用 prompt 應已足夠）
+- **BFS max_depth 是 hyperparameter 但無觀測指標**：預設 max_depth=2，但沒有任何 metric 顯示「實際走訪的節點數 / 命中率」，後續調參沒有依據 → 建議：在 NavigationResult 上加 metadata 統計（seed_count, neighbor_count, fallback_used），寫進 trace → 優先級：中
+- **Cluster fallback 觸發條件 `< 2 nodes` 是 magic number**：應該變成 navigator 的可注入閾值參數 → 優先級：低
+- **沒有 reranking 步驟**：目前 score 只是 (seed_score + bfs_decay × edge_confidence) 線性組合，沒考慮節點的 source_doc 多樣性、type 重要性。這對品質會有上限 → 建議：Phase 2 加入一個 reranker 介面（也可以是 strategy），對最終 top_n 做二次排序 → 優先級：中
+- **bot_id 從 send_message_use_case 一路傳到 react_agent_service 是冗餘的**：本來 RAG tool 不需要 bot_id（只用 tenant_id + kb_id），但 wiki tool 需要 bot_id 來查 wiki_graph。為了不破壞既有 RAG 流程，把 bot_id 加在 process_message 簽章成可選參數。這在語意上有點髒，但比起重構整個 agent service 介面成本低 → 建議：W.4 之後若有重構機會，把所有 bot context 統一封裝成 BotContext dataclass 傳進去 → 優先級：低
+- **WikiQueryTool 沒有 RAGTracer 等價物**：RAG tool 走 RAGTracer 記錄 chunk_count 等 metrics，但 WikiQueryTool 沒有對應的 wiki_tracer。導致 wiki mode 在 observability 頁面查不到細節 → 建議：W.4 前補上 wiki_tracer 或擴充 RAGTracer 為 KnowledgeQueryTracer → 優先級：中
+
+### 延伸學習
+
+- **Strategy Pattern 的「投資 vs YAGNI」判斷**：經典 GoF 對 Strategy Pattern 的批評是「過度工程」，因為大部分情境只會有一個 strategy 永遠存在。本次 W.3 投資 Strategy 是因為**有實際的多策略需求清單**（產品定位演進路徑），不是「為了未來可能性」。判斷準則：如果現在能列出 ≥ 2 個具體實作場景且觸發條件明確，Strategy 投資值得；如果只能說「未來可能會」就 YAGNI。搜尋：_GoF Strategy Pattern when not to use_
+- **Graceful Degradation in LLM Tool Calls**：LLM agent 系統有個獨特的設計原則：**工具失敗應該回可讀錯誤訊息給 LLM，而不是 throw exception**。原因是 LLM 看到工具失敗訊息時可以智能地告知使用者或嘗試其他工具，但如果 exception 一路冒出來，整個 agent 對話就結束了。這跟傳統 API 的 "fail fast" 原則相反 — agent 要 "fail visible to LLM"。實踐：所有 tool invoke 結尾都用 `try/except` 包起來，例外狀況回 `{success: True, context: "錯誤訊息", sources: []}`。搜尋：_LLM agent tool failure handling_ / Anthropic best practices for tool use
+- **Schema Compatibility as Migration Strategy**：當你引入一個新的 tool / API / data source，最便宜的整合方式是「讓它假裝是既有東西」— 借用既有 schema、欄位名稱、回傳格式。即使新東西的概念不完全對齊舊概念（例如 wiki node ≠ rag chunk），語意上的小妥協能換來下游 zero-modification。代價：新概念被舊 schema 約束，未來想擴充新欄位（例如 `graph_path`、`cluster_label`）需要新欄位又不破壞舊讀取者。搜尋：_API versioning backward compatibility_ / _additive schema evolution_
+- **思考題**：W.3 目前的 KeywordBFSNavigator 對「使用者問題包含未在 wiki 中的全新概念」表現如何？例如使用者問「我可以用支付寶結帳嗎？」但 wiki 中只有信用卡和 ATM 的節點，完全沒有「支付寶」相關。LLM 抽出 ["支付寶", "結帳"] 之後 seed matching 會 0 命中，結果空陣列。這時 use case 該如何回應？目前是回空 sources 給 LLM，LLM 會說「我不知道」。但更好的設計可能是：(a) 偵測到 0 命中時 trigger fallback 到「整體 cluster 摘要」（給 LLM 一個 graph 全貌）、(b) 或 trigger 到 RAG tool 做語意搜尋當補強、(c) 或在 wiki metadata 加個 unmatched query log 供管理員回頭擴充 wiki。你會選哪種策略？這是 W.3.x 或 Phase 2 的潛在優化點
 
 ---
 

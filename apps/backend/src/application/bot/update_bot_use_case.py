@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 
 from src.domain.bot.entity import (
     VALID_KNOWLEDGE_MODES,
+    VALID_WIKI_NAVIGATION_STRATEGIES,
     Bot,
     BotMcpBinding,
     McpServerConfig,
@@ -62,6 +63,7 @@ class UpdateBotCommand:
     line_channel_access_token: object = _UNSET
     line_show_sources: object = _UNSET
     knowledge_mode: object = _UNSET
+    wiki_navigation_strategy: object = _UNSET
 
 
 class UpdateBotUseCase:
@@ -95,6 +97,7 @@ class UpdateBotUseCase:
             "line_channel_secret", "line_channel_access_token",
             "line_show_sources",
             "knowledge_mode",
+            "wiki_navigation_strategy",
         )
         for field in _DIRECT_FIELDS:
             val = getattr(command, field)
@@ -183,6 +186,16 @@ class UpdateBotUseCase:
             raise ValidationError(
                 f"knowledge_mode must be one of {list(VALID_KNOWLEDGE_MODES)}, "
                 f"got {command.knowledge_mode!r}"
+            )
+        if (
+            command.wiki_navigation_strategy is not _UNSET
+            and command.wiki_navigation_strategy
+            not in VALID_WIKI_NAVIGATION_STRATEGIES
+        ):
+            raise ValidationError(
+                f"wiki_navigation_strategy must be one of "
+                f"{list(VALID_WIKI_NAVIGATION_STRATEGIES)}, "
+                f"got {command.wiki_navigation_strategy!r}"
             )
         bot = await self._bot_repo.find_by_id(command.bot_id)
         if bot is None:

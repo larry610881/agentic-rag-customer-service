@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-09 (Sprint W.2 完成 — Wiki 編譯 Pipeline with Louvain)
+> 最後更新：2026-04-09 (Sprint W.3 完成 — Wiki 查詢 + ReAct Tool 整合 with Strategy Pattern)
 
 ---
 
@@ -1141,21 +1141,64 @@
   - LLM-based cluster labeling：當需要為 cluster 產生繁中摘要時
   - Resolution 調整：cluster 太碎/太粗時改 `resolution` 參數即可
 
-### W.3 Wiki 查詢 + ReAct Tool 整合
+### W.3 Wiki 查詢 + ReAct Tool 整合（Strategy Pattern）✅ 完成 (2026-04-09)
 
-**目標**：ReAct agent 依 bot.knowledge_mode 自動切換 tool，wiki 模式可實際對話
+**目標**：ReAct agent 依 bot.knowledge_mode 自動切換 tool，wiki 模式可實際對話。
+Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigator（方案 #1）。
 
-- ⬜ `infrastructure/wiki/graph_navigator.py` — `find_related_nodes(keywords, max_depth)`
-- ⬜ `application/wiki/query_wiki_use_case.py` — QueryWikiCommand + retrieve()
-- ⬜ `infrastructure/langgraph/tools.py` 新增 `WikiQueryTool` class（對應 `RAGQueryTool`）
-- ⬜ `infrastructure/langgraph/react_agent_service.py`
-  - 新增 `_build_wiki_lc_tool()` (對應 `_build_rag_lc_tool()`)
-  - 修改 tools 組裝為 `if / elif` 分派（二選一，非 Hybrid）
-- ⬜ `send_message_use_case._load_bot_config()` 新增 `knowledge_mode` 傳遞
-- ⬜ `container.py` 註冊 `wiki_query_use_case`、`wiki_query_tool`
-- ⬜ BDD：`query_wiki.feature` — 完整「設定 wiki 模式 → 編譯 → 對話」
-- ⬜ Unit tests：graph_navigator、WikiQueryTool
-- ⬜ 驗收：後端 BDD 全綠，curl 對話測試可取得 wiki 結果
+**Domain layer**
+- ✅ `domain/wiki/navigator.py` — `GraphNavigator` ABC Port + `NavigationResult` VO + `VALID_NAVIGATION_STRATEGIES` 常數
+- ✅ `domain/bot/entity.py` 新增 `wiki_navigation_strategy: str = "keyword_bfs"` + `VALID_WIKI_NAVIGATION_STRATEGIES` 常數
+
+**Infrastructure layer**
+- ✅ `infrastructure/wiki/keyword_bfs_navigator.py` — 方案 #1 完整實作
+  - LLM 抽 3-5 關鍵字（temperature=0, max_tokens=100）
+  - Label/summary 加權匹配 + 多關鍵字累加分數
+  - BFS 遍歷 max_depth=2 + edge confidence 加權（EXTRACTED 加成、AMBIGUOUS 衰減）
+  - Cluster fallback：BFS < 2 節點時補充 seed 所在 cluster
+  - LLM 失敗降級到 unigram 字串匹配（不報錯）
+- ✅ `infrastructure/db/models/bot_model.py` 加 `wiki_navigation_strategy` column
+- ✅ `infrastructure/db/repositories/bot_repository.py` 三處映射更新
+
+**Migration**
+- ✅ `migrations/add_wiki_navigation_strategy.sql` — `ALTER TABLE bots ADD COLUMN wiki_navigation_strategy VARCHAR(30) NOT NULL DEFAULT 'keyword_bfs'`
+
+**Application layer**
+- ✅ `application/wiki/query_wiki_use_case.py` — `QueryWikiCommand` + `QueryWikiResult` + `QueryWikiUseCase`
+  - Strategy dispatch 從 navigators dict 取對應 navigator
+  - WikiGraph 不存在/狀態異常 → 可讀錯誤訊息（**非 exception**），讓 LLM 能告知使用者
+  - Sources schema 與 RAGQueryTool 完全一致（content_snippet/document_name/score/chunk_id/document_id）
+- ✅ `application/bot/create_bot_use_case.py` 加 `wiki_navigation_strategy` + 驗證
+- ✅ `application/bot/update_bot_use_case.py` 加 `wiki_navigation_strategy: object = _UNSET` + 驗證
+
+**Interfaces layer (ReAct tool 整合)**
+- ✅ `infrastructure/langgraph/tools.py` 新增 `WikiQueryTool` class（與 RAGQueryTool 平行 + 相同 schema）
+- ✅ `infrastructure/langgraph/react_agent_service.py`
+  - 新增 `_build_wiki_lc_tool()` closure 注入 tenant_id/bot_id/strategy
+  - `process_message()` 和 `process_message_stream()` 簽章新增 `knowledge_mode` / `wiki_navigation_strategy` / `bot_id` 參數
+  - Tool 組裝改為 `if knowledge_mode == "wiki" → wiki_lc_tool / else → rag_lc_tool` 二選一
+- ✅ `application/agent/send_message_use_case.py` `_load_bot_config()` 加 knowledge_mode + wiki_navigation_strategy + bot_id
+- ✅ 兩處 `process_message[_stream]` 呼叫位置都傳新參數
+- ✅ `interfaces/api/bot_router.py` Create/Update Request + Response + 400 驗證
+
+**Container**
+- ✅ 註冊 `keyword_bfs_navigator` Factory + `wiki_navigators` Dict + `query_wiki_use_case` + `wiki_query_tool`
+- ✅ 把 `wiki_query_tool` 注入 `agent_service` Selector 的 real branch
+
+**測試 (37 新增，零回歸)**
+- ✅ `tests/features/unit/wiki/query_wiki.feature` 4 BDD scenarios
+- ✅ `tests/unit/wiki/test_keyword_bfs_navigator.py` 19 unit tests（seed matching/BFS/cluster fallback/LLM 容錯/edge confidence/top_n/path context）
+- ✅ `tests/unit/wiki/test_query_wiki_use_case.py` 11 unit tests（strategy dispatch/各種 wiki status/source schema 對齊/未知 strategy）
+- ✅ `tests/unit/wiki/test_query_wiki_steps.py` 4 BDD steps
+- ✅ `tests/integration/wiki/test_query_wiki_e2e.py` 3 integration tests（真實 PG + mock LLM 端到端）
+- ✅ 驗收：640 passed (582 unit + 58 integration)、新檔案 lint 全 clean、零回歸
+- ⚠️ 3 個 C901 complexity warnings 在 react_agent_service.py 是 pre-existing（已 stash 驗證）
+
+**Post-MVP roadmap 預留（priority 順序）**
+- W.3.1 ClusterPickerNavigator (高) — 適合 legacy 文件 / 探索場景
+- W.3.2 HybridNavigator (中) — keyword + cluster 組合
+- W.3.3 EmbeddingNavigator (低) — 需 pgvector
+- W.3.4 SubstringBFSNavigator (最低，可能不做) — 英文 FAQ 零 LLM 成本場景
 
 ### W.4 前端 UI + E2E
 
@@ -1285,4 +1328,4 @@
 | **Widget show_sources 型別修復** | **✅ 完成** | **100%** | **1 file: widget/src/main.ts WidgetConfig 物件補齊 show_sources 欄位，修復 Cloud Run deploy TypeScript build 錯誤** |
 | **Prompt Optimizer 儀表板增強** | **✅ 完成** | **100%** | **Issue #24: 8 files (+479 lines): (1) 修復 Score Trend 圖表 — useMemo 從 iterations 計算每輪實際分數+running best, ActiveRun 加 current_score, (2) Prompt diff 改對比最佳提示詞(findSourceIteration), (3) details JSON 存 case_results(per-case pass/fail+answer_snippet+assertion_results), 新元件 CaseResultsTable 可展開查看案例詳情, 2 BDD scenarios + 4 frontend unit tests, 519 backend + 168 frontend tests pass** |
 | **Cache Token 追蹤修復 + 系統層 Cache 明細** | **✅ 完成** | **100%** | **8 files: 修復 3 個 bug — (1) stream 路徑遺失 cache tokens（agent_router→extract_usage_from_accumulated）, (2) OpenAI 系 LangGraph input_tokens 含 cached 重複計算（usage.py 正規化扣除）, (3) RecordUsageUseCase fallback 成本不含 cache tokens。新增系統層 token-usage API + 明細表 cache_read/creation_tokens 欄位。4 新 BDD regression scenarios, 526 backend tests pass** |
-| **Sprint W: LLM Wiki Knowledge Mode** | **🔄 進行中** | **50% (W.1 ✅ W.2 ✅)** | **Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26): W.1 Domain/Migration（18 tests）+ W.2 編譯 Pipeline（41 新 tests，含 Louvain clustering + Graphify-derived prompt），W.3-W.4 待開工** |
+| **Sprint W: LLM Wiki Knowledge Mode** | **🔄 進行中** | **75% (W.1 ✅ W.2 ✅ W.3 ✅)** | **Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26): W.1 Domain/Migration + W.2 編譯 Pipeline + W.3 查詢 + ReAct Tool 整合 (Strategy Pattern, KeywordBFSNavigator MVP, 37 新 tests)，W.4 前端 UI 待開工** |
