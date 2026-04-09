@@ -254,6 +254,10 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         application.include_router(usage_router)
         application.include_router(bot_router)
 
+        from src.interfaces.api.wiki_router import router as wiki_router
+
+        application.include_router(wiki_router)
+
         from src.interfaces.api.admin_router import router as admin_router
         from src.interfaces.api.feedback_router import router as feedback_router
         from src.interfaces.api.provider_setting_router import (

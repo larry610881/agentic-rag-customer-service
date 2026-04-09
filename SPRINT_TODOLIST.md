@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-09 (Sprint W.1 完成 — Domain + Migration + Bot 欄位就位)
+> 最後更新：2026-04-09 (Sprint W.2 完成 — Wiki 編譯 Pipeline with Louvain)
 
 ---
 
@@ -1097,28 +1097,49 @@
 - ✅ 驗收：597 passed（544 unit + 53 integration）、新檔案 lint 全 clean、覆蓋率不降
 - ⚠️ 2 個 pre-existing 失敗（usage cache_read_tokens NOT NULL、e2e 缺 OPENAI_API_KEY）— 已驗證與本次無關（stash 測試確認）
 
-### W.2 Wiki 編譯 Pipeline（核心技術）
+### W.2 Wiki 編譯 Pipeline（核心技術）✅ 完成 (2026-04-09)
 
 **目標**：可手動觸發 Wiki 編譯，把 KB 裡的文件編譯成 WikiGraph
 
-- ⬜ **先做**：clone `https://github.com/safishamsi/graphify` 到 `~/source/repos/graphify-ref/`（僅參考，不進 repo）
-- ⬜ 讀 Graphify 的 Pass 2 prompt 設計與 `graph.json` schema
-- ⬜ `infrastructure/wiki/llm_wiki_compiler.py` — 呼叫既有 `LLMService` port，**不依賴 Claude Code subagent**
-  - 參考 Graphify prompt 改寫為繁中客服場景版本
-  - 回傳結構化 JSON（entities + relationships + EXTRACTED/INFERRED/AMBIGUOUS 標籤）
-- ⬜ `infrastructure/wiki/graph_builder.py` — NetworkX + Leiden community detection
-- ⬜ `application/wiki/compile_wiki_use_case.py`
-  - 讀取 KB 文件 → parser → compiler → 存 JSONB
-  - **必須** wrap in `independent_session_scope()`
-  - 使用 `ProcessingTask` 追蹤進度
-  - Token 計費走 `extract_usage_from_langchain_messages()`
-- ⬜ `interfaces/api/wiki_router.py`
-  - `POST /api/v1/bots/{bot_id}/wiki/compile` — `safe_background_task()` 包裝
-  - `GET /api/v1/bots/{bot_id}/wiki/status` — ProcessingTask 進度
-- ⬜ BDD：`compile_wiki.feature`
-- ⬜ Unit tests：compiler service（mock LLM）、graph_builder（純函式）
-- ⬜ Integration test：端到端編譯（小 fixture）
-- ⬜ 驗收：手動觸發編譯、wiki_graphs 表有資料、status 可查
+- ✅ Clone `https://github.com/safishamsi/graphify` 到 `~/source/repos/graphify-ref/`（僅參考，不進 repo）
+- ✅ 讀 Graphify 的 Pass 2 prompt 設計與 JSON schema（`graphify/skill.md` L200-252）
+- ✅ `domain/wiki/services.py` — WikiCompilerService Port + ExtractedNode/Edge/Graph + CompileResult
+- ✅ `infrastructure/wiki/llm_wiki_compiler.py` — 呼叫既有 `LLMService` port
+  - 繁中客服場景改寫的 system prompt（EXTRACTED/INFERRED/AMBIGUOUS 三段 confidence）
+  - 強健 JSON 解析（fenced / preamble / bare）
+  - 錯誤容錯：LLM throw / invalid JSON / empty content 都回空 ExtractedGraph
+  - Content 長度截斷保護（12000 字元預設）
+  - Edge score 正規化 + clamp、confidence 驗證
+- ✅ `infrastructure/wiki/graph_builder.py` — networkx 3.6.1 Louvain community detection
+  - `merge_extracted_graphs` — 節點去重、邊 confidence 優先級合併
+  - `build_backlinks` — target → sources 反向查詢
+  - `detect_clusters_louvain` — 固定 seed、weighted edges、isolate handling、cluster 排序
+  - **詳細的 Post-MVP 升級指引寫在檔案 docstring 開頭**
+- ✅ `application/wiki/compile_wiki_use_case.py`
+  - Bot 驗證 → KB 文件載入 → 逐文件編譯 → 合併 → 儲存
+  - Placeholder graph 先寫入並標記 compiling，避免空檔期查詢失敗
+  - Token usage 累計進 metadata
+  - 錯誤文件跳過並記錄到 metadata.errors（cap 20）
+- ✅ `application/wiki/get_wiki_status_use_case.py` — WikiStatusView DTO
+- ✅ `interfaces/api/wiki_router.py`
+  - `POST /api/v1/bots/{bot_id}/wiki/compile` 202 Accepted + `safe_background_task` + lazy resolve
+  - `GET /api/v1/bots/{bot_id}/wiki/status` 狀態查詢
+  - Router 層 early validation（bot 存在/tenant 歸屬/KB 綁定）
+- ✅ Container 註冊 wiki_compiler、compile_wiki_use_case、get_wiki_status_use_case
+- ✅ main.py include wiki_router
+- ✅ wiring_config 加 wiki_router 模組
+- ✅ BDD：`tests/features/unit/wiki/compile_wiki.feature`（4 scenarios）
+- ✅ Unit tests：
+  - `test_graph_builder.py`（17 tests：merge/backlinks/Louvain clustering 含 deterministic、dense community split）
+  - `test_llm_wiki_compiler.py`（17 tests：JSON 解析、錯誤容錯、節點/邊建構、truncation）
+  - `test_compile_wiki_steps.py`（4 BDD scenarios）
+- ✅ Integration test：`test_compile_wiki_e2e.py`（3 tests：真實 DB + fake compiler 驗證完整 pipeline）
+- ✅ 驗收：603 passed（41 新增）、新檔案 lint clean、零回歸
+- 📎 **依賴新增**：`networkx 3.6.1`（約 2MB 純 Python，內建 Louvain）
+- 📎 **Post-MVP 升級路徑**（記錄於 `graph_builder.py` docstring）：
+  - Leiden（graspologic）觸發條件：單租戶節點 > 10k、或 modularity < 0.3
+  - LLM-based cluster labeling：當需要為 cluster 產生繁中摘要時
+  - Resolution 調整：cluster 太碎/太粗時改 `resolution` 參數即可
 
 ### W.3 Wiki 查詢 + ReAct Tool 整合
 
@@ -1264,4 +1285,4 @@
 | **Widget show_sources 型別修復** | **✅ 完成** | **100%** | **1 file: widget/src/main.ts WidgetConfig 物件補齊 show_sources 欄位，修復 Cloud Run deploy TypeScript build 錯誤** |
 | **Prompt Optimizer 儀表板增強** | **✅ 完成** | **100%** | **Issue #24: 8 files (+479 lines): (1) 修復 Score Trend 圖表 — useMemo 從 iterations 計算每輪實際分數+running best, ActiveRun 加 current_score, (2) Prompt diff 改對比最佳提示詞(findSourceIteration), (3) details JSON 存 case_results(per-case pass/fail+answer_snippet+assertion_results), 新元件 CaseResultsTable 可展開查看案例詳情, 2 BDD scenarios + 4 frontend unit tests, 519 backend + 168 frontend tests pass** |
 | **Cache Token 追蹤修復 + 系統層 Cache 明細** | **✅ 完成** | **100%** | **8 files: 修復 3 個 bug — (1) stream 路徑遺失 cache tokens（agent_router→extract_usage_from_accumulated）, (2) OpenAI 系 LangGraph input_tokens 含 cached 重複計算（usage.py 正規化扣除）, (3) RecordUsageUseCase fallback 成本不含 cache tokens。新增系統層 token-usage API + 明細表 cache_read/creation_tokens 欄位。4 新 BDD regression scenarios, 526 backend tests pass** |
-| **Sprint W: LLM Wiki Knowledge Mode** | **🔄 進行中** | **25% (W.1 ✅)** | **Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26): W.1 完成（Domain+Migration+Bot 欄位，18 新 tests），W.2-W.4 待開工。獨立新 BC `wiki`, JSONB 儲存, RAG/Wiki 二選一（不做 Hybrid）, Plan: `.claude/plans/luminous-launching-lobster.md`** |
+| **Sprint W: LLM Wiki Knowledge Mode** | **🔄 進行中** | **50% (W.1 ✅ W.2 ✅)** | **Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26): W.1 Domain/Migration（18 tests）+ W.2 編譯 Pipeline（41 新 tests，含 Louvain clustering + Graphify-derived prompt），W.3-W.4 待開工** |

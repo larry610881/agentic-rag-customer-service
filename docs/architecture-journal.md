@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Sprint W.2 — Wiki 編譯 Pipeline（Graphify-derived Prompt + Louvain Clustering）](#sprint-w2--wiki-編譯-pipelinegraphify-derived-prompt--louvain-clustering)
 - [Sprint W.1 — LLM Wiki Knowledge Mode 骨架（新 BC + Bot 欄位純加法）](#sprint-w1--llm-wiki-knowledge-mode-骨架新-bc--bot-欄位純加法)
 - [Cache Token 追蹤修復 — Provider 語意差異正規化 + Fallback 成本完整性](#cache-token-追蹤修復--provider-語意差異正規化--fallback-成本完整性)
 - [Cache-Aware Token 計費 — Provider-Agnostic 正規化 + 4 段計費公式擴展](#cache-aware-token-計費--provider-agnostic-正規化--4-段計費公式擴展)
@@ -71,6 +72,45 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Sprint W.2 — Wiki 編譯 Pipeline（Graphify-derived Prompt + Louvain Clustering）
+
+**來源**：Sprint W.2（Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26)）
+**日期**：2026-04-09
+**涉及層級**：Domain → Application → Infrastructure → Interfaces（後端跨 4 層）+ 新依賴 networkx
+
+### 本次相關主題
+
+Port/Adapter Pattern、LLM 結構化輸出容錯、Community Detection (Louvain)、Background Task with Lazy Resolve、依賴取捨（dependency cost-benefit）
+
+### 做得好的地方
+
+- **Graphify 參考而非依賴**：clone 到 `~/source/repos/graphify-ref/`（repo 外部），讀它的 Pass 2 prompt design（`skill.md` L200-252）和 `cluster.py` 理解 Leiden 的 fallback 設計，用 Python 自己寫一份適合繁中客服的 system prompt + JSON schema parser。完全不引入 graphifyy PyPI 套件，避免拖入 Claude Code subagent 依賴和 tree-sitter/AST 過度功能
+- **對 LLM 結構化輸出採三層容錯**：直接 `json.loads` → fenced code block regex → 最外層大括號切片。同時對 `confidence` 無效值降級為 INFERRED、`confidence_score` clamp 到 [0, 1]、EXTRACTED 強制 score=1.0、缺 label/source/target 的節點/邊直接丟棄。這種「寬進嚴出」的 parser 比起「LLM 沒按格式就整批失敗」穩健得多，客服場景下可用性遠勝完美性
+- **推翻自己的初始決策換來品質**：一開始寫了 BFS 連通分量當 clustering（避免新依賴），使用者質疑後誠實評估發現 BFS 對真實 KB 會產出「單一巨型 cluster」，等同功能失效。立刻改用 networkx 3.6.1 內建 Louvain（純 Python、2MB、不需 C 編譯），品質跳升但依賴成本可接受。**教訓：不要為了單一原則（零依賴）犧牲核心價值命題**
+- **Port/Adapter 精確實踐**：`WikiCompilerService` ABC 定義在 `domain/wiki/services.py`，具體實作 `LLMWikiCompilerService` 在 `infrastructure/wiki/`。Use case 只依賴 Port，測試可用 `FakeWikiCompiler`（integration test 已示範）完全替換 LLM，不需要 mock 任何外部服務就能跑端到端編譯
+- **Clustering 升級路徑寫進 docstring**：`graph_builder.py` 檔案頂部有完整的 "CLUSTERING NOTES" 區塊，列出「何時升級 Leiden / 何時改用 LLM clustering / Resolution 參數怎麼調」。未來遇到瓶頸時直接看 docstring 就知道往哪走，不用翻 git log 或 journal
+- **`compile_wiki_use_case` 的 placeholder-then-update 流程**：編譯開始先寫一筆 status=compiling 的 placeholder graph，失敗時也會留下可查詢的 status。這避免「用戶點編譯後沒有任何 DB 記錄，也查不到進度」的使用者困惑。完成後同一筆 upsert 為 ready
+- **Integration test 用 FakeWikiCompiler 而非 mock**：定義一個真正的 subclass 實作 WikiCompilerService，回傳 deterministic fake graph。比 `AsyncMock(spec=...)` 更接近真實行為，也更容易讀懂測試意圖
+
+### 潛在隱憂
+
+- **文件內容長度截斷在 12000 字元是硬編碼**：對長文件（產品手冊 / 政策文件常常 > 20000 字）會被截斷，後半段直接丟棄，可能漏抓重要概念 → 建議：改為「滑動視窗分塊 + 每塊分別 extract + 再合併」，或把截斷長度設為可配置 → 優先級：中（MVP 可接受）
+- **Cluster label 用 heuristic「最長 label」**：對大部分情境可用，但若 cluster 裡剛好有個很長但非代表性的 label（如「退貨相關的其他說明和注意事項」vs 核心的「退貨政策」），會選錯 → 建議：Phase 3 加 LLM 對每個 cluster 產摘要 label → 優先級：低（docstring 已記錄）
+- **metadata 的 errors 陣列 cap 20**：若有超過 20 個文件失敗，用戶看不到完整清單 → 建議：改寫到獨立的 `compile_errors` 表或 structured log，metadata 只存 count → 優先級：低
+- **沒做 compiling 狀態 timeout**：若背景任務在編譯中途被 kill（container 重啟、pod OOM），wiki_graphs 會停留在 compiling 狀態永遠不變 → 建議：用 `updated_at` 做 stale detection，超過 N 分鐘的 compiling 狀態在 GET status 時降級為 failed；或引入 W.4 前做個 watchdog → 優先級：中
+- **CompileResult 不會推回 Router**：BackgroundTasks 是 fire-and-forget，使用者只能輪詢 status。若要做 real-time 進度條，需要 SSE / WebSocket 或 Redis pub/sub → 優先級：低（MVP 輪詢夠用）
+- **全文件序列處理**：`for doc in documents` 串行 await，50 份文件要 50 × 平均 3 秒 = 2.5 分鐘。可以 `asyncio.gather` 並行但要注意 LLM provider 的 rate limit → 建議：Phase 2 加 semaphore 並行（10 並發） → 優先級：中
+
+### 延伸學習
+
+- **Robust JSON Parsing with LLM**：LLM 的 structured output 永遠不該假設 100% 正確。`json.loads` 失敗後 fallback 到 fenced code block / outermost braces / Pydantic model validation 是四種常見策略的組合。OpenAI 2024-08 推出的 `response_format={"type": "json_schema", "strict": true}` 能保證 schema 層級的正確性，但不是所有 provider 都支援，所以 parser 層的容錯仍必要。搜尋：_structured output fallback parsing LLM_
+- **Louvain vs Leiden — 何時升級值得**：Louvain 的缺點是 "resolution limit"（無法偵測小於某個 size 的 cluster），Leiden 則解決這個問題且保證不產出內部不連通的 cluster。但對客服 KB 這種「中等規模、語意稀疏」的場景，Louvain 95% 的品質已足夠，Leiden 的 5% 進步換 50MB + C 編譯成本不划算。這是典型的 "diminishing returns vs marginal cost" 取捨。搜尋：_Leiden algorithm resolution limit_ / Traag et al. 2019 paper
+- **Modularity Score 診斷**：若未來想判斷 Louvain 的 cluster 品質好不好，可用 `nx.community.modularity(G, communities)` 計算 Q 值。Q > 0.3 算不錯，> 0.5 非常好，< 0.3 表示 graph 沒有明顯的 community 結構（可能概念之間過度糾纏）。這可以變成 metadata 的一個欄位，幫助用戶判斷編譯品質
+- **Dependency Cost-Benefit Framework**：新增依賴前問 4 個問題：(1) 它解決的問題是否為核心價值命題的一部分？(2) 是否有輕量替代（標準庫 / 現有依賴 / 短小自寫）？(3) 這個依賴的維護狀況如何（star、last commit、issue response time）？(4) 未來替換成本是多少？本次 networkx 四題全過：核心命題、輕量替代失效、高度活躍、抽象在 graph_builder 一個檔案內（未來換 Leiden/Neo4j 只改這一檔）
+- **思考題**：如果未來某租戶的 wiki 編譯持續失敗（譬如 LLM 經常回非 JSON 格式），你有哪些「降級策略」可以讓功能依然可用？提示：思考 (a) prompt 中再加幾個 few-shot examples、(b) 改用 JSON mode / structured output、(c) 給該租戶自動降回 RAG 模式並通知管理員、(d) 記錄失敗樣本用於 prompt 優化迴圈。你會按什麼順序嘗試？每個策略的「成功機率 × 實作成本」如何權衡？
 
 ---
 

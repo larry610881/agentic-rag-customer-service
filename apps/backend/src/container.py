@@ -11,6 +11,8 @@ from src.application.auth.register_user_use_case import RegisterUserUseCase
 from src.application.auth.reset_password_use_case import ResetPasswordUseCase
 from src.application.auth.update_user_use_case import UpdateUserUseCase
 from src.application.bot.create_bot_use_case import CreateBotUseCase
+from src.application.wiki.compile_wiki_use_case import CompileWikiUseCase
+from src.application.wiki.get_wiki_status_use_case import GetWikiStatusUseCase
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.bot.list_all_bots_use_case import ListAllBotsUseCase
@@ -250,6 +252,7 @@ from src.infrastructure.db.repositories.feedback_repository import (
 from src.infrastructure.db.repositories.wiki_graph_repository import (
     SQLAlchemyWikiGraphRepository,
 )
+from src.infrastructure.wiki.llm_wiki_compiler import LLMWikiCompilerService
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
 )
@@ -402,6 +405,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.widget_router",
             "src.interfaces.api.eval_dataset_router",
             "src.interfaces.api.prompt_optimizer_run_router",
+            "src.interfaces.api.wiki_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -1067,6 +1071,26 @@ class Container(containers.DeclarativeContainer):
         UploadBotIconUseCase,
         bot_repository=bot_repository,
         file_storage_service=file_storage_service,
+    )
+
+    # --- Wiki Knowledge Mode ---
+
+    wiki_compiler = providers.Factory(
+        LLMWikiCompilerService,
+        llm_service=llm_service,
+    )
+
+    compile_wiki_use_case = providers.Factory(
+        CompileWikiUseCase,
+        bot_repository=bot_repository,
+        document_repository=document_repository,
+        wiki_graph_repository=wiki_graph_repository,
+        wiki_compiler=wiki_compiler,
+    )
+
+    get_wiki_status_use_case = providers.Factory(
+        GetWikiStatusUseCase,
+        wiki_graph_repository=wiki_graph_repository,
     )
 
     # --- Observability: RAG Evaluation ---
