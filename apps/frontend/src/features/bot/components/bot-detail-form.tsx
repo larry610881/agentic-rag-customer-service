@@ -36,6 +36,7 @@ import type { Bot, UpdateBotRequest } from "@/types/bot";
 import type { McpToolInfo } from "@/types/mcp";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { McpBindingsSection } from "./mcp-bindings-section";
+import { CompileWikiCard } from "./compile-wiki-card";
 
 const AVAILABLE_TOOLS = [
   { value: "rag_query", label: "知識庫查詢" },
@@ -82,6 +83,8 @@ const botFormSchema = z.object({
   line_channel_secret: z.string().nullable().optional(),
   line_channel_access_token: z.string().nullable().optional(),
   line_show_sources: z.boolean().default(false),
+  knowledge_mode: z.enum(["rag", "wiki"]),
+  wiki_navigation_strategy: z.enum(["keyword_bfs"]),
 });
 
 type BotFormValues = z.infer<typeof botFormSchema>;
@@ -181,6 +184,8 @@ export function BotDetailForm({
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
       line_show_sources: bot.line_show_sources ?? false,
+      knowledge_mode: bot.knowledge_mode ?? "rag",
+      wiki_navigation_strategy: bot.wiki_navigation_strategy ?? "keyword_bfs",
     },
   });
 
@@ -188,6 +193,7 @@ export function BotDetailForm({
   const showSources = watch("show_sources");
   const greetingMessages = watch("widget_greeting_messages") ?? [];
   const mcpServers = watch("mcp_servers") ?? [];
+  const knowledgeMode = watch("knowledge_mode") ?? "rag";
 
   // LINE show_sources 連動：主開關關閉時，LINE 也關閉
   useEffect(() => {
@@ -248,6 +254,8 @@ export function BotDetailForm({
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
       line_show_sources: bot.line_show_sources ?? false,
+      knowledge_mode: bot.knowledge_mode ?? "rag",
+      wiki_navigation_strategy: bot.wiki_navigation_strategy ?? "keyword_bfs",
     });
   }, [bot, reset]);
 
@@ -342,6 +350,33 @@ export function BotDetailForm({
 
         {/* Tab 1: RAG 知識庫 */}
         <TabsContent value={TAB_KEYS.KNOWLEDGE} className="flex flex-col gap-6 pt-4">
+          {/* 知識表徵模式 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">知識表徵模式</h3>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-knowledge-mode">知識模式</Label>
+              <Controller
+                name="knowledge_mode"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="bot-knowledge-mode" className="w-64">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="rag">RAG（向量檢索，預設）</SelectItem>
+                      <SelectItem value="wiki">Wiki（知識圖譜）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                RAG 適合大型文件知識庫；Wiki 適合中小型文件且問題精準場景，
+                需先觸發編譯後才能使用。
+              </p>
+            </div>
+          </section>
+
           {/* Audit 模式 */}
           <section className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold">Audit 記錄模式</h3>
@@ -475,51 +510,122 @@ export function BotDetailForm({
             </div>
           </section>
 
-          {/* 知識庫綁定 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">知識庫</h3>
-            <div className="flex flex-col gap-2">
-              <Label>已綁定的知識庫</Label>
-              <Controller
-                name="knowledge_base_ids"
-                control={control}
-                render={({ field }) => (
-                  <div className="flex flex-col gap-2">
-                    {kbData?.items?.map((kb) => (
-                      <label
-                        key={kb.id}
-                        className="flex items-center gap-2 text-sm"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={field.value.includes(kb.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              field.onChange([...field.value, kb.id]);
-                            } else {
-                              field.onChange(
-                                field.value.filter((id) => id !== kb.id),
-                              );
-                            }
-                          }}
-                          className="rounded border-input"
-                        />
-                        {kb.name}
-                      </label>
-                    ))}
-                    {(!kbData?.items || kbData.items.length === 0) && (
-                      <p className="text-sm text-muted-foreground">
-                        目前沒有可用的知識庫。
-                      </p>
-                    )}
-                  </div>
-                )}
-              />
-            </div>
-          </section>
+          {/* 知識庫綁定 — RAG 模式：多選 */}
+          {knowledgeMode === "rag" && (
+            <section className="flex flex-col gap-4">
+              <h3 className="text-lg font-semibold">知識庫</h3>
+              <div className="flex flex-col gap-2">
+                <Label>已綁定的知識庫（可多選）</Label>
+                <Controller
+                  name="knowledge_base_ids"
+                  control={control}
+                  render={({ field }) => (
+                    <div className="flex flex-col gap-2">
+                      {kbData?.items?.map((kb) => (
+                        <label
+                          key={kb.id}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={field.value.includes(kb.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                field.onChange([...field.value, kb.id]);
+                              } else {
+                                field.onChange(
+                                  field.value.filter((id) => id !== kb.id),
+                                );
+                              }
+                            }}
+                            className="rounded border-input"
+                          />
+                          {kb.name}
+                        </label>
+                      ))}
+                      {(!kbData?.items || kbData.items.length === 0) && (
+                        <p className="text-sm text-muted-foreground">
+                          目前沒有可用的知識庫。
+                        </p>
+                      )}
+                    </div>
+                  )}
+                />
+              </div>
+            </section>
+          )}
 
-          {/* RAG 參數 (conditional) */}
-          {enabledTools.includes("rag_query") && (
+          {/* 知識庫綁定 + Wiki 設定 — Wiki 模式 */}
+          {knowledgeMode === "wiki" && (
+            <section className="flex flex-col gap-4">
+              <h3 className="text-lg font-semibold">Wiki 知識庫</h3>
+              <p className="text-xs text-muted-foreground">
+                Wiki 模式目前僅支援單一知識庫，編譯後查詢會走 LLM 抽關鍵字 +
+                圖譜遍歷。
+              </p>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-wiki-kb">綁定知識庫</Label>
+                <Controller
+                  name="knowledge_base_ids"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value[0] ?? ""}
+                      onValueChange={(value) =>
+                        field.onChange(value ? [value] : [])
+                      }
+                    >
+                      <SelectTrigger id="bot-wiki-kb" className="w-full">
+                        <SelectValue placeholder="選擇知識庫" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {kbData?.items?.map((kb) => (
+                          <SelectItem key={kb.id} value={kb.id}>
+                            {kb.name}
+                          </SelectItem>
+                        ))}
+                        {(!kbData?.items || kbData.items.length === 0) && (
+                          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                            目前沒有可用的知識庫
+                          </div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-wiki-strategy">導航策略</Label>
+                <Controller
+                  name="wiki_navigation_strategy"
+                  control={control}
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id="bot-wiki-strategy" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="keyword_bfs">
+                          Keyword + BFS（推薦）
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                <p className="text-xs text-muted-foreground">
+                  目前僅支援 Keyword BFS 策略；未來會新增 Cluster Picker /
+                  Hybrid / Embedding 等策略。
+                </p>
+              </div>
+
+              {bot.id && <CompileWikiCard botId={bot.id} />}
+            </section>
+          )}
+
+          {/* RAG 參數 (conditional) — 只在 RAG 模式顯示 */}
+          {knowledgeMode === "rag" && enabledTools.includes("rag_query") && (
             <section className="flex flex-col gap-4">
               <h3 className="text-lg font-semibold">RAG 參數</h3>
               <p className="text-sm text-muted-foreground">

@@ -247,3 +247,17 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         for chunk_id, doc_id in result.all():
             mapping[doc_id].append(chunk_id)
         return dict(mapping)
+
+    async def find_max_updated_at_by_kb(
+        self, kb_id: str, tenant_id: str
+    ) -> datetime | None:
+        """Return MAX(documents.updated_at) for stale detection."""
+        stmt = (
+            select(func.max(DocumentModel.updated_at))
+            .where(
+                DocumentModel.kb_id == kb_id,
+                DocumentModel.tenant_id == tenant_id,
+            )
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()

@@ -1117,6 +1117,7 @@ class Container(containers.DeclarativeContainer):
     get_wiki_status_use_case = providers.Factory(
         GetWikiStatusUseCase,
         wiki_graph_repository=wiki_graph_repository,
+        document_repository=document_repository,
     )
 
     # --- Observability: RAG Evaluation ---

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from src.domain.knowledge.entity import Chunk, Document, KnowledgeBase, ProcessingTask
 
@@ -115,6 +116,18 @@ class DocumentRepository(ABC):
     async def find_chunk_ids_by_kb(
         self, kb_id: str
     ) -> dict[str, list[str]]: ...
+
+    @abstractmethod
+    async def find_max_updated_at_by_kb(
+        self, kb_id: str, tenant_id: str
+    ) -> datetime | None:
+        """Return the latest document.updated_at in a KB for stale detection.
+
+        Used by Wiki status query to determine if knowledge base has been
+        modified since wiki graph was compiled. Returns None if KB has no
+        documents.
+        """
+        ...
 
 
 class ProcessingTaskRepository(ABC):

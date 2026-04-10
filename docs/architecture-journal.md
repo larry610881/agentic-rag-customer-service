@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Sprint W.4 — Wiki 前端 UI + Stale Detection（條件渲染 + Query-time 降級）](#sprint-w4--wiki-前端-ui--stale-detectio條件渲染--query-time-降級)
 - [Sprint W.3 — Wiki 查詢 + ReAct 整合（Strategy Pattern + KeywordBFSNavigator）](#sprint-w3--wiki-查詢--react-整合strategy-pattern--keywordbfsnavigator)
 - [Sprint W.2 — Wiki 編譯 Pipeline（Graphify-derived Prompt + Louvain Clustering）](#sprint-w2--wiki-編譯-pipelinegraphify-derived-prompt--louvain-clustering)
 - [Sprint W.1 — LLM Wiki Knowledge Mode 骨架（新 BC + Bot 欄位純加法）](#sprint-w1--llm-wiki-knowledge-mode-骨架新-bc--bot-欄位純加法)
@@ -73,6 +74,47 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Sprint W.4 — Wiki 前端 UI + Stale Detection（條件渲染 + Query-time 降級）
+
+**來源**：Sprint W.4（Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26)）
+**日期**：2026-04-10
+**涉及層級**：前後端跨層 — 後端 Application 小改動 + 前端 Type/Hook/Component/E2E 全棧
+
+### 本次相關主題
+
+Query-Time Computed Status、條件渲染 UI Pattern、TanStack Query 動態 Polling、Mock-based E2E、Stale Detection without Triggers
+
+### 做得好的地方
+
+- **Stale Detection 用 Query-Time 而非 Trigger-Based**：原本可以選擇「文件更新時觸發 wiki status=stale」（trigger pattern），這要做跨 BC 操作（document → wiki）+ 額外的 event hook 機制。最後選擇 query-time computed：在 GET status 時 LEFT JOIN 取 max(updated_at) 做即時比對。**省去整個觸發層的複雜度**，且不會錯過任何文件更新（trigger 可能漏觸發）。代價是每次 GET status 多一個 SQL aggregate，但走 `ix_documents_kb_id` index 影響可忽略。**這是「computed property vs cached field」的經典取捨**
+- **降級只在 query-time 不寫回 DB**：刻意不更新 `wiki_graph.status` 為 stale，原因有二：(1) 避免 query-time 寫操作引入競態（多個 polling 同時降級可能 race）、(2) 保留 wiki 的真實狀態（ready 仍然有效，只是該重編了）。前端拿到的 status 是計算值，DB 中還是 ready。這種「計算值 vs 持久值」的分離讓系統更可預測
+- **條件渲染 UI 取代新增 tab**：rag/wiki 模式只在 KNOWLEDGE tab 內條件渲染，不新增獨立 wiki tab。優點：使用者切換 mode 後立即看到差異，不需要再點另一個 tab；缺點：tab 內容變動較大可能造成短暫 layout shift。權衡後優先選擇「直觀切換感」
+- **TanStack Query v5 refetchInterval 動態 polling**：`refetchInterval: (query) => query.state.data?.status === "compiling" ? 3000 : false`。這個 pattern 比手動 setTimeout 優雅得多 — TanStack 自動處理 unmount、retry、tab visibility 等狀況。**只在需要時 polling，狀態穩定就停止**，避免無意義的網路呼叫
+- **schema 對齊讓既有 Bot type 升級無痛**：前端 `Bot` interface 加 `knowledge_mode`/`wiki_navigation_strategy` 兩個欄位後，既有 11 個 form tests 零修改全部通過。fixture 補上預設值即可，沒有任何 callsite 需要改。這證實了 W.1 對「純加法變更」原則的堅持是值得的
+- **CompileWikiCard 元件抽出**：完全自包含的子元件，bot-detail-form 只 import + 傳 botId 一個 prop。內部封裝了 wiki status hook、mutation hook、5 種狀態 badge、token usage 顯示、確認對話框。這讓 form 不會因為加了 wiki 功能而變更複雜，符合「開放封閉原則」對 component 層級的應用
+- **E2E 用 page.route() mock 而非真實編譯**：避免測試啟動真實 LLM 編譯流程（耗時且 flaky）。Playwright 的 `page.route()` 攔截 wiki endpoints，回固定的成功狀態。後端 compile pipeline 已有獨立的 integration test 涵蓋（W.2 完成），不需要在前端 E2E 重複驗證
+- **TS strict mode 友善**：原本用 `.default("rag")` 在 zod schema 上，導致 react-hook-form resolver 推導出 `unknown` 型別（因為 input/output 不對稱）。改為移除 `.default()`、改用 `defaultValues` 提供初值，立刻通過 TS 編譯。這是 zod + react-hook-form 整合的典型陷阱
+
+### 潛在隱憂
+
+- **Stale detection 假設 `documents.updated_at` 是文件變更的真實時間戳**：若有文件 metadata 變更（例如改 filename）也會更新此欄位，可能誤觸發 stale。實際上 wiki 編譯只關心 `content`，filename 變更不該算 stale → 建議：未來改用 `documents.content_updated_at` 或新增 `documents.compile_relevant_updated_at` 欄位 → 優先級：低
+- **Polling 在多 tab 開啟時會重複呼叫**：若使用者開兩個 tab 同時看同一個 wiki 編譯，每個 tab 都會 3 秒輪詢一次，造成重複請求。TanStack Query 預設有跨 tab focus refetch，但 polling 是獨立的 → 建議：用 BroadcastChannel + 共享狀態 → 優先級：低
+- **CompileWikiCard 的 token usage 顯示沒有 i18n 與 currency formatting**：硬編碼 "USD" 與 `toFixed(4)`，未來支援其他幣別會需要重構 → 優先級：低
+- **AlertDialog 確認提示沒有顯示預估成本**：只說「會產生費用」，但沒告訴使用者大概要花多少。預估成本需要 backend 支援 dry-run endpoint（Phase 2 功能）→ 優先級：中
+- **Stale detection 寫到 W.4 才補**：原本 W.1-W.3 都沒有這個邏輯，W.4 才意識到需要。若使用者在 W.1-W.3 已建立 wiki bot，會發現 status 永遠不會自動更新。**幸好 W.4 寫的是 query-time logic，所以一上 W.4 自動修復**，不需要 migration → 教訓：未來新功能要在 plan 階段就想清楚 status 變遷的完整生命週期
+- **沒做 strategy 二維 selector**：W.3 留下的 `wiki_navigation_strategy` 欄位前端只顯示一個選項（keyword_bfs），UX 上看起來像「假的 selector」。Post-MVP 加第二個 strategy 後才會有意義 → 建議：在新 strategy 上線前用 disabled 提示「更多策略即將推出」 → 優先級：低
+- **E2E 測試依賴 mock 而非真實後端**：好處是穩定，壞處是後端 schema 變更時前端 mock 不會自動 fail。需要靠 contract test 或定期手動驗證 → 建議：未來引入 OpenAPI schema codegen 自動同步 → 優先級：中
+
+### 延伸學習
+
+- **Computed Status vs Materialized Status**：本次的 stale detection 是 computed status（query 時計算）。對應的另一種設計是 materialized status（事件觸發時寫回 DB）。**選擇取決於：(1) 計算成本、(2) 一致性要求、(3) 觸發路徑數量**。本次計算成本低（單一 SQL aggregate）+ 一致性容忍延遲（query-time 即時計算就準確）+ 觸發路徑多（任何 document update 都可能觸發），所以 computed 勝出。CQRS 系統常見這個取捨。搜尋：_computed columns vs materialized views_ / _CQRS read model design_
+- **Conditional Rendering vs Tab Separation**：React 設計時常面臨「相關但互斥的功能放在同 tab 條件渲染，還是分到不同 tab」。原則：(1) 切換頻率高 → 條件渲染（避免使用者來回 tab）、(2) 內容量大 → 分 tab（避免單 tab 過長）、(3) 有共享狀態 → 條件渲染（避免狀態散落）、(4) 無相依性 → 分 tab（資訊架構清晰）。本次 mode 是 single-pick + 切換頻率高 + 共享 KB 設定，三項都偏向條件渲染
+- **TanStack Query refetchInterval Function Form**：v5 起 `refetchInterval` 可接受函數 `(query) => number | false`，這讓「狀態驅動 polling」變得 trivial。傳統做法是用 `useEffect` + `setInterval`，需要手動處理 cleanup、暫停、依賴變化等邊界情況。函數式 polling 把這些邏輯移到 query 內部，**state machine 與資料抓取共生**。搜尋：_TanStack Query polling state-driven_
+- **Mock-based E2E 的 Anti-Pattern 與正確用法**：mock E2E 常被批評「不是真的 E2E」，因為沒驗證後端契約。**正確用法**：mock 那些「在 E2E 範圍外、但會阻塞或拖慢測試」的依賴。本次 mock 的是 wiki compile（會跑 LLM 數分鐘）+ wiki status（資料準備複雜），但仍然走真實的 frontend bundle、real React Router、real form state machine。這保證了 UI 行為的完整驗證，只省略「LLM 真的工作」這個獨立可驗證的部分（W.2 後端 integration test 已涵蓋）
+- **思考題**：當 Wiki 編譯需要 5 分鐘以上時，使用者大概率會關掉瀏覽器 tab。下次回來打開時要怎麼確保 UI 知道「上次的編譯完成了沒」？目前的設計是每次進入頁面都會 GET status 一次（cold start），所以會自動同步。但如果使用者在編譯進行中「立即」回來看，會看到 compiling 狀態 + polling。**問題**：如果後端在使用者離開時編譯失敗了，且後端設了 timeout 或 worker crash，wiki status 會永遠停在 compiling。前端要怎麼偵測這個 zombie 狀態？提示：(a) 後端定期 sweep 超時的 compiling、(b) 前端 polling 設 max attempts 後降級提示、(c) 加 `compiling_started_at` 欄位前端比對時間是否過長。哪個方案最不需要修改既有架構？
 
 ---
 

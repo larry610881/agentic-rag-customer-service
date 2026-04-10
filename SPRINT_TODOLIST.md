@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-09 (Sprint W.3 完成 — Wiki 查詢 + ReAct Tool 整合 with Strategy Pattern)
+> 最後更新：2026-04-10 (Sprint W.4 完成 — 前端 UI + E2E + Stale Detection)
 
 ---
 
@@ -1200,20 +1200,55 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 - W.3.3 EmbeddingNavigator (低) — 需 pgvector
 - W.3.4 SubstringBFSNavigator (最低，可能不做) — 英文 FAQ 零 LLM 成本場景
 
-### W.4 前端 UI + E2E
+### W.4 前端 UI + E2E ✅ 完成 (2026-04-10)
 
-**目標**：前端可設定模式、觸發編譯、查看進度
+**目標**：前端可設定模式、觸發編譯、查看進度，並含 stale detection。
 
-- ⬜ `apps/frontend/src/features/bot/components/bot-detail-form.tsx`
-  - Zod schema 加 `knowledge_mode: z.enum(["rag", "wiki"]).default("rag")`
-  - 在「知識庫」tab 加 `<Controller>` + `<Select>`
-  - wiki 模式顯示「編譯 Wiki」按鈕 + 狀態 badge
-- ⬜ `apps/frontend/src/lib/api-endpoints.ts` 加 wiki endpoints
-- ⬜ `apps/frontend/src/hooks/queries/use-wiki.ts` — useCompileWiki + useWikiStatus
-- ⬜ Unit test：`bot-detail-form.test.tsx` 加 wiki 選擇測試
-- ⬜ E2E：`e2e/features/bot/bot_knowledge_mode.feature`
-  - Scenario：建 bot → 設 wiki → 編譯 → 對話 → 驗證來源
-- ⬜ 驗收：前端 E2E 全綠、UI 可操作完整流程
+**Backend (stale detection 小改動)**
+- ✅ `domain/knowledge/repository.py` — 新增 `find_max_updated_at_by_kb` ABC 方法
+- ✅ `infrastructure/db/repositories/document_repository.py` — SQLAlchemy 實作（`SELECT MAX(updated_at)` + tenant 隔離）
+- ✅ `application/wiki/get_wiki_status_use_case.py` — 新增 stale detection 邏輯
+  - 只對 ready 狀態做降級判斷（compiling/pending/failed 不影響）
+  - LEFT JOIN 取最新 document.updated_at vs wiki.compiled_at
+  - 降級為 stale 只在 query-time 發生，不寫回 DB（避免競態）
+- ✅ `container.py` 注入 `document_repository`
+- ✅ Unit tests：`test_get_wiki_status_steps.py` 8 個 scenarios
+
+**Frontend (Type / API client / Hooks)**
+- ✅ `types/bot.ts` — 加 `knowledge_mode`/`wiki_navigation_strategy`/`WikiStatusResponse`/`CompileWikiResponse` 等 type
+- ✅ `lib/api-endpoints.ts` — 加 `compileWiki`/`wikiStatus` endpoints
+- ✅ `hooks/queries/keys.ts` — 加 `wiki.status` 命名空間
+- ✅ `hooks/queries/use-wiki.ts` — `useWikiStatus` (refetchInterval 動態 polling) + `useCompileWiki` mutation
+
+**Frontend (元件)**
+- ✅ `features/bot/components/compile-wiki-card.tsx` — 完整編譯卡片
+  - 5 種狀態 badge (pending/compiling/ready/stale/failed) + 對應顏色
+  - Compiling 狀態顯示 spinner 動畫
+  - Stale 狀態顯示「文件已更新」黃色提示
+  - Failed 狀態顯示前 5 個錯誤訊息
+  - 統計資料區塊 (node/edge/cluster/doc count + token usage)
+  - 編譯按鈕 + AlertDialog 確認提示
+- ✅ `features/bot/components/bot-detail-form.tsx` — 條件渲染
+  - Zod schema 加 `knowledge_mode`/`wiki_navigation_strategy` enum
+  - Knowledge tab 頂部加知識模式 Select
+  - RAG 模式：保留多選 KB checkbox + RAG 參數
+  - Wiki 模式：單選 KB Select + navigation strategy + CompileWikiCard，隱藏 RAG 參數
+
+**測試 (16 新增，零回歸)**
+- ✅ Backend unit: `test_get_wiki_status_steps.py` 8 stale detection scenarios
+- ✅ Frontend unit:
+  - `bot-detail-form.test.tsx` 4 新 wiki tests（mode 切換、條件渲染、隱藏 RAG params、預設 strategy）
+  - `compile-wiki-card.test.tsx` 7 tests（badge 各狀態、stats 顯示、confirmation dialog、mutation 觸發）
+- ✅ E2E (playwright-bdd, page.route mock):
+  - `e2e/features/bot/bot-wiki-mode.feature` — 3 scenarios
+  - `e2e/steps/bot/bot-wiki-mode.steps.ts` + `BotPage.ts` POM 擴充
+- ✅ 驗收：
+  - Backend 632 unit + 60 integration = 692 tests pass
+  - Frontend 176 tests pass
+  - `npm run lint` 0 errors
+  - `npx vite build` 通過
+  - `npx bddgen` 成功產生 spec 檔
+- 📎 **後端 stale detection 是 query-time only**，不會寫回 DB，避免跨 BC 觸發式邏輯複雜度
 
 ---
 
@@ -1328,4 +1363,4 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | **Widget show_sources 型別修復** | **✅ 完成** | **100%** | **1 file: widget/src/main.ts WidgetConfig 物件補齊 show_sources 欄位，修復 Cloud Run deploy TypeScript build 錯誤** |
 | **Prompt Optimizer 儀表板增強** | **✅ 完成** | **100%** | **Issue #24: 8 files (+479 lines): (1) 修復 Score Trend 圖表 — useMemo 從 iterations 計算每輪實際分數+running best, ActiveRun 加 current_score, (2) Prompt diff 改對比最佳提示詞(findSourceIteration), (3) details JSON 存 case_results(per-case pass/fail+answer_snippet+assertion_results), 新元件 CaseResultsTable 可展開查看案例詳情, 2 BDD scenarios + 4 frontend unit tests, 519 backend + 168 frontend tests pass** |
 | **Cache Token 追蹤修復 + 系統層 Cache 明細** | **✅ 完成** | **100%** | **8 files: 修復 3 個 bug — (1) stream 路徑遺失 cache tokens（agent_router→extract_usage_from_accumulated）, (2) OpenAI 系 LangGraph input_tokens 含 cached 重複計算（usage.py 正規化扣除）, (3) RecordUsageUseCase fallback 成本不含 cache tokens。新增系統層 token-usage API + 明細表 cache_read/creation_tokens 欄位。4 新 BDD regression scenarios, 526 backend tests pass** |
-| **Sprint W: LLM Wiki Knowledge Mode** | **🔄 進行中** | **75% (W.1 ✅ W.2 ✅ W.3 ✅)** | **Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26): W.1 Domain/Migration + W.2 編譯 Pipeline + W.3 查詢 + ReAct Tool 整合 (Strategy Pattern, KeywordBFSNavigator MVP, 37 新 tests)，W.4 前端 UI 待開工** |
+| **Sprint W: LLM Wiki Knowledge Mode** | **✅ 完成** | **100% (W.1 ✅ W.2 ✅ W.3 ✅ W.4 ✅)** | **Issue [#26](https://github.com/larry610881/agentic-rag-customer-service/issues/26): 完整交付 — W.1 Domain/Migration + W.2 編譯 Pipeline + W.3 ReAct Tool 整合 (Strategy Pattern) + W.4 前端 UI + Stale Detection。後端 692 tests + 前端 176 tests，全綠零回歸** |

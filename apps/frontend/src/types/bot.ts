@@ -53,8 +53,61 @@ export interface Bot {
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
   line_show_sources: boolean;
+  knowledge_mode: KnowledgeMode;
+  wiki_navigation_strategy: WikiNavigationStrategy;
   created_at: string;
   updated_at: string;
+}
+
+export type KnowledgeMode = "rag" | "wiki";
+export type WikiNavigationStrategy = "keyword_bfs";
+
+export const KNOWLEDGE_MODE_OPTIONS: { value: KnowledgeMode; label: string }[] = [
+  { value: "rag", label: "RAG（向量檢索）" },
+  { value: "wiki", label: "Wiki（知識圖譜）" },
+];
+
+export const WIKI_NAVIGATION_STRATEGY_OPTIONS: {
+  value: WikiNavigationStrategy;
+  label: string;
+}[] = [
+  { value: "keyword_bfs", label: "Keyword + BFS（推薦）" },
+];
+
+export type WikiStatus =
+  | "pending"
+  | "compiling"
+  | "ready"
+  | "stale"
+  | "failed";
+
+export interface WikiTokenUsage {
+  input: number;
+  output: number;
+  total: number;
+  cache_read?: number;
+  cache_creation?: number;
+  estimated_cost: number;
+}
+
+export interface WikiStatusResponse {
+  wiki_graph_id: string;
+  bot_id: string;
+  kb_id: string;
+  status: WikiStatus;
+  node_count: number;
+  edge_count: number;
+  cluster_count: number;
+  doc_count: number;
+  compiled_at: string | null;
+  token_usage: WikiTokenUsage | null;
+  errors: string[] | null;
+}
+
+export interface CompileWikiResponse {
+  bot_id: string;
+  status: string;
+  message: string;
 }
 
 export interface CreateBotRequest {
@@ -92,6 +145,8 @@ export interface CreateBotRequest {
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
   line_show_sources?: boolean;
+  knowledge_mode?: KnowledgeMode;
+  wiki_navigation_strategy?: WikiNavigationStrategy;
 }
 
 export interface UpdateBotRequest {
@@ -129,4 +184,6 @@ export interface UpdateBotRequest {
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
   line_show_sources?: boolean;
+  knowledge_mode?: KnowledgeMode;
+  wiki_navigation_strategy?: WikiNavigationStrategy;
 }
