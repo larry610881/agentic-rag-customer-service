@@ -5,6 +5,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import uuid4
 
 from src.domain.agent.services import AgentService
@@ -76,6 +77,7 @@ class HandleWebhookUseCase:
         cache_ttl: int = 120,
         conversation_lock: ConversationLock | None = None,
         conversation_timeout_minutes: int = 30,
+        record_usage_use_case: Any | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -87,6 +89,7 @@ class HandleWebhookUseCase:
         self._conversation_repo = conversation_repository
         self._cache_service = cache_service
         self._cache_ttl = cache_ttl
+        self._record_usage = record_usage_use_case
         self._conversation_lock = conversation_lock
         self._conversation_timeout = timedelta(minutes=conversation_timeout_minutes)
 
@@ -328,6 +331,18 @@ class HandleWebhookUseCase:
         # Persist conversation + messages
         if self._conversation_repo:
             await self._conversation_repo.save(conversation)
+
+        # Record token usage
+        if self._record_usage and result.usage:
+            try:
+                await self._record_usage.execute(
+                    tenant_id=bot.tenant_id,
+                    request_type="chat_line",
+                    usage=result.usage,
+                    bot_id=bot.id.value,
+                )
+            except Exception:
+                logger.warning("line.record_usage_error", exc_info=True)
 
         # Build reply text — optionally append sources
         reply_text = result.answer

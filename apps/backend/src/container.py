@@ -1531,4 +1531,5 @@ class Container(containers.DeclarativeContainer):
             lambda cfg: cfg.cache_bot_ttl, config
         ),
         conversation_lock=conversation_lock,
+        record_usage_use_case=record_usage_use_case,
     )
