@@ -61,6 +61,11 @@ def _build_schema(vector_size: int) -> CollectionSchema:
     return CollectionSchema(fields=fields, enable_dynamic_field=False)
 
 
+def _safe_collection_name(name: str) -> str:
+    """Milvus collection names allow only letters, digits, underscores."""
+    return name.replace("-", "_")
+
+
 class MilvusVectorStore(VectorStore):
     """VectorStore implementation backed by Milvus."""
 
@@ -76,6 +81,7 @@ class MilvusVectorStore(VectorStore):
     async def ensure_collection(
         self, collection: str, vector_size: int
     ) -> None:
+        collection = _safe_collection_name(collection)
         has = await asyncio.to_thread(self._client.has_collection, collection)
         if not has:
             schema = _build_schema(vector_size)
@@ -111,6 +117,7 @@ class MilvusVectorStore(VectorStore):
         vectors: list[list[float]],
         payloads: list[dict[str, Any]],
     ) -> None:
+        collection = _safe_collection_name(collection)
         entities: list[dict[str, Any]] = []
         for uid, vec, pay in zip(ids, vectors, payloads, strict=True):
             entity: dict[str, Any] = {
@@ -140,6 +147,7 @@ class MilvusVectorStore(VectorStore):
         collection: str,
         filters: dict[str, Any],
     ) -> None:
+        collection = _safe_collection_name(collection)
         try:
             expr = _build_filter_expr(filters)
             await asyncio.to_thread(
@@ -163,6 +171,7 @@ class MilvusVectorStore(VectorStore):
         score_threshold: float = 0.3,
         filters: dict[str, Any] | None = None,
     ) -> list[SearchResult]:
+        collection = _safe_collection_name(collection)
         filter_expr = _build_filter_expr(filters) if filters else ""
 
         t0 = time.perf_counter()
