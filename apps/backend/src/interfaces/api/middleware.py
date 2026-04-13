@@ -31,6 +31,7 @@ logger = get_logger(__name__)
 WIDGET_PATH_PREFIX = "/api/v1/widget/"
 STATIC_PATH_PREFIX = "/static/"
 _STREAM_SUFFIXES = ("/stream", "/export")
+_LONG_TIMEOUT_PATTERNS = ("/documents",)  # upload + background OCR
 
 
 class RequestTimeoutMiddleware:
@@ -58,7 +59,8 @@ class RequestTimeoutMiddleware:
 
         path = scope.get("path", "")
         is_stream = any(path.endswith(s) for s in _STREAM_SUFFIXES)
-        limit = self._stream_timeout if is_stream else self._timeout
+        is_long = any(p in path for p in _LONG_TIMEOUT_PATTERNS)
+        limit = self._stream_timeout if (is_stream or is_long) else self._timeout
 
         try:
             async with asyncio.timeout(limit):
