@@ -117,7 +117,7 @@ class ClaudeVisionOcrEngine(OcrEngine):
                 t0 = time.perf_counter()
                 message = await self._client.messages.create(
                     model=self._model,
-                    max_tokens=4096,
+                    max_tokens=8192,
                     messages=[
                         {
                             "role": "user",
