@@ -26,7 +26,7 @@ from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.conversation.entity import Message
 from src.domain.rag.services import LLMService
-from src.infrastructure.langgraph.tools import RAGQueryTool, WikiQueryTool
+from src.infrastructure.langgraph.tools import RAGQueryTool
 from src.infrastructure.langgraph.usage import (
     build_usage_event,
     extract_usage_from_langchain_messages,
@@ -70,13 +70,11 @@ class ReActAgentService(AgentService):
         rag_tool: RAGQueryTool,
         tool_registry: Any | None = None,
         cached_tool_loader: Any | None = None,
-        wiki_tool: WikiQueryTool | None = None,
     ) -> None:
         self._llm_service = llm_service
         self._rag_tool = rag_tool
         self._tool_registry = tool_registry
         self._cached_tool_loader = cached_tool_loader
-        self._wiki_tool = wiki_tool
 
     def _build_rag_lc_tool(
         self,
@@ -108,45 +106,6 @@ class ReActAgentService(AgentService):
             return _json.dumps(result, ensure_ascii=False)
 
         return rag_query  # type: ignore[return-value]
-
-    def _build_wiki_lc_tool(
-        self,
-        tenant_id: str,
-        bot_id: str,
-        navigation_strategy: str,
-    ) -> BaseTool:
-        """Build a LangChain BaseTool wrapping the Wiki query.
-
-        Closure 注入 tenant_id / bot_id / strategy。Tool 回傳 dict 經 json.dumps
-        後變成 ToolMessage 內容，下游 evaluation pipeline 透過 content_snippet
-        欄位讀取 sources（與 rag tool schema 一致）。
-        """
-        wiki_tool = self._wiki_tool
-        if wiki_tool is None:
-            raise RuntimeError(
-                "WikiQueryTool not configured but bot.knowledge_mode=wiki"
-            )
-
-        @tool
-        async def wiki_query(query: str) -> str:
-            """查詢結構化 Wiki 知識圖譜。\
-適用於需要精準節點答案的具體事實問題、流程說明、政策查詢等。\
-Wiki 是預先編譯好的概念圖，會找到相關節點與其關聯關係。
-
-            Args:
-                query: 要查詢的問題
-            """
-            result = await wiki_tool.invoke(
-                tenant_id=tenant_id,
-                bot_id=bot_id,
-                query=query,
-                navigation_strategy=navigation_strategy,
-            )
-            import json as _json
-
-            return _json.dumps(result, ensure_ascii=False)
-
-        return wiki_query  # type: ignore[return-value]
 
     async def _resolve_llm_model(
         self, llm_params: dict[str, Any] | None
@@ -366,21 +325,12 @@ Wiki 是預先編譯好的概念圖，會找到相關節點與其關聯關係。
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
         audit_mode: str = "minimal",
-        knowledge_mode: str = "rag",
-        wiki_navigation_strategy: str = "keyword_bfs",
         bot_id: str = "",
     ) -> AgentResponse:
         async with AsyncExitStack() as stack:
-            # 1. Build knowledge tool — RAG or Wiki based on bot config
+            # 1. Build knowledge tool
             tools: list[BaseTool] = []
-            if knowledge_mode == "wiki" and self._wiki_tool is not None:
-                tools.append(
-                    self._build_wiki_lc_tool(
-                        tenant_id, bot_id, wiki_navigation_strategy
-                    )
-                )
-            else:
-                tools.append(
+            tools.append(
                     self._build_rag_lc_tool(
                         tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold
                     )
@@ -503,26 +453,17 @@ Wiki 是預先編譯好的概念圖，會找到相關節點與其關聯關係。
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
         audit_mode: str = "minimal",
-        knowledge_mode: str = "rag",
-        wiki_navigation_strategy: str = "keyword_bfs",
         bot_id: str = "",
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream version — runs the same ReAct loop, yields events."""
         async with AsyncExitStack() as stack:
-            # Build knowledge tool — RAG or Wiki based on bot config
+            # Build knowledge tool
             tools: list[BaseTool] = []
-            if knowledge_mode == "wiki" and self._wiki_tool is not None:
-                tools.append(
-                    self._build_wiki_lc_tool(
-                        tenant_id, bot_id, wiki_navigation_strategy
-                    )
+            tools.append(
+                self._build_rag_lc_tool(
+                    tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold
                 )
-            else:
-                tools.append(
-                    self._build_rag_lc_tool(
-                        tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold
-                    )
-                )
+            )
 
             # Load MCP tools — sessions kept alive by stack
             if self._cached_tool_loader:

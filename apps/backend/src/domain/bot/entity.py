@@ -55,14 +55,6 @@ class BotLLMParams:
     rag_score_threshold: float = 0.3
 
 
-# Valid Bot.knowledge_mode values — RAG / Wiki 二選一，不做 Hybrid
-VALID_KNOWLEDGE_MODES = ("rag", "wiki")
-
-# Valid Bot.wiki_navigation_strategy values — MVP 只支援 keyword_bfs
-# Post-MVP 會加入：cluster_picker / hybrid / embedding / substring
-VALID_WIKI_NAVIGATION_STRATEGIES = ("keyword_bfs",)
-
-
 @dataclass
 class Bot:
     id: BotId = field(default_factory=BotId)
@@ -73,8 +65,6 @@ class Bot:
     is_active: bool = True
     system_prompt: str = ""
     knowledge_base_ids: list[str] = field(default_factory=list)
-    knowledge_mode: str = "rag"  # "rag" | "wiki" — 預設 RAG backward compatible
-    wiki_navigation_strategy: str = "keyword_bfs"  # 僅在 knowledge_mode=wiki 生效
     llm_params: BotLLMParams = field(default_factory=BotLLMParams)
     enabled_tools: list[str] = field(default_factory=lambda: ["rag_query"])
     llm_provider: str = ""

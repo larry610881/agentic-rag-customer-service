@@ -48,8 +48,6 @@ export const API_ENDPOINTS = {
     detail: (id: string) => `/api/v1/bots/${id}`,
     update: (id: string) => `/api/v1/bots/${id}`,
     delete: (id: string) => `/api/v1/bots/${id}`,
-    compileWiki: (id: string) => `/api/v1/bots/${id}/wiki/compile`,
-    wikiStatus: (id: string) => `/api/v1/bots/${id}/wiki/status`,
   },
   conversations: {
     list: (botId?: string | null) =>

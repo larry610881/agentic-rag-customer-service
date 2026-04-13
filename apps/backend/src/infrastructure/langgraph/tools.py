@@ -4,10 +4,6 @@ import time
 from typing import Any
 
 from src.application.rag.query_rag_use_case import QueryRAGCommand, QueryRAGUseCase
-from src.application.wiki.query_wiki_use_case import (
-    QueryWikiCommand,
-    QueryWikiUseCase,
-)
 from src.domain.shared.exceptions import NoRelevantKnowledgeError
 from src.infrastructure.observability.rag_tracer import RAGTracer
 
@@ -89,46 +85,3 @@ class RAGQueryTool:
                 "context": "",
                 "sources": [],
             }
-
-
-class WikiQueryTool:
-    """Wiki 知識查詢工具 — 對應 RAGQueryTool，當 bot.knowledge_mode=wiki 時使用。
-
-    回傳 schema 與 RAGQueryTool 完全一致（{success, context, sources}），
-    讓既有 evaluation pipeline、tool_output 解析、SSE event 等下游全部不需修改。
-    """
-
-    name = "wiki_query"
-    description = (
-        "查詢結構化 Wiki 知識圖譜回答用戶問題。Wiki 是預先編譯好的概念圖，"
-        "查詢時會找到相關節點與其關聯（流程、政策、依賴關係）。"
-        "適用於：需要精準節點答案的具體事實問題、流程說明、政策查詢。"
-    )
-
-    def __init__(
-        self,
-        query_wiki_use_case: QueryWikiUseCase,
-        top_n: int = 8,
-    ) -> None:
-        self._use_case = query_wiki_use_case
-        self._top_n = top_n
-
-    async def invoke(
-        self,
-        tenant_id: str,
-        bot_id: str,
-        query: str,
-        *,
-        navigation_strategy: str = "keyword_bfs",
-        top_n: int | None = None,
-    ) -> dict[str, Any]:
-        result = await self._use_case.execute(
-            QueryWikiCommand(
-                tenant_id=tenant_id,
-                bot_id=bot_id,
-                query=query,
-                navigation_strategy=navigation_strategy,
-                top_n=top_n if top_n is not None else self._top_n,
-            )
-        )
-        return result.tool_response

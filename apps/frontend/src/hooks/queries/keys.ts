@@ -23,9 +23,6 @@ export const queryKeys = {
     all: (tenantId: string) => ["bots", tenantId] as const,
     detail: (botId: string) => ["bots", "detail", botId] as const,
   },
-  wiki: {
-    status: (botId: string) => ["wiki", "status", botId] as const,
-  },
   conversations: {
     all: (tenantId: string, botId?: string | null) =>
       ["conversations", tenantId, botId ?? "all"] as const,

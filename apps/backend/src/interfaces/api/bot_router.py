@@ -35,10 +35,6 @@ _VALID_EVAL_DEPTHS = {
     "L1+L2+L3",
 }
 _VALID_LLM_PROVIDERS = {p.value for p in ProviderName}
-_VALID_KNOWLEDGE_MODES = {"rag", "wiki"}
-_VALID_WIKI_NAVIGATION_STRATEGIES = {"keyword_bfs"}
-
-
 def _validate_intent_routes(routes: list["IntentRouteSchema"]) -> None:
     """Validate intent routes: max 10, unique names."""
     if len(routes) > 10:
@@ -135,8 +131,6 @@ class CreateBotRequest(BaseModel):
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     line_show_sources: bool = False
-    knowledge_mode: str = "rag"
-    wiki_navigation_strategy: str = "keyword_bfs"
 
 
 class UpdateBotRequest(BaseModel):
@@ -179,8 +173,6 @@ class UpdateBotRequest(BaseModel):
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     line_show_sources: bool | None = None
-    knowledge_mode: str | None = None
-    wiki_navigation_strategy: str | None = None
 
 
 class BotResponse(BaseModel):
@@ -227,8 +219,6 @@ class BotResponse(BaseModel):
     line_channel_secret: str | None
     line_channel_access_token: str | None
     line_show_sources: bool
-    knowledge_mode: str
-    wiki_navigation_strategy: str
     created_at: str
     updated_at: str
 
@@ -300,8 +290,6 @@ def _to_response(bot) -> BotResponse:
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
         line_show_sources=bot.line_show_sources,
-        knowledge_mode=bot.knowledge_mode,
-        wiki_navigation_strategy=bot.wiki_navigation_strategy,
         created_at=bot.created_at.isoformat(),
         updated_at=bot.updated_at.isoformat(),
     )
@@ -329,18 +317,6 @@ async def create_bot(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
-        )
-    if body.knowledge_mode not in _VALID_KNOWLEDGE_MODES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"knowledge_mode must be one of "
-            f"{sorted(_VALID_KNOWLEDGE_MODES)}",
-        )
-    if body.wiki_navigation_strategy not in _VALID_WIKI_NAVIGATION_STRATEGIES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"wiki_navigation_strategy must be one of "
-            f"{sorted(_VALID_WIKI_NAVIGATION_STRATEGIES)}",
         )
     _validate_llm_fields(
         body.llm_provider, body.llm_model,
@@ -392,8 +368,6 @@ async def create_bot(
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
             line_show_sources=body.line_show_sources,
-            knowledge_mode=body.knowledge_mode,
-            wiki_navigation_strategy=body.wiki_navigation_strategy,
         )
     )
     return _to_response(bot)
@@ -486,25 +460,6 @@ async def update_bot(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
-        )
-    if (
-        body.knowledge_mode is not None
-        and body.knowledge_mode not in _VALID_KNOWLEDGE_MODES
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"knowledge_mode must be one of "
-            f"{sorted(_VALID_KNOWLEDGE_MODES)}",
-        )
-    if (
-        body.wiki_navigation_strategy is not None
-        and body.wiki_navigation_strategy
-        not in _VALID_WIKI_NAVIGATION_STRATEGIES
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"wiki_navigation_strategy must be one of "
-            f"{sorted(_VALID_WIKI_NAVIGATION_STRATEGIES)}",
         )
     _validate_llm_fields(
         body.llm_provider, body.llm_model,

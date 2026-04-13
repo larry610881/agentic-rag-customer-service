@@ -35,8 +35,6 @@ from src.infrastructure.db.models.memory_fact_model import MemoryFactModel
 from src.infrastructure.db.models.notification_channel_model import (
     NotificationChannelModel,
 )
-from src.infrastructure.db.models.wiki_graph_model import WikiGraphModel
-
 __all__ = [
     "TenantModel",
     "KnowledgeBaseModel",
@@ -65,5 +63,4 @@ __all__ = [
     "ErrorEventModel",
     "ErrorNotificationLogModel",
     "NotificationChannelModel",
-    "WikiGraphModel",
 ]
