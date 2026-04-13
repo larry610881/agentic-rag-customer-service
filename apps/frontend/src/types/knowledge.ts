@@ -3,6 +3,7 @@ export interface KnowledgeBase {
   tenant_id: string;
   name: string;
   description: string;
+  ocr_mode: string;
   document_count: number;
   created_at: string;
   updated_at: string;

@@ -10,6 +10,7 @@ class CreateKnowledgeBaseCommand:
     tenant_id: str
     name: str
     description: str = ""
+    ocr_mode: str = "general"
 
 
 class CreateKnowledgeBaseUseCase:
@@ -24,6 +25,7 @@ class CreateKnowledgeBaseUseCase:
             tenant_id=command.tenant_id,
             name=command.name,
             description=command.description,
+            ocr_mode=command.ocr_mode,
         )
         await self._knowledge_base_repository.save(kb)
         return kb

@@ -12,7 +12,9 @@ from src.domain.knowledge.value_objects import QualityScore
 
 class FileParserService(ABC):
     @abstractmethod
-    def parse(self, raw_bytes: bytes, content_type: str) -> str: ...
+    def parse(
+        self, raw_bytes: bytes, content_type: str, ocr_mode: str = "general"
+    ) -> str: ...
 
     @abstractmethod
     def supported_types(self) -> set[str]: ...

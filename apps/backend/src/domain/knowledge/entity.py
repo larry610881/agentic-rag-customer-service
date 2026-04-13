@@ -16,6 +16,7 @@ class KnowledgeBase:
     name: str = ""
     description: str = ""
     kb_type: str = "user"  # "user" | "system"
+    ocr_mode: str = "general"  # "general" | "catalog"
     document_count: int = 0
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)

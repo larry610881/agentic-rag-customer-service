@@ -15,7 +15,7 @@ from src.application.knowledge.process_document_use_case import (
 from src.application.knowledge.reprocess_document_use_case import (
     ReprocessDocumentUseCase,
 )
-from src.domain.knowledge.entity import Chunk, Document, ProcessingTask
+from src.domain.knowledge.entity import Chunk, Document, KnowledgeBase, ProcessingTask
 from src.domain.knowledge.services import ChunkQualityService
 from src.domain.knowledge.value_objects import ChunkId, DocumentId
 
@@ -180,9 +180,12 @@ def pending_doc_with_quality(context):
     mock_file_storage = AsyncMock()
     mock_file_storage.load = AsyncMock(side_effect=FileNotFoundError)
 
+    mock_kb_repo = AsyncMock()
+    mock_kb_repo.find_by_id = AsyncMock(return_value=KnowledgeBase(ocr_mode="general"))
     context["use_case"] = ProcessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
+        knowledge_base_repository=mock_kb_repo,
         text_splitter_service=mock_splitter,
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,
@@ -306,9 +309,12 @@ def processed_doc(context):
     mock_file_storage_rp = AsyncMock()
     mock_file_storage_rp.load = AsyncMock(side_effect=FileNotFoundError)
 
+    mock_kb_repo_rp = AsyncMock()
+    mock_kb_repo_rp.find_by_id = AsyncMock(return_value=KnowledgeBase(ocr_mode="general"))
     context["reprocess_use_case"] = ReprocessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
+        knowledge_base_repository=mock_kb_repo_rp,
         text_splitter_service=mock_splitter,
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,
@@ -405,9 +411,12 @@ def processed_doc_will_fail(context):
     mock_file_storage_rp = AsyncMock()
     mock_file_storage_rp.load = AsyncMock(side_effect=FileNotFoundError)
 
+    mock_kb_repo_rp = AsyncMock()
+    mock_kb_repo_rp.find_by_id = AsyncMock(return_value=KnowledgeBase(ocr_mode="general"))
     context["reprocess_use_case"] = ReprocessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
+        knowledge_base_repository=mock_kb_repo_rp,
         text_splitter_service=mock_splitter,
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,

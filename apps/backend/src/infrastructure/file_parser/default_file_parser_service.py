@@ -56,7 +56,9 @@ class DefaultFileParserService(FileParserService):
     def supported_types(self) -> set[str]:
         return set(self._parsers.keys())
 
-    def parse(self, raw_bytes: bytes, content_type: str) -> str:
+    def parse(
+        self, raw_bytes: bytes, content_type: str, ocr_mode: str = "general"
+    ) -> str:
         parser = self._parsers.get(content_type)
         if parser is None:
             raise UnsupportedFileTypeError(content_type)

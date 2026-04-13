@@ -22,6 +22,9 @@ class KnowledgeBaseModel(Base):
     kb_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="user", server_default="user"
     )
+    ocr_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="general", server_default="general"
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

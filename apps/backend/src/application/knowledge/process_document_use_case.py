@@ -3,6 +3,7 @@ import time
 
 from src.domain.knowledge.repository import (
     DocumentRepository,
+    KnowledgeBaseRepository,
     ProcessingTaskRepository,
 )
 from src.domain.knowledge.services import (
@@ -26,6 +27,7 @@ class ProcessDocumentUseCase:
         self,
         document_repository: DocumentRepository,
         processing_task_repository: ProcessingTaskRepository,
+        knowledge_base_repository: KnowledgeBaseRepository,
         text_splitter_service: TextSplitterService,
         embedding_service: EmbeddingService,
         vector_store: VectorStore,
@@ -35,6 +37,7 @@ class ProcessDocumentUseCase:
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
+        self._kb_repo = knowledge_base_repository
         self._splitter = text_splitter_service
         self._embedding = embedding_service
         self._vector_store = vector_store
@@ -85,6 +88,10 @@ class ProcessDocumentUseCase:
             if raw_content is None:
                 raw_content = document.raw_content
 
+            # Fetch KB to get ocr_mode
+            kb = await self._kb_repo.find_by_id(document.kb_id)
+            ocr_mode = kb.ocr_mode if kb else "general"
+
             # Parse raw content → text (moved from upload for async processing)
             if raw_content:
                 t0 = time.perf_counter()
@@ -92,6 +99,7 @@ class ProcessDocumentUseCase:
                     self._file_parser.parse,
                     raw_content,
                     document.content_type,
+                    ocr_mode,
                 )
                 parse_ms = round((time.perf_counter() - t0) * 1000)
                 log.info("document.parse.done", duration_ms=parse_ms)

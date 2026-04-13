@@ -14,14 +14,27 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useCreateKnowledgeBase } from "@/hooks/queries/use-knowledge-bases";
 
 const createKbSchema = z.object({
   name: z.string().min(1, "請輸入名稱"),
   description: z.string().min(1, "請輸入描述"),
+  ocr_mode: z.string().default("general"),
 });
 
 type CreateKbFormValues = z.infer<typeof createKbSchema>;
+
+const OCR_MODE_OPTIONS = [
+  { value: "general", label: "通用文字提取" },
+  { value: "catalog", label: "商品目錄 DM" },
+] as const;
 
 export function CreateKbDialog() {
   const [open, setOpen] = useState(false);
@@ -31,10 +44,15 @@ export function CreateKbDialog() {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<CreateKbFormValues>({
     resolver: zodResolver(createKbSchema),
+    defaultValues: { ocr_mode: "general" },
   });
+
+  const ocrMode = watch("ocr_mode");
 
   const onSubmit = (data: CreateKbFormValues) => {
     createMutation.mutate(data, {
@@ -75,6 +93,29 @@ export function CreateKbDialog() {
             {errors.description && (
               <p className="text-sm text-destructive">{errors.description.message}</p>
             )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>PDF 解析模式</Label>
+            <Select
+              value={ocrMode}
+              onValueChange={(v) => setValue("ocr_mode", v)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {OCR_MODE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {ocrMode === "catalog"
+                ? "適用於賣場 DM、商品型錄，會結構化提取商品名稱與價格"
+                : "適用於一般文件，提取純文字內容"}
+            </p>
           </div>
           <Button type="submit" disabled={createMutation.isPending}>
             {createMutation.isPending ? "建立中..." : "建立"}

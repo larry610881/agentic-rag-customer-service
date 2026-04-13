@@ -24,6 +24,7 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             name=model.name,
             description=model.description,
             kb_type=model.kb_type,
+            ocr_mode=model.ocr_mode,
             document_count=document_count,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -48,6 +49,7 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
                 name=knowledge_base.name,
                 description=knowledge_base.description,
                 kb_type=knowledge_base.kb_type,
+                ocr_mode=knowledge_base.ocr_mode,
                 created_at=knowledge_base.created_at,
                 updated_at=knowledge_base.updated_at,
             )

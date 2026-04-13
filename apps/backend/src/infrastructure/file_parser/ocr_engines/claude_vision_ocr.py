@@ -5,18 +5,52 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import time
 
 import anthropic
 
 from src.domain.shared.exceptions import OcrProcessingError
 from src.infrastructure.file_parser.ocr_engines.base import OcrEngine
+from src.infrastructure.logging import get_logger
 
-_OCR_PROMPT = (
+logger = get_logger(__name__)
+
+_MAX_IMAGE_BYTES = 3_500_000  # ~3.5MB raw → ~4.7MB after base64 (stays under Claude's 5MB limit)
+
+_DEFAULT_PROMPT = (
     "Extract all visible text from this page. "
     "Return only the text content in reading order. No commentary."
 )
 
-_MAX_IMAGE_BYTES = 3_500_000  # ~3.5MB raw → ~4.7MB after base64 (stays under Claude's 5MB limit)
+_CATALOG_PROMPT = """\
+你是賣場 DM 結構化提取專家。分析這張頁面，依以下規則輸出：
+
+【頁面分類】先判斷頁面類型：商品頁 / 促銷活動頁 / 資訊頁
+
+■ 若為「商品頁」或「促銷活動頁」，逐一列出每個商品：
+===
+商品：{完整商品名稱}
+品牌：{品牌名，若可辨識}
+規格：{容量/重量/尺寸/數量/包裝}
+原價：{原價，若有刪除線或標示「原價」}
+售價：{現售價，含計量單位如「元/瓶」}
+促銷：{買一送一/第二件5折/加價購/會員價/10倍送等，若有}
+備註：{產地/型號/能效/坪數等額外資訊，若有}
+===
+
+■ 若為「資訊頁」（信用卡優惠、APP推廣、活動辦法等），
+以段落方式摘要重點，保留關鍵數字與日期。
+
+規則：
+- 每個商品獨立一組 ===，不可合併
+- 價格保留「元/瓶」「元/包」「元/台」等計量
+- 頁面級促銷（如「買一送一省荷包攻略」）標註在相關商品的促銷欄
+- 看不清楚的欄位填「不詳」，不要猜測"""
+
+OCR_PROMPTS: dict[str, str] = {
+    "general": _DEFAULT_PROMPT,
+    "catalog": _CATALOG_PROMPT,
+}
 
 
 def _compress_image(image_bytes: bytes) -> tuple[bytes, str]:
@@ -70,9 +104,8 @@ class ClaudeVisionOcrEngine(OcrEngine):
         self._model = model
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
-    async def ocr_page(self, image_bytes: bytes) -> str:
-        import time
-
+    async def ocr_page(self, image_bytes: bytes, prompt: str | None = None) -> str:
+        prompt = prompt or _DEFAULT_PROMPT
         image_bytes, media_type = _compress_image(image_bytes)
         b64 = base64.standard_b64encode(image_bytes).decode()
         img_kb = len(image_bytes) / 1024
@@ -94,15 +127,13 @@ class ClaudeVisionOcrEngine(OcrEngine):
                                         "data": b64,
                                     },
                                 },
-                                {"type": "text", "text": _OCR_PROMPT},
+                                {"type": "text", "text": prompt},
                             ],
                         }
                     ],
                 )
                 elapsed_ms = round((time.perf_counter() - t0) * 1000)
                 usage = message.usage
-                from src.infrastructure.logging import get_logger
-                logger = get_logger(__name__)
                 logger.info(
                     "ocr.page.done",
                     model=self._model,

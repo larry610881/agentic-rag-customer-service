@@ -93,9 +93,18 @@ def mock_file_storage():
 
 
 @pytest.fixture
+def mock_kb_repo():
+    from src.domain.knowledge.entity import KnowledgeBase
+    repo = AsyncMock()
+    repo.find_by_id = AsyncMock(return_value=KnowledgeBase(ocr_mode="general"))
+    return repo
+
+
+@pytest.fixture
 def process_use_case(
     mock_doc_repo,
     mock_task_repo,
+    mock_kb_repo,
     mock_splitter,
     mock_embedding,
     mock_vector_store,
@@ -106,6 +115,7 @@ def process_use_case(
     return ProcessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
+        knowledge_base_repository=mock_kb_repo,
         text_splitter_service=mock_splitter,
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,

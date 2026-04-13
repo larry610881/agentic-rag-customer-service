@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["knowledge-bases"])
 class CreateKnowledgeBaseRequest(BaseModel):
     name: str
     description: str = ""
+    ocr_mode: str = "general"
 
 
 class KnowledgeBaseResponse(BaseModel):
@@ -33,6 +34,7 @@ class KnowledgeBaseResponse(BaseModel):
     tenant_id: str
     name: str
     description: str
+    ocr_mode: str
     document_count: int
     created_at: str
     updated_at: str
@@ -56,6 +58,7 @@ async def create_knowledge_base(
             tenant_id=tenant.tenant_id,
             name=body.name,
             description=body.description,
+            ocr_mode=body.ocr_mode,
         )
     )
     return KnowledgeBaseResponse(
@@ -63,6 +66,7 @@ async def create_knowledge_base(
         tenant_id=kb.tenant_id,
         name=kb.name,
         description=kb.description,
+        ocr_mode=kb.ocr_mode,
         document_count=kb.document_count,
         created_at=kb.created_at.isoformat(),
         updated_at=kb.updated_at.isoformat(),
@@ -103,6 +107,7 @@ async def list_knowledge_bases(
                 tenant_id=kb.tenant_id,
                 name=kb.name,
                 description=kb.description,
+                ocr_mode=kb.ocr_mode,
                 document_count=kb.document_count,
                 created_at=kb.created_at.isoformat(),
                 updated_at=kb.updated_at.isoformat(),
