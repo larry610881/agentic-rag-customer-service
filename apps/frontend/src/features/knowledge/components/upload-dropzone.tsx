@@ -3,7 +3,7 @@ import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUploadDocument } from "@/hooks/queries/use-documents";
 
-const MAX_FILE_SIZE = 32 * 1024 * 1024; // 32 MB
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
 const ACCEPTED_TYPES: Record<string, { ext: string; label: string; strategy: string }> = {
   "text/plain":        { ext: ".txt",  label: "純文字",     strategy: "遞迴分塊" },
