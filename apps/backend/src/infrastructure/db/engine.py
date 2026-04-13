@@ -20,7 +20,7 @@ engine = create_async_engine(
     connect_args={
         # Auto-rollback sessions stuck in "idle in transaction" after 30s.
         # Prevents connection pool exhaustion from leaked transactions.
-        "server_settings": {"idle_in_transaction_session_timeout": "30000"},
+        "server_settings": {"idle_in_transaction_session_timeout": "300000"},  # 5min (OCR may take 2-3min)
     },
 )
 
