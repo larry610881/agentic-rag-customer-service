@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { MessageSquare, Hash, FileText, DollarSign } from "lucide-react";
+import { MessageSquare, Hash, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { BotUsageStat } from "@/types/token-usage";
@@ -28,12 +28,11 @@ export function UsageSummaryCards({ data, isLoading }: UsageSummaryCardsProps) {
     { title: "對話次數", value: summary.chatCount.toLocaleString(), icon: MessageSquare },
     { title: "文件處理次數", value: summary.ocrCount.toLocaleString(), icon: FileText },
     { title: "總 Tokens", value: summary.totalTokens.toLocaleString(), icon: Hash },
-    { title: "預估成本", value: `$${summary.totalCost.toFixed(2)}`, icon: DollarSign },
   ];
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         {cards.map((c) => (
           <Card key={c.title}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -47,7 +46,7 @@ export function UsageSummaryCards({ data, isLoading }: UsageSummaryCardsProps) {
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-3">
       {cards.map((c) => (
         <Card key={c.title}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
