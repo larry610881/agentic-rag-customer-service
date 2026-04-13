@@ -165,6 +165,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 UsageRecordModel.bot_id,
                 BotModel.name.label("bot_name"),
                 UsageRecordModel.model,
+                UsageRecordModel.request_type,
                 func.count().label("cnt"),
                 func.sum(UsageRecordModel.input_tokens).label("sum_input"),
                 func.sum(UsageRecordModel.output_tokens).label("sum_output"),
@@ -179,7 +180,10 @@ class SQLAlchemyUsageRepository(UsageRepository):
         if end_date:
             stmt = stmt.where(UsageRecordModel.created_at < end_date)
         stmt = stmt.group_by(
-            UsageRecordModel.bot_id, BotModel.name, UsageRecordModel.model
+            UsageRecordModel.bot_id,
+            BotModel.name,
+            UsageRecordModel.model,
+            UsageRecordModel.request_type,
         )
 
         result = await self._session.execute(stmt)
@@ -188,6 +192,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 bot_id=row.bot_id,
                 bot_name=row.bot_name,
                 model=row.model,
+                request_type=row.request_type,
                 input_tokens=row.sum_input or 0,
                 output_tokens=row.sum_output or 0,
                 total_tokens=row.sum_total or 0,

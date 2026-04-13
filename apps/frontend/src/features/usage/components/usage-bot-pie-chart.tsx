@@ -9,6 +9,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { BotUsageStat } from "@/types/token-usage";
+import { getRequestTypeLabel } from "@/types/token-usage";
 
 const COLORS = [
   "oklch(0.65 0.20 250)",
@@ -20,7 +21,7 @@ const COLORS = [
   "oklch(0.65 0.18 50)",
 ];
 
-type ViewMode = "bot" | "model";
+type ViewMode = "type" | "bot" | "model";
 
 interface UsagePieChartProps {
   data: BotUsageStat[] | undefined;
@@ -33,8 +34,18 @@ function aggregate(
 ): { name: string; tokens: number }[] {
   const map = new Map<string, { name: string; tokens: number }>();
   for (const row of data) {
-    const key = viewMode === "bot" ? (row.bot_id ?? "__none__") : row.model;
-    const name = viewMode === "bot" ? (row.bot_name ?? "未指定") : row.model;
+    let key: string;
+    let name: string;
+    if (viewMode === "type") {
+      key = row.request_type;
+      name = getRequestTypeLabel(row.request_type);
+    } else if (viewMode === "bot") {
+      key = row.bot_id ?? "__none__";
+      name = row.bot_name ?? "系統（無 Bot）";
+    } else {
+      key = row.model;
+      name = row.model;
+    }
     const prev = map.get(key);
     map.set(key, {
       name,
@@ -44,8 +55,14 @@ function aggregate(
   return Array.from(map.values()).sort((a, b) => b.tokens - a.tokens);
 }
 
+const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
+  { value: "type", label: "按類型" },
+  { value: "bot", label: "按 Bot" },
+  { value: "model", label: "按 Model" },
+];
+
 export function UsagePieChart({ data, isLoading }: UsagePieChartProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>("bot");
+  const [viewMode, setViewMode] = useState<ViewMode>("type");
 
   const chartData = useMemo(
     () => (data?.length ? aggregate(data, viewMode) : []),
@@ -66,26 +83,19 @@ export function UsagePieChart({ data, isLoading }: UsagePieChartProps) {
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Token 佔比</CardTitle>
         <div className="flex gap-1 rounded-md border p-0.5">
-          <button
-            className={`rounded px-3 py-1 text-xs transition-colors ${
-              viewMode === "bot"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setViewMode("bot")}
-          >
-            按 Bot
-          </button>
-          <button
-            className={`rounded px-3 py-1 text-xs transition-colors ${
-              viewMode === "model"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setViewMode("model")}
-          >
-            按 Model
-          </button>
+          {VIEW_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              className={`rounded px-3 py-1 text-xs transition-colors ${
+                viewMode === opt.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setViewMode(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </CardHeader>
       <CardContent>

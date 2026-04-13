@@ -59,6 +59,7 @@ class BotUsageStatResponse(BaseModel):
     bot_id: str | None
     bot_name: str | None
     model: str
+    request_type: str
     input_tokens: int
     output_tokens: int
     total_tokens: int
@@ -105,6 +106,7 @@ async def get_usage_by_bot(
             bot_id=s.bot_id,
             bot_name=s.bot_name,
             model=s.model,
+            request_type=s.request_type,
             input_tokens=s.input_tokens,
             output_tokens=s.output_tokens,
             total_tokens=s.total_tokens,

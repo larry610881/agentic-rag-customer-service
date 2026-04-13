@@ -35,6 +35,7 @@ class BotUsageStat:
     bot_id: str | None
     bot_name: str | None
     model: str
+    request_type: str
     input_tokens: int
     output_tokens: int
     total_tokens: int
