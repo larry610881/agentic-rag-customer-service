@@ -267,16 +267,9 @@ async def upload_document(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from None
 
-    # Lazy resolve: background task 必須從 Container 取得新 use case + 新 session，
-    # 不能使用 request-scoped 的注入實例（response 送回後 session 已關閉）。
-    # 用 independent_session_scope 確保 OCR 長時間等待後 session 仍有效。
     async def _process(doc_id: str, task_id: str) -> None:
-        from src.infrastructure.db.session_middleware import (
-            independent_session_scope,
-        )
-        async with independent_session_scope():
-            uc = Container.process_document_use_case()
-            await uc.execute(doc_id, task_id)
+        uc = Container.process_document_use_case()
+        await uc.execute(doc_id, task_id)
 
     background_tasks.add_task(
         safe_background_task,

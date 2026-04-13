@@ -116,17 +116,26 @@ class ProcessDocumentUseCase:
             kb = await self._kb_repo.find_by_id(document.kb_id)
             ocr_mode = kb.ocr_mode if kb else "general"
 
-            # Parse raw content → text
+            # ── Parse raw content → text ──
+            # OCR is long-running (10s+/page). Release DB transaction before OCR
+            # to avoid PostgreSQL idle_in_transaction_session_timeout killing
+            # the connection. pool_pre_ping=True will reconnect afterward.
+            if hasattr(self._doc_repo, '_session'):
+                try:
+                    await self._doc_repo._session.commit()
+                except Exception:
+                    pass
+
             if raw_content:
                 t0 = time.perf_counter()
 
-                # PDF: use async path with progress callback
+                # PDF: use async path with progress callback (no DB held)
                 if (
                     document.content_type == "application/pdf"
                     and hasattr(self._file_parser, "parse_pdf_async")
                 ):
                     async def _on_progress(done: int, total: int) -> None:
-                        pct = round(done / total * 70) if total else 0  # OCR = 0~70%
+                        pct = round(done / total * 70) if total else 0
                         await _update_progress(task_id, pct)
                         log.info("ocr.progress", done=done, total=total)
 
@@ -146,6 +155,7 @@ class ProcessDocumentUseCase:
 
                 parse_ms = round((time.perf_counter() - t0) * 1000)
                 log.info("document.parse.done", duration_ms=parse_ms)
+
                 await self._doc_repo.update_content(document_id, content)
 
                 # Record OCR token usage if applicable
