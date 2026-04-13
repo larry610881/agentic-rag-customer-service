@@ -22,9 +22,11 @@ scenarios("unit/conversation/conversation_bot_filter.feature")
 
 
 def _run(coro):
-    """同步包裝 async 呼叫（pytest-bdd v8 step 必須是 def，不可 async def）"""
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(coro)
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 @pytest.fixture

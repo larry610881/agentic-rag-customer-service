@@ -1,6 +1,7 @@
 import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
+from src.application.agent.intent_classifier import IntentClassifier
 from src.application.agent.send_message_use_case import SendMessageUseCase
 from src.application.agent.tool_registry import ToolRegistry
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
@@ -305,8 +306,11 @@ from src.infrastructure.embedding.fake_embedding_service import (
 from src.infrastructure.embedding.openai_embedding_service import (
     OpenAIEmbeddingService,
 )
-from src.infrastructure.file_parser.default_file_parser_service import (
-    DefaultFileParserService,
+from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import (
+    ClaudeVisionOcrEngine,
+)
+from src.infrastructure.file_parser.ocr_file_parser_service import (
+    OcrFileParserService,
 )
 from src.infrastructure.langgraph.meta_supervisor_service import (
     MetaSupervisorService,
@@ -579,7 +583,15 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
-    file_parser_service = providers.Singleton(DefaultFileParserService)
+    _ocr_engine = providers.Singleton(
+        ClaudeVisionOcrEngine,
+        api_key=config.provided.anthropic_api_key,
+    )
+
+    file_parser_service = providers.Singleton(
+        OcrFileParserService,
+        ocr_engine=_ocr_engine,
+    )
 
     language_detection_service = providers.Singleton(
         LangdetectLanguageDetectionService,
@@ -1375,6 +1387,11 @@ class Container(containers.DeclarativeContainer):
         extraction_service=memory_extraction_service,
     )
 
+    intent_classifier = providers.Factory(
+        IntentClassifier,
+        llm_service=llm_service,
+    )
+
     send_message_use_case = providers.Factory(
         SendMessageUseCase,
         agent_service=agent_service,
@@ -1392,6 +1409,7 @@ class Container(containers.DeclarativeContainer):
         extract_memory_use_case=extract_memory_use_case,
         get_diagnostic_rules_uc=get_diagnostic_rules_use_case,
         conversation_lock=conversation_lock,
+        intent_classifier=intent_classifier,
     )
 
     # --- Platform: Provider Settings ---

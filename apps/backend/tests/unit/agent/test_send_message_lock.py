@@ -20,8 +20,11 @@ from src.domain.shared.concurrency import ConversationLock
 
 
 def _run(coro):
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(coro)
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 class FakeLock(ConversationLock):
