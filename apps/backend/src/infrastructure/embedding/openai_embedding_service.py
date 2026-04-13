@@ -32,8 +32,10 @@ class OpenAIEmbeddingService(EmbeddingService):
         self._retry_after_multiplier = retry_after_multiplier
         self._min_batch_size = min_batch_size
         self._client = httpx.AsyncClient(timeout=self._timeout)
+        self.last_total_tokens: int = 0
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        self.last_total_tokens = 0
         if not texts:
             return []
         all_embeddings: list[list[float]] = []
@@ -121,7 +123,14 @@ class OpenAIEmbeddingService(EmbeddingService):
             resp.raise_for_status()
             data = resp.json()
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
-            log.info("embedding.done", latency_ms=elapsed_ms)
+            usage = data.get("usage", {})
+            total_tokens = usage.get("total_tokens", 0)
+            self.last_total_tokens += total_tokens
+            log.info(
+                "embedding.done",
+                latency_ms=elapsed_ms,
+                total_tokens=total_tokens,
+            )
             return [item["embedding"] for item in data["data"]]
         except Exception:
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)

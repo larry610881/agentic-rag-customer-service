@@ -272,6 +272,22 @@ class ProcessDocumentUseCase:
             embed_ms = round((time.perf_counter() - t0) * 1000)
             log.info("document.embed.done", vector_count=len(vectors), duration_ms=embed_ms)
 
+            # Record embedding token usage
+            if self._record_usage and hasattr(self._embedding, "last_total_tokens"):
+                embed_tokens = self._embedding.last_total_tokens
+                if embed_tokens > 0:
+                    embed_model = getattr(self._embedding, "_model", "text-embedding-3-small")
+                    await self._record_usage.execute(
+                        tenant_id=document.tenant_id,
+                        request_type="embedding",
+                        usage=TokenUsage(
+                            model=embed_model,
+                            input_tokens=embed_tokens,
+                            output_tokens=0,
+                            total_tokens=embed_tokens,
+                        ),
+                    )
+
             # 90% — upserting vectors
             await _update_progress(task_id, 90)
 

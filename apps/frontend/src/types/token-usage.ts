@@ -32,7 +32,8 @@ export const REQUEST_TYPE_LABELS: Record<string, string> = {
   chat_line: "LINE 對話",
   rag: "RAG 查詢",
   ocr: "PDF OCR",
-  agent: "對話（舊）",
+  embedding: "Embedding 向量化",
+  agent: "Web 後台對話",
 };
 
 export function getRequestTypeLabel(type: string): string {

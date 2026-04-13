@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Variants } from "framer-motion";
 import { motion } from "framer-motion";
 import { useSystemTokenUsage } from "@/hooks/queries/use-token-usage";
@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { REQUEST_TYPE_LABELS } from "@/types/token-usage";
 
 const containerVariants: Variants = {
   hidden: {},
@@ -24,10 +25,28 @@ const itemVariants: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0, 0, 0.2, 1] as const } },
 };
 
+const TYPE_FILTER_OPTIONS = [
+  { value: "all", label: "全部類型" },
+  ...Object.entries(REQUEST_TYPE_LABELS)
+    .filter(([k]) => k !== "agent") // skip legacy alias
+    .map(([value, label]) => ({ value, label })),
+];
+
 export default function AdminTokenUsagePage() {
   const [days, setDays] = useState(30);
   const [tenantId, setTenantId] = useState<string | undefined>();
-  const { data, isLoading } = useSystemTokenUsage(days, tenantId);
+  const [typeFilter, setTypeFilter] = useState("all");
+  const { data: rawData, isLoading } = useSystemTokenUsage(days, tenantId);
+
+  const data = useMemo(() => {
+    if (!rawData || typeFilter === "all") return rawData;
+    return rawData.filter((row) => {
+      if (typeFilter === "chat_web") {
+        return row.request_type === "chat_web" || row.request_type === "agent";
+      }
+      return row.request_type === typeFilter;
+    });
+  }, [rawData, typeFilter]);
 
   return (
     <motion.div
@@ -43,6 +62,18 @@ export default function AdminTokenUsagePage() {
         </div>
         <div className="flex items-center gap-3">
           <AdminTenantFilter value={tenantId} onChange={setTenantId} />
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TYPE_FILTER_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
             <SelectTrigger className="w-[140px]">
               <SelectValue />
