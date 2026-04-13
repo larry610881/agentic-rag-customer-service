@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TenantBotUsageStat } from "@/types/token-usage";
+import { getRequestTypeLabel } from "@/types/token-usage";
 
 interface TokenUsageDetailTableProps {
   data: TenantBotUsageStat[] | undefined;
@@ -44,9 +45,10 @@ export function TokenUsageDetailTable({ data, isLoading }: TokenUsageDetailTable
           <TableHeader>
             <TableRow>
               <TableHead>租戶</TableHead>
+              <TableHead>類型</TableHead>
               <TableHead>Bot</TableHead>
               <TableHead>模型</TableHead>
-              <TableHead className="text-right">訊息數</TableHead>
+              <TableHead className="text-right">次數</TableHead>
               <TableHead className="text-right">輸入 Tokens</TableHead>
               <TableHead className="text-right">輸出 Tokens</TableHead>
               <TableHead className="text-right">Cache Read</TableHead>
@@ -56,9 +58,10 @@ export function TokenUsageDetailTable({ data, isLoading }: TokenUsageDetailTable
           </TableHeader>
           <TableBody>
             {data.map((row, idx) => (
-              <TableRow key={`${row.tenant_id}-${row.bot_id}-${row.model}-${idx}`}>
+              <TableRow key={`${row.tenant_id}-${row.bot_id}-${row.model}-${row.request_type}-${idx}`}>
                 <TableCell>{row.tenant_name}</TableCell>
-                <TableCell>{row.bot_name ?? "(未指定 Bot)"}</TableCell>
+                <TableCell>{getRequestTypeLabel(row.request_type)}</TableCell>
+                <TableCell>{row.bot_name ?? "—"}</TableCell>
                 <TableCell className="font-medium">{row.model}</TableCell>
                 <TableCell className="text-right">
                   {row.message_count.toLocaleString()}

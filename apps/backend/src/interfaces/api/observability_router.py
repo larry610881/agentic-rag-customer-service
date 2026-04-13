@@ -152,6 +152,7 @@ async def get_token_usage(
                 UsageRecordModel.bot_id,
                 BotModel.name.label("bot_name"),
                 UsageRecordModel.model,
+                UsageRecordModel.request_type,
                 func.sum(UsageRecordModel.input_tokens).label("input_tokens"),
                 func.sum(UsageRecordModel.output_tokens).label("output_tokens"),
                 func.sum(UsageRecordModel.total_tokens).label("total_tokens"),
@@ -180,6 +181,7 @@ async def get_token_usage(
             UsageRecordModel.bot_id,
             BotModel.name,
             UsageRecordModel.model,
+            UsageRecordModel.request_type,
         ).order_by(func.sum(UsageRecordModel.estimated_cost).desc())
 
         rows = (await session.execute(stmt)).all()
@@ -190,8 +192,9 @@ async def get_token_usage(
                 "tenant_id": r.tenant_id,
                 "tenant_name": r.tenant_name or "(未知租戶)",
                 "bot_id": r.bot_id,
-                "bot_name": r.bot_name or "(未指定 Bot)",
+                "bot_name": r.bot_name,
                 "model": r.model,
+                "request_type": r.request_type,
                 "input_tokens": r.input_tokens or 0,
                 "output_tokens": r.output_tokens or 0,
                 "total_tokens": r.total_tokens or 0,

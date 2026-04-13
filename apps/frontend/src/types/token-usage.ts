@@ -4,6 +4,7 @@ export interface TenantBotUsageStat {
   bot_id: string | null;
   bot_name: string | null;
   model: string;
+  request_type: string;
   input_tokens: number;
   output_tokens: number;
   total_tokens: number;
