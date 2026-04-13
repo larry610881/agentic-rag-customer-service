@@ -24,6 +24,26 @@ from src.infrastructure.logging import get_logger
 logger = get_logger(__name__)
 
 
+async def _update_progress(task_id: str, progress: int) -> None:
+    """Update task progress using independent session (best-effort)."""
+    try:
+        from src.infrastructure.db.engine import async_session_factory
+        from src.infrastructure.db.models.processing_task_model import (
+            ProcessingTaskModel,
+        )
+        from sqlalchemy import update
+
+        async with async_session_factory() as session:
+            await session.execute(
+                update(ProcessingTaskModel)
+                .where(ProcessingTaskModel.id == task_id)
+                .values(progress=progress)
+            )
+            await session.commit()
+    except Exception:
+        pass
+
+
 class ProcessDocumentUseCase:
     def __init__(
         self,
@@ -106,25 +126,8 @@ class ProcessDocumentUseCase:
                     and hasattr(self._file_parser, "parse_pdf_async")
                 ):
                     async def _on_progress(done: int, total: int) -> None:
-                        pct = round(done / total * 50) if total else 0  # OCR = 0~50%
-                        try:
-                            from src.infrastructure.db.engine import (
-                                async_session_factory,
-                            )
-                            from src.infrastructure.db.models.processing_task_model import (
-                                ProcessingTaskModel,
-                            )
-                            from sqlalchemy import update
-
-                            async with async_session_factory() as session:
-                                await session.execute(
-                                    update(ProcessingTaskModel)
-                                    .where(ProcessingTaskModel.id == task_id)
-                                    .values(progress=pct)
-                                )
-                                await session.commit()
-                        except Exception:
-                            pass  # Progress update is best-effort
+                        pct = round(done / total * 70) if total else 0  # OCR = 0~70%
+                        await _update_progress(task_id, pct)
                         log.info("ocr.progress", done=done, total=total)
 
                     content = await self._file_parser.parse_pdf_async(
@@ -241,11 +244,17 @@ class ProcessDocumentUseCase:
                 await self._task_repo.update_status(task_id, "completed", progress=100)
                 return
 
+            # 75% — chunks saved
+            await _update_progress(task_id, 75)
+
             # Save chunks to DB
             t0 = time.perf_counter()
             await self._doc_repo.save_chunks(chunks)
             save_ms = round((time.perf_counter() - t0) * 1000)
             log.info("document.chunks.saved", chunk_count=len(chunks), duration_ms=save_ms)
+
+            # 80% — embedding
+            await _update_progress(task_id, 80)
 
             # Embed chunks
             t0 = time.perf_counter()
@@ -253,6 +262,9 @@ class ProcessDocumentUseCase:
             vectors = await self._embedding.embed_texts(texts)
             embed_ms = round((time.perf_counter() - t0) * 1000)
             log.info("document.embed.done", vector_count=len(vectors), duration_ms=embed_ms)
+
+            # 90% — upserting vectors
+            await _update_progress(task_id, 90)
 
             # Ensure Qdrant collection exists
             collection = f"kb_{document.kb_id}"
