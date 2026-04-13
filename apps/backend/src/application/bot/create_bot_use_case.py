@@ -8,6 +8,7 @@ from src.domain.bot.entity import (
     Bot,
     BotLLMParams,
     BotMcpBinding,
+    IntentRoute,
     McpServerConfig,
     McpToolMeta,
 )
@@ -53,6 +54,7 @@ class CreateBotCommand:
     memory_enabled: bool = False
     memory_extraction_threshold: int = 3
     memory_extraction_prompt: str = ""
+    intent_routes: list[dict] = field(default_factory=list)
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
@@ -154,6 +156,14 @@ class CreateBotUseCase:
             memory_enabled=command.memory_enabled,
             memory_extraction_threshold=command.memory_extraction_threshold,
             memory_extraction_prompt=command.memory_extraction_prompt,
+            intent_routes=[
+                IntentRoute(
+                    name=r.get("name", ""),
+                    description=r.get("description", ""),
+                    system_prompt=r.get("system_prompt", ""),
+                )
+                for r in command.intent_routes
+            ],
             busy_reply_message=command.busy_reply_message,
             line_channel_secret=command.line_channel_secret,
             line_channel_access_token=command.line_channel_access_token,

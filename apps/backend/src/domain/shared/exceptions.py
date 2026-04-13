@@ -46,6 +46,14 @@ class DocumentProcessingError(DomainException):
         self.reason = reason
 
 
+class OcrProcessingError(DomainException):
+    """Raised when OCR engine fails to process a PDF page."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"OCR processing failed: {reason}")
+        self.reason = reason
+
+
 class ValidationError(DomainException):
     """Raised when a validation rule is violated."""
 

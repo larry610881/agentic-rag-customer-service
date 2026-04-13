@@ -4,7 +4,7 @@ from typing import Any
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.application.bot.create_bot_use_case import (
     CreateBotCommand,
@@ -37,6 +37,21 @@ _VALID_EVAL_DEPTHS = {
 _VALID_LLM_PROVIDERS = {p.value for p in ProviderName}
 _VALID_KNOWLEDGE_MODES = {"rag", "wiki"}
 _VALID_WIKI_NAVIGATION_STRATEGIES = {"keyword_bfs"}
+
+
+def _validate_intent_routes(routes: list["IntentRouteSchema"]) -> None:
+    """Validate intent routes: max 10, unique names."""
+    if len(routes) > 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="intent_routes cannot exceed 10 items",
+        )
+    names = [r.name for r in routes]
+    if len(names) != len(set(names)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="intent_routes names must be unique within a bot",
+        )
 
 
 def _validate_llm_fields(
@@ -74,6 +89,12 @@ def _validate_llm_fields(
         )
 
 
+class IntentRouteSchema(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+    description: str = Field(..., min_length=1, max_length=500)
+    system_prompt: str = Field(..., min_length=1, max_length=10000)
+
+
 class CreateBotRequest(BaseModel):
     name: str
     description: str = ""
@@ -109,6 +130,7 @@ class CreateBotRequest(BaseModel):
     memory_enabled: bool = False
     memory_extraction_threshold: int = 3
     memory_extraction_prompt: str = ""
+    intent_routes: list[IntentRouteSchema] = []
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
@@ -152,6 +174,7 @@ class UpdateBotRequest(BaseModel):
     memory_enabled: bool | None = None
     memory_extraction_threshold: int | None = None
     memory_extraction_prompt: str | None = None
+    intent_routes: list[IntentRouteSchema] | None = None
     busy_reply_message: str | None = None
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
@@ -199,6 +222,7 @@ class BotResponse(BaseModel):
     memory_enabled: bool
     memory_extraction_threshold: int
     memory_extraction_prompt: str
+    intent_routes: list[dict[str, Any]]
     busy_reply_message: str
     line_channel_secret: str | None
     line_channel_access_token: str | None
@@ -268,6 +292,10 @@ def _to_response(bot) -> BotResponse:
         memory_enabled=bot.memory_enabled,
         memory_extraction_threshold=bot.memory_extraction_threshold,
         memory_extraction_prompt=bot.memory_extraction_prompt,
+        intent_routes=[
+            {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
+            for r in bot.intent_routes
+        ],
         busy_reply_message=bot.busy_reply_message,
         line_channel_secret=bot.line_channel_secret,
         line_channel_access_token=bot.line_channel_access_token,
@@ -318,6 +346,7 @@ async def create_bot(
         body.llm_provider, body.llm_model,
         body.eval_provider, body.eval_model,
     )
+    _validate_intent_routes(body.intent_routes)
     bot = await use_case.execute(
         CreateBotCommand(
             tenant_id=tenant.tenant_id,
@@ -355,6 +384,10 @@ async def create_bot(
             memory_enabled=body.memory_enabled,
             memory_extraction_threshold=body.memory_extraction_threshold,
             memory_extraction_prompt=body.memory_extraction_prompt,
+            intent_routes=[
+                {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
+                for r in body.intent_routes
+            ],
             busy_reply_message=body.busy_reply_message,
             line_channel_secret=body.line_channel_secret,
             line_channel_access_token=body.line_channel_access_token,
@@ -427,7 +460,10 @@ def _build_update_command(
     """Build UpdateBotCommand from request, only including set fields."""
     kwargs: dict = {"bot_id": bot_id}
     for field in body.model_fields_set:
-        kwargs[field] = getattr(body, field)
+        val = getattr(body, field)
+        if field == "intent_routes" and val is not None:
+            val = [r.model_dump() for r in val]
+        kwargs[field] = val
     return UpdateBotCommand(**kwargs)
 
 
@@ -474,6 +510,8 @@ async def update_bot(
         body.llm_provider, body.llm_model,
         body.eval_provider, body.eval_model,
     )
+    if body.intent_routes is not None:
+        _validate_intent_routes(body.intent_routes)
     command = _build_update_command(bot_id, body)
     try:
         bot = await use_case.execute(command)

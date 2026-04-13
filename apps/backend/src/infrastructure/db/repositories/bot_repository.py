@@ -8,6 +8,7 @@ from src.domain.bot.entity import (
     Bot,
     BotLLMParams,
     BotMcpBinding,
+    IntentRoute,
     McpServerConfig,
     McpToolMeta,
 )
@@ -97,6 +98,14 @@ class SQLAlchemyBotRepository(BotRepository):
             memory_enabled=model.memory_enabled if model.memory_enabled is not None else False,
             memory_extraction_threshold=model.memory_extraction_threshold or 3,
             memory_extraction_prompt=model.memory_extraction_prompt or "",
+            intent_routes=[
+                IntentRoute(
+                    name=r.get("name", ""),
+                    description=r.get("description", ""),
+                    system_prompt=r.get("system_prompt", ""),
+                )
+                for r in (model.intent_routes or [])
+            ],
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
             line_show_sources=model.line_show_sources if model.line_show_sources is not None else False,
@@ -192,6 +201,10 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.memory_enabled = bot.memory_enabled
                 existing.memory_extraction_threshold = bot.memory_extraction_threshold
                 existing.memory_extraction_prompt = bot.memory_extraction_prompt
+                existing.intent_routes = [
+                    {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
+                    for r in bot.intent_routes
+                ]
                 existing.line_channel_secret = bot.line_channel_secret
                 existing.line_channel_access_token = bot.line_channel_access_token
                 existing.line_show_sources = bot.line_show_sources
@@ -261,6 +274,10 @@ class SQLAlchemyBotRepository(BotRepository):
                     memory_enabled=bot.memory_enabled,
                     memory_extraction_threshold=bot.memory_extraction_threshold,
                     memory_extraction_prompt=bot.memory_extraction_prompt,
+                    intent_routes=[
+                        {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
+                        for r in bot.intent_routes
+                    ],
                     line_channel_secret=bot.line_channel_secret,
                     line_channel_access_token=bot.line_channel_access_token,
                     line_show_sources=bot.line_show_sources,

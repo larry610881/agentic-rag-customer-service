@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -85,6 +85,11 @@ const botFormSchema = z.object({
   line_show_sources: z.boolean().default(false),
   knowledge_mode: z.enum(["rag", "wiki"]),
   wiki_navigation_strategy: z.enum(["keyword_bfs"]),
+  intent_routes: z.array(z.object({
+    name: z.string().min(1, "請輸入名稱").max(50),
+    description: z.string().min(1, "請輸入描述").max(500),
+    system_prompt: z.string().min(1, "請輸入提示詞").max(10000),
+  })).max(10).default([]),
 });
 
 type BotFormValues = z.infer<typeof botFormSchema>;
@@ -100,6 +105,7 @@ interface BotDetailFormProps {
 const TAB_KEYS = {
   KNOWLEDGE: "knowledge",
   PROMPT: "prompt",
+  INTENT: "intent",
   LLM: "llm",
   WIDGET: "widget",
   LINE: "line",
@@ -180,6 +186,7 @@ export function BotDetailForm({
       widget_placeholder_text: bot.widget_placeholder_text ?? "",
       widget_greeting_messages: bot.widget_greeting_messages ?? [],
       widget_greeting_animation: bot.widget_greeting_animation ?? "fade",
+      intent_routes: bot.intent_routes ?? [],
       busy_reply_message: bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
@@ -187,6 +194,11 @@ export function BotDetailForm({
       knowledge_mode: bot.knowledge_mode ?? "rag",
       wiki_navigation_strategy: bot.wiki_navigation_strategy ?? "keyword_bfs",
     },
+  });
+
+  const { fields: intentFields, append: appendIntent, remove: removeIntent } = useFieldArray({
+    control,
+    name: "intent_routes",
   });
 
   const enabledTools = watch("enabled_tools") ?? [];
@@ -250,6 +262,7 @@ export function BotDetailForm({
       widget_placeholder_text: bot.widget_placeholder_text ?? "",
       widget_greeting_messages: bot.widget_greeting_messages ?? [],
       widget_greeting_animation: bot.widget_greeting_animation ?? "fade",
+      intent_routes: bot.intent_routes ?? [],
       busy_reply_message: bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
@@ -336,6 +349,9 @@ export function BotDetailForm({
           </TabsTrigger>
           <TabsTrigger value={TAB_KEYS.PROMPT} className="flex-1">
             系統提示詞
+          </TabsTrigger>
+          <TabsTrigger value={TAB_KEYS.INTENT} className="flex-1">
+            意圖路由
           </TabsTrigger>
           <TabsTrigger value={TAB_KEYS.LLM} className="flex-1">
             LLM 參數
@@ -722,6 +738,100 @@ export function BotDetailForm({
             </div>
           </section>
 
+        </TabsContent>
+
+        {/* Tab: 意圖路由 */}
+        <TabsContent value={TAB_KEYS.INTENT} className="flex flex-col gap-6 pt-4">
+          <section className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">意圖路由</h3>
+                <p className="text-sm text-muted-foreground">
+                  設定不同意圖類別，每個意圖使用專屬的系統提示詞。未設定時使用預設提示詞。
+                </p>
+              </div>
+              {intentFields.length < 10 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => appendIntent({ name: "", description: "", system_prompt: "" })}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  新增意圖
+                </Button>
+              )}
+            </div>
+
+            {intentFields.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
+                未設定意圖路由，將使用預設系統提示詞
+              </div>
+            )}
+
+            {intentFields.map((field, index) => (
+              <div
+                key={field.id}
+                className="border rounded-lg p-4 flex flex-col gap-3 relative"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">
+                    意圖 #{index + 1}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeIntent(index)}
+                    aria-label="刪除意圖"
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor={`intent-name-${index}`}>名稱</Label>
+                  <Input
+                    id={`intent-name-${index}`}
+                    {...register(`intent_routes.${index}.name`)}
+                    placeholder="例：客訴、查詢、閒聊、轉人工"
+                  />
+                  {errors.intent_routes?.[index]?.name && (
+                    <p className="text-xs text-destructive">
+                      {errors.intent_routes[index].name?.message}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor={`intent-desc-${index}`}>描述</Label>
+                  <Textarea
+                    id={`intent-desc-${index}`}
+                    {...register(`intent_routes.${index}.description`)}
+                    rows={2}
+                    placeholder="描述此意圖，讓 AI 分類器能準確辨識（例：客戶對產品或服務表達不滿、要求退換貨）"
+                  />
+                  {errors.intent_routes?.[index]?.description && (
+                    <p className="text-xs text-destructive">
+                      {errors.intent_routes[index].description?.message}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor={`intent-prompt-${index}`}>專屬提示詞</Label>
+                  <Textarea
+                    id={`intent-prompt-${index}`}
+                    {...register(`intent_routes.${index}.system_prompt`)}
+                    rows={4}
+                    placeholder="此意圖觸發時使用的系統提示詞（完整替換預設提示詞）"
+                  />
+                  {errors.intent_routes?.[index]?.system_prompt && (
+                    <p className="text-xs text-destructive">
+                      {errors.intent_routes[index].system_prompt?.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </section>
         </TabsContent>
 
         {/* Tab 3: LLM 參數 */}

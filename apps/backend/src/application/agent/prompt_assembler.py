@@ -17,8 +17,8 @@ _TZ_TAIPEI = timezone(timedelta(hours=8))
 _WEEKDAY_ZH = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
 
 
-def _inject_runtime_vars(prompt: str) -> str:
-    """Replace runtime placeholders in the assembled prompt."""
+def inject_runtime_vars(prompt: str) -> str:
+    """Replace runtime placeholders ({today}, {now}, {weekday_zh}) in a prompt."""
     now = datetime.now(_TZ_TAIPEI)
     replacements = {
         "{today}": now.strftime("%Y-%m-%d"),
@@ -56,4 +56,4 @@ def assemble(
     if bot_prompt and bot_prompt.strip():
         parts.append(f"[自定義指令]\n{bot_prompt.strip()}")
 
-    return _inject_runtime_vars("\n\n".join(parts))
+    return inject_runtime_vars("\n\n".join(parts))

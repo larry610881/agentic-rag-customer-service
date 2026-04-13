@@ -1,3 +1,9 @@
+export interface IntentRoute {
+  name: string;
+  description: string;
+  system_prompt: string;
+}
+
 export interface McpToolMeta {
   name: string;
   description: string;
@@ -49,6 +55,7 @@ export interface Bot {
   widget_placeholder_text: string;
   widget_greeting_messages: string[];
   widget_greeting_animation: "fade" | "slide" | "typewriter";
+  intent_routes: IntentRoute[];
   busy_reply_message: string;
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
@@ -141,6 +148,7 @@ export interface CreateBotRequest {
   widget_placeholder_text?: string;
   widget_greeting_messages?: string[];
   widget_greeting_animation?: "fade" | "slide" | "typewriter";
+  intent_routes?: IntentRoute[];
   busy_reply_message?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
@@ -180,6 +188,7 @@ export interface UpdateBotRequest {
   widget_placeholder_text?: string;
   widget_greeting_messages?: string[];
   widget_greeting_animation?: "fade" | "slide" | "typewriter";
+  intent_routes?: IntentRoute[];
   busy_reply_message?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;

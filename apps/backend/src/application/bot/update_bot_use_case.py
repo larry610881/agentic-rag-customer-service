@@ -7,6 +7,7 @@ from src.domain.bot.entity import (
     VALID_WIKI_NAVIGATION_STRATEGIES,
     Bot,
     BotMcpBinding,
+    IntentRoute,
     McpServerConfig,
     McpToolMeta,
 )
@@ -58,6 +59,7 @@ class UpdateBotCommand:
     memory_enabled: object = _UNSET
     memory_extraction_threshold: object = _UNSET
     memory_extraction_prompt: object = _UNSET
+    intent_routes: object = _UNSET
     busy_reply_message: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
@@ -112,6 +114,15 @@ class UpdateBotUseCase:
             bot.widget_allowed_origins = list(command.widget_allowed_origins)  # type: ignore[arg-type]
         if command.widget_greeting_messages is not _UNSET:
             bot.widget_greeting_messages = list(command.widget_greeting_messages)  # type: ignore[arg-type]
+        if command.intent_routes is not _UNSET:
+            bot.intent_routes = [
+                IntentRoute(
+                    name=r.get("name", ""),
+                    description=r.get("description", ""),
+                    system_prompt=r.get("system_prompt", ""),
+                )
+                for r in command.intent_routes  # type: ignore[union-attr]
+            ]
         if command.mcp_servers is not _UNSET:
             bot.mcp_servers = [
                 McpServerConfig(

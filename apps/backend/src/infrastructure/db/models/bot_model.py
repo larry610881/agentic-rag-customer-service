@@ -95,6 +95,9 @@ class BotModel(Base):
     memory_extraction_prompt: Mapped[str] = mapped_column(
         Text, nullable=False, default="", server_default=""
     )
+    intent_routes: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
     busy_reply_message: Mapped[str] = mapped_column(
         String(500), nullable=False,
         default="小編正在努力回覆中，請稍等一下喔～",

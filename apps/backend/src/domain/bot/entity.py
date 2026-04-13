@@ -35,6 +35,15 @@ class BotMcpBinding:
     env_values: dict[str, str] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class IntentRoute:
+    """意圖路由設定（Value Object）"""
+
+    name: str              # "客訴", "查詢", "閒聊", "轉人工"
+    description: str       # 給 classifier 看的描述
+    system_prompt: str     # 該意圖專用 prompt
+
+
 @dataclass
 class BotLLMParams:
     temperature: float = 0.3
@@ -90,6 +99,7 @@ class Bot:
     memory_enabled: bool = False
     memory_extraction_threshold: int = 3
     memory_extraction_prompt: str = ""
+    intent_routes: list[IntentRoute] = field(default_factory=list)
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None

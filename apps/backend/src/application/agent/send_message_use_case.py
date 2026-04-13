@@ -9,7 +9,11 @@ from uuid import uuid4
 
 import structlog
 
-from src.application.agent.prompt_assembler import assemble as assemble_prompt
+from src.application.agent.intent_classifier import IntentClassifier
+from src.application.agent.prompt_assembler import (
+    assemble as assemble_prompt,
+    inject_runtime_vars,
+)
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.bot.repository import BotRepository
@@ -73,6 +77,7 @@ class SendMessageUseCase:
         extract_memory_use_case: "ExtractMemoryUseCase | None" = None,
         get_diagnostic_rules_uc: "GetDiagnosticRulesUseCase | None" = None,
         conversation_lock: ConversationLock | None = None,
+        intent_classifier: IntentClassifier | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -87,6 +92,7 @@ class SendMessageUseCase:
         self._resolve_identity = resolve_identity_use_case
         self._load_memory = load_memory_use_case
         self._extract_memory = extract_memory_use_case
+        self._intent_classifier = intent_classifier
         self._get_diagnostic_rules_uc = get_diagnostic_rules_uc
         self._conversation_lock = conversation_lock
 
@@ -231,6 +237,7 @@ class SendMessageUseCase:
         cfg["eval_depth"] = getattr(bot, "eval_depth", "off")
         cfg["eval_provider"] = getattr(bot, "eval_provider", "")
         cfg["eval_model"] = getattr(bot, "eval_model", "")
+        cfg["intent_routes"] = list(getattr(bot, "intent_routes", []))
 
         # Resolve prompt overrides: Bot → SystemPromptConfig → Seed
         base_prompt = ""
@@ -540,6 +547,19 @@ class SendMessageUseCase:
                 if history_context
                 else memory_prompt
             )
+
+        # Intent routing: classify and override system_prompt
+        intent_routes = bot_cfg.get("intent_routes", [])
+        if intent_routes and self._intent_classifier:
+            matched = await self._intent_classifier.classify(
+                user_message=command.message,
+                router_context=router_context,
+                intent_routes=intent_routes,
+            )
+            if matched:
+                bot_cfg["system_prompt"] = inject_runtime_vars(
+                    matched.system_prompt
+                )
 
         # Stream from agent service
         full_answer = ""
