@@ -107,9 +107,24 @@ class ProcessDocumentUseCase:
                 ):
                     async def _on_progress(done: int, total: int) -> None:
                         pct = round(done / total * 50) if total else 0  # OCR = 0~50%
-                        await self._task_repo.update_status(
-                            task_id, "processing", progress=pct
-                        )
+                        try:
+                            from src.infrastructure.db.engine import (
+                                async_session_factory,
+                            )
+                            from src.infrastructure.db.models.processing_task_model import (
+                                ProcessingTaskModel,
+                            )
+                            from sqlalchemy import update
+
+                            async with async_session_factory() as session:
+                                await session.execute(
+                                    update(ProcessingTaskModel)
+                                    .where(ProcessingTaskModel.id == task_id)
+                                    .values(progress=pct)
+                                )
+                                await session.commit()
+                        except Exception:
+                            pass  # Progress update is best-effort
                         log.info("ocr.progress", done=done, total=total)
 
                     content = await self._file_parser.parse_pdf_async(
