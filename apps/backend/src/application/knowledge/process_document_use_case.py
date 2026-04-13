@@ -17,6 +17,8 @@ from src.domain.knowledge.services import (
     TextSplitterService,
 )
 from src.domain.rag.services import EmbeddingService, VectorStore
+from src.domain.rag.value_objects import TokenUsage
+from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -34,6 +36,7 @@ class ProcessDocumentUseCase:
         language_detection_service: LanguageDetectionService,
         file_parser_service: FileParserService,
         document_file_storage: DocumentFileStorageService,
+        record_usage_use_case: RecordUsageUseCase | None = None,
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
@@ -44,6 +47,7 @@ class ProcessDocumentUseCase:
         self._language_detector = language_detection_service
         self._file_parser = file_parser_service
         self._file_storage = document_file_storage
+        self._record_usage = record_usage_use_case
 
     async def execute(
         self, document_id: str, task_id: str
@@ -104,6 +108,23 @@ class ProcessDocumentUseCase:
                 parse_ms = round((time.perf_counter() - t0) * 1000)
                 log.info("document.parse.done", duration_ms=parse_ms)
                 await self._doc_repo.update_content(document_id, content)
+
+                # Record OCR token usage if applicable
+                if self._record_usage and hasattr(self._file_parser, "last_input_tokens"):
+                    in_tok = self._file_parser.last_input_tokens
+                    out_tok = self._file_parser.last_output_tokens
+                    if in_tok > 0 or out_tok > 0:
+                        model = getattr(self._file_parser, "last_model", "claude-haiku-4-5-20251001")
+                        await self._record_usage.execute(
+                            tenant_id=document.tenant_id,
+                            request_type="ocr",
+                            usage=TokenUsage(
+                                model=model,
+                                input_tokens=in_tok,
+                                output_tokens=out_tok,
+                                total_tokens=in_tok + out_tok,
+                            ),
+                        )
             else:
                 # Fallback for legacy documents without raw_content
                 content = document.content

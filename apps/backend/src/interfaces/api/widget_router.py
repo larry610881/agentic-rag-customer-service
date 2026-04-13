@@ -221,7 +221,7 @@ async def widget_chat_stream(
             try:
                 await record_usage.execute(
                     tenant_id=bot.tenant_id,
-                    request_type="agent",
+                    request_type="chat_widget",
                     usage=usage,
                     bot_id=bot.id.value,
                 )

@@ -103,6 +103,9 @@ class ClaudeVisionOcrEngine(OcrEngine):
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._model = model
         self._semaphore = asyncio.Semaphore(max_concurrent)
+        # Accumulated usage from last parse batch (reset per batch)
+        self.last_input_tokens: int = 0
+        self.last_output_tokens: int = 0
 
     async def ocr_page(self, image_bytes: bytes, prompt: str | None = None) -> str:
         prompt = prompt or _DEFAULT_PROMPT
@@ -134,6 +137,8 @@ class ClaudeVisionOcrEngine(OcrEngine):
                 )
                 elapsed_ms = round((time.perf_counter() - t0) * 1000)
                 usage = message.usage
+                self.last_input_tokens += usage.input_tokens
+                self.last_output_tokens += usage.output_tokens
                 logger.info(
                     "ocr.page.done",
                     model=self._model,

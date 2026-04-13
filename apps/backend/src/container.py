@@ -852,6 +852,11 @@ class Container(containers.DeclarativeContainer):
         document_file_storage=document_file_storage_service,
     )
 
+    record_usage_use_case = providers.Factory(
+        RecordUsageUseCase,
+        usage_repository=usage_repository,
+    )
+
     process_document_use_case = providers.Factory(
         ProcessDocumentUseCase,
         document_repository=document_repository,
@@ -863,6 +868,7 @@ class Container(containers.DeclarativeContainer):
         language_detection_service=language_detection_service,
         file_parser_service=file_parser_service,
         document_file_storage=document_file_storage_service,
+        record_usage_use_case=record_usage_use_case,
     )
 
     get_processing_task_use_case = providers.Factory(
@@ -955,11 +961,6 @@ class Container(containers.DeclarativeContainer):
 
     get_token_cost_stats_use_case = providers.Factory(
         GetTokenCostStatsUseCase,
-        usage_repository=usage_repository,
-    )
-
-    record_usage_use_case = providers.Factory(
-        RecordUsageUseCase,
         usage_repository=usage_repository,
     )
 

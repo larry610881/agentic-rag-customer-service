@@ -95,7 +95,7 @@ async def agent_chat(
 
     await record_usage.execute(
         tenant_id=tenant.tenant_id,
-        request_type="agent",
+        request_type="chat_web",
         usage=result.usage,
         bot_id=request.bot_id,
     )
@@ -231,7 +231,7 @@ async def agent_chat_stream(
                 try:
                     await record_usage.execute(
                         tenant_id=tenant.tenant_id,
-                        request_type="agent",
+                        request_type="chat_web",
                         usage=usage,
                         bot_id=request.bot_id,
                     )
