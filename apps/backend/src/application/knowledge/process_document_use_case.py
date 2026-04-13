@@ -96,15 +96,36 @@ class ProcessDocumentUseCase:
             kb = await self._kb_repo.find_by_id(document.kb_id)
             ocr_mode = kb.ocr_mode if kb else "general"
 
-            # Parse raw content → text (moved from upload for async processing)
+            # Parse raw content → text
             if raw_content:
                 t0 = time.perf_counter()
-                content = await asyncio.to_thread(
-                    self._file_parser.parse,
-                    raw_content,
-                    document.content_type,
-                    ocr_mode,
-                )
+
+                # PDF: use async path with progress callback
+                if (
+                    document.content_type == "application/pdf"
+                    and hasattr(self._file_parser, "parse_pdf_async")
+                ):
+                    async def _on_progress(done: int, total: int) -> None:
+                        pct = round(done / total * 50) if total else 0  # OCR = 0~50%
+                        await self._task_repo.update_status(
+                            task_id, "processing", progress=pct
+                        )
+                        log.info("ocr.progress", done=done, total=total)
+
+                    content = await self._file_parser.parse_pdf_async(
+                        raw_content,
+                        ocr_mode=ocr_mode,
+                        on_progress=_on_progress,
+                        max_pages=2,  # TODO: 測試用，正式移除
+                    )
+                else:
+                    content = await asyncio.to_thread(
+                        self._file_parser.parse,
+                        raw_content,
+                        document.content_type,
+                        ocr_mode,
+                    )
+
                 parse_ms = round((time.perf_counter() - t0) * 1000)
                 log.info("document.parse.done", duration_ms=parse_ms)
                 await self._doc_repo.update_content(document_id, content)
