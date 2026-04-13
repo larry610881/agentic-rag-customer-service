@@ -23,6 +23,7 @@ export interface DocumentResponse {
   quality_score: number;
   quality_issues: string[];
   has_file: boolean;
+  task_progress: number | null;
   created_at: string;
   updated_at: string;
 }

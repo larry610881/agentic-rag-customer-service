@@ -37,7 +37,7 @@ interface DocumentListProps {
   isBatchReprocessing?: boolean;
 }
 
-function StatusCell({ status }: { status: DocumentResponse["status"] }) {
+function StatusCell({ status, taskProgress }: { status: DocumentResponse["status"]; taskProgress?: number | null }) {
   switch (status) {
     case "pending":
       return (
@@ -48,10 +48,20 @@ function StatusCell({ status }: { status: DocumentResponse["status"] }) {
       );
     case "processing":
       return (
-        <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
-          <LoaderCircle className="h-4 w-4 animate-spin" />
-          學習中
-        </span>
+        <div className="flex flex-col gap-1">
+          <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+            <LoaderCircle className="h-4 w-4 animate-spin" />
+            學習中{taskProgress != null ? ` ${taskProgress}%` : ""}
+          </span>
+          {taskProgress != null && (
+            <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-green-500 transition-all duration-500"
+                style={{ width: `${taskProgress}%` }}
+              />
+            </div>
+          )}
+        </div>
       );
     case "processed":
       return (
@@ -271,7 +281,7 @@ export function DocumentList({
                   </QualityTooltip>
                 </td>
                 <td className="border-b px-4 py-2">
-                  <StatusCell status={doc.status} />
+                  <StatusCell status={doc.status} taskProgress={doc.task_progress} />
                 </td>
                 <td className="border-b px-4 py-2">
                   {new Date(doc.created_at).toLocaleDateString()}

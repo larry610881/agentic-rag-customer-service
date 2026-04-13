@@ -27,7 +27,7 @@ export function useDocuments(kbId: string, page = 1, pageSize = 20) {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (data?.items?.some((d) => d.status === "pending" || d.status === "processing")) {
-        return 5000;
+        return 3000;
       }
       return false;
     },

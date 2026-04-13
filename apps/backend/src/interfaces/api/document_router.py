@@ -46,7 +46,7 @@ router = APIRouter(
     tags=["documents"],
 )
 
-MAX_FILE_SIZE = 32 * 1024 * 1024  # 32 MB (Cloud Run max)
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
 
 # Fallback mapping: browsers often send application/octet-stream for these
 _EXT_TO_CONTENT_TYPE: dict[str, str] = {
@@ -87,6 +87,7 @@ class DocumentResponse(BaseModel):
     quality_score: float
     quality_issues: list[str]
     has_file: bool
+    task_progress: int | None = None
     created_at: str
     updated_at: str
 
@@ -96,7 +97,7 @@ class UploadDocumentResponse(BaseModel):
     task_id: str
 
 
-def _to_response(doc) -> DocumentResponse:
+def _to_response(doc, task_progress: int | None = None) -> DocumentResponse:
     return DocumentResponse(
         id=doc.id.value,
         kb_id=doc.kb_id,
@@ -111,6 +112,7 @@ def _to_response(doc) -> DocumentResponse:
         quality_score=doc.quality_score,
         quality_issues=doc.quality_issues,
         has_file=bool(doc.storage_path or doc.raw_content),
+        task_progress=task_progress,
         created_at=doc.created_at.isoformat(),
         updated_at=doc.updated_at.isoformat(),
     )
@@ -132,8 +134,39 @@ async def list_documents(
     total = await use_case.count(kb_id)
     from math import ceil
     total_pages = ceil(total / pagination.page_size) if total > 0 else 0
+
+    # Fetch task progress for processing documents
+    progress_map: dict[str, int] = {}
+    processing_doc_ids = [
+        doc.id.value for doc in documents if doc.status == "processing"
+    ]
+    if processing_doc_ids:
+        from src.infrastructure.db.engine import async_session_factory
+        from src.infrastructure.db.models.processing_task_model import (
+            ProcessingTaskModel,
+        )
+        from sqlalchemy import select
+
+        async with async_session_factory() as session:
+            stmt = (
+                select(
+                    ProcessingTaskModel.document_id,
+                    ProcessingTaskModel.progress,
+                )
+                .where(
+                    ProcessingTaskModel.document_id.in_(processing_doc_ids),
+                    ProcessingTaskModel.status == "processing",
+                )
+            )
+            rows = await session.execute(stmt)
+            for row in rows.all():
+                progress_map[row[0]] = row[1]
+
     return PaginatedResponse(
-        items=[_to_response(doc) for doc in documents],
+        items=[
+            _to_response(doc, progress_map.get(doc.id.value))
+            for doc in documents
+        ],
         total=total,
         page=pagination.page,
         page_size=pagination.page_size,
@@ -236,9 +269,14 @@ async def upload_document(
 
     # Lazy resolve: background task 必須從 Container 取得新 use case + 新 session，
     # 不能使用 request-scoped 的注入實例（response 送回後 session 已關閉）。
+    # 用 independent_session_scope 確保 OCR 長時間等待後 session 仍有效。
     async def _process(doc_id: str, task_id: str) -> None:
-        uc = Container.process_document_use_case()
-        await uc.execute(doc_id, task_id)
+        from src.infrastructure.db.session_middleware import (
+            independent_session_scope,
+        )
+        async with independent_session_scope():
+            uc = Container.process_document_use_case()
+            await uc.execute(doc_id, task_id)
 
     background_tasks.add_task(
         safe_background_task,
