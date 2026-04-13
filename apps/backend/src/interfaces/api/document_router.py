@@ -1,3 +1,5 @@
+import asyncio
+
 from dependency_injector.wiring import Provide, inject
 from fastapi import (
     APIRouter,
@@ -267,17 +269,24 @@ async def upload_document(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from None
 
-    async def _process(doc_id: str, task_id: str) -> None:
-        uc = Container.process_document_use_case()
-        await uc.execute(doc_id, task_id)
+    # Use asyncio.create_task instead of BackgroundTasks to decouple from
+    # request lifecycle. BackgroundTasks runs inside the ASGI call scope,
+    # so RequestTimeoutMiddleware would cancel long-running OCR.
+    async def _process(doc_id: str, task_id: str, t_id: str) -> None:
+        await safe_background_task(
+            lambda d, t: Container.process_document_use_case().execute(d, t),
+            doc_id,
+            task_id,
+            task_name="process_document",
+            tenant_id=t_id,
+        )
 
-    background_tasks.add_task(
-        safe_background_task,
-        _process,
-        result.document.id.value,
-        result.task.id.value,
-        task_name="process_document",
-        tenant_id=tenant.tenant_id,
+    asyncio.create_task(
+        _process(
+            result.document.id.value,
+            result.task.id.value,
+            tenant.tenant_id,
+        )
     )
 
     doc = result.document
