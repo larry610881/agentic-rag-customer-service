@@ -17,12 +17,10 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_url_override: str = ""  # e.g. rediss://default:xxx@xxx.upstash.io:6379
 
-    # Qdrant
-    qdrant_host: str = "localhost"
-    qdrant_rest_port: int = 6333
-    qdrant_grpc_port: int = 6334
-    qdrant_api_key: str = ""
-    qdrant_url: str = ""  # e.g. https://xxx.cloud.qdrant.io:6333
+    # Milvus
+    milvus_uri: str = "http://localhost:19530"
+    milvus_token: str = ""
+    milvus_db_name: str = "default"
 
     # JWT
     jwt_secret_key: str = "dev-secret-key-change-in-production"

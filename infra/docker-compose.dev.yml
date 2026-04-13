@@ -7,7 +7,3 @@ services:
 
   redis:
     command: redis-server --save "" --appendonly no
-
-  qdrant:
-    environment:
-      QDRANT__SERVICE__GRPC_PORT: 6334

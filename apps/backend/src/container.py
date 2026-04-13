@@ -340,7 +340,7 @@ from src.infrastructure.memory.llm_memory_extraction_service import (
 )
 from src.infrastructure.notification.email_sender import EmailNotificationSender
 from src.infrastructure.notification.redis_throttle import RedisNotificationThrottle
-from src.infrastructure.qdrant.qdrant_vector_store import QdrantVectorStore
+from src.infrastructure.milvus.milvus_vector_store import MilvusVectorStore
 from src.infrastructure.sentiment.keyword_sentiment_service import (
     KeywordSentimentService,
 )
@@ -696,23 +696,10 @@ class Container(containers.DeclarativeContainer):
     )
 
     vector_store = providers.Singleton(
-        QdrantVectorStore,
-        host=providers.Callable(
-            lambda cfg: cfg.qdrant_host, config
-        ),
-        port=providers.Callable(
-            lambda cfg: cfg.qdrant_rest_port, config
-        ),
-        api_key=providers.Callable(
-            lambda cfg: cfg.qdrant_api_key, config
-        ),
-        url=providers.Callable(
-            lambda cfg: cfg.qdrant_url, config
-        ),
-        grpc_port=providers.Callable(
-            lambda cfg: cfg.qdrant_grpc_port, config
-        ),
-        prefer_grpc=True,
+        MilvusVectorStore,
+        uri=config.provided.milvus_uri,
+        token=config.provided.milvus_token,
+        db_name=config.provided.milvus_db_name,
     )
 
     _static_llm_service = providers.Factory(FakeLLMService)
