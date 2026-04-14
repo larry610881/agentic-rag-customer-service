@@ -369,6 +369,9 @@ async def confirm_upload(
     ),
 ) -> UploadDocumentResponse:
     """Confirm direct GCS upload completed, trigger background processing."""
+    import logging as _logging
+    _log = _logging.getLogger("confirm_upload")
+
     try:
         result = await use_case.confirm_upload(body.document_id, body.task_id)
     except EntityNotFoundError as e:
@@ -377,14 +380,20 @@ async def confirm_upload(
         ) from None
 
     async def _process(doc_id: str, task_id: str, t_id: str) -> None:
-        await safe_background_task(
-            lambda d, t: Container.process_document_use_case().execute(d, t),
-            doc_id,
-            task_id,
-            task_name="process_document",
-            tenant_id=t_id,
-        )
+        _log.warning(f"[confirm] bg task START doc={doc_id}")
+        try:
+            await safe_background_task(
+                lambda d, t: Container.process_document_use_case().execute(d, t),
+                doc_id,
+                task_id,
+                task_name="process_document",
+                tenant_id=t_id,
+            )
+            _log.warning(f"[confirm] bg task DONE doc={doc_id}")
+        except Exception as e:
+            _log.error(f"[confirm] bg task FAIL doc={doc_id} err={e}", exc_info=True)
 
+    _log.warning(f"[confirm] creating bg task doc={result.document.id.value}")
     asyncio.create_task(
         _process(
             result.document.id.value,
