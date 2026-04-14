@@ -18,6 +18,12 @@ from src.application.bot.list_all_bots_use_case import ListAllBotsUseCase
 from src.application.bot.list_bots_use_case import ListBotsUseCase
 from src.application.bot.update_bot_use_case import UpdateBotUseCase
 from src.application.bot.upload_bot_icon_use_case import UploadBotIconUseCase
+from src.application.bot.worker_use_cases import (
+    CreateWorkerUseCase,
+    DeleteWorkerUseCase,
+    ListWorkersUseCase,
+    UpdateWorkerUseCase,
+)
 from src.application.conversation.get_conversation_use_case import (
     GetConversationUseCase,
 )
@@ -286,6 +292,9 @@ from src.infrastructure.db.repositories.user_repository import (
 from src.infrastructure.db.repositories.visitor_profile_repository import (
     SQLAlchemyVisitorProfileRepository,
 )
+from src.infrastructure.db.repositories.worker_config_repository import (
+    SQLAlchemyWorkerConfigRepository,
+)
 from src.infrastructure.db.session_middleware import get_tracked_session
 from src.infrastructure.embedding.dynamic_embedding_factory import (
     DynamicEmbeddingServiceFactory,
@@ -389,6 +398,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.line_webhook_router",
             "src.interfaces.api.usage_router",
             "src.interfaces.api.bot_router",
+            "src.interfaces.api.worker_router",
             "src.interfaces.api.provider_setting_router",
             "src.interfaces.api.admin_router",
             "src.interfaces.api.mcp_router",
@@ -487,6 +497,31 @@ class Container(containers.DeclarativeContainer):
     bot_repository = providers.Factory(
         SQLAlchemyBotRepository,
         session=db_session,
+    )
+
+    worker_config_repository = providers.Factory(
+        SQLAlchemyWorkerConfigRepository,
+        session=db_session,
+    )
+
+    list_workers_use_case = providers.Factory(
+        ListWorkersUseCase,
+        repo=worker_config_repository,
+    )
+
+    create_worker_use_case = providers.Factory(
+        CreateWorkerUseCase,
+        repo=worker_config_repository,
+    )
+
+    update_worker_use_case = providers.Factory(
+        UpdateWorkerUseCase,
+        repo=worker_config_repository,
+    )
+
+    delete_worker_use_case = providers.Factory(
+        DeleteWorkerUseCase,
+        repo=worker_config_repository,
     )
 
     user_repository = providers.Factory(
@@ -1338,6 +1373,7 @@ class Container(containers.DeclarativeContainer):
         get_diagnostic_rules_uc=get_diagnostic_rules_use_case,
         conversation_lock=conversation_lock,
         intent_classifier=intent_classifier,
+        worker_config_repo=worker_config_repository,
     )
 
     # --- Platform: Provider Settings ---

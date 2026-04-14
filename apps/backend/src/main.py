@@ -242,6 +242,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.task_router import router as task_router
         from src.interfaces.api.tenant_router import router as tenant_router
         from src.interfaces.api.usage_router import router as usage_router
+        from src.interfaces.api.worker_router import router as worker_router
 
         application.include_router(auth_router)
         application.include_router(tenant_router)
@@ -253,6 +254,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         application.include_router(conversation_router)
         application.include_router(usage_router)
         application.include_router(bot_router)
+        application.include_router(worker_router)
 
         from src.interfaces.api.admin_router import router as admin_router
         from src.interfaces.api.feedback_router import router as feedback_router

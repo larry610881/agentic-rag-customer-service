@@ -53,6 +53,7 @@ class CreateBotCommand:
     memory_extraction_threshold: int = 3
     memory_extraction_prompt: str = ""
     intent_routes: list[dict] = field(default_factory=list)
+    router_model: str = ""
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
@@ -146,6 +147,7 @@ class CreateBotUseCase:
                 )
                 for r in command.intent_routes
             ],
+            router_model=command.router_model,
             busy_reply_message=command.busy_reply_message,
             line_channel_secret=command.line_channel_secret,
             line_channel_access_token=command.line_channel_access_token,

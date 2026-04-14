@@ -58,6 +58,7 @@ class UpdateBotCommand:
     memory_extraction_threshold: object = _UNSET
     memory_extraction_prompt: object = _UNSET
     intent_routes: object = _UNSET
+    router_model: object = _UNSET
     busy_reply_message: object = _UNSET
     line_channel_secret: object = _UNSET
     line_channel_access_token: object = _UNSET
@@ -117,6 +118,8 @@ class UpdateBotUseCase:
                 )
                 for r in command.intent_routes  # type: ignore[union-attr]
             ]
+        if command.router_model is not _UNSET:
+            bot.router_model = command.router_model  # type: ignore[assignment]
         if command.mcp_servers is not _UNSET:
             bot.mcp_servers = [
                 McpServerConfig(

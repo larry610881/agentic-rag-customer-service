@@ -28,6 +28,8 @@ from src.domain.conversation.repository import ConversationRepository
 from src.domain.platform.repository import SystemPromptConfigRepository
 from src.domain.platform.services import EncryptionService
 from src.domain.shared.concurrency import ConversationLock
+from src.domain.bot.worker_config import WorkerConfig
+from src.domain.bot.worker_repository import WorkerConfigRepository
 from src.domain.shared.exceptions import DomainException
 from src.infrastructure.observability.agent_trace_collector import (
     AgentTraceCollector,
@@ -83,6 +85,7 @@ class SendMessageUseCase:
         get_diagnostic_rules_uc: "GetDiagnosticRulesUseCase | None" = None,
         conversation_lock: ConversationLock | None = None,
         intent_classifier: IntentClassifier | None = None,
+        worker_config_repo: WorkerConfigRepository | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -98,6 +101,7 @@ class SendMessageUseCase:
         self._load_memory = load_memory_use_case
         self._extract_memory = extract_memory_use_case
         self._intent_classifier = intent_classifier
+        self._worker_config_repo = worker_config_repo
         self._get_diagnostic_rules_uc = get_diagnostic_rules_uc
         self._conversation_lock = conversation_lock
 
@@ -245,6 +249,7 @@ class SendMessageUseCase:
         cfg["eval_provider"] = getattr(bot, "eval_provider", "")
         cfg["eval_model"] = getattr(bot, "eval_model", "")
         cfg["intent_routes"] = list(getattr(bot, "intent_routes", []))
+        cfg["router_model"] = getattr(bot, "router_model", "")
 
         # Resolve prompt overrides: Bot → SystemPromptConfig → Seed
         base_prompt = ""
@@ -392,6 +397,96 @@ class SendMessageUseCase:
                 return bot.busy_reply_message
         return "小編正在努力回覆中，請稍等一下喔～"
 
+    async def _resolve_worker_config(
+        self,
+        bot_cfg: dict[str, Any],
+        message: str,
+        router_context: str,
+    ) -> dict[str, Any]:
+        """Worker routing: classify → override bot_cfg with worker settings.
+
+        Returns bot_cfg unchanged if no workers or no match.
+        """
+        if not self._worker_config_repo or not self._intent_classifier:
+            return bot_cfg
+        bot_id = bot_cfg.get("bot_id", "")
+        if not bot_id:
+            return bot_cfg
+
+        workers = await self._worker_config_repo.find_by_bot_id(
+            bot_id
+        )
+        if not workers:
+            # No workers configured — also try legacy intent_routes
+            intent_routes = bot_cfg.get("intent_routes", [])
+            if intent_routes:
+                matched = await self._intent_classifier.classify(
+                    user_message=message,
+                    router_context=router_context,
+                    intent_routes=intent_routes,
+                )
+                if matched:
+                    bot_cfg["system_prompt"] = inject_runtime_vars(
+                        matched.system_prompt
+                    )
+            return bot_cfg
+
+        matched = await self._intent_classifier.classify_workers(
+            user_message=message,
+            router_context=router_context,
+            workers=workers,
+            router_model=bot_cfg.get("router_model", ""),
+        )
+        if not matched:
+            return bot_cfg
+
+        # Override bot_cfg with worker settings
+        cfg = {**bot_cfg}
+        if matched.system_prompt:
+            cfg["system_prompt"] = inject_runtime_vars(
+                matched.system_prompt
+            )
+        if matched.llm_provider or matched.llm_model:
+            cfg["llm_params"] = {
+                **(cfg.get("llm_params") or {}),
+                **(
+                    {"provider_name": matched.llm_provider}
+                    if matched.llm_provider
+                    else {}
+                ),
+                **(
+                    {"model": matched.llm_model}
+                    if matched.llm_model
+                    else {}
+                ),
+                "temperature": matched.temperature,
+                "max_tokens": matched.max_tokens,
+            }
+        cfg["max_tool_calls"] = matched.max_tool_calls
+
+        # Filter MCP servers to worker's subset
+        if matched.enabled_mcp_ids:
+            all_servers = cfg.get("mcp_servers") or []
+            cfg["mcp_servers"] = [
+                s
+                for s in all_servers
+                if s.get("name") in matched.enabled_mcp_ids
+                or s.get("registry_id") in matched.enabled_mcp_ids
+            ]
+
+        if not matched.use_rag:
+            cfg["kb_ids"] = None
+            cfg["kb_id"] = ""
+
+        logger.info(
+            "worker_routing.matched",
+            worker_name=matched.name,
+            llm_model=matched.llm_model,
+            tool_count=len(cfg.get("mcp_servers") or []),
+            use_rag=matched.use_rag,
+        )
+        return cfg
+
     async def execute(self, command: SendMessageCommand) -> AgentResponse:
         # Acquire conversation lock
         lock_key = self._build_lock_key(command)
@@ -424,6 +519,11 @@ class SendMessageUseCase:
                 if history_context
                 else memory_prompt
             )
+
+        # Worker routing: classify → override bot_cfg
+        bot_cfg = await self._resolve_worker_config(
+            bot_cfg, command.message, router_context,
+        )
 
         t0 = time.perf_counter()
         response = await self._agent_service.process_message(
@@ -557,18 +657,10 @@ class SendMessageUseCase:
                 else memory_prompt
             )
 
-        # Intent routing: classify and override system_prompt
-        intent_routes = bot_cfg.get("intent_routes", [])
-        if intent_routes and self._intent_classifier:
-            matched = await self._intent_classifier.classify(
-                user_message=command.message,
-                router_context=router_context,
-                intent_routes=intent_routes,
-            )
-            if matched:
-                bot_cfg["system_prompt"] = inject_runtime_vars(
-                    matched.system_prompt
-                )
+        # Worker routing: classify → override bot_cfg
+        bot_cfg = await self._resolve_worker_config(
+            bot_cfg, command.message, router_context,
+        )
 
         # Stream from agent service
         full_answer = ""

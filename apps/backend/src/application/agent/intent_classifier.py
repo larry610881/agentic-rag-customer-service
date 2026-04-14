@@ -1,9 +1,16 @@
-"""輕量 LLM 意圖分類器 — 只在 bot.intent_routes 非空時啟用"""
+"""輕量 LLM 意圖分類器 — 支援 WorkerConfig 和 IntentRoute"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from src.domain.bot.entity import IntentRoute
 from src.domain.rag.services import LLMService
+
+if TYPE_CHECKING:
+    from src.domain.bot.entity import IntentRoute
+    from src.domain.bot.worker_config import WorkerConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -17,11 +24,10 @@ _CLASSIFY_SYSTEM_PROMPT = (
 def _build_classify_prompt(
     user_message: str,
     router_context: str,
-    intent_routes: list[IntentRoute],
+    names_and_descriptions: list[tuple[str, str]],
 ) -> str:
-    """Build the user-facing classification prompt."""
     categories = "\n".join(
-        f"- {r.name}: {r.description}" for r in intent_routes
+        f"- {name}: {desc}" for name, desc in names_and_descriptions
     )
     parts = [f"類別：\n{categories}"]
     if router_context:
@@ -31,10 +37,37 @@ def _build_classify_prompt(
 
 
 class IntentClassifier:
-    """Classify user intent based on bot-configured intent routes."""
+    """Classify user intent — supports both WorkerConfig and legacy IntentRoute."""
 
     def __init__(self, llm_service: LLMService) -> None:
         self._llm = llm_service
+
+    async def classify_workers(
+        self,
+        user_message: str,
+        router_context: str,
+        workers: list[WorkerConfig],
+        router_model: str = "",
+    ) -> WorkerConfig | None:
+        """Classify into a WorkerConfig, or None for default fallback."""
+        if not workers:
+            return None
+
+        names_descs = [
+            (w.name, w.description) for w in workers
+        ]
+        prompt = _build_classify_prompt(
+            user_message, router_context, names_descs,
+        )
+
+        raw = await self._call_llm(
+            prompt, [w.name for w in workers], router_model,
+        )
+        if raw is None:
+            return None
+
+        worker_map = {w.name: w for w in workers}
+        return self._match(raw, worker_map)
 
     async def classify(
         self,
@@ -42,40 +75,64 @@ class IntentClassifier:
         router_context: str,
         intent_routes: list[IntentRoute],
     ) -> IntentRoute | None:
-        """Return the matched IntentRoute, or None for fallback."""
+        """Legacy: classify into an IntentRoute."""
         if not intent_routes:
             return None
 
+        names_descs = [
+            (r.name, r.description) for r in intent_routes
+        ]
         prompt = _build_classify_prompt(
-            user_message, router_context, intent_routes,
+            user_message, router_context, names_descs,
         )
 
+        raw = await self._call_llm(
+            prompt, [r.name for r in intent_routes],
+        )
+        if raw is None:
+            return None
+
+        route_map = {r.name: r for r in intent_routes}
+        return self._match(raw, route_map)
+
+    async def _call_llm(
+        self,
+        prompt: str,
+        route_names: list[str],
+        router_model: str = "",
+    ) -> str | None:
         try:
-            result = await self._llm.generate(
-                system_prompt=_CLASSIFY_SYSTEM_PROMPT,
-                user_message=prompt,
-                context="",
-                temperature=0,
-                max_tokens=50,
-            )
+            kwargs: dict[str, Any] = {
+                "system_prompt": _CLASSIFY_SYSTEM_PROMPT,
+                "user_message": prompt,
+                "context": "",
+                "temperature": 0,
+                "max_tokens": 50,
+            }
+            # Use router_model if specified
+            if router_model:
+                kwargs["model"] = router_model
+
+            result = await self._llm.generate(**kwargs)
             raw = result.text.strip()
             logger.info(
                 "intent_classification",
                 raw_output=raw,
-                routes=[r.name for r in intent_routes],
+                routes=route_names,
             )
-
-            # Match against route names
-            route_map = {r.name: r for r in intent_routes}
-            if raw in route_map:
-                return route_map[raw]
-
-            # Fuzzy: check if raw output contains any route name
-            for name, route in route_map.items():
-                if name in raw:
-                    return route
-
+            return raw
         except Exception:
-            logger.warning("intent_classification_failed", exc_info=True)
+            logger.warning(
+                "intent_classification_failed", exc_info=True
+            )
+            return None
 
+    @staticmethod
+    def _match(raw: str, name_map: dict[str, Any]) -> Any | None:
+        """Exact match, then fuzzy substring match."""
+        if raw in name_map:
+            return name_map[raw]
+        for name, item in name_map.items():
+            if name in raw:
+                return item
         return None
