@@ -1,5 +1,6 @@
 # Claude Code
 .claude/settings.local.json
+.claude/worktrees/
 
 # Environment
 .env
@@ -63,6 +64,12 @@ apps/frontend/test-results/
 google-cloud-sdk/
 google-cloud-cli-*.tar.gz
 **/sa-key.json
+
+# Uploaded documents (user data)
+apps/backend/static/uploads/
+
+# Data exports / imports
+scripts/data/
 
 # Claude local overrides
 CLAUDE.local.md
