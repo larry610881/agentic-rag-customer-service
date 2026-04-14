@@ -798,7 +798,13 @@ export function BotDetailForm({
                   </div>
                   <Switch
                     checked={field.value ?? false}
-                    onCheckedChange={field.onChange}
+                    onCheckedChange={(v) => {
+                      field.onChange(v);
+                      // Set default model when enabling
+                      if (v && !watch("rerank_model")) {
+                        setValue("rerank_model", "claude-haiku-4-5-20251001");
+                      }
+                    }}
                   />
                 </div>
               )}
@@ -813,7 +819,9 @@ export function BotDetailForm({
                     render={({ field }) => (
                       <Select
                         value={field.value || "claude-haiku-4-5-20251001"}
-                        onValueChange={field.onChange}
+                        onValueChange={(v) => {
+                          field.onChange(v);
+                        }}
                       >
                         <SelectTrigger id="rerank-model">
                           <SelectValue />
