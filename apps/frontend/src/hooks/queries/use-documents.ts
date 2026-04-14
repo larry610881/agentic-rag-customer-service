@@ -84,6 +84,7 @@ export function useUploadDocument() {
       onProgress?: (pct: number) => void;
     }): Promise<UploadDocumentResponse> => {
       // Step 1: Request signed upload URL from backend
+      console.log("[upload] Step 1: requesting signed URL...");
       const reqRes = await apiFetch<RequestUploadResponse>(
         API_ENDPOINTS.documents.requestUpload(data.knowledgeBaseId),
         {
@@ -95,9 +96,11 @@ export function useUploadDocument() {
         },
         token ?? undefined,
       );
+      console.log("[upload] Step 1 OK:", reqRes.document_id, "url_len:", reqRes.upload_url?.length);
 
       // Step 2: Direct upload to GCS via signed URL (bypass Cloud Run)
       if (reqRes.upload_url) {
+        console.log("[upload] Step 2: uploading to GCS...");
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open("PUT", reqRes.upload_url, true);
@@ -106,17 +109,25 @@ export function useUploadDocument() {
             data.file.type || "application/octet-stream",
           );
           xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable && data.onProgress) {
-              data.onProgress(Math.round((e.loaded / e.total) * 100));
+            if (e.lengthComputable) {
+              const pct = Math.round((e.loaded / e.total) * 100);
+              console.log(`[upload] GCS progress: ${pct}%`);
+              data.onProgress?.(pct);
             }
           };
-          xhr.onload = () =>
+          xhr.onload = () => {
+            console.log("[upload] GCS response:", xhr.status, xhr.statusText);
             xhr.status >= 200 && xhr.status < 300
               ? resolve()
-              : reject(new Error(`GCS upload failed: ${xhr.status}`));
-          xhr.onerror = () => reject(new Error("GCS upload network error"));
+              : reject(new Error(`GCS upload failed: ${xhr.status} ${xhr.responseText?.substring(0, 200)}`));
+          };
+          xhr.onerror = () => {
+            console.error("[upload] GCS network error");
+            reject(new Error("GCS upload network error"));
+          };
           xhr.send(data.file);
         });
+        console.log("[upload] Step 2 OK");
       } else {
         // Fallback: old multipart upload (local storage)
         const formData = new FormData();
@@ -134,6 +145,7 @@ export function useUploadDocument() {
       }
 
       // Step 3: Confirm upload, trigger processing
+      console.log("[upload] Step 3: confirming...");
       return apiFetch<UploadDocumentResponse>(
         API_ENDPOINTS.documents.confirmUpload(data.knowledgeBaseId),
         {

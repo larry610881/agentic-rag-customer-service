@@ -76,7 +76,8 @@ export function UploadDropzone({ knowledgeBaseId }: UploadDropzoneProps) {
       for (const file of validFiles) {
         uploadMutation
           .mutateAsync({ knowledgeBaseId, file })
-          .catch(() => {
+          .catch((err) => {
+            console.error(`Upload failed: ${file.name}`, err);
             setErrors((prev) => [...prev, `${file.name}：上傳失敗`]);
           })
           .finally(() => {
