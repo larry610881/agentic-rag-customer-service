@@ -105,7 +105,7 @@ omit = [
     "src/infrastructure/auth/*",
     "src/infrastructure/embedding/*",
     "src/infrastructure/llm/*",
-    "src/infrastructure/qdrant/*",
+    "src/infrastructure/milvus/*",
     "src/infrastructure/sentiment/*",
     "src/infrastructure/langgraph/*",
     "src/infrastructure/tools/*",

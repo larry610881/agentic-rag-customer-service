@@ -15,14 +15,11 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@pixiv/three-vrm": "^3.5.0",
     "@tanstack/react-query": "^5.90.21",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.34.3",
     "lucide-react": "^0.575.0",
-    "pixi-live2d-display": "^0.4.0",
-    "pixi.js": "^7.4.3",
     "radix-ui": "^1.4.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -31,7 +28,6 @@
     "recharts": "^3.7.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
-    "three": "^0.170.0",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
