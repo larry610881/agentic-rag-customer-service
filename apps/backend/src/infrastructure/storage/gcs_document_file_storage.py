@@ -43,12 +43,24 @@ class GCSDocumentFileStorageService(DocumentFileStorageService):
     ) -> str | None:
         from datetime import timedelta
 
+        import google.auth
+        from google.auth.transport import requests as auth_requests
+
         bucket = self._get_bucket()
         blob = bucket.blob(storage_path)
+
+        credentials, _ = google.auth.default()
+        if not credentials.valid:
+            credentials.refresh(auth_requests.Request())
+
+        sa_email = getattr(credentials, "service_account_email", "")
+
         url = await asyncio.to_thread(
             blob.generate_signed_url,
             version="v4",
             expiration=timedelta(seconds=expiry_seconds),
+            service_account_email=sa_email,
+            access_token=credentials.token,
         )
         return url
 
@@ -62,14 +74,26 @@ class GCSDocumentFileStorageService(DocumentFileStorageService):
     ) -> str:
         from datetime import timedelta
 
+        import google.auth
+        from google.auth.transport import requests as auth_requests
+
         blob_path = f"{tenant_id}/{document_id}/{filename}"
         bucket = self._get_bucket()
         blob = bucket.blob(blob_path)
+
+        credentials, _ = google.auth.default()
+        if not credentials.valid:
+            credentials.refresh(auth_requests.Request())
+
+        sa_email = getattr(credentials, "service_account_email", "")
+
         url = await asyncio.to_thread(
             blob.generate_signed_url,
             version="v4",
             expiration=timedelta(seconds=expiry_seconds),
             method="PUT",
             content_type=content_type,
+            service_account_email=sa_email,
+            access_token=credentials.token,
         )
         return url
