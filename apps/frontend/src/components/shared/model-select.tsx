@@ -55,7 +55,7 @@ export function ModelSelect({
                   key={`${m.provider_name}:${m.model_id}`}
                   value={`${m.provider_name}:${m.model_id}`}
                 >
-                  {m.display_name} ({m.price})
+                  {m.display_name}
                 </SelectItem>
               ))}
             </SelectGroup>
