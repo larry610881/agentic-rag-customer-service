@@ -384,23 +384,29 @@ async def confirm_upload(
     task_id = result.task.id.value
     tenant_id = tenant.tenant_id
 
-    async def _process() -> None:
-        await asyncio.sleep(0.5)  # Let response finish, release request session
-        _log.warning(f"[confirm] bg task START doc={doc_id}")
-        try:
-            await safe_background_task(
-                lambda d, t: Container.process_document_use_case().execute(d, t),
-                doc_id,
-                task_id,
-                task_name="process_document",
-                tenant_id=tenant_id,
-            )
-            _log.warning(f"[confirm] bg task DONE doc={doc_id}")
-        except Exception as e:
-            _log.error(f"[confirm] bg task FAIL doc={doc_id} err={e}", exc_info=True)
+    import threading
 
-    _log.warning(f"[confirm] creating bg task doc={doc_id}")
-    asyncio.create_task(_process())
+    def _run_in_thread() -> None:
+        """Run processing in a separate thread to fully isolate from request session."""
+        import asyncio as _aio
+
+        async def _do() -> None:
+            _log.warning(f"[confirm] bg task START doc={doc_id}")
+            try:
+                use_case = Container.process_document_use_case()
+                await use_case.execute(doc_id, task_id)
+                _log.warning(f"[confirm] bg task DONE doc={doc_id}")
+            except Exception as e:
+                _log.error(f"[confirm] bg task FAIL doc={doc_id} err={e}", exc_info=True)
+
+        loop = _aio.new_event_loop()
+        try:
+            loop.run_until_complete(_do())
+        finally:
+            loop.close()
+
+    _log.warning(f"[confirm] creating bg thread doc={doc_id}")
+    threading.Thread(target=_run_in_thread, daemon=True).start()
 
     doc = result.document
     return UploadDocumentResponse(

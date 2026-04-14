@@ -13,6 +13,7 @@ async def safe_background_task(
     coro_fn: Callable[..., Awaitable[Any]],
     *args: Any,
     task_name: str = "",
+    reraise: bool = False,
     **context: Any,
 ) -> None:
     """包裝 async callable，捕捉例外並記錄 structured log。
@@ -41,7 +42,8 @@ async def safe_background_task(
                 task_name=resolved_name,
                 **context,
             )
-            raise
+            if reraise:
+                raise
 
             # 寫入 Error Tracking Dashboard
             from src.infrastructure.logging.error_event_writer import (
