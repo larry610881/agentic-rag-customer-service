@@ -27,7 +27,6 @@ class RAGQueryTool:
         rerank_enabled: bool = False,
         rerank_model: str = "",
         rerank_top_n: int = 20,
-        rerank_final_top_k: int = 5,
     ) -> None:
         self._use_case = query_rag_use_case
         self._top_k = top_k
@@ -36,7 +35,6 @@ class RAGQueryTool:
         self._rerank_enabled = rerank_enabled
         self._rerank_model = rerank_model
         self._rerank_top_n = rerank_top_n
-        self._rerank_final_top_k = rerank_final_top_k
 
     async def invoke(
         self,
@@ -50,7 +48,6 @@ class RAGQueryTool:
         rerank_enabled: bool | None = None,
         rerank_model: str | None = None,
         rerank_top_n: int | None = None,
-        rerank_final_top_k: int | None = None,
     ) -> dict[str, Any]:
         t0 = time.perf_counter()
         trace = None
@@ -83,11 +80,6 @@ class RAGQueryTool:
                         rerank_top_n
                         if rerank_top_n is not None
                         else self._rerank_top_n
-                    ),
-                    rerank_final_top_k=(
-                        rerank_final_top_k
-                        if rerank_final_top_k is not None
-                        else self._rerank_final_top_k
                     ),
                 )
             )

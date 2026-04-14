@@ -101,7 +101,6 @@ class SQLAlchemyBotRepository(BotRepository):
             rerank_enabled=model.rerank_enabled if model.rerank_enabled is not None else False,
             rerank_model=model.rerank_model or "",
             rerank_top_n=model.rerank_top_n or 20,
-            rerank_final_top_k=model.rerank_final_top_k or 5,
             intent_routes=[
                 IntentRoute(
                     name=r.get("name", ""),
@@ -205,7 +204,6 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.rerank_enabled = bot.rerank_enabled
                 existing.rerank_model = bot.rerank_model
                 existing.rerank_top_n = bot.rerank_top_n
-                existing.rerank_final_top_k = bot.rerank_final_top_k
                 existing.intent_routes = [
                     {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
                     for r in bot.intent_routes
@@ -279,7 +277,6 @@ class SQLAlchemyBotRepository(BotRepository):
                     rerank_enabled=bot.rerank_enabled,
                     rerank_model=bot.rerank_model,
                     rerank_top_n=bot.rerank_top_n,
-                    rerank_final_top_k=bot.rerank_final_top_k,
                     intent_routes=[
                         {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
                         for r in bot.intent_routes

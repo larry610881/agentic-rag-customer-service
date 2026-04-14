@@ -33,7 +33,6 @@ class QueryRAGCommand:
     rerank_enabled: bool = False
     rerank_model: str = ""
     rerank_top_n: int = 20       # embedding 召回數量
-    rerank_final_top_k: int = 0  # 0 = 用 top_k
 
 
 @dataclass(frozen=True)
@@ -111,7 +110,7 @@ class QueryRAGUseCase:
         )
 
         # Rerank if enabled
-        final_k = command.rerank_final_top_k or command.top_k
+        final_k = command.top_k
         if command.rerank_enabled and len(all_results) > final_k:
             rerank_input = all_results[:search_limit]
             reranked = await llm_rerank(
@@ -231,7 +230,7 @@ class QueryRAGUseCase:
         )
 
         # Rerank if enabled
-        final_k = command.rerank_final_top_k or command.top_k
+        final_k = command.top_k
         if command.rerank_enabled and len(all_results) > final_k:
             rerank_input = all_results[:search_limit]
             reranked = await llm_rerank(

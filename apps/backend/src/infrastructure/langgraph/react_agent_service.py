@@ -109,7 +109,6 @@ class ReActAgentService(AgentService):
                 rerank_enabled=_rerank.get("rerank_enabled"),
                 rerank_model=_rerank.get("rerank_model"),
                 rerank_top_n=_rerank.get("rerank_top_n"),
-                rerank_final_top_k=_rerank.get("rerank_final_top_k"),
             )
             import json as _json
             return _json.dumps(result, ensure_ascii=False)
