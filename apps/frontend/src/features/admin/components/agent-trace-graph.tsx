@@ -67,7 +67,7 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
   ];
 
   return (
-    <div className="mt-2 space-y-1 text-xs text-muted-foreground max-h-48 overflow-y-auto">
+    <div className="mt-2 space-y-1 text-xs text-muted-foreground max-h-[300px] overflow-y-auto">
       {fields.map((f) =>
         meta[f.key] ? (
           <p key={f.key} className={f.wrap ? "break-words" : undefined}>
@@ -85,8 +85,8 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
         </p>
       ) : null}
       {meta.result_preview ? (
-        <pre className="whitespace-pre-wrap break-words rounded bg-muted/50 p-1.5 max-h-32 overflow-y-auto">
-          {str(meta.result_preview).slice(0, 300)}
+        <pre className="whitespace-pre-wrap break-words rounded bg-muted/50 p-1.5 max-h-[200px] overflow-y-auto">
+          {str(meta.result_preview)}
         </pre>
       ) : null}
     </div>
@@ -112,7 +112,7 @@ function TraceNode({ data }: { data: CustomNodeData }) {
 
   return (
     <div
-      className={`rounded-lg border-2 px-3 py-2 shadow-sm min-w-[180px] max-w-[320px] ${colorClass}`}
+      className={`rounded-lg border-2 px-3 py-2 shadow-sm min-w-[180px] ${expanded ? "max-w-[500px]" : "max-w-[280px]"} ${colorClass}`}
     >
       <Handle type="target" position={Position.Left} className="!bg-gray-400" />
       <div className="flex items-center gap-2">
