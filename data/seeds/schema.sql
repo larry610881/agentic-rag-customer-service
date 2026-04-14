@@ -1,3 +1,0 @@
--- Agentic RAG Customer Service — Schema
--- Olist E-Commerce tables removed in Sprint E0 (RAG-only architecture)
--- Application tables are managed by SQLAlchemy ORM (create_all in main.py)

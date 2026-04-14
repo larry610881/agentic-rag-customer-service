@@ -68,7 +68,8 @@ google-cloud-cli-*.tar.gz
 # Uploaded documents (user data)
 apps/backend/static/uploads/
 
-# Data exports / imports
+# Data seeds / exports (contains default passwords)
+data/
 scripts/data/
 
 # Claude local overrides
