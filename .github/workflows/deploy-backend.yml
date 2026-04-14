@@ -85,7 +85,7 @@ jobs:
           flags: |
             --allow-unauthenticated
             --port=8000
-            --memory=1Gi
+            --memory=2Gi
             --cpu=1
             --cpu-boost
             --no-cpu-throttling
