@@ -29,7 +29,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
             max_tokens=model.max_tokens,
             max_tool_calls=model.max_tool_calls,
             enabled_mcp_ids=list(model.enabled_mcp_ids or []),
-            use_rag=model.use_rag,
+            knowledge_base_ids=list(model.knowledge_base_ids or []),
             sort_order=model.sort_order,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -52,7 +52,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
                 existing.max_tokens = worker.max_tokens
                 existing.max_tool_calls = worker.max_tool_calls
                 existing.enabled_mcp_ids = worker.enabled_mcp_ids
-                existing.use_rag = worker.use_rag
+                existing.knowledge_base_ids = worker.knowledge_base_ids
                 existing.sort_order = worker.sort_order
                 existing.updated_at = now
             else:
@@ -68,7 +68,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
                     max_tokens=worker.max_tokens,
                     max_tool_calls=worker.max_tool_calls,
                     enabled_mcp_ids=worker.enabled_mcp_ids,
-                    use_rag=worker.use_rag,
+                    knowledge_base_ids=worker.knowledge_base_ids,
                     sort_order=worker.sort_order,
                     created_at=worker.created_at,
                     updated_at=now,

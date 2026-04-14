@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,8 +41,8 @@ class BotWorkerModel(Base):
     enabled_mcp_ids: Mapped[list] = mapped_column(
         JSON, nullable=False, default=list
     )
-    use_rag: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True
+    knowledge_base_ids: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list
     )
     sort_order: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0

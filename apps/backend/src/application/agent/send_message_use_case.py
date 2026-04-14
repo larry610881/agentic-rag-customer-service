@@ -474,16 +474,19 @@ class SendMessageUseCase:
                 or s.get("registry_id") in matched.enabled_mcp_ids
             ]
 
-        if not matched.use_rag:
-            cfg["kb_ids"] = None
-            cfg["kb_id"] = ""
+        # Knowledge base override
+        if matched.knowledge_base_ids:
+            cfg["kb_ids"] = matched.knowledge_base_ids
+            cfg["kb_id"] = matched.knowledge_base_ids[0]
+        # If empty list explicitly set → no RAG
+        # (default from bot if not configured on worker)
 
         logger.info(
             "worker_routing.matched",
             worker_name=matched.name,
             llm_model=matched.llm_model,
             tool_count=len(cfg.get("mcp_servers") or []),
-            use_rag=matched.use_rag,
+            kb_count=len(matched.knowledge_base_ids),
         )
         return cfg
 

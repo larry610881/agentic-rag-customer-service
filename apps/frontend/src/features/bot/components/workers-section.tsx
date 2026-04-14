@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -32,6 +31,7 @@ import {
   useDeleteWorker,
 } from "@/hooks/queries/use-workers";
 import { useMcpRegistryAccessible } from "@/hooks/queries/use-mcp-registry";
+import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { WorkerConfig } from "@/types/worker-config";
 
@@ -51,11 +51,13 @@ function WorkerCard({
   botId,
   enabledModels,
   mcpServers,
+  knowledgeBases,
 }: {
   worker: WorkerConfig;
   botId: string;
   enabledModels: EnabledModel[];
   mcpServers: { id: string; name: string }[];
+  knowledgeBases: { id: string; name: string }[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const updateMutation = useUpdateWorker(botId);
@@ -92,9 +94,9 @@ function WorkerCard({
               {worker.llm_model}
             </Badge>
           )}
-          {!worker.use_rag && (
+          {worker.knowledge_base_ids.length > 0 && (
             <Badge variant="outline" className="text-xs">
-              無 RAG
+              {worker.knowledge_base_ids.length} KB
             </Badge>
           )}
           {worker.enabled_mcp_ids.length > 0 && (
@@ -265,19 +267,32 @@ function WorkerCard({
             </div>
           </div>
 
-          {/* RAG toggle */}
-          <div className="flex items-center justify-between rounded-md border p-3">
-            <div>
-              <Label className="text-sm">使用知識庫 (RAG)</Label>
-              <p className="text-xs text-muted-foreground">
-                關閉後此 Sub-agent 不查詢知識庫
-              </p>
+          {/* Knowledge Bases */}
+          {knowledgeBases.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs">知識庫（空 = 使用 Bot 預設）</Label>
+              <div className="flex flex-wrap gap-2">
+                {knowledgeBases.map((kb) => {
+                  const selected = worker.knowledge_base_ids.includes(kb.id);
+                  return (
+                    <Badge
+                      key={kb.id}
+                      variant={selected ? "default" : "outline"}
+                      className="cursor-pointer"
+                      onClick={() => {
+                        const next = selected
+                          ? worker.knowledge_base_ids.filter((id) => id !== kb.id)
+                          : [...worker.knowledge_base_ids, kb.id];
+                        handleFieldUpdate("knowledge_base_ids", next);
+                      }}
+                    >
+                      {kb.name}
+                    </Badge>
+                  );
+                })}
+              </div>
             </div>
-            <Switch
-              checked={worker.use_rag}
-              onCheckedChange={(v) => handleFieldUpdate("use_rag", v)}
-            />
-          </div>
+          )}
 
           {/* MCP Tools */}
           {mcpServers.length > 0 && (
@@ -324,9 +339,16 @@ export function WorkersSection({
     tenantId ?? undefined,
   );
 
+  const { data: kbData } = useKnowledgeBases(1, 100);
+
   const mcpList = (mcpServers ?? []).map((s) => ({
     id: s.id,
     name: s.name,
+  }));
+
+  const kbList = (kbData?.items ?? []).map((kb: { id: string; name: string }) => ({
+    id: kb.id,
+    name: kb.name,
   }));
 
   const handleAdd = () => {
@@ -380,6 +402,7 @@ export function WorkersSection({
           botId={botId}
           enabledModels={enabledModels}
           mcpServers={mcpList}
+          knowledgeBases={kbList}
         />
       ))}
     </section>

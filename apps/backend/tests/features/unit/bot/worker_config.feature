@@ -30,7 +30,7 @@ Feature: Bot Worker 配置管理
     When 建立 Worker 並指定 enabled_mcp_ids 為 ["mcp-001", "mcp-002"]
     Then Worker 的 enabled_mcp_ids 應包含 2 個 ID
 
-  Scenario: Worker 可關閉 RAG
+  Scenario: Worker 可指定知識庫
     Given 一個 Worker 配置 Repository
-    When 建立 Worker 並設定 use_rag 為 false
-    Then Worker 的 use_rag 應為 false
+    When 建立 Worker 並指定 knowledge_base_ids 為 ["kb-001", "kb-002"]
+    Then Worker 的 knowledge_base_ids 應包含 2 個 ID

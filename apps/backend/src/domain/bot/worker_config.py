@@ -20,7 +20,7 @@ class WorkerConfig:
     max_tokens: int = 1024
     max_tool_calls: int = 5
     enabled_mcp_ids: list[str] = field(default_factory=list)
-    use_rag: bool = True
+    knowledge_base_ids: list[str] = field(default_factory=list)  # 空 = 用 bot default KB
     sort_order: int = 0
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)

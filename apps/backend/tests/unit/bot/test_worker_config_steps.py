@@ -127,15 +127,19 @@ def create_worker_with_mcp(context, ids):
     )
 
 
-@when("建立 Worker 並設定 use_rag 為 false")
-def create_worker_no_rag(context):
+@when(parsers.parse(
+    '建立 Worker 並指定 knowledge_base_ids 為 {ids}'
+))
+def create_worker_with_kbs(context, ids):
+    import json
+    kb_ids = json.loads(ids)
     uc = CreateWorkerUseCase(repo=context["repo"])
     context["result"] = _run(
         uc.execute(
             CreateWorkerCommand(
                 bot_id="bot-001",
-                name="No RAG Worker",
-                use_rag=False,
+                name="KB Worker",
+                knowledge_base_ids=kb_ids,
             )
         )
     )
@@ -175,6 +179,6 @@ def check_mcp_ids(context, count):
     assert len(context["result"].enabled_mcp_ids) == count
 
 
-@then("Worker 的 use_rag 應為 false")
-def check_no_rag(context):
-    assert context["result"].use_rag is False
+@then(parsers.parse("Worker 的 knowledge_base_ids 應包含 {count:d} 個 ID"))
+def check_kb_ids(context, count):
+    assert len(context["result"].knowledge_base_ids) == count

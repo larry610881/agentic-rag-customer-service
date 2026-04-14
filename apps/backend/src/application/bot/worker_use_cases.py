@@ -19,7 +19,7 @@ class CreateWorkerCommand:
     max_tokens: int = 1024
     max_tool_calls: int = 5
     enabled_mcp_ids: list[str] = field(default_factory=list)
-    use_rag: bool = True
+    knowledge_base_ids: list[str] = field(default_factory=list)
     sort_order: int = 0
 
 
@@ -35,7 +35,7 @@ class UpdateWorkerCommand:
     max_tokens: int | None = None
     max_tool_calls: int | None = None
     enabled_mcp_ids: list[str] | None = None
-    use_rag: bool | None = None
+    knowledge_base_ids: list[str] | None = None
     sort_order: int | None = None
 
 
@@ -65,7 +65,7 @@ class CreateWorkerUseCase:
             max_tokens=command.max_tokens,
             max_tool_calls=command.max_tool_calls,
             enabled_mcp_ids=list(command.enabled_mcp_ids),
-            use_rag=command.use_rag,
+            knowledge_base_ids=list(command.knowledge_base_ids),
             sort_order=command.sort_order,
         )
         await self._repo.save(worker)
@@ -100,8 +100,8 @@ class UpdateWorkerUseCase:
             worker.max_tool_calls = command.max_tool_calls
         if command.enabled_mcp_ids is not None:
             worker.enabled_mcp_ids = list(command.enabled_mcp_ids)
-        if command.use_rag is not None:
-            worker.use_rag = command.use_rag
+        if command.knowledge_base_ids is not None:
+            worker.knowledge_base_ids = list(command.knowledge_base_ids)
         if command.sort_order is not None:
             worker.sort_order = command.sort_order
         await self._repo.save(worker)

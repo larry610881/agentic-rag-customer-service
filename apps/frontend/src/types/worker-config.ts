@@ -10,7 +10,7 @@ export type WorkerConfig = {
   max_tokens: number;
   max_tool_calls: number;
   enabled_mcp_ids: string[];
-  use_rag: boolean;
+  knowledge_base_ids: string[];
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -26,7 +26,7 @@ export type CreateWorkerRequest = {
   max_tokens?: number;
   max_tool_calls?: number;
   enabled_mcp_ids?: string[];
-  use_rag?: boolean;
+  knowledge_base_ids?: string[];
   sort_order?: number;
 };
 

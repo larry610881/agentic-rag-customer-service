@@ -34,7 +34,7 @@ class CreateWorkerRequest(BaseModel):
     max_tokens: int = 1024
     max_tool_calls: int = 5
     enabled_mcp_ids: list[str] = []
-    use_rag: bool = True
+    knowledge_base_ids: list[str] = []
     sort_order: int = 0
 
 
@@ -48,7 +48,7 @@ class UpdateWorkerRequest(BaseModel):
     max_tokens: int | None = None
     max_tool_calls: int | None = None
     enabled_mcp_ids: list[str] | None = None
-    use_rag: bool | None = None
+    knowledge_base_ids: list[str] | None = None
     sort_order: int | None = None
 
 
@@ -64,7 +64,7 @@ class WorkerResponse(BaseModel):
     max_tokens: int
     max_tool_calls: int
     enabled_mcp_ids: list[str]
-    use_rag: bool
+    knowledge_base_ids: list[str]
     sort_order: int
     created_at: str
     updated_at: str
@@ -83,7 +83,7 @@ def _to_response(w: Any) -> WorkerResponse:
         max_tokens=w.max_tokens,
         max_tool_calls=w.max_tool_calls,
         enabled_mcp_ids=w.enabled_mcp_ids,
-        use_rag=w.use_rag,
+        knowledge_base_ids=w.knowledge_base_ids,
         sort_order=w.sort_order,
         created_at=w.created_at.isoformat(),
         updated_at=w.updated_at.isoformat(),
@@ -130,7 +130,7 @@ async def create_worker(
             max_tokens=body.max_tokens,
             max_tool_calls=body.max_tool_calls,
             enabled_mcp_ids=body.enabled_mcp_ids,
-            use_rag=body.use_rag,
+            knowledge_base_ids=body.knowledge_base_ids,
             sort_order=body.sort_order,
         )
     )
@@ -159,7 +159,7 @@ async def update_worker(
             max_tokens=body.max_tokens,
             max_tool_calls=body.max_tool_calls,
             enabled_mcp_ids=body.enabled_mcp_ids,
-            use_rag=body.use_rag,
+            knowledge_base_ids=body.knowledge_base_ids,
             sort_order=body.sort_order,
         )
     )
