@@ -5,6 +5,8 @@ import {
   Controls,
   Handle,
   Position,
+  useNodesState,
+  useEdgesState,
   type Node,
   type Edge,
 } from "@xyflow/react";
@@ -67,7 +69,7 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
   ];
 
   return (
-    <div className="mt-2 space-y-1 text-xs text-muted-foreground max-h-[300px] overflow-y-auto">
+    <div className="nopan nodrag mt-2 space-y-1 text-xs text-muted-foreground max-h-[300px] overflow-y-auto">
       {fields.map((f) =>
         meta[f.key] ? (
           <p key={f.key} className={f.wrap ? "break-words" : undefined}>
@@ -85,7 +87,7 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
         </p>
       ) : null}
       {meta.result_preview ? (
-        <pre className="whitespace-pre-wrap break-words rounded bg-muted/50 p-1.5 max-h-[200px] overflow-y-auto">
+        <pre className="whitespace-pre-wrap break-words rounded bg-muted/50 p-1.5">
           {str(meta.result_preview)}
         </pre>
       ) : null}
@@ -115,7 +117,7 @@ function TraceNode({ data }: { data: CustomNodeData }) {
       className={`rounded-lg border-2 px-3 py-2 shadow-sm min-w-[180px] ${expanded ? "max-w-[500px]" : "max-w-[280px]"} ${colorClass}`}
     >
       <Handle type="target" position={Position.Left} className="!bg-gray-400" />
-      <div className="flex items-center gap-2">
+      <div className="drag-handle flex items-center gap-2 cursor-grab active:cursor-grabbing">
         <Icon className="h-4 w-4 shrink-0 opacity-70" />
         <span className="text-sm font-medium truncate">{n.label}</span>
         {n.duration_ms > 0 && (
@@ -204,6 +206,7 @@ function buildGraph(execNodes: ExecutionNode[]): {
       type: "traceNode",
       position: { x: i * 280, y: col * 150 },
       data: { execNode: n } satisfies CustomNodeData,
+      dragHandle: ".drag-handle",
     });
 
     // Edge from parent or from previous sequential node
@@ -235,7 +238,15 @@ type AgentTraceGraphProps = {
 };
 
 export function AgentTraceGraph({ execNodes }: AgentTraceGraphProps) {
-  const { nodes, edges } = useMemo(() => buildGraph(execNodes), [execNodes]);
+  const initial = useMemo(() => buildGraph(execNodes), [execNodes]);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
+
+  // Sync when execNodes change
+  useMemo(() => {
+    setNodes(initial.nodes);
+    setEdges(initial.edges);
+  }, [initial]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onInit = useCallback(
     (instance: { fitView: () => void }) => {
@@ -244,7 +255,7 @@ export function AgentTraceGraph({ execNodes }: AgentTraceGraphProps) {
     [],
   );
 
-  if (nodes.length === 0) {
+  if (initial.nodes.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center text-muted-foreground">
         沒有節點資料
@@ -257,6 +268,8 @@ export function AgentTraceGraph({ execNodes }: AgentTraceGraphProps) {
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         onInit={onInit}
         fitView

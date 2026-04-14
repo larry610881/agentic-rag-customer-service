@@ -348,7 +348,7 @@ class ReActAgentService(AgentService):
                         end_ms=trace_end_ms,
                         tool_name=tool_name,
                         result_length=len(content_str),
-                        result_preview=content_str[:1000],
+                        result_preview=content_str,
                     )
 
             return result
