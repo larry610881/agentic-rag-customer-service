@@ -32,7 +32,7 @@ class QueryRAGCommand:
     rerank_enabled: bool = False
     rerank_model: str = ""
     rerank_top_n: int = 20       # embedding 召回數量
-    rerank_final_top_k: int = 5  # rerank 後取幾筆
+    rerank_final_top_k: int = 0  # 0 = 用 top_k
 
 
 @dataclass(frozen=True)
@@ -95,13 +95,14 @@ class QueryRAGUseCase:
         all_results.sort(key=lambda r: r.score, reverse=True)
 
         # Rerank if enabled
-        if command.rerank_enabled and len(all_results) > command.rerank_final_top_k:
+        final_k = command.rerank_final_top_k or command.top_k
+        if command.rerank_enabled and len(all_results) > final_k:
             rerank_input = all_results[:search_limit]
             reranked = await llm_rerank(
                 query=command.query,
                 chunks=[{"content": r.content, "_idx": i} for i, r in enumerate(rerank_input)],
                 model=command.rerank_model or "claude-haiku-4-5-20251001",
-                top_k=command.rerank_final_top_k,
+                top_k=final_k,
             )
             # Map back to original results
             results = []
@@ -199,7 +200,8 @@ class QueryRAGUseCase:
         all_results.sort(key=lambda r: r.score, reverse=True)
 
         # Rerank if enabled
-        if command.rerank_enabled and len(all_results) > command.rerank_final_top_k:
+        final_k = command.rerank_final_top_k or command.top_k
+        if command.rerank_enabled and len(all_results) > final_k:
             rerank_input = all_results[:search_limit]
             reranked = await llm_rerank(
                 query=command.query,
@@ -208,7 +210,7 @@ class QueryRAGUseCase:
                     for i, r in enumerate(rerank_input)
                 ],
                 model=command.rerank_model or "claude-haiku-4-5-20251001",
-                top_k=command.rerank_final_top_k,
+                top_k=final_k,
             )
             results = []
             for rc in reranked:

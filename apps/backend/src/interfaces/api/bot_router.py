@@ -126,6 +126,9 @@ class CreateBotRequest(BaseModel):
     memory_enabled: bool = False
     memory_extraction_threshold: int = 3
     memory_extraction_prompt: str = ""
+    rerank_enabled: bool = False
+    rerank_model: str = ""
+    rerank_top_n: int = 20
     intent_routes: list[IntentRouteSchema] = []
     router_model: str = ""
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
@@ -169,6 +172,9 @@ class UpdateBotRequest(BaseModel):
     memory_enabled: bool | None = None
     memory_extraction_threshold: int | None = None
     memory_extraction_prompt: str | None = None
+    rerank_enabled: bool | None = None
+    rerank_model: str | None = None
+    rerank_top_n: int | None = None
     intent_routes: list[IntentRouteSchema] | None = None
     router_model: str | None = None
     busy_reply_message: str | None = None

@@ -89,6 +89,9 @@ const botFormSchema = z.object({
     system_prompt: z.string().min(1, "請輸入提示詞").max(10000),
   })).max(10).default([]),
   router_model: z.string().default(""),
+  rerank_enabled: z.boolean().default(false),
+  rerank_model: z.string().default(""),
+  rerank_top_n: z.coerce.number().int().min(5).max(50).default(20),
 });
 
 type BotFormValues = z.infer<typeof botFormSchema>;
@@ -774,6 +777,70 @@ export function BotDetailForm({
                 />
               </div>
             </div>
+          </section>
+
+          {/* Reranking 設定 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">RAG Reranking</h3>
+            <p className="text-sm text-muted-foreground">
+              啟用後，RAG 檢索結果會經 LLM 重新排序，提升回答精準度。
+            </p>
+            <Controller
+              name="rerank_enabled"
+              control={control}
+              render={({ field }) => (
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <div>
+                    <Label className="text-sm">啟用 Reranking</Label>
+                    <p className="text-xs text-muted-foreground">
+                      用 LLM 對 RAG 召回結果重新評分排序
+                    </p>
+                  </div>
+                  <Switch
+                    checked={field.value ?? false}
+                    onCheckedChange={field.onChange}
+                  />
+                </div>
+              )}
+            />
+            {watch("rerank_enabled") && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="rerank-model">Rerank 模型</Label>
+                  <Controller
+                    name="rerank_model"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        value={field.value || "claude-haiku-4-5-20251001"}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger id="rerank-model">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
+                          <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="rerank-top-n">召回數量</Label>
+                  <Input
+                    id="rerank-top-n"
+                    type="number"
+                    {...register("rerank_top_n")}
+                    min={5}
+                    max={50}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Embedding 搜尋筆數（rerank 後取 RAG Top K 筆給 LLM）
+                  </p>
+                </div>
+              </div>
+            )}
           </section>
         </TabsContent>
 

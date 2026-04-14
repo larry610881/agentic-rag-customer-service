@@ -55,6 +55,9 @@ export interface Bot {
   widget_placeholder_text: string;
   widget_greeting_messages: string[];
   widget_greeting_animation: "fade" | "slide" | "typewriter";
+  rerank_enabled: boolean;
+  rerank_model: string;
+  rerank_top_n: number;
   intent_routes: IntentRoute[];
   router_model: string;
   busy_reply_message: string;
@@ -96,6 +99,9 @@ export interface CreateBotRequest {
   widget_placeholder_text?: string;
   widget_greeting_messages?: string[];
   widget_greeting_animation?: "fade" | "slide" | "typewriter";
+  rerank_enabled?: boolean;
+  rerank_model?: string;
+  rerank_top_n?: number;
   intent_routes?: IntentRoute[];
   router_model?: string;
   busy_reply_message?: string;
@@ -135,6 +141,9 @@ export interface UpdateBotRequest {
   widget_placeholder_text?: string;
   widget_greeting_messages?: string[];
   widget_greeting_animation?: "fade" | "slide" | "typewriter";
+  rerank_enabled?: boolean;
+  rerank_model?: string;
+  rerank_top_n?: number;
   intent_routes?: IntentRoute[];
   router_model?: string;
   busy_reply_message?: string;
