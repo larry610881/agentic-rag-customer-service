@@ -9,11 +9,7 @@ Tasks:
     - run_evaluation: RAG 品質評估
 """
 
-import asyncio
 import logging
-import os
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 
 from arq import func
 from arq.connections import RedisSettings
@@ -23,28 +19,8 @@ from src.config import Settings
 logger = logging.getLogger("arq.worker")
 
 
-def _start_health_server() -> None:
-    """Start a minimal HTTP server for Cloud Run health checks."""
-    port = int(os.environ.get("PORT", "8080"))
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"ok")
-
-        def log_message(self, *args):
-            pass  # Suppress request logs
-
-    server = HTTPServer(("0.0.0.0", port), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    logger.info(f"[worker] health server on port {port}")
-
-
 async def startup(ctx: dict) -> None:
-    """Worker 啟動時初始化 DI Container + health server。"""
-    _start_health_server()
-
+    """Worker 啟動時初始化 DI Container。"""
     from src.container import Container
 
     logger.info("[worker] initializing container...")
