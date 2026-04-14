@@ -52,6 +52,9 @@ class CreateBotCommand:
     memory_enabled: bool = False
     memory_extraction_threshold: int = 3
     memory_extraction_prompt: str = ""
+    rerank_enabled: bool = False
+    rerank_model: str = ""
+    rerank_top_n: int = 20
     intent_routes: list[dict] = field(default_factory=list)
     router_model: str = ""
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
@@ -139,6 +142,9 @@ class CreateBotUseCase:
             memory_enabled=command.memory_enabled,
             memory_extraction_threshold=command.memory_extraction_threshold,
             memory_extraction_prompt=command.memory_extraction_prompt,
+            rerank_enabled=command.rerank_enabled,
+            rerank_model=command.rerank_model,
+            rerank_top_n=command.rerank_top_n,
             intent_routes=[
                 IntentRoute(
                     name=r.get("name", ""),

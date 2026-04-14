@@ -222,6 +222,9 @@ class BotResponse(BaseModel):
     memory_enabled: bool
     memory_extraction_threshold: int
     memory_extraction_prompt: str
+    rerank_enabled: bool
+    rerank_model: str
+    rerank_top_n: int
     intent_routes: list[dict[str, Any]]
     busy_reply_message: str
     line_channel_secret: str | None
@@ -290,6 +293,9 @@ def _to_response(bot) -> BotResponse:
         memory_enabled=bot.memory_enabled,
         memory_extraction_threshold=bot.memory_extraction_threshold,
         memory_extraction_prompt=bot.memory_extraction_prompt,
+        rerank_enabled=bot.rerank_enabled,
+        rerank_model=bot.rerank_model,
+        rerank_top_n=bot.rerank_top_n,
         intent_routes=[
             {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
             for r in bot.intent_routes
@@ -368,6 +374,9 @@ async def create_bot(
             memory_enabled=body.memory_enabled,
             memory_extraction_threshold=body.memory_extraction_threshold,
             memory_extraction_prompt=body.memory_extraction_prompt,
+            rerank_enabled=body.rerank_enabled,
+            rerank_model=body.rerank_model,
+            rerank_top_n=body.rerank_top_n,
             intent_routes=[
                 {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
                 for r in body.intent_routes

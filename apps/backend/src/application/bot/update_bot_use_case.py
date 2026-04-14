@@ -57,6 +57,9 @@ class UpdateBotCommand:
     memory_enabled: object = _UNSET
     memory_extraction_threshold: object = _UNSET
     memory_extraction_prompt: object = _UNSET
+    rerank_enabled: object = _UNSET
+    rerank_model: object = _UNSET
+    rerank_top_n: object = _UNSET
     intent_routes: object = _UNSET
     router_model: object = _UNSET
     busy_reply_message: object = _UNSET
@@ -109,6 +112,12 @@ class UpdateBotUseCase:
             bot.widget_allowed_origins = list(command.widget_allowed_origins)  # type: ignore[arg-type]
         if command.widget_greeting_messages is not _UNSET:
             bot.widget_greeting_messages = list(command.widget_greeting_messages)  # type: ignore[arg-type]
+        if command.rerank_enabled is not _UNSET:
+            bot.rerank_enabled = command.rerank_enabled  # type: ignore[assignment]
+        if command.rerank_model is not _UNSET:
+            bot.rerank_model = command.rerank_model  # type: ignore[assignment]
+        if command.rerank_top_n is not _UNSET:
+            bot.rerank_top_n = command.rerank_top_n  # type: ignore[assignment]
         if command.intent_routes is not _UNSET:
             bot.intent_routes = [
                 IntentRoute(
