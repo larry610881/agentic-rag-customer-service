@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { formatDate } from "@/lib/format-date";
 import { useAdminBots } from "@/hooks/queries/use-admin";
 import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
 import { AdminTenantFilter } from "@/features/admin/components/admin-tenant-filter";
@@ -87,7 +88,7 @@ export default function AdminBotsPage() {
                     {bot.llm_model || bot.llm_provider || "-"}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(bot.created_at).toLocaleDateString("zh-TW")}
+                    {formatDate(bot.created_at)}
                   </TableCell>
                 </TableRow>
               ))}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Trash2 } from "lucide-react";
+import { formatDate } from "@/lib/format-date";
 import {
   Card,
   CardContent,
@@ -80,7 +81,7 @@ export function KnowledgeBaseCard({ knowledgeBase }: KnowledgeBaseCardProps) {
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              更新於 {new Date(knowledgeBase.updated_at).toLocaleDateString()}
+              更新於 {formatDate(knowledgeBase.updated_at)}
             </p>
           </CardContent>
         </Card>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDate } from "@/lib/format-date";
 import { useTenants } from "@/hooks/queries/use-tenants";
 import { TenantConfigDialog } from "@/features/admin/components/tenant-config-dialog";
 import { CreateTenantDialog } from "@/features/admin/components/create-tenant-dialog";
@@ -76,7 +77,7 @@ export default function AdminTenantsPage() {
                       : "不限制"}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
-                    {new Date(tenant.created_at).toLocaleDateString()}
+                    {formatDate(tenant.created_at)}
                   </TableCell>
                   <TableCell>
                     <Button

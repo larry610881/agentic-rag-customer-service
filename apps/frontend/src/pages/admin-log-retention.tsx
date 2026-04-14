@@ -4,6 +4,7 @@ import {
   useUpdateLogRetentionPolicy,
   useExecuteLogCleanup,
 } from "@/hooks/queries/use-log-retention";
+import { formatDateTime } from "@/lib/format-date";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,7 +46,7 @@ const INTERVAL_OPTIONS = [
 
 function formatDatetime(iso: string | null): string {
   if (!iso) return "--";
-  return new Date(iso).toLocaleString("zh-TW");
+  return formatDateTime(iso);
 }
 
 export default function AdminLogRetentionPage() {

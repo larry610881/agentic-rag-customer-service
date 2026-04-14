@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { formatDate } from "@/lib/format-date";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -393,7 +394,7 @@ export function DocumentList({
                   <StatusCell status={doc.status} taskProgress={doc.task_progress} />
                 </td>
                 <td className="border-b px-4 py-2">
-                  {new Date(doc.created_at).toLocaleDateString()}
+                  {formatDate(doc.created_at)}
                 </td>
                 {onDelete && (
                   <td className="border-b px-4 py-2 space-x-1">

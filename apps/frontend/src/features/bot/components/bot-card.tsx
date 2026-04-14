@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Trash2 } from "lucide-react";
+import { formatDate } from "@/lib/format-date";
 import {
   Card,
   CardContent,
@@ -63,7 +64,7 @@ export function BotCard({ bot }: BotCardProps) {
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              更新於 {new Date(bot.updated_at).toLocaleDateString()}
+              更新於 {formatDate(bot.updated_at)}
             </p>
           </CardContent>
         </Card>

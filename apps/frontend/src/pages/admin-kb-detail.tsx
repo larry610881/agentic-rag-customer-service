@@ -1,4 +1,5 @@
 import { useParams, Link } from "react-router-dom";
+import { formatDate } from "@/lib/format-date";
 import { useAdminKnowledgeBases } from "@/hooks/queries/use-admin";
 import { useDocuments } from "@/hooks/queries/use-documents";
 import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
@@ -83,13 +84,13 @@ export default function AdminKbDetailPage() {
             <div>
               <dt className="text-sm text-muted-foreground">建立時間</dt>
               <dd className="mt-1 font-medium">
-                {new Date(kb.created_at).toLocaleDateString("zh-TW")}
+                {formatDate(kb.created_at)}
               </dd>
             </div>
             <div>
               <dt className="text-sm text-muted-foreground">更新時間</dt>
               <dd className="mt-1 font-medium">
-                {new Date(kb.updated_at).toLocaleDateString("zh-TW")}
+                {formatDate(kb.updated_at)}
               </dd>
             </div>
           </dl>
@@ -162,7 +163,7 @@ export default function AdminKbDetailPage() {
                           : "-"}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {new Date(doc.created_at).toLocaleDateString("zh-TW")}
+                        {formatDate(doc.created_at)}
                       </TableCell>
                     </TableRow>
                   ))}

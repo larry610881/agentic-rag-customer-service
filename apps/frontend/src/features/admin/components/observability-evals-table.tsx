@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { formatDateTime } from "@/lib/format-date";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -90,13 +91,6 @@ function HintBadge({ hint }: { hint: DiagnosticHint }) {
   );
 }
 
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleString("zh-TW", {
-    month: "2-digit", day: "2-digit", hour: "2-digit",
-    minute: "2-digit", second: "2-digit", hour12: false,
-  });
-}
 
 function ExpandableEvalRow({ eval: ev, tenantNameMap }: { eval: EvalResult; tenantNameMap: Map<string, string> }) {
   const [expanded, setExpanded] = useState(false);
@@ -112,7 +106,7 @@ function ExpandableEvalRow({ eval: ev, tenantNameMap }: { eval: EvalResult; tena
         <TableCell className="w-8">
           {hasContent && (expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
         </TableCell>
-        <TableCell className="font-mono text-xs text-muted-foreground">{formatTime(ev.created_at)}</TableCell>
+        <TableCell className="font-mono text-xs text-muted-foreground">{formatDateTime(ev.created_at)}</TableCell>
         <TableCell className="text-xs">{tenantNameMap.get(ev.tenant_id) ?? ev.tenant_id.slice(0, 8)}</TableCell>
         <TableCell><Badge variant="outline">{ev.layer}</Badge></TableCell>
         <TableCell><ScoreBadge score={ev.avg_score} /></TableCell>

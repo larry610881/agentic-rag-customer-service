@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDate } from "@/lib/format-date";
 import {
   Table,
   TableBody,
@@ -182,7 +183,7 @@ export function UserTable() {
                       user.tenant_id.slice(0, 8)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(user.created_at).toLocaleDateString("zh-TW")}
+                    {formatDate(user.created_at)}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">

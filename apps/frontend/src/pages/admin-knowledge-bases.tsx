@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { formatDate } from "@/lib/format-date";
 import { useAdminKnowledgeBases } from "@/hooks/queries/use-admin";
 import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
 import { AdminTenantFilter } from "@/features/admin/components/admin-tenant-filter";
@@ -77,7 +78,7 @@ export default function AdminKnowledgeBasesPage() {
                     {tenantNameMap.get(kb.tenant_id) ?? kb.tenant_id.slice(0, 8)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(kb.created_at).toLocaleDateString("zh-TW")}
+                    {formatDate(kb.created_at)}
                   </TableCell>
                 </TableRow>
               ))}

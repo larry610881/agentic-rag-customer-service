@@ -1,4 +1,5 @@
 import { useParams, Link } from "react-router-dom";
+import { formatDate } from "@/lib/format-date";
 import { useBot } from "@/hooks/queries/use-bots";
 import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
 import { ROUTES } from "@/routes/paths";
@@ -97,7 +98,7 @@ export default function AdminBotDetailPage() {
             <div>
               <dt className="text-sm text-muted-foreground">建立時間</dt>
               <dd className="mt-1 font-medium">
-                {new Date(bot.created_at).toLocaleDateString("zh-TW")}
+                {formatDate(bot.created_at)}
               </dd>
             </div>
           </dl>

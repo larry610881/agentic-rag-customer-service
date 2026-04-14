@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { formatDateTime } from "@/lib/format-date";
 import {
   Table,
   TableBody,
@@ -88,7 +89,7 @@ function ExpandableRow({
             ))}
         </TableCell>
         <TableCell className="font-mono text-xs text-muted-foreground">
-          {formatTime(log.created_at)}
+          {formatDateTime(log.created_at)}
         </TableCell>
         <TableCell className="text-xs">
           {log.tenant_id
@@ -134,17 +135,6 @@ function ExpandableRow({
   );
 }
 
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleString("zh-TW", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-}
 
 export function RequestLogsTable() {
   const [page, setPage] = useState(0);

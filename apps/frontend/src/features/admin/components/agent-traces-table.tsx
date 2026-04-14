@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { AdminTenantFilter } from "@/features/admin/components/admin-tenant-filter";
 import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
 import { useAgentTraces } from "@/hooks/queries/use-agent-traces";
+import { formatDateTime } from "@/lib/format-date";
 import type { AgentExecutionTrace } from "@/types/agent-trace";
 
 const PAGE_SIZE = 30;
@@ -30,17 +31,6 @@ const MODE_COLORS: Record<string, string> = {
     "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300",
 };
 
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleString("zh-TW", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-}
 
 function ElapsedBadge({ ms }: { ms: number }) {
   const color =
@@ -127,7 +117,7 @@ export function AgentTracesTable({ onSelectTrace }: AgentTracesTableProps) {
                 onClick={() => onSelectTrace(t)}
               >
                 <TableCell className="font-mono text-xs text-muted-foreground">
-                  {formatTime(t.created_at)}
+                  {formatDateTime(t.created_at)}
                 </TableCell>
                 <TableCell className="text-xs">
                   {tenantNameMap.get(t.tenant_id) ??

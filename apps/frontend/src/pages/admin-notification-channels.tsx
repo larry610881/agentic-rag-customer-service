@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Send } from "lucide-react";
+import { formatDateTime } from "@/lib/format-date";
 import {
   useNotificationChannels,
   useCreateChannel,
@@ -508,7 +509,7 @@ export default function AdminNotificationChannelsPage() {
                   </TableCell>
                   <TableCell>{ch.throttle_minutes}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {new Date(ch.created_at).toLocaleString("zh-TW")}
+                    {formatDateTime(ch.created_at)}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">

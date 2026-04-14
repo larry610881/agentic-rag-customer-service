@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { formatDateTime } from "@/lib/format-date";
 import {
   useErrorEvents,
   useResolveErrorEvent,
@@ -277,7 +278,7 @@ export default function AdminErrorEventsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {new Date(event.created_at).toLocaleString("zh-TW")}
+                      {formatDateTime(event.created_at)}
                     </TableCell>
                     <TableCell>
                       {!event.resolved && (

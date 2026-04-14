@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ExternalLink } from "lucide-react";
+import { formatDateTime } from "@/lib/format-date";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -143,12 +144,7 @@ export function FeedbackBrowserTable({
                 {filtered.map((fb) => (
                   <TableRow key={fb.id}>
                     <TableCell className="whitespace-nowrap text-sm">
-                      {new Date(fb.created_at).toLocaleString("zh-TW", {
-                        month: "2-digit",
-                        day: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatDateTime(fb.created_at)}
                     </TableCell>
                     <TableCell className="text-sm">
                       {fb.bot_name ?? "-"}

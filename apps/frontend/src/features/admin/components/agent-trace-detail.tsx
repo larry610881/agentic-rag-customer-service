@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { ArrowLeft, Clock, Cpu, Layers } from "lucide-react";
+import { formatDateTime } from "@/lib/format-date";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -137,7 +138,7 @@ export function AgentTraceDetail({ trace, onBack }: AgentTraceDetailProps) {
           </span>
         )}
         <span className="text-xs text-muted-foreground">
-          {new Date(trace.created_at).toLocaleString("zh-TW")}
+          {formatDateTime(trace.created_at)}
         </span>
       </div>
 

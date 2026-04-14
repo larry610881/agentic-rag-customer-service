@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { formatDateTime } from "@/lib/format-date";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -70,13 +71,6 @@ function StepDetail({ step, index }: { step: RAGTraceStep; index: number }) {
   );
 }
 
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleString("zh-TW", {
-    month: "2-digit", day: "2-digit", hour: "2-digit",
-    minute: "2-digit", second: "2-digit", hour12: false,
-  });
-}
 
 function PromptSnapshotBlock({ prompt }: { prompt: string }) {
   const [open, setOpen] = useState(false);
@@ -112,7 +106,7 @@ function ExpandableTraceRow({ trace, tenantNameMap }: { trace: RAGTrace; tenantN
         <TableCell className="w-8">
           {hasContent && (expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
         </TableCell>
-        <TableCell className="font-mono text-xs text-muted-foreground">{formatTime(trace.created_at)}</TableCell>
+        <TableCell className="font-mono text-xs text-muted-foreground">{formatDateTime(trace.created_at)}</TableCell>
         <TableCell className="text-xs">{tenantNameMap.get(trace.tenant_id) ?? trace.tenant_id.slice(0, 8)}</TableCell>
         <TableCell className="max-w-[300px] truncate text-sm" title={trace.query}>
           {trace.query.length > 60 ? trace.query.slice(0, 60) + "..." : trace.query}

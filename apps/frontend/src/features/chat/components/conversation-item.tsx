@@ -1,20 +1,11 @@
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/format-date";
 import type { ConversationSummary } from "@/types/conversation";
 
 interface ConversationItemProps {
   conversation: ConversationSummary;
   isActive: boolean;
   onClick: () => void;
-}
-
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function shortenId(id: string): string {

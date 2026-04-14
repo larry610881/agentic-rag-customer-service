@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { formatDate } from "@/lib/format-date";
 import {
   Database,
   Plus,
@@ -39,16 +40,6 @@ export default function AdminPromptOptimizerDatasetsPage() {
     deleteMutation.mutate(id, {
       onSuccess: () => toast.success("情境集已刪除"),
       onError: () => toast.error("刪除失敗"),
-    });
-  };
-
-  const formatDate = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleDateString("zh-TW", {
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
     });
   };
 
