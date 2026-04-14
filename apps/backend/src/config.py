@@ -1,5 +1,3 @@
-import json as _json
-
 from pydantic_settings import BaseSettings
 
 
@@ -30,7 +28,6 @@ class Settings(BaseSettings):
 
     # Shared Provider API Keys (fallback when embedding/llm-specific keys are not set)
     openai_api_key: str = ""
-    openai_chat_api_key: str = ""  # legacy alias for openai_api_key
     anthropic_api_key: str = ""
     qwen_api_key: str = ""
     google_api_key: str = ""
@@ -89,10 +86,6 @@ class Settings(BaseSettings):
     line_default_tenant_id: str = ""
     line_default_kb_id: str = ""
 
-    # LLM Pricing — deprecated: pricing is now DB-driven via ProviderSetting.models
-    # Kept for backwards-compat; overridden by DB values when available.
-    llm_pricing_json: str = "{}"
-
     # Encryption
     encryption_master_key: str = ""
 
@@ -149,8 +142,7 @@ class Settings(BaseSettings):
 
     @property
     def effective_openai_api_key(self) -> str:
-        """Prefer openai_api_key; fall back to openai_chat_api_key."""
-        return self.openai_api_key or self.openai_chat_api_key
+        return self.openai_api_key
 
     @property
     def effective_embedding_api_key(self) -> str:
@@ -188,13 +180,6 @@ class Settings(BaseSettings):
         if self.debug:
             return "DEBUG"
         return self.log_level.upper()
-
-    @property
-    def llm_pricing(self) -> dict[str, dict[str, float]]:
-        try:
-            return _json.loads(self.llm_pricing_json)
-        except (_json.JSONDecodeError, TypeError):
-            return {}
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
