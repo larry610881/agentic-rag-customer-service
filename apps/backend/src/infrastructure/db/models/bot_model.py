@@ -98,6 +98,9 @@ class BotModel(Base):
     intent_routes: Mapped[list] = mapped_column(
         JSON, nullable=False, default=list, server_default="[]"
     )
+    router_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
     busy_reply_message: Mapped[str] = mapped_column(
         String(500), nullable=False,
         default="小編正在努力回覆中，請稍等一下喔～",

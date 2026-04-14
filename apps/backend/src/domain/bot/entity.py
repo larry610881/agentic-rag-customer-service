@@ -89,7 +89,8 @@ class Bot:
     memory_enabled: bool = False
     memory_extraction_threshold: int = 3
     memory_extraction_prompt: str = ""
-    intent_routes: list[IntentRoute] = field(default_factory=list)
+    intent_routes: list[IntentRoute] = field(default_factory=list)  # deprecated → bot_workers
+    router_model: str = ""  # LLM router 分類用 model（空 = bot default）
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
