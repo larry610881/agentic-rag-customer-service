@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye, ExternalLink, FileText, FileSpreadsheet, FileJson, FileType } from "lucide-react";
+import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye, FileText, FileSpreadsheet, FileJson, FileType } from "lucide-react";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { API_BASE } from "@/lib/api-config";
 import { useAuthStore } from "@/stores/use-auth-store";
@@ -49,17 +49,83 @@ const CONTENT_TYPE_MAP: Record<string, { label: string; icon: typeof FileText; c
   "text/markdown": { label: "MD", icon: FileType, color: "text-purple-600 bg-purple-50 dark:bg-purple-950 dark:text-purple-400" },
 };
 
-function ContentTypeBadge({ contentType }: { contentType: string }) {
+function ContentTypeBadge({ contentType, onClick }: { contentType: string; onClick?: () => void }) {
   const info = CONTENT_TYPE_MAP[contentType];
   const label = info?.label ?? contentType.split("/").pop()?.toUpperCase() ?? "?";
   const Icon = info?.icon ?? FileType;
   const color = info?.color ?? "text-muted-foreground bg-muted";
   return (
-    <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${color}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      title="查看原始檔"
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium cursor-pointer hover:opacity-70 transition-opacity ${color}`}
+    >
       <Icon className="h-3 w-3" />
       {label}
-    </span>
+    </button>
   );
+}
+
+async function openDocumentPreview(
+  kbId: string,
+  doc: DocumentResponse,
+  setTextPreviewDoc: (d: DocumentResponse) => void,
+  setTextPreviewContent: (t: string) => void,
+) {
+  const token = useAuthStore.getState().token;
+  const headers: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+  const canPreview = BROWSER_VIEWABLE.has(doc.content_type);
+
+  // 1. Try preview-url API (GCS → signed URL)
+  try {
+    const puRes = await fetch(
+      `${API_BASE}${API_ENDPOINTS.documents.previewUrl(kbId, doc.id)}`,
+      { headers },
+    );
+    if (puRes.ok) {
+      const pu = await puRes.json();
+      if (pu.preview_url) {
+        window.open(pu.preview_url, '_blank');
+        return;
+      }
+    }
+  } catch { /* fallback below */ }
+
+  // 2. Local: browser-viewable → fetch blob
+  if (canPreview) {
+    const url = `${API_BASE}${API_ENDPOINTS.documents.view(kbId, doc.id)}`;
+    const w = window.open('', '_blank');
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      if (w) w.location.href = blobUrl;
+      else window.open(blobUrl, '_blank');
+    } catch {
+      if (w) w.close();
+    }
+  } else {
+    // 3. Binary → show parsed text dialog
+    const url = `${API_BASE}${API_ENDPOINTS.documents.chunks(kbId, doc.id)}`;
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const data = await res.json();
+      const chunks = data.items ?? data ?? [];
+      const text = chunks
+        .map((c: { content: string }) => c.content)
+        .join('\n\n---\n\n');
+      setTextPreviewContent(text || '（無內容）');
+      setTextPreviewDoc(doc);
+    } catch {
+      setTextPreviewContent('無法載入文件內容');
+      setTextPreviewDoc(doc);
+    }
+  }
 }
 
 interface DocumentListProps {
@@ -300,8 +366,11 @@ export function DocumentList({
                 </td>
                 <td className="border-b px-4 py-2">
                   <div className="flex items-center gap-2">
-                    <ContentTypeBadge contentType={doc.content_type} />
-                    <span>{doc.filename}</span>
+                    <ContentTypeBadge
+                      contentType={doc.content_type}
+                      onClick={() => openDocumentPreview(kbId, doc, setTextPreviewDoc, setTextPreviewContent)}
+                    />
+                    <span>{doc.filename.replace(/\.[^.]+$/, '')}</span>
                     {(statsMap.get(doc.id)?.negative_feedback_count ?? 0) > 0 && (
                       <span
                         className="inline-flex items-center rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
@@ -328,68 +397,6 @@ export function DocumentList({
                 </td>
                 {onDelete && (
                   <td className="border-b px-4 py-2 space-x-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={async () => {
-                        const token = useAuthStore.getState().token;
-                        const headers: Record<string, string> = token
-                          ? { Authorization: `Bearer ${token}` }
-                          : {};
-                        const canPreview = BROWSER_VIEWABLE.has(doc.content_type);
-
-                        // 1. Try preview-url API (GCS → signed URL)
-                        try {
-                          const puRes = await fetch(
-                            `${API_BASE}${API_ENDPOINTS.documents.previewUrl(kbId, doc.id)}`,
-                            { headers },
-                          );
-                          if (puRes.ok) {
-                            const pu = await puRes.json();
-                            if (pu.preview_url) {
-                              window.open(pu.preview_url, '_blank');
-                              return;
-                            }
-                          }
-                        } catch { /* fallback below */ }
-
-                        // 2. Local: browser-viewable → fetch blob
-                        if (canPreview) {
-                          const url = `${API_BASE}${API_ENDPOINTS.documents.view(kbId, doc.id)}`;
-                          const w = window.open('', '_blank');
-                          try {
-                            const res = await fetch(url, { headers });
-                            if (!res.ok) throw new Error(`${res.status}`);
-                            const blob = await res.blob();
-                            const blobUrl = URL.createObjectURL(blob);
-                            if (w) w.location.href = blobUrl;
-                            else window.open(blobUrl, '_blank');
-                          } catch {
-                            if (w) w.close();
-                          }
-                        } else {
-                          // 3. Binary → show parsed text dialog
-                          const url = `${API_BASE}${API_ENDPOINTS.documents.chunks(kbId, doc.id)}`;
-                          try {
-                            const res = await fetch(url, { headers });
-                            if (!res.ok) throw new Error(`${res.status}`);
-                            const data = await res.json();
-                            const chunks = data.items ?? data ?? [];
-                            const text = chunks
-                              .map((c: { content: string }) => c.content)
-                              .join('\n\n---\n\n');
-                            setTextPreviewContent(text || '（無內容）');
-                            setTextPreviewDoc(doc);
-                          } catch {
-                            setTextPreviewContent('無法載入文件內容');
-                            setTextPreviewDoc(doc);
-                          }
-                        }
-                      }}
-                    >
-                      <ExternalLink className="mr-1 h-4 w-4" />
-                      原始檔
-                    </Button>
                     {doc.status === "processed" && doc.chunk_count > 0 && (
                       <Button
                         variant="ghost"
