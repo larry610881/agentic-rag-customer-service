@@ -57,6 +57,23 @@ function str(v: unknown): string {
   return String(v ?? "");
 }
 
+function prettyStr(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") {
+    // Try to parse as JSON for pretty printing
+    try {
+      const parsed = JSON.parse(v);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return v;
+    }
+  }
+  if (typeof v === "object") {
+    return JSON.stringify(v, null, 2);
+  }
+  return String(v);
+}
+
 function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
   const fields: { key: string; label: string; wrap?: boolean; pre?: boolean }[] = [
     { key: "message_preview", label: "訊息", wrap: true },
@@ -181,7 +198,7 @@ function TraceNode({ data }: { data: CustomNodeData }) {
                 <div>
                   <span className="font-medium text-blue-600 dark:text-blue-400">Input:</span>
                   <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-blue-50 dark:bg-blue-950 p-2 text-xs">
-                    {str(meta.llm_input)}
+                    {prettyStr(meta.llm_input)}
                   </pre>
                 </div>
               )}
@@ -189,7 +206,7 @@ function TraceNode({ data }: { data: CustomNodeData }) {
                 <div>
                   <span className="font-medium text-green-600 dark:text-green-400">Output:</span>
                   <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-green-50 dark:bg-green-950 p-2 text-xs">
-                    {str(meta.llm_output)}
+                    {prettyStr(meta.llm_output)}
                   </pre>
                 </div>
               )}

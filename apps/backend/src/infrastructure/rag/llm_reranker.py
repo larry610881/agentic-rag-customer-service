@@ -126,6 +126,8 @@ async def llm_rerank(
             input_chunks=len(chunks),
             output_chunks=len(result),
             top_score=scored[0][1] if scored else 0,
+            llm_input=f"[System] {_RERANK_SYSTEM_PROMPT}\n\n[User] {user_prompt}",
+            llm_output=raw,
         )
 
         logger.info(
