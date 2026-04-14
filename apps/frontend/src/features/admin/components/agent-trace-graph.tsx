@@ -114,7 +114,7 @@ function TraceNode({ data }: { data: CustomNodeData }) {
     <div
       className={`rounded-lg border-2 px-3 py-2 shadow-sm min-w-[180px] max-w-[320px] ${colorClass}`}
     >
-      <Handle type="target" position={Position.Top} className="!bg-gray-400" />
+      <Handle type="target" position={Position.Left} className="!bg-gray-400" />
       <div className="flex items-center gap-2">
         <Icon className="h-4 w-4 shrink-0 opacity-70" />
         <span className="text-sm font-medium truncate">{n.label}</span>
@@ -156,7 +156,7 @@ function TraceNode({ data }: { data: CustomNodeData }) {
       {expanded && <MetadataDetails meta={meta} />}
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         className="!bg-gray-400"
       />
     </div>
@@ -202,7 +202,7 @@ function buildGraph(execNodes: ExecutionNode[]): {
     nodes.push({
       id: n.node_id,
       type: "traceNode",
-      position: { x: col * 350, y: i * 120 },
+      position: { x: i * 280, y: col * 150 },
       data: { execNode: n } satisfies CustomNodeData,
     });
 

@@ -399,9 +399,12 @@ class ReActAgentService(AgentService):
     ) -> AgentResponse:
         # Start agent trace
         AgentTraceCollector.start(tenant_id, "react")
+        history_len = len(history) if history else 0
         AgentTraceCollector.add_node(
             "user_input", "使用者輸入", None, 0.0, 0.0,
             message_preview=user_message[:200],
+            history_turns=history_len,
+            has_history_context=bool(history_context),
         )
 
         async with AsyncExitStack() as stack:
