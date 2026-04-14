@@ -37,3 +37,17 @@ class GCSDocumentFileStorageService(DocumentFileStorageService):
         exists = await asyncio.to_thread(blob.exists)
         if exists:
             await asyncio.to_thread(blob.delete)
+
+    async def get_preview_url(
+        self, storage_path: str, expiry_seconds: int = 300
+    ) -> str | None:
+        from datetime import timedelta
+
+        bucket = self._get_bucket()
+        blob = bucket.blob(storage_path)
+        url = await asyncio.to_thread(
+            blob.generate_signed_url,
+            version="v4",
+            expiration=timedelta(seconds=expiry_seconds),
+        )
+        return url

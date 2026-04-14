@@ -365,6 +365,46 @@ async def view_document(
     )
 
 
+@router.get("/{doc_id}/preview-url")
+@inject
+async def get_document_preview_url(
+    kb_id: str,
+    doc_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    doc_repo: Any = Depends(Provide[Container.document_repository]),
+    file_storage: Any = Depends(
+        Provide[Container.document_file_storage_service]
+    ),
+) -> dict:
+    """Return a preview URL for the document.
+
+    GCS: returns a signed URL (direct browser access).
+    Local: returns null (frontend should fallback to /view endpoint).
+    """
+    from src.config import settings
+
+    doc = await doc_repo.find_by_id(doc_id)
+    if doc is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document '{doc_id}' not found",
+        )
+
+    preview_url = None
+    if doc.storage_path and hasattr(file_storage, "get_preview_url"):
+        expiry = settings.gcs_signed_url_expiry
+        preview_url = await file_storage.get_preview_url(
+            doc.storage_path, expiry_seconds=expiry,
+        )
+
+    return {
+        "preview_url": preview_url,
+        "filename": doc.filename,
+        "content_type": doc.content_type,
+        "storage_backend": settings.storage_backend,
+    }
+
+
 class BatchDocIdsRequest(BaseModel):
     doc_ids: list[str]
 

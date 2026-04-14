@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     storage_backend: str = "local"  # "local" | "gcs"
     local_storage_dir: str = "static/uploads/documents"
     gcs_bucket_name: str = ""
+    gcs_signed_url_expiry: int = 300  # Signed URL 有效期（秒）
 
     # Text Splitter
     chunk_size: int = 500

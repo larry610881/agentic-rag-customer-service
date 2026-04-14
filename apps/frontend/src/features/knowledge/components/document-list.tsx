@@ -332,17 +332,33 @@ export function DocumentList({
                       variant="ghost"
                       size="sm"
                       onClick={async () => {
+                        const token = useAuthStore.getState().token;
+                        const headers: Record<string, string> = token
+                          ? { Authorization: `Bearer ${token}` }
+                          : {};
                         const canPreview = BROWSER_VIEWABLE.has(doc.content_type);
 
+                        // 1. Try preview-url API (GCS → signed URL)
+                        try {
+                          const puRes = await fetch(
+                            `${API_BASE}${API_ENDPOINTS.documents.previewUrl(kbId, doc.id)}`,
+                            { headers },
+                          );
+                          if (puRes.ok) {
+                            const pu = await puRes.json();
+                            if (pu.preview_url) {
+                              window.open(pu.preview_url, '_blank');
+                              return;
+                            }
+                          }
+                        } catch { /* fallback below */ }
+
+                        // 2. Local: browser-viewable → fetch blob
                         if (canPreview) {
-                          // Browser can open natively → fetch blob → new tab
-                          const token = useAuthStore.getState().token;
                           const url = `${API_BASE}${API_ENDPOINTS.documents.view(kbId, doc.id)}`;
                           const w = window.open('', '_blank');
                           try {
-                            const res = await fetch(url, {
-                              headers: token ? { Authorization: `Bearer ${token}` } : {},
-                            });
+                            const res = await fetch(url, { headers });
                             if (!res.ok) throw new Error(`${res.status}`);
                             const blob = await res.blob();
                             const blobUrl = URL.createObjectURL(blob);
@@ -352,13 +368,10 @@ export function DocumentList({
                             if (w) w.close();
                           }
                         } else {
-                          // Binary format → fetch chunks text → show in dialog
-                          const token = useAuthStore.getState().token;
+                          // 3. Binary → show parsed text dialog
                           const url = `${API_BASE}${API_ENDPOINTS.documents.chunks(kbId, doc.id)}`;
                           try {
-                            const res = await fetch(url, {
-                              headers: token ? { Authorization: `Bearer ${token}` } : {},
-                            });
+                            const res = await fetch(url, { headers });
                             if (!res.ok) throw new Error(`${res.status}`);
                             const data = await res.json();
                             const chunks = data.items ?? data ?? [];

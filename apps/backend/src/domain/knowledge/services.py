@@ -40,6 +40,15 @@ class DocumentFileStorageService(ABC):
         """Delete document file."""
         ...
 
+    async def get_preview_url(
+        self, storage_path: str, expiry_seconds: int = 300
+    ) -> str | None:
+        """Return a direct preview URL (e.g. GCS signed URL).
+
+        Returns None if not supported (local storage fallback to stream).
+        """
+        return None
+
 
 class TextSplitterService(ABC):
     @abstractmethod

@@ -30,6 +30,8 @@ export const API_ENDPOINTS = {
       `/api/v1/knowledge-bases/${kbId}/documents/batch-reprocess`,
     view: (kbId: string, docId: string) =>
       `/api/v1/knowledge-bases/${kbId}/documents/${docId}/view`,
+    previewUrl: (kbId: string, docId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/documents/${docId}/preview-url`,
   },
   tasks: {
     detail: (id: string) => `/api/v1/tasks/${id}`,
