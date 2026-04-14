@@ -144,6 +144,33 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
       {fields.map((f) => {
         if (meta[f.key] == null) return null;
         const value = str(meta[f.key]);
+        // History context: split by [用戶]/[助手] turns with visual separation
+        if (f.key === "history_context" && value) {
+          const turns = value.split(/(?=\[用戶\]|\[助手\])/).filter(Boolean);
+          return (
+            <div key={f.key}>
+              <span className="font-medium">{f.label}（{turns.length} 段）：</span>
+              <div className="mt-1 space-y-1.5 max-h-[400px] overflow-y-auto">
+                {turns.map((turn, ti) => {
+                  const isUser = turn.startsWith("[用戶]");
+                  return (
+                    <div
+                      key={ti}
+                      className={`rounded p-1.5 text-xs ${isUser ? "bg-blue-50 dark:bg-blue-950 border-l-2 border-blue-400" : "bg-green-50 dark:bg-green-950 border-l-2 border-green-400"}`}
+                    >
+                      <span className={`font-semibold ${isUser ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
+                        {isUser ? "用戶" : "助手"}
+                      </span>
+                      <pre className="mt-0.5 whitespace-pre-wrap break-words text-xs">
+                        {turn.replace(/^\[用戶\]\s*/, "").replace(/^\[助手\]\s*/, "")}
+                      </pre>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
         if (f.wrap && value.includes("\n")) {
           return (
             <div key={f.key}>
