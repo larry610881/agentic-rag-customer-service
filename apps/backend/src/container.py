@@ -920,6 +920,10 @@ class Container(containers.DeclarativeContainer):
         embedding_service=embedding_service,
         vector_store=vector_store,
         llm_service=llm_service,
+        api_key_resolver=providers.Callable(
+            lambda factory: factory.resolve_api_key,
+            _llm_factory,
+        ),
     )
 
     get_conversation_use_case = providers.Factory(

@@ -213,6 +213,29 @@ class DynamicLLMServiceFactory:
             logger.exception("dynamic_llm.error")
             return self._fallback
 
+    async def resolve_api_key(self, provider_name: str) -> str:
+        """Resolve API key for a provider: DB-encrypted first, then .env fallback.
+
+        Useful for code that calls provider SDKs directly (e.g. reranker).
+        """
+        try:
+            repo = self._repo_factory()
+            settings = await repo.find_all_by_type(ProviderType.LLM)
+            enabled = [s for s in settings if s.is_enabled]
+            setting = next(
+                (s for s in enabled if s.provider_name.value == provider_name),
+                None,
+            )
+            if setting and setting.api_key_encrypted:
+                return self._encryption.decrypt(setting.api_key_encrypted)
+        except Exception:
+            logger.warning("resolve_api_key.db_failed", exc_info=True)
+
+        # Fallback to .env
+        cfg = Settings()
+        attr = _ENV_KEY_MAP.get(provider_name, "")
+        return getattr(cfg, attr, "") if attr else ""
+
 
 class DynamicLLMServiceProxy(LLMService):
     """Proxy that delegates to DynamicLLMServiceFactory-resolved service."""

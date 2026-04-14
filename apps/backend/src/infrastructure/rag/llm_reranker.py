@@ -29,6 +29,7 @@ async def llm_rerank(
     chunks: list[dict],
     model: str = "claude-haiku-4-5-20251001",
     top_k: int = 5,
+    api_key: str = "",
 ) -> list[dict]:
     """Rerank chunks using LLM scoring.
 
@@ -37,6 +38,7 @@ async def llm_rerank(
         chunks: List of chunk dicts (must have 'content' key)
         model: LLM model to use for reranking
         top_k: Number of top results to return
+        api_key: Anthropic API key (resolved from DB or env)
 
     Returns:
         Reranked list of chunks (top_k items)
@@ -67,7 +69,10 @@ async def llm_rerank(
         )
 
         t0_ms = AgentTraceCollector.offset_ms()
-        client = anthropic.AsyncAnthropic()
+        client_kwargs = {}
+        if api_key:
+            client_kwargs["api_key"] = api_key
+        client = anthropic.AsyncAnthropic(**client_kwargs)
         response = await client.messages.create(
             model=model,
             max_tokens=500,

@@ -50,11 +50,13 @@ class QueryRAGUseCase:
         embedding_service: EmbeddingService,
         vector_store: VectorStore,
         llm_service: LLMService,
+        api_key_resolver=None,
     ) -> None:
         self._kb_repo = knowledge_base_repository
         self._embedding_service = embedding_service
         self._vector_store = vector_store
         self._llm_service = llm_service
+        self._api_key_resolver = api_key_resolver  # async (provider_name) -> str
 
     async def execute(self, command: QueryRAGCommand) -> RAGResponse:
         t_total = time.perf_counter()
@@ -114,11 +116,15 @@ class QueryRAGUseCase:
         final_k = command.top_k
         if command.rerank_enabled and len(all_results) > final_k:
             rerank_input = all_results[:search_limit]
+            rerank_api_key = ""
+            if self._api_key_resolver:
+                rerank_api_key = await self._api_key_resolver("anthropic")
             reranked = await llm_rerank(
                 query=command.query,
                 chunks=[{"content": r.payload.get("content", ""), "_idx": i} for i, r in enumerate(rerank_input)],
                 model=command.rerank_model or "claude-haiku-4-5-20251001",
                 top_k=final_k,
+                api_key=rerank_api_key,
             )
             # Map back to original results
             results = []
