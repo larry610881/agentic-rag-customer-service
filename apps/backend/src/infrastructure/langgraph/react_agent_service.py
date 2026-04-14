@@ -548,7 +548,8 @@ class ReActAgentService(AgentService):
             tools: list[BaseTool] = []
             tools.append(
                 self._build_rag_lc_tool(
-                    tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold
+                    tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold,
+                    rerank_cfg=metadata,
                 )
             )
 
@@ -582,10 +583,13 @@ class ReActAgentService(AgentService):
             )
 
             # Start agent trace
+            history_len = len(history) if history else 0
             AgentTraceCollector.start(tenant_id, "react")
             AgentTraceCollector.add_node(
                 "user_input", "使用者輸入", None, 0.0, 0.0,
                 message_preview=user_message[:200],
+                history_turns=history_len,
+                has_history_context=bool(history_context),
             )
 
             # Emit initial status so frontend shows "AI 分析中" immediately
