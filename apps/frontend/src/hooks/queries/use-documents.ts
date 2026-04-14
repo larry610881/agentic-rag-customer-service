@@ -145,6 +145,8 @@ export function useUploadDocument() {
       }
 
       // Step 3: Confirm upload, trigger processing
+      // Re-fetch token — GCS upload may have taken minutes, original token expired
+      const freshToken = useAuthStore.getState().token;
       console.log("[upload] Step 3: confirming...");
       return apiFetch<UploadDocumentResponse>(
         API_ENDPOINTS.documents.confirmUpload(data.knowledgeBaseId),
@@ -155,7 +157,7 @@ export function useUploadDocument() {
             task_id: reqRes.task_id,
           }),
         },
-        token ?? undefined,
+        freshToken ?? undefined,
       );
     },
     onSuccess: (_data, variables) => {
