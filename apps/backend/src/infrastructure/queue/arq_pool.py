@@ -5,6 +5,8 @@ Usage:
     await enqueue("process_document", doc_id, task_id)
 """
 
+from urllib.parse import unquote, urlparse
+
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 
@@ -15,10 +17,21 @@ logger = get_logger(__name__)
 _pool: ArqRedis | None = None
 
 
+def _parse_redis_settings(url: str) -> RedisSettings:
+    """Parse Redis URL with proper password URL-decoding."""
+    parsed = urlparse(url)
+    return RedisSettings(
+        host=parsed.hostname or "localhost",
+        port=parsed.port or 6379,
+        password=unquote(parsed.password) if parsed.password else None,
+        database=int(parsed.path.lstrip("/") or 0),
+    )
+
+
 async def get_arq_pool(redis_url: str) -> ArqRedis:
     global _pool
     if _pool is None:
-        _pool = await create_pool(RedisSettings.from_dsn(redis_url))
+        _pool = await create_pool(_parse_redis_settings(redis_url))
     return _pool
 
 

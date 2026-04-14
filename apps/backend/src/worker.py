@@ -125,7 +125,19 @@ class WorkerSettings:
     ]
     on_startup = startup
     on_shutdown = shutdown
-    redis_settings = RedisSettings.from_dsn(Settings().redis_url)
+    @staticmethod
+    def _parse_redis() -> RedisSettings:
+        from urllib.parse import urlparse, unquote
+        url = Settings().redis_url
+        parsed = urlparse(url)
+        return RedisSettings(
+            host=parsed.hostname or "localhost",
+            port=parsed.port or 6379,
+            password=unquote(parsed.password) if parsed.password else None,
+            database=int(parsed.path.lstrip("/") or 0),
+        )
+
+    redis_settings = _parse_redis()
     max_jobs = 3
     job_timeout = 600  # 10 minutes
     health_check_interval = 30
