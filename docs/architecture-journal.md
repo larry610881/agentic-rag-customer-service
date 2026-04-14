@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Agent 執行追蹤視覺化 — ContextVar Collector + React Flow DAG + 瀑布時間軸](#agent-執行追蹤視覺化--contextvar-collector--react-flow-dag--瀑布時間軸)
 - [Sprint W.4 — Wiki 前端 UI + Stale Detection（條件渲染 + Query-time 降級）](#sprint-w4--wiki-前端-ui--stale-detectio條件渲染--query-time-降級)
 - [Sprint W.3 — Wiki 查詢 + ReAct 整合（Strategy Pattern + KeywordBFSNavigator）](#sprint-w3--wiki-查詢--react-整合strategy-pattern--keywordbfsnavigator)
 - [Sprint W.2 — Wiki 編譯 Pipeline（Graphify-derived Prompt + Louvain Clustering）](#sprint-w2--wiki-編譯-pipelinegraphify-derived-prompt--louvain-clustering)
@@ -74,6 +75,39 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Agent 執行追蹤視覺化 — ContextVar Collector + React Flow DAG + 瀑布時間軸
+
+**日期**：2026-04-14
+**涉及層級**：後端 DDD 跨 4 層（Domain → Application → Infrastructure → Interfaces）+ 前端全棧（Type → Hook → Component → Page）
+
+### 本次相關主題
+
+ContextVar Request-Scoped Tracing、Adjacency List DAG、React Flow Custom Nodes、Fire-and-Forget Persistence、Recharts Gantt Waterfall
+
+### 做得好的地方
+
+- **ContextVar Collector 複用 RAGTracer 模式**：已有 `RAGTracer` 用 ContextVar 做 request-scoped tracing 的成功案例，`AgentTraceCollector` 完全複用同一 pattern（static methods + ContextVar + offset_ms），學習曲線為零。兩個 collector 互不干擾（各自獨立 ContextVar），且都在 `SendMessageUseCase` 中以相同的 fire-and-forget 模式持久化
+- **Flat Adjacency List 取代巢狀樹**：`nodes` 是 flat list + `parent_id`，不用巢狀 JSON。好處三重：(1) JSON 序列化/反序列化簡單，(2) DB 存取不需遞迴，(3) React Flow 原生吃 flat nodes + edges 不需轉換。如果用巢狀樹，前端要先 flatten、後端要遞迴建構，白多一層轉換
+- **插樁不侵入業務邏輯**：三個 agent service 的插樁都是在既有 logging 點旁邊加 `AgentTraceCollector.add_node()`，沒有改變任何控制流。若 collector 未 start（ContextVar 為 None），`add_node()` 直接返回空字串，零成本 no-op。這讓整個 tracing 機制對業務代碼是「透明」的
+- **整合進既有 Observability 頁面 Tab**：不新增路由，直接在 `/admin/observability` 加第三個 Tab。複用 `AdminTenantFilter`、`Badge`、分頁模式。使用者不需要學新的導航路徑
+- **React Flow 自訂節點的展開/收合設計**：每個 trace node 預設只顯示 icon + label + 耗時，點「詳情」才展開 metadata（reasoning、tool_output 等）。避免 DAG 一開就很擠，讓使用者自行 drill-down
+- **Sentiment/Reflect 合併到 final_response 的 metadata**：原本設計成獨立 trace 節點，但討論後認為這些是 prompt 策略不是獨立步驟。合併後 Supervisor DAG 只剩 4 個核心節點（user_input → dispatch → worker → response），更清晰
+
+### 潛在隱憂
+
+- **Per-node token usage 依賴 LangChain `usage_metadata`**：部分 LLM provider（尤其 OpenAI-compatible 第三方）可能不回傳 `usage_metadata`，導致 agent_llm 節點的 token_usage 為 null。不影響 trace 功能，但統計面板會缺數據 → 建議：fallback 到 response_metadata 的其他 token 欄位 → 優先級：低
+- **React Flow 在 `admin-observability` chunk 增加 ~60KB gzip**：目前整個 chunk 197KB/62KB gzip，React Flow 佔大部分。若 Observability 頁面載入速度明顯變慢，可考慮把 Agent Trace tab 拆成獨立 lazy chunk → 優先級：低
+- **Supervisor/MetaSupervisor 的 trace 粒度較粗**：ReAct 模式有每次 iteration 的詳細 LLM + tool 節點，但 Supervisor 模式只記錄 dispatch + worker_execution，worker 內部的 LLM 呼叫細節不可見。若未來要 worker 級別的 trace，需要在 `AgentWorker.handle()` 內也插樁 → 優先級：中
+- **agent_execution_traces 表沒有 TTL/清理機制**：目前 `rag_traces` 有 Log Retention Policy 可清理，但新表還沒接入。高流量租戶可能累積大量 trace 資料 → 建議：下次擴充 Log Retention 的 cleanup scope 加入 `agent_execution_traces` → 優先級：中
+- **CREATE TABLE 需手動執行**：專案不用 Alembic，測試靠 `Base.metadata.create_all`。Production 部署時需要手動跑 DDL 或加到 deploy script → 優先級：高（部署前必須處理）
+
+### 延伸學習
+
+- **ContextVar vs OpenTelemetry Span**：本次用 ContextVar 做 request-scoped tracing 是輕量方案。生產級替代是 OpenTelemetry：每個 `add_node` 對應一個 `tracer.start_span()`，自動有 parent-child 關係、W3C trace context propagation、Jaeger/Zipkin export。**選擇 ContextVar 的原因**：不想引入 OTel SDK 的龐大依賴，且 trace 只需要持久化到自己的 DB（不需跨服務傳播）。若未來需要跨服務 trace（如 MCP server → agent），OTel 會是正確選擇。搜尋：_OpenTelemetry Python instrumentation_ / _ContextVar vs OTel span_
+- **React Flow vs Cytoscape.js vs D3-dag**：React 生態的 DAG 視覺化有三大選擇。React Flow 勝在 React-native（custom node 就是 React component）+ 完整的互動（zoom/pan/selection）+ 成熟社群。Cytoscape.js 更適合網路圖（非 DAG）。D3-dag 適合需要精確 layout 算法（Sugiyama）的場景。本次 DAG 通常只有 5-15 個節點，不需要 Sugiyama，簡單的 sequential layout 就足夠
 
 ---
 

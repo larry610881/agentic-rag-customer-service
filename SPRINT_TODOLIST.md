@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-10 (Sprint W.4 完成 — 前端 UI + E2E + Stale Detection)
+> 最後更新：2026-04-14 (Agent 執行追蹤視覺化 — 全棧完成 + BDD + Journal)
 
 ---
 
@@ -1269,6 +1269,25 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | E9 | **分析查詢缺少分頁機制** | ✅ E3 Sprint | Backend `offset` + `total_count`；Frontend server-side 分頁 |
 | E10 | **Recharts 打包體積** | ✅ E3 Sprint | `next/dynamic` + `{ ssr: false }` 動態載入圖表元件 |
 | E11 | **PII 遮蔽不完整** | ✅ E3 Sprint | +信用卡號 +台灣身分證 +IPv4 regex |
+
+---
+
+## Agent 執行追蹤視覺化（2026-04-14）
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Domain VO | ✅ 完成 | `ExecutionNode` + `AgentExecutionTrace`（flat adjacency list） |
+| ContextVar Collector | ✅ 完成 | `AgentTraceCollector`（同 RAGTracer 模式） |
+| DB Model | ✅ 完成 | `agent_execution_traces` 表 |
+| Agent Service 插樁 | ✅ 完成 | ReAct / Supervisor / MetaSupervisor 三個 service |
+| SendMessageUseCase 整合 | ✅ 完成 | `_persist_agent_trace()` fire-and-forget |
+| API Endpoints | ✅ 完成 | `GET /agent-traces` + `GET /agent-traces/{trace_id}` |
+| 前端 React Flow DAG | ✅ 完成 | 自訂節點、展開/收合、顏色編碼 |
+| 前端瀑布時間軸 | ✅ 完成 | Recharts Gantt-style waterfall |
+| Observability Tab 整合 | ✅ 完成 | 第三 Tab「Agent 執行追蹤」 |
+| BDD Feature | ✅ 完成 | 5 scenarios（ReAct/Supervisor/ContextVar/no-op/序列化） |
+| Unit Test | ✅ 完成 | 5/5 pass |
+| Architecture Journal | ✅ 完成 | 架構筆記已追加 |
 
 ---
 
