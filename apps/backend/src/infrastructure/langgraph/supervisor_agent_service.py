@@ -10,6 +10,9 @@ from src.domain.agent.worker import AgentWorker, WorkerContext
 from src.domain.conversation.entity import Message
 from src.domain.rag.value_objects import TokenUsage
 from src.infrastructure.langgraph.usage import build_usage_event
+from src.infrastructure.observability.agent_trace_collector import (
+    AgentTraceCollector,
+)
 
 _MIN_ANSWER_LENGTH = 10
 
@@ -40,6 +43,12 @@ class SupervisorAgentService(AgentService):
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
     ) -> AgentResponse:
+        AgentTraceCollector.start(tenant_id, "supervisor")
+        AgentTraceCollector.add_node(
+            "user_input", "使用者輸入", None, 0.0, 0.0,
+            message_preview=user_message[:200],
+        )
+
         sentiment_result = None
         if self._sentiment_service:
             sentiment_result = await self._sentiment_service.analyze(
@@ -55,19 +64,36 @@ class SupervisorAgentService(AgentService):
         )
 
         response = await self._dispatch(context)
-
         response = self._reflect(response, context)
 
         if sentiment_result:
             response.sentiment = sentiment_result.sentiment
             response.escalated = sentiment_result.should_escalate
 
+        end_ms = AgentTraceCollector.offset_ms()
+        AgentTraceCollector.add_node(
+            "final_response", "最終回覆", None, end_ms, end_ms,
+            sentiment=sentiment_result.sentiment if sentiment_result else None,
+            escalated=sentiment_result.should_escalate if sentiment_result else False,
+        )
+
         return response
 
     async def _dispatch(self, context: WorkerContext) -> AgentResponse:
         for worker in self._workers:
             if await worker.can_handle(context):
+                t0_ms = AgentTraceCollector.offset_ms()
+                AgentTraceCollector.add_node(
+                    "supervisor_dispatch", f"選擇 {worker.name}", None,
+                    t0_ms, t0_ms,
+                    selected_worker=worker.name,
+                )
+                t_exec = AgentTraceCollector.offset_ms()
                 result = await worker.handle(context)
+                AgentTraceCollector.add_node(
+                    "worker_execution", worker.name, None,
+                    t_exec, AgentTraceCollector.offset_ms(),
+                )
                 return AgentResponse(
                     answer=result.answer,
                     tool_calls=result.tool_calls,

@@ -22,6 +22,7 @@ from src.application.observability.log_retention_use_cases import (
 from src.container import Container
 from src.domain.observability.diagnostic import diagnose
 from src.infrastructure.db.engine import async_session_factory
+from src.infrastructure.db.models.agent_trace_model import AgentExecutionTraceModel
 from src.infrastructure.db.models.bot_model import BotModel
 from src.infrastructure.db.models.rag_eval_model import RAGEvalModel
 from src.infrastructure.db.models.rag_trace_model import RAGTraceModel
@@ -134,6 +135,91 @@ async def list_evaluations(
             }
             for r in rows
         ],
+    }
+
+
+@router.get("/agent-traces")
+async def list_agent_traces(
+    limit: int = Query(default=30, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    tenant_id: str | None = Query(default=None),
+    agent_mode: str | None = Query(default=None),
+    conversation_id: str | None = Query(default=None),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+):
+    async with async_session_factory() as session:
+        stmt = select(AgentExecutionTraceModel).order_by(
+            AgentExecutionTraceModel.created_at.desc()
+        )
+        T = AgentExecutionTraceModel  # noqa: N806
+        count_stmt = select(func.count()).select_from(T)
+
+        if tenant_id:
+            stmt = stmt.where(T.tenant_id == tenant_id)
+            count_stmt = count_stmt.where(T.tenant_id == tenant_id)
+        if agent_mode:
+            stmt = stmt.where(T.agent_mode == agent_mode)
+            count_stmt = count_stmt.where(T.agent_mode == agent_mode)
+        if conversation_id:
+            stmt = stmt.where(T.conversation_id == conversation_id)
+            count_stmt = count_stmt.where(
+                T.conversation_id == conversation_id
+            )
+        if date_from:
+            stmt = stmt.where(T.created_at >= date_from)
+            count_stmt = count_stmt.where(T.created_at >= date_from)
+        if date_to:
+            stmt = stmt.where(T.created_at <= date_to)
+            count_stmt = count_stmt.where(T.created_at <= date_to)
+
+        total = (await session.execute(count_stmt)).scalar() or 0
+        rows = (await session.execute(stmt.offset(offset).limit(limit))).scalars().all()
+
+    return {
+        "total": total,
+        "items": [
+            {
+                "id": r.id,
+                "trace_id": r.trace_id,
+                "tenant_id": r.tenant_id,
+                "message_id": r.message_id,
+                "conversation_id": r.conversation_id,
+                "agent_mode": r.agent_mode,
+                "nodes": r.nodes,
+                "total_ms": r.total_ms,
+                "total_tokens": r.total_tokens,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/agent-traces/{trace_id}")
+async def get_agent_trace(trace_id: str):
+    async with async_session_factory() as session:
+        stmt = select(AgentExecutionTraceModel).where(
+            AgentExecutionTraceModel.trace_id == trace_id
+        )
+        row = (await session.execute(stmt)).scalar_one_or_none()
+
+    if row is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="Agent trace not found")
+
+    return {
+        "id": row.id,
+        "trace_id": row.trace_id,
+        "tenant_id": row.tenant_id,
+        "message_id": row.message_id,
+        "conversation_id": row.conversation_id,
+        "agent_mode": row.agent_mode,
+        "nodes": row.nodes,
+        "total_ms": row.total_ms,
+        "total_tokens": row.total_tokens,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
     }
 
 

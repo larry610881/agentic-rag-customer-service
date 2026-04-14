@@ -1,0 +1,195 @@
+import { useState } from "react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { AdminTenantFilter } from "@/features/admin/components/admin-tenant-filter";
+import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
+import { useAgentTraces } from "@/hooks/queries/use-agent-traces";
+import type { AgentExecutionTrace } from "@/types/agent-trace";
+
+const PAGE_SIZE = 30;
+
+const MODE_LABELS: Record<string, string> = {
+  react: "ReAct",
+  supervisor: "Supervisor",
+  meta_supervisor: "Meta",
+};
+
+const MODE_COLORS: Record<string, string> = {
+  react: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
+  supervisor:
+    "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300",
+  meta_supervisor:
+    "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300",
+};
+
+function formatTime(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleString("zh-TW", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+function ElapsedBadge({ ms }: { ms: number }) {
+  const color =
+    ms >= 2000
+      ? "text-red-600 dark:text-red-400"
+      : ms >= 500
+        ? "text-yellow-600 dark:text-yellow-400"
+        : "text-green-600 dark:text-green-400";
+  return <span className={`font-mono text-sm ${color}`}>{ms.toFixed(0)}</span>;
+}
+
+type AgentTracesTableProps = {
+  onSelectTrace: (trace: AgentExecutionTrace) => void;
+};
+
+export function AgentTracesTable({ onSelectTrace }: AgentTracesTableProps) {
+  const [page, setPage] = useState(0);
+  const [tenantFilter, setTenantFilter] = useState<string | undefined>();
+  const [modeFilter, setModeFilter] = useState<string | undefined>();
+  const tenantNameMap = useTenantNameMap();
+
+  const filters = {
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
+    tenant_id: tenantFilter,
+    agent_mode: modeFilter,
+  };
+  const { data, isLoading } = useAgentTraces(filters);
+  const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <AdminTenantFilter
+          value={tenantFilter}
+          onChange={(v) => {
+            setTenantFilter(v);
+            setPage(0);
+          }}
+        />
+        <select
+          className="h-9 rounded-md border bg-background px-3 text-sm"
+          value={modeFilter ?? ""}
+          onChange={(e) => {
+            setModeFilter(e.target.value || undefined);
+            setPage(0);
+          }}
+        >
+          <option value="">所有模式</option>
+          <option value="react">ReAct</option>
+          <option value="supervisor">Supervisor</option>
+          <option value="meta_supervisor">Meta Supervisor</option>
+        </select>
+        {data && (
+          <span className="text-sm text-muted-foreground">
+            共 {data.total} 筆
+          </span>
+        )}
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-40">時間</TableHead>
+              <TableHead className="w-24">Tenant</TableHead>
+              <TableHead className="w-28">Agent 模式</TableHead>
+              <TableHead className="w-20 text-center">節點數</TableHead>
+              <TableHead className="w-24 text-right">耗時 (ms)</TableHead>
+              <TableHead className="w-32">Conversation</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading && (
+              <TableRow>
+                <TableCell colSpan={6} className="py-8 text-center">
+                  載入中...
+                </TableCell>
+              </TableRow>
+            )}
+            {data?.items.map((t) => (
+              <TableRow
+                key={t.id}
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => onSelectTrace(t)}
+              >
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  {formatTime(t.created_at)}
+                </TableCell>
+                <TableCell className="text-xs">
+                  {tenantNameMap.get(t.tenant_id) ??
+                    t.tenant_id.slice(0, 8)}
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant="secondary"
+                    className={MODE_COLORS[t.agent_mode] ?? ""}
+                  >
+                    {MODE_LABELS[t.agent_mode] ?? t.agent_mode}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-center">
+                  <Badge variant="outline">{t.nodes?.length ?? 0}</Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <ElapsedBadge ms={t.total_ms} />
+                </TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  {t.conversation_id?.slice(0, 8) ?? "-"}
+                </TableCell>
+              </TableRow>
+            ))}
+            {data && data.items.length === 0 && (
+              <TableRow>
+                <TableCell
+                  colSpan={6}
+                  className="py-8 text-center text-muted-foreground"
+                >
+                  沒有 Agent 執行追蹤記錄
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">
+            第 {page + 1} / {totalPages} 頁
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === 0}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              上一頁
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              下一頁
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -35,6 +35,9 @@ from src.infrastructure.db.models.memory_fact_model import MemoryFactModel
 from src.infrastructure.db.models.notification_channel_model import (
     NotificationChannelModel,
 )
+from src.infrastructure.db.models.agent_trace_model import (
+    AgentExecutionTraceModel,
+)
 __all__ = [
     "TenantModel",
     "KnowledgeBaseModel",
@@ -63,4 +66,5 @@ __all__ = [
     "ErrorEventModel",
     "ErrorNotificationLogModel",
     "NotificationChannelModel",
+    "AgentExecutionTraceModel",
 ]

@@ -82,6 +82,10 @@ export const queryKeys = {
     evals: (filters?: object) => ["observability", "evals", filters ?? {}] as const,
     tokenUsage: (days: number, tenantId?: string) =>
       ["observability", "token-usage", days, tenantId ?? "all"] as const,
+    agentTraces: (filters?: object) =>
+      ["observability", "agent-traces", filters ?? {}] as const,
+    agentTraceDetail: (traceId: string) =>
+      ["observability", "agent-traces", traceId] as const,
     diagnosticRules: ["observability", "diagnostic-rules"] as const,
     logRetention: ["observability", "log-retention"] as const,
   },

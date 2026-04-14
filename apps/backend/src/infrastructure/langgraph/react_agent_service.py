@@ -32,6 +32,9 @@ from src.infrastructure.langgraph.usage import (
     extract_usage_from_langchain_messages,
 )
 from src.infrastructure.llm.dynamic_llm_factory import DynamicLLMServiceProxy
+from src.infrastructure.observability.agent_trace_collector import (
+    AgentTraceCollector,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -185,11 +188,14 @@ class ReActAgentService(AgentService):
 
         model_with_tools = llm.bind_tools(tools)
         call_count = 0
+        # Track last agent_llm node_id for parent linking
+        last_agent_node_id: str = ""
 
         async def agent_node(state: MessagesState) -> dict:
-            nonlocal call_count
+            nonlocal call_count, last_agent_node_id
             call_count += 1
             t0 = time.monotonic()
+            trace_start_ms = AgentTraceCollector.offset_ms()
 
             messages = list(state["messages"])
             # Sanitize: some LLMs (DeepSeek) require string content,
@@ -212,6 +218,26 @@ class ReActAgentService(AgentService):
             response = await model_with_tools.ainvoke(messages)
 
             elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
+            trace_end_ms = AgentTraceCollector.offset_ms()
+
+            # Extract token usage from response
+            node_token_usage = None
+            has_usage = (
+                isinstance(response, AIMessage)
+                and hasattr(response, "usage_metadata")
+                and response.usage_metadata
+            )
+            if has_usage:
+                um = response.usage_metadata
+                node_token_usage = {
+                    "input_tokens": um.get("input_tokens", 0),
+                    "output_tokens": um.get("output_tokens", 0),
+                }
+                model_name = ""
+                if hasattr(response, "response_metadata"):
+                    model_name = response.response_metadata.get("model_name", "")
+                if model_name:
+                    node_token_usage["model"] = model_name
 
             if isinstance(response, AIMessage) and response.tool_calls:
                 tc_summary = [
@@ -227,6 +253,18 @@ class ReActAgentService(AgentService):
                     elapsed_ms=elapsed_ms,
                     tool_calls=tc_summary,
                 )
+                # Trace: agent_llm node with tool call decision
+                last_agent_node_id = AgentTraceCollector.add_node(
+                    node_type="agent_llm",
+                    label=f"ReAct 迭代 {call_count}",
+                    parent_id=None,
+                    start_ms=trace_start_ms,
+                    end_ms=trace_end_ms,
+                    token_usage=node_token_usage,
+                    iteration=call_count,
+                    decision="tool_call",
+                    tool_calls=[tc["name"] for tc in response.tool_calls],
+                )
             else:
                 content_preview = ""
                 if isinstance(response, AIMessage) and response.content:
@@ -241,6 +279,18 @@ class ReActAgentService(AgentService):
                     elapsed_ms=elapsed_ms,
                     answer_preview=content_preview,
                 )
+                # Trace: agent_llm node with final answer
+                last_agent_node_id = AgentTraceCollector.add_node(
+                    node_type="agent_llm",
+                    label=f"ReAct 迭代 {call_count} (回覆)",
+                    parent_id=None,
+                    start_ms=trace_start_ms,
+                    end_ms=trace_end_ms,
+                    token_usage=node_token_usage,
+                    iteration=call_count,
+                    decision="final_answer",
+                    answer_preview=content_preview,
+                )
 
             return {"messages": [response]}
 
@@ -251,6 +301,7 @@ class ReActAgentService(AgentService):
             import time
 
             t0 = time.monotonic()
+            trace_start_ms = AgentTraceCollector.offset_ms()
             last_msg = state["messages"][-1]
             tool_names = []
             if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
@@ -264,8 +315,9 @@ class ReActAgentService(AgentService):
             result = await _tool_node.ainvoke(state)
 
             elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
+            trace_end_ms = AgentTraceCollector.offset_ms()
 
-            # Log each tool result summary
+            # Log each tool result summary + trace nodes
             for msg in result.get("messages", []):
                 if isinstance(msg, ToolMessage):
                     content_str = (
@@ -273,12 +325,24 @@ class ReActAgentService(AgentService):
                         if isinstance(msg.content, str)
                         else str(msg.content)
                     )
+                    tool_name = getattr(msg, "name", "unknown")
                     logger.info(
                         "react.tools_node.result",
-                        tool_name=getattr(msg, "name", "unknown"),
+                        tool_name=tool_name,
                         elapsed_ms=elapsed_ms,
                         result_length=len(content_str),
                         result_preview=content_str[:200],
+                    )
+                    # Trace: tool_call node (parent = last agent_llm)
+                    AgentTraceCollector.add_node(
+                        node_type="tool_call",
+                        label=tool_name,
+                        parent_id=last_agent_node_id or None,
+                        start_ms=trace_start_ms,
+                        end_ms=trace_end_ms,
+                        tool_name=tool_name,
+                        result_length=len(content_str),
+                        result_preview=content_str[:300],
                     )
 
             return result
@@ -327,6 +391,13 @@ class ReActAgentService(AgentService):
         audit_mode: str = "minimal",
         bot_id: str = "",
     ) -> AgentResponse:
+        # Start agent trace
+        AgentTraceCollector.start(tenant_id, "react")
+        AgentTraceCollector.add_node(
+            "user_input", "使用者輸入", None, 0.0, 0.0,
+            message_preview=user_message[:200],
+        )
+
         async with AsyncExitStack() as stack:
             # 1. Build knowledge tool
             tools: list[BaseTool] = []
@@ -370,6 +441,12 @@ class ReActAgentService(AgentService):
             )
 
             result = await graph.ainvoke({"messages": input_messages})
+
+            # Trace: final_response node
+            end_ms = AgentTraceCollector.offset_ms()
+            AgentTraceCollector.add_node(
+                "final_response", "最終回覆", None, end_ms, end_ms,
+            )
 
             # 5. Parse response
             return self._parse_response(result, audit_mode=audit_mode)
@@ -492,6 +569,13 @@ class ReActAgentService(AgentService):
                 tool_count=len(tools),
                 tool_names=[t.name for t in tools],
                 mcp_server_count=len(mcp_servers or []),
+            )
+
+            # Start agent trace
+            AgentTraceCollector.start(tenant_id, "react")
+            AgentTraceCollector.add_node(
+                "user_input", "使用者輸入", None, 0.0, 0.0,
+                message_preview=user_message[:200],
             )
 
             # Emit initial status so frontend shows "AI 分析中" immediately
@@ -663,6 +747,12 @@ class ReActAgentService(AgentService):
                         "，請縮短問題或更換模型"
                     ),
                 }
+
+            # Trace: final_response node
+            end_ms = AgentTraceCollector.offset_ms()
+            AgentTraceCollector.add_node(
+                "final_response", "最終回覆", None, end_ms, end_ms,
+            )
 
             # Yield usage event before done
             usage_event = build_usage_event(

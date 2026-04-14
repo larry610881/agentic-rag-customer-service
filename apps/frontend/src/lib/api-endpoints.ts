@@ -117,6 +117,9 @@ export const API_ENDPOINTS = {
     tokenUsage: "/api/v1/observability/token-usage",
     diagnosticRules: "/api/v1/observability/diagnostic-rules",
     resetDiagnosticRules: "/api/v1/observability/diagnostic-rules/reset",
+    agentTraces: "/api/v1/observability/agent-traces",
+    agentTraceDetail: (traceId: string) =>
+      `/api/v1/observability/agent-traces/${traceId}`,
     logRetention: "/api/v1/observability/log-retention",
     executeLogCleanup: "/api/v1/observability/log-retention/execute",
   },

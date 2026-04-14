@@ -12,6 +12,8 @@ import structlog
 from src.application.agent.intent_classifier import IntentClassifier
 from src.application.agent.prompt_assembler import (
     assemble as assemble_prompt,
+)
+from src.application.agent.prompt_assembler import (
     inject_runtime_vars,
 )
 from src.domain.agent.entity import AgentResponse
@@ -27,6 +29,9 @@ from src.domain.platform.repository import SystemPromptConfigRepository
 from src.domain.platform.services import EncryptionService
 from src.domain.shared.concurrency import ConversationLock
 from src.domain.shared.exceptions import DomainException
+from src.infrastructure.observability.agent_trace_collector import (
+    AgentTraceCollector,
+)
 
 if TYPE_CHECKING:
     from src.application.memory.extract_memory_use_case import (
@@ -463,6 +468,12 @@ class SendMessageUseCase:
 
         response.conversation_id = conversation.id.value
 
+        # Fire-and-forget: persist agent execution trace
+        await self._persist_agent_trace(
+            conversation_id=conversation.id.value,
+            latency_ms=latency_ms,
+        )
+
         # Fire-and-forget: memory extraction
         await self._fire_memory_extraction(command, bot_cfg, conversation)
 
@@ -628,6 +639,13 @@ class SendMessageUseCase:
         )
         await self._conversation_repo.save(conversation)
 
+        # Fire-and-forget: persist agent execution trace
+        await self._persist_agent_trace(
+            conversation_id=conversation.id.value,
+            message_id=assistant_msg.id.value,
+            latency_ms=latency_ms,
+        )
+
         # Fire-and-forget: memory extraction
         await self._fire_memory_extraction(command, bot_cfg, conversation)
 
@@ -723,6 +741,46 @@ class SendMessageUseCase:
                 await session.commit()
         except Exception:
             logger.warning("trace.persist_failed", exc_info=True)
+
+    async def _persist_agent_trace(
+        self,
+        conversation_id: str | None = None,
+        message_id: str | None = None,
+        latency_ms: int = 0,
+    ) -> None:
+        """Finalize and persist agent execution trace (fire-and-forget)."""
+        try:
+            trace = AgentTraceCollector.finish(total_ms=float(latency_ms))
+            if trace is None:
+                return
+
+            session_factory = self._trace_session_factory
+            if session_factory is None:
+                return
+
+            trace.conversation_id = conversation_id
+            trace.message_id = message_id
+
+            from src.infrastructure.db.models.agent_trace_model import (
+                AgentExecutionTraceModel,
+            )
+
+            row = AgentExecutionTraceModel(
+                id=str(uuid4()),
+                trace_id=trace.trace_id,
+                tenant_id=trace.tenant_id,
+                message_id=trace.message_id,
+                conversation_id=trace.conversation_id,
+                agent_mode=trace.agent_mode,
+                nodes=[n.to_dict() for n in trace.nodes],
+                total_ms=trace.total_ms,
+                total_tokens=trace.total_tokens,
+            )
+            async with session_factory() as session:
+                session.add(row)
+                await session.commit()
+        except Exception:
+            logger.warning("agent_trace.persist_failed", exc_info=True)
 
     async def _run_evaluations(
         self,
