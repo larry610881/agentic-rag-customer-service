@@ -115,7 +115,7 @@ async def llm_rerank(
         AgentTraceCollector.add_node(
             node_type="tool_call",
             label=f"rerank ({model.split('-')[1] if '-' in model else model})",
-            parent_id=None,
+            parent_id=AgentTraceCollector.tool_parent(),
             start_ms=t0_ms,
             end_ms=end_ms,
             token_usage={

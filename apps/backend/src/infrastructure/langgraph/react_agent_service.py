@@ -330,12 +330,29 @@ class ReActAgentService(AgentService):
                 tools=tool_names,
             )
 
+            # Pre-register tool trace nodes so inner nodes can be children
+            tool_node_ids: dict[str, str] = {}
+            for tn in tool_names:
+                nid = AgentTraceCollector.add_node(
+                    node_type="tool_call",
+                    label=tn,
+                    parent_id=None,
+                    start_ms=trace_start_ms,
+                    end_ms=trace_start_ms,  # placeholder, updated below
+                    tool_name=tn,
+                )
+                tool_node_ids[tn] = nid
+                # Set as parent so inner nodes (RAG search, rerank) become children
+                AgentTraceCollector.set_tool_parent(nid)
+
             result = await _tool_node.ainvoke(state)
 
             elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
             trace_end_ms = AgentTraceCollector.offset_ms()
+            AgentTraceCollector.clear_tool_parent()
 
-            # Log each tool result summary + trace nodes
+            # Update tool trace nodes with final timing + result
+            trace = AgentTraceCollector.current()
             for msg in result.get("messages", []):
                 if isinstance(msg, ToolMessage):
                     content_str = (
@@ -351,17 +368,20 @@ class ReActAgentService(AgentService):
                         result_length=len(content_str),
                         result_preview=content_str[:200],
                     )
-                    # Trace: tool_call node (sequential — no parent)
-                    AgentTraceCollector.add_node(
-                        node_type="tool_call",
-                        label=tool_name,
-                        parent_id=None,
-                        start_ms=trace_start_ms,
-                        end_ms=trace_end_ms,
-                        tool_name=tool_name,
-                        result_length=len(content_str),
-                        result_preview=content_str,
-                    )
+                    # Update pre-registered node with result data
+                    nid = tool_node_ids.get(tool_name)
+                    if trace and nid:
+                        for node in trace.nodes:
+                            if node.node_id == nid:
+                                node.end_ms = trace_end_ms
+                                node.duration_ms = round(
+                                    trace_end_ms - node.start_ms, 1
+                                )
+                                node.metadata["result_length"] = len(
+                                    content_str
+                                )
+                                node.metadata["result_preview"] = content_str
+                                break
 
             return result
 

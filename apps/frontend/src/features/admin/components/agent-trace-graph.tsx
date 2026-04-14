@@ -231,60 +231,83 @@ function buildGraph(execNodes: ExecutionNode[]): {
 } {
   if (!execNodes || execNodes.length === 0) return { nodes: [], edges: [] };
 
-  // Compute depth for each node (sequential top-down layout)
   const nodeMap = new Map<string, ExecutionNode>();
   for (const n of execNodes) {
     nodeMap.set(n.node_id, n);
   }
 
-  // Simple sequential layout: nodes arranged top-down in order
+  // Separate main-line nodes (no parent) and child nodes (have parent)
+  const mainLine: ExecutionNode[] = [];
+  const childrenOf = new Map<string, ExecutionNode[]>();
+
+  for (const n of execNodes) {
+    if (n.parent_id && nodeMap.has(n.parent_id)) {
+      const siblings = childrenOf.get(n.parent_id) ?? [];
+      siblings.push(n);
+      childrenOf.set(n.parent_id, siblings);
+    } else {
+      mainLine.push(n);
+    }
+  }
+
   const nodes: Node[] = [];
   const edges: Edge[] = [];
-  const depthCount = new Map<number, number>();
 
-  for (let i = 0; i < execNodes.length; i++) {
-    const n = execNodes[i];
-    // Compute depth from parent chain
-    let depth = 0;
-    if (n.parent_id && nodeMap.has(n.parent_id)) {
-      // Child node: offset to the right
-      const parentIdx = execNodes.findIndex(
-        (p) => p.node_id === n.parent_id,
-      );
-      if (parentIdx >= 0) {
-        depth = (depthCount.get(parentIdx) ?? 0) + 1;
-      }
-    }
-
-    const col = depthCount.get(i) ?? 0;
-    depthCount.set(i, col);
-
+  // Layout main-line nodes horizontally
+  for (let i = 0; i < mainLine.length; i++) {
+    const n = mainLine[i];
     nodes.push({
       id: n.node_id,
       type: "traceNode",
-      position: { x: i * 280, y: col * 150 },
+      position: { x: i * 300, y: 0 },
       data: { execNode: n } satisfies CustomNodeData,
       dragHandle: ".drag-handle",
     });
 
-    // Edge from parent or from previous sequential node
-    if (n.parent_id && nodeMap.has(n.parent_id)) {
-      edges.push({
-        id: `e-${n.parent_id}-${n.node_id}`,
-        source: n.parent_id,
-        target: n.node_id,
-        animated: true,
-        style: { stroke: "#94a3b8" },
-      });
-    } else if (i > 0) {
-      // Sequential edge to previous node (if no parent)
+    // Sequential edge
+    if (i > 0) {
       edges.push({
         id: `e-seq-${i}`,
-        source: execNodes[i - 1].node_id,
+        source: mainLine[i - 1].node_id,
         target: n.node_id,
         animated: true,
         style: { stroke: "#cbd5e1" },
       });
+    }
+
+    // Layout child nodes vertically below parent
+    const children = childrenOf.get(n.node_id);
+    if (children) {
+      for (let j = 0; j < children.length; j++) {
+        const child = children[j];
+        nodes.push({
+          id: child.node_id,
+          type: "traceNode",
+          position: { x: i * 300 + j * 280, y: 160 },
+          data: { execNode: child } satisfies CustomNodeData,
+          dragHandle: ".drag-handle",
+        });
+
+        // Edge from parent to child
+        edges.push({
+          id: `e-child-${n.node_id}-${child.node_id}`,
+          source: n.node_id,
+          target: child.node_id,
+          animated: true,
+          style: { stroke: "#94a3b8", strokeDasharray: "5 3" },
+        });
+
+        // Sequential edge between siblings
+        if (j > 0) {
+          edges.push({
+            id: `e-sibling-${j}`,
+            source: children[j - 1].node_id,
+            target: child.node_id,
+            animated: true,
+            style: { stroke: "#94a3b8" },
+          });
+        }
+      }
     }
   }
 

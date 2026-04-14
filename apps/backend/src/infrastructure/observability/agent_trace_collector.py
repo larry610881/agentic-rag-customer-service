@@ -18,6 +18,9 @@ _agent_trace: ContextVar[AgentExecutionTrace | None] = ContextVar(
     "_agent_trace", default=None
 )
 _trace_t0: ContextVar[float] = ContextVar("_trace_t0", default=0.0)
+_current_tool_node_id: ContextVar[str] = ContextVar(
+    "_current_tool_node_id", default=""
+)
 
 
 class AgentTraceCollector:
@@ -94,6 +97,21 @@ class AgentTraceCollector:
             node_count=len(trace.nodes),
         )
         return trace
+
+    @staticmethod
+    def set_tool_parent(node_id: str) -> None:
+        """Set current tool node ID so inner nodes can use it as parent."""
+        _current_tool_node_id.set(node_id)
+
+    @staticmethod
+    def clear_tool_parent() -> None:
+        _current_tool_node_id.set("")
+
+    @staticmethod
+    def tool_parent() -> str | None:
+        """Get current tool parent node ID, or None if not set."""
+        val = _current_tool_node_id.get("")
+        return val or None
 
     @staticmethod
     def current() -> AgentExecutionTrace | None:

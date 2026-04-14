@@ -98,7 +98,7 @@ class QueryRAGUseCase:
         AgentTraceCollector.add_node(
             node_type="tool_result",
             label="RAG 向量搜尋",
-            parent_id=None,
+            parent_id=AgentTraceCollector.tool_parent(),
             start_ms=AgentTraceCollector.offset_ms() - search_ms,
             end_ms=AgentTraceCollector.offset_ms(),
             result_count=len(all_results),
@@ -218,7 +218,7 @@ class QueryRAGUseCase:
         AgentTraceCollector.add_node(
             node_type="tool_result",
             label="RAG 向量搜尋",
-            parent_id=None,
+            parent_id=AgentTraceCollector.tool_parent(),
             start_ms=AgentTraceCollector.offset_ms() - search_ms,
             end_ms=AgentTraceCollector.offset_ms(),
             result_count=len(all_results),
