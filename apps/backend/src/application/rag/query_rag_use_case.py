@@ -9,6 +9,7 @@ from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.rag.services import EmbeddingService, LLMService, VectorStore
 from src.domain.rag.value_objects import RAGResponse, Source
 from src.infrastructure.rag.llm_reranker import llm_rerank
+from src.infrastructure.observability.agent_trace_collector import AgentTraceCollector
 from src.domain.shared.exceptions import EntityNotFoundError, NoRelevantKnowledgeError
 from src.infrastructure.logging import get_logger
 
@@ -94,13 +95,28 @@ class QueryRAGUseCase:
         # Sort by score descending
         all_results.sort(key=lambda r: r.score, reverse=True)
 
+        # Trace: vector search results
+        AgentTraceCollector.add_node(
+            node_type="tool_result",
+            label="RAG 向量搜尋",
+            parent_id=None,
+            start_ms=AgentTraceCollector.offset_ms() - search_ms,
+            end_ms=AgentTraceCollector.offset_ms(),
+            result_count=len(all_results),
+            top_score=round(all_results[0].score, 4) if all_results else 0,
+            kb_ids=effective_kb_ids,
+            result_preview="\n---\n".join(
+                r.payload.get("content", "")[:150] for r in all_results[:5]
+            ),
+        )
+
         # Rerank if enabled
         final_k = command.rerank_final_top_k or command.top_k
         if command.rerank_enabled and len(all_results) > final_k:
             rerank_input = all_results[:search_limit]
             reranked = await llm_rerank(
                 query=command.query,
-                chunks=[{"content": r.content, "_idx": i} for i, r in enumerate(rerank_input)],
+                chunks=[{"content": r.payload.get("content", ""), "_idx": i} for i, r in enumerate(rerank_input)],
                 model=command.rerank_model or "claude-haiku-4-5-20251001",
                 top_k=final_k,
             )
@@ -199,6 +215,21 @@ class QueryRAGUseCase:
 
         all_results.sort(key=lambda r: r.score, reverse=True)
 
+        # Trace: vector search results
+        AgentTraceCollector.add_node(
+            node_type="tool_result",
+            label="RAG 向量搜尋",
+            parent_id=None,
+            start_ms=AgentTraceCollector.offset_ms() - search_ms,
+            end_ms=AgentTraceCollector.offset_ms(),
+            result_count=len(all_results),
+            top_score=round(all_results[0].score, 4) if all_results else 0,
+            kb_ids=effective_kb_ids,
+            result_preview="\n---\n".join(
+                r.payload.get("content", "")[:150] for r in all_results[:5]
+            ),
+        )
+
         # Rerank if enabled
         final_k = command.rerank_final_top_k or command.top_k
         if command.rerank_enabled and len(all_results) > final_k:
@@ -206,7 +237,7 @@ class QueryRAGUseCase:
             reranked = await llm_rerank(
                 query=command.query,
                 chunks=[
-                    {"content": r.content, "_idx": i}
+                    {"content": r.payload.get("content", ""), "_idx": i}
                     for i, r in enumerate(rerank_input)
                 ],
                 model=command.rerank_model or "claude-haiku-4-5-20251001",
