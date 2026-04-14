@@ -641,7 +641,12 @@ export function BotDetailForm({
 
         {/* Tab: 意圖路由 */}
         <TabsContent value={TAB_KEYS.SUBAGENT} className="flex flex-col gap-6 pt-4">
-          <WorkersSection botId={bot.id} enabledModels={enabledModels} />
+          <WorkersSection
+            botId={bot.id}
+            botTenantId={bot.tenant_id}
+            enabledModels={enabledModels}
+            knowledgeBases={(kbData?.items ?? []).map((kb) => ({ id: kb.id, name: kb.name }))}
+          />
         </TabsContent>
 
         {/* Tab 3: LLM 參數 */}

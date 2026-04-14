@@ -31,7 +31,6 @@ import {
   useDeleteWorker,
 } from "@/hooks/queries/use-workers";
 import { useMcpRegistryAccessible } from "@/hooks/queries/use-mcp-registry";
-import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { WorkerConfig } from "@/types/worker-config";
 
@@ -41,9 +40,16 @@ type EnabledModel = {
   display_name: string;
 };
 
+type KnowledgeBaseInfo = {
+  id: string;
+  name: string;
+};
+
 type WorkersSectionProps = {
   botId: string;
+  botTenantId: string;
   enabledModels?: EnabledModel[];
+  knowledgeBases?: KnowledgeBaseInfo[];
 };
 
 function WorkerCard({
@@ -330,25 +336,17 @@ function WorkerCard({
 
 export function WorkersSection({
   botId,
+  botTenantId,
   enabledModels = [],
+  knowledgeBases = [],
 }: WorkersSectionProps) {
-  const tenantId = useAuthStore((s) => s.tenantId);
   const { data: workers, isLoading } = useWorkers(botId);
   const createMutation = useCreateWorker(botId);
-  const { data: mcpServers } = useMcpRegistryAccessible(
-    tenantId ?? undefined,
-  );
-
-  const { data: kbData } = useKnowledgeBases(1, 100);
+  const { data: mcpServers } = useMcpRegistryAccessible(botTenantId);
 
   const mcpList = (mcpServers ?? []).map((s) => ({
     id: s.id,
     name: s.name,
-  }));
-
-  const kbList = (kbData?.items ?? []).map((kb: { id: string; name: string }) => ({
-    id: kb.id,
-    name: kb.name,
   }));
 
   const handleAdd = () => {
@@ -402,7 +400,7 @@ export function WorkersSection({
           botId={botId}
           enabledModels={enabledModels}
           mcpServers={mcpList}
-          knowledgeBases={kbList}
+          knowledgeBases={knowledgeBases}
         />
       ))}
     </section>
