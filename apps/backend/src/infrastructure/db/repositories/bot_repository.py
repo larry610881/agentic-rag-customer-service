@@ -82,7 +82,6 @@ class SQLAlchemyBotRepository(BotRepository):
                 for b in (model.mcp_bindings or [])
             ],
             max_tool_calls=model.max_tool_calls,
-            audit_mode=model.audit_mode or "minimal",
             eval_provider=model.eval_provider or "",
             eval_model=model.eval_model or "",
             eval_depth=model.eval_depth or "L1",
@@ -185,7 +184,6 @@ class SQLAlchemyBotRepository(BotRepository):
                     for b in bot.mcp_bindings
                 ]
                 existing.max_tool_calls = bot.max_tool_calls
-                existing.audit_mode = bot.audit_mode
                 existing.eval_provider = bot.eval_provider
                 existing.eval_model = bot.eval_model
                 existing.eval_depth = bot.eval_depth
@@ -258,7 +256,6 @@ class SQLAlchemyBotRepository(BotRepository):
                         for b in bot.mcp_bindings
                     ],
                     max_tool_calls=bot.max_tool_calls,
-                    audit_mode=bot.audit_mode,
                     eval_provider=bot.eval_provider,
                     eval_model=bot.eval_model,
                     eval_depth=bot.eval_depth,

@@ -72,6 +72,5 @@ Feature: Bot API Integration
   Scenario: 建立 Bot — 所有欄位完整 round-trip
     When 我送出認證 POST /api/v1/bots 含完整欄位
     Then 回應狀態碼為 201
-    And 回應欄位 audit_mode 為 "full"
     And 回應欄位 max_tool_calls 為 10
     And 回應包含 mcp_servers 陣列長度為 1

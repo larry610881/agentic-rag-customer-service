@@ -1,28 +1,3 @@
-export interface RAGTraceStep {
-  /** tool_name from agent tool_calls, or legacy "name" */
-  tool_name?: string;
-  name?: string;
-  reasoning?: string;
-  elapsed_ms?: number;
-  iteration?: number;
-  tool_input?: Record<string, unknown>;
-  tool_output?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface RAGTrace {
-  id: string;
-  trace_id: string;
-  query: string;
-  tenant_id: string;
-  message_id: string | null;
-  steps: RAGTraceStep[] | null;
-  total_ms: number;
-  chunk_count: number;
-  prompt_snapshot?: string | null;
-  created_at: string;
-}
-
 export interface ChunkScore {
   index: number;
   score: number;
@@ -56,11 +31,6 @@ export interface EvalResult {
   model_used: string;
   created_at: string;
   diagnostic_hints?: DiagnosticHint[] | null;
-}
-
-export interface PaginatedTraces {
-  total: number;
-  items: RAGTrace[];
 }
 
 export interface PaginatedEvals {

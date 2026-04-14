@@ -16,7 +16,6 @@ from src.infrastructure.db.models.message_model import MessageModel
 from src.infrastructure.db.models.processing_task_model import ProcessingTaskModel
 from src.infrastructure.db.models.provider_setting_model import ProviderSettingModel
 from src.infrastructure.db.models.rag_eval_model import RAGEvalModel
-from src.infrastructure.db.models.rag_trace_model import RAGTraceModel
 from src.infrastructure.db.models.rate_limit_config_model import RateLimitConfigModel
 from src.infrastructure.db.models.request_log_model import RequestLogModel
 from src.infrastructure.db.models.system_prompt_config_model import (
@@ -56,7 +55,6 @@ __all__ = [
     "McpServerModel",
     "FeedbackModel",
     "UserModel",
-    "RAGTraceModel",
     "RAGEvalModel",
     "RateLimitConfigModel",
     "RequestLogModel",

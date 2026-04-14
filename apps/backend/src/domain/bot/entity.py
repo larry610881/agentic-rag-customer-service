@@ -73,7 +73,6 @@ class Bot:
     mcp_servers: list[McpServerConfig] = field(default_factory=list)
     mcp_bindings: list[BotMcpBinding] = field(default_factory=list)
     max_tool_calls: int = 5
-    audit_mode: str = "minimal"  # "minimal" | "full"
     eval_provider: str = ""  # Eval LLM provider (independent from bot LLM)
     eval_model: str = ""  # Eval LLM model
     eval_depth: str = "L1"  # "off" | any combo of "L1", "L2", "L3" joined by "+"

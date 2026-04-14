@@ -70,7 +70,6 @@ def setup_bot_audit(ctx, name, mode, audit):
         ctx["headers"],
         name,
         [ctx["kb_id"]],
-        audit_mode=audit,
     )
 
 

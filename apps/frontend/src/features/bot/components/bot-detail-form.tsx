@@ -59,7 +59,6 @@ const botFormSchema = z.object({
   rag_top_k: z.coerce.number().int().min(1).max(20),
   rag_score_threshold: z.coerce.number().min(0).max(1),
   show_sources: z.boolean(),
-  audit_mode: z.enum(["off", "minimal", "full"]),
   eval_provider: z.string().optional(),
   eval_model: z.string().optional(),
   eval_depth: z.string(),
@@ -174,7 +173,6 @@ export function BotDetailForm({
       rag_top_k: bot.rag_top_k,
       rag_score_threshold: bot.rag_score_threshold,
       show_sources: bot.show_sources,
-      audit_mode: bot.audit_mode ?? "minimal",
       eval_provider: bot.eval_provider ?? "",
       eval_model: bot.eval_model ?? "",
       eval_depth: bot.eval_depth ?? "L1",
@@ -251,7 +249,6 @@ export function BotDetailForm({
       rag_top_k: bot.rag_top_k,
       rag_score_threshold: bot.rag_score_threshold,
       show_sources: bot.show_sources,
-      audit_mode: bot.audit_mode ?? "minimal",
       eval_provider: bot.eval_provider ?? "",
       eval_model: bot.eval_model ?? "",
       eval_depth: bot.eval_depth ?? "L1",
@@ -370,33 +367,6 @@ export function BotDetailForm({
 
         {/* Tab 1: RAG 知識庫 */}
         <TabsContent value={TAB_KEYS.KNOWLEDGE} className="flex flex-col gap-6 pt-4">
-          {/* Audit 模式 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">Audit 記錄模式</h3>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="bot-audit-mode">記錄模式</Label>
-              <Controller
-                name="audit_mode"
-                control={control}
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger id="bot-audit-mode" className="w-64">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="off">Off（不記錄）</SelectItem>
-                      <SelectItem value="minimal">Minimal（基本記錄）</SelectItem>
-                      <SelectItem value="full">Full（完整記錄含 input/output）</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              <p className="text-xs text-muted-foreground">
-                Off 模式不記錄任何工具呼叫；Full 模式會記錄輸入參數和輸出結果
-              </p>
-            </div>
-          </section>
-
           {/* RAG Evaluation 設定 */}
           <section className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold">RAG 品質評估</h3>

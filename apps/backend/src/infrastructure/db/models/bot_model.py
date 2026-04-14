@@ -53,9 +53,6 @@ class BotModel(Base):
         JSON, nullable=False, default=list
     )
     max_tool_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
-    audit_mode: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="minimal", server_default="minimal"
-    )
     eval_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     eval_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     eval_depth: Mapped[str] = mapped_column(

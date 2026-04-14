@@ -40,7 +40,6 @@ export interface Bot {
   llm_provider: string;
   llm_model: string;
   show_sources: boolean;
-  audit_mode: "off" | "minimal" | "full";
   eval_provider: string;
   eval_model: string;
   eval_depth: string;
@@ -85,7 +84,6 @@ export interface CreateBotRequest {
   llm_provider?: string;
   llm_model?: string;
   show_sources?: boolean;
-  audit_mode?: "off" | "minimal" | "full";
   eval_provider?: string;
   eval_model?: string;
   eval_depth?: "off" | "L1" | "L1+L2" | "L1+L2+L3";
@@ -127,7 +125,6 @@ export interface UpdateBotRequest {
   llm_provider?: string;
   llm_model?: string;
   show_sources?: boolean;
-  audit_mode?: "off" | "minimal" | "full";
   eval_provider?: string;
   eval_model?: string;
   eval_depth?: "off" | "L1" | "L1+L2" | "L1+L2+L3";

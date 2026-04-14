@@ -236,7 +236,6 @@ class SendMessageUseCase:
                 cfg["mcp_servers"] = registry_servers
 
         cfg["max_tool_calls"] = bot.max_tool_calls or 5
-        cfg["audit_mode"] = getattr(bot, "audit_mode", "minimal")
         cfg["bot_id"] = bot.id.value
         cfg["memory_enabled"] = getattr(bot, "memory_enabled", False)
         cfg["memory_extraction_threshold"] = getattr(
@@ -553,7 +552,6 @@ class SendMessageUseCase:
             rag_score_threshold=bot_cfg["rag_score_threshold"],
             mcp_servers=bot_cfg.get("mcp_servers"),
             max_tool_calls=bot_cfg.get("max_tool_calls", 5),
-            audit_mode=bot_cfg.get("audit_mode", "minimal"),
             bot_id=bot_cfg.get("bot_id", ""),
         )
         latency_ms = int((time.perf_counter() - t0) * 1000)
@@ -594,20 +592,8 @@ class SendMessageUseCase:
         # Fire-and-forget: memory extraction
         await self._fire_memory_extraction(command, bot_cfg, conversation)
 
-        # Fire-and-forget: persist RAG trace
-        trace_id = str(uuid4())
-        await self._persist_trace(
-            tenant_id=command.tenant_id,
-            query=command.message,
-            tool_calls=response.tool_calls,
-            latency_ms=latency_ms,
-            chunk_count=len(retrieved_chunks) if retrieved_chunks else 0,
-            message_id=None,
-            trace_id=trace_id,
-            prompt_snapshot=bot_cfg.get("system_prompt") or None,
-        )
-
         # Fire-and-forget: background evaluation
+        trace_id = str(uuid4())
         eval_depth = bot_cfg.get("eval_depth", "off")
         if eval_depth != "off" and self._eval_use_case:
             asyncio.create_task(
@@ -702,7 +688,6 @@ class SendMessageUseCase:
             rag_score_threshold=bot_cfg["rag_score_threshold"],
             mcp_servers=bot_cfg.get("mcp_servers"),
             max_tool_calls=bot_cfg.get("max_tool_calls", 5),
-            audit_mode=bot_cfg.get("audit_mode", "minimal"),
             bot_id=bot_cfg.get("bot_id", ""),
         ):
             if event["type"] == "token":
@@ -764,19 +749,8 @@ class SendMessageUseCase:
         # Fire-and-forget: memory extraction
         await self._fire_memory_extraction(command, bot_cfg, conversation)
 
-        trace_id = str(uuid4())
-        await self._persist_trace(
-            tenant_id=command.tenant_id,
-            query=command.message,
-            tool_calls=tool_calls,
-            latency_ms=latency_ms,
-            chunk_count=len(retrieved_chunks) if retrieved_chunks else 0,
-            message_id=None,
-            trace_id=trace_id,
-            prompt_snapshot=bot_cfg.get("system_prompt") or None,
-        )
-
         # Fire-and-forget: background evaluation
+        trace_id = str(uuid4())
         eval_depth = bot_cfg.get("eval_depth", "off")
         if eval_depth != "off" and self._eval_use_case:
             asyncio.create_task(
@@ -814,48 +788,6 @@ class SendMessageUseCase:
                 return existing
 
         return Conversation(tenant_id=command.tenant_id, bot_id=command.bot_id)
-
-    async def _persist_trace(
-        self,
-        tenant_id: str,
-        query: str,
-        tool_calls: list[dict[str, Any]],
-        latency_ms: int,
-        chunk_count: int,
-        message_id: str | None = None,
-        trace_id: str | None = None,
-        prompt_snapshot: str | None = None,
-    ) -> None:
-        """Save RAG trace to DB (fire-and-forget, never raises).
-
-        Uses injected session factory so E2E tests write to test DB,
-        not production.
-        """
-        try:
-            from src.infrastructure.db.models.rag_trace_model import RAGTraceModel
-
-            session_factory = self._trace_session_factory
-            if session_factory is None:
-                return  # No session factory → skip (prevents unit test leakage)
-
-            if trace_id is None:
-                trace_id = str(uuid4())
-            row = RAGTraceModel(
-                id=str(uuid4()),
-                trace_id=trace_id,
-                query=query[:2000],
-                tenant_id=tenant_id,
-                message_id=message_id,
-                steps=tool_calls,
-                total_ms=float(latency_ms),
-                chunk_count=chunk_count,
-                prompt_snapshot=prompt_snapshot,
-            )
-            async with session_factory() as session:
-                session.add(row)
-                await session.commit()
-        except Exception:
-            logger.warning("trace.persist_failed", exc_info=True)
 
     async def _persist_agent_trace(
         self,

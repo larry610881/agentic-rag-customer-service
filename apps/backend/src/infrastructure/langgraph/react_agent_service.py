@@ -426,7 +426,6 @@ class ReActAgentService(AgentService):
         rag_score_threshold: float | None = None,
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
-        audit_mode: str = "minimal",
         bot_id: str = "",
     ) -> AgentResponse:
         # Start agent trace
@@ -491,7 +490,7 @@ class ReActAgentService(AgentService):
             )
 
             # 5. Parse response
-            return self._parse_response(result, audit_mode=audit_mode)
+            return self._parse_response(result)
 
     @staticmethod
     def _handle_text_chunk(
@@ -523,7 +522,6 @@ class ReActAgentService(AgentService):
     @staticmethod
     def _handle_tool_call_chunk(
         msg: AIMessage,
-        audit_mode: str,
         call_count: int,
         tool_calls_emitted: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
@@ -532,25 +530,23 @@ class ReActAgentService(AgentService):
         Returns events to yield. Mutates tool_calls_emitted in place.
         """
         events: list[dict[str, Any]] = []
-        if audit_mode != "off":
-            tc_list: list[dict[str, Any]] = []
-            for tc in msg.tool_calls:
-                entry: dict[str, Any] = {
-                    "tool_name": tc["name"],
-                    "tool_call_id": tc.get("id", ""),
-                    "reasoning": "",
-                }
-                if audit_mode == "full":
-                    entry["tool_input"] = tc.get("args", {})
-                    entry["iteration"] = call_count
-                tc_list.append(entry)
-            tool_calls_emitted.extend(tc_list)
-            events.append({"type": "tool_calls", "tool_calls": tc_list})
-            for tc in msg.tool_calls:
-                events.append({
-                    "type": "status",
-                    "status": f"{tc['name']}_executing",
-                })
+        tc_list: list[dict[str, Any]] = []
+        for tc in msg.tool_calls:
+            entry: dict[str, Any] = {
+                "tool_name": tc["name"],
+                "tool_call_id": tc.get("id", ""),
+                "reasoning": "",
+                "tool_input": tc.get("args", {}),
+                "iteration": call_count,
+            }
+            tc_list.append(entry)
+        tool_calls_emitted.extend(tc_list)
+        events.append({"type": "tool_calls", "tool_calls": tc_list})
+        for tc in msg.tool_calls:
+            events.append({
+                "type": "status",
+                "status": f"{tc['name']}_executing",
+            })
         return events
 
     async def process_message_stream(
@@ -571,7 +567,6 @@ class ReActAgentService(AgentService):
         rag_score_threshold: float | None = None,
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
-        audit_mode: str = "minimal",
         bot_id: str = "",
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream version — runs the same ReAct loop, yields events."""
@@ -671,7 +666,6 @@ class ReActAgentService(AgentService):
                                                 llm_generating_emitted = False
                                                 for ev in self._handle_tool_call_chunk(
                                                     msg,
-                                                    audit_mode,
                                                     call_count,
                                                     tool_calls_emitted,
                                                 ):
@@ -812,7 +806,6 @@ class ReActAgentService(AgentService):
     @staticmethod
     def _parse_response(
         result: dict[str, Any],
-        audit_mode: str = "minimal",
     ) -> AgentResponse:
         """Extract final answer and tool calls from graph result."""
         import json as _json
@@ -829,17 +822,15 @@ class ReActAgentService(AgentService):
             if isinstance(msg, AIMessage):
                 if msg.tool_calls:
                     iteration += 1
-                    if audit_mode != "off":
-                        for tc in msg.tool_calls:
-                            entry: dict[str, Any] = {
-                                "tool_name": tc["name"],
-                                "tool_call_id": tc.get("id", ""),
-                                "reasoning": "",
-                            }
-                            if audit_mode == "full":
-                                entry["tool_input"] = tc.get("args", {})
-                                entry["iteration"] = iteration
-                            tool_calls.append(entry)
+                    for tc in msg.tool_calls:
+                        entry: dict[str, Any] = {
+                            "tool_name": tc["name"],
+                            "tool_call_id": tc.get("id", ""),
+                            "reasoning": "",
+                            "tool_input": tc.get("args", {}),
+                            "iteration": iteration,
+                        }
+                        tool_calls.append(entry)
                 elif msg.content:
                     answer = (
                         msg.content
@@ -847,9 +838,8 @@ class ReActAgentService(AgentService):
                         else str(msg.content)
                     )
             elif isinstance(msg, ToolMessage):
-                if audit_mode == "full":
-                    content = str(msg.content)[:500] if msg.content else ""
-                    _backfill_tool_output(tool_calls, msg, content)
+                content = str(msg.content)[:500] if msg.content else ""
+                _backfill_tool_output(tool_calls, msg, content)
                 # Extract sources from tool results
                 if hasattr(msg, "content") and msg.content:
                     _found = False

@@ -39,7 +39,6 @@ class UpdateBotCommand:
     llm_provider: object = _UNSET
     llm_model: object = _UNSET
     show_sources: object = _UNSET
-    audit_mode: object = _UNSET
     eval_provider: object = _UNSET
     eval_model: object = _UNSET
     eval_depth: object = _UNSET
@@ -86,7 +85,6 @@ class UpdateBotUseCase:
             "name", "description", "is_active",
             "system_prompt",
             "llm_provider", "llm_model", "show_sources",
-            "audit_mode",
             "eval_provider", "eval_model", "eval_depth",
             "max_tool_calls",
             "widget_enabled", "widget_keep_history",

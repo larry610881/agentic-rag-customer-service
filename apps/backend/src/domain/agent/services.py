@@ -28,7 +28,6 @@ class AgentService(ABC):
         rag_score_threshold: float | None = None,
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
-        audit_mode: str = "minimal",
     ) -> AgentResponse: ...
 
     @abstractmethod
@@ -50,5 +49,4 @@ class AgentService(ABC):
         rag_score_threshold: float | None = None,
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
-        audit_mode: str = "minimal",
     ) -> AsyncIterator[dict[str, Any]]: ...  # pragma: no cover

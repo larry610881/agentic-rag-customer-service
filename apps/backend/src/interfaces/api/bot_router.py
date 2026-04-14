@@ -28,7 +28,6 @@ from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQ
 router = APIRouter(prefix="/api/v1/bots", tags=["bots"])
 
 
-_VALID_AUDIT_MODES = {"off", "minimal", "full"}
 _VALID_EVAL_DEPTHS = {
     "off", "L1", "L2", "L3",
     "L1+L2", "L1+L3", "L2+L3",
@@ -108,7 +107,6 @@ class CreateBotRequest(BaseModel):
     llm_provider: str = ""
     llm_model: str = ""
     show_sources: bool = True
-    audit_mode: str = "minimal"
     eval_provider: str = ""
     eval_model: str = ""
     eval_depth: str = "L1"
@@ -154,7 +152,6 @@ class UpdateBotRequest(BaseModel):
     llm_provider: str | None = None
     llm_model: str | None = None
     show_sources: bool | None = None
-    audit_mode: str | None = None
     eval_provider: str | None = None
     eval_model: str | None = None
     eval_depth: str | None = None
@@ -203,7 +200,6 @@ class BotResponse(BaseModel):
     llm_provider: str
     llm_model: str
     show_sources: bool
-    audit_mode: str
     eval_provider: str
     eval_model: str
     eval_depth: str
@@ -255,7 +251,6 @@ def _to_response(bot) -> BotResponse:
         llm_provider=bot.llm_provider,
         llm_model=bot.llm_model,
         show_sources=bot.show_sources,
-        audit_mode=bot.audit_mode,
         eval_provider=bot.eval_provider,
         eval_model=bot.eval_model,
         eval_depth=bot.eval_depth,
@@ -322,11 +317,6 @@ async def create_bot(
         Provide[Container.create_bot_use_case]
     ),
 ) -> BotResponse:
-    if body.audit_mode not in _VALID_AUDIT_MODES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"audit_mode must be one of {sorted(_VALID_AUDIT_MODES)}",
-        )
     if body.eval_depth not in _VALID_EVAL_DEPTHS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -356,7 +346,6 @@ async def create_bot(
             llm_provider=body.llm_provider,
             llm_model=body.llm_model,
             show_sources=body.show_sources,
-            audit_mode=body.audit_mode,
             eval_provider=body.eval_provider,
             eval_model=body.eval_model,
             eval_depth=body.eval_depth,
@@ -468,11 +457,6 @@ async def update_bot(
         Provide[Container.update_bot_use_case]
     ),
 ) -> BotResponse:
-    if body.audit_mode is not None and body.audit_mode not in _VALID_AUDIT_MODES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"audit_mode must be one of {sorted(_VALID_AUDIT_MODES)}",
-        )
     if body.eval_depth is not None and body.eval_depth not in _VALID_EVAL_DEPTHS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

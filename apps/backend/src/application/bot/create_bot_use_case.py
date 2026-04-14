@@ -34,7 +34,6 @@ class CreateBotCommand:
     llm_provider: str = ""
     llm_model: str = ""
     show_sources: bool = True
-    audit_mode: str = "minimal"
     eval_provider: str = ""
     eval_model: str = ""
     eval_depth: str = "L1"
@@ -109,7 +108,6 @@ class CreateBotUseCase:
             llm_provider=command.llm_provider,
             llm_model=command.llm_model,
             show_sources=command.show_sources,
-            audit_mode=command.audit_mode,
             eval_provider=command.eval_provider,
             eval_model=command.eval_model,
             eval_depth=command.eval_depth,

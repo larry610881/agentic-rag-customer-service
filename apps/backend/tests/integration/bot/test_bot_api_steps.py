@@ -215,7 +215,6 @@ def post_create_bot_full(ctx, client):
         "/api/v1/bots",
         json={
             "name": "Full Bot",
-            "audit_mode": "full",
             "max_tool_calls": 10,
             "mcp_servers": [
                 {
