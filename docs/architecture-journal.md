@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Sub-agent Worker 架構升級 — IntentRoute → WorkerConfig + LLM Router + Per-Worker ReAct](#sub-agent-worker-架構升級--intentroute--workerconfig--llm-router--per-worker-react)
 - [Agent 執行追蹤視覺化 — ContextVar Collector + React Flow DAG + 瀑布時間軸](#agent-執行追蹤視覺化--contextvar-collector--react-flow-dag--瀑布時間軸)
 - [Sprint W.4 — Wiki 前端 UI + Stale Detection（條件渲染 + Query-time 降級）](#sprint-w4--wiki-前端-ui--stale-detectio條件渲染--query-time-降級)
 - [Sprint W.3 — Wiki 查詢 + ReAct 整合（Strategy Pattern + KeywordBFSNavigator）](#sprint-w3--wiki-查詢--react-整合strategy-pattern--keywordbfsnavigator)
@@ -75,6 +76,39 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Sub-agent Worker 架構升級 — IntentRoute → WorkerConfig + LLM Router + Per-Worker ReAct
+
+**日期**：2026-04-14
+**涉及層級**：後端 DDD 跨 4 層 + 前端全棧（Types → Hooks → Component → Tab）
+
+### 本次相關主題
+
+Config-Driven Agent Composition、LLM Router Pattern、Parameter Override（而非 Instance Duplication）、Independent Table vs JSON Column、Legacy Fallback
+
+### 做得好的地方
+
+- **不改 ReActAgentService**：關鍵洞察 — ReAct 已接受所有參數（llm_params, system_prompt, mcp_servers），不需要為每個 Worker 建立獨立的 agent instance。只需在 `SendMessageUseCase` 中根據路由結果組裝不同的 config dict，呼叫同一個 agent_service。這避免了大規模重構 agent 層
+- **`_resolve_worker_config()` 的 override 策略**：Worker 設定覆蓋 Bot default，但只覆蓋有值的欄位（`llm_provider=None` 代表用 Bot 的 model）。這讓 Worker 可以只定義差異（例如只改 model，其他全用 Bot default），降低配置負擔
+- **獨立 `bot_workers` 表而非 JSON column**：`intent_routes` 用 JSON 存在 bots 表內，但 WorkerConfig 有 12+ 欄位（model/prompt/tools/params），JSON 會很難 query 和 validate。獨立表支援未來的 worker 模板共享、跨 bot 複用
+- **Legacy fallback**：`_resolve_worker_config()` 先查 bot_workers 表，若為空才 fallback 到舊的 intent_routes JSON。這讓遷移可以漸進進行，不會強迫使用者立刻改
+- **IntentClassifier 升級而非新建**：新增 `classify_workers()` 方法，複用 `_call_llm()` 和 `_match()` 內部邏輯，保留 `classify()` 做 legacy 支援。不重複造輪子
+- **WorkersSection 元件獨立**：Workers tab 的 UI 抽成獨立元件，每個 Worker 是展開/收合卡片，修改即時 API 同步（onBlur → mutation），不綁在 Bot form 的 react-hook-form 上。這讓 Worker CRUD 的生命週期獨立於 Bot form 的 submit cycle
+
+### 潛在隱憂
+
+- **LLM Router 的分類延遲**：每次訊息都要先呼叫一次 LLM 做分類（即使 temperature=0, max_tokens=50），增加 ~200-500ms 延遲。高流量場景需要考慮 cache（相似訊息重複分類）→ 建議：未來加 embedding-based 快速分類做第一層，LLM 做 fallback → 優先級：中
+- **Worker config 修改不需要 Bot form submit**：Workers 用獨立 API CRUD，但 Bot 的 `router_model` 在 form 裡。可能造成使用者認知不一致（改 Worker 立即生效，改 router_model 要按儲存）→ 建議：考慮把 router_model 也移到 Workers tab 的 header → 優先級：低
+- **MCP tool 過濾靠 name 或 registry_id 比對**：`_resolve_worker_config` 用 `s.get("name") in enabled_mcp_ids or s.get("registry_id") in enabled_mcp_ids` 做匹配。如果 registry_id 和 name 不一致可能漏配。需要統一用 registry_id → 優先級：中
+- **intent_routes 遷移 script 尚未實作**：舊 intent_routes JSON 和新 bot_workers 表並存，但沒有自動遷移工具。使用者需要手動在 Workers tab 重建 → 建議：寫一次性 migration script → 優先級：中
+- **BDD/TDD 順序違規**：本次 4 Phase 全部先實作後補 BDD，違反 Stage 2→3→4 順序。已記錄 feedback，後續功能必須 BDD 先行 → 優先級：高（流程改善）
+
+### 延伸學習
+
+- **Config-Driven vs Instance-Driven Agent Composition**：本次選擇 config-driven（一個 agent instance，不同 config），另一個方案是 instance-driven（每個 Worker 建立獨立 agent instance + 獨立 tool set + 獨立 graph）。Config-driven 更輕量但限制在同一種 graph 結構（ReAct）；instance-driven 可以讓不同 Worker 用完全不同的 graph topology（例如 Worker A 用 ReAct，Worker B 用 Chain-of-Thought）。目前的設計在 Worker 只是「參數不同的 ReAct」時最優，但如果未來需要 Worker 有不同的 graph 結構，要升級為 instance-driven。搜尋：_LangGraph subgraph composition_ / _multi-agent orchestration patterns_
+- **LLM Router vs Embedding Router**：本次用 LLM（temperature=0）做分類路由，是最靈活但最貴的方案。更快的替代方案：(1) Embedding similarity — 預先 embed 每個 Worker 的 description，runtime 算 cosine similarity，~10ms 而非 ~300ms；(2) Keyword regex — 最快但最不靈活（已在 sentiment 移除中驗證不好用）；(3) 混合方案 — embedding 做初篩，低信心度才 fallback 到 LLM。搜尋：_semantic router_ / _intent classification embedding vs LLM_
 
 ---
 

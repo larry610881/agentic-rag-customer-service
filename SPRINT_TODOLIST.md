@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-14 (Agent 執行追蹤視覺化 — 全棧完成 + BDD + Journal)
+> 最後更新：2026-04-14 (Sub-agent Worker 架構 + MCP 租戶權限 + Sentiment 移除)
 
 ---
 
@@ -1287,6 +1287,40 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | Observability Tab 整合 | ✅ 完成 | 第三 Tab「Agent 執行追蹤」 |
 | BDD Feature | ✅ 完成 | 5 scenarios（ReAct/Supervisor/ContextVar/no-op/序列化） |
 | Unit Test | ✅ 完成 | 5/5 pass |
+| Architecture Journal | ✅ 完成 | 架構筆記已追加 |
+
+---
+
+## Sentiment/Reflect 移除 + MCP 租戶權限 + Sub-agent Worker 架構（2026-04-14）
+
+### Sentiment/Reflect 移除
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| SentimentService 移除 | ✅ 完成 | ABC + KeywordSentimentService + SentimentResult 刪除 |
+| _reflect() 移除 | ✅ 完成 | Supervisor / MetaSupervisor 硬編碼補充句刪除 |
+| AgentResponse 欄位清理 | ✅ 完成 | sentiment / escalated 欄位移除 |
+| 測試清理 | ✅ 完成 | 4 測試檔刪除, 536 tests pass |
+
+### MCP 租戶權限（階段 A）
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| find_accessible() | ✅ 完成 | Repository 新增租戶過濾（global + tenant scope） |
+| API 過濾 | ✅ 完成 | GET /mcp-servers?tenant_id= |
+| SendMessageUseCase 驗證 | ✅ 完成 | 跨租戶 MCP 自動跳過 |
+| 前端 Scope 顯示 + 選擇器 | ✅ 完成 | Registry 表格 + 新增 dialog + Bot 綁定過濾 |
+
+### Sub-agent Worker 架構（階段 B）
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| WorkerConfig domain entity | ✅ 完成 | 12+ 欄位（model/prompt/tools/params） |
+| bot_workers 表 | ✅ 完成 | 獨立表，可擴展 |
+| Worker CRUD Use Cases | ✅ 完成 | List/Create/Update/Delete |
+| IntentClassifier 升級 | ✅ 完成 | classify_workers() 支援 WorkerConfig |
+| SendMessageUseCase 核心改造 | ✅ 完成 | _resolve_worker_config() LLM routing |
+| Worker CRUD API | ✅ 完成 | /api/v1/bots/{id}/workers |
+| Bot router_model 欄位 | ✅ 完成 | 前後端全棧 |
+| Workers Tab UI | ✅ 完成 | WorkersSection 元件（model/prompt/tools/params 配置） |
+| BDD | ✅ 完成 | 10 scenarios（CRUD 6 + routing 4） |
 | Architecture Journal | ✅ 完成 | 架構筆記已追加 |
 
 ---
