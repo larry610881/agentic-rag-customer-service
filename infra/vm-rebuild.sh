@@ -27,14 +27,14 @@ podman run -d --name postgres \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=agentic_rag \
   -v pgdata:/var/lib/postgresql/data \
-  postgres:16-alpine
+  docker.io/library/postgres:16-alpine
 
 echo "=== 5. 啟動 Redis ==="
 podman run -d --name redis \
   --restart=unless-stopped \
   -p 6379:6379 \
   -v redis_data:/data \
-  redis:7-alpine
+  docker.io/library/redis:7-alpine
 
 echo "=== 6. 啟動 etcd（Milvus 依賴）==="
 podman run -d --name etcd \
@@ -55,7 +55,7 @@ podman run -d --name minio \
   -e MINIO_ACCESS_KEY=minioadmin \
   -e MINIO_SECRET_KEY=minioadmin \
   -v minio_data:/minio_data \
-  minio/minio:RELEASE.2024-11-07T00-52-20Z \
+  docker.io/minio/minio:RELEASE.2024-11-07T00-52-20Z \
   server /minio_data --console-address ":9001"
 
 echo "等待 etcd + minio 啟動..."
@@ -64,11 +64,11 @@ sleep 10
 echo "=== 8. 啟動 Milvus ==="
 podman run -d --name milvus \
   --restart=unless-stopped \
-  -p 19530:19530 -p 9091:9091 \
-  -e ETCD_ENDPOINTS=host.containers.internal:2379 \
-  -e MINIO_ADDRESS=host.containers.internal:9000 \
+  --network=host \
+  -e ETCD_ENDPOINTS=127.0.0.1:2379 \
+  -e MINIO_ADDRESS=127.0.0.1:9000 \
   -v milvus_data:/var/lib/milvus \
-  milvusdb/milvus:v2.5.6 \
+  docker.io/milvusdb/milvus:v2.5.6 \
   milvus run standalone
 
 echo "等待所有服務就緒..."
