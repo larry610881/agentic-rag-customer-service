@@ -245,6 +245,17 @@ class ReActAgentService(AgentService):
                 if model_name:
                     node_token_usage["model"] = model_name
 
+            # Build llm_input/output for trace
+            llm_input_text = "\n---\n".join(
+                f"[{type(m).__name__}] {m.content if isinstance(m.content, str) else str(m.content)}"
+                for m in messages
+            )
+            llm_output_text = (
+                response.content
+                if isinstance(response, AIMessage) and isinstance(response.content, str)
+                else str(getattr(response, "content", ""))
+            )
+
             if isinstance(response, AIMessage) and response.tool_calls:
                 tc_summary = [
                     {
@@ -259,7 +270,6 @@ class ReActAgentService(AgentService):
                     elapsed_ms=elapsed_ms,
                     tool_calls=tc_summary,
                 )
-                # Trace: agent_llm node with tool call decision
                 last_agent_node_id = AgentTraceCollector.add_node(
                     node_type="agent_llm",
                     label=f"ReAct 迭代 {call_count}",
@@ -270,6 +280,8 @@ class ReActAgentService(AgentService):
                     iteration=call_count,
                     decision="tool_call",
                     tool_calls=[tc["name"] for tc in response.tool_calls],
+                    llm_input=llm_input_text,
+                    llm_output=str(response.tool_calls),
                 )
             else:
                 content_preview = ""
@@ -285,7 +297,6 @@ class ReActAgentService(AgentService):
                     elapsed_ms=elapsed_ms,
                     answer_preview=content_preview,
                 )
-                # Trace: agent_llm node with final answer
                 last_agent_node_id = AgentTraceCollector.add_node(
                     node_type="agent_llm",
                     label=f"ReAct 迭代 {call_count} (回覆)",
@@ -296,6 +307,8 @@ class ReActAgentService(AgentService):
                     iteration=call_count,
                     decision="final_answer",
                     answer_preview=content_preview,
+                    llm_input=llm_input_text,
+                    llm_output=llm_output_text,
                 )
 
             return {"messages": [response]}

@@ -101,6 +101,7 @@ type CustomNodeData = {
 
 function TraceNode({ data }: { data: CustomNodeData }) {
   const [expanded, setExpanded] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
   const n = data.execNode;
   const Icon = NODE_ICONS[n.node_type] ?? Brain;
   const colorClass = NODE_COLORS[n.node_type] ?? "border-gray-400 bg-gray-50";
@@ -111,10 +112,11 @@ function TraceNode({ data }: { data: CustomNodeData }) {
     !!meta.tool_calls ||
     !!meta.selected_worker ||
     !!meta.message_preview;
+  const hasRaw = !!meta.llm_input || !!meta.llm_output;
 
   return (
     <div
-      className={`rounded-lg border-2 px-3 py-2 shadow-sm min-w-[180px] ${expanded ? "max-w-[500px]" : "max-w-[280px]"} ${colorClass}`}
+      className={`rounded-lg border-2 px-3 py-2 shadow-sm min-w-[180px] ${showRaw ? "max-w-[600px]" : expanded ? "max-w-[500px]" : "max-w-[280px]"} ${colorClass}`}
     >
       <Handle type="target" position={Position.Left} className="!bg-gray-400" />
       <div className="drag-handle flex items-center gap-2 cursor-grab active:cursor-grabbing">
@@ -156,6 +158,45 @@ function TraceNode({ data }: { data: CustomNodeData }) {
         </button>
       )}
       {expanded && <MetadataDetails meta={meta} />}
+      {expanded && hasRaw && (
+        <div className="nopan nodrag mt-1">
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowRaw(!showRaw);
+            }}
+          >
+            {showRaw ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            Input / Output 原文
+          </button>
+          {showRaw && (
+            <div className="nopan nodrag mt-2 space-y-2 text-xs max-h-[400px] overflow-y-auto">
+              {meta.llm_input && (
+                <div>
+                  <span className="font-medium text-blue-600 dark:text-blue-400">Input:</span>
+                  <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-blue-50 dark:bg-blue-950 p-2 text-xs">
+                    {str(meta.llm_input)}
+                  </pre>
+                </div>
+              )}
+              {meta.llm_output && (
+                <div>
+                  <span className="font-medium text-green-600 dark:text-green-400">Output:</span>
+                  <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-green-50 dark:bg-green-950 p-2 text-xs">
+                    {str(meta.llm_output)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <Handle
         type="source"
         position={Position.Right}
