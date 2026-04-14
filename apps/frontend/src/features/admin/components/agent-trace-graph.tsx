@@ -129,6 +129,8 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
     { key: "selected_worker", label: "Worker" },
     { key: "selected_team", label: "Team" },
     { key: "user_role", label: "角色" },
+    { key: "history_turns", label: "歷史輪數" },
+    { key: "history_context", label: "歷史上下文", wrap: true },
     { key: "input_chunks", label: "輸入筆數" },
     { key: "output_chunks", label: "輸出筆數" },
     { key: "top_score", label: "最高分" },
