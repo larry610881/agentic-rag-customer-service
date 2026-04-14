@@ -21,6 +21,8 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
+import { JsonView, darkStyles } from "react-json-view-lite";
+import "react-json-view-lite/dist/index.css";
 import type { ExecutionNode, ExecutionNodeType } from "@/types/agent-trace";
 
 const NODE_ICONS: Record<ExecutionNodeType, React.ElementType> = {
@@ -57,21 +59,33 @@ function str(v: unknown): string {
   return String(v ?? "");
 }
 
-function prettyStr(v: unknown): string {
-  if (v == null) return "";
+function tryParseJson(v: unknown): unknown | null {
+  if (v == null) return null;
+  if (typeof v === "object") return v;
   if (typeof v === "string") {
-    // Try to parse as JSON for pretty printing
     try {
-      const parsed = JSON.parse(v);
-      return JSON.stringify(parsed, null, 2);
+      return JSON.parse(v);
     } catch {
-      return v;
+      return null;
     }
   }
-  if (typeof v === "object") {
-    return JSON.stringify(v, null, 2);
+  return null;
+}
+
+function SmartPre({ value, className }: { value: unknown; className?: string }) {
+  const parsed = tryParseJson(value);
+  if (parsed !== null && typeof parsed === "object") {
+    return (
+      <div className={`rounded p-2 text-xs ${className ?? ""}`}>
+        <JsonView data={parsed} style={darkStyles} />
+      </div>
+    );
   }
-  return String(v);
+  return (
+    <pre className={`whitespace-pre-wrap break-words rounded p-2 text-xs ${className ?? ""}`}>
+      {str(value)}
+    </pre>
+  );
 }
 
 function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
@@ -126,9 +140,7 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
         </div>
       )}
       {meta.result_preview ? (
-        <pre className="whitespace-pre-wrap break-words rounded bg-muted/50 p-1.5">
-          {str(meta.result_preview)}
-        </pre>
+        <SmartPre value={meta.result_preview} className="bg-muted/50" />
       ) : null}
     </div>
   );
@@ -221,17 +233,13 @@ function TraceNode({ data }: { data: CustomNodeData }) {
               {meta.llm_input && (
                 <div>
                   <span className="font-medium text-blue-600 dark:text-blue-400">Input:</span>
-                  <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-blue-50 dark:bg-blue-950 p-2 text-xs">
-                    {prettyStr(meta.llm_input)}
-                  </pre>
+                  <SmartPre value={meta.llm_input} className="mt-1 bg-blue-50 dark:bg-blue-950" />
                 </div>
               )}
               {meta.llm_output && (
                 <div>
                   <span className="font-medium text-green-600 dark:text-green-400">Output:</span>
-                  <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-green-50 dark:bg-green-950 p-2 text-xs">
-                    {prettyStr(meta.llm_output)}
-                  </pre>
+                  <SmartPre value={meta.llm_output} className="mt-1 bg-green-50 dark:bg-green-950" />
                 </div>
               )}
             </div>
