@@ -96,7 +96,7 @@ def ocr_engine_error(context, mock_ocr_engine):
 def parse_pdf(context):
     service = OcrFileParserService(ocr_engine=context["ocr_engine"])
     context["result"] = service.parse(
-        context["raw_bytes"], context["content_type"]
+        context["raw_bytes"], context["content_type"], ocr_mode="catalog"
     )
 
 
@@ -104,7 +104,7 @@ def parse_pdf(context):
 def try_parse_pdf(context):
     service = OcrFileParserService(ocr_engine=context["ocr_engine"])
     try:
-        service.parse(context["raw_bytes"], context["content_type"])
+        service.parse(context["raw_bytes"], context["content_type"], ocr_mode="catalog")
         context["error"] = None
     except OcrProcessingError as e:
         context["error"] = e

@@ -741,6 +741,14 @@ class Container(containers.DeclarativeContainer):
         factory=_llm_factory,
     )
 
+    # Wire OCR engine's api_key_resolver to _llm_factory (lazy — defined after _ocr_engine)
+    _ocr_engine.add_kwargs(
+        api_key_resolver=providers.Callable(
+            lambda factory: factory.resolve_api_key,
+            _llm_factory,
+        ),
+    )
+
     # --- Application ---
 
     health_check_use_case = providers.Factory(

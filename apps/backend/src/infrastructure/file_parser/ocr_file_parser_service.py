@@ -38,15 +38,19 @@ class OcrFileParserService(FileParserService):
     def parse(
         self, raw_bytes: bytes, content_type: str, ocr_mode: str = "general"
     ) -> str:
+        self.last_input_tokens = 0
+        self.last_output_tokens = 0
+
         if content_type != "application/pdf":
-            self.last_input_tokens = 0
-            self.last_output_tokens = 0
             return self._default.parse(raw_bytes, content_type)
 
+        # general mode: use pypdf text extraction (no LLM needed)
+        if ocr_mode == "general":
+            return self._default.parse(raw_bytes, content_type)
+
+        # catalog/ocr mode: use Claude Vision OCR
         page_images = extract_pages_as_images(raw_bytes)
         if not page_images:
-            self.last_input_tokens = 0
-            self.last_output_tokens = 0
             return ""
 
         prompt = OCR_PROMPTS.get(ocr_mode, OCR_PROMPTS["general"])
@@ -66,10 +70,21 @@ class OcrFileParserService(FileParserService):
         max_pages: int | None = None,
     ) -> str:
         """Async PDF parsing with per-page progress callback."""
+        self.last_input_tokens = 0
+        self.last_output_tokens = 0
+
+        # general mode: use pypdf text extraction (no LLM needed)
+        if ocr_mode == "general":
+            content = await asyncio.to_thread(
+                self._default.parse, raw_bytes, "application/pdf"
+            )
+            if on_progress:
+                await on_progress(1, 1)
+            return content
+
+        # catalog/ocr mode: use Claude Vision OCR
         page_images = extract_pages_as_images(raw_bytes)
         if not page_images:
-            self.last_input_tokens = 0
-            self.last_output_tokens = 0
             return ""
 
         if max_pages:

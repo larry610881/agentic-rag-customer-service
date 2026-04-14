@@ -98,16 +98,32 @@ class ClaudeVisionOcrEngine(OcrEngine):
 
     def __init__(
         self,
-        api_key: str,
+        api_key: str = "",
         model: str = "claude-haiku-4-5-20251001",
         max_concurrent: int = 5,
+        api_key_resolver=None,
     ) -> None:
-        self._client = anthropic.AsyncAnthropic(api_key=api_key)
+        self._api_key = api_key
+        self._api_key_resolver = api_key_resolver  # async (provider_name) -> str
+        self._client: anthropic.AsyncAnthropic | None = None
+        if api_key:
+            self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._model = model
         self._semaphore = asyncio.Semaphore(max_concurrent)
         # Accumulated usage from last parse batch (reset per batch)
         self.last_input_tokens: int = 0
         self.last_output_tokens: int = 0
+
+    async def _ensure_client(self) -> anthropic.AsyncAnthropic:
+        if self._client is not None:
+            return self._client
+        api_key = self._api_key
+        if not api_key and self._api_key_resolver:
+            api_key = await self._api_key_resolver("anthropic")
+        if not api_key:
+            raise RuntimeError("Anthropic API key not configured for OCR")
+        self._client = anthropic.AsyncAnthropic(api_key=api_key)
+        return self._client
 
     async def ocr_page(self, image_bytes: bytes, prompt: str | None = None) -> str:
         prompt = prompt or _DEFAULT_PROMPT
@@ -115,9 +131,10 @@ class ClaudeVisionOcrEngine(OcrEngine):
         b64 = base64.standard_b64encode(image_bytes).decode()
         img_kb = len(image_bytes) / 1024
         try:
+            client = await self._ensure_client()
             async with self._semaphore:
                 t0 = time.perf_counter()
-                message = await self._client.messages.create(
+                message = await client.messages.create(
                     model=self._model,
                     max_tokens=8192,
                     messages=[
