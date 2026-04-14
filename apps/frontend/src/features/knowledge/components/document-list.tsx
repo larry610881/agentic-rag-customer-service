@@ -20,6 +20,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye, ExternalLink, FileText, FileSpreadsheet, FileJson, FileType } from "lucide-react";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
+import { API_BASE } from "@/lib/api-config";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { DocumentResponse, DocumentQualityStat } from "@/types/knowledge";
 import { useReprocessDocument } from "@/hooks/queries/use-documents";
@@ -316,10 +317,25 @@ export function DocumentList({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
+                      onClick={async () => {
                         const token = useAuthStore.getState().token;
-                        const url = API_ENDPOINTS.documents.view(kbId, doc.id);
-                        window.open(`${url}${token ? `?token=${token}` : ''}`, '_blank');
+                        const url = `${API_BASE}${API_ENDPOINTS.documents.view(kbId, doc.id)}`;
+                        try {
+                          const res = await fetch(url, {
+                            headers: token ? { Authorization: `Bearer ${token}` } : {},
+                          });
+                          if (!res.ok) throw new Error(`${res.status}`);
+                          const blob = await res.blob();
+                          const blobUrl = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = blobUrl;
+                          a.download = doc.filename;
+                          a.click();
+                          URL.revokeObjectURL(blobUrl);
+                        } catch {
+                          // fallback: open in new tab
+                          window.open(url, '_blank');
+                        }
                       }}
                     >
                       <ExternalLink className="mr-1 h-4 w-4" />
