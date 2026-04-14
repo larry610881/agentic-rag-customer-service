@@ -76,7 +76,18 @@ async def llm_rerank(
             messages=[{"role": "user", "content": user_prompt}],
         )
 
+        if not response.content:
+            logger.warning("rerank.empty_response")
+            return chunks[:top_k]
         raw = response.content[0].text.strip()
+        logger.info("rerank.raw_response", raw_preview=raw[:500])
+
+        # Strip markdown code fences if present
+        if raw.startswith("```"):
+            lines = raw.split("\n")
+            # Remove first line (```json or ```) and last line (```)
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            raw = "\n".join(lines).strip()
 
         # Parse JSON scores
         scores = json.loads(raw)
