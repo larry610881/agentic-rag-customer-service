@@ -75,6 +75,7 @@ class Settings(BaseSettings):
 
     # Document Storage
     storage_backend: str = "local"  # "local" | "gcs"
+    local_storage_dir: str = "static/uploads/documents"
     gcs_bucket_name: str = ""
 
     # Text Splitter

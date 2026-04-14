@@ -562,7 +562,10 @@ class Container(containers.DeclarativeContainer):
 
     document_file_storage_service = providers.Selector(
         config.provided.storage_backend,
-        local=providers.Singleton(LocalDocumentFileStorageService),
+        local=providers.Singleton(
+            LocalDocumentFileStorageService,
+            base_dir=config.provided.local_storage_dir,
+        ),
         gcs=providers.Singleton(
             GCSDocumentFileStorageService,
             bucket_name=config.provided.gcs_bucket_name,
