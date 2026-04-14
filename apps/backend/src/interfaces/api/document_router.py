@@ -29,6 +29,7 @@ from src.application.knowledge.reprocess_document_use_case import (
     ReprocessDocumentUseCase,
 )
 from src.application.knowledge.upload_document_use_case import (
+    RequestUploadCommand,
     UploadDocumentCommand,
     UploadDocumentUseCase,
 )
@@ -273,6 +274,108 @@ async def upload_document(
     # Use asyncio.create_task instead of BackgroundTasks to decouple from
     # request lifecycle. BackgroundTasks runs inside the ASGI call scope,
     # so RequestTimeoutMiddleware would cancel long-running OCR.
+    async def _process(doc_id: str, task_id: str, t_id: str) -> None:
+        await safe_background_task(
+            lambda d, t: Container.process_document_use_case().execute(d, t),
+            doc_id,
+            task_id,
+            task_name="process_document",
+            tenant_id=t_id,
+        )
+
+    asyncio.create_task(
+        _process(
+            result.document.id.value,
+            result.task.id.value,
+            tenant.tenant_id,
+        )
+    )
+
+    doc = result.document
+    return UploadDocumentResponse(
+        document=_to_response(doc),
+        task_id=result.task.id.value,
+    )
+
+
+class RequestUploadBody(BaseModel):
+    filename: str
+    content_type: str
+
+
+class RequestUploadResponse(BaseModel):
+    document_id: str
+    task_id: str
+    upload_url: str
+    storage_path: str
+
+
+@router.post("/request-upload", response_model=RequestUploadResponse)
+@inject
+async def request_upload(
+    kb_id: str,
+    body: RequestUploadBody,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: UploadDocumentUseCase = Depends(
+        Provide[Container.upload_document_use_case]
+    ),
+) -> RequestUploadResponse:
+    """Request a signed URL for direct GCS upload (bypasses Cloud Run 32MB limit)."""
+    try:
+        result = await use_case.request_upload(
+            RequestUploadCommand(
+                kb_id=kb_id,
+                tenant_id=tenant.tenant_id,
+                filename=body.filename,
+                content_type=body.content_type,
+            )
+        )
+    except UnsupportedFileTypeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=e.message
+        ) from None
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
+
+    if not result.upload_url:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Direct upload not supported with current storage backend",
+        )
+
+    return RequestUploadResponse(
+        document_id=result.document_id,
+        task_id=result.task_id,
+        upload_url=result.upload_url,
+        storage_path=result.storage_path,
+    )
+
+
+class ConfirmUploadBody(BaseModel):
+    document_id: str
+    task_id: str
+
+
+@router.post("/confirm-upload", response_model=UploadDocumentResponse)
+@inject
+async def confirm_upload(
+    kb_id: str,
+    body: ConfirmUploadBody,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: UploadDocumentUseCase = Depends(
+        Provide[Container.upload_document_use_case]
+    ),
+) -> UploadDocumentResponse:
+    """Confirm direct GCS upload completed, trigger background processing."""
+    try:
+        result = await use_case.confirm_upload(body.document_id, body.task_id)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
+
     async def _process(doc_id: str, task_id: str, t_id: str) -> None:
         await safe_background_task(
             lambda d, t: Container.process_document_use_case().execute(d, t),

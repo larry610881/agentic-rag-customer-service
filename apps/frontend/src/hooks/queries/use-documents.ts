@@ -66,6 +66,13 @@ export function useDeleteDocument() {
   });
 }
 
+interface RequestUploadResponse {
+  document_id: string;
+  task_id: string;
+  upload_url: string;
+  storage_path: string;
+}
+
 export function useUploadDocument() {
   const token = useAuthStore((s) => s.token);
   const queryClient = useQueryClient();
@@ -74,27 +81,70 @@ export function useUploadDocument() {
     mutationFn: async (data: {
       knowledgeBaseId: string;
       file: File;
+      onProgress?: (pct: number) => void;
     }): Promise<UploadDocumentResponse> => {
-      const formData = new FormData();
-      formData.append("file", data.file);
-
-      const res = await fetch(
-        `${API_BASE}${API_ENDPOINTS.documents.upload(data.knowledgeBaseId)}`,
+      // Step 1: Request signed upload URL from backend
+      const reqRes = await apiFetch<RequestUploadResponse>(
+        API_ENDPOINTS.documents.requestUpload(data.knowledgeBaseId),
         {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
+          body: JSON.stringify({
+            filename: data.file.name,
+            content_type: data.file.type || "application/octet-stream",
+          }),
         },
+        token ?? undefined,
       );
 
-      if (!res.ok) {
-        const body = await res.text();
-        throw new ApiError(res.status, body);
+      // Step 2: Direct upload to GCS via signed URL (bypass Cloud Run)
+      if (reqRes.upload_url) {
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", reqRes.upload_url, true);
+          xhr.setRequestHeader(
+            "Content-Type",
+            data.file.type || "application/octet-stream",
+          );
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && data.onProgress) {
+              data.onProgress(Math.round((e.loaded / e.total) * 100));
+            }
+          };
+          xhr.onload = () =>
+            xhr.status >= 200 && xhr.status < 300
+              ? resolve()
+              : reject(new Error(`GCS upload failed: ${xhr.status}`));
+          xhr.onerror = () => reject(new Error("GCS upload network error"));
+          xhr.send(data.file);
+        });
+      } else {
+        // Fallback: old multipart upload (local storage)
+        const formData = new FormData();
+        formData.append("file", data.file);
+        const res = await fetch(
+          `${API_BASE}${API_ENDPOINTS.documents.upload(data.knowledgeBaseId)}`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          },
+        );
+        if (!res.ok) throw new ApiError(res.status, await res.text());
+        return res.json() as Promise<UploadDocumentResponse>;
       }
 
-      return res.json() as Promise<UploadDocumentResponse>;
+      // Step 3: Confirm upload, trigger processing
+      return apiFetch<UploadDocumentResponse>(
+        API_ENDPOINTS.documents.confirmUpload(data.knowledgeBaseId),
+        {
+          method: "POST",
+          body: JSON.stringify({
+            document_id: reqRes.document_id,
+            task_id: reqRes.task_id,
+          }),
+        },
+        token ?? undefined,
+      );
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({

@@ -51,3 +51,25 @@ class GCSDocumentFileStorageService(DocumentFileStorageService):
             expiration=timedelta(seconds=expiry_seconds),
         )
         return url
+
+    async def generate_upload_signed_url(
+        self,
+        tenant_id: str,
+        document_id: str,
+        filename: str,
+        content_type: str = "application/octet-stream",
+        expiry_seconds: int = 600,
+    ) -> str:
+        from datetime import timedelta
+
+        blob_path = f"{tenant_id}/{document_id}/{filename}"
+        bucket = self._get_bucket()
+        blob = bucket.blob(blob_path)
+        url = await asyncio.to_thread(
+            blob.generate_signed_url,
+            version="v4",
+            expiration=timedelta(seconds=expiry_seconds),
+            method="PUT",
+            content_type=content_type,
+        )
+        return url

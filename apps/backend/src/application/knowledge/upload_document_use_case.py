@@ -37,6 +37,22 @@ class UploadDocumentCommand:
     raw_content: bytes
 
 
+@dataclass(frozen=True)
+class RequestUploadCommand:
+    kb_id: str
+    tenant_id: str
+    filename: str
+    content_type: str
+
+
+@dataclass
+class RequestUploadResult:
+    document_id: str
+    task_id: str
+    upload_url: str
+    storage_path: str
+
+
 @dataclass
 class UploadDocumentResult:
     document: Document
@@ -98,3 +114,61 @@ class UploadDocumentUseCase:
         await self._task_repo.save(task)
 
         return UploadDocumentResult(document=document, task=task)
+
+    async def request_upload(self, command: RequestUploadCommand) -> RequestUploadResult:
+        """Create document + processing task, return signed URL for direct GCS upload."""
+        if command.content_type not in _SUPPORTED_TYPES:
+            raise UnsupportedFileTypeError(command.content_type)
+
+        kb = await self._kb_repo.find_by_id(command.kb_id)
+        if kb is None:
+            raise EntityNotFoundError("KnowledgeBase", command.kb_id)
+
+        doc_id = DocumentId()
+        document = Document(
+            id=doc_id,
+            kb_id=command.kb_id,
+            tenant_id=command.tenant_id,
+            filename=command.filename,
+            content_type=command.content_type,
+            content="",
+            raw_content=b"",
+            status="pending",
+        )
+        await self._doc_repo.save(document)
+
+        storage_path = f"{command.tenant_id}/{doc_id.value}/{command.filename}"
+        await self._doc_repo.update_storage_path(doc_id.value, storage_path)
+
+        task = ProcessingTask(
+            id=ProcessingTaskId(),
+            document_id=doc_id.value,
+            tenant_id=command.tenant_id,
+        )
+        await self._task_repo.save(task)
+
+        upload_url = await self._file_storage.generate_upload_signed_url(
+            tenant_id=command.tenant_id,
+            document_id=doc_id.value,
+            filename=command.filename,
+            content_type=command.content_type,
+        )
+
+        return RequestUploadResult(
+            document_id=doc_id.value,
+            task_id=task.id.value,
+            upload_url=upload_url,
+            storage_path=storage_path,
+        )
+
+    async def confirm_upload(self, document_id: str, task_id: str) -> UploadDocumentResult:
+        """Confirm direct upload completed, return document + task for background processing."""
+        doc = await self._doc_repo.find_by_id(document_id)
+        if doc is None:
+            raise EntityNotFoundError("Document", document_id)
+
+        task = await self._task_repo.find_by_id(task_id)
+        if task is None:
+            raise EntityNotFoundError("ProcessingTask", task_id)
+
+        return UploadDocumentResult(document=doc, task=task)

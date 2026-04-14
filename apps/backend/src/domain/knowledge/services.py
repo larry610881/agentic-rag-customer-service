@@ -49,6 +49,20 @@ class DocumentFileStorageService(ABC):
         """
         return None
 
+    async def generate_upload_signed_url(
+        self,
+        tenant_id: str,
+        document_id: str,
+        filename: str,
+        content_type: str = "application/octet-stream",
+        expiry_seconds: int = 600,
+    ) -> str:
+        """Generate a signed URL for client-side direct upload.
+
+        Returns empty string if not supported (local storage).
+        """
+        return ""
+
 
 class TextSplitterService(ABC):
     @abstractmethod
