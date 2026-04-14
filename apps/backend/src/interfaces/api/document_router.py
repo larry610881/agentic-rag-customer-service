@@ -379,7 +379,13 @@ async def confirm_upload(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from None
 
-    async def _process(doc_id: str, task_id: str, t_id: str) -> None:
+    # Capture IDs before response — background task must NOT touch request-scoped objects
+    doc_id = result.document.id.value
+    task_id = result.task.id.value
+    tenant_id = tenant.tenant_id
+
+    async def _process() -> None:
+        await asyncio.sleep(0.5)  # Let response finish, release request session
         _log.warning(f"[confirm] bg task START doc={doc_id}")
         try:
             await safe_background_task(
@@ -387,20 +393,14 @@ async def confirm_upload(
                 doc_id,
                 task_id,
                 task_name="process_document",
-                tenant_id=t_id,
+                tenant_id=tenant_id,
             )
             _log.warning(f"[confirm] bg task DONE doc={doc_id}")
         except Exception as e:
             _log.error(f"[confirm] bg task FAIL doc={doc_id} err={e}", exc_info=True)
 
-    _log.warning(f"[confirm] creating bg task doc={result.document.id.value}")
-    asyncio.create_task(
-        _process(
-            result.document.id.value,
-            result.task.id.value,
-            tenant.tenant_id,
-        )
-    )
+    _log.warning(f"[confirm] creating bg task doc={doc_id}")
+    asyncio.create_task(_process())
 
     doc = result.document
     return UploadDocumentResponse(
