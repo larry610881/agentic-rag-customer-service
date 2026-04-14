@@ -16,6 +16,7 @@ interface ModelSelectProps {
   enabledModels: EnabledModel[] | undefined;
   placeholder?: string;
   allowEmpty?: boolean;
+  emptyLabel?: string;
   id?: string;
 }
 
@@ -25,6 +26,7 @@ export function ModelSelect({
   enabledModels,
   placeholder = "請選擇模型",
   allowEmpty = false,
+  emptyLabel = "不使用（關閉）",
   id,
 }: ModelSelectProps) {
   return (
@@ -34,7 +36,7 @@ export function ModelSelect({
       </SelectTrigger>
       <SelectContent>
         {allowEmpty && (
-          <SelectItem value="__none__">不使用（關閉）</SelectItem>
+          <SelectItem value="__none__">{emptyLabel}</SelectItem>
         )}
         {enabledModels && enabledModels.length > 0 ? (
           Object.entries(

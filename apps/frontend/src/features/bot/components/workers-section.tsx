@@ -6,13 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ModelSelect } from "@/components/shared/model-select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -188,38 +182,27 @@ function WorkerCard({
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs">LLM 模型（空 = Bot 預設）</Label>
-              <Select
+              <ModelSelect
                 value={
                   worker.llm_model
-                    ? `${worker.llm_provider ?? ""}::${worker.llm_model}`
-                    : "__default__"
+                    ? `${worker.llm_provider ?? ""}:${worker.llm_model}`
+                    : "__none__"
                 }
                 onValueChange={(v) => {
-                  if (v === "__default__") {
+                  if (v === "__none__") {
                     handleFieldUpdate("llm_provider", null);
                     handleFieldUpdate("llm_model", null);
                   } else {
-                    const [provider, model] = v.split("::");
+                    const [provider, ...rest] = v.split(":");
                     handleFieldUpdate("llm_provider", provider);
-                    handleFieldUpdate("llm_model", model);
+                    handleFieldUpdate("llm_model", rest.join(":"));
                   }
                 }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Bot 預設" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__default__">Bot 預設</SelectItem>
-                  {enabledModels.map((m) => (
-                    <SelectItem
-                      key={`${m.provider_name}::${m.model_id}`}
-                      value={`${m.provider_name}::${m.model_id}`}
-                    >
-                      {m.display_name || m.model_id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                enabledModels={enabledModels}
+                allowEmpty
+                emptyLabel="Bot 預設"
+                placeholder="Bot 預設"
+              />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs">最大迭代次數</Label>
