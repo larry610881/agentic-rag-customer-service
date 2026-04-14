@@ -95,6 +95,18 @@ class BotModel(Base):
     memory_extraction_prompt: Mapped[str] = mapped_column(
         Text, nullable=False, default="", server_default=""
     )
+    rerank_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    rerank_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
+    rerank_top_n: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=20, server_default="20"
+    )
+    rerank_final_top_k: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=5, server_default="5"
+    )
     intent_routes: Mapped[list] = mapped_column(
         JSON, nullable=False, default=list, server_default="[]"
     )

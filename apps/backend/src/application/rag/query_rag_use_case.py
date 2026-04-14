@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.rag.services import EmbeddingService, LLMService, VectorStore
 from src.domain.rag.value_objects import RAGResponse, Source
+from src.infrastructure.rag.llm_reranker import llm_rerank
 from src.domain.shared.exceptions import EntityNotFoundError, NoRelevantKnowledgeError
 from src.infrastructure.logging import get_logger
 
@@ -28,6 +29,10 @@ class QueryRAGCommand:
     top_k: int = 5
     score_threshold: float = 0.3
     kb_ids: list[str] | None = None
+    rerank_enabled: bool = False
+    rerank_model: str = ""
+    rerank_top_n: int = 20       # embedding 召回數量
+    rerank_final_top_k: int = 5  # rerank 後取幾筆
 
 
 @dataclass(frozen=True)
@@ -66,12 +71,17 @@ class QueryRAGUseCase:
         embed_ms = int((time.perf_counter() - t0) * 1000)
 
         # Search across all KBs in parallel and merge results
+        search_limit = (
+            command.rerank_top_n
+            if command.rerank_enabled
+            else command.top_k
+        )
         t0 = time.perf_counter()
         search_tasks = [
             self._vector_store.search(
                 collection=f"kb_{kid}",
                 query_vector=query_vector,
-                limit=command.top_k,
+                limit=search_limit,
                 score_threshold=command.score_threshold,
                 filters={"tenant_id": command.tenant_id},
             )
@@ -81,9 +91,26 @@ class QueryRAGUseCase:
         all_results = [r for batch in search_results for r in batch]
         search_ms = int((time.perf_counter() - t0) * 1000)
 
-        # Sort by score descending, take top_k
+        # Sort by score descending
         all_results.sort(key=lambda r: r.score, reverse=True)
-        results = all_results[: command.top_k]
+
+        # Rerank if enabled
+        if command.rerank_enabled and len(all_results) > command.rerank_final_top_k:
+            rerank_input = all_results[:search_limit]
+            reranked = await llm_rerank(
+                query=command.query,
+                chunks=[{"content": r.content, "_idx": i} for i, r in enumerate(rerank_input)],
+                model=command.rerank_model or "claude-haiku-4-5-20251001",
+                top_k=command.rerank_final_top_k,
+            )
+            # Map back to original results
+            results = []
+            for rc in reranked:
+                idx = rc.get("_idx", 0)
+                if idx < len(rerank_input):
+                    results.append(rerank_input[idx])
+        else:
+            results = all_results[:command.top_k]
 
         if not results:
             logger.info(
@@ -149,12 +176,17 @@ class QueryRAGUseCase:
         query_vector = await self._embedding_service.embed_query(command.query)
         embed_ms = int((time.perf_counter() - t0) * 1000)
 
+        search_limit = (
+            command.rerank_top_n
+            if command.rerank_enabled
+            else command.top_k
+        )
         t0 = time.perf_counter()
         search_tasks = [
             self._vector_store.search(
                 collection=f"kb_{kid}",
                 query_vector=query_vector,
-                limit=command.top_k,
+                limit=search_limit,
                 score_threshold=command.score_threshold,
                 filters={"tenant_id": command.tenant_id},
             )
@@ -165,7 +197,26 @@ class QueryRAGUseCase:
         search_ms = int((time.perf_counter() - t0) * 1000)
 
         all_results.sort(key=lambda r: r.score, reverse=True)
-        results = all_results[: command.top_k]
+
+        # Rerank if enabled
+        if command.rerank_enabled and len(all_results) > command.rerank_final_top_k:
+            rerank_input = all_results[:search_limit]
+            reranked = await llm_rerank(
+                query=command.query,
+                chunks=[
+                    {"content": r.content, "_idx": i}
+                    for i, r in enumerate(rerank_input)
+                ],
+                model=command.rerank_model or "claude-haiku-4-5-20251001",
+                top_k=command.rerank_final_top_k,
+            )
+            results = []
+            for rc in reranked:
+                idx = rc.get("_idx", 0)
+                if idx < len(rerank_input):
+                    results.append(rerank_input[idx])
+        else:
+            results = all_results[:command.top_k]
 
         if not results:
             logger.info(

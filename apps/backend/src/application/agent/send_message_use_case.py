@@ -245,6 +245,10 @@ class SendMessageUseCase:
         cfg["memory_extraction_prompt"] = getattr(
             bot, "memory_extraction_prompt", ""
         )
+        cfg["rerank_enabled"] = getattr(bot, "rerank_enabled", False)
+        cfg["rerank_model"] = getattr(bot, "rerank_model", "")
+        cfg["rerank_top_n"] = getattr(bot, "rerank_top_n", 20)
+        cfg["rerank_final_top_k"] = getattr(bot, "rerank_final_top_k", 5)
         cfg["eval_depth"] = getattr(bot, "eval_depth", "off")
         cfg["eval_provider"] = getattr(bot, "eval_provider", "")
         cfg["eval_model"] = getattr(bot, "eval_model", "")
@@ -508,6 +512,12 @@ class SendMessageUseCase:
         metadata = self._extract_metadata(conversation)
 
         bot_cfg = await self._load_bot_config(command)
+
+        # Inject rerank config into metadata for RAG tool
+        metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
+        metadata["rerank_model"] = bot_cfg.get("rerank_model", "")
+        metadata["rerank_top_n"] = bot_cfg.get("rerank_top_n", 20)
+        metadata["rerank_final_top_k"] = bot_cfg.get("rerank_final_top_k", 5)
         history, history_context, router_context = (
             await self._resolve_history(
                 history, bot_cfg["history_limit"]
@@ -645,6 +655,13 @@ class SendMessageUseCase:
         metadata = self._extract_metadata(conversation)
 
         bot_cfg = await self._load_bot_config(command)
+
+        # Inject rerank config into metadata for RAG tool
+        metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
+        metadata["rerank_model"] = bot_cfg.get("rerank_model", "")
+        metadata["rerank_top_n"] = bot_cfg.get("rerank_top_n", 20)
+        metadata["rerank_final_top_k"] = bot_cfg.get("rerank_final_top_k", 5)
+
         history, history_context, router_context = (
             await self._resolve_history(
                 history, bot_cfg["history_limit"]

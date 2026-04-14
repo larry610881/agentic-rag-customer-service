@@ -89,6 +89,10 @@ class Bot:
     memory_enabled: bool = False
     memory_extraction_threshold: int = 3
     memory_extraction_prompt: str = ""
+    rerank_enabled: bool = False
+    rerank_model: str = ""          # 空 = 用系統預設 (haiku)
+    rerank_top_n: int = 20          # Stage 1: embedding 召回數量
+    rerank_final_top_k: int = 5     # Stage 2: rerank 後取 top K 給 LLM
     intent_routes: list[IntentRoute] = field(default_factory=list)  # deprecated → bot_workers
     router_model: str = ""  # LLM router 分類用 model（空 = bot default）
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"

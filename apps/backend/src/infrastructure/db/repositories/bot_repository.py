@@ -98,6 +98,10 @@ class SQLAlchemyBotRepository(BotRepository):
             memory_enabled=model.memory_enabled if model.memory_enabled is not None else False,
             memory_extraction_threshold=model.memory_extraction_threshold or 3,
             memory_extraction_prompt=model.memory_extraction_prompt or "",
+            rerank_enabled=model.rerank_enabled if model.rerank_enabled is not None else False,
+            rerank_model=model.rerank_model or "",
+            rerank_top_n=model.rerank_top_n or 20,
+            rerank_final_top_k=model.rerank_final_top_k or 5,
             intent_routes=[
                 IntentRoute(
                     name=r.get("name", ""),
@@ -198,6 +202,10 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.memory_enabled = bot.memory_enabled
                 existing.memory_extraction_threshold = bot.memory_extraction_threshold
                 existing.memory_extraction_prompt = bot.memory_extraction_prompt
+                existing.rerank_enabled = bot.rerank_enabled
+                existing.rerank_model = bot.rerank_model
+                existing.rerank_top_n = bot.rerank_top_n
+                existing.rerank_final_top_k = bot.rerank_final_top_k
                 existing.intent_routes = [
                     {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
                     for r in bot.intent_routes
@@ -268,6 +276,10 @@ class SQLAlchemyBotRepository(BotRepository):
                     memory_enabled=bot.memory_enabled,
                     memory_extraction_threshold=bot.memory_extraction_threshold,
                     memory_extraction_prompt=bot.memory_extraction_prompt,
+                    rerank_enabled=bot.rerank_enabled,
+                    rerank_model=bot.rerank_model,
+                    rerank_top_n=bot.rerank_top_n,
+                    rerank_final_top_k=bot.rerank_final_top_k,
                     intent_routes=[
                         {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
                         for r in bot.intent_routes

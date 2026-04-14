@@ -86,9 +86,11 @@ class ReActAgentService(AgentService):
         kb_id: str,
         rag_top_k: int | None,
         rag_score_threshold: float | None,
+        rerank_cfg: dict[str, Any] | None = None,
     ) -> BaseTool:
         """Build a LangChain BaseTool wrapping the RAG query."""
         rag_tool = self._rag_tool
+        _rerank = rerank_cfg or {}
 
         @tool
         async def rag_query(query: str) -> str:
@@ -104,6 +106,10 @@ class ReActAgentService(AgentService):
                 kb_ids=kb_ids,
                 top_k=rag_top_k,
                 score_threshold=rag_score_threshold,
+                rerank_enabled=_rerank.get("rerank_enabled"),
+                rerank_model=_rerank.get("rerank_model"),
+                rerank_top_n=_rerank.get("rerank_top_n"),
+                rerank_final_top_k=_rerank.get("rerank_final_top_k"),
             )
             import json as _json
             return _json.dumps(result, ensure_ascii=False)
@@ -403,7 +409,8 @@ class ReActAgentService(AgentService):
             tools: list[BaseTool] = []
             tools.append(
                     self._build_rag_lc_tool(
-                        tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold
+                        tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold,
+                        rerank_cfg=metadata,
                     )
                 )
 
