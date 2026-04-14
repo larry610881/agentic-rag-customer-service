@@ -245,10 +245,15 @@ def _make_customer_service_bubble() -> dict:
 
 # --- MCP Server ---
 
+import os
+
+_port = int(os.environ.get("PORT", "9001"))
+
 mcp = FastMCP(
     "carrefour",
     instructions="家樂福商品查詢與客服轉接",
-    port=9001,
+    host="0.0.0.0",
+    port=_port,
     streamable_http_path="/mcp",
 )
 

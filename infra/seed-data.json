@@ -1,0 +1,555 @@
+{
+  "tenants": [
+    {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "name": "系統",
+      "plan": "system",
+      "allowed_agent_modes": [
+        "router",
+        "react",
+        "supervisor"
+      ],
+      "monthly_token_limit": null,
+      "created_at": "2026-03-16T05:52:21.516136+00:00",
+      "updated_at": "2026-03-16T05:52:21.516136+00:00",
+      "allowed_widget_avatar": true
+    },
+    {
+      "id": "a64da4ef-72d3-4604-89d5-3a8127752dd0",
+      "name": "Demo Store",
+      "plan": "starter",
+      "allowed_agent_modes": [
+        "react"
+      ],
+      "monthly_token_limit": null,
+      "created_at": "2026-04-10T05:28:57.315594+00:00",
+      "updated_at": "2026-04-10T05:28:57.315596+00:00",
+      "allowed_widget_avatar": false
+    }
+  ],
+  "users": [
+    {
+      "id": "5bf59050-301c-4537-9054-a0447e5c29dc",
+      "tenant_id": "00000000-0000-0000-0000-000000000000",
+      "email": "admin@system.com",
+      "hashed_password": "$2b$12$JzDlsghvEkXcTL2qmiFc4e00097.jCxHziuFZvZd9qyjMU/UT3NV6",
+      "role": "system_admin",
+      "created_at": "2026-03-16T05:52:21.516136+00:00",
+      "updated_at": "2026-03-16T05:52:21.516136+00:00"
+    }
+  ],
+  "provider_settings": [
+    {
+      "id": "2b30c3fb-f186-459a-be50-75bba780724e",
+      "provider_type": "llm",
+      "provider_name": "google",
+      "display_name": "Google",
+      "is_enabled": false,
+      "api_key_encrypted": "",
+      "base_url": "",
+      "models": [
+        {
+          "model_id": "gemini-3.1-pro-preview",
+          "display_name": "Gemini 3.1 Pro",
+          "is_default": true,
+          "is_enabled": true,
+          "price": "$2/$12",
+          "description": "",
+          "input_price": 2.0,
+          "output_price": 12.0
+        },
+        {
+          "model_id": "gemini-3.1-flash-lite-preview",
+          "display_name": "Gemini 3.1 Flash Lite",
+          "is_default": false,
+          "is_enabled": true,
+          "price": "$0.25/$1.50",
+          "description": "",
+          "input_price": 0.25,
+          "output_price": 1.5
+        },
+        {
+          "model_id": "gemini-3-flash-preview",
+          "display_name": "Gemini 3 Flash",
+          "is_default": false,
+          "is_enabled": true,
+          "price": "$0.50/$3",
+          "description": "",
+          "input_price": 0.5,
+          "output_price": 3.0
+        },
+        {
+          "model_id": "gemini-2.5-pro",
+          "display_name": "Gemini 2.5 Pro",
+          "is_default": false,
+          "is_enabled": true,
+          "price": "$1.25/$10",
+          "description": "",
+          "input_price": 1.25,
+          "output_price": 10.0
+        },
+        {
+          "model_id": "gemini-2.5-flash",
+          "display_name": "Gemini 2.5 Flash",
+          "is_default": false,
+          "is_enabled": true,
+          "price": "$0.30/$2.50",
+          "description": "",
+          "input_price": 0.3,
+          "output_price": 2.5
+        },
+        {
+          "model_id": "gemini-2.5-flash-lite",
+          "display_name": "Gemini 2.5 Flash Lite",
+          "is_default": false,
+          "is_enabled": true,
+          "price": "$0.10/$0.40",
+          "description": "",
+          "input_price": 0.1,
+          "output_price": 0.4
+        }
+      ],
+      "extra_config": {},
+      "created_at": "2026-03-16T05:52:21.516136+00:00",
+      "updated_at": "2026-03-17T01:10:22.914443+00:00"
+    },
+    {
+      "id": "07f644ed-e861-4292-8b03-e2006291a758",
+      "provider_type": "llm",
+      "provider_name": "anthropic",
+      "display_name": "Anthropic",
+      "is_enabled": false,
+      "api_key_encrypted": "",
+      "base_url": "",
+      "models": [
+        {
+          "model_id": "claude-sonnet-4-6",
+          "display_name": "Claude Sonnet 4.6",
+          "is_default": true,
+          "is_enabled": true,
+          "price": "$3/$15",
+          "description": "",
+          "input_price": 3.0,
+          "output_price": 15.0
+        },
+        {
+          "model_id": "claude-haiku-4-5",
+          "display_name": "Claude Haiku 4.5",
+          "is_default": false,
+          "is_enabled": true,
+          "price": "$1/$5",
+          "description": "",
+          "input_price": 1.0,
+          "output_price": 5.0
+        },
+        {
+          "model_id": "claude-opus-4-6",
+          "display_name": "Claude Opus 4.6",
+          "is_default": false,
+          "is_enabled": true,
+          "price": "$5/$25",
+          "description": "",
+          "input_price": 5.0,
+          "output_price": 25.0
+        }
+      ],
+      "extra_config": {},
+      "created_at": "2026-03-16T05:52:21.516136+00:00",
+      "updated_at": "2026-03-17T01:10:24.001196+00:00"
+    },
+    {
+      "id": "d2e949ad-a393-4710-9857-13cd2e80b97e",
+      "provider_type": "embedding",
+      "provider_name": "openai",
+      "display_name": "OpenAI Embedding",
+      "is_enabled": true,
+      "api_key_encrypted": "m7AR2E4Urs0U9ZPcJfUKaP8+784dpPkAD+3ZObgmbxuqjGI56Np6IdPxFhTGk93bSv6iI88CMddSjUdw7VqPbEmsWcjrnhl+dumFRZM+LKCnojaE8YjYnqvoRvB/fXlTYdoztHeYD2MtBhtMLv7sO7a0Jmx1KnCVIxCoLt/ygAU2TjpXHvTX58GFHSzgnr7qj9R8BO8lANZ78HT6wqXTLoFQjNGmksSTfgAhaSYp504HwO/SMo6RsMyY5R28TYOj",
+      "base_url": "",
+      "models": [
+        {
+          "model_id": "text-embedding-3-small",
+          "display_name": "text-embedding-3-small",
+          "is_default": true,
+          "is_enabled": true,
+          "price": "",
+          "description": "",
+          "input_price": 0,
+          "output_price": 0
+        }
+      ],
+      "extra_config": {},
+      "created_at": "2026-03-16T05:52:21.516136+00:00",
+      "updated_at": "2026-03-17T01:10:45.562857+00:00"
+    },
+    {
+      "id": "632fbeaa-65bd-4328-9939-0ca63b167fa1",
+      "provider_type": "llm",
+      "provider_name": "openai",
+      "display_name": "OpenAI",
+      "is_enabled": true,
+      "api_key_encrypted": "T7qPabZ+IY84DfSCfAo75BEKAB4S4+dhKBnVyvg1AwsSceYUosKDqlzCWoF4xi9hJHUv5Fk+LQMvaw7nYMJ9bwWCdmMViviYe5cXfO63nDKnKBAXUuRwjP23euvHA00jbk6nhYBBHnTGNUXhzp82CsHMVzJAvzqdSJDDcTXgm3HdaaIbafLtyyQz65uEnuF+SEs/uDTtqe4k9HVZ1kw+KInw6yLG2ElzB14DmttM+fadeG0EpEtzGDtnvquL7i9n",
+      "base_url": "",
+      "models": [
+        {
+          "model_id": "gpt-5.2",
+          "display_name": "GPT-5.2",
+          "is_default": true,
+          "is_enabled": true,
+          "price": "$1.75/$14",
+          "description": "",
+          "input_price": 1.75,
+          "output_price": 14.0
+        },
+        {
+          "model_id": "gpt-5.1",
+          "display_name": "GPT-5.1",
+          "is_default": false,
+          "is_enabled": true,
+          "price": "$1.25/$10",
+          "description": "",
+          "input_price": 1.25,
+          "output_price": 10.0
+        },
+        {
+          "model_id": "gpt-5",
+          "display_name": "GPT-5",
+          "is_default": false,
+          "is_enabled": true,
+          "price": "$1.25/$10",
+          "description": "",
+          "input_price": 1.25,
+          "output_price": 10.0
+        },
+        {
+          "model_id": "gpt-5-mini",
+          "display_name": "GPT-5 Mini",
+          "is_default": false,
+          "is_enabled": true,
+          "price": "$0.25/$2",
+          "description": "",
+          "input_price": 0.25,
+          "output_price": 2.0
+        },
+        {
+          "model_id": "gpt-5-nano",
+          "display_name": "GPT-5 Nano",
+          "is_default": false,
+          "is_enabled": true,
+          "price": "$0.05/$0.40",
+          "description": "",
+          "input_price": 0.05,
+          "output_price": 0.4
+        }
+      ],
+      "extra_config": {},
+      "created_at": "2026-03-16T05:52:21.516136+00:00",
+      "updated_at": "2026-03-17T01:10:45.564049+00:00"
+    },
+    {
+      "id": "82950ca1-dc14-4980-a892-388a0cda08df",
+      "provider_type": "llm",
+      "provider_name": "deepseek",
+      "display_name": "DeepSeek",
+      "is_enabled": true,
+      "api_key_encrypted": "zP3SOe3f3qak2EWw4GSuDT5UEVB22eg7zcjNfwZi7NgwYZxfvy9ziLRbqxvtZ+CxMvU1+8jlCBWy355ai4YG",
+      "base_url": "",
+      "models": [
+        {
+          "model_id": "deepseek-chat",
+          "display_name": "DeepSeek V3.2",
+          "is_default": true,
+          "is_enabled": true,
+          "price": "$0.27/$1.10",
+          "description": "",
+          "input_price": 0.27,
+          "output_price": 1.1
+        },
+        {
+          "model_id": "deepseek-reasoner",
+          "display_name": "DeepSeek R1",
+          "is_default": false,
+          "is_enabled": false,
+          "price": "$0.55/$2.19",
+          "description": "",
+          "input_price": 0.55,
+          "output_price": 2.19
+        }
+      ],
+      "extra_config": {},
+      "created_at": "2026-03-16T05:52:21.516136+00:00",
+      "updated_at": "2026-03-24T06:21:50.235496+00:00"
+    }
+  ],
+  "system_prompt_configs": [
+    {
+      "id": "default",
+      "base_prompt": "你是一個專業的客服助手，與用戶對話時保持友善且專業的語氣。  \n行為準則：  \n1. 回答必須基於提供的工具結果或知識庫內容，不可編造或幻覺。  \n2. 若無相關資訊，誠實告知用戶，避免引用不相關內容。  \n3. 回答應簡潔明瞭，包含所有重要資訊，避免冗餘。  \n4. 保持一致的品牌語調，親切且專業。  \n5. 今天是{today}。  ",
+      "router_mode_prompt": "如果有提供工具結果，請根據工具結果回答用戶的問題，確保準確、完整。\n如果沒有工具結果，或工具結果與用戶問題無關，請自然地回應用戶（例如打招呼、閒聊）。",
+      "react_mode_prompt": "推理策略：\n1. 你擁有多個工具可以查詢即時資料（課程、商品、知識庫等）。收到用戶問題後，優先考慮是否需要呼叫工具取得最新資訊。\n2. 涉及課程、商品、價格、名額、時間、講師等具體資訊時，必須使用工具查詢，不可憑記憶回答。\n3. 每次只呼叫必要的工具，避免重複查詢相同內容。同一個工具不要用不同參數重複呼叫。\n4. 綜合所有工具結果後，生成最終回答。若工具結果不足以回答問題，誠實告知用戶。\n5. 工具選擇指引：\n   - 推薦型問題（推薦、適合、有什麼好的、哪些）→ 使用 rag_query 查知識庫，不需再用其他工具補充\n   - 具體條件篩選（商品名稱、價格區間、庫存、特定分類）→ 使用對應的查詢工具\n   - 課程場次、名額、講師、日期 → 使用課程查詢工具\n6. 停止判斷：當已取得的工具結果足以回答用戶問題時，立即生成回答，不要呼叫更多工具。",
+      "updated_at": "2026-04-13T12:39:05.364487+00:00"
+    }
+  ],
+  "knowledge_bases": [
+    {
+      "id": "99cfb632-a195-4d08-a80a-924cfc08173d",
+      "tenant_id": "00000000-0000-0000-0000-000000000000",
+      "name": "窩廚房",
+      "description": "demo",
+      "kb_type": "user",
+      "created_at": "2026-03-17T01:10:59.406652+00:00",
+      "updated_at": "2026-03-17T01:10:59.406658+00:00",
+      "ocr_mode": "general"
+    },
+    {
+      "id": "39b22239-471f-4226-9687-9190ad08d16c",
+      "tenant_id": "a64da4ef-72d3-4604-89d5-3a8127752dd0",
+      "name": "客服FAQ",
+      "description": "",
+      "kb_type": "user",
+      "created_at": "2026-04-10T05:28:57.374113+00:00",
+      "updated_at": "2026-04-10T05:28:57.374115+00:00",
+      "ocr_mode": "general"
+    },
+    {
+      "id": "8c17eb58-0d16-4d26-8e52-3189e5427347",
+      "tenant_id": "00000000-0000-0000-0000-000000000000",
+      "name": "家樂福DM",
+      "description": "家樂福月DM",
+      "kb_type": "user",
+      "created_at": "2026-04-14T06:23:10.207732+00:00",
+      "updated_at": "2026-04-14T06:23:10.207734+00:00",
+      "ocr_mode": "catalog"
+    }
+  ],
+  "bots": [
+    {
+      "id": "c2c7b2bd-8151-4b5e-aaba-4ac41b29b358",
+      "short_code": "YlPzaw9e",
+      "tenant_id": "a64da4ef-72d3-4604-89d5-3a8127752dd0",
+      "name": "Wiki Bot",
+      "description": "",
+      "is_active": true,
+      "system_prompt": "",
+      "enabled_tools": [
+        "rag_query"
+      ],
+      "llm_provider": "",
+      "llm_model": "",
+      "show_sources": true,
+      "agent_mode": "react",
+      "mcp_servers": [],
+      "mcp_bindings": [],
+      "max_tool_calls": 5,
+      "audit_mode": "minimal",
+      "eval_provider": "",
+      "eval_model": "",
+      "eval_depth": "L1",
+      "base_prompt": "",
+      "router_prompt": "",
+      "react_prompt": "",
+      "fab_icon_url": "",
+      "widget_enabled": false,
+      "widget_allowed_origins": [],
+      "widget_keep_history": true,
+      "widget_welcome_message": "",
+      "widget_placeholder_text": "",
+      "widget_greeting_messages": [],
+      "widget_greeting_animation": "fade",
+      "memory_enabled": false,
+      "memory_extraction_threshold": 3,
+      "memory_extraction_prompt": "",
+      "line_channel_secret": null,
+      "line_channel_access_token": null,
+      "temperature": 0.3,
+      "max_tokens": 1024,
+      "history_limit": 10,
+      "frequency_penalty": 0,
+      "reasoning_effort": "medium",
+      "rag_top_k": 5,
+      "rag_score_threshold": 0.3,
+      "created_at": "2026-04-10T05:29:40.354279+00:00",
+      "updated_at": "2026-04-10T05:29:40.35428+00:00",
+      "avatar_type": "none",
+      "avatar_model_url": "",
+      "busy_reply_message": "小編正在努力回覆中，請稍等一下喔～",
+      "line_show_sources": false,
+      "knowledge_mode": "wiki",
+      "wiki_navigation_strategy": "keyword_bfs",
+      "intent_routes": [],
+      "router_model": "",
+      "rerank_enabled": false,
+      "rerank_model": "",
+      "rerank_top_n": 20,
+      "rerank_final_top_k": 5
+    },
+    {
+      "id": "86441a14-8940-45db-8bdf-00f4396363ad",
+      "short_code": "SpOwiz2x",
+      "tenant_id": "00000000-0000-0000-0000-000000000000",
+      "name": "窩廚房客服",
+      "description": "DEMO\n",
+      "is_active": true,
+      "system_prompt": "# 窩小幫 — 桂冠窩廚房智慧客服助手\n\n## 角色\n你是「窩小幫」，桂冠窩廚房（Joy'in Kitchen）的智慧客服助手。品牌理念：「簡單做、開心吃」，提供料理課程、食譜、窩廚房自有商品。\n\n## 回答準則\n- 語氣親切溫暖，像熱愛料理的朋友聊天，使用繁體中文\n- 適度用「～」「！」增加親和力，不要生硬客服口吻\n- **回答控制在 50～100 字，能一句話說完就不要兩句**\n- 需要列舉多項資訊時（如多堂課程），最多 150 字，用條列呈現\n- 先直接回答 → 有需要再延伸推薦 1 個相關內容（不要每次都推）\n\n## 工具使用策略\n你有工具可以查詢即時資料，依問題類型選擇：\n\n| 問題類型 | 使用工具 | 範例 |\n|---------|---------|------|\n| 商品價格、分類、運送方式等具體篩選 | search_products | 「冷凍宅配有什麼？」「XX多少錢？」 |\n| 課程場次、名額、講師、日期等具體查詢 | search_courses | 「最近有什麼課？」「XX老師的課」 |\n| 推薦、介紹、適合、比較等開放性問題 | rag_query | 「推薦適合新手的課」「你們有什麼特色？」 |\n\n規則：\n- 涉及課程、商品、價格、名額、時間、講師等具體資訊時，必須使用工具查詢，不可憑記憶回答\n- 每個工具最多呼叫一次，不要用不同參數重複查詢同一工具\n- 具體條件問題用 search_products / search_courses，不要用 rag_query\n- 推薦型 / 比較型問題用 rag_query，不需再補查其他工具\n- 工具結果足以回答時，立即回覆，不要多查\n\n## 知識來源\n- 所有課程、商品、講師、價格、場次等具體資訊，以工具查詢結果為準\n- **絕對不要編造**課程名稱、價格、場次時間、講師資訊\n- 找不到答案時誠實說「這部分我不太確定，建議您聯繫窩廚房客服進一步確認喔！」\n- 優惠活動提醒用戶「建議到官網確認最新活動資訊」\n\n## 超出範圍（引導至人工客服）\n查詢/修改/取消訂單、紅利點數餘額、退款退貨申請、與窩廚房無關的問題\n→ 引導至 www.joyinkitchen.com 或窩廚房客服團隊\n",
+      "enabled_tools": [
+        "rag_query"
+      ],
+      "llm_provider": "deepseek",
+      "llm_model": "deepseek-chat",
+      "show_sources": false,
+      "agent_mode": "react",
+      "mcp_servers": [
+        {
+          "url": "http://localhost:9000/mcp",
+          "name": "http://localhost:9000/mcp",
+          "enabled_tools": [
+            "search_products",
+            "search_courses"
+          ],
+          "tools": [
+            {
+              "name": "search_products",
+              "description": "用具體條件篩選窩廚房上架中的商品。回傳商品名稱、售價、分類、運送方式。\n\n    注意：此工具用於「具體條件篩選」，不適用於「推薦」「適合」等開放性問題。\n    推薦型問題請使用 rag_query 查知識庫。\n\n    適用情境：\n    - 客戶問「有沒有冷凍宅配的食品？」→ ship_type=3\n    - 客戶問「XX 商品多少錢？」→ keyword=\"XX\"\n    - 客戶問「500 元以下的商品」→ max_price=500\n    - 客戶指定商品 ID → product_id=123\n\n    Args:\n        keyword: 商品名稱或說明的模糊搜尋，留空回傳熱門商品\n        product_id: 精確查詢特定商品 ID\n        category: 分類名稱篩選（模糊比對）\n        min_price: 最低價格篩選\n        max_price: 最高價格篩選\n        ship_type: 運送方式（1=常溫, 2=低溫, 3=冷凍）\n        limit: 回傳筆數上限（預設 5，最大 20）\n    "
+            },
+            {
+              "name": "search_courses",
+              "description": "查詢窩廚房的料理課程，回傳課程名稱、開課時間、售價、剩餘名額、講師。\n\n    適用情境：\n    - 客戶問「最近有什麼課？」→ keyword=\"\" + has_vacancy=True\n    - 客戶問「有沒有做麵包的課？」→ keyword=\"麵包\"\n    - 客戶問「XX 老師的課程」→ lector=\"XX\"\n    - 客戶問「下個月有什麼課？」→ date_from=\"2026-04-01\", date_to=\"2026-04-30\"\n    - 客戶問「XX 課還有名額嗎？」→ keyword=\"XX\" + has_vacancy=True\n    - 客戶問「3000 元以下的課程」→ max_price=3000\n\n    Args:\n        keyword: 課程名稱模糊搜尋\n        course_id: 精確查詢特定課程 ID\n        category: 課程分類名稱篩選（模糊比對）\n        lector: 講師姓名篩選（模糊比對）\n        date_from: 開課日期起始（格式 YYYY-MM-DD）\n        date_to: 開課日期結束（格式 YYYY-MM-DD）\n        min_price: 最低價格篩選\n        max_price: 最高價格篩選\n        has_vacancy: 是否只顯示有剩餘名額的課程（預設 True）\n        limit: 回傳筆數上限（預設 5，最大 20）\n    "
+            }
+          ],
+          "version": "",
+          "transport": "http",
+          "command": "",
+          "args": []
+        }
+      ],
+      "mcp_bindings": [],
+      "max_tool_calls": 5,
+      "audit_mode": "full",
+      "eval_provider": "deepseek",
+      "eval_model": "deepseek-chat",
+      "eval_depth": "L1+L2+L3",
+      "base_prompt": "",
+      "router_prompt": "",
+      "react_prompt": "",
+      "fab_icon_url": "",
+      "widget_enabled": true,
+      "widget_allowed_origins": [
+        "http://localhost:7777"
+      ],
+      "widget_keep_history": true,
+      "widget_welcome_message": "",
+      "widget_placeholder_text": "",
+      "widget_greeting_messages": [
+        "歡迎來到窩廚房~"
+      ],
+      "widget_greeting_animation": "fade",
+      "memory_enabled": false,
+      "memory_extraction_threshold": 3,
+      "memory_extraction_prompt": "",
+      "line_channel_secret": null,
+      "line_channel_access_token": null,
+      "temperature": 0.3,
+      "max_tokens": 1024,
+      "history_limit": 10,
+      "frequency_penalty": 0,
+      "reasoning_effort": "medium",
+      "rag_top_k": 5,
+      "rag_score_threshold": 0.3,
+      "created_at": "2026-03-17T01:12:19.075751+00:00",
+      "updated_at": "2026-03-24T13:11:27.405408+00:00",
+      "avatar_type": "none",
+      "avatar_model_url": "",
+      "busy_reply_message": "",
+      "line_show_sources": true,
+      "knowledge_mode": "rag",
+      "wiki_navigation_strategy": "keyword_bfs",
+      "intent_routes": [],
+      "router_model": "",
+      "rerank_enabled": false,
+      "rerank_model": "",
+      "rerank_top_n": 20,
+      "rerank_final_top_k": 5
+    },
+    {
+      "id": "100492a9-e711-4dab-a3a0-67ef33a4e3e2",
+      "short_code": "IJgMCORo",
+      "tenant_id": "00000000-0000-0000-0000-000000000000",
+      "name": "測試工具",
+      "description": "",
+      "is_active": true,
+      "system_prompt": "# 家樂福智慧客服\n\n## 角色\n你是家樂福（Carrefour）的智慧客服助手，協助顧客解答購物、會員、電子發票、退換貨等問題。\n\n## 回答準則\n- 使用繁體中文，語氣親切專業\n- **優先從知識庫查詢**，不可憑記憶編造答案\n- **商品查詢：完整列出所有檢索到的商品**，每項包含品名、規格、售價、促銷資訊\n- 政策類問題：條列式呈現，不限字數，但避免冗餘\n- 找不到答案時：「這部分建議您撥打家樂福客服專線 0809-001-365 進一步確認喔！」\n\n## 商品回覆格式\n當回覆包含商品清單時，每個商品使用以下格式：\n- **商品名** — 規格\n  - 售價：NT$XX\n  - 促銷：買1送1 / 第2件5折 / 無\n  - 備註：（如有限量、活動期間等）\n\n## 工具使用策略\n\n| 問題類型 | 使用工具 | 範例 |\n|---------|---------|------|\n| 會員、發票、退貨、APP、錢包等政策問題 | rag_query | 「電子發票怎麼歸戶？」「退貨流程？」 |\n| 商品促銷、DM 特價、活動期間 | rag_query | 「最近有什麼特價？」「這個商品多少錢？」 |\n| 分店服務（輪胎、藥局、理髮） | rag_query | 「哪些分店有藥局？」 |\n\n規則：\n- 涉及具體政策、流程、價格時**必須查詢知識庫**\n- 工具查詢結果足以回答時立即回覆\n- 商品價格以 DM 資料為準，提醒顧客「實際售價以賣場現場標示為準」\n- 促銷活動提醒「活動期間與適用門市請以官網公告為準」\n\n## 知識來源\n- FAQ 知識庫：會員權益、電子發票、APP 操作、退換貨、卡友專區、VIP、禮物卡\n- DM 知識庫：商品促銷、特價資訊、活動期間\n\n## 超出範圍\n查詢/修改訂單、線上購物配送問題、投訴處理\n→ 引導至客服專線 0809-001-365 或官網 www.carrefour.com.tw/contact-us/\n\n## 回答優先順序\n當使用者詢問「優惠商品」「特價」「促銷」等問題時：\n1. **完整列出所有檢索到的促銷商品**，不要省略\n2. 活動辦法、信用卡優惠、折價券規則等**作為補充資訊**附在商品清單後\n3. 如果有找到具體的促銷商品（如「買一送一」「第二件5折」），優先列出\n4. 沒有找到具體促銷商品時，才回答活動說明",
+      "enabled_tools": [
+        "rag_query"
+      ],
+      "llm_provider": "openai",
+      "llm_model": "gpt-5.1",
+      "show_sources": true,
+      "agent_mode": "react",
+      "mcp_servers": [],
+      "mcp_bindings": [],
+      "max_tool_calls": 5,
+      "audit_mode": "off",
+      "eval_provider": "",
+      "eval_model": "",
+      "eval_depth": "L1",
+      "base_prompt": "",
+      "router_prompt": "",
+      "react_prompt": "",
+      "fab_icon_url": "",
+      "widget_enabled": false,
+      "widget_allowed_origins": [],
+      "widget_keep_history": true,
+      "widget_welcome_message": "",
+      "widget_placeholder_text": "",
+      "widget_greeting_messages": [],
+      "widget_greeting_animation": "fade",
+      "memory_enabled": false,
+      "memory_extraction_threshold": 3,
+      "memory_extraction_prompt": "",
+      "line_channel_secret": null,
+      "line_channel_access_token": null,
+      "temperature": 0.3,
+      "max_tokens": 1024,
+      "history_limit": 10,
+      "frequency_penalty": 0,
+      "reasoning_effort": "medium",
+      "rag_top_k": 3,
+      "rag_score_threshold": 0.5,
+      "created_at": "2026-03-17T02:05:23.660901+00:00",
+      "updated_at": "2026-04-14T08:21:20.293785+00:00",
+      "avatar_type": "none",
+      "avatar_model_url": "",
+      "busy_reply_message": "",
+      "line_show_sources": true,
+      "knowledge_mode": "rag",
+      "wiki_navigation_strategy": "keyword_bfs",
+      "intent_routes": [],
+      "router_model": "",
+      "rerank_enabled": true,
+      "rerank_model": "claude-haiku-4-5-20251001",
+      "rerank_top_n": 20,
+      "rerank_final_top_k": 5
+    }
+  ],
+  "bot_knowledge_bases": [
+    {
+      "bot_id": "86441a14-8940-45db-8bdf-00f4396363ad",
+      "knowledge_base_id": "99cfb632-a195-4d08-a80a-924cfc08173d",
+      "created_at": "2026-03-24T13:11:27.415121+00:00"
+    },
+    {
+      "bot_id": "c2c7b2bd-8151-4b5e-aaba-4ac41b29b358",
+      "knowledge_base_id": "39b22239-471f-4226-9687-9190ad08d16c",
+      "created_at": "2026-04-10T05:29:40.366976+00:00"
+    },
+    {
+      "bot_id": "100492a9-e711-4dab-a3a0-67ef33a4e3e2",
+      "knowledge_base_id": "39b22239-471f-4226-9687-9190ad08d16c",
+      "created_at": "2026-04-14T08:21:20.307962+00:00"
+    },
+    {
+      "bot_id": "100492a9-e711-4dab-a3a0-67ef33a4e3e2",
+      "knowledge_base_id": "8c17eb58-0d16-4d26-8e52-3189e5427347",
+      "created_at": "2026-04-14T08:21:20.307966+00:00"
+    }
+  ]
+}
