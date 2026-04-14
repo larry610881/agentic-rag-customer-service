@@ -24,12 +24,8 @@ async def startup(ctx: dict) -> None:
     from src.container import Container
 
     logger.info("[worker] initializing container...")
-    settings = Settings()
     container = Container()
-    container.config.from_pydantic(settings)
-    container.init_resources()
     ctx["container"] = container
-    ctx["settings"] = settings
     logger.info("[worker] container ready")
 
 
