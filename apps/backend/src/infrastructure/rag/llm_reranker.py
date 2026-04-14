@@ -62,6 +62,11 @@ async def llm_rerank(
     try:
         import anthropic
 
+        from src.infrastructure.observability.agent_trace_collector import (
+            AgentTraceCollector,
+        )
+
+        t0_ms = AgentTraceCollector.offset_ms()
         client = anthropic.AsyncAnthropic()
         response = await client.messages.create(
             model=model,
@@ -94,6 +99,23 @@ async def llm_rerank(
         for idx, score in scored[:top_k]:
             chunk = {**chunks[idx], "_rerank_score": score}
             result.append(chunk)
+
+        end_ms = AgentTraceCollector.offset_ms()
+        AgentTraceCollector.add_node(
+            node_type="tool_call",
+            label=f"rerank ({model.split('-')[1] if '-' in model else model})",
+            parent_id=None,
+            start_ms=t0_ms,
+            end_ms=end_ms,
+            token_usage={
+                "model": model,
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+            },
+            input_chunks=len(chunks),
+            output_chunks=len(result),
+            top_score=scored[0][1] if scored else 0,
+        )
 
         logger.info(
             "rerank.done",
