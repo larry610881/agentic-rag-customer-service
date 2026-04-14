@@ -75,7 +75,7 @@ function prettyStr(v: unknown): string {
 }
 
 function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
-  const fields: { key: string; label: string; wrap?: boolean; pre?: boolean }[] = [
+  const fields: { key: string; label: string; wrap?: boolean }[] = [
     { key: "message_preview", label: "訊息", wrap: true },
     { key: "answer_preview", label: "回覆", wrap: true },
     { key: "decision", label: "決策" },
@@ -83,12 +83,18 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
     { key: "selected_worker", label: "Worker" },
     { key: "selected_team", label: "Team" },
     { key: "user_role", label: "角色" },
+    { key: "input_chunks", label: "輸入筆數" },
+    { key: "output_chunks", label: "輸出筆數" },
+    { key: "top_score", label: "最高分" },
+    { key: "result_count", label: "召回筆數" },
   ];
+
+  const chunkScores = meta.chunk_scores as { rank: number; score: number; preview: string }[] | undefined;
 
   return (
     <div className="nopan nodrag mt-2 space-y-1 text-xs text-muted-foreground max-h-[300px] overflow-y-auto">
       {fields.map((f) =>
-        meta[f.key] ? (
+        meta[f.key] != null ? (
           <p key={f.key} className={f.wrap ? "break-words" : undefined}>
             <span className="font-medium">{f.label}：</span>
             {str(meta[f.key])}
@@ -103,6 +109,22 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
             : str(meta.tool_calls)}
         </p>
       ) : null}
+      {chunkScores && chunkScores.length > 0 && (
+        <div>
+          <span className="font-medium">各段分數（共 {chunkScores.length} 筆）：</span>
+          <div className="mt-1 space-y-0.5">
+            {chunkScores.map((c) => (
+              <div key={c.rank} className="flex gap-2">
+                <span className="shrink-0 font-mono w-8 text-right">#{c.rank}</span>
+                <span className={`shrink-0 font-mono w-14 text-right ${c.score >= 0.5 ? "text-green-600 dark:text-green-400" : "text-yellow-600 dark:text-yellow-400"}`}>
+                  {c.score.toFixed(4)}
+                </span>
+                <span className="truncate opacity-70">{c.preview}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {meta.result_preview ? (
         <pre className="whitespace-pre-wrap break-words rounded bg-muted/50 p-1.5">
           {str(meta.result_preview)}
@@ -128,7 +150,9 @@ function TraceNode({ data }: { data: CustomNodeData }) {
     !!meta.result_preview ||
     !!meta.tool_calls ||
     !!meta.selected_worker ||
-    !!meta.message_preview;
+    !!meta.message_preview ||
+    !!meta.chunk_scores ||
+    !!meta.input_chunks;
   const hasRaw = !!meta.llm_input || !!meta.llm_output;
 
   return (

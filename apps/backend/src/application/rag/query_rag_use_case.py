@@ -104,9 +104,10 @@ class QueryRAGUseCase:
             result_count=len(all_results),
             top_score=round(all_results[0].score, 4) if all_results else 0,
             kb_ids=effective_kb_ids,
-            result_preview="\n---\n".join(
-                r.payload.get("content", "")[:150] for r in all_results[:5]
-            ),
+            chunk_scores=[
+                {"rank": i + 1, "score": round(r.score, 4), "preview": r.payload.get("content", "")[:80]}
+                for i, r in enumerate(all_results)
+            ],
         )
 
         # Rerank if enabled
@@ -224,9 +225,10 @@ class QueryRAGUseCase:
             result_count=len(all_results),
             top_score=round(all_results[0].score, 4) if all_results else 0,
             kb_ids=effective_kb_ids,
-            result_preview="\n---\n".join(
-                r.payload.get("content", "")[:150] for r in all_results[:5]
-            ),
+            chunk_scores=[
+                {"rank": i + 1, "score": round(r.score, 4), "preview": r.payload.get("content", "")[:80]}
+                for i, r in enumerate(all_results)
+            ],
         )
 
         # Rerank if enabled
