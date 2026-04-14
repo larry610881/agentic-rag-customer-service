@@ -1,6 +1,6 @@
 """MCP Server Registration Repository 實作"""
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.platform.entity import McpServerRegistration
@@ -90,6 +90,23 @@ class SQLAlchemyMcpServerRepository(McpServerRegistrationRepository):
 
     async def find_all(self) -> list[McpServerRegistration]:
         stmt = select(McpServerModel).order_by(McpServerModel.created_at)
+        result = await self._session.execute(stmt)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def find_accessible(
+        self, tenant_id: str
+    ) -> list[McpServerRegistration]:
+        stmt = (
+            select(McpServerModel)
+            .where(
+                McpServerModel.is_enabled.is_(True),
+                or_(
+                    McpServerModel.scope == "global",
+                    McpServerModel.tenant_ids.contains([tenant_id]),
+                ),
+            )
+            .order_by(McpServerModel.created_at)
+        )
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
 

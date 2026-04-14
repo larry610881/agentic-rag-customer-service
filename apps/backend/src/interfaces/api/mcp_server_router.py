@@ -3,7 +3,7 @@
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from src.application.platform.mcp.create_mcp_server_use_case import (
@@ -188,12 +188,13 @@ async def create_mcp_server(
 @router.get("", response_model=list[McpServerResponse])
 @inject
 async def list_mcp_servers(
-    use_case: CreateMcpServerUseCase = Depends(
-        Provide[Container.create_mcp_server_use_case]
-    ),
+    tenant_id: str | None = Query(default=None),
     repo: Any = Depends(Provide[Container.mcp_server_repository]),
 ) -> list[McpServerResponse]:
-    servers = await repo.find_all()
+    if tenant_id:
+        servers = await repo.find_accessible(tenant_id)
+    else:
+        servers = await repo.find_all()
     return [_to_response(s) for s in servers]
 
 

@@ -189,6 +189,12 @@ class SendMessageUseCase:
                 )
                 if not reg or not reg.is_enabled:
                     continue
+                # Tenant scope check: skip if not accessible
+                if (
+                    reg.scope == "tenant"
+                    and command.tenant_id not in reg.tenant_ids
+                ):
+                    continue
 
                 # Decrypt env_values (stored encrypted in DB)
                 decrypted_env: dict[str, str] = {}

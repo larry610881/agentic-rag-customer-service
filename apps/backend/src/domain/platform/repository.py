@@ -51,6 +51,13 @@ class McpServerRegistrationRepository(ABC):
     async def find_all(self) -> list[McpServerRegistration]: ...
 
     @abstractmethod
+    async def find_accessible(
+        self, tenant_id: str
+    ) -> list[McpServerRegistration]:
+        """回傳 global + 指定租戶可用的已啟用 MCP servers"""
+        ...
+
+    @abstractmethod
     async def find_by_url(self, url: str) -> McpServerRegistration | None: ...
 
     @abstractmethod

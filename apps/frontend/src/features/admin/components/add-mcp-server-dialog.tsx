@@ -26,9 +26,11 @@ import {
   useCreateMcpRegistration,
   useDiscoverMcpRegistryTools,
 } from "@/hooks/queries/use-mcp-registry";
+import { useTenants } from "@/hooks/queries/use-tenants";
 import type { McpRegistrationToolMeta } from "@/types/mcp-registry";
 
 type Transport = "http" | "stdio";
+type Scope = "global" | "tenant";
 
 interface DiscoveredState {
   tools: McpRegistrationToolMeta[];
@@ -44,10 +46,13 @@ export function AddMcpServerDialog() {
   const [args, setArgs] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [scope, setScope] = useState<Scope>("global");
+  const [selectedTenantIds, setSelectedTenantIds] = useState<string[]>([]);
   const [discovered, setDiscovered] = useState<DiscoveredState | null>(null);
 
   const discoverMutation = useDiscoverMcpRegistryTools();
   const createMutation = useCreateMcpRegistration();
+  const { data: tenantsData } = useTenants(1, 100);
 
   const resetForm = () => {
     setTransport("http");
@@ -56,6 +61,8 @@ export function AddMcpServerDialog() {
     setArgs("");
     setName("");
     setDescription("");
+    setScope("global");
+    setSelectedTenantIds([]);
     setDiscovered(null);
   };
 
@@ -108,6 +115,8 @@ export function AddMcpServerDialog() {
       name: name.trim(),
       description: description.trim() || undefined,
       available_tools: discovered?.tools ?? [],
+      scope,
+      tenant_ids: scope === "tenant" ? selectedTenantIds : [],
     };
 
     const payload =
@@ -279,6 +288,59 @@ export function AddMcpServerDialog() {
               placeholder="簡要描述此 Server 的功能"
             />
           </div>
+
+          {/* Scope */}
+          <div className="flex flex-col gap-2">
+            <Label>可用範圍</Label>
+            <Select
+              value={scope}
+              onValueChange={(v) => {
+                setScope(v as Scope);
+                if (v === "global") setSelectedTenantIds([]);
+              }}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">Global（所有租戶）</SelectItem>
+                <SelectItem value="tenant">Tenant（指定租戶）</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Tenant selector (only when scope=tenant) */}
+          {scope === "tenant" && tenantsData?.items && (
+            <div className="flex flex-col gap-2">
+              <Label>指定租戶</Label>
+              <div className="flex flex-wrap gap-2 rounded-md border p-2 max-h-32 overflow-y-auto">
+                {tenantsData.items.map((t: { id: string; name: string }) => {
+                  const selected = selectedTenantIds.includes(t.id);
+                  return (
+                    <Badge
+                      key={t.id}
+                      variant={selected ? "default" : "outline"}
+                      className="cursor-pointer"
+                      onClick={() =>
+                        setSelectedTenantIds((prev) =>
+                          selected
+                            ? prev.filter((id) => id !== t.id)
+                            : [...prev, t.id],
+                        )
+                      }
+                    >
+                      {t.name}
+                    </Badge>
+                  );
+                })}
+              </div>
+              {selectedTenantIds.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  請至少選擇一個租戶
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>

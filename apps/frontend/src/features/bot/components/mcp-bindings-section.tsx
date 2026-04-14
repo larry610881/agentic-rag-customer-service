@@ -6,7 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useMcpRegistry } from "@/hooks/queries/use-mcp-registry";
+import {
+  useMcpRegistry,
+  useMcpRegistryAccessible,
+} from "@/hooks/queries/use-mcp-registry";
+import { useAuthStore } from "@/stores/use-auth-store";
 import { useDiscoverMcpTools } from "@/hooks/queries/use-mcp";
 import type { McpRegistration } from "@/types/mcp-registry";
 import type { McpServerConfig } from "@/types/bot";
@@ -31,7 +35,10 @@ export function McpBindingsSection({
   registerMaxToolCalls,
   maxToolCallsError,
 }: McpBindingsSectionProps) {
-  const { data: registeredServers } = useMcpRegistry();
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const { data: registeredServers } = useMcpRegistryAccessible(
+    tenantId ?? undefined,
+  );
   const discoverMcp = useDiscoverMcpTools();
 
   const [mode, setMode] = useState<"registry" | "manual">("registry");

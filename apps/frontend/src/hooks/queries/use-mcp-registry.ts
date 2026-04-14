@@ -28,6 +28,22 @@ export function useMcpRegistry() {
   });
 }
 
+export function useMcpRegistryAccessible(tenantId: string | undefined) {
+  const token = useAuthStore((s) => s.token);
+
+  return useQuery({
+    queryKey: [...queryKeys.mcpRegistry.all, "accessible", tenantId ?? ""],
+    queryFn: () =>
+      apiFetch<McpRegistration[]>(
+        `${API_ENDPOINTS.mcpRegistry.list}?tenant_id=${tenantId}`,
+        {},
+        token ?? undefined,
+      ),
+    enabled: !!token && !!tenantId,
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useCreateMcpRegistration() {
   const token = useAuthStore((s) => s.token);
   const queryClient = useQueryClient();

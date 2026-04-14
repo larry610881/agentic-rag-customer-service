@@ -34,7 +34,26 @@ import {
   useDeleteMcpRegistration,
   useTestMcpConnection,
 } from "@/hooks/queries/use-mcp-registry";
+import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
 import type { McpRegistration } from "@/types/mcp-registry";
+
+function ScopeBadge({ server }: { server: McpRegistration }) {
+  const tenantNames = useTenantNameMap();
+  if (server.scope === "global") {
+    return <Badge variant="secondary">Global</Badge>;
+  }
+  const names = server.tenant_ids
+    .map((id) => tenantNames.get(id) ?? id.slice(0, 8))
+    .join(", ");
+  return (
+    <Tooltip>
+      <TooltipTrigger>
+        <Badge variant="outline">Tenant</Badge>
+      </TooltipTrigger>
+      <TooltipContent>{names || "未指定租戶"}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function McpRegistryTable() {
   const { data: servers, isLoading, isError } = useMcpRegistry();
@@ -117,6 +136,7 @@ export function McpRegistryTable() {
         <TableHeader>
           <TableRow>
             <TableHead>名稱</TableHead>
+            <TableHead>範圍</TableHead>
             <TableHead>傳輸方式</TableHead>
             <TableHead>位址</TableHead>
             <TableHead className="text-center">Tools</TableHead>
@@ -136,6 +156,9 @@ export function McpRegistryTable() {
                     </span>
                   )}
                 </div>
+              </TableCell>
+              <TableCell>
+                <ScopeBadge server={server} />
               </TableCell>
               <TableCell>
                 <Badge variant={server.transport === "http" ? "default" : "secondary"}>
