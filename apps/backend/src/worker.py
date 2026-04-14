@@ -37,10 +37,13 @@ async def shutdown(ctx: dict) -> None:
 
 async def process_document_task(ctx: dict, document_id: str, task_id: str) -> None:
     """處理文件：parse + chunk + embed + store to vector DB."""
+    from src.infrastructure.db.session_middleware import independent_session_scope
+
     logger.info(f"[process_document] start doc={document_id} task={task_id}")
-    container = ctx["container"]
-    use_case = container.process_document_use_case()
-    await use_case.execute(document_id, task_id)
+    async with independent_session_scope():
+        container = ctx["container"]
+        use_case = container.process_document_use_case()
+        await use_case.execute(document_id, task_id)
     logger.info(f"[process_document] done doc={document_id}")
 
 
@@ -55,20 +58,23 @@ async def extract_memory_task(
     extraction_prompt: str,
 ) -> None:
     """記憶萃取：從對話中提取使用者記憶事實。"""
+    from src.infrastructure.db.session_middleware import independent_session_scope
+
     logger.info(f"[extract_memory] start profile={profile_id}")
     from src.application.memory.extract_memory_use_case import ExtractMemoryCommand
 
-    container = ctx["container"]
-    use_case = container.extract_memory_use_case()
-    await use_case.execute(
-        ExtractMemoryCommand(
-            profile_id=profile_id,
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            messages=messages,
-            extraction_prompt=extraction_prompt,
+    async with independent_session_scope():
+        container = ctx["container"]
+        use_case = container.extract_memory_use_case()
+        await use_case.execute(
+            ExtractMemoryCommand(
+                profile_id=profile_id,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                messages=messages,
+                extraction_prompt=extraction_prompt,
+            )
         )
-    )
     logger.info(f"[extract_memory] done profile={profile_id}")
 
 
@@ -87,31 +93,33 @@ async def run_evaluation_task(
     eval_model: str,
 ) -> None:
     """RAG 品質評估：L1 檢索 + L2 回答 + L3 Agent。"""
+    from src.infrastructure.db.session_middleware import independent_session_scope
+
     logger.info(f"[run_evaluation] start trace={trace_id} depth={eval_depth}")
-    container = ctx["container"]
-    eval_use_case = container.rag_evaluation_use_case()
+    async with independent_session_scope():
+        container = ctx["container"]
+        eval_use_case = container.rag_evaluation_use_case()
 
-    # Resolve eval-specific LLM
-    eval_llm = container.llm_service()
-    if eval_provider or eval_model:
-        if hasattr(eval_llm, "resolve_for_bot"):
-            eval_llm = await eval_llm.resolve_for_bot(
-                provider_name=eval_provider,
-                model=eval_model,
-            )
+        eval_llm = container.llm_service()
+        if eval_provider or eval_model:
+            if hasattr(eval_llm, "resolve_for_bot"):
+                eval_llm = await eval_llm.resolve_for_bot(
+                    provider_name=eval_provider,
+                    model=eval_model,
+                )
 
-    context_texts = [s.get("content_snippet", "") for s in sources if isinstance(s, dict)]
+        context_texts = [s.get("content_snippet", "") for s in sources if isinstance(s, dict)]
 
-    await eval_use_case.evaluate_combined(
-        query=query,
-        answer=answer,
-        context_texts=context_texts,
-        tool_calls=tool_calls,
-        eval_depth=eval_depth,
-        tenant_id=tenant_id,
-        trace_id=trace_id,
-        llm_service_override=eval_llm,
-    )
+        await eval_use_case.evaluate_combined(
+            query=query,
+            answer=answer,
+            context_texts=context_texts,
+            tool_calls=tool_calls,
+            eval_depth=eval_depth,
+            tenant_id=tenant_id,
+            trace_id=trace_id,
+            llm_service_override=eval_llm,
+        )
     logger.info(f"[run_evaluation] done trace={trace_id}")
 
 
