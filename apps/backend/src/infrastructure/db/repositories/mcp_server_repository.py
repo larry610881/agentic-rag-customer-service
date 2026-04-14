@@ -1,6 +1,7 @@
 """MCP Server Registration Repository 實作"""
 
-from sqlalchemy import or_, select
+from sqlalchemy import cast, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.platform.entity import McpServerRegistration
@@ -102,7 +103,9 @@ class SQLAlchemyMcpServerRepository(McpServerRegistrationRepository):
                 McpServerModel.is_enabled.is_(True),
                 or_(
                     McpServerModel.scope == "global",
-                    McpServerModel.tenant_ids.contains([tenant_id]),
+                    cast(McpServerModel.tenant_ids, JSONB).contains(
+                        [tenant_id]
+                    ),
                 ),
             )
             .order_by(McpServerModel.created_at)
