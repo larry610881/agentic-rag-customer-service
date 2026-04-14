@@ -56,6 +56,7 @@ export interface Bot {
   widget_greeting_messages: string[];
   widget_greeting_animation: "fade" | "slide" | "typewriter";
   intent_routes: IntentRoute[];
+  router_model: string;
   busy_reply_message: string;
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
@@ -96,6 +97,7 @@ export interface CreateBotRequest {
   widget_greeting_messages?: string[];
   widget_greeting_animation?: "fade" | "slide" | "typewriter";
   intent_routes?: IntentRoute[];
+  router_model?: string;
   busy_reply_message?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
@@ -134,6 +136,7 @@ export interface UpdateBotRequest {
   widget_greeting_messages?: string[];
   widget_greeting_animation?: "fade" | "slide" | "typewriter";
   intent_routes?: IntentRoute[];
+  router_model?: string;
   busy_reply_message?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;

@@ -48,6 +48,9 @@ export const API_ENDPOINTS = {
     detail: (id: string) => `/api/v1/bots/${id}`,
     update: (id: string) => `/api/v1/bots/${id}`,
     delete: (id: string) => `/api/v1/bots/${id}`,
+    workers: (botId: string) => `/api/v1/bots/${botId}/workers`,
+    worker: (botId: string, workerId: string) =>
+      `/api/v1/bots/${botId}/workers/${workerId}`,
   },
   conversations: {
     list: (botId?: string | null) =>

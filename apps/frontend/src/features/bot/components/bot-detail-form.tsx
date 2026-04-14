@@ -36,6 +36,7 @@ import type { Bot, UpdateBotRequest } from "@/types/bot";
 import type { McpToolInfo } from "@/types/mcp";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { McpBindingsSection } from "./mcp-bindings-section";
+import { WorkersSection } from "./workers-section";
 
 const AVAILABLE_TOOLS = [
   { value: "rag_query", label: "知識庫查詢" },
@@ -87,6 +88,7 @@ const botFormSchema = z.object({
     description: z.string().min(1, "請輸入描述").max(500),
     system_prompt: z.string().min(1, "請輸入提示詞").max(10000),
   })).max(10).default([]),
+  router_model: z.string().default(""),
 });
 
 type BotFormValues = z.infer<typeof botFormSchema>;
@@ -102,7 +104,7 @@ interface BotDetailFormProps {
 const TAB_KEYS = {
   KNOWLEDGE: "knowledge",
   PROMPT: "prompt",
-  INTENT: "intent",
+  WORKERS: "workers",
   LLM: "llm",
   WIDGET: "widget",
   LINE: "line",
@@ -191,7 +193,8 @@ export function BotDetailForm({
     },
   });
 
-  const { fields: intentFields, append: appendIntent, remove: removeIntent } = useFieldArray({
+  // Legacy: intent_routes field array (Workers tab replaces this UI)
+  useFieldArray({
     control,
     name: "intent_routes",
   });
@@ -342,8 +345,8 @@ export function BotDetailForm({
           <TabsTrigger value={TAB_KEYS.PROMPT} className="flex-1">
             系統提示詞
           </TabsTrigger>
-          <TabsTrigger value={TAB_KEYS.INTENT} className="flex-1">
-            意圖路由
+          <TabsTrigger value={TAB_KEYS.WORKERS} className="flex-1">
+            Workers
           </TabsTrigger>
           <TabsTrigger value={TAB_KEYS.LLM} className="flex-1">
             LLM 參數
@@ -637,97 +640,8 @@ export function BotDetailForm({
         </TabsContent>
 
         {/* Tab: 意圖路由 */}
-        <TabsContent value={TAB_KEYS.INTENT} className="flex flex-col gap-6 pt-4">
-          <section className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">意圖路由</h3>
-                <p className="text-sm text-muted-foreground">
-                  設定不同意圖類別，每個意圖使用專屬的系統提示詞。未設定時使用預設提示詞。
-                </p>
-              </div>
-              {intentFields.length < 10 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => appendIntent({ name: "", description: "", system_prompt: "" })}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  新增意圖
-                </Button>
-              )}
-            </div>
-
-            {intentFields.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
-                未設定意圖路由，將使用預設系統提示詞
-              </div>
-            )}
-
-            {intentFields.map((field, index) => (
-              <div
-                key={field.id}
-                className="border rounded-lg p-4 flex flex-col gap-3 relative"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">
-                    意圖 #{index + 1}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeIntent(index)}
-                    aria-label="刪除意圖"
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor={`intent-name-${index}`}>名稱</Label>
-                  <Input
-                    id={`intent-name-${index}`}
-                    {...register(`intent_routes.${index}.name`)}
-                    placeholder="例：客訴、查詢、閒聊、轉人工"
-                  />
-                  {errors.intent_routes?.[index]?.name && (
-                    <p className="text-xs text-destructive">
-                      {errors.intent_routes[index].name?.message}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor={`intent-desc-${index}`}>描述</Label>
-                  <Textarea
-                    id={`intent-desc-${index}`}
-                    {...register(`intent_routes.${index}.description`)}
-                    rows={2}
-                    placeholder="描述此意圖，讓 AI 分類器能準確辨識（例：客戶對產品或服務表達不滿、要求退換貨）"
-                  />
-                  {errors.intent_routes?.[index]?.description && (
-                    <p className="text-xs text-destructive">
-                      {errors.intent_routes[index].description?.message}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor={`intent-prompt-${index}`}>專屬提示詞</Label>
-                  <Textarea
-                    id={`intent-prompt-${index}`}
-                    {...register(`intent_routes.${index}.system_prompt`)}
-                    rows={4}
-                    placeholder="此意圖觸發時使用的系統提示詞（完整替換預設提示詞）"
-                  />
-                  {errors.intent_routes?.[index]?.system_prompt && (
-                    <p className="text-xs text-destructive">
-                      {errors.intent_routes[index].system_prompt?.message}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </section>
+        <TabsContent value={TAB_KEYS.WORKERS} className="flex flex-col gap-6 pt-4">
+          <WorkersSection botId={bot.id} enabledModels={enabledModels} />
         </TabsContent>
 
         {/* Tab 3: LLM 參數 */}

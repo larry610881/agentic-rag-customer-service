@@ -1,0 +1,387 @@
+import { useState } from "react";
+import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  useWorkers,
+  useCreateWorker,
+  useUpdateWorker,
+  useDeleteWorker,
+} from "@/hooks/queries/use-workers";
+import { useMcpRegistryAccessible } from "@/hooks/queries/use-mcp-registry";
+import { useAuthStore } from "@/stores/use-auth-store";
+import type { WorkerConfig } from "@/types/worker-config";
+
+type EnabledModel = {
+  provider_name: string;
+  model_id: string;
+  display_name: string;
+};
+
+type WorkersSectionProps = {
+  botId: string;
+  enabledModels?: EnabledModel[];
+};
+
+function WorkerCard({
+  worker,
+  botId,
+  enabledModels,
+  mcpServers,
+}: {
+  worker: WorkerConfig;
+  botId: string;
+  enabledModels: EnabledModel[];
+  mcpServers: { id: string; name: string }[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const updateMutation = useUpdateWorker(botId);
+  const deleteMutation = useDeleteWorker(botId);
+
+  const handleFieldUpdate = (
+    field: string,
+    value: string | number | boolean | string[] | null,
+  ) => {
+    updateMutation.mutate(
+      { workerId: worker.id, data: { [field]: value } },
+      {
+        onError: () => toast.error("更新失敗"),
+      },
+    );
+  };
+
+  return (
+    <div className="rounded-lg border p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          className="flex items-center gap-2 text-left"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+          <span className="font-medium">{worker.name || "未命名"}</span>
+          {worker.llm_model && (
+            <Badge variant="secondary" className="text-xs">
+              {worker.llm_model}
+            </Badge>
+          )}
+          {!worker.use_rag && (
+            <Badge variant="outline" className="text-xs">
+              無 RAG
+            </Badge>
+          )}
+          {worker.enabled_mcp_ids.length > 0 && (
+            <Badge variant="outline" className="text-xs">
+              {worker.enabled_mcp_ids.length} tools
+            </Badge>
+          )}
+        </button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>刪除 Worker？</AlertDialogTitle>
+              <AlertDialogDescription>
+                確定刪除「{worker.name}」？此操作無法復原。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() =>
+                  deleteMutation.mutate(worker.id, {
+                    onSuccess: () => toast.success("已刪除"),
+                    onError: () => toast.error("刪除失敗"),
+                  })
+                }
+              >
+                確定刪除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+
+      {expanded && (
+        <div className="space-y-4 pt-2">
+          {/* Name + Description */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">名稱</Label>
+              <Input
+                defaultValue={worker.name}
+                onBlur={(e) => handleFieldUpdate("name", e.target.value)}
+                placeholder="Worker 名稱"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">路由描述（給 AI 分類器看）</Label>
+              <Input
+                defaultValue={worker.description}
+                onBlur={(e) =>
+                  handleFieldUpdate("description", e.target.value)
+                }
+                placeholder="例：客戶表達不滿或投訴"
+              />
+            </div>
+          </div>
+
+          {/* System Prompt */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">專屬提示詞</Label>
+            <Textarea
+              defaultValue={worker.system_prompt}
+              onBlur={(e) =>
+                handleFieldUpdate("system_prompt", e.target.value)
+              }
+              rows={4}
+              placeholder="此 Worker 的系統提示詞"
+            />
+          </div>
+
+          {/* LLM Model */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">LLM 模型（空 = Bot 預設）</Label>
+              <Select
+                value={
+                  worker.llm_model
+                    ? `${worker.llm_provider ?? ""}::${worker.llm_model}`
+                    : "__default__"
+                }
+                onValueChange={(v) => {
+                  if (v === "__default__") {
+                    handleFieldUpdate("llm_provider", null);
+                    handleFieldUpdate("llm_model", null);
+                  } else {
+                    const [provider, model] = v.split("::");
+                    handleFieldUpdate("llm_provider", provider);
+                    handleFieldUpdate("llm_model", model);
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Bot 預設" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Bot 預設</SelectItem>
+                  {enabledModels.map((m) => (
+                    <SelectItem
+                      key={`${m.provider_name}::${m.model_id}`}
+                      value={`${m.provider_name}::${m.model_id}`}
+                    >
+                      {m.display_name || m.model_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">最大迭代次數</Label>
+              <Input
+                type="number"
+                defaultValue={worker.max_tool_calls}
+                onBlur={(e) =>
+                  handleFieldUpdate(
+                    "max_tool_calls",
+                    parseInt(e.target.value) || 5,
+                  )
+                }
+                min={1}
+                max={20}
+              />
+            </div>
+          </div>
+
+          {/* Temperature + Max tokens */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">Temperature</Label>
+              <Input
+                type="number"
+                step={0.1}
+                defaultValue={worker.temperature}
+                onBlur={(e) =>
+                  handleFieldUpdate(
+                    "temperature",
+                    parseFloat(e.target.value) || 0.7,
+                  )
+                }
+                min={0}
+                max={2}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">Max Tokens</Label>
+              <Input
+                type="number"
+                defaultValue={worker.max_tokens}
+                onBlur={(e) =>
+                  handleFieldUpdate(
+                    "max_tokens",
+                    parseInt(e.target.value) || 1024,
+                  )
+                }
+                min={100}
+                max={128000}
+              />
+            </div>
+          </div>
+
+          {/* RAG toggle */}
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <div>
+              <Label className="text-sm">使用知識庫 (RAG)</Label>
+              <p className="text-xs text-muted-foreground">
+                關閉後此 Worker 不查詢知識庫
+              </p>
+            </div>
+            <Switch
+              checked={worker.use_rag}
+              onCheckedChange={(v) => handleFieldUpdate("use_rag", v)}
+            />
+          </div>
+
+          {/* MCP Tools */}
+          {mcpServers.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs">可用 MCP Tools（從 Bot 綁定中選取子集）</Label>
+              <div className="flex flex-wrap gap-2">
+                {mcpServers.map((s) => {
+                  const selected = worker.enabled_mcp_ids.includes(s.id);
+                  return (
+                    <Badge
+                      key={s.id}
+                      variant={selected ? "default" : "outline"}
+                      className="cursor-pointer"
+                      onClick={() => {
+                        const next = selected
+                          ? worker.enabled_mcp_ids.filter(
+                              (id) => id !== s.id,
+                            )
+                          : [...worker.enabled_mcp_ids, s.id];
+                        handleFieldUpdate("enabled_mcp_ids", next);
+                      }}
+                    >
+                      {s.name}
+                    </Badge>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function WorkersSection({
+  botId,
+  enabledModels = [],
+}: WorkersSectionProps) {
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const { data: workers, isLoading } = useWorkers(botId);
+  const createMutation = useCreateWorker(botId);
+  const { data: mcpServers } = useMcpRegistryAccessible(
+    tenantId ?? undefined,
+  );
+
+  const mcpList = (mcpServers ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
+  }));
+
+  const handleAdd = () => {
+    createMutation.mutate(
+      { name: `Worker ${(workers?.length ?? 0) + 1}` },
+      {
+        onSuccess: () => toast.success("已新增 Worker"),
+        onError: () => toast.error("新增失敗"),
+      },
+    );
+  };
+
+  return (
+    <section className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Sub-agent Workers</h3>
+          <p className="text-sm text-muted-foreground">
+            每個 Worker 是獨立 ReAct Agent，有自己的 model、tools、prompt。
+            未命中時使用 Bot 預設設定。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleAdd}
+          disabled={createMutation.isPending}
+        >
+          <Plus className="h-4 w-4 mr-1" />
+          新增 Worker
+        </Button>
+      </div>
+
+      {isLoading && (
+        <div className="text-center py-8 text-muted-foreground">
+          載入中...
+        </div>
+      )}
+
+      {!isLoading && (!workers || workers.length === 0) && (
+        <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
+          未設定 Workers，所有訊息將使用 Bot 預設設定處理
+        </div>
+      )}
+
+      {workers?.map((w) => (
+        <WorkerCard
+          key={w.id}
+          worker={w}
+          botId={botId}
+          enabledModels={enabledModels}
+          mcpServers={mcpList}
+        />
+      ))}
+    </section>
+  );
+}
