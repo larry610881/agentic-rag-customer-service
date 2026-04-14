@@ -36,7 +36,6 @@ try:
         ProcessingTaskModel,
         ProviderSettingModel,
         RAGEvalModel,
-        RAGTraceModel,
         RateLimitConfigModel,
         RequestLogModel,
         SystemPromptConfigModel,
