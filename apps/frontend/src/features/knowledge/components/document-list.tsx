@@ -28,6 +28,18 @@ import { ChunkPreviewPanel } from "./chunk-preview-panel";
 import { QualityTooltip } from "./quality-tooltip";
 import { ReprocessDialog } from "./reprocess-dialog";
 
+// Browser-viewable content types (can open in new tab)
+const BROWSER_VIEWABLE = new Set([
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "text/html",
+  "text/xml",
+  "application/json",
+  "application/xml",
+  "application/pdf",
+]);
+
 const CONTENT_TYPE_MAP: Record<string, { label: string; icon: typeof FileText; color: string }> = {
   "application/pdf": { label: "PDF", icon: FileText, color: "text-red-600 bg-red-50 dark:bg-red-950 dark:text-red-400" },
   "text/csv": { label: "CSV", icon: FileSpreadsheet, color: "text-green-600 bg-green-50 dark:bg-green-950 dark:text-green-400" },
@@ -145,6 +157,8 @@ export function DocumentList({
 }: DocumentListProps) {
   const [deleteTarget, setDeleteTarget] = useState<DocumentResponse | null>(null);
   const [chunkDoc, setChunkDoc] = useState<DocumentResponse | null>(null);
+  const [textPreviewDoc, setTextPreviewDoc] = useState<DocumentResponse | null>(null);
+  const [textPreviewContent, setTextPreviewContent] = useState<string>("");
   const [reprocessTarget, setReprocessTarget] = useState<DocumentResponse | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
@@ -318,23 +332,45 @@ export function DocumentList({
                       variant="ghost"
                       size="sm"
                       onClick={async () => {
-                        const token = useAuthStore.getState().token;
-                        const url = `${API_BASE}${API_ENDPOINTS.documents.view(kbId, doc.id)}`;
-                        try {
-                          const res = await fetch(url, {
-                            headers: token ? { Authorization: `Bearer ${token}` } : {},
-                          });
-                          if (!res.ok) throw new Error(`${res.status}`);
-                          const blob = await res.blob();
-                          const blobUrl = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = blobUrl;
-                          a.download = doc.filename;
-                          a.click();
-                          URL.revokeObjectURL(blobUrl);
-                        } catch {
-                          // fallback: open in new tab
-                          window.open(url, '_blank');
+                        const canPreview = BROWSER_VIEWABLE.has(doc.content_type);
+
+                        if (canPreview) {
+                          // Browser can open natively → fetch blob → new tab
+                          const token = useAuthStore.getState().token;
+                          const url = `${API_BASE}${API_ENDPOINTS.documents.view(kbId, doc.id)}`;
+                          const w = window.open('', '_blank');
+                          try {
+                            const res = await fetch(url, {
+                              headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            });
+                            if (!res.ok) throw new Error(`${res.status}`);
+                            const blob = await res.blob();
+                            const blobUrl = URL.createObjectURL(blob);
+                            if (w) w.location.href = blobUrl;
+                            else window.open(blobUrl, '_blank');
+                          } catch {
+                            if (w) w.close();
+                          }
+                        } else {
+                          // Binary format → fetch chunks text → show in dialog
+                          const token = useAuthStore.getState().token;
+                          const url = `${API_BASE}${API_ENDPOINTS.documents.chunks(kbId, doc.id)}`;
+                          try {
+                            const res = await fetch(url, {
+                              headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            });
+                            if (!res.ok) throw new Error(`${res.status}`);
+                            const data = await res.json();
+                            const chunks = data.items ?? data ?? [];
+                            const text = chunks
+                              .map((c: { content: string }) => c.content)
+                              .join('\n\n---\n\n');
+                            setTextPreviewContent(text || '（無內容）');
+                            setTextPreviewDoc(doc);
+                          } catch {
+                            setTextPreviewContent('無法載入文件內容');
+                            setTextPreviewDoc(doc);
+                          }
                         }
                       }}
                     >
@@ -474,6 +510,23 @@ export function DocumentList({
           </DialogHeader>
           <ScrollArea className="max-h-[60vh] -mx-6 px-6">
             <ChunkPreviewPanel kbId={kbId} docId={chunkDoc?.id ?? ""} open={!!chunkDoc} />
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Text preview dialog (for binary formats: docx, xlsx, rtf, xls) */}
+      <Dialog open={!!textPreviewDoc} onOpenChange={(open) => { if (!open) { setTextPreviewDoc(null); setTextPreviewContent(""); } }}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{textPreviewDoc?.filename} — 文件內容</DialogTitle>
+            <DialogDescription>
+              此格式無法在瀏覽器直接預覽，以下為解析後的文字內容
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[70vh] -mx-6 px-6">
+            <pre className="whitespace-pre-wrap text-sm leading-relaxed">
+              {textPreviewContent}
+            </pre>
           </ScrollArea>
         </DialogContent>
       </Dialog>
