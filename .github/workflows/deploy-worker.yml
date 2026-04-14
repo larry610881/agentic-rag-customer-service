@@ -1,0 +1,80 @@
+name: Deploy Worker to Cloud Run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/backend/**'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE_NAME: agentic-rag-worker
+  REGION: asia-east1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Google Auth (Workload Identity Federation)
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Authorize Docker push
+        run: gcloud auth configure-docker asia-east1-docker.pkg.dev
+
+      - name: Create Artifact Registry Repository (if not exists)
+        run: |
+          gcloud artifacts repositories create cloud-run-source-deploy \
+            --repository-format=docker \
+            --location=asia-east1 \
+            --description="Docker images for Cloud Run" || echo "Repository already exists"
+
+      - name: Build and Push Container
+        run: |
+          cd apps/backend
+          docker build -f Dockerfile.worker -t asia-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }} .
+          docker push asia-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: asia-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          env_vars: |
+            DATABASE_URL_OVERRIDE=${{ secrets.DATABASE_URL_OVERRIDE }}
+            REDIS_URL_OVERRIDE=${{ secrets.REDIS_URL_OVERRIDE }}
+            MILVUS_URI=${{ secrets.MILVUS_URI }}
+            JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+            ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
+            ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            STORAGE_BACKEND=${{ vars.STORAGE_BACKEND || 'gcs' }}
+            GCS_BUCKET_NAME=${{ secrets.GCS_BUCKET_NAME }}
+            APP_ENV=production
+            LOG_LEVEL=INFO
+          flags: |
+            --allow-unauthenticated
+            --port=8080
+            --memory=2Gi
+            --cpu=1
+            --cpu-boost
+            --no-cpu-throttling
+            --min-instances=1
+            --max-instances=3
+            --vpc-connector=db-connector
+            --vpc-egress=private-ranges-only
+            --timeout=600

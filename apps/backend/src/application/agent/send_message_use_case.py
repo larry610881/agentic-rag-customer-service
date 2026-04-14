@@ -353,18 +353,14 @@ class SendMessageUseCase:
                     {"role": msg.role, "content": msg.content}
                 )
 
-            asyncio.create_task(
-                self._extract_memory.execute(
-                    ExtractMemoryCommand(
-                        profile_id=profile_id,
-                        tenant_id=command.tenant_id,
-                        conversation_id=conversation.id.value,
-                        messages=recent_messages,
-                        extraction_prompt=bot_cfg.get(
-                            "memory_extraction_prompt", ""
-                        ),
-                    )
-                )
+            from src.infrastructure.queue.arq_pool import enqueue
+            await enqueue(
+                "extract_memory",
+                profile_id,
+                command.tenant_id,
+                conversation.id.value,
+                recent_messages,
+                bot_cfg.get("memory_extraction_prompt", ""),
             )
         except Exception:
             logger.warning("memory.extraction_dispatch_failed", exc_info=True)
@@ -596,18 +592,19 @@ class SendMessageUseCase:
         trace_id = str(uuid4())
         eval_depth = bot_cfg.get("eval_depth", "off")
         if eval_depth != "off" and self._eval_use_case:
-            asyncio.create_task(
-                self._run_evaluations(
-                    eval_depth=eval_depth,
-                    query=command.message,
-                    answer=response.answer,
-                    sources=response.sources,
-                    tool_calls=response.tool_calls,
-                    tenant_id=command.tenant_id,
-                    trace_id=trace_id,
-                    eval_provider=bot_cfg.get("eval_provider", ""),
-                    eval_model=bot_cfg.get("eval_model", ""),
-                )
+            from src.infrastructure.queue.arq_pool import enqueue
+            # Sources must be JSON serializable
+            sources_dicts = [
+                s.to_dict() if hasattr(s, "to_dict") else s
+                for s in response.sources
+            ]
+            await enqueue(
+                "run_evaluation",
+                eval_depth, command.message, response.answer,
+                sources_dicts, response.tool_calls,
+                command.tenant_id, trace_id,
+                bot_cfg.get("eval_provider", ""),
+                bot_cfg.get("eval_model", ""),
             )
 
         return response
@@ -753,18 +750,18 @@ class SendMessageUseCase:
         trace_id = str(uuid4())
         eval_depth = bot_cfg.get("eval_depth", "off")
         if eval_depth != "off" and self._eval_use_case:
-            asyncio.create_task(
-                self._run_evaluations(
-                    eval_depth=eval_depth,
-                    query=command.message,
-                    answer=full_answer,
-                    sources=sources_list,
-                    tool_calls=tool_calls,
-                    tenant_id=command.tenant_id,
-                    trace_id=trace_id,
-                    eval_provider=bot_cfg.get("eval_provider", ""),
-                    eval_model=bot_cfg.get("eval_model", ""),
-                )
+            from src.infrastructure.queue.arq_pool import enqueue
+            sources_dicts = [
+                s if isinstance(s, dict) else s
+                for s in sources_list
+            ]
+            await enqueue(
+                "run_evaluation",
+                eval_depth, command.message, full_answer,
+                sources_dicts, tool_calls,
+                command.tenant_id, trace_id,
+                bot_cfg.get("eval_provider", ""),
+                bot_cfg.get("eval_model", ""),
             )
 
         yield {

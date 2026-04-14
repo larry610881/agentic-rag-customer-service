@@ -271,25 +271,8 @@ async def upload_document(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from None
 
-    # Use asyncio.create_task instead of BackgroundTasks to decouple from
-    # request lifecycle. BackgroundTasks runs inside the ASGI call scope,
-    # so RequestTimeoutMiddleware would cancel long-running OCR.
-    async def _process(doc_id: str, task_id: str, t_id: str) -> None:
-        await safe_background_task(
-            lambda d, t: Container.process_document_use_case().execute(d, t),
-            doc_id,
-            task_id,
-            task_name="process_document",
-            tenant_id=t_id,
-        )
-
-    asyncio.create_task(
-        _process(
-            result.document.id.value,
-            result.task.id.value,
-            tenant.tenant_id,
-        )
-    )
+    from src.infrastructure.queue.arq_pool import enqueue
+    await enqueue("process_document", result.document.id.value, result.task.id.value)
 
     doc = result.document
     return UploadDocumentResponse(
@@ -379,34 +362,8 @@ async def confirm_upload(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from None
 
-    # Capture IDs before response — background task must NOT touch request-scoped objects
-    doc_id = result.document.id.value
-    task_id = result.task.id.value
-    tenant_id = tenant.tenant_id
-
-    import threading
-
-    def _run_in_thread() -> None:
-        """Run processing in a separate thread to fully isolate from request session."""
-        import asyncio as _aio
-
-        async def _do() -> None:
-            _log.warning(f"[confirm] bg task START doc={doc_id}")
-            try:
-                use_case = Container.process_document_use_case()
-                await use_case.execute(doc_id, task_id)
-                _log.warning(f"[confirm] bg task DONE doc={doc_id}")
-            except Exception as e:
-                _log.error(f"[confirm] bg task FAIL doc={doc_id} err={e}", exc_info=True)
-
-        loop = _aio.new_event_loop()
-        try:
-            loop.run_until_complete(_do())
-        finally:
-            loop.close()
-
-    _log.warning(f"[confirm] creating bg thread doc={doc_id}")
-    threading.Thread(target=_run_in_thread, daemon=True).start()
+    from src.infrastructure.queue.arq_pool import enqueue
+    await enqueue("process_document", result.document.id.value, result.task.id.value)
 
     doc = result.document
     return UploadDocumentResponse(
