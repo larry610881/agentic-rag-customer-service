@@ -13,7 +13,7 @@ const ACCEPTED_TYPES: Record<string, { ext: string; label: string; strategy: str
   "text/xml":          { ext: ".xml",  label: "XML",       strategy: "遞迴分塊" },
   "application/xml":   { ext: ".xml",  label: "XML",       strategy: "遞迴分塊" },
   "text/html":         { ext: ".html", label: "HTML",      strategy: "遞迴分塊" },
-  "application/pdf":   { ext: ".pdf",  label: "PDF",       strategy: "遞迴分塊" },
+  "application/pdf":   { ext: ".pdf",  label: "PDF",       strategy: "依知識庫 OCR 設定" },
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
                        { ext: ".docx", label: "Word",      strategy: "遞迴分塊" },
   "application/rtf":   { ext: ".rtf",  label: "RTF",       strategy: "遞迴分塊" },
@@ -22,7 +22,6 @@ const ACCEPTED_TYPES: Record<string, { ext: string; label: string; strategy: str
                        { ext: ".xlsx", label: "Excel",     strategy: "逐列分塊" },
   "application/vnd.ms-excel":
                        { ext: ".xls",  label: "Excel",     strategy: "逐列分塊" },
-  "application/sql":   { ext: ".sql",  label: "SQL",       strategy: "SQL 語句分塊" },
 };
 
 const ACCEPT_STRING = [...new Set(Object.values(ACCEPTED_TYPES).map((t) => t.ext))].join(",");

@@ -116,7 +116,7 @@ function WorkerCard({
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>刪除 Worker？</AlertDialogTitle>
+              <AlertDialogTitle>刪除 Sub-agent？</AlertDialogTitle>
               <AlertDialogDescription>
                 確定刪除「{worker.name}」？此操作無法復原。
               </AlertDialogDescription>
@@ -148,7 +148,7 @@ function WorkerCard({
               <Input
                 defaultValue={worker.name}
                 onBlur={(e) => handleFieldUpdate("name", e.target.value)}
-                placeholder="Worker 名稱"
+                placeholder="Sub-agent 名稱"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -172,7 +172,7 @@ function WorkerCard({
                 handleFieldUpdate("system_prompt", e.target.value)
               }
               rows={4}
-              placeholder="此 Worker 的系統提示詞"
+              placeholder="此 Sub-agent 的系統提示詞"
             />
           </div>
 
@@ -270,7 +270,7 @@ function WorkerCard({
             <div>
               <Label className="text-sm">使用知識庫 (RAG)</Label>
               <p className="text-xs text-muted-foreground">
-                關閉後此 Worker 不查詢知識庫
+                關閉後此 Sub-agent 不查詢知識庫
               </p>
             </div>
             <Switch
@@ -331,9 +331,9 @@ export function WorkersSection({
 
   const handleAdd = () => {
     createMutation.mutate(
-      { name: `Worker ${(workers?.length ?? 0) + 1}` },
+      { name: `Sub-agent ${(workers?.length ?? 0) + 1}` },
       {
-        onSuccess: () => toast.success("已新增 Worker"),
+        onSuccess: () => toast.success("已新增 Sub-agent"),
         onError: () => toast.error("新增失敗"),
       },
     );
@@ -343,9 +343,9 @@ export function WorkersSection({
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Sub-agent Workers</h3>
+          <h3 className="text-lg font-semibold">Sub-agent</h3>
           <p className="text-sm text-muted-foreground">
-            每個 Worker 是獨立 ReAct Agent，有自己的 model、tools、prompt。
+            每個 Sub-agent 是獨立 ReAct Agent，有自己的模型、工具、提示詞。
             未命中時使用 Bot 預設設定。
           </p>
         </div>
@@ -357,7 +357,7 @@ export function WorkersSection({
           disabled={createMutation.isPending}
         >
           <Plus className="h-4 w-4 mr-1" />
-          新增 Worker
+          新增 Sub-agent
         </Button>
       </div>
 
@@ -369,7 +369,7 @@ export function WorkersSection({
 
       {!isLoading && (!workers || workers.length === 0) && (
         <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
-          未設定 Workers，所有訊息將使用 Bot 預設設定處理
+          未設定 Sub-agent，所有訊息將使用 Bot 預設設定處理
         </div>
       )}
 

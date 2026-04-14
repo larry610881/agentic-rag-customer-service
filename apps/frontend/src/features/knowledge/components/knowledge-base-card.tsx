@@ -20,6 +20,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+const OCR_MODE_LABELS: Record<string, { label: string; tip: string }> = {
+  general: { label: "一般 OCR", tip: "標準文字擷取，適用一般文件" },
+  catalog: { label: "型錄 OCR", tip: "圖片型錄辨識，適用商品型錄/DM" },
+};
 import { useDeleteKnowledgeBase } from "@/hooks/queries/use-knowledge-bases";
 import type { KnowledgeBase } from "@/types/knowledge";
 
@@ -39,6 +49,18 @@ export function KnowledgeBaseCard({ knowledgeBase }: KnowledgeBaseCardProps) {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">{knowledgeBase.name}</CardTitle>
               <div className="flex items-center gap-2">
+                {knowledgeBase.ocr_mode && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="text-xs">
+                        {OCR_MODE_LABELS[knowledgeBase.ocr_mode]?.label ?? knowledgeBase.ocr_mode}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {OCR_MODE_LABELS[knowledgeBase.ocr_mode]?.tip ?? "PDF 處理策略"}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 <Badge variant="secondary">{knowledgeBase.document_count} 份文件</Badge>
                 <Button
                   variant="ghost"

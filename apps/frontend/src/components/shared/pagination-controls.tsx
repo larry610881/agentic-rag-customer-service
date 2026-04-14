@@ -21,7 +21,7 @@ export function PaginationControls({
         size="sm"
         onClick={() => onPageChange(page - 1)}
         disabled={page <= 1}
-        aria-label="Previous page"
+        aria-label="上一頁"
       >
         <ChevronLeft className="h-4 w-4" />
       </Button>
@@ -33,7 +33,7 @@ export function PaginationControls({
         size="sm"
         onClick={() => onPageChange(page + 1)}
         disabled={page >= totalPages}
-        aria-label="Next page"
+        aria-label="下一頁"
       >
         <ChevronRight className="h-4 w-4" />
       </Button>

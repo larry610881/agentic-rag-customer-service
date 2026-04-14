@@ -166,10 +166,10 @@ export function ObservabilityTracesTable() {
             <TableRow>
               <TableHead className="w-8" />
               <TableHead className="w-40">時間</TableHead>
-              <TableHead className="w-24">Tenant</TableHead>
-              <TableHead>Query</TableHead>
-              <TableHead className="w-20 text-center">Steps</TableHead>
-              <TableHead className="w-20 text-center">Chunks</TableHead>
+              <TableHead className="w-24">租戶</TableHead>
+              <TableHead>查詢</TableHead>
+              <TableHead className="w-20 text-center">步驟</TableHead>
+              <TableHead className="w-20 text-center">區塊</TableHead>
               <TableHead className="w-24 text-right">耗時</TableHead>
             </TableRow>
           </TableHeader>

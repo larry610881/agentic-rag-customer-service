@@ -458,9 +458,9 @@ export default function AdminPromptOptimizerValidatePage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[60px]">優先級</TableHead>
-                <TableHead>Case ID</TableHead>
+                <TableHead>案例 ID</TableHead>
                 <TableHead className="max-w-[300px]">問題</TableHead>
-                <TableHead className="w-[80px]">Pass Rate</TableHead>
+                <TableHead className="w-[80px]">通過率</TableHead>
                 <TableHead className="w-[60px]">門檻</TableHead>
                 <TableHead className="w-[60px]">結果</TableHead>
               </TableRow>

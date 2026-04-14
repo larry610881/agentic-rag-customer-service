@@ -166,7 +166,7 @@ export function ObservabilityEvalsTable() {
           onChange={(v) => { setTenantFilter(v); setPage(0); }}
         />
         <Select value={layerFilter} onValueChange={(v) => { setLayerFilter(v === "all" ? "" : v); setPage(0); }}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Layer" /></SelectTrigger>
+          <SelectTrigger className="w-36"><SelectValue placeholder="評估層級" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部</SelectItem>
             <SelectItem value="L1">L1</SelectItem>
@@ -192,11 +192,11 @@ export function ObservabilityEvalsTable() {
             <TableRow>
               <TableHead className="w-8" />
               <TableHead className="w-40">時間</TableHead>
-              <TableHead className="w-24">Tenant</TableHead>
-              <TableHead className="w-24">Layer</TableHead>
-              <TableHead className="w-24">Avg Score</TableHead>
-              <TableHead>Model</TableHead>
-              <TableHead className="w-24 text-center">Dimensions</TableHead>
+              <TableHead className="w-24">租戶</TableHead>
+              <TableHead className="w-24">層級</TableHead>
+              <TableHead className="w-24">平均分數</TableHead>
+              <TableHead>模型</TableHead>
+              <TableHead className="w-24 text-center">維度</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

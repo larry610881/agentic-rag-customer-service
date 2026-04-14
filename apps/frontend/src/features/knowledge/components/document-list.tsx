@@ -18,12 +18,36 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye } from "lucide-react";
+import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye, ExternalLink, FileText, FileSpreadsheet, FileJson, FileType } from "lucide-react";
+import { API_ENDPOINTS } from "@/lib/api-endpoints";
+import { useAuthStore } from "@/stores/use-auth-store";
 import type { DocumentResponse, DocumentQualityStat } from "@/types/knowledge";
 import { useReprocessDocument } from "@/hooks/queries/use-documents";
 import { ChunkPreviewPanel } from "./chunk-preview-panel";
 import { QualityTooltip } from "./quality-tooltip";
 import { ReprocessDialog } from "./reprocess-dialog";
+
+const CONTENT_TYPE_MAP: Record<string, { label: string; icon: typeof FileText; color: string }> = {
+  "application/pdf": { label: "PDF", icon: FileText, color: "text-red-600 bg-red-50 dark:bg-red-950 dark:text-red-400" },
+  "text/csv": { label: "CSV", icon: FileSpreadsheet, color: "text-green-600 bg-green-50 dark:bg-green-950 dark:text-green-400" },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { label: "XLSX", icon: FileSpreadsheet, color: "text-green-600 bg-green-50 dark:bg-green-950 dark:text-green-400" },
+  "application/json": { label: "JSON", icon: FileJson, color: "text-amber-600 bg-amber-50 dark:bg-amber-950 dark:text-amber-400" },
+  "text/plain": { label: "TXT", icon: FileType, color: "text-slate-600 bg-slate-50 dark:bg-slate-950 dark:text-slate-400" },
+  "text/markdown": { label: "MD", icon: FileType, color: "text-purple-600 bg-purple-50 dark:bg-purple-950 dark:text-purple-400" },
+};
+
+function ContentTypeBadge({ contentType }: { contentType: string }) {
+  const info = CONTENT_TYPE_MAP[contentType];
+  const label = info?.label ?? contentType.split("/").pop()?.toUpperCase() ?? "?";
+  const Icon = info?.icon ?? FileType;
+  const color = info?.color ?? "text-muted-foreground bg-muted";
+  return (
+    <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${color}`}>
+      <Icon className="h-3 w-3" />
+      {label}
+    </span>
+  );
+}
 
 interface DocumentListProps {
   kbId: string;
@@ -261,6 +285,7 @@ export function DocumentList({
                 </td>
                 <td className="border-b px-4 py-2">
                   <div className="flex items-center gap-2">
+                    <ContentTypeBadge contentType={doc.content_type} />
                     <span>{doc.filename}</span>
                     {(statsMap.get(doc.id)?.negative_feedback_count ?? 0) > 0 && (
                       <span
@@ -288,6 +313,18 @@ export function DocumentList({
                 </td>
                 {onDelete && (
                   <td className="border-b px-4 py-2 space-x-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const token = useAuthStore.getState().token;
+                        const url = API_ENDPOINTS.documents.view(kbId, doc.id);
+                        window.open(`${url}${token ? `?token=${token}` : ''}`, '_blank');
+                      }}
+                    >
+                      <ExternalLink className="mr-1 h-4 w-4" />
+                      原始檔
+                    </Button>
                     {doc.status === "processed" && doc.chunk_count > 0 && (
                       <Button
                         variant="ghost"

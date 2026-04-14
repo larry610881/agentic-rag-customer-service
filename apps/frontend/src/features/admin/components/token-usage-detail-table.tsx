@@ -46,13 +46,13 @@ export function TokenUsageDetailTable({ data, isLoading }: TokenUsageDetailTable
             <TableRow>
               <TableHead>租戶</TableHead>
               <TableHead>類型</TableHead>
-              <TableHead>Bot</TableHead>
+              <TableHead>機器人</TableHead>
               <TableHead>模型</TableHead>
               <TableHead className="text-right">次數</TableHead>
               <TableHead className="text-right">輸入 Tokens</TableHead>
               <TableHead className="text-right">輸出 Tokens</TableHead>
-              <TableHead className="text-right">Cache Read</TableHead>
-              <TableHead className="text-right">Cache Write</TableHead>
+              <TableHead className="text-right">快取讀取</TableHead>
+              <TableHead className="text-right">快取寫入</TableHead>
               <TableHead className="text-right">預估成本</TableHead>
             </TableRow>
           </TableHeader>

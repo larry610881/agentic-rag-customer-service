@@ -199,10 +199,10 @@ export function RequestLogsTable() {
           }}
         >
           <SelectTrigger className="w-[120px]">
-            <SelectValue placeholder="Method" />
+            <SelectValue placeholder="請求方法" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部 Method</SelectItem>
+            <SelectItem value="all">全部方法</SelectItem>
             <SelectItem value="GET">GET</SelectItem>
             <SelectItem value="POST">POST</SelectItem>
             <SelectItem value="PUT">PUT</SelectItem>
@@ -218,10 +218,10 @@ export function RequestLogsTable() {
           }}
         >
           <SelectTrigger className="w-[120px]">
-            <SelectValue placeholder="Status" />
+            <SelectValue placeholder="狀態碼" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部 Status</SelectItem>
+            <SelectItem value="all">全部狀態</SelectItem>
             <SelectItem value="2xx">2xx</SelectItem>
             <SelectItem value="3xx">3xx</SelectItem>
             <SelectItem value="4xx">4xx</SelectItem>
@@ -261,9 +261,9 @@ export function RequestLogsTable() {
               <TableHead className="w-8" />
               <TableHead className="w-40">時間</TableHead>
               <TableHead className="w-24">租戶</TableHead>
-              <TableHead className="w-32">Request ID</TableHead>
+              <TableHead className="w-32">請求 ID</TableHead>
               <TableHead>API</TableHead>
-              <TableHead className="w-20">Status</TableHead>
+              <TableHead className="w-20">狀態碼</TableHead>
               <TableHead className="w-24 text-right">耗時</TableHead>
             </TableRow>
           </TableHeader>

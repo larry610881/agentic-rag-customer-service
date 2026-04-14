@@ -139,7 +139,7 @@ export function McpRegistryTable() {
             <TableHead>範圍</TableHead>
             <TableHead>傳輸方式</TableHead>
             <TableHead>位址</TableHead>
-            <TableHead className="text-center">Tools</TableHead>
+            <TableHead className="text-center">工具數</TableHead>
             <TableHead className="text-center">狀態</TableHead>
             <TableHead className="text-right">操作</TableHead>
           </TableRow>

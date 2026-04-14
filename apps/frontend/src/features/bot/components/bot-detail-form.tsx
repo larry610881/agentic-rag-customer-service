@@ -104,7 +104,7 @@ interface BotDetailFormProps {
 const TAB_KEYS = {
   KNOWLEDGE: "knowledge",
   PROMPT: "prompt",
-  WORKERS: "workers",
+  SUBAGENT: "subagent",
   LLM: "llm",
   WIDGET: "widget",
   LINE: "line",
@@ -345,8 +345,8 @@ export function BotDetailForm({
           <TabsTrigger value={TAB_KEYS.PROMPT} className="flex-1">
             系統提示詞
           </TabsTrigger>
-          <TabsTrigger value={TAB_KEYS.WORKERS} className="flex-1">
-            Workers
+          <TabsTrigger value={TAB_KEYS.SUBAGENT} className="flex-1">
+            Sub-agent
           </TabsTrigger>
           <TabsTrigger value={TAB_KEYS.LLM} className="flex-1">
             LLM 參數
@@ -640,7 +640,7 @@ export function BotDetailForm({
         </TabsContent>
 
         {/* Tab: 意圖路由 */}
-        <TabsContent value={TAB_KEYS.WORKERS} className="flex flex-col gap-6 pt-4">
+        <TabsContent value={TAB_KEYS.SUBAGENT} className="flex flex-col gap-6 pt-4">
           <WorkersSection botId={bot.id} enabledModels={enabledModels} />
         </TabsContent>
 

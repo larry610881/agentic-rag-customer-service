@@ -105,11 +105,11 @@ export function AgentTracesTable({ onSelectTrace }: AgentTracesTableProps) {
           <TableHeader>
             <TableRow>
               <TableHead className="w-40">時間</TableHead>
-              <TableHead className="w-24">Tenant</TableHead>
+              <TableHead className="w-24">租戶</TableHead>
               <TableHead className="w-28">Agent 模式</TableHead>
               <TableHead className="w-20 text-center">節點數</TableHead>
               <TableHead className="w-24 text-right">耗時 (ms)</TableHead>
-              <TableHead className="w-32">Conversation</TableHead>
+              <TableHead className="w-32">對話</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
