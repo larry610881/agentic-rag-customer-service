@@ -1,17 +1,16 @@
-name: Deploy Backend to Cloud Run
+name: Deploy MCP Carrefour to Cloud Run
 
 on:
   push:
     branches: [main]
     paths:
-      - 'apps/backend/**'
-      - 'apps/widget/**'
-      - '.github/workflows/deploy-backend.yml'
+      - 'mcp-servers/carrefour/**'
+      - '.github/workflows/deploy-mcp-carrefour.yml'
   workflow_dispatch:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  SERVICE_NAME: agentic-rag
+  SERVICE_NAME: mcp-carrefour
   REGION: asia-east1
 
 jobs:
@@ -23,19 +22,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: apps/widget/package-lock.json
-
-      - name: Build Widget
-        run: |
-          cd apps/widget
-          npm ci
-          npm run build
 
       - name: Google Auth (Workload Identity Federation)
         uses: google-github-actions/auth@v3
@@ -58,7 +44,7 @@ jobs:
 
       - name: Build and Push Container
         run: |
-          cd apps/backend
+          cd mcp-servers/carrefour
           docker build -t asia-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }} .
           docker push asia-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
 
@@ -68,28 +54,10 @@ jobs:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.REGION }}
           image: asia-east1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
-          env_vars: |
-            DATABASE_URL_OVERRIDE=${{ secrets.DATABASE_URL_OVERRIDE }}
-            REDIS_URL_OVERRIDE=${{ secrets.REDIS_URL_OVERRIDE }}
-            MILVUS_URI=${{ secrets.MILVUS_URI }}
-            JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
-            ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
-            ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-            STORAGE_BACKEND=${{ vars.STORAGE_BACKEND || 'gcs' }}
-            GCS_BUCKET_NAME=${{ secrets.GCS_BUCKET_NAME }}
-            CORS_ORIGINS=${{ vars.CORS_ORIGINS }}
-            RATE_LIMIT_ENABLED=${{ vars.RATE_LIMIT_ENABLED || 'true' }}
-            APP_ENV=production
-            LOG_LEVEL=INFO
           flags: |
             --allow-unauthenticated
-            --port=8000
-            --memory=1Gi
+            --port=8080
+            --memory=256Mi
             --cpu=1
-            --cpu-boost
-            --no-cpu-throttling
-            --min-instances=1
-            --max-instances=5
-            --vpc-connector=db-connector
-            --vpc-egress=private-ranges-only
+            --min-instances=0
+            --max-instances=2
