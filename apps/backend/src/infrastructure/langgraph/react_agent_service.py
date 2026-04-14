@@ -436,7 +436,7 @@ class ReActAgentService(AgentService):
             message_preview=user_message[:200],
             history_turns=history_len,
             has_history_context=bool(history_context),
-            history_context=history_context[:500] if history_context else "",
+            history_context=history_context[:2000] if history_context else "",
         )
 
         async with AsyncExitStack() as stack:
@@ -618,7 +618,7 @@ class ReActAgentService(AgentService):
                 message_preview=user_message[:200],
                 history_turns=history_len,
                 has_history_context=bool(history_context),
-                history_context=history_context[:500] if history_context else "",
+                history_context=history_context[:2000] if history_context else "",
             )
 
             # Emit initial status so frontend shows "AI 分析中" immediately

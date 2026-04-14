@@ -141,14 +141,26 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
 
   return (
     <div className="nopan nodrag mt-2 space-y-1 text-xs text-muted-foreground max-h-[300px] overflow-y-auto">
-      {fields.map((f) =>
-        meta[f.key] != null ? (
+      {fields.map((f) => {
+        if (meta[f.key] == null) return null;
+        const value = str(meta[f.key]);
+        if (f.wrap && value.includes("\n")) {
+          return (
+            <div key={f.key}>
+              <span className="font-medium">{f.label}：</span>
+              <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-muted/50 p-1.5 text-xs">
+                {value}
+              </pre>
+            </div>
+          );
+        }
+        return (
           <p key={f.key} className={f.wrap ? "break-words" : undefined}>
             <span className="font-medium">{f.label}：</span>
-            {str(meta[f.key])}
+            {value}
           </p>
-        ) : null,
-      )}
+        );
+      })}
       {meta.tool_calls ? (
         <p>
           <span className="font-medium">工具：</span>
