@@ -461,6 +461,9 @@ export function AgentTraceGraph({ execNodes }: AgentTraceGraphProps) {
         fitView
         minZoom={0.3}
         maxZoom={2}
+        zoomOnScroll={false}
+        zoomOnDoubleClick={false}
+        preventScrolling={false}
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={16} size={1} />
