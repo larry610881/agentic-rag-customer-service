@@ -351,11 +351,11 @@ class ReActAgentService(AgentService):
                         result_length=len(content_str),
                         result_preview=content_str[:200],
                     )
-                    # Trace: tool_call node (parent = last agent_llm)
+                    # Trace: tool_call node (sequential — no parent)
                     AgentTraceCollector.add_node(
                         node_type="tool_call",
                         label=tool_name,
-                        parent_id=last_agent_node_id or None,
+                        parent_id=None,
                         start_ms=trace_start_ms,
                         end_ms=trace_end_ms,
                         tool_name=tool_name,
