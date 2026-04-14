@@ -81,10 +81,42 @@ function SmartPre({ value, className }: { value: unknown; className?: string }) 
       </div>
     );
   }
+
+  // Mixed format: split by [XXXMessage] markers, render JSON parts with JsonView
+  const text = str(value);
+  const segments = text.split(/(\[(?:System|Human|AI|Tool)Message\])/);
+
+  if (segments.length <= 1) {
+    return (
+      <pre className={`whitespace-pre-wrap break-words rounded p-2 text-xs ${className ?? ""}`}>
+        {text}
+      </pre>
+    );
+  }
+
   return (
-    <pre className={`whitespace-pre-wrap break-words rounded p-2 text-xs ${className ?? ""}`}>
-      {str(value)}
-    </pre>
+    <div className={`rounded p-2 text-xs space-y-1 ${className ?? ""}`}>
+      {segments.map((seg, i) => {
+        if (/^\[(?:System|Human|AI|Tool)Message\]$/.test(seg)) {
+          return (
+            <span key={i} className="font-semibold text-purple-500 dark:text-purple-400">
+              {seg}
+            </span>
+          );
+        }
+        const trimmed = seg.trim();
+        if (!trimmed) return null;
+        const jsonData = tryParseJson(trimmed);
+        if (jsonData !== null && typeof jsonData === "object") {
+          return <JsonView key={i} data={jsonData} style={darkStyles} />;
+        }
+        return (
+          <pre key={i} className="whitespace-pre-wrap break-words">
+            {seg}
+          </pre>
+        );
+      })}
+    </div>
   );
 }
 
