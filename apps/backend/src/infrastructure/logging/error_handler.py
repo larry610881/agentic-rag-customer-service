@@ -33,11 +33,15 @@ async def safe_background_task(
         try:
             await coro_fn(*args)
         except Exception as exc:
+            import traceback
+            print(f"[BG_TASK_FAILED] {resolved_name}: {exc}", flush=True)
+            traceback.print_exc()
             logger.exception(
                 "background_task_failed",
                 task_name=resolved_name,
                 **context,
             )
+            raise
 
             # 寫入 Error Tracking Dashboard
             from src.infrastructure.logging.error_event_writer import (
