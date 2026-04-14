@@ -48,13 +48,13 @@ from src.application.conversation.submit_feedback_use_case import (
 from src.application.eval_dataset.create_eval_dataset_use_case import (
     CreateEvalDatasetUseCase,
 )
+from src.application.eval_dataset.delete_eval_dataset_use_case import (
+    DeleteEvalDatasetUseCase,
+)
 from src.application.eval_dataset.eval_use_cases import (
     EstimateCostUseCase,
     RunSingleEvalUseCase,
     RunValidationEvalUseCase,
-)
-from src.application.eval_dataset.delete_eval_dataset_use_case import (
-    DeleteEvalDatasetUseCase,
 )
 from src.application.eval_dataset.get_eval_dataset_use_case import (
     GetEvalDatasetUseCase,
@@ -241,10 +241,6 @@ from src.infrastructure.db.repositories.error_event_repository import (
 from src.infrastructure.db.repositories.eval_dataset_repository import (
     SQLAlchemyEvalDatasetRepository,
 )
-from src.infrastructure.db.repositories.optimization_run_repository import (
-    SQLAlchemyOptimizationRunRepository,
-)
-from src.infrastructure.prompt_optimizer.run_manager import RunManager
 from src.infrastructure.db.repositories.feedback_repository import (
     SQLAlchemyFeedbackRepository,
 )
@@ -262,6 +258,9 @@ from src.infrastructure.db.repositories.memory_fact_repository import (
 )
 from src.infrastructure.db.repositories.notification_channel_repository import (
     SQLAlchemyNotificationChannelRepository,
+)
+from src.infrastructure.db.repositories.optimization_run_repository import (
+    SQLAlchemyOptimizationRunRepository,
 )
 from src.infrastructure.db.repositories.processing_task_repository import (
     SQLAlchemyProcessingTaskRepository,
@@ -330,12 +329,10 @@ from src.infrastructure.mcp.cached_tool_loader import CachedMCPToolLoader
 from src.infrastructure.memory.llm_memory_extraction_service import (
     LLMMemoryExtractionService,
 )
+from src.infrastructure.milvus.milvus_vector_store import MilvusVectorStore
 from src.infrastructure.notification.email_sender import EmailNotificationSender
 from src.infrastructure.notification.redis_throttle import RedisNotificationThrottle
-from src.infrastructure.milvus.milvus_vector_store import MilvusVectorStore
-from src.infrastructure.sentiment.keyword_sentiment_service import (
-    KeywordSentimentService,
-)
+from src.infrastructure.prompt_optimizer.run_manager import RunManager
 from src.infrastructure.storage.gcs_document_file_storage import (
     GCSDocumentFileStorageService,
 )
@@ -975,8 +972,6 @@ class Container(containers.DeclarativeContainer):
 
     # --- Agent Service ---
 
-    sentiment_service = providers.Singleton(KeywordSentimentService)
-
     customer_team = providers.Factory(
         TeamSupervisor,
         team_name="customer",
@@ -996,7 +991,6 @@ class Container(containers.DeclarativeContainer):
             teams=providers.Dict(
                 customer=customer_team,
             ),
-            sentiment_service=sentiment_service,
         ),
         real=providers.Factory(
             ReActAgentService,

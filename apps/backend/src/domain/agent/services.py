@@ -5,7 +5,6 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from src.domain.agent.entity import AgentResponse
-from src.domain.agent.value_objects import SentimentResult
 from src.domain.conversation.entity import Message
 
 
@@ -53,8 +52,3 @@ class AgentService(ABC):
         max_tool_calls: int = 5,
         audit_mode: str = "minimal",
     ) -> AsyncIterator[dict[str, Any]]: ...  # pragma: no cover
-
-
-class SentimentService(ABC):
-    @abstractmethod
-    async def analyze(self, text: str) -> SentimentResult: ...

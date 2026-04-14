@@ -25,8 +25,6 @@ class AgentResponse:
     conversation_id: str = ""
     usage: TokenUsage | None = None
     refund_step: str | None = None
-    sentiment: str | None = None
-    escalated: bool = False
 
 
 @dataclass

@@ -1,11 +1,11 @@
-"""SupervisorAgentService — Multi-Agent 調度器（含情緒偵測 + 反思）"""
+"""SupervisorAgentService — Multi-Agent 調度器"""
 
 from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
 
 from src.domain.agent.entity import AgentResponse
-from src.domain.agent.services import AgentService, SentimentService
+from src.domain.agent.services import AgentService
 from src.domain.agent.worker import AgentWorker, WorkerContext
 from src.domain.conversation.entity import Message
 from src.domain.rag.value_objects import TokenUsage
@@ -14,17 +14,13 @@ from src.infrastructure.observability.agent_trace_collector import (
     AgentTraceCollector,
 )
 
-_MIN_ANSWER_LENGTH = 10
-
 
 class SupervisorAgentService(AgentService):
     def __init__(
         self,
         workers: list[AgentWorker],
-        sentiment_service: SentimentService | None = None,
     ) -> None:
         self._workers = workers
-        self._sentiment_service = sentiment_service
 
     async def process_message(
         self,
@@ -49,12 +45,6 @@ class SupervisorAgentService(AgentService):
             message_preview=user_message[:200],
         )
 
-        sentiment_result = None
-        if self._sentiment_service:
-            sentiment_result = await self._sentiment_service.analyze(
-                user_message
-            )
-
         context = WorkerContext(
             tenant_id=tenant_id,
             kb_id=kb_id,
@@ -64,17 +54,10 @@ class SupervisorAgentService(AgentService):
         )
 
         response = await self._dispatch(context)
-        response = self._reflect(response, context)
-
-        if sentiment_result:
-            response.sentiment = sentiment_result.sentiment
-            response.escalated = sentiment_result.should_escalate
 
         end_ms = AgentTraceCollector.offset_ms()
         AgentTraceCollector.add_node(
             "final_response", "最終回覆", None, end_ms, end_ms,
-            sentiment=sentiment_result.sentiment if sentiment_result else None,
-            escalated=sentiment_result.should_escalate if sentiment_result else False,
         )
 
         return response
@@ -84,8 +67,8 @@ class SupervisorAgentService(AgentService):
             if await worker.can_handle(context):
                 t0_ms = AgentTraceCollector.offset_ms()
                 AgentTraceCollector.add_node(
-                    "supervisor_dispatch", f"選擇 {worker.name}", None,
-                    t0_ms, t0_ms,
+                    "supervisor_dispatch", f"選擇 {worker.name}",
+                    None, t0_ms, t0_ms,
                     selected_worker=worker.name,
                 )
                 t_exec = AgentTraceCollector.offset_ms()
@@ -108,17 +91,6 @@ class SupervisorAgentService(AgentService):
             conversation_id=str(uuid4()),
             usage=TokenUsage.zero("fake"),
         )
-
-    def _reflect(
-        self, response: AgentResponse, context: WorkerContext
-    ) -> AgentResponse:
-        if len(response.answer) < _MIN_ANSWER_LENGTH:
-            response.answer = (
-                f"關於您的問題「{context.user_message}」，"
-                f"{response.answer}"
-                "如需更多協助，請告訴我。"
-            )
-        return response
 
     async def process_message_stream(
         self,

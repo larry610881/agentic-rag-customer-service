@@ -20,11 +20,3 @@ Feature: MetaSupervisor 角色路由
     And 使用者角色為 "unknown_role"
     When MetaSupervisor 處理訊息 "你好"
     Then 應由 customer 團隊處理
-
-  Scenario: MetaSupervisor 整合情緒偵測
-    Given MetaSupervisor 已註冊 customer 和 marketing 團隊
-    And 使用者角色為 "customer"
-    And 情緒服務已啟用
-    When MetaSupervisor 處理包含負面情緒的訊息 "我非常不滿意這個服務"
-    Then 回應應包含 sentiment 為 "negative"
-    And 回應應標記為需要升級

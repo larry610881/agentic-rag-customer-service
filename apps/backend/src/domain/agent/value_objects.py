@@ -6,13 +6,6 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class SentimentResult:
-    sentiment: str  # "positive" | "neutral" | "negative"
-    score: float
-    should_escalate: bool = False
-
-
-@dataclass(frozen=True)
 class ToolName:
     value: str
 

@@ -5,7 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from src.domain.agent.entity import AgentResponse
-from src.domain.agent.services import AgentService, SentimentService
+from src.domain.agent.services import AgentService
 from src.domain.agent.team_supervisor import TeamSupervisor
 from src.domain.agent.worker import WorkerContext
 from src.domain.conversation.entity import Message
@@ -15,24 +15,17 @@ from src.infrastructure.observability.agent_trace_collector import (
     AgentTraceCollector,
 )
 
-_MIN_ANSWER_LENGTH = 10
 _DEFAULT_ROLE = "customer"
 
 
 class MetaSupervisorService(AgentService):
-    """頂層路由：依 user_role dispatch 到對應 TeamSupervisor。
-
-    行為與 SupervisorAgentService 一致（情緒偵測 + 反思），
-    但增加角色級路由。
-    """
+    """頂層路由：依 user_role dispatch 到對應 TeamSupervisor。"""
 
     def __init__(
         self,
         teams: dict[str, TeamSupervisor],
-        sentiment_service: SentimentService | None = None,
     ) -> None:
         self._teams = teams
-        self._sentiment_service = sentiment_service
 
     async def process_message(
         self,
@@ -61,12 +54,6 @@ class MetaSupervisorService(AgentService):
             message_preview=user_message[:200],
         )
 
-        sentiment_result = None
-        if self._sentiment_service:
-            sentiment_result = await self._sentiment_service.analyze(
-                user_message
-            )
-
         context = WorkerContext(
             tenant_id=tenant_id,
             kb_id=kb_id,
@@ -77,17 +64,10 @@ class MetaSupervisorService(AgentService):
         )
 
         response = await self._dispatch(context)
-        response = self._reflect(response, context)
-
-        if sentiment_result:
-            response.sentiment = sentiment_result.sentiment
-            response.escalated = sentiment_result.should_escalate
 
         end_ms = AgentTraceCollector.offset_ms()
         AgentTraceCollector.add_node(
             "final_response", "最終回覆", None, end_ms, end_ms,
-            sentiment=sentiment_result.sentiment if sentiment_result else None,
-            escalated=sentiment_result.should_escalate if sentiment_result else False,
         )
 
         return response
@@ -129,17 +109,6 @@ class MetaSupervisorService(AgentService):
             refund_step=result.metadata.get("refund_step"),
         )
 
-    def _reflect(
-        self, response: AgentResponse, context: WorkerContext
-    ) -> AgentResponse:
-        if len(response.answer) < _MIN_ANSWER_LENGTH:
-            response.answer = (
-                f"關於您的問題「{context.user_message}」，"
-                f"{response.answer}"
-                "如需更多協助，請告訴我。"
-            )
-        return response
-
     async def process_message_stream(
         self,
         tenant_id: str,
@@ -167,7 +136,7 @@ class MetaSupervisorService(AgentService):
         # Yield tool_calls so execute_stream can persist them
         if response.tool_calls:
             yield {"type": "tool_calls", "tool_calls": response.tool_calls}
-        # Yield refund_step metadata so execute_stream can persist it for next turn
+        # Yield refund_step metadata
         if response.refund_step:
             yield {"type": "refund_step", "refund_step": response.refund_step}
         yield {"type": "token", "content": response.answer}

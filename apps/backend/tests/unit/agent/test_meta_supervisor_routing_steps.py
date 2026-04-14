@@ -11,9 +11,6 @@ from src.domain.rag.value_objects import TokenUsage
 from src.infrastructure.langgraph.meta_supervisor_service import (
     MetaSupervisorService,
 )
-from src.infrastructure.sentiment.keyword_sentiment_service import (
-    KeywordSentimentService,
-)
 
 scenarios("unit/agent/meta_supervisor_routing.feature")
 
@@ -73,34 +70,9 @@ def set_user_role(context, role):
     context["user_role"] = role
 
 
-@given("情緒服務已啟用")
-def enable_sentiment(context):
-    context["sentiment_service"] = KeywordSentimentService()
-
-
 @when(parsers.parse('MetaSupervisor 處理訊息 "{msg}"'))
 def process_message(context, msg):
-    sentiment_svc = context.get("sentiment_service")
-    meta = MetaSupervisorService(
-        teams=context["teams"],
-        sentiment_service=sentiment_svc,
-    )
-    context["response"] = _run(
-        meta.process_message(
-            tenant_id="tenant-001",
-            kb_id="kb-001",
-            user_message=msg,
-            user_role=context["user_role"],
-        )
-    )
-
-
-@when(parsers.parse('MetaSupervisor 處理包含負面情緒的訊息 "{msg}"'))
-def process_negative_message(context, msg):
-    meta = MetaSupervisorService(
-        teams=context["teams"],
-        sentiment_service=context["sentiment_service"],
-    )
+    meta = MetaSupervisorService(teams=context["teams"])
     context["response"] = _run(
         meta.process_message(
             tenant_id="tenant-001",
@@ -124,13 +96,3 @@ def verify_marketing_team(context):
 @then("回應中應包含 conversation_id")
 def verify_conversation_id(context):
     assert context["response"].conversation_id != ""
-
-
-@then(parsers.parse('回應應包含 sentiment 為 "{sentiment}"'))
-def verify_sentiment(context, sentiment):
-    assert context["response"].sentiment == sentiment
-
-
-@then("回應應標記為需要升級")
-def verify_escalated(context):
-    assert context["response"].escalated is True
