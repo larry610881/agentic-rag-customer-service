@@ -1136,21 +1136,6 @@ export function BotDetailForm({
             />
           </section>
 
-          {/* 忙碌中回覆訊息 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">忙碌中回覆訊息</h3>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="bot-busy-reply">
-                當使用者連續發送訊息時，系統回覆的忙碌提示
-              </Label>
-              <Input
-                id="bot-busy-reply"
-                {...register("busy_reply_message")}
-                placeholder="小編正在努力回覆中，請稍等一下喔～"
-                maxLength={500}
-              />
-            </div>
-          </section>
         </TabsContent>
       </Tabs>
 

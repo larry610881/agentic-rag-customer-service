@@ -228,9 +228,7 @@ class HandleWebhookUseCase:
             if self._conversation_lock:
                 async with self._conversation_lock.acquire(lock_key) as acquired:
                     if not acquired:
-                        await line_service.reply_text(
-                            event.reply_token, bot.busy_reply_message
-                        )
+                        # Skip — don't reply busy message (saves LINE push quota)
                         continue
                     await self._process_single_event(
                         event, bot, line_service, ctx.short_code
