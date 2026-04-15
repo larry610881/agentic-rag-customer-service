@@ -324,7 +324,9 @@ class HandleWebhookUseCase:
             ],
             latency_ms=round((t1 - t0) * 1000),
             retrieved_chunks=[
-                {"document_name": s.document_name, "content_snippet": s.content_snippet, "score": s.score}
+                {"document_name": s.get("document_name", "") if isinstance(s, dict) else s.document_name,
+                 "content_snippet": s.get("content_snippet", "") if isinstance(s, dict) else s.content_snippet,
+                 "score": s.get("score", 0) if isinstance(s, dict) else s.score}
                 for s in result.sources
             ] if result.sources else None,
         )
