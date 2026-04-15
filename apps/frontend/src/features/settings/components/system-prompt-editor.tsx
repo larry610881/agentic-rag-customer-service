@@ -13,12 +13,10 @@ export function SystemPromptEditor() {
   const updateMutation = useUpdateSystemPrompts();
 
   const [basePrompt, setBasePrompt] = useState("");
-  const [reactPrompt, setReactPrompt] = useState("");
 
   useEffect(() => {
     if (config) {
       setBasePrompt(config.base_prompt);
-      setReactPrompt(config.react_mode_prompt);
     }
   }, [config]);
 
@@ -26,10 +24,8 @@ export function SystemPromptEditor() {
     try {
       await updateMutation.mutateAsync({
         base_prompt: basePrompt,
-        router_mode_prompt: config?.router_mode_prompt ?? "",
-        react_mode_prompt: reactPrompt,
       });
-      toast.success("系統提示詞已更新");
+      toast.success("System Prompt 已更新");
     } catch {
       toast.error("更新失敗，請稍後再試");
     }
@@ -46,16 +42,16 @@ export function SystemPromptEditor() {
       </p>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="sys-base-prompt">基礎 Prompt</Label>
+        <Label htmlFor="sys-base-prompt">System Prompt</Label>
         <Textarea
           id="sys-base-prompt"
-          rows={6}
+          rows={10}
           value={basePrompt}
           onChange={(e) => setBasePrompt(e.target.value)}
-          placeholder="共用品牌聲音 + 行為準則"
+          placeholder="定義 AI 的角色、行為準則與安全規則"
         />
         <p className="text-xs text-muted-foreground">
-          所有模式共用的基礎提示詞，定義 AI 的角色與行為準則。
+          所有 Bot 共用的系統提示詞，定義 AI 的角色與行為準則。
         </p>
         <p className="text-xs text-muted-foreground/70">
           支援動態變數：
@@ -63,20 +59,6 @@ export function SystemPromptEditor() {
           <code className="rounded bg-muted px-1">{"{now}"}</code> 當前時間、
           <code className="rounded bg-muted px-1">{"{weekday_zh}"}</code> 中文星期。
           例：「今天是 {"{today}"}（{"{weekday_zh}"}）」
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="sys-react-prompt">ReAct 模式 Prompt</Label>
-        <Textarea
-          id="sys-react-prompt"
-          rows={6}
-          value={reactPrompt}
-          onChange={(e) => setReactPrompt(e.target.value)}
-          placeholder="ReAct 模式推理策略"
-        />
-        <p className="text-xs text-muted-foreground">
-          使用 ReAct 模式時附加的推理策略提示詞。
         </p>
       </div>
 

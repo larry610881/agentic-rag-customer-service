@@ -13,7 +13,7 @@ class CostConfig:
 @dataclass
 class PromptTarget:
     level: str  # "system" | "bot"
-    field: str  # "base_prompt" | "router_mode_prompt" | "react_mode_prompt" | "system_prompt" | "router_prompt" | "react_prompt"
+    field: str  # "base_prompt" | "system_prompt"
     bot_id: str | None = None
     tenant_id: str = ""
 

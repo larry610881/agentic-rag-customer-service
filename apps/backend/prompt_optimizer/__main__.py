@@ -93,7 +93,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     target_field = args.target or dataset.metadata.target_prompt
     target_level = (
         "system"
-        if target_field in ("base_prompt", "router_mode_prompt", "react_mode_prompt")
+        if target_field in ("base_prompt",)
         else "bot"
     )
     target = PromptTarget(

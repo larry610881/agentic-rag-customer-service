@@ -17,20 +17,8 @@ _TARGET_MAP = {
         "base_prompt",
         "id = 'default'",
     ),
-    ("system", "router_mode_prompt"): (
-        "system_prompt_configs",
-        "router_mode_prompt",
-        "id = 'default'",
-    ),
-    ("system", "react_mode_prompt"): (
-        "system_prompt_configs",
-        "react_mode_prompt",
-        "id = 'default'",
-    ),
     ("bot", "system_prompt"): ("bots", "system_prompt", "id = :bot_id"),
     ("bot", "base_prompt"): ("bots", "base_prompt", "id = :bot_id"),
-    ("bot", "router_prompt"): ("bots", "router_prompt", "id = :bot_id"),
-    ("bot", "react_prompt"): ("bots", "react_prompt", "id = :bot_id"),
 }
 
 
