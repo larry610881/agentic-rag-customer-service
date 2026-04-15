@@ -105,16 +105,24 @@ class ClassifyKbUseCase:
         # 5. Save new categories
         await self._cat_repo.save_batch(categories)
 
-        # 6. Assign chunks to categories
-        for cat in categories:
-            chunk_ids_for_cat = [
-                cid for cid, cat_id in chunk_to_cat.items()
-                if cat_id == cat.id
-            ]
-            if chunk_ids_for_cat:
-                await self._doc_repo.update_chunks_category(
-                    chunk_ids_for_cat, cat.id
-                )
+        # 6. Assign chunks to categories (use independent session)
+        from src.infrastructure.db.engine import async_session_factory
+        from src.infrastructure.db.models.chunk_model import ChunkModel
+        from sqlalchemy import update
+
+        async with async_session_factory() as session:
+            for cat in categories:
+                chunk_ids_for_cat = [
+                    cid for cid, cat_id in chunk_to_cat.items()
+                    if cat_id == cat.id
+                ]
+                if chunk_ids_for_cat:
+                    await session.execute(
+                        update(ChunkModel)
+                        .where(ChunkModel.id.in_(chunk_ids_for_cat))
+                        .values(category_id=cat.id)
+                    )
+            await session.commit()
 
         # 7. Update counts
         await self._cat_repo.update_chunk_counts(kb_id)
