@@ -92,6 +92,9 @@ class DocumentResponse(BaseModel):
     quality_issues: list[str]
     has_file: bool
     task_progress: int | None = None
+    parent_id: str | None = None
+    page_number: int | None = None
+    children_count: int = 0
     created_at: str
     updated_at: str
 
@@ -101,7 +104,9 @@ class UploadDocumentResponse(BaseModel):
     task_id: str
 
 
-def _to_response(doc, task_progress: int | None = None) -> DocumentResponse:
+def _to_response(
+    doc, task_progress: int | None = None, children_count: int = 0
+) -> DocumentResponse:
     return DocumentResponse(
         id=doc.id.value,
         kb_id=doc.kb_id,
@@ -117,6 +122,9 @@ def _to_response(doc, task_progress: int | None = None) -> DocumentResponse:
         quality_issues=doc.quality_issues,
         has_file=bool(doc.storage_path or doc.raw_content),
         task_progress=task_progress,
+        parent_id=doc.parent_id,
+        page_number=doc.page_number,
+        children_count=children_count,
         created_at=doc.created_at.isoformat(),
         updated_at=doc.updated_at.isoformat(),
     )
@@ -166,16 +174,101 @@ async def list_documents(
             for row in rows.all():
                 progress_map[row[0]] = row[1]
 
+    # Filter: only show top-level documents (no children)
+    top_level = [d for d in documents if d.parent_id is None]
+
+    # Count children for parents
+    children_count_map: dict[str, int] = {}
+    parent_ids = [d.id.value for d in top_level]
+    if parent_ids:
+        from src.infrastructure.db.models.document_model import DocumentModel
+        from sqlalchemy import select, func as sa_func
+
+        async with async_session_factory() as session:
+            stmt = (
+                select(DocumentModel.parent_id, sa_func.count())
+                .where(DocumentModel.parent_id.in_(parent_ids))
+                .group_by(DocumentModel.parent_id)
+            )
+            rows = await session.execute(stmt)
+            for row in rows.all():
+                children_count_map[row[0]] = row[1]
+
     return PaginatedResponse(
         items=[
-            _to_response(doc, progress_map.get(doc.id.value))
-            for doc in documents
+            _to_response(
+                doc,
+                progress_map.get(doc.id.value),
+                children_count=children_count_map.get(doc.id.value, 0),
+            )
+            for doc in top_level
         ],
-        total=total,
+        total=len(top_level),
         page=pagination.page,
         page_size=pagination.page_size,
         total_pages=total_pages,
     )
+
+
+@router.get("/{doc_id}/children", response_model=list[DocumentResponse])
+@inject
+async def list_children(
+    kb_id: str,
+    doc_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+) -> list[DocumentResponse]:
+    """List child documents (pages) of a parent document."""
+    from src.infrastructure.db.engine import async_session_factory
+    from src.infrastructure.db.models.document_model import DocumentModel
+    from src.infrastructure.db.models.processing_task_model import ProcessingTaskModel
+    from sqlalchemy import select
+
+    async with async_session_factory() as session:
+        stmt = (
+            select(DocumentModel)
+            .where(DocumentModel.parent_id == doc_id)
+            .order_by(DocumentModel.page_number)
+        )
+        rows = (await session.execute(stmt)).scalars().all()
+
+        # Get progress for processing children
+        processing_ids = [r.id for r in rows if r.status == "processing"]
+        progress_map: dict[str, int] = {}
+        if processing_ids:
+            p_stmt = (
+                select(ProcessingTaskModel.document_id, ProcessingTaskModel.progress)
+                .where(ProcessingTaskModel.document_id.in_(processing_ids))
+            )
+            for row in (await session.execute(p_stmt)).all():
+                progress_map[row[0]] = row[1]
+
+    from src.domain.knowledge.value_objects import DocumentId
+    from src.domain.knowledge.entity import Document
+
+    result = []
+    for r in rows:
+        doc = Document(
+            id=DocumentId(value=r.id),
+            kb_id=r.kb_id,
+            tenant_id=r.tenant_id,
+            filename=r.filename,
+            content_type=r.content_type,
+            content="",
+            storage_path=r.storage_path or "",
+            status=r.status,
+            parent_id=r.parent_id,
+            page_number=r.page_number,
+            chunk_count=r.chunk_count,
+            avg_chunk_length=r.avg_chunk_length,
+            min_chunk_length=r.min_chunk_length,
+            max_chunk_length=r.max_chunk_length,
+            quality_score=r.quality_score,
+            quality_issues=r.quality_issues.split(",") if r.quality_issues else [],
+            created_at=r.created_at,
+            updated_at=r.updated_at,
+        )
+        result.append(_to_response(doc, progress_map.get(r.id)))
+    return result
 
 
 class DocumentQualityStatResponse(BaseModel):

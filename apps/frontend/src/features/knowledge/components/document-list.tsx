@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { formatDate } from "@/lib/format-date";
+import { apiFetch } from "@/lib/api-client";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye, FileText, FileSpreadsheet, FileJson, FileType } from "lucide-react";
+import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye, FileText, FileSpreadsheet, FileJson, FileType, ChevronRight, ChevronDown } from "lucide-react";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { API_BASE } from "@/lib/api-config";
 import { useAuthStore } from "@/stores/use-auth-store";
@@ -211,6 +213,61 @@ function QualityCell({ score, status }: { score: number; status: DocumentRespons
   );
 }
 
+function ChildrenRows({ kbId, parentId, token }: { kbId: string; parentId: string; token: string | null }) {
+  const { data: children, isLoading } = useQuery({
+    queryKey: ["document-children", kbId, parentId],
+    queryFn: () =>
+      apiFetch<DocumentResponse[]>(
+        API_ENDPOINTS.documents.children(kbId, parentId),
+        {},
+        token ?? undefined,
+      ),
+    enabled: !!token,
+    refetchInterval: (query) => {
+      const items = query.state.data;
+      if (items?.some((d) => d.status === "pending" || d.status === "processing")) return 3000;
+      return false;
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <tr>
+        <td colSpan={7} className="border-b px-8 py-2 text-xs text-muted-foreground">
+          載入子頁面...
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {children?.map((child) => (
+        <tr key={child.id} className="bg-muted/30">
+          <td className="border-b px-4 py-1" />
+          <td className="border-b px-4 py-1 pl-12">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">🖼️</span>
+              <span>{child.page_number != null ? `第 ${child.page_number} 頁` : child.filename}</span>
+            </div>
+          </td>
+          <td className="border-b px-4 py-1 text-sm">{child.chunk_count}</td>
+          <td className="border-b px-4 py-1 text-sm">
+            {child.status === "processed" ? child.quality_score.toFixed(1) : "-"}
+          </td>
+          <td className="border-b px-4 py-1">
+            <StatusCell status={child.status} taskProgress={child.task_progress} />
+          </td>
+          <td className="border-b px-4 py-1 text-sm text-muted-foreground">
+            {formatDate(child.created_at)}
+          </td>
+          <td className="border-b px-4 py-1" />
+        </tr>
+      ))}
+    </>
+  );
+}
+
 export function DocumentList({
   kbId,
   documents,
@@ -229,7 +286,18 @@ export function DocumentList({
   const [reprocessTarget, setReprocessTarget] = useState<DocumentResponse | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
   const reprocess = useReprocessDocument();
+  const token = useAuthStore((s) => s.token);
+
+  const toggleExpand = useCallback((docId: string) => {
+    setExpandedParents((prev) => {
+      const next = new Set(prev);
+      if (next.has(docId)) next.delete(docId);
+      else next.add(docId);
+      return next;
+    });
+  }, []);
 
   const statsMap = new Map(
     (qualityStats ?? []).map((s) => [s.document_id, s])
@@ -367,11 +435,27 @@ export function DocumentList({
                 </td>
                 <td className="border-b px-4 py-2">
                   <div className="flex items-center gap-2">
+                    {doc.children_count > 0 && (
+                      <button
+                        type="button"
+                        className="shrink-0 p-0.5 hover:bg-muted rounded"
+                        onClick={() => toggleExpand(doc.id)}
+                      >
+                        {expandedParents.has(doc.id) ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </button>
+                    )}
                     <ContentTypeBadge
                       contentType={doc.content_type}
                       onClick={() => openDocumentPreview(kbId, doc, setTextPreviewDoc, setTextPreviewContent)}
                     />
                     <span>{doc.filename.replace(/\.[^.]+$/, '')}</span>
+                    {doc.children_count > 0 && (
+                      <span className="text-xs text-muted-foreground">（{doc.children_count} 頁）</span>
+                    )}
                     {(statsMap.get(doc.id)?.negative_feedback_count ?? 0) > 0 && (
                       <span
                         className="inline-flex items-center rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
@@ -435,6 +519,9 @@ export function DocumentList({
                   </td>
                 )}
               </tr>
+              {doc.children_count > 0 && expandedParents.has(doc.id) && (
+                <ChildrenRows kbId={kbId} parentId={doc.id} token={token} />
+              )}
             ))}
           </tbody>
         </table>

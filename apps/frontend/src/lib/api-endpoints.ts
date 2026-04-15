@@ -32,6 +32,8 @@ export const API_ENDPOINTS = {
       `/api/v1/knowledge-bases/${kbId}/documents/${docId}/view`,
     previewUrl: (kbId: string, docId: string) =>
       `/api/v1/knowledge-bases/${kbId}/documents/${docId}/preview-url`,
+    children: (kbId: string, docId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/documents/${docId}/children`,
     requestUpload: (kbId: string) =>
       `/api/v1/knowledge-bases/${kbId}/documents/request-upload`,
     confirmUpload: (kbId: string) =>

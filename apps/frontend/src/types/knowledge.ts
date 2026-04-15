@@ -24,6 +24,9 @@ export interface DocumentResponse {
   quality_issues: string[];
   has_file: boolean;
   task_progress: number | null;
+  parent_id: string | null;
+  page_number: number | null;
+  children_count: number;
   created_at: string;
   updated_at: string;
 }

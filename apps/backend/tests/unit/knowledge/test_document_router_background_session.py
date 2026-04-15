@@ -90,6 +90,8 @@ def when_background_task_triggered(context):
         mock_result.document.quality_issues = []
         mock_result.document.storage_path = ""
         mock_result.document.raw_content = b""
+        mock_result.document.parent_id = None
+        mock_result.document.page_number = None
         mock_result.document.created_at.isoformat.return_value = "2026-03-20T00:00:00"
         mock_result.document.updated_at.isoformat.return_value = "2026-03-20T00:00:00"
         mock_result.task.id.value = "task-123"
