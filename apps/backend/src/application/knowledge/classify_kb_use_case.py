@@ -71,8 +71,21 @@ class ClassifyKbUseCase:
         fetched_vectors = [r[1] for r in results]
         fetched_contents = [r[2].get("content", "") for r in results]
 
-        # 3. Classify
+        # 3. Classify — resolve model: KB → tenant default → hardcode
         classification_model = getattr(kb, "classification_model", "")
+        if not classification_model:
+            try:
+                from src.infrastructure.db.engine import async_session_factory
+                from src.infrastructure.db.models.tenant_model import TenantModel
+                from sqlalchemy import select
+                async with async_session_factory() as session:
+                    stmt = select(TenantModel.default_classification_model).where(
+                        TenantModel.id == tenant_id
+                    )
+                    result = await session.execute(stmt)
+                    classification_model = result.scalar_one_or_none() or ""
+            except Exception:
+                pass
         categories, chunk_to_cat = await self._classification.classify(
             chunk_ids=fetched_ids,
             chunk_contents=fetched_contents,
