@@ -11,8 +11,6 @@ from __future__ import annotations
 import re
 from typing import Callable, Awaitable
 
-import anthropic
-
 from src.domain.security.guard_config import (
     GuardLogRepository,
     GuardResult,
@@ -209,48 +207,40 @@ class PromptGuardService:
     ) -> bool:
         """Returns True if LLM confirms leakage."""
         try:
+            from src.infrastructure.llm.llm_caller import call_llm
+
             model = config.llm_guard_model or DEFAULT_GUARD_MODEL
-            if ":" in model:
-                model = model.split(":", 1)[1]
 
             prompt = config.output_guard_prompt or DEFAULT_OUTPUT_GUARD_PROMPT
             prompt = prompt.replace("{ai_response}", response[:3000])
 
-            api_key = ""
-            if self._api_key_resolver:
-                api_key = await self._api_key_resolver("anthropic")
-            if not api_key:
-                return True  # Fail-safe: treat as leaked if no key
-
-            client = anthropic.AsyncAnthropic(api_key=api_key)
-            resp = await client.messages.create(
-                model=model,
+            result = await call_llm(
+                model_spec=model,
+                prompt=prompt,
                 max_tokens=100,
-                messages=[{"role": "user", "content": prompt}],
+                api_key_resolver=self._api_key_resolver,
             )
-            text = resp.content[0].text.strip()
 
             # Record token usage
             if self._record_usage:
-                usage = resp.usage
                 await self._record_usage.execute(
                     tenant_id=tenant_id,
                     request_type="guard",
                     usage=TokenUsage(
-                        model=model,
-                        input_tokens=usage.input_tokens,
-                        output_tokens=usage.output_tokens,
-                        total_tokens=usage.input_tokens + usage.output_tokens,
+                        model=result.model,
+                        input_tokens=result.input_tokens,
+                        output_tokens=result.output_tokens,
+                        total_tokens=result.input_tokens + result.output_tokens,
                     ),
                     bot_id=bot_id,
                 )
 
             import json
             try:
-                result = json.loads(text)
-                return result.get("is_leaked", True)
+                parsed = json.loads(result.text)
+                return parsed.get("is_leaked", True)
             except json.JSONDecodeError:
-                return "true" in text.lower()
+                return "true" in result.text.lower()
 
         except Exception:
             logger.warning("guard.llm_check_failed", exc_info=True)

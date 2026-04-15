@@ -19,8 +19,6 @@ from typing import Callable, Awaitable
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 
-import anthropic
-
 from src.domain.knowledge.entity import ChunkCategory
 from src.infrastructure.logging import get_logger
 
@@ -34,7 +32,7 @@ NAMING_PROMPT = """\
 請根據這些片段的共同主題，生成一個簡短的分類名稱（3-8 個字，繁體中文）。
 只輸出分類名稱，不要其他內容。"""
 
-DEFAULT_MODEL = "claude-sonnet-4-6-20260415"
+DEFAULT_MODEL = "anthropic:claude-sonnet-4-6-20260415"
 SAMPLES_PER_CLUSTER = 5
 MIN_CHUNKS_FOR_CLUSTERING = 5
 MAX_CLUSTERS = 20
@@ -46,20 +44,7 @@ class ClusterClassificationService:
         api_key: str = "",
         api_key_resolver: Callable[[str], Awaitable[str]] | None = None,
     ) -> None:
-        self._api_key = api_key
         self._api_key_resolver = api_key_resolver
-        self._client: anthropic.AsyncAnthropic | None = None
-
-    async def _ensure_client(self) -> anthropic.AsyncAnthropic:
-        if self._client is not None:
-            return self._client
-        api_key = self._api_key
-        if not api_key and self._api_key_resolver:
-            api_key = await self._api_key_resolver("anthropic")
-        if not api_key:
-            raise RuntimeError("No Anthropic API key for classification")
-        self._client = anthropic.AsyncAnthropic(api_key=api_key)
-        return self._client
 
     async def classify(
         self,
@@ -101,13 +86,13 @@ class ClusterClassificationService:
         log.info("classification.clustered", n_clusters=len(clusters))
 
         # 3. Name each cluster
-        client = await self._ensure_client()
+        from src.infrastructure.llm.llm_caller import call_llm
+
         categories: list[ChunkCategory] = []
         chunk_to_cat: dict[str, str] = {}
 
         async def _name_cluster(label: int, indices: list[int]) -> None:
             cat_id = str(uuid.uuid4())
-            # Pick representative samples
             sample_indices = random.sample(
                 indices, min(SAMPLES_PER_CLUSTER, len(indices))
             )
@@ -116,15 +101,13 @@ class ClusterClassificationService:
             )
 
             try:
-                resp = await client.messages.create(
-                    model=model,
+                result = await call_llm(
+                    model_spec=model,
+                    prompt=NAMING_PROMPT.format(samples=samples_text),
                     max_tokens=50,
-                    messages=[{
-                        "role": "user",
-                        "content": NAMING_PROMPT.format(samples=samples_text),
-                    }],
+                    api_key_resolver=self._api_key_resolver,
                 )
-                name = resp.content[0].text.strip()[:200]
+                name = result.text[:200]
             except Exception:
                 log.warning("classification.naming_failed", label=label, exc_info=True)
                 name = f"分類 {label + 1}"
