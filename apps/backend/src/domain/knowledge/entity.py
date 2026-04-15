@@ -37,6 +37,8 @@ class Document:
     raw_content: bytes = b""
     storage_path: str = ""
     status: str = "pending"
+    parent_id: str | None = None
+    page_number: int | None = None
     chunk_count: int = 0
     avg_chunk_length: int = 0
     min_chunk_length: int = 0

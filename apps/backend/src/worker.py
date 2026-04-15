@@ -34,6 +34,17 @@ async def shutdown(ctx: dict) -> None:
     logger.info("[worker] shutting down")
 
 
+# --- Task: split_pdf ---
+
+async def split_pdf_task(ctx: dict, document_id: str, task_id: str) -> None:
+    """拆 PDF 為每頁 PNG，並行 enqueue OCR jobs。"""
+    logger.info(f"[split_pdf] start doc={document_id} task={task_id}")
+    container = _new_container()
+    use_case = container.split_pdf_use_case()
+    await use_case.execute(document_id, task_id)
+    logger.info(f"[split_pdf] done doc={document_id}")
+
+
 # --- Task: process_document ---
 
 async def process_document_task(ctx: dict, document_id: str, task_id: str) -> None:
@@ -119,6 +130,7 @@ class WorkerSettings:
     """arq worker configuration."""
 
     functions = [
+        func(split_pdf_task, name="split_pdf"),
         func(process_document_task, name="process_document"),
         func(extract_memory_task, name="extract_memory"),
         func(run_evaluation_task, name="run_evaluation"),

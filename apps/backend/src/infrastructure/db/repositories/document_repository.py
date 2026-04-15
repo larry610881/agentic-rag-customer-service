@@ -29,6 +29,8 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             raw_content=model.raw_content or b"" if "raw_content" not in sa_inspect(model).unloaded else b"",
             storage_path=model.storage_path if "storage_path" not in sa_inspect(model).unloaded else "",
             status=model.status,
+            parent_id=model.parent_id,
+            page_number=model.page_number,
             chunk_count=model.chunk_count,
             avg_chunk_length=model.avg_chunk_length,
             min_chunk_length=model.min_chunk_length,
@@ -65,6 +67,8 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
                 raw_content=document.raw_content or None,
                 storage_path=document.storage_path,
                 status=document.status,
+                parent_id=document.parent_id,
+                page_number=document.page_number,
                 chunk_count=document.chunk_count,
                 created_at=document.created_at,
                 updated_at=document.updated_at,
@@ -178,6 +182,25 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             stmt = stmt.offset(offset)
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def find_children(self, parent_id: str) -> list[Document]:
+        stmt = (
+            select(DocumentModel)
+            .options(defer(DocumentModel.raw_content))
+            .where(DocumentModel.parent_id == parent_id)
+            .order_by(DocumentModel.page_number)
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def count_children_by_status(self, parent_id: str) -> dict[str, int]:
+        stmt = (
+            select(DocumentModel.status, func.count())
+            .where(DocumentModel.parent_id == parent_id)
+            .group_by(DocumentModel.status)
+        )
+        result = await self._session.execute(stmt)
+        return dict(result.all())
 
     async def count_by_kb(self, kb_id: str) -> int:
         stmt = (

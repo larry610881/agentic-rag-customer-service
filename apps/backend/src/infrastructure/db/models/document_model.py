@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, LargeBinary, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
@@ -34,6 +34,12 @@ class DocumentModel(Base):
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="pending"
     )
+    parent_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, default=None
+    )
+    page_number: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
     chunk_count: Mapped[int] = mapped_column(nullable=False, default=0)
     avg_chunk_length: Mapped[int] = mapped_column(nullable=False, default=0)
     min_chunk_length: Mapped[int] = mapped_column(nullable=False, default=0)
@@ -59,4 +65,5 @@ class DocumentModel(Base):
     __table_args__ = (
         Index("ix_documents_kb_id", "kb_id"),
         Index("ix_documents_tenant_id", "tenant_id"),
+        Index("ix_documents_parent_id", "parent_id"),
     )

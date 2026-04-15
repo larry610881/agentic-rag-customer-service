@@ -129,8 +129,16 @@ class ProcessDocumentUseCase:
             if raw_content:
                 t0 = time.perf_counter()
 
+                # PNG/image: single page OCR (child of split PDF)
+                if document.content_type.startswith("image/") and hasattr(self._file_parser, "_ocr"):
+                    ocr_engine = self._file_parser._ocr
+                    from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import OCR_PROMPTS
+                    prompt = OCR_PROMPTS.get(ocr_mode, OCR_PROMPTS.get("general", ""))
+                    content = await ocr_engine.ocr_page(raw_content, prompt=prompt)
+                    await _update_progress(task_id, 70)
+
                 # PDF: use async path with progress callback (no DB held)
-                if (
+                elif (
                     document.content_type == "application/pdf"
                     and hasattr(self._file_parser, "parse_pdf_async")
                 ):
@@ -350,6 +358,31 @@ class ProcessDocumentUseCase:
                 upsert_ms=upsert_ms,
                 chunk_count=len(chunks),
             )
+
+            # If child document, check if all siblings done → update parent
+            if document.parent_id:
+                try:
+                    status_counts = await self._doc_repo.count_children_by_status(document.parent_id)
+                    total = sum(status_counts.values())
+                    done = status_counts.get("processed", 0)
+                    failed = status_counts.get("failed", 0)
+                    if done + failed == total:
+                        parent_status = "processed" if failed == 0 else "failed"
+                        # Sum chunk counts from all children
+                        children = await self._doc_repo.find_children(document.parent_id)
+                        total_chunks = sum(c.chunk_count for c in children)
+                        await self._doc_repo.update_status(
+                            document.parent_id, parent_status, chunk_count=total_chunks
+                        )
+                        log.info(
+                            "document.parent.aggregated",
+                            parent_id=document.parent_id,
+                            status=parent_status,
+                            total_chunks=total_chunks,
+                            children=total,
+                        )
+                except Exception:
+                    log.warning("document.parent.aggregate_failed", exc_info=True)
 
         except Exception as e:
             log.exception("document.process.failed", error=str(e))

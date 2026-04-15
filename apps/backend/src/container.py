@@ -112,6 +112,7 @@ from src.application.knowledge.list_documents_use_case import (
 from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
 )
+from src.application.knowledge.split_pdf_use_case import SplitPdfUseCase
 from src.application.knowledge.process_document_use_case import (
     ProcessDocumentUseCase,
 )
@@ -885,6 +886,14 @@ class Container(containers.DeclarativeContainer):
         file_parser_service=file_parser_service,
         document_file_storage=document_file_storage_service,
         record_usage_use_case=record_usage_use_case,
+    )
+
+    split_pdf_use_case = providers.Factory(
+        SplitPdfUseCase,
+        document_repository=document_repository,
+        knowledge_base_repository=kb_repository,
+        processing_task_repository=processing_task_repository,
+        document_file_storage=document_file_storage_service,
     )
 
     get_processing_task_use_case = providers.Factory(

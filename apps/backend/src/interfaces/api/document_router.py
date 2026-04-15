@@ -272,7 +272,15 @@ async def upload_document(
         ) from None
 
     from src.infrastructure.queue.arq_pool import enqueue
-    await enqueue("process_document", result.document.id.value, result.task.id.value)
+
+    # PDF + catalog KB → split into pages for parallel OCR
+    job_name = "process_document"
+    if content_type == "application/pdf":
+        kb = await Container.kb_repository().find_by_id(kb_id)
+        if kb and kb.ocr_mode == "catalog":
+            job_name = "split_pdf"
+
+    await enqueue(job_name, result.document.id.value, result.task.id.value)
 
     doc = result.document
     return UploadDocumentResponse(
@@ -363,7 +371,15 @@ async def confirm_upload(
         ) from None
 
     from src.infrastructure.queue.arq_pool import enqueue
-    await enqueue("process_document", result.document.id.value, result.task.id.value)
+
+    # PDF + catalog KB → split into pages for parallel OCR
+    job_name = "process_document"
+    if result.document.content_type == "application/pdf":
+        kb = await Container.kb_repository().find_by_id(kb_id)
+        if kb and kb.ocr_mode == "catalog":
+            job_name = "split_pdf"
+
+    await enqueue(job_name, result.document.id.value, result.task.id.value)
 
     doc = result.document
     return UploadDocumentResponse(
