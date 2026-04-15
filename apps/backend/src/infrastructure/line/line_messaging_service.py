@@ -143,6 +143,31 @@ class HttpxLineMessagingService(LineMessagingService):
             },
         )
 
+    async def push_flex(
+        self, user_id: str, alt_text: str, flex_content: dict
+    ) -> None:
+        resp = await self._client.post(
+            "https://api.line.me/v2/bot/message/push",
+            headers=self._auth_headers(),
+            json={
+                "to": user_id,
+                "messages": [
+                    {
+                        "type": "flex",
+                        "altText": alt_text,
+                        "contents": flex_content,
+                    }
+                ],
+            },
+        )
+        if resp.status_code >= 400:
+            logger.warning(
+                "line.push_flex.failed",
+                user_id=user_id,
+                status_code=resp.status_code,
+                body=resp.text[:200],
+            )
+
     async def show_loading(self, user_id: str, seconds: int = 20) -> None:
         try:
             resp = await self._client.post(

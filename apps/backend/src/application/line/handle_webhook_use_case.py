@@ -360,6 +360,15 @@ class HandleWebhookUseCase:
         await line_service.reply_with_quick_reply(
             event.reply_token, reply_text, message_id
         )
+
+        # Send Flex Message cards if MCP tool returned flex content
+        flex_contents = self._extract_flex_from_tool_calls(result.tool_calls)
+        for alt_text, flex_json in flex_contents:
+            try:
+                await line_service.push_flex(event.user_id, alt_text, flex_json)
+            except Exception:
+                logger.warning("line.push_flex.error", exc_info=True)
+
         t2 = time.monotonic()
 
         logger.info(
@@ -373,6 +382,38 @@ class HandleWebhookUseCase:
             total_ms=round((t2 - t0) * 1000),
             answer_len=len(result.answer),
         )
+
+    @staticmethod
+    def _extract_flex_from_tool_calls(
+        tool_calls: list[dict[str, Any]],
+    ) -> list[tuple[str, dict]]:
+        """Extract Flex Message JSON from MCP tool outputs.
+
+        Returns list of (alt_text, flex_content) tuples.
+        """
+        results: list[tuple[str, dict]] = []
+        for tc in tool_calls:
+            output = tc.get("tool_output", "")
+            if not output:
+                continue
+            try:
+                data = json.loads(output) if isinstance(output, str) else output
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+
+            # flex_carousel from search_products
+            if data.get("flex_carousel"):
+                alt_text = "商品搜尋結果"
+                results.append((alt_text, data["flex_carousel"]))
+
+            # flex_bubble from contact_customer_service
+            if data.get("flex_bubble"):
+                alt_text = data.get("message", "客服聯絡資訊")
+                results.append((alt_text, data["flex_bubble"]))
+
+        return results
 
     async def execute_for_bot(
         self,

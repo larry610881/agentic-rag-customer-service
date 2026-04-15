@@ -23,6 +23,11 @@ class LineMessagingService(ABC):
     ) -> None: ...
 
     @abstractmethod
+    async def push_flex(
+        self, user_id: str, alt_text: str, flex_content: dict
+    ) -> None: ...
+
+    @abstractmethod
     async def show_loading(self, user_id: str, seconds: int = 20) -> None: ...
 
     @abstractmethod
