@@ -116,6 +116,9 @@ from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
 )
 from src.application.knowledge.classify_kb_use_case import ClassifyKbUseCase
+from src.application.knowledge.get_category_chunks_use_case import (
+    GetCategoryChunksUseCase,
+)
 from src.application.security.prompt_guard_service import PromptGuardService
 from src.application.security.guard_rules_use_cases import (
     GetGuardRulesUseCase,
@@ -980,6 +983,13 @@ class Container(containers.DeclarativeContainer):
             lambda factory: factory.resolve_api_key,
             _llm_factory,
         ),
+    )
+
+    get_category_chunks_use_case = providers.Factory(
+        GetCategoryChunksUseCase,
+        category_repository=chunk_category_repository,
+        document_repository=document_repository,
+        vector_store=vector_store,
     )
 
     classify_kb_use_case = providers.Factory(

@@ -270,3 +270,51 @@ async def update_category(
         created_at=cat.created_at.isoformat(),
         updated_at=cat.updated_at.isoformat(),
     )
+
+
+class CategoryChunkItemResponse(BaseModel):
+    id: str
+    content: str
+    context_text: str = ""
+    chunk_index: int
+    cohesion_score: float
+
+
+class CategoryChunksResponse(BaseModel):
+    category_id: str
+    category_name: str
+    chunk_count: int
+    chunks: list[CategoryChunkItemResponse]
+
+
+@router.get("/{kb_id}/categories/{cat_id}/chunks", response_model=CategoryChunksResponse)
+@inject
+async def get_category_chunks(
+    kb_id: str,
+    cat_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: "GetCategoryChunksUseCase" = Depends(
+        Provide[Container.get_category_chunks_use_case]
+    ),
+) -> CategoryChunksResponse:
+    from src.application.knowledge.get_category_chunks_use_case import (
+        GetCategoryChunksUseCase,
+    )
+    result = await use_case.execute(kb_id, cat_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="分類不存在")
+    return CategoryChunksResponse(
+        category_id=result.category_id,
+        category_name=result.category_name,
+        chunk_count=result.chunk_count,
+        chunks=[
+            CategoryChunkItemResponse(
+                id=c.id,
+                content=c.content,
+                context_text=c.context_text,
+                chunk_index=c.chunk_index,
+                cohesion_score=c.cohesion_score,
+            )
+            for c in result.chunks
+        ],
+    )

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Tag } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import {
   useCategories,
   useUpdateCategory,
 } from "@/features/knowledge/hooks/use-categories";
+import { useCategoryChunks } from "@/features/knowledge/hooks/use-category-chunks";
 import type { DocumentResponse } from "@/types/knowledge";
 
 type CategoryListProps = {
@@ -23,6 +24,7 @@ export function CategoryList({ kbId, documents }: CategoryListProps) {
   const updateMutation = useUpdateCategory(kbId);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const handleStartEdit = (catId: string, currentName: string) => {
     setEditingId(catId);
@@ -41,6 +43,10 @@ export function CategoryList({ kbId, documents }: CategoryListProps) {
   const handleCancelEdit = () => {
     setEditingId(null);
     setEditName("");
+  };
+
+  const toggleExpand = (catId: string) => {
+    setExpandedId(expandedId === catId ? null : catId);
   };
 
   return (
@@ -73,58 +79,137 @@ export function CategoryList({ kbId, documents }: CategoryListProps) {
       {categories && categories.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {categories.map((cat) => (
-            <div
-              key={cat.id}
-              className="flex items-center justify-between rounded-md border px-3 py-2 hover:bg-muted/50 transition-colors duration-150"
-            >
-              {editingId === cat.id ? (
-                <div className="flex items-center gap-2 flex-1">
-                  <Input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="h-7 text-sm"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSaveEdit(cat.id);
-                      if (e.key === "Escape") handleCancelEdit();
-                    }}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => handleSaveEdit(cat.id)}
-                    disabled={updateMutation.isPending}
-                  >
-                    儲存
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={handleCancelEdit}
-                  >
-                    取消
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <span
-                    className="text-sm cursor-pointer hover:underline"
-                    onClick={() => handleStartEdit(cat.id, cat.name)}
-                    title="點擊編輯名稱"
-                  >
-                    {cat.name}
-                  </span>
-                  <Badge variant="secondary" className="text-xs">
-                    {cat.chunk_count} chunks
-                  </Badge>
-                </>
+            <div key={cat.id} className="flex flex-col">
+              <div className="flex items-center justify-between rounded-md border px-3 py-2 hover:bg-muted/50 transition-colors duration-150">
+                {editingId === cat.id ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <Input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="h-7 text-sm"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveEdit(cat.id);
+                        if (e.key === "Escape") handleCancelEdit();
+                      }}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => handleSaveEdit(cat.id)}
+                      disabled={updateMutation.isPending}
+                    >
+                      儲存
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={handleCancelEdit}
+                    >
+                      取消
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <button
+                        className="p-0.5 hover:bg-muted rounded"
+                        onClick={() => toggleExpand(cat.id)}
+                      >
+                        {expandedId === cat.id ? (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                      <span
+                        className="text-sm cursor-pointer hover:underline"
+                        onClick={() => handleStartEdit(cat.id, cat.name)}
+                        title="點擊編輯名稱"
+                      >
+                        {cat.name}
+                      </span>
+                    </div>
+                    <Badge variant="secondary" className="text-xs">
+                      {cat.chunk_count} chunks
+                    </Badge>
+                  </>
+                )}
+              </div>
+
+              {expandedId === cat.id && (
+                <CategoryChunksPanel kbId={kbId} categoryId={cat.id} />
               )}
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function CategoryChunksPanel({
+  kbId,
+  categoryId,
+}: {
+  kbId: string;
+  categoryId: string;
+}) {
+  const { data, isLoading } = useCategoryChunks(kbId, categoryId);
+
+  if (isLoading) {
+    return (
+      <div className="ml-6 mt-1 text-xs text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+        載入 chunks...
+      </div>
+    );
+  }
+
+  if (!data || data.chunks.length === 0) {
+    return (
+      <div className="ml-6 mt-1 text-xs text-muted-foreground">
+        此分類沒有 chunks。
+      </div>
+    );
+  }
+
+  return (
+    <div className="ml-6 mt-1 flex flex-col gap-1 max-h-80 overflow-y-auto">
+      {data.chunks.map((chunk) => (
+        <div
+          key={chunk.id}
+          className="rounded border px-3 py-2 text-xs bg-muted/30"
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-muted-foreground">
+              #{chunk.chunk_index}
+            </span>
+            <span
+              className={`font-mono ${
+                chunk.cohesion_score < 0.5
+                  ? "text-destructive"
+                  : chunk.cohesion_score < 0.7
+                    ? "text-yellow-600"
+                    : "text-green-600"
+              }`}
+            >
+              {chunk.cohesion_score < 0.5 && (
+                <AlertTriangle className="h-3 w-3 inline mr-0.5" />
+              )}
+              聚合度: {chunk.cohesion_score.toFixed(2)}
+            </span>
+          </div>
+          <p className="line-clamp-2 text-foreground">{chunk.content}</p>
+          {chunk.context_text && (
+            <p className="mt-1 text-muted-foreground italic line-clamp-1">
+              AI: {chunk.context_text}
+            </p>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
