@@ -71,11 +71,23 @@ class ClusterClassificationService:
         log = logger.bind(kb_id=kb_id, model=model, chunk_count=len(chunk_ids))
         log.info("classification.start")
 
-        # 1. Cluster
+        # 1. Cluster — let algorithm decide optimal number
         X = np.array(vectors)
-        n_clusters = min(MAX_CLUSTERS, max(2, len(chunk_ids) // 10))
-        clustering = AgglomerativeClustering(n_clusters=n_clusters)
+        # Use distance_threshold: auto-determine cluster count
+        # n_clusters=None + distance_threshold lets the algorithm decide
+        clustering = AgglomerativeClustering(
+            n_clusters=None,
+            distance_threshold=1.2,  # cosine distance, tuned for embedding space
+            metric="cosine",
+            linkage="average",
+        )
         labels = clustering.fit_predict(X)
+
+        # Cap at MAX_CLUSTERS — if too many, re-cluster with fixed n
+        unique_labels = set(labels)
+        if len(unique_labels) > MAX_CLUSTERS:
+            clustering = AgglomerativeClustering(n_clusters=MAX_CLUSTERS)
+            labels = clustering.fit_predict(X)
 
         # 2. Group chunks by cluster
         clusters: dict[int, list[int]] = {}
