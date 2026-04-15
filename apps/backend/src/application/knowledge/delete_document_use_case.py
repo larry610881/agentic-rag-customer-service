@@ -20,6 +20,9 @@ class DeleteDocumentUseCase:
         if doc is None:
             raise EntityNotFoundError("Document", doc_id)
 
+        kb_id = doc.kb_id
+        tenant_id = doc.tenant_id
+
         # Delete file from storage
         if doc.storage_path:
             try:
@@ -27,18 +30,38 @@ class DeleteDocumentUseCase:
             except FileNotFoundError:
                 pass
 
-        # Delete vectors from Qdrant
+        # Delete vectors from Milvus
         await self._vector_store.delete(
-            collection=f"kb_{doc.kb_id}",
+            collection=f"kb_{kb_id}",
             filters={"document_id": doc_id},
         )
 
         # Delete document (and its chunks) from DB
         await self._doc_repo.delete(doc_id)
 
-        # Trigger auto-classification for the KB
+        # Clear old categories first, then re-classify if KB still has docs
         try:
-            from src.infrastructure.queue.arq_pool import enqueue
-            await enqueue("classify_kb", doc.kb_id, doc.tenant_id)
+            from src.infrastructure.db.engine import async_session_factory
+            from src.infrastructure.db.models.chunk_category_model import (
+                ChunkCategoryModel,
+            )
+            from sqlalchemy import delete
+
+            async with async_session_factory() as session:
+                await session.execute(
+                    delete(ChunkCategoryModel).where(
+                        ChunkCategoryModel.kb_id == kb_id
+                    )
+                )
+                await session.commit()
+        except Exception:
+            pass
+
+        # Re-classify if there are remaining documents
+        try:
+            remaining = await self._doc_repo.count_by_kb(kb_id)
+            if remaining > 0:
+                from src.infrastructure.queue.arq_pool import enqueue
+                await enqueue("classify_kb", kb_id, tenant_id)
         except Exception:
             pass
