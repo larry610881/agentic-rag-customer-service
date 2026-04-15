@@ -116,6 +116,18 @@ from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
 )
 from src.application.knowledge.classify_kb_use_case import ClassifyKbUseCase
+from src.application.security.prompt_guard_service import PromptGuardService
+from src.application.security.guard_rules_use_cases import (
+    GetGuardRulesUseCase,
+    UpdateGuardRulesUseCase,
+    ResetGuardRulesUseCase,
+)
+from src.infrastructure.db.repositories.guard_rules_config_repository import (
+    SQLAlchemyGuardRulesConfigRepository,
+)
+from src.infrastructure.db.repositories.guard_log_repository import (
+    SQLAlchemyGuardLogRepository,
+)
 from src.application.knowledge.split_pdf_use_case import SplitPdfUseCase
 from src.infrastructure.classification.cluster_classification_service import (
     ClusterClassificationService,
@@ -570,6 +582,16 @@ class Container(containers.DeclarativeContainer):
 
     diagnostic_rules_config_repository = providers.Factory(
         SQLAlchemyDiagnosticRulesConfigRepository,
+        session=db_session,
+    )
+
+    guard_rules_config_repository = providers.Factory(
+        SQLAlchemyGuardRulesConfigRepository,
+        session=db_session,
+    )
+
+    guard_log_repository = providers.Factory(
+        SQLAlchemyGuardLogRepository,
         session=db_session,
     )
 
@@ -1190,6 +1212,34 @@ class Container(containers.DeclarativeContainer):
         diagnostic_rules_config_repository=diagnostic_rules_config_repository,
     )
 
+    # --- Security: Guard Rules ---
+
+    prompt_guard_service = providers.Factory(
+        PromptGuardService,
+        guard_rules_repo=guard_rules_config_repository,
+        guard_log_repo=guard_log_repository,
+        record_usage=record_usage_use_case,
+        api_key_resolver=providers.Callable(
+            lambda factory: factory.resolve_api_key,
+            _llm_factory,
+        ),
+    )
+
+    get_guard_rules_use_case = providers.Factory(
+        GetGuardRulesUseCase,
+        repo=guard_rules_config_repository,
+    )
+
+    update_guard_rules_use_case = providers.Factory(
+        UpdateGuardRulesUseCase,
+        repo=guard_rules_config_repository,
+    )
+
+    reset_guard_rules_use_case = providers.Factory(
+        ResetGuardRulesUseCase,
+        repo=guard_rules_config_repository,
+    )
+
     # --- Observability: Log Retention ---
 
     get_log_retention_policy_use_case = providers.Factory(
@@ -1445,6 +1495,7 @@ class Container(containers.DeclarativeContainer):
         conversation_lock=conversation_lock,
         intent_classifier=intent_classifier,
         worker_config_repo=worker_config_repository,
+        prompt_guard=prompt_guard_service,
     )
 
     # --- Platform: Provider Settings ---

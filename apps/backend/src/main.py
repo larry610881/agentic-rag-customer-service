@@ -281,6 +281,10 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
 
         application.include_router(observability_router)
 
+        from src.interfaces.api.security_router import router as security_router
+
+        application.include_router(security_router)
+
         from src.interfaces.api.error_event_router import (
             router as error_event_router,
         )

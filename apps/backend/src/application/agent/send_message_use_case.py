@@ -86,6 +86,7 @@ class SendMessageUseCase:
         conversation_lock: ConversationLock | None = None,
         intent_classifier: IntentClassifier | None = None,
         worker_config_repo: WorkerConfigRepository | None = None,
+        prompt_guard: Any | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -104,6 +105,7 @@ class SendMessageUseCase:
         self._worker_config_repo = worker_config_repo
         self._get_diagnostic_rules_uc = get_diagnostic_rules_uc
         self._conversation_lock = conversation_lock
+        self._prompt_guard = prompt_guard
 
     def _build_lock_key(self, command: SendMessageCommand) -> str:
         """Build a lock key for the conversation."""
@@ -531,6 +533,23 @@ class SendMessageUseCase:
             bot_cfg, command.message, router_context,
         )
 
+        # ── Prompt Guard: input check ──
+        if self._prompt_guard:
+            guard_result = await self._prompt_guard.check_input(
+                command.message,
+                tenant_id=command.tenant_id,
+                bot_id=command.bot_id,
+                user_id=command.visitor_id,
+            )
+            if not guard_result.passed:
+                conversation.add_message("user", command.message)
+                conversation.add_message("assistant", guard_result.blocked_response)
+                await self._conversation_repo.save(conversation)
+                return AgentResponse(
+                    answer=guard_result.blocked_response,
+                    conversation_id=conversation.id.value,
+                )
+
         t0 = time.perf_counter()
         response = await self._agent_service.process_message(
             tenant_id=command.tenant_id,
@@ -566,6 +585,18 @@ class SendMessageUseCase:
                     "refund_step": response.refund_step,
                 }
             )
+
+        # ── Prompt Guard: output check ──
+        if self._prompt_guard:
+            guard_result = await self._prompt_guard.check_output(
+                response.answer,
+                tenant_id=command.tenant_id,
+                bot_id=command.bot_id,
+                user_id=command.visitor_id,
+                user_message=command.message,
+            )
+            if not guard_result.passed:
+                response.answer = guard_result.blocked_response
 
         conversation.add_message("user", command.message)
         conversation.add_message(
