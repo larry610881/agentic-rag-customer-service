@@ -75,19 +75,21 @@ class ClusterClassificationService:
         X = np.array(vectors)
         # Use distance_threshold with cosine metric.
         # Cosine distance range: 0 (identical) ~ 2 (opposite).
-        # 0.3 = chunks with cosine similarity > 0.85 are grouped together.
+        # 0.5 = chunks with cosine similarity > 0.75 grouped together.
+        # Target: ~5-10 categories for typical KB sizes.
         clustering = AgglomerativeClustering(
             n_clusters=None,
-            distance_threshold=0.3,
+            distance_threshold=0.5,
             metric="cosine",
             linkage="average",
         )
         labels = clustering.fit_predict(X)
 
-        # Cap at MAX_CLUSTERS — if too many, re-cluster with fixed n
+        # Guard: too many small clusters → re-cluster with capped n
         unique_labels = set(labels)
-        if len(unique_labels) > MAX_CLUSTERS:
-            clustering = AgglomerativeClustering(n_clusters=MAX_CLUSTERS)
+        max_reasonable = min(MAX_CLUSTERS, max(3, len(chunk_ids) // 5))
+        if len(unique_labels) > max_reasonable:
+            clustering = AgglomerativeClustering(n_clusters=max_reasonable)
             labels = clustering.fit_predict(X)
 
         # 2. Group chunks by cluster
