@@ -28,7 +28,6 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             ocr_model=model.ocr_model,
             context_model=model.context_model,
             classification_model=model.classification_model,
-            embedding_model=model.embedding_model,
             document_count=document_count,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -57,7 +56,6 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
                 ocr_model=knowledge_base.ocr_model,
                 context_model=knowledge_base.context_model,
                 classification_model=knowledge_base.classification_model,
-                embedding_model=knowledge_base.embedding_model,
                 created_at=knowledge_base.created_at,
                 updated_at=knowledge_base.updated_at,
             )
@@ -172,7 +170,7 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
 
         allowed = {
             "name", "description", "ocr_mode",
-            "ocr_model", "context_model", "classification_model", "embedding_model",
+            "ocr_model", "context_model", "classification_model",
         }
         values = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if not values:

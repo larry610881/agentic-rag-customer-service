@@ -7,7 +7,6 @@ export interface KnowledgeBase {
   ocr_model: string;
   context_model: string;
   classification_model: string;
-  embedding_model: string;
   document_count: number;
   created_at: string;
   updated_at: string;

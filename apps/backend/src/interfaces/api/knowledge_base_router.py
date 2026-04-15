@@ -35,7 +35,6 @@ class CreateKnowledgeBaseRequest(BaseModel):
     ocr_model: str = ""
     context_model: str = ""
     classification_model: str = ""
-    embedding_model: str = ""
 
 
 class UpdateKnowledgeBaseRequest(BaseModel):
@@ -45,7 +44,6 @@ class UpdateKnowledgeBaseRequest(BaseModel):
     ocr_model: str | None = None
     context_model: str | None = None
     classification_model: str | None = None
-    embedding_model: str | None = None
 
 
 class KnowledgeBaseResponse(BaseModel):
@@ -57,7 +55,6 @@ class KnowledgeBaseResponse(BaseModel):
     ocr_model: str = ""
     context_model: str = ""
     classification_model: str = ""
-    embedding_model: str = ""
     document_count: int
     created_at: str
     updated_at: str
@@ -73,7 +70,6 @@ def _kb_to_response(kb) -> KnowledgeBaseResponse:
         ocr_model=kb.ocr_model,
         context_model=kb.context_model,
         classification_model=kb.classification_model,
-        embedding_model=kb.embedding_model,
         document_count=kb.document_count,
         created_at=kb.created_at.isoformat(),
         updated_at=kb.updated_at.isoformat(),
@@ -102,7 +98,6 @@ async def create_knowledge_base(
             ocr_model=body.ocr_model,
             context_model=body.context_model,
             classification_model=body.classification_model,
-            embedding_model=body.embedding_model,
         )
     )
     return _kb_to_response(kb)
@@ -167,8 +162,7 @@ async def update_knowledge_base(
                 ocr_model=body.ocr_model,
                 context_model=body.context_model,
                 classification_model=body.classification_model,
-                embedding_model=body.embedding_model,
-            )
+                )
         )
     except EntityNotFoundError as e:
         raise HTTPException(

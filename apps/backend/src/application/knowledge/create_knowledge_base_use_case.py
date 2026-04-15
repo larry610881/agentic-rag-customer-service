@@ -14,7 +14,6 @@ class CreateKnowledgeBaseCommand:
     ocr_model: str = ""
     context_model: str = ""
     classification_model: str = ""
-    embedding_model: str = ""
 
 
 class CreateKnowledgeBaseUseCase:
@@ -33,7 +32,6 @@ class CreateKnowledgeBaseUseCase:
             ocr_model=command.ocr_model,
             context_model=command.context_model,
             classification_model=command.classification_model,
-            embedding_model=command.embedding_model,
         )
         await self._knowledge_base_repository.save(kb)
         return kb

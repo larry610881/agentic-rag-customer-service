@@ -38,7 +38,6 @@ const createKbSchema = z.object({
   ocr_model: z.string().default(""),
   context_model: z.string().default(""),
   classification_model: z.string().default(""),
-  embedding_model: z.string().default(""),
 });
 
 type CreateKbFormValues = z.infer<typeof createKbSchema>;
@@ -52,7 +51,6 @@ const MODEL_FIELDS = [
   { key: "ocr_model" as const, label: "OCR 解析", emptyLabel: "系統預設" },
   { key: "context_model" as const, label: "上下文生成", emptyLabel: "系統預設" },
   { key: "classification_model" as const, label: "自動分類", emptyLabel: "系統預設" },
-  { key: "embedding_model" as const, label: "Embedding", emptyLabel: "系統預設" },
 ] as const;
 
 export function CreateKbDialog() {
@@ -75,7 +73,6 @@ export function CreateKbDialog() {
       ocr_model: "",
       context_model: "",
       classification_model: "",
-      embedding_model: "",
     },
   });
 
@@ -87,7 +84,6 @@ export function CreateKbDialog() {
       ocr_model: data.ocr_model === "__none__" ? "" : data.ocr_model,
       context_model: data.context_model === "__none__" ? "" : data.context_model,
       classification_model: data.classification_model === "__none__" ? "" : data.classification_model,
-      embedding_model: data.embedding_model === "__none__" ? "" : data.embedding_model,
     };
     createMutation.mutate(payload, {
       onSuccess: () => {

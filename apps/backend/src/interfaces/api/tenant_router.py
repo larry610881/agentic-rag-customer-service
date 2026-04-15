@@ -26,6 +26,9 @@ class CreateTenantRequest(BaseModel):
 
 class UpdateTenantConfigRequest(BaseModel):
     monthly_token_limit: int | None = None
+    default_ocr_model: str | None = None
+    default_context_model: str | None = None
+    default_classification_model: str | None = None
 
 
 class TenantResponse(BaseModel):
@@ -33,6 +36,9 @@ class TenantResponse(BaseModel):
     name: str
     plan: str
     monthly_token_limit: int | None = None
+    default_ocr_model: str = ""
+    default_context_model: str = ""
+    default_classification_model: str = ""
     created_at: str
     updated_at: str
 
@@ -43,6 +49,9 @@ def _to_response(t: Tenant) -> TenantResponse:
         name=t.name,
         plan=t.plan,
         monthly_token_limit=t.monthly_token_limit,
+        default_ocr_model=t.default_ocr_model,
+        default_context_model=t.default_context_model,
+        default_classification_model=t.default_classification_model,
         created_at=t.created_at.isoformat(),
         updated_at=t.updated_at.isoformat(),
     )
@@ -134,7 +143,14 @@ async def update_tenant_config(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from None
-    tenant.monthly_token_limit = body.monthly_token_limit
+    if body.monthly_token_limit is not None:
+        tenant.monthly_token_limit = body.monthly_token_limit
+    if body.default_ocr_model is not None:
+        tenant.default_ocr_model = body.default_ocr_model
+    if body.default_context_model is not None:
+        tenant.default_context_model = body.default_context_model
+    if body.default_classification_model is not None:
+        tenant.default_classification_model = body.default_classification_model
     await tenant_repo.save(tenant)
     return _to_response(tenant)
 

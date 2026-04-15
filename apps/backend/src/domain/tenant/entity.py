@@ -10,6 +10,9 @@ class Tenant:
     name: str = ""
     plan: str = "starter"
     monthly_token_limit: int | None = None
+    default_ocr_model: str = ""
+    default_context_model: str = ""
+    default_classification_model: str = ""
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

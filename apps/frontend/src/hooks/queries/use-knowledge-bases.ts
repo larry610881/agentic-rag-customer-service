@@ -36,7 +36,6 @@ export function useCreateKnowledgeBase() {
       ocr_model?: string;
       context_model?: string;
       classification_model?: string;
-      embedding_model?: string;
     }) =>
       apiFetch<KnowledgeBase>(
         API_ENDPOINTS.knowledgeBases.create,

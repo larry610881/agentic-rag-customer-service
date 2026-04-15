@@ -6,6 +6,7 @@ from src.domain.knowledge.repository import (
     KnowledgeBaseRepository,
     ProcessingTaskRepository,
 )
+from src.domain.tenant.repository import TenantRepository
 from src.domain.knowledge.services import (
     ChunkContextService,
     ChunkDeduplicationService,
@@ -59,6 +60,7 @@ class ProcessDocumentUseCase:
         document_file_storage: DocumentFileStorageService,
         record_usage_use_case: RecordUsageUseCase | None = None,
         chunk_context_service: ChunkContextService | None = None,
+        tenant_repository: TenantRepository | None = None,
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
@@ -71,6 +73,7 @@ class ProcessDocumentUseCase:
         self._file_storage = document_file_storage
         self._record_usage = record_usage_use_case
         self._context_service = chunk_context_service
+        self._tenant_repo = tenant_repository
 
     async def execute(
         self, document_id: str, task_id: str
@@ -265,8 +268,14 @@ class ProcessDocumentUseCase:
                 return
 
             # ── Contextual Enrichment (Contextual Retrieval) ──
-            # Only run if KB has context_model explicitly configured.
+            # Resolve: KB setting → tenant default → skip
             context_model = getattr(kb, "context_model", "") if kb else ""
+            if not context_model and self._tenant_repo:
+                try:
+                    tenant = await self._tenant_repo.find_by_id(document.tenant_id)
+                    context_model = getattr(tenant, "default_context_model", "") if tenant else ""
+                except Exception:
+                    pass
             if self._context_service and context_model:
                 # Release DB transaction before LLM calls (same pattern as OCR)
                 if hasattr(self._doc_repo, '_session'):

@@ -13,7 +13,6 @@ class UpdateKnowledgeBaseCommand:
     ocr_model: str | None = None
     context_model: str | None = None
     classification_model: str | None = None
-    embedding_model: str | None = None
 
 
 class UpdateKnowledgeBaseUseCase:
@@ -35,7 +34,6 @@ class UpdateKnowledgeBaseUseCase:
                 "ocr_model": command.ocr_model,
                 "context_model": command.context_model,
                 "classification_model": command.classification_model,
-                "embedding_model": command.embedding_model,
             }.items()
             if v is not None
         }

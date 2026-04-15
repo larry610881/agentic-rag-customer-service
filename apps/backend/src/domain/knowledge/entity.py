@@ -20,7 +20,6 @@ class KnowledgeBase:
     ocr_model: str = ""
     context_model: str = ""
     classification_model: str = ""
-    embedding_model: str = ""
     document_count: int = 0
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)

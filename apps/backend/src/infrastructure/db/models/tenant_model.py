@@ -17,6 +17,15 @@ class TenantModel(Base):
     monthly_token_limit: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
     )
+    default_ocr_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
+    default_context_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
+    default_classification_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

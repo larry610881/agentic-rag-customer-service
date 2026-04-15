@@ -9,6 +9,9 @@ export interface Tenant {
   name: string;
   plan: string;
   monthly_token_limit: number | null;
+  default_ocr_model: string;
+  default_context_model: string;
+  default_classification_model: string;
   created_at: string;
   updated_at: string;
 }

@@ -918,6 +918,7 @@ class Container(containers.DeclarativeContainer):
         document_file_storage=document_file_storage_service,
         record_usage_use_case=record_usage_use_case,
         chunk_context_service=chunk_context_service,
+        tenant_repository=tenant_repository,
     )
 
     split_pdf_use_case = providers.Factory(

@@ -18,6 +18,9 @@ class SQLAlchemyTenantRepository(TenantRepository):
             name=model.name,
             plan=model.plan,
             monthly_token_limit=model.monthly_token_limit,
+            default_ocr_model=model.default_ocr_model,
+            default_context_model=model.default_context_model,
+            default_classification_model=model.default_classification_model,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -29,6 +32,9 @@ class SQLAlchemyTenantRepository(TenantRepository):
                 name=tenant.name,
                 plan=tenant.plan,
                 monthly_token_limit=tenant.monthly_token_limit,
+                default_ocr_model=tenant.default_ocr_model,
+                default_context_model=tenant.default_context_model,
+                default_classification_model=tenant.default_classification_model,
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
             )
