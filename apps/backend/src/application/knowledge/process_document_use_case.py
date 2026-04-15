@@ -123,12 +123,12 @@ class ProcessDocumentUseCase:
             ocr_mode = kb.ocr_mode if kb else "general"
 
             # ── Parse raw content → text ──
-            # OCR is long-running (10s+/page). Release DB transaction before OCR
-            # to avoid PostgreSQL idle_in_transaction_session_timeout killing
-            # the connection. pool_pre_ping=True will reconnect afterward.
+            # OCR is long-running (10s+/page). Close session before OCR
+            # to return the connection to the pool. After OCR, create a
+            # fresh session so pool_pre_ping can establish a new connection.
             if hasattr(self._doc_repo, '_session'):
                 try:
-                    await self._doc_repo._session.commit()
+                    await self._doc_repo._session.close()
                 except Exception:
                     pass
 
@@ -168,6 +168,17 @@ class ProcessDocumentUseCase:
 
                 parse_ms = round((time.perf_counter() - t0) * 1000)
                 log.info("document.parse.done", duration_ms=parse_ms)
+
+                # Refresh session after long OCR — old connection may be dead
+                if hasattr(self._doc_repo, '_session'):
+                    try:
+                        from src.infrastructure.db.engine import async_session_factory
+                        new_session = async_session_factory()
+                        self._doc_repo._session = new_session
+                        self._task_repo._session = new_session
+                        self._kb_repo._session = new_session
+                    except Exception:
+                        pass
 
                 await self._doc_repo.update_content(document_id, content)
 
@@ -277,10 +288,10 @@ class ProcessDocumentUseCase:
                 except Exception:
                     pass
             if self._context_service and context_model:
-                # Release DB transaction before LLM calls (same pattern as OCR)
+                # Close session before LLM calls (same pattern as OCR)
                 if hasattr(self._doc_repo, '_session'):
                     try:
-                        await self._doc_repo._session.commit()
+                        await self._doc_repo._session.close()
                     except Exception:
                         pass
 
@@ -297,6 +308,17 @@ class ProcessDocumentUseCase:
                     duration_ms=ctx_ms,
                 )
                 await _update_progress(task_id, 73)
+
+                # Refresh session after LLM calls
+                if hasattr(self._doc_repo, '_session'):
+                    try:
+                        from src.infrastructure.db.engine import async_session_factory
+                        new_session = async_session_factory()
+                        self._doc_repo._session = new_session
+                        self._task_repo._session = new_session
+                        self._kb_repo._session = new_session
+                    except Exception:
+                        pass
 
             # 75% — chunks saved
             await _update_progress(task_id, 75)
