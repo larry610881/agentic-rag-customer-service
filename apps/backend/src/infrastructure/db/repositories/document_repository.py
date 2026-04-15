@@ -212,6 +212,21 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         result = await self._session.execute(stmt)
         return result.scalar_one()
 
+    async def count_by_kb_status(
+        self, kb_id: str, statuses: list[str]
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(DocumentModel)
+            .where(
+                DocumentModel.kb_id == kb_id,
+                DocumentModel.status.in_(statuses),
+                DocumentModel.parent_id.is_(None),
+            )
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
+
     # --- Chunk write methods (aggregate internal Entity) ---
 
     async def save_chunks(self, chunks: list[Chunk]) -> None:

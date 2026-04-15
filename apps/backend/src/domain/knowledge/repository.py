@@ -77,6 +77,11 @@ class DocumentRepository(ABC):
     async def count_by_kb(self, kb_id: str) -> int: ...
 
     @abstractmethod
+    async def count_by_kb_status(
+        self, kb_id: str, statuses: list[str]
+    ) -> int: ...
+
+    @abstractmethod
     async def update_status(
         self, doc_id: str, status: str, chunk_count: int | None = None
     ) -> None: ...

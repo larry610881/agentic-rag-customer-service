@@ -424,6 +424,9 @@ class ProcessDocumentUseCase:
                 except Exception:
                     log.warning("document.parent.aggregate_failed", exc_info=True)
 
+            # Auto-classify: if no more pending/processing docs in KB
+            await self._maybe_trigger_classification(document.kb_id, document.tenant_id, log)
+
         except Exception as e:
             log.exception("document.process.failed", error=str(e))
             # Update task → failed
@@ -437,5 +440,27 @@ class ProcessDocumentUseCase:
                 await self._doc_repo.update_status(document_id, "failed")
             except Exception:
                 log.exception("document.status_update.failed")
+            # Auto-classify on failure too (all done = trigger)
+            try:
+                await self._maybe_trigger_classification(
+                    document.kb_id, document.tenant_id, log
+                )
+            except Exception:
+                pass
             # Re-raise so safe_background_task can write to Error Tracking
             raise
+
+    async def _maybe_trigger_classification(
+        self, kb_id: str, tenant_id: str, log
+    ) -> None:
+        """If no more pending/processing docs in KB, trigger auto-classification."""
+        try:
+            pending = await self._doc_repo.count_by_kb_status(
+                kb_id, ["pending", "processing"]
+            )
+            if pending == 0:
+                from src.infrastructure.queue.arq_pool import enqueue
+                await enqueue("classify_kb", kb_id, tenant_id)
+                log.info("classify_kb.auto_triggered", kb_id=kb_id)
+        except Exception:
+            log.warning("classify_kb.auto_trigger_failed", exc_info=True)

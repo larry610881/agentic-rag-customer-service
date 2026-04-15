@@ -38,7 +38,7 @@ export default function KnowledgeDetailPage() {
     <div className="flex flex-col gap-6 p-6">
       <h2 className="text-2xl font-semibold">文件管理</h2>
       <UploadDropzone knowledgeBaseId={id!} />
-      <CategoryList kbId={id!} />
+      <CategoryList kbId={id!} documents={data?.items} />
       {isLoading && <p className="text-muted-foreground">載入文件中...</p>}
       {error && (
         <p className="text-destructive">

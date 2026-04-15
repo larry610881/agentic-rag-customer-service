@@ -35,3 +35,10 @@ class DeleteDocumentUseCase:
 
         # Delete document (and its chunks) from DB
         await self._doc_repo.delete(doc_id)
+
+        # Trigger auto-classification for the KB
+        try:
+            from src.infrastructure.queue.arq_pool import enqueue
+            await enqueue("classify_kb", doc.kb_id, doc.tenant_id)
+        except Exception:
+            pass
