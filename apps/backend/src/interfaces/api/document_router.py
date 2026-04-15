@@ -140,11 +140,20 @@ async def list_documents(
         Provide[Container.list_documents_use_case]
     ),
 ) -> PaginatedResponse[DocumentResponse]:
+    from math import ceil
+
+    from sqlalchemy import func as sa_func, select
+
+    from src.infrastructure.db.engine import async_session_factory
+    from src.infrastructure.db.models.document_model import DocumentModel
+    from src.infrastructure.db.models.processing_task_model import (
+        ProcessingTaskModel,
+    )
+
     limit = pagination.page_size
     offset = (pagination.page - 1) * pagination.page_size
     documents = await use_case.execute(kb_id, limit=limit, offset=offset)
     total = await use_case.count(kb_id)
-    from math import ceil
     total_pages = ceil(total / pagination.page_size) if total > 0 else 0
 
     # Fetch task progress for processing documents
@@ -153,12 +162,6 @@ async def list_documents(
         doc.id.value for doc in documents if doc.status == "processing"
     ]
     if processing_doc_ids:
-        from src.infrastructure.db.engine import async_session_factory
-        from src.infrastructure.db.models.processing_task_model import (
-            ProcessingTaskModel,
-        )
-        from sqlalchemy import select
-
         async with async_session_factory() as session:
             stmt = (
                 select(
@@ -181,9 +184,6 @@ async def list_documents(
     children_count_map: dict[str, int] = {}
     parent_ids = [d.id.value for d in top_level]
     if parent_ids:
-        from src.infrastructure.db.models.document_model import DocumentModel
-        from sqlalchemy import select, func as sa_func
-
         async with async_session_factory() as session:
             stmt = (
                 select(DocumentModel.parent_id, sa_func.count())
