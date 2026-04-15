@@ -43,6 +43,9 @@ class KnowledgeBaseRepository(ABC):
     ) -> list[KnowledgeBase]: ...
 
     @abstractmethod
+    async def update(self, kb_id: str, **fields: object) -> None: ...
+
+    @abstractmethod
     async def delete(self, kb_id: str) -> None: ...
 
 

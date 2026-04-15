@@ -17,6 +17,10 @@ class KnowledgeBase:
     description: str = ""
     kb_type: str = "user"  # "user" | "system"
     ocr_mode: str = "general"  # "general" | "catalog"
+    ocr_model: str = ""
+    context_model: str = ""
+    classification_model: str = ""
+    embedding_model: str = ""
     document_count: int = 0
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)

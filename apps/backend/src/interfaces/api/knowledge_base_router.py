@@ -15,7 +15,12 @@ from src.application.knowledge.list_all_knowledge_bases_use_case import (
 from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
 )
+from src.application.knowledge.update_knowledge_base_use_case import (
+    UpdateKnowledgeBaseCommand,
+    UpdateKnowledgeBaseUseCase,
+)
 from src.container import Container
+from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
@@ -27,6 +32,20 @@ class CreateKnowledgeBaseRequest(BaseModel):
     name: str
     description: str = ""
     ocr_mode: str = "general"
+    ocr_model: str = ""
+    context_model: str = ""
+    classification_model: str = ""
+    embedding_model: str = ""
+
+
+class UpdateKnowledgeBaseRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    ocr_mode: str | None = None
+    ocr_model: str | None = None
+    context_model: str | None = None
+    classification_model: str | None = None
+    embedding_model: str | None = None
 
 
 class KnowledgeBaseResponse(BaseModel):
@@ -35,9 +54,30 @@ class KnowledgeBaseResponse(BaseModel):
     name: str
     description: str
     ocr_mode: str
+    ocr_model: str = ""
+    context_model: str = ""
+    classification_model: str = ""
+    embedding_model: str = ""
     document_count: int
     created_at: str
     updated_at: str
+
+
+def _kb_to_response(kb) -> KnowledgeBaseResponse:
+    return KnowledgeBaseResponse(
+        id=kb.id.value,
+        tenant_id=kb.tenant_id,
+        name=kb.name,
+        description=kb.description,
+        ocr_mode=kb.ocr_mode,
+        ocr_model=kb.ocr_model,
+        context_model=kb.context_model,
+        classification_model=kb.classification_model,
+        embedding_model=kb.embedding_model,
+        document_count=kb.document_count,
+        created_at=kb.created_at.isoformat(),
+        updated_at=kb.updated_at.isoformat(),
+    )
 
 
 @router.post(
@@ -59,18 +99,13 @@ async def create_knowledge_base(
             name=body.name,
             description=body.description,
             ocr_mode=body.ocr_mode,
+            ocr_model=body.ocr_model,
+            context_model=body.context_model,
+            classification_model=body.classification_model,
+            embedding_model=body.embedding_model,
         )
     )
-    return KnowledgeBaseResponse(
-        id=kb.id.value,
-        tenant_id=kb.tenant_id,
-        name=kb.name,
-        description=kb.description,
-        ocr_mode=kb.ocr_mode,
-        document_count=kb.document_count,
-        created_at=kb.created_at.isoformat(),
-        updated_at=kb.updated_at.isoformat(),
-    )
+    return _kb_to_response(kb)
 
 
 @router.get("", response_model=PaginatedResponse[KnowledgeBaseResponse])
@@ -101,24 +136,47 @@ async def list_knowledge_bases(
     from math import ceil
     total_pages = ceil(total / pagination.page_size) if total > 0 else 0
     return PaginatedResponse(
-        items=[
-            KnowledgeBaseResponse(
-                id=kb.id.value,
-                tenant_id=kb.tenant_id,
-                name=kb.name,
-                description=kb.description,
-                ocr_mode=kb.ocr_mode,
-                document_count=kb.document_count,
-                created_at=kb.created_at.isoformat(),
-                updated_at=kb.updated_at.isoformat(),
-            )
-            for kb in kbs
-        ],
+        items=[_kb_to_response(kb) for kb in kbs],
         total=total,
         page=pagination.page,
         page_size=pagination.page_size,
         total_pages=total_pages,
     )
+
+
+@router.patch("/{kb_id}", response_model=KnowledgeBaseResponse)
+@inject
+async def update_knowledge_base(
+    kb_id: str,
+    body: UpdateKnowledgeBaseRequest,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    update_use_case: UpdateKnowledgeBaseUseCase = Depends(
+        Provide[Container.update_knowledge_base_use_case]
+    ),
+    kb_repo: KnowledgeBaseRepository = Depends(
+        Provide[Container.kb_repository]
+    ),
+) -> KnowledgeBaseResponse:
+    try:
+        await update_use_case.execute(
+            UpdateKnowledgeBaseCommand(
+                kb_id=kb_id,
+                name=body.name,
+                description=body.description,
+                ocr_mode=body.ocr_mode,
+                ocr_model=body.ocr_model,
+                context_model=body.context_model,
+                classification_model=body.classification_model,
+                embedding_model=body.embedding_model,
+            )
+        )
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.message,
+        ) from None
+    kb = await kb_repo.find_by_id(kb_id)
+    return _kb_to_response(kb)
 
 
 @router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT)

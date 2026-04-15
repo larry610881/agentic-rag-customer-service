@@ -25,6 +25,18 @@ class KnowledgeBaseModel(Base):
     ocr_mode: Mapped[str] = mapped_column(
         String(20), nullable=False, default="general", server_default="general"
     )
+    ocr_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
+    context_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
+    classification_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
+    embedding_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

@@ -25,6 +25,10 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             description=model.description,
             kb_type=model.kb_type,
             ocr_mode=model.ocr_mode,
+            ocr_model=model.ocr_model,
+            context_model=model.context_model,
+            classification_model=model.classification_model,
+            embedding_model=model.embedding_model,
             document_count=document_count,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -50,6 +54,10 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
                 description=knowledge_base.description,
                 kb_type=knowledge_base.kb_type,
                 ocr_mode=knowledge_base.ocr_mode,
+                ocr_model=knowledge_base.ocr_model,
+                context_model=knowledge_base.context_model,
+                classification_model=knowledge_base.classification_model,
+                embedding_model=knowledge_base.embedding_model,
                 created_at=knowledge_base.created_at,
                 updated_at=knowledge_base.updated_at,
             )
@@ -158,6 +166,23 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
         )
         result = await self._session.execute(stmt)
         return [self._to_entity(row[0], int(row[1])) for row in result.all()]
+
+    async def update(self, kb_id: str, **fields: object) -> None:
+        from sqlalchemy import update
+
+        allowed = {
+            "name", "description", "ocr_mode",
+            "ocr_model", "context_model", "classification_model", "embedding_model",
+        }
+        values = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not values:
+            return
+        async with atomic(self._session):
+            await self._session.execute(
+                update(KnowledgeBaseModel)
+                .where(KnowledgeBaseModel.id == kb_id)
+                .values(**values)
+            )
 
     async def delete(self, kb_id: str) -> None:
         async with atomic(self._session):
