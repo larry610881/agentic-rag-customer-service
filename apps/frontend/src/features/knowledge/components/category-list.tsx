@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, RefreshCw, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,11 +14,37 @@ type CategoryListProps = {
 };
 
 export function CategoryList({ kbId }: CategoryListProps) {
-  const { data: categories, isLoading } = useCategories(kbId);
+  const [classifying, setClassifying] = useState(false);
+  const prevCountRef = useRef<number | null>(null);
+
+  const { data: categories, isLoading } = useCategories(kbId, classifying);
   const classifyMutation = useClassifyKb(kbId);
   const updateMutation = useUpdateCategory(kbId);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+
+  // Detect when classification is done: categories changed while polling
+  useEffect(() => {
+    if (!classifying || !categories) return;
+    const currentCount = categories.length;
+    if (prevCountRef.current !== null && currentCount !== prevCountRef.current) {
+      setClassifying(false);
+    }
+    prevCountRef.current = currentCount;
+  }, [categories, classifying]);
+
+  // Auto-stop polling after 60 seconds (safety timeout)
+  useEffect(() => {
+    if (!classifying) return;
+    const timer = setTimeout(() => setClassifying(false), 60000);
+    return () => clearTimeout(timer);
+  }, [classifying]);
+
+  const handleClassify = () => {
+    prevCountRef.current = categories?.length ?? 0;
+    setClassifying(true);
+    classifyMutation.mutate();
+  };
 
   const handleStartEdit = (catId: string, currentName: string) => {
     setEditingId(catId);
@@ -45,33 +71,48 @@ export function CategoryList({ kbId }: CategoryListProps) {
         <h3 className="text-sm font-medium flex items-center gap-1.5">
           <Tag className="h-4 w-4" />
           自動分類
+          {classifying && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground font-normal">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              分類中...
+            </span>
+          )}
         </h3>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => classifyMutation.mutate()}
-          disabled={classifyMutation.isPending}
+          onClick={handleClassify}
+          disabled={classifying || classifyMutation.isPending}
         >
-          {classifyMutation.isPending ? (
+          {classifying ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
           ) : (
             <RefreshCw className="h-3.5 w-3.5 mr-1" />
           )}
-          {classifyMutation.isPending ? "分類中..." : "重新分類"}
+          {classifying ? "分類中..." : "重新分類"}
         </Button>
       </div>
 
-      {isLoading && (
+      {classifying && (
+        <div className="rounded-md border border-dashed p-4 text-center">
+          <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            正在分析 chunks 並自動分類，請稍候...
+          </p>
+        </div>
+      )}
+
+      {!classifying && isLoading && (
         <div className="text-sm text-muted-foreground">載入中...</div>
       )}
 
-      {!isLoading && (!categories || categories.length === 0) && (
+      {!classifying && !isLoading && (!categories || categories.length === 0) && (
         <div className="text-sm text-muted-foreground rounded-md border border-dashed p-4 text-center">
           尚無分類。點「重新分類」自動產生。
         </div>
       )}
 
-      {categories && categories.length > 0 && (
+      {!classifying && categories && categories.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {categories.map((cat) => (
             <div

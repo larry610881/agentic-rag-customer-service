@@ -5,7 +5,7 @@ import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { ChunkCategory } from "@/types/knowledge";
 
-export function useCategories(kbId: string) {
+export function useCategories(kbId: string, polling = false) {
   const token = useAuthStore((s) => s.token);
 
   return useQuery({
@@ -17,6 +17,7 @@ export function useCategories(kbId: string) {
         token ?? undefined,
       ),
     enabled: !!token && !!kbId,
+    refetchInterval: polling ? 3000 : false,
   });
 }
 
@@ -33,10 +34,7 @@ export function useClassifyKb(kbId: string) {
       ),
     onSuccess: () => {
       toast.success("分類任務已排入佇列");
-      // Invalidate after a delay to pick up results
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["categories", kbId] });
-      }, 5000);
+      queryClient.invalidateQueries({ queryKey: ["categories", kbId] });
     },
     onError: () => {
       toast.error("觸發分類失敗");
