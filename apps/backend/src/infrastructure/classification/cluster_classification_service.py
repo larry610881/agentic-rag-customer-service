@@ -73,11 +73,12 @@ class ClusterClassificationService:
 
         # 1. Cluster — let algorithm decide optimal number
         X = np.array(vectors)
-        # Use distance_threshold: auto-determine cluster count
-        # n_clusters=None + distance_threshold lets the algorithm decide
+        # Use distance_threshold with cosine metric.
+        # Cosine distance range: 0 (identical) ~ 2 (opposite).
+        # 0.3 = chunks with cosine similarity > 0.85 are grouped together.
         clustering = AgglomerativeClustering(
             n_clusters=None,
-            distance_threshold=1.2,  # cosine distance, tuned for embedding space
+            distance_threshold=0.3,
             metric="cosine",
             linkage="average",
         )
