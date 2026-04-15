@@ -43,4 +43,11 @@ DEFAULT_MODELS: dict[str, dict[str, list[dict]]] = {
             {"model_id": "claude-opus-4-6", "display_name": "Claude Opus 4.6", "price": "$5/$25", "input_price": 5.0, "output_price": 25.0, "cache_read_price": 0.5, "cache_creation_price": 6.25},
         ],
     },
+    "litellm": {
+        "llm": [
+            {"model_id": "azure_ai/claude-opus-4-6", "display_name": "Claude Opus 4.6", "price": "$5/$25", "input_price": 5.0, "output_price": 25.0, "cache_read_price": 0.5, "cache_creation_price": 0},
+            {"model_id": "azure_ai/claude-sonnet-4-5", "display_name": "Claude Sonnet 4.5", "price": "$3/$15", "input_price": 3.0, "output_price": 15.0, "cache_read_price": 0.3, "cache_creation_price": 0},
+            {"model_id": "azure_ai/claude-haiku-4-5", "display_name": "Claude Haiku 4.5", "price": "$1/$5", "input_price": 1.0, "output_price": 5.0, "cache_read_price": 0.1, "cache_creation_price": 0},
+        ],
+    },
 }

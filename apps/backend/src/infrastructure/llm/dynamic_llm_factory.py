@@ -19,6 +19,7 @@ _DEFAULT_BASE_URLS: dict[str, str] = {
     ProviderName.QWEN.value: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     ProviderName.GOOGLE.value: "https://generativelanguage.googleapis.com/v1beta/openai",
     ProviderName.OPENROUTER.value: "https://openrouter.ai/api/v1",
+    ProviderName.LITELLM.value: "https://litellm-server.pic-ai.work",
 }
 
 # Default model per provider
@@ -29,6 +30,7 @@ _DEFAULT_MODELS: dict[str, str] = {
     ProviderName.QWEN.value: "qwen-plus",
     ProviderName.GOOGLE.value: "gemini-2.5-flash-lite",
     ProviderName.OPENROUTER.value: "openai/gpt-4o",
+    ProviderName.LITELLM.value: "azure_ai/claude-sonnet-4-5",
 }
 
 # Map provider_name -> Settings attribute for .env fallback API key
@@ -39,6 +41,7 @@ _ENV_KEY_MAP: dict[str, str] = {
     ProviderName.GOOGLE.value: "google_api_key",
     ProviderName.QWEN.value: "qwen_api_key",
     ProviderName.OPENROUTER.value: "openrouter_api_key",
+    ProviderName.LITELLM.value: "litellm_api_key",
 }
 
 

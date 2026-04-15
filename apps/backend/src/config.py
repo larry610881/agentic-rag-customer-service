@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     deepseek_api_key: str = ""
     openrouter_api_key: str = ""
+    litellm_api_key: str = ""
 
     # Embedding — "fake" | "openai" | "google"
     embedding_provider: str = "openai"

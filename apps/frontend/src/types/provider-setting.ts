@@ -60,6 +60,7 @@ export const PROVIDER_NAMES = [
   { value: "anthropic", label: "Anthropic" },
   { value: "qwen", label: "Qwen" },
   { value: "openrouter", label: "OpenRouter" },
+  { value: "litellm", label: "LiteLLM" },
   { value: "fake", label: "Fake (Dev)" },
 ] as const;
 
@@ -68,6 +69,7 @@ export const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
   google: "Google Gemini",
   anthropic: "Anthropic Claude",
+  litellm: "LiteLLM",
 };
 
-export const PROVIDER_ORDER = ["deepseek", "openai", "google", "anthropic"];
+export const PROVIDER_ORDER = ["deepseek", "openai", "google", "anthropic", "litellm"];

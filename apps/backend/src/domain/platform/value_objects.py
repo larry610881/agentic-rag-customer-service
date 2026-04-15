@@ -31,6 +31,7 @@ class ProviderName(str, Enum):
     QWEN = "qwen"
     GOOGLE = "google"
     OPENROUTER = "openrouter"
+    LITELLM = "litellm"
     MOCK = "mock"
 
 
