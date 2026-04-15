@@ -47,6 +47,7 @@ const systemAdminItems = [
   { href: "/admin/users", label: "帳號管理", icon: Users },
   { href: "/settings/providers", label: "供應商設定", icon: Plug },
   { href: "/admin/prompts", label: "系統提示詞", icon: FileText },
+  { href: "/admin/guard-rules", label: "安全規則", icon: Shield },
   { href: "/admin/diagnostic-rules", label: "診斷規則", icon: Stethoscope },
   { href: "/admin/rate-limits", label: "速率限制", icon: Gauge },
   { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
