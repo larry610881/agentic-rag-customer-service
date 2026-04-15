@@ -9,7 +9,8 @@ class LineMessagingService(ABC):
 
     @abstractmethod
     async def reply_with_quick_reply(
-        self, reply_token: str, text: str, message_id: str
+        self, reply_token: str, text: str, message_id: str,
+        extra_messages: list[dict] | None = None,
     ) -> None: ...
 
     @abstractmethod

@@ -357,17 +357,18 @@ class HandleWebhookUseCase:
             reply_text += "\n\n📚 參考來源：\n" + "\n".join(source_lines)
 
         message_id = assistant_msg.id.value
-        await line_service.reply_with_quick_reply(
-            event.reply_token, reply_text, message_id
-        )
 
-        # Send Flex Message cards if MCP tool returned flex content
+        # Build Flex Message cards from MCP tool outputs
         flex_contents = self._extract_flex_from_tool_calls(result.tool_calls)
-        for alt_text, flex_json in flex_contents:
-            try:
-                await line_service.push_flex(event.user_id, alt_text, flex_json)
-            except Exception:
-                logger.warning("line.push_flex.error", exc_info=True)
+        extra_messages = [
+            {"type": "flex", "altText": alt_text, "contents": flex_json}
+            for alt_text, flex_json in flex_contents
+        ]
+
+        await line_service.reply_with_quick_reply(
+            event.reply_token, reply_text, message_id,
+            extra_messages=extra_messages or None,
+        )
 
         t2 = time.monotonic()
 

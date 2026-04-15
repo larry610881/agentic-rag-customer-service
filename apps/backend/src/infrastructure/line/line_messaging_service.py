@@ -60,20 +60,28 @@ class HttpxLineMessagingService(LineMessagingService):
         )
 
     async def reply_with_quick_reply(
-        self, reply_token: str, text: str, message_id: str
+        self, reply_token: str, text: str, message_id: str,
+        extra_messages: list[dict] | None = None,
     ) -> None:
+        messages: list[dict] = []
+
+        # Add flex messages first (cards before text looks better)
+        if extra_messages:
+            messages.extend(extra_messages[:4])  # Reserve 1 slot for text
+
+        # Text message with quick reply (always last)
+        messages.append({
+            "type": "text",
+            "text": text,
+            "quickReply": self._feedback_quick_reply(message_id),
+        })
+
         await self._client.post(
             "https://api.line.me/v2/bot/message/reply",
             headers=self._auth_headers(),
             json={
                 "replyToken": reply_token,
-                "messages": [
-                    {
-                        "type": "text",
-                        "text": text,
-                        "quickReply": self._feedback_quick_reply(message_id),
-                    }
-                ],
+                "messages": messages[:5],  # LINE max 5 messages per reply
             },
         )
 
