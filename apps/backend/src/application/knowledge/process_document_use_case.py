@@ -284,7 +284,7 @@ class ProcessDocumentUseCase:
             if self._record_usage and hasattr(self._embedding, "last_total_tokens"):
                 embed_tokens = self._embedding.last_total_tokens
                 if embed_tokens > 0:
-                    embed_model = getattr(self._embedding, "_model", "text-embedding-3-small")
+                    embed_model = getattr(self._embedding, "_model", "text-embedding-3-large")
                     await self._record_usage.execute(
                         tenant_id=document.tenant_id,
                         request_type="embedding",
@@ -301,7 +301,7 @@ class ProcessDocumentUseCase:
 
             # Ensure Qdrant collection exists
             collection = f"kb_{document.kb_id}"
-            vector_size = len(vectors[0]) if vectors else 1536
+            vector_size = len(vectors[0]) if vectors else 3072
             await self._vector_store.ensure_collection(
                 collection, vector_size
             )

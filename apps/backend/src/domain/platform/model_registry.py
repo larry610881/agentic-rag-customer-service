@@ -2,7 +2,7 @@
 
 Used by CreateProviderSettingUseCase to populate models on first creation.
 
-Embedding is fixed to OpenAI text-embedding-3-small (1536 dim) globally.
+Embedding is fixed to OpenAI text-embedding-3-large (3072 dim) globally.
 
 Pricing: input_price / output_price = USD per 1M tokens (2026-03 verified).
 Cache pricing: cache_read_price / cache_creation_price = USD per 1M tokens.

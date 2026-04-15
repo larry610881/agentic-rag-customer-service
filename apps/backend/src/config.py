@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     embedding_api_key: str = ""
     embedding_model: str = ""
     embedding_base_url: str = ""
-    embedding_vector_size: int = 1536
+    embedding_vector_size: int = 3072
     embedding_batch_size: int = 50
     embedding_max_retries: int = 5
     embedding_timeout: float = 120.0
@@ -157,8 +157,8 @@ class Settings(BaseSettings):
     def effective_embedding_model(self) -> str:
         if self.embedding_model:
             return self.embedding_model
-        _defaults = {"google": "text-embedding-004", "openai": "text-embedding-3-small"}
-        return _defaults.get(self.embedding_provider, "text-embedding-3-small")
+        _defaults = {"google": "text-embedding-004", "openai": "text-embedding-3-large"}
+        return _defaults.get(self.embedding_provider, "text-embedding-3-large")
 
     @property
     def effective_embedding_base_url(self) -> str:

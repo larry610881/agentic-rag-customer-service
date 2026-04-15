@@ -13,8 +13,9 @@ class OpenAIEmbeddingService(EmbeddingService):
     def __init__(
         self,
         api_key: str,
-        model: str = "text-embedding-3-small",
+        model: str = "text-embedding-3-large",
         base_url: str = "https://api.openai.com/v1",
+        dimensions: int | None = None,
         batch_size: int = 50,
         max_retries: int = 5,
         timeout: float = 120.0,
@@ -25,6 +26,7 @@ class OpenAIEmbeddingService(EmbeddingService):
         self._api_key = api_key
         self._model = model
         self._base_url = base_url
+        self._dimensions = dimensions
         self._batch_size = batch_size
         self._max_retries = max_retries
         self._timeout = timeout
@@ -118,7 +120,11 @@ class OpenAIEmbeddingService(EmbeddingService):
             resp = await self._client.post(
                 f"{self._base_url}/embeddings",
                 headers={"Authorization": f"Bearer {self._api_key}"},
-                json={"input": texts, "model": self._model},
+                json={
+                    "input": texts,
+                    "model": self._model,
+                    **({"dimensions": self._dimensions} if self._dimensions else {}),
+                },
             )
             resp.raise_for_status()
             data = resp.json()

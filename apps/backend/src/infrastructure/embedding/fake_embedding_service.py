@@ -7,7 +7,7 @@ from src.domain.rag.services import EmbeddingService
 class FakeEmbeddingService(EmbeddingService):
     """Deterministic pseudo-random embedding for testing/development."""
 
-    def __init__(self, vector_size: int = 1536) -> None:
+    def __init__(self, vector_size: int = 3072) -> None:
         self._vector_size = vector_size
 
     def _hash_to_vector(self, text: str) -> list[float]:

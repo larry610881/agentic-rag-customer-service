@@ -194,7 +194,7 @@ class ReprocessDocumentUseCase:
             texts = [c.content for c in chunks]
             vectors = await self._embedding.embed_texts(texts)
 
-            vector_size = len(vectors[0]) if vectors else 1536
+            vector_size = len(vectors[0]) if vectors else 3072
             await self._vector_store.ensure_collection(collection, vector_size)
 
             chunk_ids = [c.id.value for c in chunks]
