@@ -143,7 +143,6 @@ class ProcessDocumentUseCase:
                         raw_content,
                         ocr_mode=ocr_mode,
                         on_progress=_on_progress,
-                        max_pages=1,  # TODO: remove after OCR flow verified
                     )
                 else:
                     content = await asyncio.to_thread(
