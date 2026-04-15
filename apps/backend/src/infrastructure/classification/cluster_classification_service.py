@@ -66,8 +66,7 @@ class ClusterClassificationService:
             return [], {}
 
         model = model or DEFAULT_MODEL
-        if ":" in model:
-            model = model.split(":", 1)[1]
+        # Don't strip provider prefix — call_llm handles "provider:model" format
 
         log = logger.bind(kb_id=kb_id, model=model, chunk_count=len(chunk_ids))
         log.info("classification.start")
