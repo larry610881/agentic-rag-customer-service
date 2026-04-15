@@ -90,6 +90,7 @@ async def agent_chat(
             message=request.message,
             conversation_id=request.conversation_id,
             bot_id=request.bot_id,
+            identity_source="web",
         )
     )
 
@@ -159,6 +160,7 @@ async def agent_chat_stream(
         message=request.message,
         conversation_id=request.conversation_id,
         bot_id=request.bot_id,
+        identity_source="web",
     )
 
     async def event_generator():

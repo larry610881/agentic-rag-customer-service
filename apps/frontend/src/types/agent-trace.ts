@@ -33,6 +33,7 @@ export type AgentExecutionTrace = {
   message_id: string | null;
   conversation_id: string | null;
   agent_mode: "react" | "supervisor" | "meta_supervisor";
+  source: string;
   nodes: ExecutionNode[];
   total_ms: number;
   total_tokens: {

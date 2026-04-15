@@ -78,6 +78,7 @@ class HandleWebhookUseCase:
         conversation_lock: ConversationLock | None = None,
         conversation_timeout_minutes: int = 30,
         record_usage_use_case: Any | None = None,
+        trace_session_factory: Any | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -92,6 +93,7 @@ class HandleWebhookUseCase:
         self._record_usage = record_usage_use_case
         self._conversation_lock = conversation_lock
         self._conversation_timeout = timedelta(minutes=conversation_timeout_minutes)
+        self._trace_session_factory = trace_session_factory
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
         """Redis 快取查 Bot（by ID），預設 120 秒 TTL。"""
@@ -311,6 +313,14 @@ class HandleWebhookUseCase:
         )
         t1 = time.monotonic()
 
+        # Persist agent execution trace
+        from src.infrastructure.observability.agent_trace_collector import AgentTraceCollector
+        latency_ms = round((t1 - t0) * 1000)
+        trace = AgentTraceCollector.finish(total_ms=float(latency_ms))
+        if trace:
+            trace.source = "line"
+            # Will set conversation_id and message_id after they're created below
+
         # Save messages to conversation
         user_msg = conversation.add_message("user", event.message_text)
         assistant_msg = conversation.add_message(
@@ -334,6 +344,30 @@ class HandleWebhookUseCase:
         # Persist conversation + messages
         if self._conversation_repo:
             await self._conversation_repo.save(conversation)
+
+        # Persist agent trace to DB
+        if trace and self._trace_session_factory:
+            try:
+                from src.infrastructure.db.models.agent_trace_model import AgentExecutionTraceModel
+                trace.conversation_id = conversation.id.value
+                trace.message_id = assistant_msg.id.value
+                row = AgentExecutionTraceModel(
+                    id=str(uuid4()),
+                    trace_id=trace.trace_id,
+                    tenant_id=trace.tenant_id,
+                    message_id=trace.message_id,
+                    conversation_id=trace.conversation_id,
+                    agent_mode=trace.agent_mode,
+                    source=trace.source,
+                    nodes=[n.to_dict() for n in trace.nodes],
+                    total_ms=trace.total_ms,
+                    total_tokens=trace.total_tokens,
+                )
+                async with self._trace_session_factory() as session:
+                    session.add(row)
+                    await session.commit()
+            except Exception:
+                logger.warning("line.trace_persist_failed", exc_info=True)
 
         # Record token usage
         if self._record_usage and result.usage:

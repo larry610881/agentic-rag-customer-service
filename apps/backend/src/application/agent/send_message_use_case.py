@@ -583,6 +583,7 @@ class SendMessageUseCase:
         await self._persist_agent_trace(
             conversation_id=conversation.id.value,
             latency_ms=latency_ms,
+            source=command.identity_source or "web",
         )
 
         # Fire-and-forget: memory extraction
@@ -741,6 +742,7 @@ class SendMessageUseCase:
             conversation_id=conversation.id.value,
             message_id=assistant_msg.id.value,
             latency_ms=latency_ms,
+            source=command.identity_source or "web",
         )
 
         # Fire-and-forget: memory extraction
@@ -791,6 +793,7 @@ class SendMessageUseCase:
         conversation_id: str | None = None,
         message_id: str | None = None,
         latency_ms: int = 0,
+        source: str = "",
     ) -> None:
         """Finalize and persist agent execution trace (fire-and-forget)."""
         try:
@@ -804,6 +807,7 @@ class SendMessageUseCase:
 
             trace.conversation_id = conversation_id
             trace.message_id = message_id
+            trace.source = source
 
             from src.infrastructure.db.models.agent_trace_model import (
                 AgentExecutionTraceModel,
@@ -816,6 +820,7 @@ class SendMessageUseCase:
                 message_id=trace.message_id,
                 conversation_id=trace.conversation_id,
                 agent_mode=trace.agent_mode,
+                source=trace.source,
                 nodes=[n.to_dict() for n in trace.nodes],
                 total_ms=trace.total_ms,
                 total_tokens=trace.total_tokens,

@@ -48,6 +48,7 @@ class AgentExecutionTrace:
     message_id: str | None = None
     conversation_id: str | None = None
     agent_mode: str = ""  # react | supervisor | meta_supervisor
+    source: str = ""  # web | widget | line
     nodes: list[ExecutionNode] = field(default_factory=list)
     total_ms: float = 0.0
     total_tokens: dict[str, Any] | None = None
@@ -89,6 +90,7 @@ class AgentExecutionTrace:
             "message_id": self.message_id,
             "conversation_id": self.conversation_id,
             "agent_mode": self.agent_mode,
+            "source": self.source,
             "nodes": [n.to_dict() for n in self.nodes],
             "total_ms": self.total_ms,
             "total_tokens": self.total_tokens,
