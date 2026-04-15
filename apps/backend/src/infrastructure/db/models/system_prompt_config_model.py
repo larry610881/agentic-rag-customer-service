@@ -12,7 +12,7 @@ class SystemPromptConfigModel(Base):
     __tablename__ = "system_prompt_configs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default="default")
-    base_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    system_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

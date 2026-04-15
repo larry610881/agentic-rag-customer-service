@@ -27,7 +27,7 @@ class UpdateBotCommand:
     description: object = _UNSET
     is_active: object = _UNSET
     knowledge_base_ids: object = _UNSET
-    system_prompt: object = _UNSET
+    bot_prompt: object = _UNSET
     temperature: object = _UNSET
     max_tokens: object = _UNSET
     history_limit: object = _UNSET
@@ -83,7 +83,7 @@ class UpdateBotUseCase:
         """Apply non-_UNSET fields from command to bot entity."""
         _DIRECT_FIELDS = (
             "name", "description", "is_active",
-            "system_prompt",
+            "bot_prompt",
             "llm_provider", "llm_model", "show_sources",
             "eval_provider", "eval_model", "eval_depth",
             "max_tool_calls",

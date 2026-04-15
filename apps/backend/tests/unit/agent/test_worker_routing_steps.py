@@ -25,7 +25,7 @@ def _make_worker(name: str, description: str = "") -> WorkerConfig:
         bot_id="bot-001",
         name=name,
         description=description or f"{name} 相關問題",
-        system_prompt=f"你是{name}專員",
+        worker_prompt=f"你是{name}專員",
     )
 
 

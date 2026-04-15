@@ -94,7 +94,7 @@ class CreateBotRequest(BaseModel):
     name: str
     description: str = ""
     knowledge_base_ids: list[str] = []
-    system_prompt: str = ""
+    bot_prompt: str = ""
     is_active: bool = True
     temperature: float = 0.3
     max_tokens: int = 1024
@@ -140,7 +140,7 @@ class UpdateBotRequest(BaseModel):
     description: str | None = None
     is_active: bool | None = None
     knowledge_base_ids: list[str] | None = None
-    system_prompt: str | None = None
+    bot_prompt: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     history_limit: int | None = None
@@ -187,7 +187,7 @@ class BotResponse(BaseModel):
     name: str
     description: str
     is_active: bool
-    system_prompt: str
+    bot_prompt: str
     knowledge_base_ids: list[str]
     temperature: float
     max_tokens: int
@@ -238,7 +238,7 @@ def _to_response(bot) -> BotResponse:
         name=bot.name,
         description=bot.description,
         is_active=bot.is_active,
-        system_prompt=bot.system_prompt,
+        bot_prompt=bot.bot_prompt,
         knowledge_base_ids=bot.knowledge_base_ids,
         temperature=bot.llm_params.temperature,
         max_tokens=bot.llm_params.max_tokens,
@@ -333,7 +333,7 @@ async def create_bot(
             name=body.name,
             description=body.description,
             knowledge_base_ids=body.knowledge_base_ids,
-            system_prompt=body.system_prompt,
+            bot_prompt=body.bot_prompt,
             is_active=body.is_active,
             temperature=body.temperature,
             max_tokens=body.max_tokens,

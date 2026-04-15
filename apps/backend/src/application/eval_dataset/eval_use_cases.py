@@ -332,7 +332,7 @@ class EstimateCostUseCase:
                     tenant_id = bot.tenant_id
 
                     # Bot-level prompt chars
-                    bot_prompt_chars = len(bot.system_prompt or "")
+                    bot_prompt_chars = len(bot.bot_prompt or "")
 
                     # System-level prompt chars
                     sys_chars = 0

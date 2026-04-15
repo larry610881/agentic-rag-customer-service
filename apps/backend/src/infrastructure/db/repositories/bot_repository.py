@@ -35,7 +35,7 @@ class SQLAlchemyBotRepository(BotRepository):
             name=model.name,
             description=model.description,
             is_active=model.is_active,
-            system_prompt=model.system_prompt,
+            bot_prompt=model.bot_prompt,
             knowledge_base_ids=kb_ids,
             llm_params=BotLLMParams(
                 temperature=model.temperature,
@@ -154,7 +154,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.name = bot.name
                 existing.description = bot.description
                 existing.is_active = bot.is_active
-                existing.system_prompt = bot.system_prompt
+                existing.bot_prompt = bot.bot_prompt
                 existing.enabled_tools = bot.enabled_tools
                 existing.llm_provider = bot.llm_provider
                 existing.llm_model = bot.llm_model
@@ -226,7 +226,7 @@ class SQLAlchemyBotRepository(BotRepository):
                     name=bot.name,
                     description=bot.description,
                     is_active=bot.is_active,
-                    system_prompt=bot.system_prompt,
+                    bot_prompt=bot.bot_prompt,
                     enabled_tools=bot.enabled_tools,
                     llm_provider=bot.llm_provider,
                     llm_model=bot.llm_model,

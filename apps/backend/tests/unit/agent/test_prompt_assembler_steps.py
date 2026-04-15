@@ -13,24 +13,14 @@ def context():
     return {}
 
 
-@given(parsers.parse('base_prompt 為 "{prompt}"'))
-def set_base_prompt(context, prompt):
-    context["base_prompt"] = prompt
+@given(parsers.parse('system_prompt 為 "{prompt}"'))
+def set_system_prompt(context, prompt):
+    context["system_prompt"] = prompt
 
 
-@given(parsers.parse('mode_prompt 為 "{prompt}"'))
-def set_mode_prompt(context, prompt):
-    context["mode_prompt"] = prompt
-
-
-@given("base_prompt 為空")
-def empty_base_prompt(context):
-    context["base_prompt"] = ""
-
-
-@given("mode_prompt 為空")
-def empty_mode_prompt(context):
-    context["mode_prompt"] = ""
+@given("system_prompt 為空")
+def empty_system_prompt(context):
+    context["system_prompt"] = ""
 
 
 @given("沒有自定義 Bot 提示詞")
@@ -44,11 +34,10 @@ def custom_prompt(context, prompt):
 
 
 @when("組裝系統提示詞")
-def assemble_prompt(context):
+def assemble_prompt_step(context):
     context["result"] = assemble(
         bot_prompt=context.get("bot_prompt"),
-        base_prompt=context.get("base_prompt", ""),
-        mode_prompt=context.get("mode_prompt", ""),
+        system_prompt=context.get("system_prompt", ""),
     )
 
 

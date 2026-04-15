@@ -20,7 +20,7 @@ class BotWorkerModel(Base):
     description: Mapped[str] = mapped_column(
         Text, nullable=False, default=""
     )
-    system_prompt: Mapped[str] = mapped_column(
+    worker_prompt: Mapped[str] = mapped_column(
         Text, nullable=False, default=""
     )
     llm_provider: Mapped[str | None] = mapped_column(

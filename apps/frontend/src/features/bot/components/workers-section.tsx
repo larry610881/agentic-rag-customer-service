@@ -169,9 +169,9 @@ function WorkerCard({
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">專屬提示詞</Label>
             <Textarea
-              defaultValue={worker.system_prompt}
+              defaultValue={worker.worker_prompt}
               onBlur={(e) =>
-                handleFieldUpdate("system_prompt", e.target.value)
+                handleFieldUpdate("worker_prompt", e.target.value)
               }
               rows={4}
               placeholder="此 Sub-agent 的系統提示詞"

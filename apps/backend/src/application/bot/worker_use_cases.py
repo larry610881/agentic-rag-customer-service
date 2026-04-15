@@ -12,7 +12,7 @@ class CreateWorkerCommand:
     bot_id: str
     name: str
     description: str = ""
-    system_prompt: str = ""
+    worker_prompt: str = ""
     llm_provider: str | None = None
     llm_model: str | None = None
     temperature: float = 0.7
@@ -28,7 +28,7 @@ class UpdateWorkerCommand:
     worker_id: str
     name: str | None = None
     description: str | None = None
-    system_prompt: str | None = None
+    worker_prompt: str | None = None
     llm_provider: Any = ...  # sentinel — None means "clear"
     llm_model: Any = ...
     temperature: float | None = None
@@ -58,7 +58,7 @@ class CreateWorkerUseCase:
             bot_id=command.bot_id,
             name=command.name,
             description=command.description,
-            system_prompt=command.system_prompt,
+            worker_prompt=command.worker_prompt,
             llm_provider=command.llm_provider,
             llm_model=command.llm_model,
             temperature=command.temperature,
@@ -86,8 +86,8 @@ class UpdateWorkerUseCase:
             worker.name = command.name
         if command.description is not None:
             worker.description = command.description
-        if command.system_prompt is not None:
-            worker.system_prompt = command.system_prompt
+        if command.worker_prompt is not None:
+            worker.worker_prompt = command.worker_prompt
         if command.llm_provider is not ...:
             worker.llm_provider = command.llm_provider
         if command.llm_model is not ...:

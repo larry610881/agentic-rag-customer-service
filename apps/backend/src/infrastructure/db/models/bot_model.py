@@ -37,7 +37,7 @@ class BotModel(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    system_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    bot_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     enabled_tools: Mapped[list] = mapped_column(
         JSON, nullable=False, default=lambda: ["rag_query"]
     )

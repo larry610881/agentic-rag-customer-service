@@ -63,7 +63,7 @@ class Bot:
     name: str = ""
     description: str = ""
     is_active: bool = True
-    system_prompt: str = ""
+    bot_prompt: str = ""
     knowledge_base_ids: list[str] = field(default_factory=list)
     llm_params: BotLLMParams = field(default_factory=BotLLMParams)
     enabled_tools: list[str] = field(default_factory=lambda: ["rag_query"])

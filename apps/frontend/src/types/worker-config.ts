@@ -3,7 +3,7 @@ export type WorkerConfig = {
   bot_id: string;
   name: string;
   description: string;
-  system_prompt: string;
+  worker_prompt: string;
   llm_provider: string | null;
   llm_model: string | null;
   temperature: number;
@@ -19,7 +19,7 @@ export type WorkerConfig = {
 export type CreateWorkerRequest = {
   name: string;
   description?: string;
-  system_prompt?: string;
+  worker_prompt?: string;
   llm_provider?: string | null;
   llm_model?: string | null;
   temperature?: number;

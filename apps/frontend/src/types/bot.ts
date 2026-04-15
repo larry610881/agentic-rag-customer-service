@@ -27,7 +27,7 @@ export interface Bot {
   name: string;
   description: string;
   is_active: boolean;
-  system_prompt: string;
+  bot_prompt: string;
   knowledge_base_ids: string[];
   temperature: number;
   max_tokens: number;
@@ -71,7 +71,7 @@ export interface CreateBotRequest {
   name: string;
   description?: string;
   knowledge_base_ids?: string[];
-  system_prompt?: string;
+  bot_prompt?: string;
   is_active?: boolean;
   temperature?: number;
   max_tokens?: number;
@@ -112,7 +112,7 @@ export interface UpdateBotRequest {
   name?: string;
   description?: string;
   knowledge_base_ids?: string[];
-  system_prompt?: string;
+  bot_prompt?: string;
   is_active?: boolean;
   temperature?: number;
   max_tokens?: number;

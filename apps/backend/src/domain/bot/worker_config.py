@@ -13,7 +13,7 @@ class WorkerConfig:
     bot_id: str = ""
     name: str = ""
     description: str = ""          # 給 LLM router 看的描述
-    system_prompt: str = ""
+    worker_prompt: str = ""
     llm_provider: str | None = None  # None = 用 bot default
     llm_model: str | None = None     # None = 用 bot default
     temperature: float = 0.7

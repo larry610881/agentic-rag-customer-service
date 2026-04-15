@@ -320,7 +320,7 @@ class HandleWebhookUseCase:
             kb_id=bot.knowledge_base_ids[0] if bot.knowledge_base_ids else "",
             user_message=event.message_text,
             kb_ids=bot.knowledge_base_ids,
-            system_prompt=bot.system_prompt or None,
+            system_prompt=bot.bot_prompt or None,
             enabled_tools=bot.enabled_tools,
             llm_params=llm_params,
             history=history,

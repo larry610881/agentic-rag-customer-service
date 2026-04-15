@@ -40,7 +40,7 @@ def existing_bot():
         name="客服 Bot",
         description="測試用機器人",
         is_active=True,
-        system_prompt="",
+        bot_prompt="",
         knowledge_base_ids=["kb-001"],
         llm_params=BotLLMParams(),
     )

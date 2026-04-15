@@ -12,12 +12,12 @@ logger = logging.getLogger(__name__)
 
 # Mapping: (level, field) -> (table, column, where_clause_template)
 _TARGET_MAP = {
-    ("system", "base_prompt"): (
+    ("system", "system_prompt"): (
         "system_prompt_configs",
-        "base_prompt",
+        "system_prompt",
         "id = 'default'",
     ),
-    ("bot", "system_prompt"): ("bots", "system_prompt", "id = :bot_id"),
+    ("bot", "bot_prompt"): ("bots", "bot_prompt", "id = :bot_id"),
     ("bot", "base_prompt"): ("bots", "base_prompt", "id = :bot_id"),
 }
 

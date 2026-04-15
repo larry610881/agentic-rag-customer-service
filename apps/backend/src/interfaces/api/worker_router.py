@@ -27,7 +27,7 @@ router = APIRouter(
 class CreateWorkerRequest(BaseModel):
     name: str
     description: str = ""
-    system_prompt: str = ""
+    worker_prompt: str = ""
     llm_provider: str | None = None
     llm_model: str | None = None
     temperature: float = 0.7
@@ -41,7 +41,7 @@ class CreateWorkerRequest(BaseModel):
 class UpdateWorkerRequest(BaseModel):
     name: str | None = None
     description: str | None = None
-    system_prompt: str | None = None
+    worker_prompt: str | None = None
     llm_provider: str | None = None
     llm_model: str | None = None
     temperature: float | None = None
@@ -57,7 +57,7 @@ class WorkerResponse(BaseModel):
     bot_id: str
     name: str
     description: str
-    system_prompt: str
+    worker_prompt: str
     llm_provider: str | None
     llm_model: str | None
     temperature: float
@@ -76,7 +76,7 @@ def _to_response(w: Any) -> WorkerResponse:
         bot_id=w.bot_id,
         name=w.name,
         description=w.description,
-        system_prompt=w.system_prompt,
+        worker_prompt=w.worker_prompt,
         llm_provider=w.llm_provider,
         llm_model=w.llm_model,
         temperature=w.temperature,
@@ -123,7 +123,7 @@ async def create_worker(
             bot_id=bot_id,
             name=body.name,
             description=body.description,
-            system_prompt=body.system_prompt,
+            worker_prompt=body.worker_prompt,
             llm_provider=body.llm_provider,
             llm_model=body.llm_model,
             temperature=body.temperature,
@@ -152,7 +152,7 @@ async def update_worker(
             worker_id=worker_id,
             name=body.name,
             description=body.description,
-            system_prompt=body.system_prompt,
+            worker_prompt=body.worker_prompt,
             llm_provider=body.llm_provider,
             llm_model=body.llm_model,
             temperature=body.temperature,

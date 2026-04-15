@@ -135,7 +135,7 @@ class SendMessageUseCase:
             if self._sys_prompt_repo:
                 sys_cfg = await self._sys_prompt_repo.get()
                 cfg["system_prompt"] = assemble_prompt(
-                    base_prompt=sys_cfg.base_prompt,
+                    system_prompt=sys_cfg.system_prompt,
                 )
             return cfg
         bot = await self._bot_repo.find_by_id(command.bot_id)
@@ -143,7 +143,7 @@ class SendMessageUseCase:
             if self._sys_prompt_repo:
                 sys_cfg = await self._sys_prompt_repo.get()
                 cfg["system_prompt"] = assemble_prompt(
-                    base_prompt=sys_cfg.base_prompt,
+                    system_prompt=sys_cfg.system_prompt,
                 )
             return cfg
         if bot.tenant_id != command.tenant_id:
@@ -155,7 +155,7 @@ class SendMessageUseCase:
         cfg["kb_ids"] = bot.knowledge_base_ids or None
         if not cfg["kb_id"] and cfg["kb_ids"]:
             cfg["kb_id"] = cfg["kb_ids"][0]
-        cfg["system_prompt"] = bot.system_prompt or None
+        cfg["system_prompt"] = bot.bot_prompt or None
         llm_params: dict = {
             "temperature": bot.llm_params.temperature,
             "max_tokens": bot.llm_params.max_tokens,
@@ -256,15 +256,15 @@ class SendMessageUseCase:
         cfg["router_model"] = getattr(bot, "router_model", "")
 
         # Resolve prompt overrides: Bot → SystemPromptConfig → Seed
-        base_prompt = ""
+        resolved_system_prompt = ""
         if self._sys_prompt_repo:
             sys_cfg = await self._sys_prompt_repo.get()
-            base_prompt = bot.base_prompt or sys_cfg.base_prompt
+            resolved_system_prompt = bot.base_prompt or sys_cfg.system_prompt
 
         # Pre-assemble the full system prompt (agent services use it directly)
         cfg["system_prompt"] = assemble_prompt(
-            bot_prompt=bot.system_prompt,
-            base_prompt=base_prompt,
+            bot_prompt=bot.bot_prompt,
+            system_prompt=resolved_system_prompt,
         )
 
         return cfg

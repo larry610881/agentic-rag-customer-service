@@ -21,7 +21,7 @@ class CreateBotCommand:
     name: str
     description: str = ""
     knowledge_base_ids: list[str] = field(default_factory=list)
-    system_prompt: str = ""
+    bot_prompt: str = ""
     is_active: bool = True
     temperature: float = 0.3
     max_tokens: int = 1024
@@ -93,7 +93,7 @@ class CreateBotUseCase:
             name=command.name,
             description=command.description,
             is_active=command.is_active,
-            system_prompt=command.system_prompt,
+            bot_prompt=command.bot_prompt,
             knowledge_base_ids=list(command.knowledge_base_ids),
             llm_params=BotLLMParams(
                 temperature=command.temperature,

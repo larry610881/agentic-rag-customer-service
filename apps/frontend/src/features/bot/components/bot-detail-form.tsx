@@ -46,7 +46,7 @@ const botFormSchema = z.object({
   name: z.string().min(1, "請輸入名稱"),
   description: z.string().optional(),
   is_active: z.boolean(),
-  system_prompt: z.string().optional(),
+  bot_prompt: z.string().optional(),
   knowledge_base_ids: z.array(z.string()),
   enabled_tools: z.array(z.string()),
   llm_provider: z.string().optional(),
@@ -85,7 +85,7 @@ const botFormSchema = z.object({
   intent_routes: z.array(z.object({
     name: z.string().min(1, "請輸入名稱").max(50),
     description: z.string().min(1, "請輸入描述").max(500),
-    system_prompt: z.string().min(1, "請輸入提示詞").max(10000),
+    bot_prompt: z.string().min(1, "請輸入提示詞").max(10000),
   })).max(10).default([]),
   router_model: z.string().default(""),
   rerank_enabled: z.boolean().default(false),
@@ -160,7 +160,7 @@ export function BotDetailForm({
       name: bot.name,
       description: bot.description,
       is_active: bot.is_active,
-      system_prompt: bot.system_prompt,
+      bot_prompt: bot.bot_prompt,
       knowledge_base_ids: bot.knowledge_base_ids,
       enabled_tools: bot.enabled_tools,
       llm_provider: bot.llm_provider,
@@ -236,7 +236,7 @@ export function BotDetailForm({
       name: bot.name,
       description: bot.description,
       is_active: bot.is_active,
-      system_prompt: bot.system_prompt,
+      bot_prompt: bot.bot_prompt,
       knowledge_base_ids: bot.knowledge_base_ids,
       enabled_tools: bot.enabled_tools,
       llm_provider: bot.llm_provider,
@@ -606,7 +606,7 @@ export function BotDetailForm({
               <Label htmlFor="bot-system-prompt">Bot 自訂指令</Label>
               <Textarea
                 id="bot-system-prompt"
-                {...register("system_prompt")}
+                {...register("bot_prompt")}
                 rows={6}
                 placeholder="輸入此機器人的自訂指令..."
               />

@@ -22,7 +22,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
             bot_id=model.bot_id,
             name=model.name,
             description=model.description or "",
-            system_prompt=model.system_prompt or "",
+            worker_prompt=model.worker_prompt or "",
             llm_provider=model.llm_provider,
             llm_model=model.llm_model,
             temperature=model.temperature,
@@ -45,7 +45,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
                 existing.bot_id = worker.bot_id
                 existing.name = worker.name
                 existing.description = worker.description
-                existing.system_prompt = worker.system_prompt
+                existing.worker_prompt = worker.worker_prompt
                 existing.llm_provider = worker.llm_provider
                 existing.llm_model = worker.llm_model
                 existing.temperature = worker.temperature
@@ -61,7 +61,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
                     bot_id=worker.bot_id,
                     name=worker.name,
                     description=worker.description,
-                    system_prompt=worker.system_prompt,
+                    worker_prompt=worker.worker_prompt,
                     llm_provider=worker.llm_provider,
                     llm_model=worker.llm_model,
                     temperature=worker.temperature,

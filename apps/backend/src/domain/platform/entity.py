@@ -44,7 +44,7 @@ class SystemPromptConfig:
     """系統層級 Prompt 預設值（singleton, id='default'）"""
 
     id: str = "default"
-    base_prompt: str = ""
+    system_prompt: str = ""
     updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

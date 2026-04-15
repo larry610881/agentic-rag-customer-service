@@ -12,18 +12,18 @@ export function SystemPromptEditor() {
   const { data: config, isLoading } = useSystemPrompts();
   const updateMutation = useUpdateSystemPrompts();
 
-  const [basePrompt, setBasePrompt] = useState("");
+  const [systemPrompt, setSystemPrompt] = useState("");
 
   useEffect(() => {
     if (config) {
-      setBasePrompt(config.base_prompt);
+      setSystemPrompt(config.system_prompt);
     }
   }, [config]);
 
   const handleSave = async () => {
     try {
       await updateMutation.mutateAsync({
-        base_prompt: basePrompt,
+        system_prompt: systemPrompt,
       });
       toast.success("System Prompt 已更新");
     } catch {
@@ -46,8 +46,8 @@ export function SystemPromptEditor() {
         <Textarea
           id="sys-base-prompt"
           rows={10}
-          value={basePrompt}
-          onChange={(e) => setBasePrompt(e.target.value)}
+          value={systemPrompt}
+          onChange={(e) => setSystemPrompt(e.target.value)}
           placeholder="定義 AI 的角色、行為準則與安全規則"
         />
         <p className="text-xs text-muted-foreground">

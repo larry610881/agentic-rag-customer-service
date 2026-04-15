@@ -229,7 +229,7 @@ def bot_with_kb_and_prompt(context, bot_id, tenant_id, kb_ids, prompt):
         line_channel_secret="secret-kb",
         line_channel_access_token="token-kb",
         knowledge_base_ids=kb_list,
-        system_prompt=prompt,
+        bot_prompt=prompt,
     )
     mock_bot_repo = AsyncMock()
     mock_bot_repo.find_by_short_code = AsyncMock(return_value=bot)

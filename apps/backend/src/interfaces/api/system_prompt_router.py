@@ -16,12 +16,12 @@ router = APIRouter(prefix="/api/v1/system/prompts", tags=["system-prompts"])
 
 
 class SystemPromptConfigResponse(BaseModel):
-    base_prompt: str
+    system_prompt: str
     updated_at: str
 
 
 class UpdateSystemPromptConfigRequest(BaseModel):
-    base_prompt: str = ""
+    system_prompt: str = ""
 
 
 @router.get("", response_model=SystemPromptConfigResponse)
@@ -34,7 +34,7 @@ async def get_system_prompts(
 ) -> SystemPromptConfigResponse:
     config = await use_case.execute()
     return SystemPromptConfigResponse(
-        base_prompt=config.base_prompt,
+        system_prompt=config.system_prompt,
         updated_at=config.updated_at.isoformat(),
     )
 
@@ -50,10 +50,10 @@ async def update_system_prompts(
 ) -> SystemPromptConfigResponse:
     config = await use_case.execute(
         UpdateSystemPromptsCommand(
-            base_prompt=body.base_prompt,
+            system_prompt=body.system_prompt,
         )
     )
     return SystemPromptConfigResponse(
-        base_prompt=config.base_prompt,
+        system_prompt=config.system_prompt,
         updated_at=config.updated_at.isoformat(),
     )

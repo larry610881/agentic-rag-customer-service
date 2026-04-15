@@ -19,7 +19,7 @@ class SQLAlchemySystemPromptConfigRepository(SystemPromptConfigRepository):
     def _to_entity(model: SystemPromptConfigModel) -> SystemPromptConfig:
         return SystemPromptConfig(
             id=model.id,
-            base_prompt=model.base_prompt,
+            system_prompt=model.system_prompt,
             updated_at=model.updated_at,
         )
 
@@ -43,13 +43,13 @@ class SQLAlchemySystemPromptConfigRepository(SystemPromptConfigRepository):
                 SystemPromptConfigModel, config.id
             )
             if existing:
-                existing.base_prompt = config.base_prompt
+                existing.system_prompt = config.system_prompt
                 existing.updated_at = datetime.now(timezone.utc)
             else:
                 self._session.add(
                     SystemPromptConfigModel(
                         id=config.id,
-                        base_prompt=config.base_prompt,
+                        system_prompt=config.system_prompt,
                         updated_at=config.updated_at,
                     )
                 )

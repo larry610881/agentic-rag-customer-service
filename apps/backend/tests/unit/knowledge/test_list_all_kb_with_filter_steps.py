@@ -52,7 +52,7 @@ def _make_bot(tenant_id: str, name: str) -> Bot:
         name=name,
         description="",
         is_active=True,
-        system_prompt="",
+        bot_prompt="",
         knowledge_base_ids=[],
         llm_params=BotLLMParams(),
         created_at=datetime.now(timezone.utc),
