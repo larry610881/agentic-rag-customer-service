@@ -265,19 +265,17 @@ class ProcessDocumentUseCase:
                 return
 
             # ── Contextual Enrichment (Contextual Retrieval) ──
-            # Release DB transaction before LLM calls (same pattern as OCR)
-            # to avoid PostgreSQL idle_in_transaction_session_timeout.
-            if self._context_service and hasattr(self._doc_repo, '_session'):
-                try:
-                    await self._doc_repo._session.commit()
-                except Exception:
-                    pass
+            # Only run if KB has context_model explicitly configured.
+            context_model = getattr(kb, "context_model", "") if kb else ""
+            if self._context_service and context_model:
+                # Release DB transaction before LLM calls (same pattern as OCR)
+                if hasattr(self._doc_repo, '_session'):
+                    try:
+                        await self._doc_repo._session.commit()
+                    except Exception:
+                        pass
 
-            if self._context_service:
                 t0 = time.perf_counter()
-                context_model = ""
-                if kb:
-                    context_model = getattr(kb, "context_model", "")
                 chunks = await self._context_service.generate_contexts(
                     content, chunks, model=context_model
                 )
