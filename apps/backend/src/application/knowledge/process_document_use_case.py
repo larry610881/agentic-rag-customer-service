@@ -486,9 +486,25 @@ class ProcessDocumentUseCase:
     ) -> None:
         """If no more pending/processing docs in KB, trigger auto-classification."""
         try:
-            pending = await self._doc_repo.count_by_kb_status(
-                kb_id, ["pending", "processing"]
-            )
+            # Use independent session to avoid stale data from refreshed sessions
+            from src.infrastructure.db.engine import async_session_factory
+            from src.infrastructure.db.models.document_model import DocumentModel
+            from sqlalchemy import select, func
+
+            async with async_session_factory() as session:
+                stmt = (
+                    select(func.count())
+                    .select_from(DocumentModel)
+                    .where(
+                        DocumentModel.kb_id == kb_id,
+                        DocumentModel.status.in_(["pending", "processing"]),
+                        DocumentModel.parent_id.is_(None),
+                    )
+                )
+                result = await session.execute(stmt)
+                pending = result.scalar_one()
+
+            log.info("classify_kb.check", kb_id=kb_id, pending=pending)
             if pending == 0:
                 from src.infrastructure.queue.arq_pool import enqueue
                 await enqueue("classify_kb", kb_id, tenant_id)
