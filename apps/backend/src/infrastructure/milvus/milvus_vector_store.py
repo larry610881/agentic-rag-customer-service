@@ -163,6 +163,33 @@ class MilvusVectorStore(VectorStore):
                 filters=filters,
             )
 
+    async def fetch_vectors(
+        self,
+        collection: str,
+        ids: list[str],
+    ) -> list[tuple[str, list[float], dict[str, Any]]]:
+        """Fetch vectors + payloads by IDs from Milvus."""
+        collection = _safe_collection_name(collection)
+        if not ids:
+            return []
+        try:
+            results = await asyncio.to_thread(
+                self._client.get,
+                collection_name=collection,
+                ids=ids,
+                output_fields=["vector", "content", "tenant_id", "document_id"],
+            )
+            out: list[tuple[str, list[float], dict[str, Any]]] = []
+            for r in results:
+                rid = r.get("id", "")
+                vec = r.get("vector", [])
+                payload = {k: v for k, v in r.items() if k not in ("id", "vector")}
+                out.append((rid, vec, payload))
+            return out
+        except Exception:
+            logger.warning("milvus.fetch_vectors.failed", collection=collection, exc_info=True)
+            return []
+
     async def search(
         self,
         collection: str,

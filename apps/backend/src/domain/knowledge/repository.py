@@ -1,7 +1,13 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 
-from src.domain.knowledge.entity import Chunk, Document, KnowledgeBase, ProcessingTask
+from src.domain.knowledge.entity import (
+    Chunk,
+    ChunkCategory,
+    Document,
+    KnowledgeBase,
+    ProcessingTask,
+)
 
 
 class KnowledgeBaseRepository(ABC):
@@ -121,6 +127,16 @@ class DocumentRepository(ABC):
     ) -> dict[str, list[str]]: ...
 
     @abstractmethod
+    async def update_chunks_category(
+        self, chunk_ids: list[str], category_id: str | None
+    ) -> None: ...
+
+    @abstractmethod
+    async def find_chunks_by_category(
+        self, category_id: str
+    ) -> list[Chunk]: ...
+
+    @abstractmethod
     async def find_max_updated_at_by_kb(
         self, kb_id: str, tenant_id: str
     ) -> datetime | None:
@@ -148,3 +164,28 @@ class ProcessingTaskRepository(ABC):
         progress: int | None = None,
         error_message: str | None = None,
     ) -> None: ...
+
+
+class ChunkCategoryRepository(ABC):
+    @abstractmethod
+    async def save(self, category: ChunkCategory) -> None: ...
+
+    @abstractmethod
+    async def save_batch(self, categories: list[ChunkCategory]) -> None: ...
+
+    @abstractmethod
+    async def find_by_kb(self, kb_id: str) -> list[ChunkCategory]: ...
+
+    @abstractmethod
+    async def find_by_id(self, category_id: str) -> ChunkCategory | None: ...
+
+    @abstractmethod
+    async def update_name(self, category_id: str, name: str) -> None: ...
+
+    @abstractmethod
+    async def delete_by_kb(self, kb_id: str) -> None: ...
+
+    @abstractmethod
+    async def update_chunk_counts(self, kb_id: str) -> None:
+        """Recalculate chunk_count for all categories in a KB."""
+        ...

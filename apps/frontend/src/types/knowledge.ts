@@ -75,6 +75,16 @@ export interface BatchReprocessResult {
   failed: BatchFailedItem[];
 }
 
+export interface ChunkCategory {
+  id: string;
+  kb_id: string;
+  name: string;
+  description: string;
+  chunk_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TaskResponse {
   id: string;
   status: "pending" | "processing" | "completed" | "failed";

@@ -84,6 +84,17 @@ async def extract_memory_task(
     logger.info(f"[extract_memory] done profile={profile_id}")
 
 
+# --- Task: classify_kb ---
+
+async def classify_kb_task(ctx: dict, kb_id: str, tenant_id: str) -> None:
+    """知識庫自動分類：向量聚類 + LLM 命名。"""
+    logger.info(f"[classify_kb] start kb={kb_id}")
+    container = _new_container()
+    use_case = container.classify_kb_use_case()
+    await use_case.execute(kb_id, tenant_id)
+    logger.info(f"[classify_kb] done kb={kb_id}")
+
+
 # --- Task: run_evaluation ---
 
 async def run_evaluation_task(
@@ -134,6 +145,7 @@ class WorkerSettings:
         func(process_document_task, name="process_document"),
         func(extract_memory_task, name="extract_memory"),
         func(run_evaluation_task, name="run_evaluation"),
+        func(classify_kb_task, name="classify_kb"),
     ]
     on_startup = startup
     on_shutdown = shutdown

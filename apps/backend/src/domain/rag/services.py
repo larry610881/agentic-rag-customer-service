@@ -45,6 +45,14 @@ class VectorStore(ABC):
         filters: dict[str, Any],
     ) -> None: ...
 
+    async def fetch_vectors(
+        self,
+        collection: str,
+        ids: list[str],
+    ) -> list[tuple[str, list[float], dict[str, Any]]]:
+        """Fetch vectors + payloads by IDs. Returns list of (id, vector, payload)."""
+        return []
+
 
 class LLMService(ABC):
     @property

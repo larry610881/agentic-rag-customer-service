@@ -13,6 +13,10 @@ export const API_ENDPOINTS = {
     create: "/api/v1/knowledge-bases",
     update: (id: string) => `/api/v1/knowledge-bases/${id}`,
     delete: (id: string) => `/api/v1/knowledge-bases/${id}`,
+    classify: (id: string) => `/api/v1/knowledge-bases/${id}/classify`,
+    categories: (id: string) => `/api/v1/knowledge-bases/${id}/categories`,
+    updateCategory: (kbId: string, catId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/categories/${catId}`,
   },
   documents: {
     list: (kbId: string) => `/api/v1/knowledge-bases/${kbId}/documents`,

@@ -42,6 +42,7 @@ dependencies = [
     "pymilvus>=2.5.0",
     "google-cloud-storage>=3.10.1",
     "arq>=0.27.0",
+    "scikit-learn>=1.8.0",
 ]
 
 [dependency-groups]

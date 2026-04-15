@@ -115,9 +115,16 @@ from src.application.knowledge.list_documents_use_case import (
 from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
 )
+from src.application.knowledge.classify_kb_use_case import ClassifyKbUseCase
 from src.application.knowledge.split_pdf_use_case import SplitPdfUseCase
+from src.infrastructure.classification.cluster_classification_service import (
+    ClusterClassificationService,
+)
 from src.infrastructure.context.llm_chunk_context_service import (
     LLMChunkContextService,
+)
+from src.infrastructure.db.repositories.chunk_category_repository import (
+    SQLAlchemyChunkCategoryRepository,
 )
 from src.application.knowledge.process_document_use_case import (
     ProcessDocumentUseCase,
@@ -483,6 +490,11 @@ class Container(containers.DeclarativeContainer):
 
     processing_task_repository = providers.Factory(
         SQLAlchemyProcessingTaskRepository,
+        session=db_session,
+    )
+
+    chunk_category_repository = providers.Factory(
+        SQLAlchemyChunkCategoryRepository,
         session=db_session,
     )
 
@@ -937,6 +949,23 @@ class Container(containers.DeclarativeContainer):
         language_detection_service=language_detection_service,
         file_parser_service=file_parser_service,
         document_file_storage=document_file_storage_service,
+    )
+
+    classification_service = providers.Factory(
+        ClusterClassificationService,
+        api_key_resolver=providers.Callable(
+            lambda factory: factory.resolve_api_key,
+            _llm_factory,
+        ),
+    )
+
+    classify_kb_use_case = providers.Factory(
+        ClassifyKbUseCase,
+        knowledge_base_repository=kb_repository,
+        document_repository=document_repository,
+        category_repository=chunk_category_repository,
+        vector_store=vector_store,
+        classification_service=classification_service,
     )
 
     view_document_use_case = providers.Factory(

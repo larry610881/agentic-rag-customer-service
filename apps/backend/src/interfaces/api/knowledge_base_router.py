@@ -20,7 +20,7 @@ from src.application.knowledge.update_knowledge_base_use_case import (
     UpdateKnowledgeBaseUseCase,
 )
 from src.container import Container
-from src.domain.knowledge.repository import KnowledgeBaseRepository
+from src.domain.knowledge.repository import ChunkCategoryRepository, KnowledgeBaseRepository
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
@@ -195,3 +195,84 @@ async def delete_knowledge_base(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=e.message,
         ) from None
+
+
+# --- Category endpoints ---
+
+
+class CategoryResponse(BaseModel):
+    id: str
+    kb_id: str
+    name: str
+    description: str = ""
+    chunk_count: int = 0
+    created_at: str
+    updated_at: str
+
+
+class UpdateCategoryRequest(BaseModel):
+    name: str
+
+
+@router.post("/{kb_id}/classify", status_code=status.HTTP_202_ACCEPTED)
+@inject
+async def classify_knowledge_base(
+    kb_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+) -> dict:
+    """Trigger async classification job for a KB."""
+    from src.infrastructure.queue.arq_pool import enqueue
+
+    await enqueue("classify_kb", kb_id, tenant.tenant_id)
+    return {"status": "accepted", "message": "分類任務已排入佇列"}
+
+
+@router.get("/{kb_id}/categories", response_model=list[CategoryResponse])
+@inject
+async def list_categories(
+    kb_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    cat_repo: ChunkCategoryRepository = Depends(
+        Provide[Container.chunk_category_repository]
+    ),
+) -> list[CategoryResponse]:
+    categories = await cat_repo.find_by_kb(kb_id)
+    return [
+        CategoryResponse(
+            id=c.id,
+            kb_id=c.kb_id,
+            name=c.name,
+            description=c.description,
+            chunk_count=c.chunk_count,
+            created_at=c.created_at.isoformat(),
+            updated_at=c.updated_at.isoformat(),
+        )
+        for c in categories
+    ]
+
+
+@router.patch("/{kb_id}/categories/{cat_id}", response_model=CategoryResponse)
+@inject
+async def update_category(
+    kb_id: str,
+    cat_id: str,
+    body: UpdateCategoryRequest,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    cat_repo: ChunkCategoryRepository = Depends(
+        Provide[Container.chunk_category_repository]
+    ),
+) -> CategoryResponse:
+    cat = await cat_repo.find_by_id(cat_id)
+    if cat is None:
+        raise HTTPException(status_code=404, detail="分類不存在")
+    await cat_repo.update_name(cat_id, body.name)
+    cat = await cat_repo.find_by_id(cat_id)
+    return CategoryResponse(
+        id=cat.id,
+        kb_id=cat.kb_id,
+        name=cat.name,
+        description=cat.description,
+        chunk_count=cat.chunk_count,
+        created_at=cat.created_at.isoformat(),
+        updated_at=cat.updated_at.isoformat(),
+    )

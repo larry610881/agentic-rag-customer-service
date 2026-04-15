@@ -273,6 +273,30 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             mapping[doc_id].append(chunk_id)
         return dict(mapping)
 
+    async def update_chunks_category(
+        self, chunk_ids: list[str], category_id: str | None
+    ) -> None:
+        if not chunk_ids:
+            return
+        from sqlalchemy import update
+        async with atomic(self._session):
+            await self._session.execute(
+                update(ChunkModel)
+                .where(ChunkModel.id.in_(chunk_ids))
+                .values(category_id=category_id)
+            )
+
+    async def find_chunks_by_category(
+        self, category_id: str
+    ) -> list[Chunk]:
+        stmt = (
+            select(ChunkModel)
+            .where(ChunkModel.category_id == category_id)
+            .order_by(ChunkModel.chunk_index)
+        )
+        result = await self._session.execute(stmt)
+        return [self._chunk_to_entity(m) for m in result.scalars().all()]
+
     async def find_max_updated_at_by_kb(
         self, kb_id: str, tenant_id: str
     ) -> datetime | None:
