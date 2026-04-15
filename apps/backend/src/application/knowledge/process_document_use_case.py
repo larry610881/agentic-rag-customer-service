@@ -123,10 +123,19 @@ class ProcessDocumentUseCase:
             ocr_mode = kb.ocr_mode if kb else "general"
 
             # ── Parse raw content → text ──
+            # Determine if this is a long-running OCR path
+            needs_ocr = (
+                raw_content
+                and (
+                    document.content_type.startswith("image/")
+                    or (document.content_type == "application/pdf" and ocr_mode == "catalog")
+                )
+            )
+
             # OCR is long-running (10s+/page). Close session before OCR
-            # to return the connection to the pool. After OCR, create a
-            # fresh session so pool_pre_ping can establish a new connection.
-            if hasattr(self._doc_repo, '_session'):
+            # to return the connection to the pool. Non-OCR (JSON/TXT/CSV)
+            # is fast and doesn't need session close.
+            if needs_ocr and hasattr(self._doc_repo, '_session'):
                 try:
                     await self._doc_repo._session.close()
                 except Exception:
@@ -170,7 +179,7 @@ class ProcessDocumentUseCase:
                 log.info("document.parse.done", duration_ms=parse_ms)
 
                 # Refresh session after long OCR — old connection may be dead
-                if hasattr(self._doc_repo, '_session'):
+                if needs_ocr and hasattr(self._doc_repo, '_session'):
                     try:
                         from src.infrastructure.db.engine import async_session_factory
                         new_session = async_session_factory()
