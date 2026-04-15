@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatDate } from "@/lib/format-date";
 import { apiFetch } from "@/lib/api-client";
@@ -423,7 +423,8 @@ export function DocumentList({
           </thead>
           <tbody>
             {documents.map((doc) => (
-              <tr key={doc.id} className="group">
+              <Fragment key={doc.id}>
+              <tr className="group">
                 <td className="border-b px-4 py-2">
                   <input
                     type="checkbox"
@@ -522,6 +523,7 @@ export function DocumentList({
               {doc.children_count > 0 && expandedParents.has(doc.id) && (
                 <ChildrenRows kbId={kbId} parentId={doc.id} token={token} />
               )}
+              </Fragment>
             ))}
           </tbody>
         </table>
