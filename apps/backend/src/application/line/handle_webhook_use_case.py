@@ -301,6 +301,20 @@ class HandleWebhookUseCase:
         if bot.llm_model:
             llm_params["model"] = bot.llm_model
 
+        # Resolve MCP servers from bot bindings
+        mcp_servers = None
+        if bot.mcp_bindings:
+            mcp_servers = []
+            for binding in bot.mcp_bindings:
+                server_cfg = {
+                    "url": binding.url,
+                    "transport": binding.transport,
+                    "registry_id": binding.registry_id,
+                }
+                if binding.enabled_tools:
+                    server_cfg["enabled_tools"] = binding.enabled_tools
+                mcp_servers.append(server_cfg)
+
         result = await self._agent_service.process_message(
             tenant_id=bot.tenant_id,
             kb_id=bot.knowledge_base_ids[0] if bot.knowledge_base_ids else "",
@@ -310,6 +324,8 @@ class HandleWebhookUseCase:
             enabled_tools=bot.enabled_tools,
             llm_params=llm_params,
             history=history,
+            mcp_servers=mcp_servers,
+            max_tool_calls=bot.max_tool_calls or 5,
         )
         t1 = time.monotonic()
 
