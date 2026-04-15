@@ -177,14 +177,14 @@ function CategoryChunksPanel({
   }
 
   return (
-    <div className="ml-6 mt-1 flex flex-col gap-1 max-h-80 overflow-y-auto">
+    <div className="ml-6 mt-1 flex flex-col gap-2">
       {data.chunks.map((chunk) => (
         <div
           key={chunk.id}
-          className="rounded border px-3 py-2 text-xs bg-muted/30"
+          className="rounded border px-3 py-3 text-xs bg-muted/30"
         >
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-muted-foreground">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-muted-foreground font-medium">
               #{chunk.chunk_index}
             </span>
             <span
@@ -202,9 +202,9 @@ function CategoryChunksPanel({
               聚合度: {chunk.cohesion_score.toFixed(2)}
             </span>
           </div>
-          <p className="line-clamp-2 text-foreground">{chunk.content}</p>
+          <p className="text-foreground whitespace-pre-wrap">{chunk.content}</p>
           {chunk.context_text && (
-            <p className="mt-1 text-muted-foreground italic line-clamp-1">
+            <p className="mt-2 text-muted-foreground italic border-t pt-2">
               AI: {chunk.context_text}
             </p>
           )}
