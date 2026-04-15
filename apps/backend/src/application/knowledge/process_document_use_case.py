@@ -7,6 +7,7 @@ from src.domain.knowledge.repository import (
     ProcessingTaskRepository,
 )
 from src.domain.knowledge.services import (
+    ChunkContextService,
     ChunkDeduplicationService,
     ChunkFilterService,
     ChunkQualityService,
@@ -57,6 +58,7 @@ class ProcessDocumentUseCase:
         file_parser_service: FileParserService,
         document_file_storage: DocumentFileStorageService,
         record_usage_use_case: RecordUsageUseCase | None = None,
+        chunk_context_service: ChunkContextService | None = None,
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
@@ -68,6 +70,7 @@ class ProcessDocumentUseCase:
         self._file_parser = file_parser_service
         self._file_storage = document_file_storage
         self._record_usage = record_usage_use_case
+        self._context_service = chunk_context_service
 
     async def execute(
         self, document_id: str, task_id: str
@@ -261,6 +264,25 @@ class ProcessDocumentUseCase:
                 await self._task_repo.update_status(task_id, "completed", progress=100)
                 return
 
+            # ── Contextual Enrichment (Contextual Retrieval) ──
+            if self._context_service:
+                t0 = time.perf_counter()
+                context_model = ""
+                if kb:
+                    context_model = getattr(kb, "context_model", "")
+                chunks = await self._context_service.generate_contexts(
+                    content, chunks, model=context_model
+                )
+                ctx_ms = round((time.perf_counter() - t0) * 1000)
+                ctx_count = sum(1 for c in chunks if c.context_text)
+                log.info(
+                    "document.context.done",
+                    enriched=ctx_count,
+                    total=len(chunks),
+                    duration_ms=ctx_ms,
+                )
+                await _update_progress(task_id, 73)
+
             # 75% — chunks saved
             await _update_progress(task_id, 75)
 
@@ -273,9 +295,12 @@ class ProcessDocumentUseCase:
             # 80% — embedding
             await _update_progress(task_id, 80)
 
-            # Embed chunks
+            # Embed chunks (with context if available)
             t0 = time.perf_counter()
-            texts = [c.content for c in chunks]
+            texts = [
+                f"{c.context_text}\n\n{c.content}" if c.context_text else c.content
+                for c in chunks
+            ]
             vectors = await self._embedding.embed_texts(texts)
             embed_ms = round((time.perf_counter() - t0) * 1000)
             log.info("document.embed.done", vector_count=len(vectors), duration_ms=embed_ms)

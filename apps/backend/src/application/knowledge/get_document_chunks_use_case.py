@@ -8,6 +8,7 @@ from src.domain.knowledge.services import ChunkQualityService
 class ChunkPreviewItem:
     id: str
     content: str
+    context_text: str
     chunk_index: int
     issues: list[str]
 
@@ -43,6 +44,7 @@ class GetDocumentChunksUseCase:
                 ChunkPreviewItem(
                     id=chunk.id.value,
                     content=chunk.content,
+                    context_text=chunk.context_text,
                     chunk_index=chunk.chunk_index,
                     issues=issues,
                 )

@@ -49,6 +49,7 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             document_id=model.document_id,
             tenant_id=model.tenant_id,
             content=model.content,
+            context_text=model.context_text or "",
             chunk_index=model.chunk_index,
             metadata=model.metadata_ or {},
         )
@@ -221,6 +222,7 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
                     document_id=c.document_id,
                     tenant_id=c.tenant_id,
                     content=c.content,
+                    context_text=c.context_text,
                     chunk_index=c.chunk_index,
                     metadata_=c.metadata,
                 )

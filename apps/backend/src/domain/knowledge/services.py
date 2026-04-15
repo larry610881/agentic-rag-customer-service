@@ -64,6 +64,20 @@ class DocumentFileStorageService(ABC):
         return ""
 
 
+class ChunkContextService(ABC):
+    """Port for contextual enrichment — generates document context per chunk."""
+
+    @abstractmethod
+    async def generate_contexts(
+        self,
+        document_content: str,
+        chunks: list[Chunk],
+        model: str = "",
+    ) -> list[Chunk]:
+        """Return chunks with context_text populated."""
+        ...
+
+
 class TextSplitterService(ABC):
     @abstractmethod
     def split(

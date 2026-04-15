@@ -116,6 +116,9 @@ from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
 )
 from src.application.knowledge.split_pdf_use_case import SplitPdfUseCase
+from src.infrastructure.context.llm_chunk_context_service import (
+    LLMChunkContextService,
+)
 from src.application.knowledge.process_document_use_case import (
     ProcessDocumentUseCase,
 )
@@ -882,6 +885,14 @@ class Container(containers.DeclarativeContainer):
         usage_repository=usage_repository,
     )
 
+    chunk_context_service = providers.Factory(
+        LLMChunkContextService,
+        api_key_resolver=providers.Callable(
+            lambda factory: factory.resolve_api_key,
+            _llm_factory,
+        ),
+    )
+
     process_document_use_case = providers.Factory(
         ProcessDocumentUseCase,
         document_repository=document_repository,
@@ -894,6 +905,7 @@ class Container(containers.DeclarativeContainer):
         file_parser_service=file_parser_service,
         document_file_storage=document_file_storage_service,
         record_usage_use_case=record_usage_use_case,
+        chunk_context_service=chunk_context_service,
     )
 
     split_pdf_use_case = providers.Factory(

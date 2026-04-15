@@ -484,6 +484,7 @@ async def confirm_upload(
 class ChunkPreviewItemResponse(BaseModel):
     id: str
     content: str
+    context_text: str = ""
     chunk_index: int
     issues: list[str]
 
@@ -511,6 +512,7 @@ async def get_document_chunks(
             ChunkPreviewItemResponse(
                 id=c.id,
                 content=c.content,
+                context_text=c.context_text,
                 chunk_index=c.chunk_index,
                 issues=c.issues,
             )

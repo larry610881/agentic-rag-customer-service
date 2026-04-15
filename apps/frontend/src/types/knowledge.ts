@@ -38,6 +38,7 @@ export interface DocumentResponse {
 export interface ChunkPreviewItem {
   id: string;
   content: string;
+  context_text: string;
   chunk_index: number;
   issues: string[];
 }

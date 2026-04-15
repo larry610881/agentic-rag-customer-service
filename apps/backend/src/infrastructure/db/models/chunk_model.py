@@ -19,6 +19,12 @@ class ChunkModel(Base):
         nullable=False,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    context_text: Mapped[str] = mapped_column(
+        Text, nullable=False, default=""
+    )
+    category_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, default=None
+    )
     chunk_index: Mapped[int] = mapped_column(nullable=False, default=0)
     metadata_: Mapped[dict] = mapped_column(
         "metadata", JSON, nullable=False, default=dict

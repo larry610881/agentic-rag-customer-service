@@ -63,6 +63,7 @@ class Chunk:
     document_id: str = ""
     tenant_id: str = ""
     content: str = ""
+    context_text: str = ""
     chunk_index: int = 0
     metadata: dict = field(default_factory=dict)
 
