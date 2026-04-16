@@ -1,5 +1,7 @@
 """Split PDF into per-page PNG documents for parallel OCR processing."""
 
+import gc
+
 from src.domain.knowledge.entity import Document, ProcessingTask
 from src.domain.knowledge.repository import (
     DocumentRepository,
@@ -8,7 +10,7 @@ from src.domain.knowledge.repository import (
 )
 from src.domain.knowledge.services import DocumentFileStorageService
 from src.domain.knowledge.value_objects import DocumentId, ProcessingTaskId
-from src.infrastructure.file_parser.pdf_page_extractor import extract_pages_as_images
+from src.infrastructure.file_parser.pdf_page_extractor import count_pages, iter_pages_as_images
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -52,19 +54,19 @@ class SplitPdfUseCase:
             await self._task_repo.update_status(task_id, "failed", error_message=str(e))
             return
 
-        # Extract pages as PNG images
-        page_images = extract_pages_as_images(raw_content)
-        total_pages = len(page_images)
-        logger.info("split_pdf.pages_extracted", doc_id=parent_doc_id, pages=total_pages)
+        # Count pages first (lightweight, no rendering)
+        total_pages = count_pages(raw_content)
+        logger.info("split_pdf.pages_counted", doc_id=parent_doc_id, pages=total_pages)
 
         if total_pages == 0:
             await self._doc_repo.update_status(parent_doc_id, "failed")
             await self._task_repo.update_status(task_id, "failed", error_message="PDF has no pages")
             return
 
-        # Create child documents and enqueue OCR jobs
-        for i, png_bytes in enumerate(page_images):
-            page_num = i + 1
+        # Process one page at a time to minimize memory usage
+        page_num = 0
+        for png_bytes in iter_pages_as_images(raw_content):
+            page_num += 1
             child_id = DocumentId()
             child_filename = f"page_{page_num:03d}.png"
 
@@ -75,6 +77,9 @@ class SplitPdfUseCase:
                 png_bytes,
                 child_filename,
             )
+
+            # Free PNG bytes immediately
+            del png_bytes
 
             # Create child document
             child = Document(
@@ -104,14 +109,22 @@ class SplitPdfUseCase:
             await enqueue("process_document", child_id.value, child_task.id.value)
 
             # Update parent task progress
-            progress = round((page_num / total_pages) * 30)  # 0-30% for splitting
+            progress = round((page_num / total_pages) * 30)
             await self._task_repo.update_status(task_id, "processing", progress=progress)
+
+            # Force GC every 10 pages to reclaim memory
+            if page_num % 10 == 0:
+                gc.collect()
+
+        # Free PDF bytes
+        del raw_content
+        gc.collect()
 
         logger.info(
             "split_pdf.done",
             doc_id=parent_doc_id,
             pages=total_pages,
-            children_enqueued=total_pages,
+            children_enqueued=page_num,
         )
 
         # Mark parent task as completed (children have their own tasks)
