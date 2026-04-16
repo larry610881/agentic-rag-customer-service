@@ -62,6 +62,14 @@ export function useDeleteDocument() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.documents.all(variables.knowledgeBaseId),
       });
+      // Invalidate categories immediately + delayed refresh for classify_kb result
+      queryClient.invalidateQueries({ queryKey: ["categories", variables.knowledgeBaseId] });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["categories", variables.knowledgeBaseId] });
+      }, 5000);
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["categories", variables.knowledgeBaseId] });
+      }, 15000);
     },
   });
 }
@@ -190,6 +198,14 @@ export function useBatchDeleteDocuments() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.documents.all(variables.knowledgeBaseId),
       });
+      // Invalidate categories after batch delete (classify_kb re-runs)
+      queryClient.invalidateQueries({ queryKey: ["categories", variables.knowledgeBaseId] });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["categories", variables.knowledgeBaseId] });
+      }, 5000);
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["categories", variables.knowledgeBaseId] });
+      }, 15000);
     },
   });
 }
