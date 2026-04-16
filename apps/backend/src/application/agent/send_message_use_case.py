@@ -442,9 +442,9 @@ class SendMessageUseCase:
 
         # Override bot_cfg with worker settings
         cfg = {**bot_cfg}
-        if matched.system_prompt:
+        if matched.worker_prompt:
             cfg["system_prompt"] = inject_runtime_vars(
-                matched.system_prompt
+                matched.worker_prompt
             )
         if matched.llm_provider or matched.llm_model:
             cfg["llm_params"] = {
