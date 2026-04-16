@@ -1,11 +1,8 @@
 import { useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Tag } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   useCategories,
-  useUpdateCategory,
 } from "@/features/knowledge/hooks/use-categories";
 import { useCategoryChunks } from "@/features/knowledge/hooks/use-category-chunks";
 import type { DocumentResponse } from "@/types/knowledge";
@@ -21,29 +18,7 @@ export function CategoryList({ kbId, documents }: CategoryListProps) {
   );
 
   const { data: categories, isLoading } = useCategories(kbId, !!hasProcessing);
-  const updateMutation = useUpdateCategory(kbId);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const handleStartEdit = (catId: string, currentName: string) => {
-    setEditingId(catId);
-    setEditName(currentName);
-  };
-
-  const handleSaveEdit = (catId: string) => {
-    if (editName.trim()) {
-      updateMutation.mutate(
-        { catId, name: editName.trim() },
-        { onSuccess: () => setEditingId(null) },
-      );
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setEditName("");
-  };
 
   const toggleExpand = (catId: string) => {
     setExpandedId(expandedId === catId ? null : catId);
@@ -80,64 +55,22 @@ export function CategoryList({ kbId, documents }: CategoryListProps) {
         <div className="flex flex-col gap-1.5">
           {categories.map((cat) => (
             <div key={cat.id} className="flex flex-col">
-              <div className="flex items-center justify-between rounded-md border px-3 py-2 hover:bg-muted/50 transition-colors duration-150">
-                {editingId === cat.id ? (
-                  <div className="flex items-center gap-2 flex-1">
-                    <Input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="h-7 text-sm"
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveEdit(cat.id);
-                        if (e.key === "Escape") handleCancelEdit();
-                      }}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => handleSaveEdit(cat.id)}
-                      disabled={updateMutation.isPending}
-                    >
-                      儲存
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={handleCancelEdit}
-                    >
-                      取消
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-1.5 flex-1">
-                      <button
-                        className="p-0.5 hover:bg-muted rounded"
-                        onClick={() => toggleExpand(cat.id)}
-                      >
-                        {expandedId === cat.id ? (
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        ) : (
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                      <span
-                        className="text-sm cursor-pointer hover:underline"
-                        onClick={() => handleStartEdit(cat.id, cat.name)}
-                        title="點擊編輯名稱"
-                      >
-                        {cat.name}
-                      </span>
-                    </div>
-                    <Badge variant="secondary" className="text-xs">
-                      {cat.chunk_count} chunks
-                    </Badge>
-                  </>
-                )}
-              </div>
+              <button
+                className="flex items-center justify-between rounded-md border px-3 py-2 hover:bg-muted/50 transition-colors duration-150 w-full text-left"
+                onClick={() => toggleExpand(cat.id)}
+              >
+                <div className="flex items-center gap-1.5">
+                  {expandedId === cat.id ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  )}
+                  <span className="text-sm">{cat.name}</span>
+                </div>
+                <Badge variant="secondary" className="text-xs">
+                  {cat.chunk_count} chunks
+                </Badge>
+              </button>
 
               {expandedId === cat.id && (
                 <CategoryChunksPanel kbId={kbId} categoryId={cat.id} />
