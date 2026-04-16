@@ -370,7 +370,7 @@ class ProcessDocumentUseCase:
             # 90% — upserting vectors
             await _update_progress(task_id, 90)
 
-            # Ensure Qdrant collection exists
+            # Ensure Milvus collection exists
             collection = f"kb_{document.kb_id}"
             vector_size = len(vectors[0]) if vectors else 3072
             await self._vector_store.ensure_collection(

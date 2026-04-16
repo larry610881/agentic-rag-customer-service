@@ -189,7 +189,7 @@ def app(test_engine):
     )
     container.db_session.override(providers.Factory(test_session_factory))
 
-    # Skip embedding / Qdrant / document processing
+    # Skip embedding / Milvus / document processing
     mock_process = AsyncMock()
     mock_process.execute = AsyncMock(return_value=None)
     container.process_document_use_case.override(providers.Object(mock_process))

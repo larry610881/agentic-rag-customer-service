@@ -98,7 +98,7 @@ def doc_deleted(context, mock_doc_repo):
     mock_doc_repo.delete.assert_called_once_with("doc-001")
 
 
-@then("對應的向量資料應從 Qdrant 移除")
+@then("對應的向量資料應從 Milvus 移除")
 def vectors_deleted(context, mock_vector_store):
     mock_vector_store.delete.assert_called_once_with(
         collection=f"kb_{context['kb_id']}",

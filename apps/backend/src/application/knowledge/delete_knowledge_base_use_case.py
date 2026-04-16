@@ -24,7 +24,7 @@ class DeleteKnowledgeBaseUseCase:
         # 1) 查出所有 document
         documents = await self._doc_repo.find_all_by_kb(kb_id)
 
-        # 2) 逐 doc 刪除 Qdrant 向量
+        # 2) 逐 doc 刪除 Milvus 向量
         for doc in documents:
             await self._vector_store.delete(
                 collection=f"kb_{kb_id}",

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
-scenarios("unit/platform/qdrant_payload_index.feature")
+scenarios("unit/platform/milvus_collection_index.feature")
 
 
 def _run(coro):

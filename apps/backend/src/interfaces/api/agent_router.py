@@ -178,7 +178,7 @@ async def agent_chat_stream(
             # Simulate a realistic traceback
             try:
                 raise RuntimeError(
-                    "QdrantClient: Connection refused (connect ECONNREFUSED 127.0.0.1:6334)"
+                    "MilvusClient: Connection refused (connect ECONNREFUSED 127.0.0.1:19530)"
                 )
             except RuntimeError:
                 fake_stack = _tb.format_exc()
@@ -188,7 +188,7 @@ async def agent_chat_stream(
                 ReportErrorCommand(
                     source="backend",
                     error_type="RuntimeError",
-                    message="QdrantClient: Connection refused (connect ECONNREFUSED 127.0.0.1:6334)",
+                    message="MilvusClient: Connection refused (connect ECONNREFUSED 127.0.0.1:19530)",
                     stack_trace=fake_stack,
                     path="/api/v1/agent/chat/stream",
                     method="POST",
@@ -196,8 +196,8 @@ async def agent_chat_stream(
                     tenant_id=command.tenant_id,
                     extra={
                         "bot_id": command.bot_id,
-                        "qdrant_host": "localhost",
-                        "qdrant_port": 6334,
+                        "milvus_host": "localhost",
+                        "milvus_port": 19530,
                         "retry_count": 3,
                     },
                 )

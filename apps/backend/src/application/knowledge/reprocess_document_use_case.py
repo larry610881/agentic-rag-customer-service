@@ -82,7 +82,7 @@ class ReprocessDocumentUseCase:
             # Delete old chunks from DB
             await self._doc_repo.delete_chunks_by_document(document_id)
 
-            # Delete old vectors from Qdrant
+            # Delete old vectors from Milvus
             collection = f"kb_{document.kb_id}"
             await self._vector_store.delete(
                 collection, {"document_id": document_id}

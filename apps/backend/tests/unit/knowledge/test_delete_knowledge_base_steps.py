@@ -120,7 +120,7 @@ def kb_deleted(context, mock_kb_repo):
     mock_kb_repo.delete.assert_called_once_with(context["kb_id"])
 
 
-@then("所有文件的向量資料應從 Qdrant 移除")
+@then("所有文件的向量資料應從 Milvus 移除")
 def vectors_deleted(context, mock_vector_store):
     kb_id = context["kb_id"]
     assert mock_vector_store.delete.call_count == 2

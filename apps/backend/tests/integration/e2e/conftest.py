@@ -1,7 +1,7 @@
 """E2E Integration Test Fixtures — full user journey tests.
 
 These tests exercise complete user flows: tenant → KB → document → Bot → chat.
-Real DB, mock Qdrant/Embedding/LLM for deterministic behaviour.
+Real DB, mock Milvus/Embedding/LLM for deterministic behaviour.
 """
 
 from unittest.mock import AsyncMock
@@ -21,7 +21,7 @@ from src.infrastructure.embedding.fake_embedding_service import FakeEmbeddingSer
 
 @pytest.fixture
 def e2e_app(test_engine):
-    """E2E app: real DB + real chunking + mock Qdrant + mock LLM."""
+    """E2E app: real DB + real chunking + mock Milvus + mock LLM."""
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from src.main import create_app
@@ -38,7 +38,7 @@ def e2e_app(test_engine):
         providers.Object(test_session_factory)
     )
 
-    # Qdrant vector_store → mock returning SearchResult objects
+    # Milvus vector_store → mock returning SearchResult objects
     mock_vector = AsyncMock()
     mock_vector.search.return_value = [
         SearchResult(
