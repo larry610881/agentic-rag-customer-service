@@ -51,21 +51,23 @@ class DmImageQueryTool:
         self._ttl = signed_url_ttl_seconds
         self._max_images = max_images
 
-    async def invoke(
+    async def invoke(  # noqa: C901
         self,
         *,
         tenant_id: str,
         kb_id: str,
         query: str,
+        kb_ids: list[str] | None = None,
         top_k: int = 5,
         score_threshold: float = 0.3,
     ) -> dict[str, Any]:
-        # 1. RAG retrieve
+        # 1. RAG retrieve（支援 multi-KB；空 kb_ids 退回 single kb_id）
         try:
             retrieve_result = await self._rag.retrieve(
                 QueryRAGCommand(
                     tenant_id=tenant_id,
                     kb_id=kb_id,
+                    kb_ids=kb_ids,
                     query=query,
                     top_k=top_k,
                     score_threshold=score_threshold,
@@ -98,10 +100,15 @@ class DmImageQueryTool:
         docs = await self._doc_repo.find_by_ids([s.document_id for s in ordered])
         doc_map = {d.id.value: d for d in docs}
 
-        # 5. 並行生 signed URL（缺 storage_path / get_preview_url 回 None 都過濾）
+        # 5. 並行生 signed URL（過濾條件：必須有 storage_path、必須是 image/*）
         async def enrich(src: Any) -> dict[str, Any] | None:
             doc = doc_map.get(src.document_id)
             if doc is None or not doc.storage_path:
+                return None
+            # 防禦：dm tool 只該推圖片；非 image/* 的 doc（FAQ KB 的 JSON 等）
+            # 即使被搜到也不該塞進 LINE Flex carousel
+            content_type = (doc.content_type or "").lower()
+            if not content_type.startswith("image/"):
                 return None
             url = await self._storage.get_preview_url(
                 doc.storage_path, expiry_seconds=self._ttl

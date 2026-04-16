@@ -19,7 +19,12 @@ def _run(coro):
         loop.close()
 
 
-def _make_doc(doc_id: str, page: int, storage_path: str | None = None):
+def _make_doc(
+    doc_id: str,
+    page: int,
+    storage_path: str | None = None,
+    content_type: str = "image/png",
+):
     if storage_path is None:
         storage_path = f"tenant/doc/{doc_id}/page_{page:03d}.png"
     return SimpleNamespace(
@@ -27,6 +32,7 @@ def _make_doc(doc_id: str, page: int, storage_path: str | None = None):
         filename=f"page_{page:03d}.png",
         storage_path=storage_path,
         page_number=page,
+        content_type=content_type,
     )
 
 
@@ -137,3 +143,53 @@ def test_filter_doc_without_storage_path(common_kwargs):
     result = _run(tool.invoke(**common_kwargs))
     assert len(result["sources"]) == 1
     assert result["sources"][0]["page_number"] == 21
+
+
+def test_filter_non_image_content_type(common_kwargs):
+    """FAQ KB 的 JSON 等非 image doc 即使被搜到也不該推進 Flex carousel。"""
+    sources = [
+        _make_source("dm-21", 0.9, "p21"),
+        _make_source("faq-1", 0.95, "faq json hit"),
+    ]
+    docs = [
+        _make_doc("dm-21", 21),  # default content_type=image/png
+        _make_doc("faq-1", 0, content_type="application/json"),
+    ]
+    tool = _build_tool(sources, docs)
+    result = _run(tool.invoke(**common_kwargs))
+    # JSON 過濾掉，只剩 dm-21
+    assert len(result["sources"]) == 1
+    assert result["sources"][0]["document_id"] == "dm-21"
+
+
+def test_passes_kb_ids_to_rag_when_provided():
+    """multi-KB scenario: invoke 帶 kb_ids → query_rag 收到 kb_ids list。"""
+    rag = AsyncMock()
+    rag.retrieve = AsyncMock(
+        return_value=SimpleNamespace(chunks=[], sources=[]),
+    )
+    repo = AsyncMock()
+    repo.find_by_ids = AsyncMock(return_value=[])
+    storage = AsyncMock()
+    from src.infrastructure.langgraph.dm_image_query_tool import (
+        DmImageQueryTool,
+    )
+
+    tool = DmImageQueryTool(
+        query_rag_use_case=rag,
+        document_repository=repo,
+        file_storage=storage,
+    )
+    _run(
+        tool.invoke(
+            tenant_id="T1",
+            kb_id="KB1",
+            kb_ids=["KB1", "KB2"],
+            query="衛生紙",
+        ),
+    )
+    # 確認 retrieve 收到的 command 含 kb_ids
+    call_args = rag.retrieve.call_args
+    cmd = call_args.args[0] if call_args.args else call_args.kwargs.get("command")
+    assert cmd.kb_ids == ["KB1", "KB2"]
+    assert cmd.kb_id == "KB1"  # backward compat single ID 仍傳

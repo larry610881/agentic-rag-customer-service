@@ -126,13 +126,16 @@ class ReActAgentService(AgentService):
         kb_id: str,
         rag_top_k: int | None,
         rag_score_threshold: float | None,
+        kb_ids: list[str] | None = None,
     ) -> BaseTool:
         """Build a LangChain BaseTool wrapping query_dm_with_image.
 
         Returns DM 子頁 PNG 圖片 URL 透過 sources 欄位（不在 context 內），
         channel handler 從 result.sources 過濾 image_url 後渲染。
+        Bot 連多 KB 時傳 kb_ids，dm tool 跨 KB search 並過濾 image/* doc。
         """
         dm_tool = self._dm_image_query_tool
+        _kb_ids = kb_ids
 
         @tool
         async def query_dm_with_image(query: str) -> str:
@@ -155,6 +158,7 @@ class ReActAgentService(AgentService):
             result = await dm_tool.invoke(
                 tenant_id=tenant_id,
                 kb_id=kb_id,
+                kb_ids=_kb_ids,
                 query=query,
                 top_k=rag_top_k if rag_top_k is not None else 5,
                 score_threshold=(
@@ -527,6 +531,7 @@ class ReActAgentService(AgentService):
                 tools.append(
                     self._build_dm_image_lc_tool(
                         tenant_id, kb_id, rag_top_k, rag_score_threshold,
+                        kb_ids=kb_ids,
                     )
                 )
 
@@ -671,6 +676,7 @@ class ReActAgentService(AgentService):
                 tools.append(
                     self._build_dm_image_lc_tool(
                         tenant_id, kb_id, rag_top_k, rag_score_threshold,
+                        kb_ids=kb_ids,
                     )
                 )
 
