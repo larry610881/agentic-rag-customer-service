@@ -53,20 +53,52 @@ AI 回答：
 DEFAULT_GUARD_MODEL = "claude-haiku-4-5-20251001"
 
 DEFAULT_INPUT_RULES = [
-    {"pattern": r"忽略(以上|上面|之前|前面)(所有|全部)?指令", "type": "regex", "enabled": True},
-    {"pattern": r"ignore (all )?(previous |above )?instructions", "type": "regex", "enabled": True},
-    {"pattern": r"你(現在|的)?(是|角色|身份)(是|變成|改為)", "type": "regex", "enabled": True},
-    {"pattern": r"(system|系統)\s*(prompt|提示詞)", "type": "regex", "enabled": True},
-    {"pattern": "developer mode", "type": "keyword", "enabled": True},
+    # === Group 1: 直接覆蓋指令 ===
+    {"pattern": r"忽略(以上|上面|之前|前面|先前)(所有|全部)?(的)?指令", "type": "regex", "enabled": True},  # noqa: E501
+    {"pattern": r"ignore\s+(all\s+)?(previous\s+|above\s+|prior\s+)?instructions", "type": "regex", "enabled": True},  # noqa: E501
+    {"pattern": r"disregard\s+(all\s+|the\s+|previous\s+)?(instructions|prompt)", "type": "regex", "enabled": True},  # noqa: E501
+
+    # === Group 2: 角色扮演越獄 ===
+    {"pattern": r"你(現在|的)?(是|角色|身份)(是|變成|改為|扮演)", "type": "regex", "enabled": True},  # noqa: E501
     {"pattern": "DAN mode", "type": "keyword", "enabled": True},
+    # \b(?-i:DAN)\b：只匹配全大寫 DAN，避開 dan-dan 麵 / Daniel / dance
+    {"pattern": r"\b(?-i:DAN)\b", "type": "regex", "enabled": True},
+    {"pattern": "developer mode", "type": "keyword", "enabled": True},
     {"pattern": "jailbreak", "type": "keyword", "enabled": True},
+    {"pattern": "邪惡模式", "type": "keyword", "enabled": True},
+    {"pattern": r"pretend\s+you\s+are", "type": "regex", "enabled": True},
+
+    # === Group 3: System prompt 套取 ===
+    {"pattern": r"(system|系統)\s*(prompt|提示詞|指令)", "type": "regex", "enabled": True},  # noqa: E501
+    {"pattern": r"(複述|重複|顯示|輸出)\s*(你的|系統)?\s*(指令|提示詞|prompt)", "type": "regex", "enabled": True},  # noqa: E501
+    {"pattern": r"(reveal|show|output|print|repeat)\s+(your\s+)?(system\s+)?(prompt|instructions)", "type": "regex", "enabled": True},  # noqa: E501
+
+    # === Group 4: 間接注入（包在訊息內的偽 system 指令）===
+    {"pattern": r"\[SYSTEM\]", "type": "regex", "enabled": True},
+    {"pattern": r"<\|im_start\|>\s*system", "type": "regex", "enabled": True},
+    {"pattern": r"---\s*(END|NEW)\s+(OF\s+)?(CONVERSATION|SYSTEM\s+)?PROMPT", "type": "regex", "enabled": True},  # noqa: E501
+
+    # === Group 5: 資料洩露探測 ===
+    {"pattern": r"(列出|顯示|輸出)(你的|所有)?(工具|tool)\s*(定義|清單|列表|definition)", "type": "regex", "enabled": True},  # noqa: E501
+    {"pattern": r"(api[_\s]*key|api金鑰)", "type": "regex", "enabled": True},
+    {"pattern": r"(連接|連線|使用)(的|哪些)?(資料庫|database)", "type": "regex", "enabled": True},  # noqa: E501
 ]
 
 DEFAULT_OUTPUT_KEYWORDS = [
+    # === System prompt 殘片洩露 ===
     {"keyword": "行為準則", "enabled": True},
     {"keyword": "安全規則", "enabled": True},
     {"keyword": "system prompt", "enabled": True},
     {"keyword": "不可違反", "enabled": True},
+
+    # === 內部技術名詞洩露 ===
+    {"keyword": "tool_definition", "enabled": True},
+    {"keyword": "推理策略", "enabled": True},
+    {"keyword": "工具選擇指引", "enabled": True},
+
+    # === 後端服務名稱洩露（命中 ≥ 2 個才觸發，避免單一名詞誤殺）===
+    {"keyword": "knowledge_bases", "enabled": True},
+    {"keyword": "milvus", "enabled": True},
 ]
 
 
