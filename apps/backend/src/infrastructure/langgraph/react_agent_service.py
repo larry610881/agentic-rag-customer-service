@@ -136,12 +136,20 @@ class ReActAgentService(AgentService):
 
         @tool
         async def query_dm_with_image(query: str) -> str:
-            """查詢家樂福 DM 知識庫並回傳對應頁面的 PNG 圖片。
-            適合：商品促銷、價格查詢、活動內容、DM 頁面相關問題。
-            回傳結果含 context 文字描述，圖片 URL 在 sources 欄位內由系統自動處理。
+            """查詢家樂福 DM（型錄）知識庫並回傳對應頁面的 PNG 圖片。
+
+            【請務必在以下情境使用本工具，勿改用 rag_query】：
+            - 詢問「促銷」「優惠」「特價」「折扣」「買一送一」「便宜」「划算」
+            - 詢問商品價格、目前活動、DM 內容、傳單、廣告、型錄
+            - 詢問特定商品（例：衛生紙、牛奶、零食、家電、生鮮、飲料、清潔用品）
+            - 任何涉及「家樂福商品」「DM」「型錄」「廣告」「特賣」的問題
+
+            回傳結果含 context 文字描述 + sources（每筆 PNG URL 由系統自動推送
+            LINE Flex carousel 給使用者，**你只需用 context 文字回答即可，不要在
+            回覆中嵌入或提及 URL**）。
 
             Args:
-                query: 要查詢的商品或活動關鍵字
+                query: 要查詢的商品或活動關鍵字（例：「衛生紙促銷」「鳳梨價格」）
             """
             assert dm_tool is not None, "dm_image_query_tool not injected"
             result = await dm_tool.invoke(

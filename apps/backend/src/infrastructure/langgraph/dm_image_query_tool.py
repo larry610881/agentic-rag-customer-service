@@ -28,9 +28,13 @@ class DmImageQueryTool:
 
     name = "query_dm_with_image"
     description = (
-        "查詢家樂福 DM 知識庫並回傳對應頁面的 PNG 圖片。"
-        "適合：商品促銷、價格查詢、活動內容、DM 頁面相關問題。"
-        "回傳結果含 context 文字描述，圖片 URL 由系統從 sources 自動取出渲染。"
+        "查詢家樂福 DM（型錄）知識庫並回傳對應頁面的 PNG 圖片。"
+        "請務必在以下情境使用本工具，勿改用 rag_query："
+        "促銷 / 優惠 / 特價 / 折扣 / 買一送一 / 便宜 / 划算；"
+        "商品價格 / 目前活動 / DM / 傳單 / 廣告 / 型錄；"
+        "特定商品（衛生紙 / 牛奶 / 零食 / 家電 / 生鮮 / 飲料 / 清潔用品 等）。"
+        "回傳結果含 context 文字描述 + sources，圖片 URL 由系統自動推送 LINE Flex"
+        " carousel；LLM 只需用 context 文字回答，不要在回覆中嵌入或提及 URL。"
     )
 
     def __init__(
