@@ -716,8 +716,8 @@ export function BotDetailForm({
                 </div>
               </div>
 
-              {/* 預設 Reranking（折疊） */}
-              <Collapsible>
+              {/* 預設 Reranking（折疊；已啟用時預設展開） */}
+              <Collapsible defaultOpen={!!watch("rerank_enabled")}>
                 <CollapsibleTrigger asChild>
                   <Button
                     type="button"
