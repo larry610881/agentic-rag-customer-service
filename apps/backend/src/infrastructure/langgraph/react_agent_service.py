@@ -27,6 +27,9 @@ from src.domain.agent.services import AgentService
 from src.domain.conversation.entity import Message
 from src.domain.rag.services import LLMService
 from src.infrastructure.langgraph.tools import RAGQueryTool
+from src.infrastructure.langgraph.dm_image_query_tool import (
+    DmImageQueryTool,
+)
 from src.infrastructure.langgraph.usage import (
     build_usage_event,
     extract_usage_from_langchain_messages,
@@ -73,11 +76,13 @@ class ReActAgentService(AgentService):
         rag_tool: RAGQueryTool,
         tool_registry: Any | None = None,
         cached_tool_loader: Any | None = None,
+        dm_image_query_tool: DmImageQueryTool | None = None,
     ) -> None:
         self._llm_service = llm_service
         self._rag_tool = rag_tool
         self._tool_registry = tool_registry
         self._cached_tool_loader = cached_tool_loader
+        self._dm_image_query_tool = dm_image_query_tool
 
     def _build_rag_lc_tool(
         self,
@@ -114,6 +119,60 @@ class ReActAgentService(AgentService):
             return _json.dumps(result, ensure_ascii=False)
 
         return rag_query  # type: ignore[return-value]
+
+    def _build_dm_image_lc_tool(
+        self,
+        tenant_id: str,
+        kb_id: str,
+        rag_top_k: int | None,
+        rag_score_threshold: float | None,
+    ) -> BaseTool:
+        """Build a LangChain BaseTool wrapping query_dm_with_image.
+
+        Returns DM 子頁 PNG 圖片 URL 透過 sources 欄位（不在 context 內），
+        channel handler 從 result.sources 過濾 image_url 後渲染。
+        """
+        dm_tool = self._dm_image_query_tool
+
+        @tool
+        async def query_dm_with_image(query: str) -> str:
+            """查詢家樂福 DM 知識庫並回傳對應頁面的 PNG 圖片。
+            適合：商品促銷、價格查詢、活動內容、DM 頁面相關問題。
+            回傳結果含 context 文字描述，圖片 URL 在 sources 欄位內由系統自動處理。
+
+            Args:
+                query: 要查詢的商品或活動關鍵字
+            """
+            assert dm_tool is not None, "dm_image_query_tool not injected"
+            result = await dm_tool.invoke(
+                tenant_id=tenant_id,
+                kb_id=kb_id,
+                query=query,
+                top_k=rag_top_k if rag_top_k is not None else 5,
+                score_threshold=(
+                    rag_score_threshold
+                    if rag_score_threshold is not None
+                    else 0.3
+                ),
+            )
+            import json as _json
+            return _json.dumps(result, ensure_ascii=False)
+
+        return query_dm_with_image  # type: ignore[return-value]
+
+    @staticmethod
+    def _resolve_enabled_tools(
+        enabled_tools: list[str] | None,
+    ) -> set[str]:
+        """Resolve effective tool name set.
+
+        - None → backward compatible default {"rag_query"}
+        - [] → 顯式空（不啟用任何內建 tool）
+        - list → 該 list 為準
+        """
+        if enabled_tools is None:
+            return {"rag_query"}
+        return set(enabled_tools)
 
     async def _resolve_llm_model(
         self, llm_params: dict[str, Any] | None
@@ -440,12 +499,24 @@ class ReActAgentService(AgentService):
         )
 
         async with AsyncExitStack() as stack:
-            # 1. Build knowledge tool
+            # 1. Build built-in tools according to bot.enabled_tools
             tools: list[BaseTool] = []
-            tools.append(
+            effective = self._resolve_enabled_tools(enabled_tools)
+            if "rag_query" in effective and (kb_id or kb_ids):
+                tools.append(
                     self._build_rag_lc_tool(
                         tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold,
                         rerank_cfg=metadata,
+                    )
+                )
+            if (
+                "query_dm_with_image" in effective
+                and kb_id
+                and self._dm_image_query_tool is not None
+            ):
+                tools.append(
+                    self._build_dm_image_lc_tool(
+                        tenant_id, kb_id, rag_top_k, rag_score_threshold,
                     )
                 )
 
@@ -572,14 +643,26 @@ class ReActAgentService(AgentService):
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream version — runs the same ReAct loop, yields events."""
         async with AsyncExitStack() as stack:
-            # Build knowledge tool
+            # Build built-in tools according to bot.enabled_tools
             tools: list[BaseTool] = []
-            tools.append(
-                self._build_rag_lc_tool(
-                    tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold,
-                    rerank_cfg=metadata,
+            effective = self._resolve_enabled_tools(enabled_tools)
+            if "rag_query" in effective and (kb_id or kb_ids):
+                tools.append(
+                    self._build_rag_lc_tool(
+                        tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold,
+                        rerank_cfg=metadata,
+                    )
                 )
-            )
+            if (
+                "query_dm_with_image" in effective
+                and kb_id
+                and self._dm_image_query_tool is not None
+            ):
+                tools.append(
+                    self._build_dm_image_lc_tool(
+                        tenant_id, kb_id, rag_top_k, rag_score_threshold,
+                    )
+                )
 
             # Load MCP tools — sessions kept alive by stack
             if self._cached_tool_loader:

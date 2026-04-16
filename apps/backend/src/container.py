@@ -348,6 +348,9 @@ from src.infrastructure.langgraph.react_agent_service import (
     ReActAgentService,
 )
 from src.infrastructure.langgraph.tools import RAGQueryTool
+from src.infrastructure.langgraph.dm_image_query_tool import (
+    DmImageQueryTool,
+)
 from src.infrastructure.langgraph.workers.fake_main_worker import FakeMainWorker
 from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWorker
 from src.infrastructure.language_detection import (
@@ -1104,6 +1107,13 @@ class Container(containers.DeclarativeContainer):
         score_threshold=config.provided.rag_score_threshold,
     )
 
+    dm_image_query_tool = providers.Factory(
+        DmImageQueryTool,
+        query_rag_use_case=query_rag_use_case,
+        document_repository=document_repository,
+        file_storage=document_file_storage_service,
+    )
+
     tool_registry = providers.Singleton(ToolRegistry)
 
     cached_tool_loader = providers.Singleton(CachedMCPToolLoader)
@@ -1136,6 +1146,7 @@ class Container(containers.DeclarativeContainer):
             rag_tool=rag_tool,
             tool_registry=tool_registry,
             cached_tool_loader=cached_tool_loader,
+            dm_image_query_tool=dm_image_query_tool,
         ),
     )
 

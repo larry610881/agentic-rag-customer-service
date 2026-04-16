@@ -65,6 +65,11 @@ class DocumentRepository(ABC):
     async def find_by_id(self, doc_id: str) -> Document | None: ...
 
     @abstractmethod
+    async def find_by_ids(self, doc_ids: list[str]) -> list[Document]:
+        """Batch 查詢多份文件，避免 N+1 query。空 list 直接回 []。"""
+        ...
+
+    @abstractmethod
     async def find_all_by_kb(
         self,
         kb_id: str,

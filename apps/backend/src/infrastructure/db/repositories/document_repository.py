@@ -164,6 +164,17 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         model = result.scalar_one_or_none()
         return self._to_entity(model) if model else None
 
+    async def find_by_ids(self, doc_ids: list[str]) -> list[Document]:
+        if not doc_ids:
+            return []
+        stmt = (
+            select(DocumentModel)
+            .options(defer(DocumentModel.raw_content))
+            .where(DocumentModel.id.in_(doc_ids))
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
     async def find_all_by_kb(
         self,
         kb_id: str,
