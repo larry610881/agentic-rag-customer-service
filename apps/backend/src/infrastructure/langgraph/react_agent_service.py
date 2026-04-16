@@ -147,9 +147,9 @@ class ReActAgentService(AgentService):
             - 詢問特定商品（例：衛生紙、牛奶、零食、家電、生鮮、飲料、清潔用品）
             - 任何涉及「家樂福商品」「DM」「型錄」「廣告」「特賣」的問題
 
-            回傳結果含 context 文字描述 + sources（每筆 PNG URL 由系統自動推送
-            LINE Flex carousel 給使用者，**你只需用 context 文字回答即可，不要在
-            回覆中嵌入或提及 URL**）。
+            回傳結果含 context 文字描述 + sources（每筆含 image_url 的項目
+            會由使用者端自動顯示圖片，**你只需用 context 文字回答即可，不要
+            在回覆中嵌入或提及 URL**）。
 
             Args:
                 query: 要查詢的商品或活動關鍵字（例：「衛生紙促銷」「鳳梨價格」）

@@ -203,9 +203,13 @@ export class ChatPanel {
             }
             break;
           case "done":
-            // Render sources block
+            // Render sources block（文字引用）- 先做，讓 gallery 夾在 bubble 與 sources 之間
             if (this.showSources && pendingSources.length) {
               this.messageList.addSourcesBlock(botBubble, pendingSources, this.apiBase, this.shortCode);
+            }
+            // Render image gallery (for query_dm_with_image 等有 image_url 的 sources)
+            if (pendingSources.length) {
+              this.messageList.addImageGallery(botBubble, pendingSources);
             }
             // Render feedback buttons
             if (messageId && this.conversationId) {

@@ -2,6 +2,35 @@ import type { Source } from "../types";
 import { cls } from "../constants";
 import { getVisitorId } from "../visitor";
 
+export interface GalleryImage {
+  src: string;
+  documentName: string;
+  pageNumber?: number;
+  score: number;
+}
+
+/**
+ * 從 sources 過濾 image_url 並依 (document_id, page_number) 去重保留分數最高者。
+ * 純函式，不碰 DOM，方便單元測試。
+ */
+export function extractGalleryImages(sources: Source[]): GalleryImage[] {
+  const best = new Map<string, GalleryImage>();
+  for (const s of sources) {
+    if (!s.image_url) continue;
+    const key = `${s.document_id ?? ""}#${s.page_number ?? ""}`;
+    const existing = best.get(key);
+    if (!existing || s.score > existing.score) {
+      best.set(key, {
+        src: s.image_url,
+        documentName: s.document_name,
+        pageNumber: s.page_number,
+        score: s.score,
+      });
+    }
+  }
+  return [...best.values()];
+}
+
 /**
  * Message list renderer — manages DOM elements for chat messages.
  */
@@ -33,6 +62,58 @@ export class MessageList {
   showStatusHint(bubble: HTMLElement, hint: string): void {
     bubble.textContent = hint;
     bubble.classList.add(cls("status-hint"));
+    this.scrollToBottom();
+  }
+
+  /** Insert an image gallery (if sources contain image_url) before the sources block. */
+  addImageGallery(bubble: HTMLElement, sources: Source[]): void {
+    if (!sources.length) return;
+    const images = extractGalleryImages(sources);
+    if (images.length === 0) return;
+
+    const block = document.createElement("div");
+    block.className = cls("gallery");
+
+    const heading = document.createElement("div");
+    heading.className = cls("gallery__heading");
+    heading.textContent = `\u{1f5bc}\u{fe0f} 參考圖片（${images.length}）`;
+
+    const grid = document.createElement("div");
+    grid.className = cls("gallery__grid");
+
+    for (const img of images) {
+      const link = document.createElement("a");
+      link.className = cls("gallery__item");
+      link.href = img.src;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.title = `${img.documentName}${
+        img.pageNumber != null ? ` · 第 ${img.pageNumber} 頁` : ""
+      }`;
+
+      const imgEl = document.createElement("img");
+      imgEl.className = cls("gallery__img");
+      imgEl.src = img.src;
+      imgEl.loading = "lazy";
+      imgEl.alt = `${img.documentName}${
+        img.pageNumber != null ? ` 第 ${img.pageNumber} 頁` : ""
+      }`;
+
+      const caption = document.createElement("div");
+      caption.className = cls("gallery__caption");
+      caption.textContent = `${img.documentName}${
+        img.pageNumber != null ? ` · p.${img.pageNumber}` : ""
+      }`;
+
+      link.appendChild(imgEl);
+      link.appendChild(caption);
+      grid.appendChild(link);
+    }
+
+    block.appendChild(heading);
+    block.appendChild(grid);
+
+    bubble.parentElement?.insertBefore(block, bubble.nextSibling);
     this.scrollToBottom();
   }
 
@@ -161,11 +242,16 @@ export class MessageList {
     container.appendChild(upBtn);
     container.appendChild(downBtn);
 
-    // Insert after the bubble (and after sources block if present)
+    // Insert after the bubble (skip past gallery + sources block if present)
     let insertAfter: Element = bubble;
-    const nextEl = bubble.nextElementSibling;
-    if (nextEl?.classList.contains(cls("sources"))) {
-      insertAfter = nextEl;
+    let cursor = bubble.nextElementSibling;
+    while (
+      cursor &&
+      (cursor.classList.contains(cls("sources")) ||
+        cursor.classList.contains(cls("gallery")))
+    ) {
+      insertAfter = cursor;
+      cursor = cursor.nextElementSibling;
     }
     insertAfter.parentElement?.insertBefore(
       container,

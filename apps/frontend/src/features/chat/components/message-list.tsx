@@ -3,6 +3,7 @@ import { useChatStore } from "@/stores/use-chat-store";
 import { MessageBubble } from "@/features/chat/components/message-bubble";
 import { CitationList } from "@/features/chat/components/citation-list";
 import { AgentThoughtPanel } from "@/features/chat/components/agent-thought-panel";
+import { SourceImageGallery } from "@/features/chat/components/source-image-gallery";
 
 export function MessageList() {
   const messages = useChatStore((s) => s.messages);
@@ -30,7 +31,14 @@ export function MessageList() {
               <AgentThoughtPanel toolCalls={message.tool_calls} />
             )}
             {message.role === "assistant" && message.sources && message.sources.length > 0 && (
-              <CitationList sources={message.sources} />
+              <>
+                <SourceImageGallery
+                  sources={message.sources}
+                  variant="full"
+                  className="ml-0 sm:ml-4"
+                />
+                <CitationList sources={message.sources} />
+              </>
             )}
           </div>
         ))}

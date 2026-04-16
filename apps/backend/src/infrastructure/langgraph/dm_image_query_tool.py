@@ -33,8 +33,8 @@ class DmImageQueryTool:
         "促銷 / 優惠 / 特價 / 折扣 / 買一送一 / 便宜 / 划算；"
         "商品價格 / 目前活動 / DM / 傳單 / 廣告 / 型錄；"
         "特定商品（衛生紙 / 牛奶 / 零食 / 家電 / 生鮮 / 飲料 / 清潔用品 等）。"
-        "回傳結果含 context 文字描述 + sources，圖片 URL 由系統自動推送 LINE Flex"
-        " carousel；LLM 只需用 context 文字回答，不要在回覆中嵌入或提及 URL。"
+        "回傳結果含 context 文字描述 + sources（含 image_url 的項目由使用者端"
+        "自動顯示圖片 — LLM 只需用 context 文字回答，**不要在回覆中嵌入或提及 URL**）。"
     )
 
     def __init__(

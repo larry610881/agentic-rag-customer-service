@@ -285,6 +285,67 @@
   50% { opacity: 0.5; }
 }
 
+/* ── Gallery（DM 圖卡等） ──────────────────────────────────── */
+
+.aw-gallery {
+  max-width: 82%;
+  align-self: flex-start;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.aw-gallery__heading {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+}
+.aw-gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.aw-gallery__item {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  text-decoration: none;
+  transition: box-shadow 0.2s;
+}
+.aw-gallery__item:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+.aw-gallery__item:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+.aw-gallery__img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  transition: transform 0.2s;
+}
+.aw-gallery__item:hover .aw-gallery__img {
+  transform: scale(1.02);
+}
+.aw-gallery__caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 2px 6px;
+  font-size: 10px;
+  color: #fff;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Sources ───────────────────────────────────────────────── */
 
 .aw-sources {

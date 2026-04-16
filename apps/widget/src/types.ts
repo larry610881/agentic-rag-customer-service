@@ -17,6 +17,10 @@ export interface Source {
   content_snippet: string;
   score: number;
   document_id?: string;
+  /** DM 子頁頁碼（僅 query_dm_with_image tool 回傳） */
+  page_number?: number;
+  /** DM 子頁 PNG 圖片（signed URL） */
+  image_url?: string;
 }
 
 /** Tool call info from agent */
