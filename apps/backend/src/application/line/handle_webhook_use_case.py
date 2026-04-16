@@ -25,6 +25,9 @@ from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.concurrency import ConversationLock
+from src.application.agent.send_message_use_case import (
+    build_tool_rag_params_map,
+)
 from src.infrastructure.line.flex_image_carousel_builder import (
     build_image_carousel,
 )
@@ -319,6 +322,12 @@ class HandleWebhookUseCase:
                     server_cfg["enabled_tools"] = binding.enabled_tools
                 mcp_servers.append(server_cfg)
 
+        # Build rerank metadata so RAG tools inherit Bot's rerank config.
+        rerank_metadata = {
+            "rerank_enabled": bot.rerank_enabled,
+            "rerank_model": bot.rerank_model,
+            "rerank_top_n": bot.rerank_top_n,
+        }
         result = await self._agent_service.process_message(
             tenant_id=bot.tenant_id,
             kb_id=bot.knowledge_base_ids[0] if bot.knowledge_base_ids else "",
@@ -327,7 +336,12 @@ class HandleWebhookUseCase:
             system_prompt=bot.bot_prompt or None,
             enabled_tools=bot.enabled_tools,
             llm_params=llm_params,
+            metadata=rerank_metadata,
             history=history,
+            rag_top_k=bot.llm_params.rag_top_k,
+            rag_score_threshold=bot.llm_params.rag_score_threshold,
+            tool_rag_params=build_tool_rag_params_map(bot=bot),
+            customer_service_url=bot.customer_service_url,
             mcp_servers=mcp_servers,
             max_tool_calls=bot.max_tool_calls or 5,
         )
