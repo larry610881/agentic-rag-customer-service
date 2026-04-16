@@ -89,7 +89,12 @@ services:
 
 volumes:
   pgdata:
+    name: pgdata
   redisdata:
+    name: redis_data
   etcddata:
+    name: etcd_data
   miniodata:
+    name: minio_data
   milvusdata:
+    name: milvus_data
