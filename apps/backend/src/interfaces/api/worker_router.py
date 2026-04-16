@@ -47,6 +47,8 @@ class CreateWorkerRequest(BaseModel):
     max_tool_calls: int = 5
     enabled_mcp_ids: list[str] = []
     knowledge_base_ids: list[str] = []
+    # None = 繼承 Bot.enabled_tools；[] = 顯式不啟用任何 built-in；[...] = 白名單
+    enabled_tools: list[str] | None = None
     tool_configs: dict[str, WorkerToolRagConfigSchema] = Field(
         default_factory=dict
     )
@@ -64,6 +66,7 @@ class UpdateWorkerRequest(BaseModel):
     max_tool_calls: int | None = None
     enabled_mcp_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
+    enabled_tools: list[str] | None = None
     tool_configs: dict[str, WorkerToolRagConfigSchema] | None = None
     sort_order: int | None = None
 
@@ -81,6 +84,7 @@ class WorkerResponse(BaseModel):
     max_tool_calls: int
     enabled_mcp_ids: list[str]
     knowledge_base_ids: list[str]
+    enabled_tools: list[str] | None
     tool_configs: dict[str, dict[str, Any]]
     sort_order: int
     created_at: str
@@ -101,6 +105,7 @@ def _to_response(w: Any) -> WorkerResponse:
         max_tool_calls=w.max_tool_calls,
         enabled_mcp_ids=w.enabled_mcp_ids,
         knowledge_base_ids=w.knowledge_base_ids,
+        enabled_tools=w.enabled_tools,
         tool_configs={
             name: {
                 k: v
@@ -162,6 +167,7 @@ async def create_worker(
             max_tool_calls=body.max_tool_calls,
             enabled_mcp_ids=body.enabled_mcp_ids,
             knowledge_base_ids=body.knowledge_base_ids,
+            enabled_tools=body.enabled_tools,
             tool_configs={
                 name: cfg.model_dump(exclude_none=True)
                 for name, cfg in body.tool_configs.items()
@@ -182,6 +188,11 @@ async def update_worker(
         Provide[Container.update_worker_use_case]
     ),
 ) -> WorkerResponse:
+    # enabled_tools sentinel: ... = 不更新；None / list = 顯式值
+    fields_set = body.model_fields_set
+    enabled_tools_arg: Any = (
+        body.enabled_tools if "enabled_tools" in fields_set else ...
+    )
     worker = await use_case.execute(
         UpdateWorkerCommand(
             worker_id=worker_id,
@@ -195,6 +206,7 @@ async def update_worker(
             max_tool_calls=body.max_tool_calls,
             enabled_mcp_ids=body.enabled_mcp_ids,
             knowledge_base_ids=body.knowledge_base_ids,
+            enabled_tools=enabled_tools_arg,
             tool_configs=(
                 {
                     name: cfg.model_dump(exclude_none=True)

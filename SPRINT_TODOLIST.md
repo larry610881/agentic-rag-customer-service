@@ -1325,6 +1325,47 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 
 ---
 
+## 未來 Sprint — 平台治理與計費（2026-04-16 記錄）
+
+### S-Gov.1 Sub-agent 驗證與追蹤穩定化
+| 項目 | 說明 |
+|------|------|
+| Web/LINE 雙通路 subagent 端到端測試 | 建 30 題分類 rubric（閒聊 10 / 商品 10 / 高階 10）量化 classifier 準確率 |
+| Agent 執行追蹤 UI 確認 | 系統管理 > Agent 執行追蹤能看到 `worker_routing` 節點 + worker_name / worker_llm |
+| LINE 通路 subagent 支援 | 目前 LINE handler 繞過 send_message_use_case → worker routing 失效。把 worker routing 抽共用 helper 接入 LINE path |
+| Worker 層級 `enabled_tools` 覆蓋驗證 | 實測 worker checkbox 限制生效（Haiku 閒聊不會誤呼叫 DM 圖卡 tool）|
+
+### S-Gov.2 Tool 系統層級管控
+| 項目 | 說明 |
+|------|------|
+| Tool 租戶可見性設定 | `BuiltInTool` 加 scope 欄位：`global`（所有租戶可用）/ `tenant`（指定租戶白名單）|
+| 系統層 Tool 清單 UI | 列出所有 built-in + MCP tool，切換 global / tenant scope，可勾選白名單租戶 |
+| Agent 資料流過濾 | `BUILT_IN_TOOLS` list 在 tool metadata API 上依使用者 tenant_id 過濾 |
+
+### S-Gov.3 系統層 KB / Bot 清單整理
+| 項目 | 說明 |
+|------|------|
+| 清除租戶隔離重疊 | 目前 KB / Bot 頁面已顯示全部租戶資料（system admin 視角），但系統層本來就有另一個清單頁 |
+| 保留方向 | **移除混合視圖**，讓租戶級頁面只看自己的；跨租戶查詢一律走系統層清單（減少認知負擔）|
+
+### S-Gov.4 Token 追蹤租戶開關
+| 項目 | 說明 |
+|------|------|
+| Token 追蹤總開關（系統層）| 所有 token 一律寫進系統層 usage log |
+| Per-tenant 計費開關 | 系統層可勾選「此租戶的用量要計費嗎」，不勾則僅記錄不扣額度 |
+| 差異化優惠策略 | 每個租戶獨立設定 → POC 租戶 / 內部測試帳號可「免計費」；正式客戶正常計費 |
+
+### S-Gov.5 租戶 Token 額度計費機制（訂閱 + 加值）
+| 項目 | 說明 |
+|------|------|
+| 訂閱額度 | 每月固定額度（例 2000 萬 tokens），月末歸零重計（use-it-or-lose-it）|
+| 加值包 | 單次購買額外 tokens（例 500 萬），有剩餘可遞延至下月 |
+| 扣用順序 | 先扣訂閱額度，扣完再吃加值餘額 |
+| 計費範例 | 月訂閱 2000 萬 + 加值 500 萬，本月用 2100 萬 → 下月額度 = 2000（新訂閱）+ 400（加值遞延）= 2400 |
+| 系統層雙視圖 | (A) 絕對總量（看整個平台 token 消耗）; (B) 租戶計費視角（同租戶看到的額度/超用/加值狀態）|
+
+---
+
 ## Backlog — GitHub Issues 追蹤
 
 > 所有延期項目統一由 GitHub Issues 追蹤，不再散落於各 Sprint 區段。

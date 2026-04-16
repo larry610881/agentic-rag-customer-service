@@ -13,6 +13,8 @@ export type WorkerConfig = {
   max_tool_calls: number;
   enabled_mcp_ids: string[];
   knowledge_base_ids: string[];
+  /** null = 繼承 Bot.enabled_tools；[] = 顯式無 tool；list = 白名單 */
+  enabled_tools?: string[] | null;
   tool_configs?: Record<string, ToolRagConfig>;
   sort_order: number;
   created_at: string;
@@ -30,6 +32,7 @@ export type CreateWorkerRequest = {
   max_tool_calls?: number;
   enabled_mcp_ids?: string[];
   knowledge_base_ids?: string[];
+  enabled_tools?: string[] | null;
   tool_configs?: Record<string, ToolRagConfig>;
   sort_order?: number;
 };

@@ -56,8 +56,12 @@ type WorkersSectionProps = {
   botToolConfigs?: Record<string, ToolRagConfig>;
   /** 需要顯示 per-tool 覆蓋 UI 的 tool 名稱白名單 */
   ragToolNames?: readonly string[];
-  /** tool_name → 顯示 label 的對照表 */
+  /** tool_name → 顯示 label 的對照表（RAG tool 用） */
   ragToolLabels?: Record<string, string>;
+  /** Bot 目前啟用的 built-in tools（worker 的白名單池子） */
+  botEnabledTools?: string[];
+  /** 全 built-in tools 的 name → label（含非 RAG tool 如 transfer） */
+  builtInToolsLabels?: Record<string, string>;
   rerankModelOptions?: ModelOption[];
 };
 
@@ -94,6 +98,8 @@ function WorkerCard({
   botToolConfigs,
   ragToolNames,
   ragToolLabels,
+  botEnabledTools,
+  builtInToolsLabels,
   rerankModelOptions,
 }: {
   worker: WorkerConfig;
@@ -105,6 +111,8 @@ function WorkerCard({
   botToolConfigs?: Record<string, ToolRagConfig>;
   ragToolNames?: readonly string[];
   ragToolLabels?: Record<string, string>;
+  botEnabledTools?: string[];
+  builtInToolsLabels?: Record<string, string>;
   rerankModelOptions?: ModelOption[];
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -337,49 +345,130 @@ function WorkerCard({
             </div>
           )}
 
-          {/* Per-tool RAG 覆蓋 */}
-          {botDefaults && ragToolNames && ragToolNames.length > 0 && (
+          {/* 啟用工具（三態：繼承 Bot / 自訂子集） */}
+          {botEnabledTools && botEnabledTools.length > 0 && (
             <div className="flex flex-col gap-2">
-              <Label className="text-xs">
-                Per-tool RAG 參數覆蓋（未填 = 繼承 Bot）
-              </Label>
-              <div className="flex flex-col gap-2">
-                {ragToolNames.map((toolName) => {
-                  const botToolCfg = botToolConfigs?.[toolName];
-                  const { inherited, label } = resolveWorkerInherited(
-                    toolName,
-                    botDefaults,
-                    botToolCfg,
-                  );
-                  const currentValue = worker.tool_configs?.[toolName];
-                  const toolLabel =
-                    ragToolLabels?.[toolName] ?? toolName;
-                  return (
-                    <ToolRagConfigSection
-                      key={toolName}
-                      toolName={toolName}
-                      toolLabel={toolLabel}
-                      value={currentValue}
-                      inherited={inherited}
-                      inheritedLabel={label}
-                      rerankModelOptions={rerankModelOptions}
-                      onChange={(next) => {
-                        const nextMap = {
-                          ...(worker.tool_configs ?? {}),
-                        } as Record<string, ToolRagConfig>;
-                        if (next === undefined) {
-                          delete nextMap[toolName];
-                        } else {
-                          nextMap[toolName] = next;
-                        }
-                        handleFieldUpdate("tool_configs", nextMap);
-                      }}
-                    />
-                  );
-                })}
+              <Label className="text-xs">啟用的工具</Label>
+              <p className="text-[11px] text-muted-foreground">
+                未設定時繼承 Bot（共 {botEnabledTools.length} 個工具）。勾選「自訂」後可限制此 Sub-agent 僅使用部分工具。
+              </p>
+              <div className="flex items-center gap-4 text-xs">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`worker-tools-mode-${worker.id}`}
+                    checked={!Array.isArray(worker.enabled_tools)}
+                    onChange={() => handleFieldUpdate("enabled_tools", null)}
+                  />
+                  <span>繼承 Bot 預設</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`worker-tools-mode-${worker.id}`}
+                    checked={Array.isArray(worker.enabled_tools)}
+                    onChange={() =>
+                      handleFieldUpdate(
+                        "enabled_tools",
+                        [...botEnabledTools],
+                      )
+                    }
+                  />
+                  <span>自訂子集</span>
+                </label>
               </div>
+              {Array.isArray(worker.enabled_tools) && (
+                <div className="flex flex-col gap-1.5 rounded-md border bg-muted/20 px-3 py-2">
+                  {botEnabledTools.map((toolName) => {
+                    const checked = worker.enabled_tools!.includes(toolName);
+                    const label =
+                      builtInToolsLabels?.[toolName] ?? toolName;
+                    return (
+                      <label
+                        key={toolName}
+                        className="flex items-center gap-2 text-sm cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const current = worker.enabled_tools ?? [];
+                            const next = e.target.checked
+                              ? [...current, toolName]
+                              : current.filter((t) => t !== toolName);
+                            handleFieldUpdate("enabled_tools", next);
+                          }}
+                          className="rounded border-input"
+                        />
+                        <span>{label}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {toolName}
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {worker.enabled_tools.length === 0 && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                      未勾選任何工具 — 此 Sub-agent 將無法呼叫任何 built-in tool
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
+
+          {/* Per-tool RAG 覆蓋（只對 effective enabled 的 RAG tool 顯示） */}
+          {botDefaults && ragToolNames && ragToolNames.length > 0 && (() => {
+            const effectiveEnabled = Array.isArray(worker.enabled_tools)
+              ? worker.enabled_tools
+              : (botEnabledTools ?? []);
+            const visibleRagTools = ragToolNames.filter((n) =>
+              effectiveEnabled.includes(n),
+            );
+            if (visibleRagTools.length === 0) return null;
+            return (
+              <div className="flex flex-col gap-2">
+                <Label className="text-xs">
+                  Per-tool RAG 參數覆蓋（未填 = 繼承 Bot）
+                </Label>
+                <div className="flex flex-col gap-2">
+                  {visibleRagTools.map((toolName) => {
+                    const botToolCfg = botToolConfigs?.[toolName];
+                    const { inherited, label } = resolveWorkerInherited(
+                      toolName,
+                      botDefaults,
+                      botToolCfg,
+                    );
+                    const currentValue = worker.tool_configs?.[toolName];
+                    const toolLabel =
+                      ragToolLabels?.[toolName] ?? toolName;
+                    return (
+                      <ToolRagConfigSection
+                        key={toolName}
+                        toolName={toolName}
+                        toolLabel={toolLabel}
+                        value={currentValue}
+                        inherited={inherited}
+                        inheritedLabel={label}
+                        rerankModelOptions={rerankModelOptions}
+                        onChange={(next) => {
+                          const nextMap = {
+                            ...(worker.tool_configs ?? {}),
+                          } as Record<string, ToolRagConfig>;
+                          if (next === undefined) {
+                            delete nextMap[toolName];
+                          } else {
+                            nextMap[toolName] = next;
+                          }
+                          handleFieldUpdate("tool_configs", nextMap);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* MCP Tools */}
           {mcpServers.length > 0 && (
@@ -424,6 +513,8 @@ export function WorkersSection({
   botToolConfigs,
   ragToolNames,
   ragToolLabels,
+  botEnabledTools,
+  builtInToolsLabels,
   rerankModelOptions,
 }: WorkersSectionProps) {
   const { data: workers, isLoading } = useWorkers(botId);
@@ -491,6 +582,8 @@ export function WorkersSection({
           botToolConfigs={botToolConfigs}
           ragToolNames={ragToolNames}
           ragToolLabels={ragToolLabels}
+          botEnabledTools={botEnabledTools}
+          builtInToolsLabels={builtInToolsLabels}
           rerankModelOptions={rerankModelOptions}
         />
       ))}

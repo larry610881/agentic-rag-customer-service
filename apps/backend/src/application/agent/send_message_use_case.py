@@ -508,6 +508,9 @@ class SendMessageUseCase:
         if matched.knowledge_base_ids:
             cfg["kb_ids"] = matched.knowledge_base_ids
             cfg["kb_id"] = matched.knowledge_base_ids[0]
+        # Enabled tools override（None = 繼承 Bot；list 即使為空也是顯式覆蓋）
+        if matched.enabled_tools is not None:
+            cfg["enabled_tools"] = list(matched.enabled_tools)
         # If empty list explicitly set → no RAG
         # (default from bot if not configured on worker)
 

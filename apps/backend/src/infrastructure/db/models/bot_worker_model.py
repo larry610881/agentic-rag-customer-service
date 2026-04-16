@@ -44,6 +44,10 @@ class BotWorkerModel(Base):
     knowledge_base_ids: Mapped[list] = mapped_column(
         JSON, nullable=False, default=list
     )
+    # Worker 層級啟用工具白名單；NULL = 繼承 Bot.enabled_tools
+    enabled_tools: Mapped[list | None] = mapped_column(
+        JSON, nullable=True, default=None
+    )
     # Per-tool RAG 參數覆蓋；None / missing 代表繼承 Bot per-tool 或 Bot 全域
     tool_configs: Mapped[dict] = mapped_column(
         JSON, nullable=False, default=dict, server_default="{}"

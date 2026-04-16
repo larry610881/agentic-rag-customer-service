@@ -23,6 +23,9 @@ class WorkerConfig:
     max_tool_calls: int = 5
     enabled_mcp_ids: list[str] = field(default_factory=list)
     knowledge_base_ids: list[str] = field(default_factory=list)  # 空 = 用 bot default KB
+    # Worker 層級啟用工具白名單；None = 繼承 Bot 的 enabled_tools；
+    # [] = 顯式不啟用任何 built-in tool；[...] = 只啟用這些
+    enabled_tools: list[str] | None = None
     # Per-tool RAG 參數覆蓋，None 值繼承 Bot 層級（per-tool 或全域）
     tool_configs: dict[str, ToolRagConfig] = field(default_factory=dict)
     sort_order: int = 0

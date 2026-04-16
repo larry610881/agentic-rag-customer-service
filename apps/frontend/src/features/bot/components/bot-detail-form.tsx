@@ -1058,6 +1058,14 @@ export function BotDetailForm({
                 acc[t.name] = t.label;
                 return acc;
               }, {})}
+            botEnabledTools={watch("enabled_tools") ?? []}
+            builtInToolsLabels={builtInTools.reduce<Record<string, string>>(
+              (acc, t) => {
+                acc[t.name] = t.label;
+                return acc;
+              },
+              {},
+            )}
             rerankModelOptions={RERANK_MODEL_OPTIONS}
           />
         </TabsContent>

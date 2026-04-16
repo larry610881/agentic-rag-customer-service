@@ -40,6 +40,8 @@ class CreateWorkerCommand:
     max_tool_calls: int = 5
     enabled_mcp_ids: list[str] = field(default_factory=list)
     knowledge_base_ids: list[str] = field(default_factory=list)
+    # None = 繼承 Bot.enabled_tools；list 為顯式覆蓋
+    enabled_tools: list[str] | None = None
     tool_configs: dict = field(default_factory=dict)
     sort_order: int = 0
 
@@ -57,6 +59,8 @@ class UpdateWorkerCommand:
     max_tool_calls: int | None = None
     enabled_mcp_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
+    # sentinel: ... = 不更新；None = 清空/繼承；list = 顯式設定
+    enabled_tools: Any = ...
     tool_configs: dict | None = None
     sort_order: int | None = None
 
@@ -88,6 +92,10 @@ class CreateWorkerUseCase:
             max_tool_calls=command.max_tool_calls,
             enabled_mcp_ids=list(command.enabled_mcp_ids),
             knowledge_base_ids=list(command.knowledge_base_ids),
+            enabled_tools=(
+                list(command.enabled_tools)
+                if command.enabled_tools is not None else None
+            ),
             tool_configs=_build_tool_configs(command.tool_configs),
             sort_order=command.sort_order,
         )
@@ -125,6 +133,11 @@ class UpdateWorkerUseCase:
             worker.enabled_mcp_ids = list(command.enabled_mcp_ids)
         if command.knowledge_base_ids is not None:
             worker.knowledge_base_ids = list(command.knowledge_base_ids)
+        if command.enabled_tools is not ...:
+            worker.enabled_tools = (
+                list(command.enabled_tools)
+                if command.enabled_tools is not None else None
+            )
         if command.tool_configs is not None:
             worker.tool_configs = _build_tool_configs(command.tool_configs)
         if command.sort_order is not None:

@@ -34,6 +34,9 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
             max_tool_calls=model.max_tool_calls,
             enabled_mcp_ids=list(model.enabled_mcp_ids or []),
             knowledge_base_ids=list(model.knowledge_base_ids or []),
+            enabled_tools=(
+                list(model.enabled_tools) if model.enabled_tools is not None else None
+            ),
             tool_configs=_dict_to_tool_configs(model.tool_configs),
             sort_order=model.sort_order,
             created_at=model.created_at,
@@ -58,6 +61,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
                 existing.max_tool_calls = worker.max_tool_calls
                 existing.enabled_mcp_ids = worker.enabled_mcp_ids
                 existing.knowledge_base_ids = worker.knowledge_base_ids
+                existing.enabled_tools = worker.enabled_tools
                 existing.tool_configs = _tool_configs_to_dict(worker.tool_configs)
                 existing.sort_order = worker.sort_order
                 existing.updated_at = now
@@ -75,6 +79,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
                     max_tool_calls=worker.max_tool_calls,
                     enabled_mcp_ids=worker.enabled_mcp_ids,
                     knowledge_base_ids=worker.knowledge_base_ids,
+                    enabled_tools=worker.enabled_tools,
                     tool_configs=_tool_configs_to_dict(worker.tool_configs),
                     sort_order=worker.sort_order,
                     created_at=worker.created_at,
