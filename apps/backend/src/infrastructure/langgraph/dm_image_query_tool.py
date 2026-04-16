@@ -5,7 +5,8 @@
 - 依 document_id 去重（同 doc 取最高 score）
 - batch 反查 documents 拿 storage_path
 - 並行對 storage_path 生 signed URL
-- image_url 放在 sources 欄位 (不在 context) → LLM 不會看到 URL，channel handler 從 sources 取
+- image_url 放在 sources 欄位（不在 context）
+- LLM 看不到 URL；channel handler (LINE / Web) 從 sources 取出渲染
 """
 
 import asyncio

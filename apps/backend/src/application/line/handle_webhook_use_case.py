@@ -25,6 +25,9 @@ from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.concurrency import ConversationLock
+from src.infrastructure.line.flex_image_carousel_builder import (
+    build_image_carousel,
+)
 from src.infrastructure.logging.setup import get_logger
 
 logger = get_logger(__name__)
@@ -410,10 +413,23 @@ class HandleWebhookUseCase:
 
         # Build Flex Message cards from MCP tool outputs
         flex_contents = self._extract_flex_from_tool_calls(result.tool_calls)
-        extra_messages = [
+        extra_messages: list[dict[str, Any]] = [
             {"type": "flex", "altText": alt_text, "contents": flex_json}
             for alt_text, flex_json in flex_contents
         ]
+
+        # Build DM image carousel from query_dm_with_image tool's sources
+        # (sources 是 list[dict]，每筆若有 image_url 即為 DM 子頁圖卡)
+        image_sources = [
+            s for s in (result.sources or [])
+            if isinstance(s, dict) and s.get("image_url")
+        ]
+        if image_sources:
+            extra_messages.append({
+                "type": "flex",
+                "altText": f"找到 {len(image_sources)} 頁 DM 相關內容",
+                "contents": build_image_carousel(image_sources),
+            })
 
         await line_service.reply_with_quick_reply(
             event.reply_token, reply_text, message_id,
