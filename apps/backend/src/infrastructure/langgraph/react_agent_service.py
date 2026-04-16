@@ -231,6 +231,8 @@ class ReActAgentService(AgentService):
             "temperature": temperature,
             "max_tokens": max_tokens,
             "request_timeout": settings.agent_llm_request_timeout,
+            # 對 LiteLLM connection / DNS flake 做重試，避免 webhook timeout
+            "max_retries": 3,
         }
 
         # Support custom base_url for OpenAI-compatible providers
