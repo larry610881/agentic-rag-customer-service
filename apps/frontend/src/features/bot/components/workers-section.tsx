@@ -345,42 +345,23 @@ function WorkerCard({
             </div>
           )}
 
-          {/* 啟用工具（三態：繼承 Bot / 自訂子集） */}
-          {botEnabledTools && botEnabledTools.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs">啟用的工具</Label>
-              <p className="text-[11px] text-muted-foreground">
-                未設定時繼承 Bot（共 {botEnabledTools.length} 個工具）。勾選「自訂」後可限制此 Sub-agent 僅使用部分工具。
-              </p>
-              <div className="flex items-center gap-4 text-xs">
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="radio"
-                    name={`worker-tools-mode-${worker.id}`}
-                    checked={!Array.isArray(worker.enabled_tools)}
-                    onChange={() => handleFieldUpdate("enabled_tools", null)}
-                  />
-                  <span>繼承 Bot 預設</span>
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="radio"
-                    name={`worker-tools-mode-${worker.id}`}
-                    checked={Array.isArray(worker.enabled_tools)}
-                    onChange={() =>
-                      handleFieldUpdate(
-                        "enabled_tools",
-                        [...botEnabledTools],
-                      )
-                    }
-                  />
-                  <span>自訂子集</span>
-                </label>
-              </div>
-              {Array.isArray(worker.enabled_tools) && (
+          {/* 啟用工具 — 每個 worker 必須明確勾選（預設全部） */}
+          {botEnabledTools && botEnabledTools.length > 0 && (() => {
+            // null / undefined 視為「全部啟用」的初始狀態（UI 上所有框 checked）
+            const selectedSet = new Set(
+              Array.isArray(worker.enabled_tools)
+                ? worker.enabled_tools
+                : botEnabledTools,
+            );
+            return (
+              <div className="flex flex-col gap-2">
+                <Label className="text-xs">啟用的工具</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  此 Sub-agent 可呼叫的 built-in tool 清單。只有勾選的工具才能被使用。
+                </p>
                 <div className="flex flex-col gap-1.5 rounded-md border bg-muted/20 px-3 py-2">
                   {botEnabledTools.map((toolName) => {
-                    const checked = worker.enabled_tools!.includes(toolName);
+                    const checked = selectedSet.has(toolName);
                     const label =
                       builtInToolsLabels?.[toolName] ?? toolName;
                     return (
@@ -392,9 +373,13 @@ function WorkerCard({
                           type="checkbox"
                           checked={checked}
                           onChange={(e) => {
-                            const current = worker.enabled_tools ?? [];
+                            const current = Array.isArray(
+                              worker.enabled_tools,
+                            )
+                              ? [...worker.enabled_tools]
+                              : [...botEnabledTools];
                             const next = e.target.checked
-                              ? [...current, toolName]
+                              ? Array.from(new Set([...current, toolName]))
                               : current.filter((t) => t !== toolName);
                             handleFieldUpdate("enabled_tools", next);
                           }}
@@ -407,15 +392,15 @@ function WorkerCard({
                       </label>
                     );
                   })}
-                  {worker.enabled_tools.length === 0 && (
+                  {selectedSet.size === 0 && (
                     <p className="text-[11px] text-amber-600 dark:text-amber-400">
                       未勾選任何工具 — 此 Sub-agent 將無法呼叫任何 built-in tool
                     </p>
                   )}
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            );
+          })()}
 
           {/* Per-tool RAG 覆蓋（只對 effective enabled 的 RAG tool 顯示） */}
           {botDefaults && ragToolNames && ragToolNames.length > 0 && (() => {
