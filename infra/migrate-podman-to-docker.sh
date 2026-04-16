@@ -23,7 +23,11 @@ set -euo pipefail
 DRY_RUN="${DRY_RUN:-0}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/migrate-backup-$(date +%Y%m%d-%H%M%S)}"
 COMPOSE_FILE="${COMPOSE_FILE:-$HOME/docker-compose.yml}"
-VOLUMES=(pgdata redis_data etcd_data minio_data milvus_data)
+
+# PostgreSQL 不走 tar（podman rootless uid=999 → host 166535 vs docker 內 uid=999 對不上）
+# 改用 pg_dumpall → docker postgres 起空 DB 後還原
+# 其他服務 container 內是 root（Milvus/MinIO/etcd）或有 entrypoint chown（Redis）→ tar 搬即可
+VOLUMES=(redis_data etcd_data minio_data milvus_data)
 
 run() {
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -82,12 +86,12 @@ run "podman stop qdrant milvus etcd minio redis postgres 2>/dev/null || true"
 # 3. 打包 podman volumes 為 tar
 # -------------------------------------------------------------
 echo ""
-echo "=== 3. 打包 podman volumes ==="
+echo "=== 3. 打包 podman volumes（pgdata 除外）==="
 for vol in "${VOLUMES[@]}"; do
   if podman volume exists "$vol" 2>/dev/null; then
     MOUNT=$(podman volume inspect "$vol" --format '{{.Mountpoint}}')
     echo "  $vol → $BACKUP_DIR/${vol}.tar.gz (from $MOUNT)"
-    run "sudo tar -czf '$BACKUP_DIR/${vol}.tar.gz' -C '$MOUNT' ."
+    run "sudo tar --numeric-owner -czf '$BACKUP_DIR/${vol}.tar.gz' -C '$MOUNT' ."
   else
     echo "  ⚠ volume '$vol' 不存在，略過"
   fi
@@ -115,10 +119,11 @@ fi
 DOCKER="${DOCKER:-docker}"
 
 # -------------------------------------------------------------
-# 5. 建 docker volumes + 還原 tar 內容
+# 5. 建 docker volumes + 還原 tar 內容（pgdata 空，等 6b 用 pg_dump 還原）
 # -------------------------------------------------------------
 echo ""
 echo "=== 5. 建 docker volumes 並還原資料 ==="
+run "$DOCKER volume create pgdata >/dev/null"  # 空，等 postgres 首次 initdb
 for vol in "${VOLUMES[@]}"; do
   TAR="$BACKUP_DIR/${vol}.tar.gz"
   if [[ ! -f "$TAR" ]]; then
@@ -126,17 +131,17 @@ for vol in "${VOLUMES[@]}"; do
     continue
   fi
   run "$DOCKER volume create '$vol' >/dev/null"
-  # 用臨時 container 把 tar 解壓進去（避免 host 端需要 root 對應 uid）
+  # 用臨時 container 把 tar 解壓進去（--numeric-owner 保留原 uid；容器 root 讀任意 uid 檔案）
   run "$DOCKER run --rm -v '${vol}':/restore -v '$BACKUP_DIR':/backup:ro alpine \
-    sh -c 'cd /restore && tar -xzf /backup/${vol}.tar.gz'"
+    sh -c 'cd /restore && tar --numeric-owner -xzf /backup/${vol}.tar.gz'"
   echo "  ✓ $vol 還原完成"
 done
 
 # -------------------------------------------------------------
-# 6. 啟動 docker compose
+# 6a. 啟動 docker compose
 # -------------------------------------------------------------
 echo ""
-echo "=== 6. 啟動 docker compose ==="
+echo "=== 6a. 啟動 docker compose ==="
 if [[ ! -f "$COMPOSE_FILE" ]]; then
   echo "✗ 找不到 $COMPOSE_FILE"
   echo "  請將 infra/docker-compose.yml 上傳到 VM 後重跑，或設 COMPOSE_FILE 環境變數"
@@ -147,6 +152,26 @@ run "cd \"\$(dirname '$COMPOSE_FILE')\" && $DOCKER compose -f '$COMPOSE_FILE' up
 echo ""
 echo "等待服務就緒（60s）..."
 run "sleep 60"
+
+# -------------------------------------------------------------
+# 6b. PostgreSQL 從 pg_dumpall 還原
+# -------------------------------------------------------------
+echo ""
+echo "=== 6b. 還原 PostgreSQL（從 pg_dumpall）==="
+# 等待 postgres ready
+for i in $(seq 1 30); do
+  if [[ "$DRY_RUN" == "1" ]] || $DOCKER exec agentic-rag-db pg_isready -U postgres &>/dev/null; then
+    break
+  fi
+  echo "  等待 postgres 就緒...($i/30)"
+  sleep 2
+done
+
+# 灌 dump（pg_dumpall 含 CREATE ROLE + CREATE DATABASE + 資料）
+# 刪除預設建的 agentic_rag（空），讓 dump 重建為含資料的版本
+run "$DOCKER exec agentic-rag-db psql -U postgres -c 'DROP DATABASE IF EXISTS agentic_rag;'"
+run "gunzip -c '$BACKUP_DIR/pg_dumpall.sql.gz' | $DOCKER exec -i agentic-rag-db psql -U postgres"
+echo "  ✓ PostgreSQL 資料還原完成"
 
 # -------------------------------------------------------------
 # 7. 驗證
