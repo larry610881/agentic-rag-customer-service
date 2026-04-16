@@ -3,6 +3,7 @@ export type ExecutionNodeType =
   | "router"
   | "meta_router"
   | "supervisor_dispatch"
+  | "worker_routing"
   | "agent_llm"
   | "tool_call"
   | "tool_result"

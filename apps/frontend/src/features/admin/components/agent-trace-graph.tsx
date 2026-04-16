@@ -30,6 +30,7 @@ const NODE_ICONS: Record<ExecutionNodeType, React.ElementType> = {
   router: Router,
   meta_router: Router,
   supervisor_dispatch: Users,
+  worker_routing: Router,
   agent_llm: Brain,
   tool_call: Wrench,
   tool_result: Wrench,
@@ -42,6 +43,7 @@ const NODE_COLORS: Record<ExecutionNodeType, string> = {
   router: "border-amber-400 bg-amber-50 dark:bg-amber-950",
   meta_router: "border-amber-400 bg-amber-50 dark:bg-amber-950",
   supervisor_dispatch: "border-purple-400 bg-purple-50 dark:bg-purple-950",
+  worker_routing: "border-purple-400 bg-purple-50 dark:bg-purple-950",
   agent_llm: "border-blue-400 bg-blue-50 dark:bg-blue-950",
   tool_call: "border-emerald-400 bg-emerald-50 dark:bg-emerald-950",
   tool_result: "border-emerald-400 bg-emerald-50 dark:bg-emerald-950",
@@ -127,6 +129,10 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
     { key: "decision", label: "決策" },
     { key: "tool_name", label: "工具" },
     { key: "selected_worker", label: "Worker" },
+    { key: "worker_name", label: "Sub-agent" },
+    { key: "worker_llm", label: "Sub-agent LLM" },
+    { key: "worker_llm_provider", label: "Sub-agent Provider" },
+    { key: "worker_kb_count", label: "Sub-agent KB 數" },
     { key: "selected_team", label: "Team" },
     { key: "user_role", label: "角色" },
     { key: "history_turns", label: "歷史輪數" },
@@ -228,7 +234,9 @@ function TraceNode({ data }: { data: CustomNodeData }) {
   const [showRaw, setShowRaw] = useState(false);
   const n = data.execNode;
   const Icon = NODE_ICONS[n.node_type] ?? Brain;
-  const colorClass = NODE_COLORS[n.node_type] ?? "border-gray-400 bg-gray-50";
+  const colorClass =
+    NODE_COLORS[n.node_type] ??
+    "border-gray-400 bg-gray-50 dark:bg-gray-900";
   const meta = n.metadata;
   const hasDetail =
     !!meta.answer_preview ||
