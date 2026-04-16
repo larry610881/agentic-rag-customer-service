@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatDate } from "@/lib/format-date";
 import { apiFetch } from "@/lib/api-client";
@@ -141,6 +141,8 @@ interface DocumentListProps {
   isDeleting?: boolean;
   isBatchDeleting?: boolean;
   isBatchReprocessing?: boolean;
+  /** 當恰好單一父文件展開時觸發（傳入文件），多個或零個展開時傳入 null */
+  onSingleExpandedChange?: (doc: DocumentResponse | null) => void;
 }
 
 function StatusCell({ status, taskProgress }: { status: DocumentResponse["status"]; taskProgress?: number | null }) {
@@ -340,6 +342,7 @@ export function DocumentList({
   isDeleting,
   isBatchDeleting,
   isBatchReprocessing,
+  onSingleExpandedChange,
 }: DocumentListProps) {
   const [deleteTarget, setDeleteTarget] = useState<DocumentResponse | null>(null);
   const [chunkDoc, setChunkDoc] = useState<DocumentResponse | null>(null);
@@ -360,6 +363,18 @@ export function DocumentList({
       return next;
     });
   }, []);
+
+  // 單一父文件展開時通知父層（供麵包屑使用），多個或零個時傳 null
+  useEffect(() => {
+    if (!onSingleExpandedChange) return;
+    if (expandedParents.size !== 1) {
+      onSingleExpandedChange(null);
+      return;
+    }
+    const [onlyId] = [...expandedParents];
+    const doc = documents.find((d) => d.id === onlyId) ?? null;
+    onSingleExpandedChange(doc);
+  }, [expandedParents, documents, onSingleExpandedChange]);
 
   const statsMap = new Map(
     (qualityStats ?? []).map((s) => [s.document_id, s])

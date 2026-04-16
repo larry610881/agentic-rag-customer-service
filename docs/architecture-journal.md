@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [統一麵包屑導覽系統 — Discriminated Union + State-driven 頁內展開](#統一麵包屑導覽系統--discriminated-union--state-driven-頁內展開)
 - [Sub-agent Worker 架構升級 — IntentRoute → WorkerConfig + LLM Router + Per-Worker ReAct](#sub-agent-worker-架構升級--intentroute--workerconfig--llm-router--per-worker-react)
 - [Agent 執行追蹤視覺化 — ContextVar Collector + React Flow DAG + 瀑布時間軸](#agent-執行追蹤視覺化--contextvar-collector--react-flow-dag--瀑布時間軸)
 - [Sprint W.4 — Wiki 前端 UI + Stale Detection（條件渲染 + Query-time 降級）](#sprint-w4--wiki-前端-ui--stale-detectio條件渲染--query-time-降級)
@@ -76,6 +77,35 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## 統一麵包屑導覽系統 — Discriminated Union + State-driven 頁內展開
+
+**日期**：2026-04-16
+**涉及層級**：前端共用元件 + 5 個頁面 + 1 個 feature 元件（document-list 狀態提升）
+
+### 本次相關主題
+
+Composition over Configuration、Discriminated Union Types、State Lifting、shadcn 官方元件 + 薄包裝 pattern、a11y（`aria-current`）
+
+### 做得好的地方
+
+- **Discriminated Union 型別 `BreadcrumbEntry`**：用三種互斥型別（`{to}` / `{onClick}` / 什麼都沒有）表達 item 的行為，而不是單一型別 + 多個 optional flag。TypeScript 可在使用端就禁止錯誤組合（同時傳 `to` 和 `onClick`），比 runtime 檢查安全
+- **shadcn 官方元件不動 + 薄包裝 `PageBreadcrumb` 放 `components/shared/`**：遵循專案既有慣例（`components/ui/` 是 shadcn 保留區，不可修改；自訂共用元件放 `shared/`）。未來 shadcn upgrade 不會衝突
+- **頁內展開狀態提升而非全域 store**：Prompt Optimizer 的 `expandedIter` 本來就在 run-detail 頁，直接組 breadcrumb items；knowledge-detail 則把 DocumentList 的「單選展開」透過 `onSingleExpandedChange` callback 提升到父頁。避免引入 Zustand store 造成過度設計
+- **漸進整合 DocumentList**：只加一個 optional prop，既有呼叫者（測試、其他地方）零影響。useEffect 在 prop 未傳時早返回，避免無謂運算
+
+### 潛在隱憂
+
+- **「單選展開」限制**：knowledge-detail 的父文件 breadcrumb 只在「恰好一個父文件展開」時顯示第三層。若使用者同時展開多個父文件（DocumentList 的 `expandedParents: Set` 支援），breadcrumb 只會退化為兩層。UX 上可接受，但不符合「所有展開狀態皆可反映在 breadcrumb」的初衷 → 建議：未來若需求變成「多選也要顯示」，改為 breadcrumb 最後一層用「2 個文件展開中」匯總 → 優先級：低
+- **長名稱截斷用字元數而非實際渲染寬度**：`maxLabelLength: 24` 以 JS `.length` 截斷，對中英文混合字串可能截得太早或太晚（CJK 字元寬度 ≈ 2 英文字元）。實際渲染寬度應該用 CSS `max-width` + `text-overflow: ellipsis` → 建議：下次優化改為 CSS truncate，保留 `title` 顯示全名 → 優先級：低
+- **Mobile 折疊硬編碼「層級 > 3」**：目前若層級剛好 3 層不折疊，4+ 才折疊。但實際上在小螢幕下 3 層也可能擠。應改為 container-query 或 `useMediaQuery` 動態判斷 → 優先級：低
+
+### 延伸學習
+
+- **Discriminated Union vs Optional Flags**：本次用 `{to} | {onClick} | {}` 三種型別表達 item 行為，而非 `{to?, onClick?}` 單一型別。前者讓 TypeScript 在編譯期就能拒絕 `{to: "/", onClick: ...}` 的無效組合，也讓 `renderSegment` 可以用 narrowing 自動推導該用 `<a>` 還是 `<button>`。延伸：TypeScript 的 discriminated union 可搭配 `switch(kind)` pattern 做更複雜的狀態建模（例如 API response 的 loading/success/error 三態）。搜尋：_TypeScript discriminated unions_ / _algebraic data types React props_
+- **State Lifting vs Global Store**：Knowledge-detail 的「單選展開」資訊要跨元件共用（DocumentList 產生、breadcrumb 消費），兩個選擇：(1) State lifting — DocumentList 把 state 透過 callback 拋給父層，父層控制 breadcrumb；(2) Zustand store — 單獨 store 讓兩個元件都訂閱。本次選 (1) 因為狀態的生命週期和 KnowledgeDetail 頁面一致（離頁就消失），沒有跨頁持久化需求。Zustand 適合跨頁或深層 prop drilling 的場景。搜尋：_React state colocation_ / _when to reach for global state_
 
 ---
 

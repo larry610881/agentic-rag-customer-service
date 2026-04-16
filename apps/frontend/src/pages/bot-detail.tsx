@@ -1,6 +1,7 @@
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { BotDetailForm } from "@/features/bot/components/bot-detail-form";
 import { useBot, useUpdateBot, useDeleteBot } from "@/hooks/queries/use-bots";
+import { PageBreadcrumb } from "@/components/shared/page-breadcrumb";
 import { ROUTES } from "@/routes/paths";
 import type { UpdateBotRequest } from "@/types/bot";
 
@@ -42,13 +43,12 @@ export default function BotDetailPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center gap-2">
-        <Link to="/bots" className="text-sm text-muted-foreground hover:underline">
-          機器人
-        </Link>
-        <span className="text-sm text-muted-foreground">/</span>
-        <span className="text-sm">{bot.name}</span>
-      </div>
+      <PageBreadcrumb
+        items={[
+          { label: "機器人", to: ROUTES.BOTS },
+          { label: bot.name },
+        ]}
+      />
       <h2 className="text-2xl font-semibold">{bot.name}</h2>
       <BotDetailForm
         bot={bot}

@@ -1,9 +1,10 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { formatDate } from "@/lib/format-date";
 import { useAdminKnowledgeBases } from "@/hooks/queries/use-admin";
 import { useDocuments } from "@/hooks/queries/use-documents";
 import { useTenantNameMap } from "@/hooks/use-tenant-name-map";
 import { ROUTES } from "@/routes/paths";
+import { PageBreadcrumb } from "@/components/shared/page-breadcrumb";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -51,16 +52,12 @@ export default function AdminKbDetailPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center gap-2">
-        <Link
-          to={ROUTES.ADMIN_KNOWLEDGE_BASES}
-          className="text-sm text-muted-foreground hover:underline"
-        >
-          所有知識庫
-        </Link>
-        <span className="text-sm text-muted-foreground">/</span>
-        <span className="text-sm">{kb.name}</span>
-      </div>
+      <PageBreadcrumb
+        items={[
+          { label: "所有知識庫", to: ROUTES.ADMIN_KNOWLEDGE_BASES },
+          { label: kb.name },
+        ]}
+      />
 
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">{kb.name}</h2>

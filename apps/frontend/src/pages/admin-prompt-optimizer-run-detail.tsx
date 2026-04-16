@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Activity,
-  ArrowLeft,
   ChevronDown,
   ChevronRight,
   CheckCircle2,
@@ -31,6 +30,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { ROUTES } from "@/routes/paths";
+import {
+  PageBreadcrumb,
+  type BreadcrumbEntry,
+} from "@/components/shared/page-breadcrumb";
 import {
   useOptimizationRunPolling,
   useRollbackRun,
@@ -177,20 +180,25 @@ export default function AdminPromptOptimizerRunDetailPage() {
     return iterations[0] ?? null;
   };
 
+  const runLabel = runId ? `Run ${runId.slice(0, 8)}` : "執行詳情";
+  const breadcrumbItems: BreadcrumbEntry[] = [
+    { label: "提示詞優化器", to: ROUTES.ADMIN_PROMPT_OPTIMIZER },
+    { label: "運行列表", to: ROUTES.ADMIN_PROMPT_OPTIMIZER_RUNS },
+    expandedIter !== null
+      ? { label: runLabel, onClick: () => setExpandedIter(null) }
+      : { label: runLabel },
+    ...(expandedIter !== null
+      ? [{ label: `第 ${expandedIter} 輪迭代` }]
+      : []),
+  ];
+
   return (
     <div className="space-y-6 p-6">
+      <PageBreadcrumb items={breadcrumbItems} />
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mb-2"
-            onClick={() => navigate(ROUTES.ADMIN_PROMPT_OPTIMIZER_RUNS)}
-          >
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            返回歷史紀錄
-          </Button>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
             <Activity className="h-6 w-6" />
             執行詳情

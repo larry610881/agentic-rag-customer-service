@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -12,8 +12,12 @@ import {
   useBatchReprocessDocuments,
 } from "@/hooks/queries/use-documents";
 import { useDocumentQualityStats } from "@/hooks/queries/use-document-quality-stats";
+import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
 import { PaginationControls } from "@/components/shared/pagination-controls";
+import { PageBreadcrumb } from "@/components/shared/page-breadcrumb";
+import { ROUTES } from "@/routes/paths";
 import { usePagination } from "@/hooks/use-pagination";
+import type { DocumentResponse } from "@/types/knowledge";
 
 const tabs = [
   { value: "documents", label: "文件管理" },
@@ -24,12 +28,20 @@ export default function KnowledgeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { page, setPage } = usePagination();
   const [activeTab, setActiveTab] = useState<string>("documents");
+  const [expandedDoc, setExpandedDoc] = useState<DocumentResponse | null>(null);
 
   const { data, isLoading, error } = useDocuments(id!, page);
   const { data: qualityStats } = useDocumentQualityStats(id!);
+  const { data: kbData } = useKnowledgeBases();
   const deleteDocument = useDeleteDocument();
   const batchDelete = useBatchDeleteDocuments();
   const batchReprocess = useBatchReprocessDocuments();
+
+  const kb = kbData?.items?.find((k) => k.id === id);
+  const handleSingleExpanded = useCallback(
+    (doc: DocumentResponse | null) => setExpandedDoc(doc),
+    [],
+  );
 
   const handleDelete = (docId: string) => {
     deleteDocument.mutate({ knowledgeBaseId: id!, docId });
@@ -43,8 +55,21 @@ export default function KnowledgeDetailPage() {
     batchReprocess.mutate({ knowledgeBaseId: id!, docIds });
   };
 
+  const breadcrumbItems = [
+    { label: "知識庫", to: ROUTES.KNOWLEDGE },
+    ...(kb
+      ? expandedDoc
+        ? [
+            { label: kb.name, to: `/knowledge/${id}` },
+            { label: expandedDoc.filename },
+          ]
+        : [{ label: kb.name }]
+      : [{ label: id ?? "" }]),
+  ];
+
   return (
     <div className="flex flex-col gap-6 p-6">
+      <PageBreadcrumb items={breadcrumbItems} />
       <h2 className="text-2xl font-semibold">知識庫管理</h2>
 
       <div className="flex gap-2 border-b pb-2">
@@ -82,6 +107,7 @@ export default function KnowledgeDetailPage() {
                 isDeleting={deleteDocument.isPending}
                 isBatchDeleting={batchDelete.isPending}
                 isBatchReprocessing={batchReprocess.isPending}
+                onSingleExpandedChange={handleSingleExpanded}
               />
               <PaginationControls
                 page={page}
