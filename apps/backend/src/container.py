@@ -439,6 +439,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.error_event_router",
             "src.interfaces.api.notification_router",
             "src.interfaces.api.system_prompt_router",
+            "src.interfaces.api.security_router",
             "src.interfaces.api.widget_router",
             "src.interfaces.api.eval_dataset_router",
             "src.interfaces.api.prompt_optimizer_run_router",
