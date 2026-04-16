@@ -229,5 +229,9 @@ class UpdateBotUseCase:
 
         await self._bot_repo.save(bot)
         if self._cache_service is not None:
+            # Invalidate both LINE handler cache keys so UI changes reflect immediately.
             await self._cache_service.delete(f"bot:{command.bot_id}")
+            await self._cache_service.delete(
+                f"bot:sc:{bot.short_code.value}"
+            )
         return bot

@@ -20,4 +20,8 @@ class DeleteBotUseCase:
             raise EntityNotFoundError("Bot", bot_id)
         await self._bot_repo.delete(bot_id)
         if self._cache_service is not None:
+            # Invalidate both LINE handler cache keys.
             await self._cache_service.delete(f"bot:{bot_id}")
+            await self._cache_service.delete(
+                f"bot:sc:{bot.short_code.value}"
+            )
