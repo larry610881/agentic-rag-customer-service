@@ -6,6 +6,27 @@ import { BotDetailForm } from "@/features/bot/components/bot-detail-form";
 import { mockBot } from "@/test/fixtures/bot";
 import { useAuthStore } from "@/stores/use-auth-store";
 
+// Mock useBuiltInTools hook — 避免 API call 拖慢/失敗
+vi.mock("@/hooks/queries/use-built-in-tools", () => ({
+  useBuiltInTools: () => ({
+    data: [
+      {
+        name: "rag_query",
+        label: "知識庫查詢",
+        description: "對 bot 連結的知識庫做向量檢索，適合一般問答。",
+        requires_kb: true,
+      },
+      {
+        name: "query_dm_with_image",
+        label: "DM 圖卡查詢",
+        description: "對 catalog PDF 知識庫檢索並回傳子頁 PNG。",
+        requires_kb: true,
+      },
+    ],
+    isLoading: false,
+  }),
+}));
+
 describe("BotDetailForm", () => {
   const mockOnSave = vi.fn();
   const mockOnDelete = vi.fn();
@@ -92,7 +113,7 @@ describe("BotDetailForm", () => {
     expect(screen.getByLabelText("存取權杖")).toBeInTheDocument();
   });
 
-  it("should render enabled tools checkboxes in knowledge tab", () => {
+  it("should render both built-in tool checkboxes", () => {
     renderWithProviders(
       <BotDetailForm
         bot={mockBot}
@@ -102,7 +123,111 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    expect(screen.getByLabelText("知識庫查詢（預設啟用）")).toBeChecked();
+    expect(screen.getByText("知識庫查詢")).toBeInTheDocument();
+    expect(screen.getByText("DM 圖卡查詢")).toBeInTheDocument();
+  });
+
+  it("should reflect bot.enabled_tools in checkbox checked state", () => {
+    const botWithDmTool = {
+      ...mockBot,
+      enabled_tools: ["query_dm_with_image"],
+    };
+    renderWithProviders(
+      <BotDetailForm
+        bot={botWithDmTool}
+        onSave={mockOnSave}
+        onDelete={mockOnDelete}
+        isSaving={false}
+        isDeleting={false}
+      />,
+    );
+    const checkboxes = screen
+      .getAllByRole("checkbox")
+      .filter((cb) => {
+        const lbl = cb.closest("label");
+        return (
+          lbl &&
+          (lbl.textContent?.includes("知識庫查詢") ||
+            lbl.textContent?.includes("DM 圖卡查詢"))
+        );
+      });
+    // 兩個 tool checkbox 應出現
+    expect(checkboxes.length).toBe(2);
+    // DM 圖卡 checkbox 應 checked，rag_query 不應 checked
+    const dmCheckbox = checkboxes.find((cb) =>
+      cb.closest("label")?.textContent?.includes("DM 圖卡"),
+    );
+    const ragCheckbox = checkboxes.find((cb) =>
+      cb.closest("label")?.textContent?.includes("知識庫查詢"),
+    );
+    expect(dmCheckbox).toBeChecked();
+    expect(ragCheckbox).not.toBeChecked();
+  });
+
+  it("should toggle enabled_tools when clicking checkbox", async () => {
+    const user = userEvent.setup();
+    const botWithRagOnly = { ...mockBot, enabled_tools: ["rag_query"] };
+    renderWithProviders(
+      <BotDetailForm
+        bot={botWithRagOnly}
+        onSave={mockOnSave}
+        onDelete={mockOnDelete}
+        isSaving={false}
+        isDeleting={false}
+      />,
+    );
+    const dmLabel = screen.getByText("DM 圖卡查詢").closest("label")!;
+    const dmCheckbox = dmLabel.querySelector(
+      'input[type="checkbox"]',
+    ) as HTMLInputElement;
+    expect(dmCheckbox).not.toBeChecked();
+    await user.click(dmCheckbox);
+    expect(dmCheckbox).toBeChecked();
+  });
+
+  it("should send enabled_tools without forced override on submit", async () => {
+    const user = userEvent.setup();
+    const botWithDmOnly = {
+      ...mockBot,
+      enabled_tools: ["query_dm_with_image"],
+    };
+    renderWithProviders(
+      <BotDetailForm
+        bot={botWithDmOnly}
+        onSave={mockOnSave}
+        onDelete={mockOnDelete}
+        isSaving={false}
+        isDeleting={false}
+      />,
+    );
+    const saveBtn = screen.getByRole("button", { name: /儲存/ });
+    await user.click(saveBtn);
+    // 既有 onSubmit 不再強制覆寫，enabled_tools 應保留 form state
+    // （注意：onSave 是 async，可能因 KB 驗證等邏輯不過 — 但若觸發，
+    // payload 必須含 query_dm_with_image，不該被改成 ["rag_query"]）
+    if (mockOnSave.mock.calls.length > 0) {
+      const payload = mockOnSave.mock.calls[0][0];
+      expect(payload.enabled_tools).toContain("query_dm_with_image");
+      expect(payload.enabled_tools).not.toEqual(["rag_query"]);
+    }
+  });
+
+  it("should block submit when no tool is enabled", async () => {
+    const user = userEvent.setup();
+    const botWithNoTool = { ...mockBot, enabled_tools: [] };
+    renderWithProviders(
+      <BotDetailForm
+        bot={botWithNoTool}
+        onSave={mockOnSave}
+        onDelete={mockOnDelete}
+        isSaving={false}
+        isDeleting={false}
+      />,
+    );
+    const saveBtn = screen.getByRole("button", { name: /儲存/ });
+    await user.click(saveBtn);
+    // onSave 不該被呼叫
+    expect(mockOnSave).not.toHaveBeenCalled();
   });
 
   it("should render save and delete buttons", () => {

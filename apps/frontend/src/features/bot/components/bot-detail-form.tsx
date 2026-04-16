@@ -30,6 +30,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
+import { useBuiltInTools } from "@/hooks/queries/use-built-in-tools";
 import { ModelSelect } from "@/components/shared/model-select";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import type { Bot, UpdateBotRequest } from "@/types/bot";
@@ -37,10 +38,6 @@ import type { McpToolInfo } from "@/types/mcp";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { McpBindingsSection } from "./mcp-bindings-section";
 import { WorkersSection } from "./workers-section";
-
-const AVAILABLE_TOOLS = [
-  { value: "rag_query", label: "知識庫查詢" },
-] as const;
 
 const botFormSchema = z.object({
   name: z.string().min(1, "請輸入名稱"),
@@ -144,6 +141,7 @@ export function BotDetailForm({
 }: BotDetailFormProps) {
   const { data: kbData } = useKnowledgeBases();
   const { data: enabledModels } = useEnabledModels();
+  const { data: builtInTools = [] } = useBuiltInTools();
   const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.KNOWLEDGE);
 
   const {
@@ -274,9 +272,12 @@ export function BotDetailForm({
   }, [bot, reset]);
 
   const onSubmit = async (data: BotFormValues) => {
-    // rag_query is always enabled
-    data.enabled_tools = ["rag_query"];
-    // Validation: rag_query requires at least one knowledge base
+    // Validation: 啟用內建 tool 時需綁知識庫
+    if (data.enabled_tools.length === 0) {
+      toast.error("請至少啟用一個工具");
+      setActiveTab(TAB_KEYS.KNOWLEDGE);
+      return;
+    }
     if (data.knowledge_base_ids.length === 0) {
       toast.error("請至少綁定一個知識庫");
       setActiveTab(TAB_KEYS.KNOWLEDGE);
@@ -455,22 +456,54 @@ export function BotDetailForm({
           {/* 啟用工具 */}
           <section className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold">啟用工具</h3>
-            <div className="flex flex-col gap-2">
-              {AVAILABLE_TOOLS.map((tool) => (
-                <label
-                  key={tool.value}
-                  className="flex items-center gap-2 text-sm text-muted-foreground"
-                >
-                  <input
-                    type="checkbox"
-                    checked
-                    disabled
-                    className="rounded border-input"
-                  />
-                  {tool.label}（預設啟用）
-                </label>
-              ))}
-            </div>
+            <p className="text-xs text-muted-foreground">
+              至少勾選 1 個。rag_query 與 query_dm_with_image 通常擇一啟用
+              — 兩者都會打知識庫，後者額外推送 LINE Flex 圖卡。
+            </p>
+            <Controller
+              name="enabled_tools"
+              control={control}
+              render={({ field }) => (
+                <div className="flex flex-col gap-3">
+                  {builtInTools.map((tool) => {
+                    const checked = field.value?.includes(tool.name) ?? false;
+                    return (
+                      <label
+                        key={tool.name}
+                        className="flex items-start gap-2 text-sm cursor-pointer rounded-md border px-3 py-2 hover:bg-muted/50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const current = field.value ?? [];
+                            if (e.target.checked) {
+                              field.onChange([...current, tool.name]);
+                            } else {
+                              field.onChange(
+                                current.filter((t) => t !== tool.name),
+                              );
+                            }
+                          }}
+                          className="mt-0.5 rounded border-input"
+                        />
+                        <span className="flex flex-col gap-0.5">
+                          <span className="font-medium">{tool.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {tool.description}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {builtInTools.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      載入工具清單中...
+                    </p>
+                  )}
+                </div>
+              )}
+            />
           </section>
 
           {/* 知識庫綁定 */}
