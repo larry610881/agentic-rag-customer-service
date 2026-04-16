@@ -74,7 +74,23 @@ class DocumentRepository(ABC):
     ) -> list[Document]: ...
 
     @abstractmethod
+    async def find_top_level_by_kb(
+        self,
+        kb_id: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Document]:
+        """只回傳 top-level documents (parent_id IS NULL)，用於 UI 列表分頁。"""
+        ...
+
+    @abstractmethod
     async def count_by_kb(self, kb_id: str) -> int: ...
+
+    @abstractmethod
+    async def count_top_level_by_kb(self, kb_id: str) -> int:
+        """只算 top-level documents (parent_id IS NULL)，用於 UI 分頁總數。"""
+        ...
 
     @abstractmethod
     async def count_by_kb_status(

@@ -10,3 +10,9 @@ Feature: 知識庫文件列表
   Scenario: 空知識庫回傳空列表
     When 查詢知識庫 "kb-001" 的文件列表
     Then 應回傳 0 份文件
+
+  Scenario: PDF 父子結構時只回傳父文件（Regression）
+    Given 知識庫 "kb-001" 有 1 份父文件與 50 份子頁
+    When 查詢知識庫 "kb-001" 的文件列表
+    Then 應回傳 1 份文件
+    And 文件總數應為 1

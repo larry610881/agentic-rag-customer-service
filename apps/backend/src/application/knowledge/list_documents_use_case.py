@@ -12,9 +12,12 @@ class ListDocumentsUseCase:
         limit: int | None = None,
         offset: int | None = None,
     ) -> list[Document]:
-        return await self._doc_repo.find_all_by_kb(
+        # UI 列表只顯示 top-level documents（parent_id IS NULL），
+        # 子頁靠 children_count + 展開查看，不佔分頁。
+        return await self._doc_repo.find_top_level_by_kb(
             kb_id, limit=limit, offset=offset,
         )
 
     async def count(self, kb_id: str) -> int:
-        return await self._doc_repo.count_by_kb(kb_id)
+        # 與 execute() 一致，只算 top-level，確保 total_pages 正確。
+        return await self._doc_repo.count_top_level_by_kb(kb_id)

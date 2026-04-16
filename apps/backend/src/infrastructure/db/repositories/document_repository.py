@@ -184,6 +184,29 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
 
+    async def find_top_level_by_kb(
+        self,
+        kb_id: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[Document]:
+        stmt = (
+            select(DocumentModel)
+            .options(defer(DocumentModel.raw_content))
+            .where(
+                DocumentModel.kb_id == kb_id,
+                DocumentModel.parent_id.is_(None),
+            )
+            .order_by(DocumentModel.created_at)
+        )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset is not None:
+            stmt = stmt.offset(offset)
+        result = await self._session.execute(stmt)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
     async def find_children(self, parent_id: str) -> list[Document]:
         stmt = (
             select(DocumentModel)
@@ -208,6 +231,18 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             select(func.count())
             .select_from(DocumentModel)
             .where(DocumentModel.kb_id == kb_id)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
+
+    async def count_top_level_by_kb(self, kb_id: str) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(DocumentModel)
+            .where(
+                DocumentModel.kb_id == kb_id,
+                DocumentModel.parent_id.is_(None),
+            )
         )
         result = await self._session.execute(stmt)
         return result.scalar_one()
