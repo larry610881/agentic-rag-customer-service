@@ -1328,12 +1328,12 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 ## 未來 Sprint — 平台治理與計費（2026-04-16 記錄）
 
 ### S-Gov.1 Sub-agent 驗證與追蹤穩定化
-| 項目 | 說明 |
-|------|------|
-| Web/LINE 雙通路 subagent 端到端測試 | 建 30 題分類 rubric（閒聊 10 / 商品 10 / 高階 10）量化 classifier 準確率 |
-| Agent 執行追蹤 UI 確認 | 系統管理 > Agent 執行追蹤能看到 `worker_routing` 節點 + worker_name / worker_llm |
-| LINE 通路 subagent 支援 | 目前 LINE handler 繞過 send_message_use_case → worker routing 失效。把 worker routing 抽共用 helper 接入 LINE path |
-| Worker 層級 `enabled_tools` 覆蓋驗證 | 實測 worker checkbox 限制生效（Haiku 閒聊不會誤呼叫 DM 圖卡 tool）|
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Web/LINE 雙通路 subagent 端到端測試 | ⏳ | 建 30 題分類 rubric（閒聊 10 / 商品 10 / 高階 10）量化 classifier 準確率 |
+| Agent 執行追蹤 UI 顯示 `worker_routing` 節點 | ✅ | Commit [de71c50](https://github.com/larry610881/agentic-rag-customer-service/commit/de71c50) 補上 NODE_COLORS 紫色節點 + metadata 欄位表 worker_name/llm/provider/kb_count |
+| LINE 通路 subagent 支援 | ✅ | Commit [e6e0ef4](https://github.com/larry610881/agentic-rag-customer-service/commit/e6e0ef4) LINE handler 接入 worker routing，Web/LINE 行為一致 |
+| Worker 層級 `enabled_tools` 覆蓋 | ✅ | Commit [84df8f3](https://github.com/larry610881/agentic-rag-customer-service/commit/84df8f3) + [b501dc7](https://github.com/larry610881/agentic-rag-customer-service/commit/b501dc7)（UI 簡化）|
 
 ### S-Gov.2 Tool 系統層級管控
 | 項目 | 說明 |
