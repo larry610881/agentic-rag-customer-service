@@ -11,6 +11,7 @@ from src.domain.bot.entity import (
     IntentRoute,
     McpServerConfig,
     McpToolMeta,
+    ToolRagConfig,
 )
 from src.domain.bot.repository import BotRepository
 from src.domain.bot.value_objects import BotId, BotShortCode
@@ -19,6 +20,46 @@ from src.infrastructure.db.models.bot_knowledge_base_model import (
     BotKnowledgeBaseModel,
 )
 from src.infrastructure.db.models.bot_model import BotModel
+
+
+def _dict_to_tool_configs(raw: dict | None) -> dict[str, ToolRagConfig]:
+    """將 DB 儲存的 dict 轉為 {tool_name: ToolRagConfig}。"""
+    if not raw:
+        return {}
+    result: dict[str, ToolRagConfig] = {}
+    for tool_name, params in raw.items():
+        if not isinstance(params, dict):
+            continue
+        result[tool_name] = ToolRagConfig(
+            rag_top_k=params.get("rag_top_k"),
+            rag_score_threshold=params.get("rag_score_threshold"),
+            rerank_enabled=params.get("rerank_enabled"),
+            rerank_model=params.get("rerank_model"),
+            rerank_top_n=params.get("rerank_top_n"),
+        )
+    return result
+
+
+def _tool_configs_to_dict(
+    tool_configs: dict[str, ToolRagConfig]
+) -> dict[str, dict]:
+    """將 {tool_name: ToolRagConfig} 序列化為 DB JSON（省略 None 欄位）。"""
+    out: dict[str, dict] = {}
+    for tool_name, cfg in (tool_configs or {}).items():
+        params = {
+            k: v
+            for k, v in {
+                "rag_top_k": cfg.rag_top_k,
+                "rag_score_threshold": cfg.rag_score_threshold,
+                "rerank_enabled": cfg.rerank_enabled,
+                "rerank_model": cfg.rerank_model,
+                "rerank_top_n": cfg.rerank_top_n,
+            }.items()
+            if v is not None
+        }
+        if params:
+            out[tool_name] = params
+    return out
 
 
 class SQLAlchemyBotRepository(BotRepository):
@@ -100,6 +141,7 @@ class SQLAlchemyBotRepository(BotRepository):
             rerank_enabled=model.rerank_enabled if model.rerank_enabled is not None else False,
             rerank_model=model.rerank_model or "",
             rerank_top_n=model.rerank_top_n or 20,
+            tool_configs=_dict_to_tool_configs(model.tool_configs),
             intent_routes=[
                 IntentRoute(
                     name=r.get("name", ""),
@@ -202,6 +244,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.rerank_enabled = bot.rerank_enabled
                 existing.rerank_model = bot.rerank_model
                 existing.rerank_top_n = bot.rerank_top_n
+                existing.tool_configs = _tool_configs_to_dict(bot.tool_configs)
                 existing.intent_routes = [
                     {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
                     for r in bot.intent_routes
@@ -274,6 +317,7 @@ class SQLAlchemyBotRepository(BotRepository):
                     rerank_enabled=bot.rerank_enabled,
                     rerank_model=bot.rerank_model,
                     rerank_top_n=bot.rerank_top_n,
+                    tool_configs=_tool_configs_to_dict(bot.tool_configs),
                     intent_routes=[
                         {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
                         for r in bot.intent_routes

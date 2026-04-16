@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from src.domain.bot.entity import ToolRagConfig
+
 
 @dataclass
 class WorkerConfig:
@@ -21,6 +23,8 @@ class WorkerConfig:
     max_tool_calls: int = 5
     enabled_mcp_ids: list[str] = field(default_factory=list)
     knowledge_base_ids: list[str] = field(default_factory=list)  # 空 = 用 bot default KB
+    # Per-tool RAG 參數覆蓋，None 值繼承 Bot 層級（per-tool 或全域）
+    tool_configs: dict[str, ToolRagConfig] = field(default_factory=dict)
     sort_order: int = 0
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)

@@ -104,6 +104,11 @@ class BotModel(Base):
     rerank_final_top_k: Mapped[int] = mapped_column(
         Integer, nullable=False, default=5, server_default="5"
     )
+    # Per-tool RAG 參數覆蓋：{tool_name: {rag_top_k, rag_score_threshold, rerank_*}}
+    # 任何欄位為 None / missing 代表繼承 Bot 全域預設
+    tool_configs: Mapped[dict] = mapped_column(
+        JSON, nullable=False, default=dict, server_default="{}"
+    )
     intent_routes: Mapped[list] = mapped_column(
         JSON, nullable=False, default=list, server_default="[]"
     )

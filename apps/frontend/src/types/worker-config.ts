@@ -1,3 +1,5 @@
+import type { ToolRagConfig } from "./bot";
+
 export type WorkerConfig = {
   id: string;
   bot_id: string;
@@ -11,6 +13,7 @@ export type WorkerConfig = {
   max_tool_calls: number;
   enabled_mcp_ids: string[];
   knowledge_base_ids: string[];
+  tool_configs?: Record<string, ToolRagConfig>;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -27,6 +30,7 @@ export type CreateWorkerRequest = {
   max_tool_calls?: number;
   enabled_mcp_ids?: string[];
   knowledge_base_ids?: string[];
+  tool_configs?: Record<string, ToolRagConfig>;
   sort_order?: number;
 };
 

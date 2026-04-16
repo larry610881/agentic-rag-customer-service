@@ -3,7 +3,14 @@ import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Copy, Check, Globe, ImageIcon, Plus, Trash2, Upload } from "lucide-react";
+import {
+  Copy,
+  Check,
+  ImageIcon,
+  Plus,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { API_BASE, PUBLIC_API_URL } from "@/lib/api-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +18,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -29,15 +41,38 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { ChevronDown } from "lucide-react";
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
 import { useBuiltInTools } from "@/hooks/queries/use-built-in-tools";
 import { ModelSelect } from "@/components/shared/model-select";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
-import type { Bot, UpdateBotRequest } from "@/types/bot";
+import type { Bot, ToolRagConfig, UpdateBotRequest } from "@/types/bot";
 import type { McpToolInfo } from "@/types/mcp";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { McpBindingsSection } from "./mcp-bindings-section";
 import { WorkersSection } from "./workers-section";
+import {
+  ToolRagConfigSection,
+  type ModelOption,
+} from "./tool-rag-config-section";
+
+/** Tools 需要 per-tool RAG 覆蓋 UI 的白名單 */
+const RAG_TOOL_NAMES = ["rag_query", "query_dm_with_image"] as const;
+
+const RERANK_MODEL_OPTIONS: ModelOption[] = [
+  { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+  { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+];
+
+const toolRagConfigSchema = z
+  .object({
+    rag_top_k: z.coerce.number().int().min(1).max(50).optional(),
+    rag_score_threshold: z.coerce.number().min(0).max(1).optional(),
+    rerank_enabled: z.boolean().optional(),
+    rerank_model: z.string().optional(),
+    rerank_top_n: z.coerce.number().int().min(5).max(50).optional(),
+  })
+  .partial();
 
 const botFormSchema = z.object({
   name: z.string().min(1, "請輸入名稱"),
@@ -59,13 +94,17 @@ const botFormSchema = z.object({
   eval_provider: z.string().optional(),
   eval_model: z.string().optional(),
   eval_depth: z.string(),
-  mcp_servers: z.array(z.object({
-    url: z.string(),
-    name: z.string(),
-    enabled_tools: z.array(z.string()),
-    tools: z.array(z.object({ name: z.string(), description: z.string() })).default([]),
-    version: z.string().default(""),
-  })),
+  mcp_servers: z.array(
+    z.object({
+      url: z.string(),
+      name: z.string(),
+      enabled_tools: z.array(z.string()),
+      tools: z
+        .array(z.object({ name: z.string(), description: z.string() }))
+        .default([]),
+      version: z.string().default(""),
+    }),
+  ),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
   base_prompt: z.string().default(""),
   widget_enabled: z.boolean().default(false),
@@ -74,20 +113,31 @@ const botFormSchema = z.object({
   widget_welcome_message: z.string().max(500).default(""),
   widget_placeholder_text: z.string().max(200).default(""),
   widget_greeting_messages: z.array(z.string().max(100)).default([]),
-  widget_greeting_animation: z.enum(["fade", "slide", "typewriter"]).default("fade"),
-  busy_reply_message: z.string().max(500).default("小編正在努力回覆中，請稍等一下喔～"),
+  widget_greeting_animation: z
+    .enum(["fade", "slide", "typewriter"])
+    .default("fade"),
+  busy_reply_message: z
+    .string()
+    .max(500)
+    .default("小編正在努力回覆中，請稍等一下喔～"),
   line_channel_secret: z.string().nullable().optional(),
   line_channel_access_token: z.string().nullable().optional(),
   line_show_sources: z.boolean().default(false),
-  intent_routes: z.array(z.object({
-    name: z.string().min(1, "請輸入名稱").max(50),
-    description: z.string().min(1, "請輸入描述").max(500),
-    bot_prompt: z.string().min(1, "請輸入提示詞").max(10000),
-  })).max(10).default([]),
+  intent_routes: z
+    .array(
+      z.object({
+        name: z.string().min(1, "請輸入名稱").max(50),
+        description: z.string().min(1, "請輸入描述").max(500),
+        bot_prompt: z.string().min(1, "請輸入提示詞").max(10000),
+      }),
+    )
+    .max(10)
+    .default([]),
   router_model: z.string().default(""),
   rerank_enabled: z.boolean().default(false),
   rerank_model: z.string().default(""),
   rerank_top_n: z.coerce.number().int().min(5).max(50).default(20),
+  tool_configs: z.record(z.string(), toolRagConfigSchema).default({}),
 });
 
 type BotFormValues = z.infer<typeof botFormSchema>;
@@ -101,15 +151,19 @@ interface BotDetailFormProps {
 }
 
 const TAB_KEYS = {
-  KNOWLEDGE: "knowledge",
-  PROMPT: "prompt",
+  LLM_PROMPT: "llm-prompt",
+  CAPABILITIES: "capabilities",
   SUBAGENT: "subagent",
-  LLM: "llm",
-  WIDGET: "widget",
-  LINE: "line",
+  CHANNELS: "channels",
 } as const;
 
-function WebhookCopyButton({ url, label = "Webhook URL" }: { url: string; label?: string }) {
+function WebhookCopyButton({
+  url,
+  label = "Webhook URL",
+}: {
+  url: string;
+  label?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -142,7 +196,7 @@ export function BotDetailForm({
   const { data: kbData } = useKnowledgeBases();
   const { data: enabledModels } = useEnabledModels();
   const { data: builtInTools = [] } = useBuiltInTools();
-  const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.KNOWLEDGE);
+  const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.CAPABILITIES);
 
   const {
     register,
@@ -188,10 +242,12 @@ export function BotDetailForm({
       rerank_model: bot.rerank_model ?? "",
       rerank_top_n: bot.rerank_top_n ?? 20,
       intent_routes: bot.intent_routes ?? [],
-      busy_reply_message: bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
+      busy_reply_message:
+        bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
       line_show_sources: bot.line_show_sources ?? false,
+      tool_configs: bot.tool_configs ?? {},
     },
   });
 
@@ -205,6 +261,10 @@ export function BotDetailForm({
   const showSources = watch("show_sources");
   const greetingMessages = watch("widget_greeting_messages") ?? [];
   const mcpServers = watch("mcp_servers") ?? [];
+  const toolConfigs = (watch("tool_configs") ?? {}) as Record<
+    string,
+    ToolRagConfig
+  >;
 
   // LINE show_sources 連動：主開關關閉時，LINE 也關閉
   useEffect(() => {
@@ -214,15 +274,25 @@ export function BotDetailForm({
   }, [showSources, setValue]);
 
   // MCP server tools metadata (shared with McpBindingsSection)
-  const [serverToolsMap, setServerToolsMap] = useState<Record<string, McpToolInfo[]>>({});
+  const [serverToolsMap, setServerToolsMap] = useState<
+    Record<string, McpToolInfo[]>
+  >({});
 
   // Initialize serverToolsMap from persisted server.tools (no auto-discover).
   useEffect(() => {
     for (const server of bot.mcp_servers ?? []) {
       if (!serverToolsMap[server.url]) {
         const toolsMeta: McpToolInfo[] = server.tools?.length
-          ? server.tools.map((t) => ({ name: t.name, description: t.description, parameters: [] }))
-          : server.enabled_tools.map((name) => ({ name, description: "", parameters: [] }));
+          ? server.tools.map((t) => ({
+              name: t.name,
+              description: t.description,
+              parameters: [],
+            }))
+          : server.enabled_tools.map((name) => ({
+              name,
+              description: "",
+              parameters: [],
+            }));
         setServerToolsMap((prev) => ({ ...prev, [server.url]: toolsMeta }));
       }
     }
@@ -264,31 +334,34 @@ export function BotDetailForm({
       rerank_model: bot.rerank_model ?? "",
       rerank_top_n: bot.rerank_top_n ?? 20,
       intent_routes: bot.intent_routes ?? [],
-      busy_reply_message: bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
+      busy_reply_message:
+        bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
       line_channel_secret: bot.line_channel_secret,
       line_channel_access_token: bot.line_channel_access_token,
       line_show_sources: bot.line_show_sources ?? false,
+      tool_configs: bot.tool_configs ?? {},
     });
   }, [bot, reset]);
 
   const onSubmit = async (data: BotFormValues) => {
-    // Validation: 啟用內建 tool 時需綁知識庫
     if (data.enabled_tools.length === 0) {
       toast.error("請至少啟用一個工具");
-      setActiveTab(TAB_KEYS.KNOWLEDGE);
+      setActiveTab(TAB_KEYS.CAPABILITIES);
       return;
     }
     if (data.knowledge_base_ids.length === 0) {
       toast.error("請至少綁定一個知識庫");
-      setActiveTab(TAB_KEYS.KNOWLEDGE);
+      setActiveTab(TAB_KEYS.CAPABILITIES);
       return;
     }
-    // Convert widget_allowed_origins from newline-separated string to array
     const originsStr = data.widget_allowed_origins as string;
     const payload = {
       ...data,
       widget_allowed_origins: originsStr
-        ? originsStr.split("\n").map((s) => s.trim()).filter(Boolean)
+        ? originsStr
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean)
         : [],
     };
     try {
@@ -304,6 +377,30 @@ export function BotDetailForm({
     bot.llm_provider && bot.llm_model
       ? `${bot.llm_provider}:${bot.llm_model}`
       : "";
+
+  const handleToolConfigChange = (
+    toolName: string,
+    next: ToolRagConfig | undefined,
+  ) => {
+    const currentMap = { ...(watch("tool_configs") ?? {}) } as Record<
+      string,
+      ToolRagConfig
+    >;
+    if (next === undefined) {
+      delete currentMap[toolName];
+    } else {
+      currentMap[toolName] = next;
+    }
+    setValue("tool_configs", currentMap, { shouldDirty: true });
+  };
+
+  const botGlobalInherited = {
+    rag_top_k: Number(watch("rag_top_k") ?? 5),
+    rag_score_threshold: Number(watch("rag_score_threshold") ?? 0.3),
+    rerank_enabled: Boolean(watch("rerank_enabled") ?? false),
+    rerank_model: watch("rerank_model") ?? "",
+    rerank_top_n: Number(watch("rerank_top_n") ?? 20),
+  };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
@@ -346,328 +443,33 @@ export function BotDetailForm({
       {/* 4-Tab section */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full">
-          <TabsTrigger value={TAB_KEYS.KNOWLEDGE} className="flex-1">
-            RAG / Agent
+          <TabsTrigger value={TAB_KEYS.LLM_PROMPT} className="flex-1">
+            LLM &amp; Prompt
           </TabsTrigger>
-          <TabsTrigger value={TAB_KEYS.PROMPT} className="flex-1">
-            系統提示詞
+          <TabsTrigger value={TAB_KEYS.CAPABILITIES} className="flex-1">
+            能力
           </TabsTrigger>
           <TabsTrigger value={TAB_KEYS.SUBAGENT} className="flex-1">
             Sub-agent
           </TabsTrigger>
-          <TabsTrigger value={TAB_KEYS.LLM} className="flex-1">
-            LLM 參數
-          </TabsTrigger>
-          <TabsTrigger value={TAB_KEYS.WIDGET} className="flex-1">
-            Widget
-          </TabsTrigger>
-          <TabsTrigger value={TAB_KEYS.LINE} className="flex-1">
-            LINE 頻道
+          <TabsTrigger value={TAB_KEYS.CHANNELS} className="flex-1">
+            通路
           </TabsTrigger>
         </TabsList>
 
-        {/* Tab 1: RAG 知識庫 */}
-        <TabsContent value={TAB_KEYS.KNOWLEDGE} className="flex flex-col gap-6 pt-4">
-          {/* RAG Evaluation 設定 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">RAG 品質評估</h3>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="bot-eval-model">評估用模型</Label>
-              <ModelSelect
-                id="bot-eval-model"
-                value={
-                  watch("eval_provider") && watch("eval_model")
-                    ? `${watch("eval_provider")}:${watch("eval_model")}`
-                    : ""
-                }
-                onValueChange={(v) => {
-                  if (v === "__none__") {
-                    setValue("eval_provider", "");
-                    setValue("eval_model", "");
-                  } else {
-                    const [provider, ...modelParts] = v.split(":");
-                    setValue("eval_provider", provider);
-                    setValue("eval_model", modelParts.join(":"));
-                  }
-                }}
-                enabledModels={enabledModels}
-                allowEmpty
-                placeholder="選擇評估模型（可不選）"
-              />
-              <p className="text-xs text-muted-foreground">
-                未選擇模型時不執行 RAG 品質評估
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>評估維度</Label>
-              <Controller
-                name="eval_depth"
-                control={control}
-                render={({ field }) => {
-                  const layers = field.value && field.value !== "off"
-                    ? field.value.split("+")
-                    : [];
-                  const toggle = (layer: string) => {
-                    const next = layers.includes(layer)
-                      ? layers.filter((l) => l !== layer)
-                      : [...layers, layer].sort();
-                    field.onChange(next.length > 0 ? next.join("+") : "off");
-                  };
-                  return (
-                    <div className="flex flex-col gap-2">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={layers.includes("L1")}
-                          onChange={() => toggle("L1")}
-                          className="rounded border-input"
-                        />
-                        L1 — 檢索品質（Context Precision / Recall）
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={layers.includes("L2")}
-                          onChange={() => toggle("L2")}
-                          className="rounded border-input"
-                        />
-                        L2 — 回答品質（Faithfulness / Relevancy）
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={layers.includes("L3")}
-                          onChange={() => toggle("L3")}
-                          className="rounded border-input"
-                        />
-                        L3 — Agent 決策品質（僅 ReAct 模式）
-                      </label>
-                    </div>
-                  );
-                }}
-              />
-              <p className="text-xs text-muted-foreground">
-                未勾選任何維度或未選擇評估模型時，不會執行 RAG 品質評估。
-                MCP-only 場景會自動跳過 L1（無檢索語義）。
-              </p>
-            </div>
-          </section>
-
-          {/* 啟用工具 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">啟用工具</h3>
-            <p className="text-xs text-muted-foreground">
-              至少勾選 1 個。rag_query 與 query_dm_with_image 通常擇一啟用
-              — 兩者都會打知識庫，後者額外推送 LINE Flex 圖卡。
-            </p>
-            <Controller
-              name="enabled_tools"
-              control={control}
-              render={({ field }) => (
-                <div className="flex flex-col gap-3">
-                  {builtInTools.map((tool) => {
-                    const checked = field.value?.includes(tool.name) ?? false;
-                    return (
-                      <label
-                        key={tool.name}
-                        className="flex items-start gap-2 text-sm cursor-pointer rounded-md border px-3 py-2 hover:bg-muted/50"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const current = field.value ?? [];
-                            if (e.target.checked) {
-                              field.onChange([...current, tool.name]);
-                            } else {
-                              field.onChange(
-                                current.filter((t) => t !== tool.name),
-                              );
-                            }
-                          }}
-                          className="mt-0.5 rounded border-input"
-                        />
-                        <span className="flex flex-col gap-0.5">
-                          <span className="font-medium">{tool.label}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {tool.description}
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                  {builtInTools.length === 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      載入工具清單中...
-                    </p>
-                  )}
-                </div>
-              )}
-            />
-          </section>
-
-          {/* 知識庫綁定 */}
-          {(
-            <section className="flex flex-col gap-4">
-              <h3 className="text-lg font-semibold">知識庫</h3>
-              <div className="flex flex-col gap-2">
-                <Label>已綁定的知識庫（可多選）</Label>
-                <Controller
-                  name="knowledge_base_ids"
-                  control={control}
-                  render={({ field }) => (
-                    <div className="flex flex-col gap-2">
-                      {kbData?.items?.map((kb) => (
-                        <label
-                          key={kb.id}
-                          className="flex items-center gap-2 text-sm"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={field.value.includes(kb.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                field.onChange([...field.value, kb.id]);
-                              } else {
-                                field.onChange(
-                                  field.value.filter((id) => id !== kb.id),
-                                );
-                              }
-                            }}
-                            className="rounded border-input"
-                          />
-                          {kb.name}
-                        </label>
-                      ))}
-                      {(!kbData?.items || kbData.items.length === 0) && (
-                        <p className="text-sm text-muted-foreground">
-                          目前沒有可用的知識庫。
-                        </p>
-                      )}
-                    </div>
-                  )}
-                />
-              </div>
-            </section>
-          )}
-
-          {/* RAG 參數 */}
-          {enabledTools.includes("rag_query") && (
-            <section className="flex flex-col gap-4">
-              <h3 className="text-lg font-semibold">RAG 參數</h3>
-              <p className="text-sm text-muted-foreground">
-                設定知識庫查詢工具的檢索參數。
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="bot-rag-top-k">Top K（1-20）</Label>
-                  <Input
-                    id="bot-rag-top-k"
-                    type="number"
-                    min="1"
-                    max="20"
-                    {...register("rag_top_k")}
-                  />
-                  {errors.rag_top_k && (
-                    <p className="text-sm text-destructive">
-                      {errors.rag_top_k.message}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="bot-rag-score-threshold">
-                    分數閾值（0-1）
-                  </Label>
-                  <Input
-                    id="bot-rag-score-threshold"
-                    type="number"
-                    step="0.05"
-                    min="0"
-                    max="1"
-                    {...register("rag_score_threshold")}
-                  />
-                  {errors.rag_score_threshold && (
-                    <p className="text-sm text-destructive">
-                      {errors.rag_score_threshold.message}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* MCP 設定 */}
-          <McpBindingsSection
-            mcpServers={mcpServers}
-            onMcpServersChange={(servers) => setValue("mcp_servers", servers)}
-            serverToolsMap={serverToolsMap}
-            setServerToolsMap={setServerToolsMap}
-            registerMaxToolCalls={register("max_tool_calls")}
-            maxToolCallsError={errors.max_tool_calls?.message}
-          />
-
-          {/* 回覆顯示設定 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">回覆顯示</h3>
-            <Controller
-              name="show_sources"
-              control={control}
-              render={({ field }) => (
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={field.value}
-                    onChange={(e) => field.onChange(e.target.checked)}
-                    className="rounded border-input"
-                  />
-                  顯示資料來源
-                </label>
-              )}
-            />
-            <p className="text-sm text-muted-foreground">
-              關閉後，對話回覆將不會顯示「參考來源」區塊。
-            </p>
-          </section>
-        </TabsContent>
-
-        {/* Tab 2: 系統提示詞 */}
-        <TabsContent value={TAB_KEYS.PROMPT} className="flex flex-col gap-6 pt-4">
-          {/* 自訂指令 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">自訂指令</h3>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="bot-system-prompt">Bot 自訂指令</Label>
-              <Textarea
-                id="bot-system-prompt"
-                {...register("bot_prompt")}
-                rows={6}
-                placeholder="輸入此機器人的自訂指令..."
-              />
-              <p className="text-xs text-muted-foreground">
-                此指令會附加在系統提示詞最後，用於定義 Bot 的個性、語調等。
-              </p>
-            </div>
-          </section>
-
-        </TabsContent>
-
-        {/* Tab: 意圖路由 */}
-        <TabsContent value={TAB_KEYS.SUBAGENT} className="flex flex-col gap-6 pt-4">
-          <WorkersSection
-            botId={bot.id}
-            botTenantId={bot.tenant_id}
-            enabledModels={enabledModels}
-            knowledgeBases={(kbData?.items ?? []).map((kb) => ({ id: kb.id, name: kb.name }))}
-          />
-        </TabsContent>
-
-        {/* Tab 3: LLM 參數 */}
-        <TabsContent value={TAB_KEYS.LLM} className="flex flex-col gap-6 pt-4">
+        {/* ================================================================ */}
+        {/* Tab 1: LLM & Prompt                                                */}
+        {/* ================================================================ */}
+        <TabsContent
+          value={TAB_KEYS.LLM_PROMPT}
+          className="flex flex-col gap-6 pt-4"
+        >
           {/* LLM 模型選擇 */}
           <section className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold">LLM 模型</h3>
             <p className="text-sm text-muted-foreground">
-              選擇此機器人使用的 LLM 模型。可用模型由「系統設定 &gt; 供應商設定」管理。
+              選擇此機器人使用的 LLM 模型。可用模型由「系統設定 &gt;
+              供應商設定」管理。
             </p>
             <div className="flex flex-col gap-2">
               <Label htmlFor="bot-llm-model">模型</Label>
@@ -786,460 +588,857 @@ export function BotDetailForm({
                 />
               </div>
             </div>
+            <p className="text-xs text-muted-foreground">
+              提示：Reranking 等檢索屬性已移至「能力」頁的「Bot 全域 RAG 預設」區塊。
+            </p>
           </section>
 
-          {/* Reranking 設定 */}
+          {/* 自訂指令 */}
           <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">RAG Reranking</h3>
-            <p className="text-sm text-muted-foreground">
-              啟用後，RAG 檢索結果會經 LLM 重新排序，提升回答精準度。
-            </p>
-            <Controller
-              name="rerank_enabled"
-              control={control}
-              render={({ field }) => (
-                <div className="flex items-center justify-between rounded-md border p-3">
-                  <div>
-                    <Label className="text-sm">啟用 Reranking</Label>
-                    <p className="text-xs text-muted-foreground">
-                      用 LLM 對 RAG 召回結果重新評分排序
-                    </p>
-                  </div>
-                  <Switch
-                    checked={field.value ?? false}
-                    onCheckedChange={(v) => {
-                      field.onChange(v);
-                      // Set default model when enabling
-                      if (v && !watch("rerank_model")) {
-                        setValue("rerank_model", "claude-haiku-4-5-20251001");
-                      }
-                    }}
-                  />
-                </div>
-              )}
-            />
-            {watch("rerank_enabled") && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="rerank-model">Rerank 模型</Label>
-                  <Controller
-                    name="rerank_model"
-                    control={control}
-                    render={({ field }) => (
-                      <Select
-                        value={field.value || "claude-haiku-4-5-20251001"}
-                        onValueChange={(v) => {
-                          field.onChange(v);
-                        }}
-                      >
-                        <SelectTrigger id="rerank-model">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
-                          <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="rerank-top-n">召回數量</Label>
-                  <Input
-                    id="rerank-top-n"
-                    type="number"
-                    {...register("rerank_top_n")}
-                    min={5}
-                    max={50}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Embedding 搜尋筆數（rerank 後取 RAG Top K 筆給 LLM）
-                  </p>
-                </div>
-              </div>
-            )}
+            <h3 className="text-lg font-semibold">自訂指令</h3>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-system-prompt">Bot 自訂指令</Label>
+              <Textarea
+                id="bot-system-prompt"
+                {...register("bot_prompt")}
+                rows={6}
+                placeholder="輸入此機器人的自訂指令..."
+              />
+              <p className="text-xs text-muted-foreground">
+                此指令會附加在系統提示詞最後，用於定義 Bot 的個性、語調等。
+              </p>
+            </div>
           </section>
         </TabsContent>
 
-        {/* Tab 4: Widget 設定 */}
-        <TabsContent value={TAB_KEYS.WIDGET} className="flex flex-col gap-6 pt-4">
-          {/* Widget 開關 */}
+        {/* ================================================================ */}
+        {/* Tab 2: 能力                                                        */}
+        {/* ================================================================ */}
+        <TabsContent
+          value={TAB_KEYS.CAPABILITIES}
+          className="flex flex-col gap-6 pt-4"
+        >
+          {/* 知識庫綁定 */}
           <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">Web Widget</h3>
+            <h3 className="text-lg font-semibold">知識庫</h3>
+            <div className="flex flex-col gap-2">
+              <Label>已綁定的知識庫（可多選）</Label>
+              <Controller
+                name="knowledge_base_ids"
+                control={control}
+                render={({ field }) => (
+                  <div className="flex flex-col gap-2">
+                    {kbData?.items?.map((kb) => (
+                      <label
+                        key={kb.id}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={field.value.includes(kb.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              field.onChange([...field.value, kb.id]);
+                            } else {
+                              field.onChange(
+                                field.value.filter((id) => id !== kb.id),
+                              );
+                            }
+                          }}
+                          className="rounded border-input"
+                        />
+                        {kb.name}
+                      </label>
+                    ))}
+                    {(!kbData?.items || kbData.items.length === 0) && (
+                      <p className="text-sm text-muted-foreground">
+                        目前沒有可用的知識庫。
+                      </p>
+                    )}
+                  </div>
+                )}
+              />
+            </div>
+          </section>
+
+          {/* Bot 全域 RAG 預設 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">Bot 全域 RAG 預設</h3>
             <p className="text-sm text-muted-foreground">
-              啟用後，外部網站可嵌入聊天機器人。
+              未被 per-tool 覆蓋時，RAG 類工具會使用以下預設值。
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-rag-top-k">Top K（1-20）</Label>
+                <Input
+                  id="bot-rag-top-k"
+                  type="number"
+                  min="1"
+                  max="20"
+                  {...register("rag_top_k")}
+                />
+                {errors.rag_top_k && (
+                  <p className="text-sm text-destructive">
+                    {errors.rag_top_k.message}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-rag-score-threshold">
+                  分數閾值（0-1）
+                </Label>
+                <Input
+                  id="bot-rag-score-threshold"
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  max="1"
+                  {...register("rag_score_threshold")}
+                />
+                {errors.rag_score_threshold && (
+                  <p className="text-sm text-destructive">
+                    {errors.rag_score_threshold.message}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Reranking 區塊（搬自 LLM tab） */}
+            <div className="flex flex-col gap-3 rounded-md border p-3">
+              <Controller
+                name="rerank_enabled"
+                control={control}
+                render={({ field }) => (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm">啟用 Reranking</Label>
+                      <p className="text-xs text-muted-foreground">
+                        用 LLM 對 RAG 召回結果重新評分排序
+                      </p>
+                    </div>
+                    <Switch
+                      checked={field.value ?? false}
+                      onCheckedChange={(v) => {
+                        field.onChange(v);
+                        if (v && !watch("rerank_model")) {
+                          setValue(
+                            "rerank_model",
+                            "claude-haiku-4-5-20251001",
+                          );
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              />
+              {watch("rerank_enabled") && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="rerank-model">Rerank 模型</Label>
+                    <Controller
+                      name="rerank_model"
+                      control={control}
+                      render={({ field }) => (
+                        <Select
+                          value={field.value || "claude-haiku-4-5-20251001"}
+                          onValueChange={(v) => field.onChange(v)}
+                        >
+                          <SelectTrigger id="rerank-model">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {RERANK_MODEL_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="rerank-top-n">召回數量</Label>
+                    <Input
+                      id="rerank-top-n"
+                      type="number"
+                      {...register("rerank_top_n")}
+                      min={5}
+                      max={50}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Embedding 搜尋筆數（rerank 後取 RAG Top K 筆給 LLM）
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* 啟用工具 + per-tool RAG 覆蓋 */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">啟用工具</h3>
+            <p className="text-xs text-muted-foreground">
+              至少勾選 1 個。rag_query 與 query_dm_with_image 通常擇一啟用
+              — 兩者都會打知識庫，後者額外推送 LINE Flex 圖卡。
+              RAG 類工具可展開「進階設定」獨立覆蓋檢索參數。
             </p>
             <Controller
-              name="widget_enabled"
+              name="enabled_tools"
               control={control}
               render={({ field }) => (
-                <div className="flex items-center gap-3">
-                  <Switch
-                    id="widget-enabled"
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                  <Label htmlFor="widget-enabled">
-                    {field.value ? "已啟用" : "未啟用"}
-                  </Label>
+                <div className="flex flex-col gap-3">
+                  {builtInTools.map((tool) => {
+                    const checked = field.value?.includes(tool.name) ?? false;
+                    const isRagTool = (
+                      RAG_TOOL_NAMES as readonly string[]
+                    ).includes(tool.name);
+                    return (
+                      <div
+                        key={tool.name}
+                        className="rounded-md border px-3 py-2 hover:bg-muted/30 transition-colors flex flex-col gap-2"
+                      >
+                        <label className="flex items-start gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const current = field.value ?? [];
+                              if (e.target.checked) {
+                                field.onChange([...current, tool.name]);
+                              } else {
+                                field.onChange(
+                                  current.filter((t) => t !== tool.name),
+                                );
+                              }
+                            }}
+                            className="mt-0.5 rounded border-input"
+                          />
+                          <span className="flex flex-col gap-0.5">
+                            <span className="font-medium">{tool.label}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {tool.description}
+                            </span>
+                          </span>
+                        </label>
+                        {checked && isRagTool && (
+                          <ToolRagConfigSection
+                            toolName={tool.name}
+                            toolLabel={`${tool.label} 檢索參數`}
+                            value={toolConfigs[tool.name]}
+                            inherited={botGlobalInherited}
+                            inheritedLabel="繼承 Bot 預設"
+                            onChange={(next) =>
+                              handleToolConfigChange(tool.name, next)
+                            }
+                            rerankModelOptions={RERANK_MODEL_OPTIONS}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                  {builtInTools.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      載入工具清單中...
+                    </p>
+                  )}
                 </div>
               )}
             />
           </section>
 
-          {/* 允許來源 */}
+          {/* MCP 設定 */}
+          <McpBindingsSection
+            mcpServers={mcpServers}
+            onMcpServersChange={(servers) => setValue("mcp_servers", servers)}
+            serverToolsMap={serverToolsMap}
+            setServerToolsMap={setServerToolsMap}
+            registerMaxToolCalls={register("max_tool_calls")}
+            maxToolCallsError={errors.max_tool_calls?.message}
+          />
+
+          {/* RAG 品質評估 */}
           <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">允許來源</h3>
+            <h3 className="text-lg font-semibold">RAG 品質評估</h3>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="widget-origins">
-                允許的網域（每行一個）
-              </Label>
-              <Textarea
-                id="widget-origins"
-                {...register("widget_allowed_origins")}
-                rows={4}
-                placeholder={"https://shop.example.com\nhttps://www.example.com"}
+              <Label htmlFor="bot-eval-model">評估用模型</Label>
+              <ModelSelect
+                id="bot-eval-model"
+                value={
+                  watch("eval_provider") && watch("eval_model")
+                    ? `${watch("eval_provider")}:${watch("eval_model")}`
+                    : ""
+                }
+                onValueChange={(v) => {
+                  if (v === "__none__") {
+                    setValue("eval_provider", "");
+                    setValue("eval_model", "");
+                  } else {
+                    const [provider, ...modelParts] = v.split(":");
+                    setValue("eval_provider", provider);
+                    setValue("eval_model", modelParts.join(":"));
+                  }
+                }}
+                enabledModels={enabledModels}
+                allowEmpty
+                placeholder="選擇評估模型（可不選）"
               />
               <p className="text-xs text-muted-foreground">
-                只有在此清單中的網域可以呼叫 Widget API。留空則不允許任何來源。
+                未選擇模型時不執行 RAG 品質評估
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>評估維度</Label>
+              <Controller
+                name="eval_depth"
+                control={control}
+                render={({ field }) => {
+                  const layers =
+                    field.value && field.value !== "off"
+                      ? field.value.split("+")
+                      : [];
+                  const toggle = (layer: string) => {
+                    const next = layers.includes(layer)
+                      ? layers.filter((l) => l !== layer)
+                      : [...layers, layer].sort();
+                    field.onChange(next.length > 0 ? next.join("+") : "off");
+                  };
+                  return (
+                    <div className="flex flex-col gap-2">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={layers.includes("L1")}
+                          onChange={() => toggle("L1")}
+                          className="rounded border-input"
+                        />
+                        L1 — 檢索品質（Context Precision / Recall）
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={layers.includes("L2")}
+                          onChange={() => toggle("L2")}
+                          className="rounded border-input"
+                        />
+                        L2 — 回答品質（Faithfulness / Relevancy）
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={layers.includes("L3")}
+                          onChange={() => toggle("L3")}
+                          className="rounded border-input"
+                        />
+                        L3 — Agent 決策品質（僅 ReAct 模式）
+                      </label>
+                    </div>
+                  );
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                未勾選任何維度或未選擇評估模型時，不會執行 RAG 品質評估。
+                MCP-only 場景會自動跳過 L1（無檢索語義）。
               </p>
             </div>
           </section>
 
-          {/* 對話歷史保留 */}
+          {/* 回覆顯示設定 */}
           <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">對話歷史</h3>
+            <h3 className="text-lg font-semibold">回覆顯示</h3>
             <Controller
-              name="widget_keep_history"
+              name="show_sources"
               control={control}
               render={({ field }) => (
-                <div className="flex items-center gap-3">
-                  <Switch
-                    id="widget-keep-history"
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
                     checked={field.value}
-                    onCheckedChange={field.onChange}
+                    onChange={(e) => field.onChange(e.target.checked)}
+                    className="rounded border-input"
                   />
-                  <Label htmlFor="widget-keep-history">
-                    {field.value ? "保留對話歷史" : "每次獨立對話"}
-                  </Label>
-                </div>
+                  顯示資料來源
+                </label>
               )}
             />
             <p className="text-sm text-muted-foreground">
-              關閉後，每次對話都是獨立的，適合純 FAQ 場景。
+              關閉後，對話回覆將不會顯示「參考來源」區塊。
             </p>
           </section>
+        </TabsContent>
 
-          {/* FAB 按鈕圖示 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">FAB 按鈕圖示</h3>
-            <p className="text-sm text-muted-foreground">
-              自訂 FAB 按鈕的圖片（支援 PNG / JPG / WebP，最大 256KB）
-            </p>
-            <div className="flex items-center gap-4">
-              {bot.fab_icon_url ? (
-                <img
-                  src={`${API_BASE}${bot.fab_icon_url}`}
-                  alt="FAB icon"
-                  className="h-14 w-14 rounded-full object-cover border"
-                />
-              ) : (
-                <div className="flex h-14 w-14 items-center justify-center rounded-full border bg-muted">
-                  <ImageIcon className="h-6 w-6 text-muted-foreground" />
-                </div>
-              )}
-              <div className="flex flex-col gap-2">
+        {/* ================================================================ */}
+        {/* Tab 3: Sub-agent                                                   */}
+        {/* ================================================================ */}
+        <TabsContent
+          value={TAB_KEYS.SUBAGENT}
+          className="flex flex-col gap-6 pt-4"
+        >
+          <WorkersSection
+            botId={bot.id}
+            botTenantId={bot.tenant_id}
+            enabledModels={enabledModels}
+            knowledgeBases={(kbData?.items ?? []).map((kb) => ({
+              id: kb.id,
+              name: kb.name,
+            }))}
+            botDefaults={botGlobalInherited}
+            botToolConfigs={toolConfigs}
+            ragToolNames={RAG_TOOL_NAMES}
+            ragToolLabels={builtInTools
+              .filter((t) =>
+                (RAG_TOOL_NAMES as readonly string[]).includes(t.name),
+              )
+              .reduce<Record<string, string>>((acc, t) => {
+                acc[t.name] = t.label;
+                return acc;
+              }, {})}
+            rerankModelOptions={RERANK_MODEL_OPTIONS}
+          />
+        </TabsContent>
+
+        {/* ================================================================ */}
+        {/* Tab 4: 通路（Channels = Widget + LINE）                             */}
+        {/* ================================================================ */}
+        <TabsContent
+          value={TAB_KEYS.CHANNELS}
+          className="flex flex-col gap-6 pt-4"
+        >
+          {/* Web Widget 折疊子區 */}
+          <Collapsible defaultOpen>
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-between"
+              >
+                <span className="text-base font-semibold">Web Widget</span>
+                <ChevronDown className="h-4 w-4 transition-transform data-[state=open]:rotate-180" />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="flex flex-col gap-6 pt-4">
+              {/* Widget 開關 */}
+              <section className="flex flex-col gap-4">
+                <h3 className="text-lg font-semibold">Web Widget</h3>
                 <p className="text-sm text-muted-foreground">
-                  {bot.fab_icon_url ? "已上傳自訂圖示" : "尚未上傳自訂圖示"}
+                  啟用後，外部網站可嵌入聊天機器人。
                 </p>
-                <div className="flex gap-2">
+                <Controller
+                  name="widget_enabled"
+                  control={control}
+                  render={({ field }) => (
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        id="widget-enabled"
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                      <Label htmlFor="widget-enabled">
+                        {field.value ? "已啟用" : "未啟用"}
+                      </Label>
+                    </div>
+                  )}
+                />
+              </section>
+
+              {/* 允許來源 */}
+              <section className="flex flex-col gap-4">
+                <h3 className="text-lg font-semibold">允許來源</h3>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="widget-origins">
+                    允許的網域（每行一個）
+                  </Label>
+                  <Textarea
+                    id="widget-origins"
+                    {...register("widget_allowed_origins")}
+                    rows={4}
+                    placeholder={
+                      "https://shop.example.com\nhttps://www.example.com"
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    只有在此清單中的網域可以呼叫 Widget API。留空則不允許任何來源。
+                  </p>
+                </div>
+              </section>
+
+              {/* 對話歷史 */}
+              <section className="flex flex-col gap-4">
+                <h3 className="text-lg font-semibold">對話歷史</h3>
+                <Controller
+                  name="widget_keep_history"
+                  control={control}
+                  render={({ field }) => (
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        id="widget-keep-history"
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                      <Label htmlFor="widget-keep-history">
+                        {field.value ? "保留對話歷史" : "每次獨立對話"}
+                      </Label>
+                    </div>
+                  )}
+                />
+                <p className="text-sm text-muted-foreground">
+                  關閉後，每次對話都是獨立的，適合純 FAQ 場景。
+                </p>
+              </section>
+
+              {/* FAB 按鈕圖示 */}
+              <section className="flex flex-col gap-4">
+                <h3 className="text-lg font-semibold">FAB 按鈕圖示</h3>
+                <p className="text-sm text-muted-foreground">
+                  自訂 FAB 按鈕的圖片（支援 PNG / JPG / WebP，最大 256KB）
+                </p>
+                <div className="flex items-center gap-4">
+                  {bot.fab_icon_url ? (
+                    <img
+                      src={`${API_BASE}${bot.fab_icon_url}`}
+                      alt="FAB icon"
+                      className="h-14 w-14 rounded-full object-cover border"
+                    />
+                  ) : (
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full border bg-muted">
+                      <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm text-muted-foreground">
+                      {bot.fab_icon_url ? "已上傳自訂圖示" : "尚未上傳自訂圖示"}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const input = document.createElement("input");
+                          input.type = "file";
+                          input.accept = "image/png,image/jpeg,image/webp";
+                          input.onchange = async (e) => {
+                            const file = (e.target as HTMLInputElement)
+                              .files?.[0];
+                            if (!file) return;
+                            const formData = new FormData();
+                            formData.append("file", file);
+                            const token = useAuthStore.getState().token;
+                            try {
+                              const res = await fetch(
+                                `${API_BASE}/api/v1/bots/${bot.id}/icon`,
+                                {
+                                  method: "POST",
+                                  headers: {
+                                    Authorization: `Bearer ${token}`,
+                                  },
+                                  body: formData,
+                                },
+                              );
+                              if (!res.ok) {
+                                const body = await res
+                                  .json()
+                                  .catch(() => ({}));
+                                toast.error(body.detail || "上傳失敗");
+                                return;
+                              }
+                              toast.success("FAB 圖示已上傳");
+                              window.location.reload();
+                            } catch {
+                              toast.error("上傳失敗");
+                            }
+                          };
+                          input.click();
+                        }}
+                      >
+                        <Upload className="mr-1 h-4 w-4" />
+                        上傳圖片
+                      </Button>
+                      {bot.fab_icon_url && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            const token = useAuthStore.getState().token;
+                            try {
+                              await fetch(
+                                `${API_BASE}/api/v1/bots/${bot.id}/icon`,
+                                {
+                                  method: "DELETE",
+                                  headers: {
+                                    Authorization: `Bearer ${token}`,
+                                  },
+                                },
+                              );
+                              toast.success("FAB 圖示已移除");
+                              window.location.reload();
+                            } catch {
+                              toast.error("移除失敗");
+                            }
+                          }}
+                        >
+                          <Trash2 className="mr-1 h-4 w-4" />
+                          移除
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* 歡迎訊息 + Placeholder */}
+              <section className="flex flex-col gap-4">
+                <h3 className="text-lg font-semibold">Widget 文字設定</h3>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="widget-welcome-msg">歡迎訊息</Label>
+                  <Input
+                    id="widget-welcome-msg"
+                    {...register("widget_welcome_message")}
+                    placeholder="你好！有什麼可以幫你的嗎？"
+                    maxLength={500}
+                  />
+                  {errors.widget_welcome_message && (
+                    <p className="text-sm text-destructive">
+                      {errors.widget_welcome_message.message}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Widget 開啟時顯示的歡迎訊息（最多 500 字）
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="widget-placeholder">輸入框提示文字</Label>
+                  <Input
+                    id="widget-placeholder"
+                    {...register("widget_placeholder_text")}
+                    placeholder="請輸入訊息..."
+                    maxLength={200}
+                  />
+                  {errors.widget_placeholder_text && (
+                    <p className="text-sm text-destructive">
+                      {errors.widget_placeholder_text.message}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Widget 輸入框的 placeholder 文字（最多 200 字）
+                  </p>
+                </div>
+              </section>
+
+              {/* 歡迎招呼語 */}
+              <section className="flex flex-col gap-4">
+                <h3 className="text-lg font-semibold">歡迎招呼語</h3>
+                <p className="text-xs text-muted-foreground">
+                  聊天面板關閉時，按鈕旁會自動輪播這些招呼語氣泡，吸引訪客開啟對話。
+                </p>
+                <div className="flex flex-col gap-2">
+                  {greetingMessages.map((_msg: string, idx: number) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input
+                        value={greetingMessages[idx]}
+                        onChange={(e) => {
+                          const updated = [...greetingMessages];
+                          updated[idx] = e.target.value;
+                          setValue("widget_greeting_messages", updated, {
+                            shouldDirty: true,
+                          });
+                        }}
+                        placeholder={`招呼語 ${idx + 1}`}
+                        maxLength={100}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          const updated = greetingMessages.filter(
+                            (_: string, i: number) => i !== idx,
+                          );
+                          setValue("widget_greeting_messages", updated, {
+                            shouldDirty: true,
+                          });
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  ))}
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="self-start"
                     onClick={() => {
-                      const input = document.createElement("input");
-                      input.type = "file";
-                      input.accept = "image/png,image/jpeg,image/webp";
-                      input.onchange = async (e) => {
-                        const file = (e.target as HTMLInputElement).files?.[0];
-                        if (!file) return;
-                        const formData = new FormData();
-                        formData.append("file", file);
-                        const token = useAuthStore.getState().token;
-                        try {
-                          const res = await fetch(
-                            `${API_BASE}/api/v1/bots/${bot.id}/icon`,
-                            {
-                              method: "POST",
-                              headers: { Authorization: `Bearer ${token}` },
-                              body: formData,
-                            },
-                          );
-                          if (!res.ok) {
-                            const body = await res.json().catch(() => ({}));
-                            toast.error(body.detail || "上傳失敗");
-                            return;
-                          }
-                          toast.success("FAB 圖示已上傳");
-                          window.location.reload();
-                        } catch {
-                          toast.error("上傳失敗");
-                        }
-                      };
-                      input.click();
+                      setValue(
+                        "widget_greeting_messages",
+                        [...greetingMessages, ""],
+                        { shouldDirty: true },
+                      );
                     }}
                   >
-                    <Upload className="mr-1 h-4 w-4" />
-                    上傳圖片
+                    <Plus className="mr-1 h-4 w-4" />
+                    新增招呼語
                   </Button>
-                  {bot.fab_icon_url && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        const token = useAuthStore.getState().token;
-                        try {
-                          await fetch(
-                            `${API_BASE}/api/v1/bots/${bot.id}/icon`,
-                            {
-                              method: "DELETE",
-                              headers: { Authorization: `Bearer ${token}` },
-                            },
-                          );
-                          toast.success("FAB 圖示已移除");
-                          window.location.reload();
-                        } catch {
-                          toast.error("移除失敗");
-                        }
-                      }}
-                    >
-                      <Trash2 className="mr-1 h-4 w-4" />
-                      移除
-                    </Button>
-                  )}
                 </div>
-              </div>
-            </div>
-          </section>
-
-          {/* 歡迎訊息 + Placeholder */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">Widget 文字設定</h3>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="widget-welcome-msg">歡迎訊息</Label>
-              <Input
-                id="widget-welcome-msg"
-                {...register("widget_welcome_message")}
-                placeholder="你好！有什麼可以幫你的嗎？"
-                maxLength={500}
-              />
-              {errors.widget_welcome_message && (
-                <p className="text-sm text-destructive">
-                  {errors.widget_welcome_message.message}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Widget 開啟時顯示的歡迎訊息（最多 500 字）
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="widget-placeholder">輸入框提示文字</Label>
-              <Input
-                id="widget-placeholder"
-                {...register("widget_placeholder_text")}
-                placeholder="請輸入訊息..."
-                maxLength={200}
-              />
-              {errors.widget_placeholder_text && (
-                <p className="text-sm text-destructive">
-                  {errors.widget_placeholder_text.message}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Widget 輸入框的 placeholder 文字（最多 200 字）
-              </p>
-            </div>
-          </section>
-
-          {/* 歡迎招呼語 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">歡迎招呼語</h3>
-            <p className="text-xs text-muted-foreground">
-              聊天面板關閉時，按鈕旁會自動輪播這些招呼語氣泡，吸引訪客開啟對話。
-            </p>
-            <div className="flex flex-col gap-2">
-              {greetingMessages.map((_msg: string, idx: number) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <Input
-                    value={greetingMessages[idx]}
-                    onChange={(e) => {
-                      const updated = [...greetingMessages];
-                      updated[idx] = e.target.value;
-                      setValue("widget_greeting_messages", updated, { shouldDirty: true });
-                    }}
-                    placeholder={`招呼語 ${idx + 1}`}
-                    maxLength={100}
-                    className="flex-1"
+                <div className="flex flex-col gap-2">
+                  <Label>動畫效果</Label>
+                  <Controller
+                    name="widget_greeting_animation"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger className="w-48">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="fade">淡入淡出 (Fade)</SelectItem>
+                          <SelectItem value="slide">滑動 (Slide)</SelectItem>
+                          <SelectItem value="typewriter">
+                            打字機 (Typewriter)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      const updated = greetingMessages.filter((_: string, i: number) => i !== idx);
-                      setValue("widget_greeting_messages", updated, { shouldDirty: true });
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 text-muted-foreground" />
-                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    招呼語輪播時的切換動畫效果
+                  </p>
                 </div>
-              ))}
+              </section>
+
+              {/* 嵌入碼預覽 */}
+              <section className="flex flex-col gap-4">
+                <h3 className="text-lg font-semibold">嵌入碼</h3>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <pre className="flex-1 whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs font-mono select-all">
+                      {`<script src="${PUBLIC_API_URL}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light"\n        crossorigin="anonymous">\n</script>`}
+                    </pre>
+                    <WebhookCopyButton
+                      url={`<script src="${PUBLIC_API_URL}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light"\n        crossorigin="anonymous">\n</script>`}
+                      label="嵌入碼"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    將此程式碼貼入外部網站的 HTML 即可嵌入聊天機器人。
+                  </p>
+                </div>
+              </section>
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* LINE 頻道 折疊子區 */}
+          <Collapsible defaultOpen>
+            <CollapsibleTrigger asChild>
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="self-start"
-                onClick={() => {
-                  setValue("widget_greeting_messages", [...greetingMessages, ""], { shouldDirty: true });
-                }}
+                className="w-full justify-between"
               >
-                <Plus className="mr-1 h-4 w-4" />
-                新增招呼語
+                <span className="text-base font-semibold">LINE 頻道</span>
+                <ChevronDown className="h-4 w-4 transition-transform data-[state=open]:rotate-180" />
               </Button>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>動畫效果</Label>
-              <Controller
-                name="widget_greeting_animation"
-                control={control}
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="fade">淡入淡出 (Fade)</SelectItem>
-                      <SelectItem value="slide">滑動 (Slide)</SelectItem>
-                      <SelectItem value="typewriter">打字機 (Typewriter)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              <p className="text-xs text-muted-foreground">
-                招呼語輪播時的切換動畫效果
-              </p>
-            </div>
-          </section>
-
-          {/* 嵌入碼預覽 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">嵌入碼</h3>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-start gap-2">
-                <pre className="flex-1 whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs font-mono select-all">
-                  {`<script src="${PUBLIC_API_URL}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light"\n        crossorigin="anonymous">\n</script>`}
-                </pre>
-                <WebhookCopyButton
-                  url={`<script src="${PUBLIC_API_URL}/static/widget.js"\n        data-bot="${bot.short_code}"\n        data-theme="light"\n        crossorigin="anonymous">\n</script>`}
-                  label="嵌入碼"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                將此程式碼貼入外部網站的 HTML 即可嵌入聊天機器人。
-              </p>
-            </div>
-          </section>
-        </TabsContent>
-
-        {/* Tab 5: LINE 頻道 */}
-        <TabsContent value={TAB_KEYS.LINE} className="flex flex-col gap-6 pt-4">
-          {/* Webhook URL */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">Webhook URL</h3>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Input
-                  readOnly
-                  value={`${PUBLIC_API_URL}/api/v1/webhook/line/${bot.short_code}`}
-                  className="font-mono text-sm"
-                  onClick={(e) => (e.target as HTMLInputElement).select()}
-                />
-                <WebhookCopyButton
-                  url={`${PUBLIC_API_URL}/api/v1/webhook/line/${bot.short_code}`}
-                />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                將此 URL 貼至 LINE Developer Console 的 Webhook URL 設定。
-              </p>
-            </div>
-          </section>
-
-          {/* LINE 頻道密鑰 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">LINE 頻道</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="bot-line-secret">頻道密鑰</Label>
-                <Input
-                  id="bot-line-secret"
-                  type="password"
-                  {...register("line_channel_secret")}
-                  placeholder="輸入 LINE 頻道密鑰"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="bot-line-token">存取權杖</Label>
-                <Input
-                  id="bot-line-token"
-                  type="password"
-                  {...register("line_channel_access_token")}
-                  placeholder="輸入 LINE 存取權杖"
-                />
-              </div>
-            </div>
-            <Controller
-              name="line_show_sources"
-              control={control}
-              render={({ field }) => (
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="line_show_sources" className={!showSources ? "text-muted-foreground" : ""}>
-                      LINE 顯示來源引用
-                    </Label>
-                    <Switch
-                      id="line_show_sources"
-                      checked={field.value ?? false}
-                      onCheckedChange={field.onChange}
-                      disabled={!showSources}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="flex flex-col gap-6 pt-4">
+              {/* Webhook URL */}
+              <section className="flex flex-col gap-4">
+                <h3 className="text-lg font-semibold">Webhook URL</h3>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      value={`${PUBLIC_API_URL}/api/v1/webhook/line/${bot.short_code}`}
+                      className="font-mono text-sm"
+                      onClick={(e) =>
+                        (e.target as HTMLInputElement).select()
+                      }
+                    />
+                    <WebhookCopyButton
+                      url={`${PUBLIC_API_URL}/api/v1/webhook/line/${bot.short_code}`}
                     />
                   </div>
-                  {!showSources && (
-                    <p className="text-xs text-muted-foreground">
-                      需先在「基本設定」頁籤開啟「顯示資料來源」
-                    </p>
-                  )}
+                  <p className="text-sm text-muted-foreground">
+                    將此 URL 貼至 LINE Developer Console 的 Webhook URL 設定。
+                  </p>
                 </div>
-              )}
-            />
-          </section>
+              </section>
 
-          {/* 忙碌中回覆訊息 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">忙碌中回覆訊息</h3>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="bot-busy-reply">
-                當使用者連續發送訊息時，以 reply（免費）回覆忙碌提示
-              </Label>
-              <Input
-                id="bot-busy-reply"
-                {...register("busy_reply_message")}
-                placeholder="小編正在努力回覆中，請稍等一下喔～"
-                maxLength={500}
-              />
-            </div>
-          </section>
+              {/* LINE 頻道密鑰 */}
+              <section className="flex flex-col gap-4">
+                <h3 className="text-lg font-semibold">LINE 頻道</h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="bot-line-secret">頻道密鑰</Label>
+                    <Input
+                      id="bot-line-secret"
+                      type="password"
+                      {...register("line_channel_secret")}
+                      placeholder="輸入 LINE 頻道密鑰"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="bot-line-token">存取權杖</Label>
+                    <Input
+                      id="bot-line-token"
+                      type="password"
+                      {...register("line_channel_access_token")}
+                      placeholder="輸入 LINE 存取權杖"
+                    />
+                  </div>
+                </div>
+                <Controller
+                  name="line_show_sources"
+                  control={control}
+                  render={({ field }) => (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between">
+                        <Label
+                          htmlFor="line_show_sources"
+                          className={
+                            !showSources ? "text-muted-foreground" : ""
+                          }
+                        >
+                          LINE 顯示來源引用
+                        </Label>
+                        <Switch
+                          id="line_show_sources"
+                          checked={field.value ?? false}
+                          onCheckedChange={field.onChange}
+                          disabled={!showSources}
+                        />
+                      </div>
+                      {!showSources && (
+                        <p className="text-xs text-muted-foreground">
+                          需先在「基本設定」頁籤開啟「顯示資料來源」
+                        </p>
+                      )}
+                    </div>
+                  )}
+                />
+              </section>
+
+              {/* 忙碌中回覆訊息 */}
+              <section className="flex flex-col gap-4">
+                <h3 className="text-lg font-semibold">忙碌中回覆訊息</h3>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="bot-busy-reply">
+                    當使用者連續發送訊息時，以 reply（免費）回覆忙碌提示
+                  </Label>
+                  <Input
+                    id="bot-busy-reply"
+                    {...register("busy_reply_message")}
+                    placeholder="小編正在努力回覆中，請稍等一下喔～"
+                    maxLength={500}
+                  />
+                </div>
+              </section>
+            </CollapsibleContent>
+          </Collapsible>
         </TabsContent>
       </Tabs>
 

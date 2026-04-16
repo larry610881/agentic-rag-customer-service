@@ -63,7 +63,7 @@ describe("BotDetailForm", () => {
     expect(nameInput).toHaveValue("Customer Service Bot");
   });
 
-  it("should render LLM parameter inputs in LLM tab", async () => {
+  it("should render LLM parameter inputs in LLM & Prompt tab", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
@@ -74,13 +74,13 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "LLM 參數" }));
+    await user.click(screen.getByRole("tab", { name: /LLM.*Prompt/i }));
     expect(screen.getByLabelText("溫度（0-1）")).toHaveValue(0.3);
     expect(screen.getByLabelText("最大 Token 數（128-4096）")).toHaveValue(1024);
     expect(screen.getByLabelText("歷史訊息數（0-35）")).toHaveValue(10);
   });
 
-  it("should render system prompt textarea in prompt tab", async () => {
+  it("should render system prompt textarea in LLM & Prompt tab", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
@@ -91,13 +91,13 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "系統提示詞" }));
+    await user.click(screen.getByRole("tab", { name: /LLM.*Prompt/i }));
     expect(screen.getByLabelText("Bot 自訂指令")).toHaveValue(
       "You are a helpful customer service bot.",
     );
   });
 
-  it("should render LINE channel fields in LINE tab", async () => {
+  it("should render LINE channel fields in 通路 tab", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
@@ -108,7 +108,7 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "LINE 頻道" }));
+    await user.click(screen.getByRole("tab", { name: "通路" }));
     expect(screen.getByLabelText("頻道密鑰")).toBeInTheDocument();
     expect(screen.getByLabelText("存取權杖")).toBeInTheDocument();
   });
@@ -212,6 +212,55 @@ describe("BotDetailForm", () => {
     }
   });
 
+  it("should serialize existing bot.tool_configs back on submit", async () => {
+    const user = userEvent.setup();
+    const botWithToolConfigs = {
+      ...mockBot,
+      tool_configs: {
+        rag_query: { rag_top_k: 3 },
+        query_dm_with_image: { rag_top_k: 10, rerank_enabled: true },
+      },
+    };
+    renderWithProviders(
+      <BotDetailForm
+        bot={botWithToolConfigs}
+        onSave={mockOnSave}
+        onDelete={mockOnDelete}
+        isSaving={false}
+        isDeleting={false}
+      />,
+    );
+    const saveBtn = screen.getByRole("button", { name: /儲存/ });
+    await user.click(saveBtn);
+    if (mockOnSave.mock.calls.length > 0) {
+      const payload = mockOnSave.mock.calls[0][0];
+      expect(payload.tool_configs).toBeDefined();
+      expect(payload.tool_configs.rag_query).toEqual({ rag_top_k: 3 });
+      expect(payload.tool_configs.query_dm_with_image).toEqual({
+        rag_top_k: 10,
+        rerank_enabled: true,
+      });
+    }
+  });
+
+  it("should show Bot 全域 RAG 預設 section in 能力 tab", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <BotDetailForm
+        bot={mockBot}
+        onSave={mockOnSave}
+        onDelete={mockOnDelete}
+        isSaving={false}
+        isDeleting={false}
+      />,
+    );
+    await user.click(screen.getByRole("tab", { name: "能力" }));
+    expect(screen.getByText("Bot 全域 RAG 預設")).toBeInTheDocument();
+    // Top K / threshold should appear under 能力 tab (not LLM tab)
+    expect(screen.getByLabelText("Top K（1-20）")).toBeInTheDocument();
+    expect(screen.getByLabelText("分數閾值（0-1）")).toBeInTheDocument();
+  });
+
   it("should block submit when no tool is enabled", async () => {
     const user = userEvent.setup();
     const botWithNoTool = { ...mockBot, enabled_tools: [] };
@@ -278,7 +327,7 @@ describe("BotDetailForm", () => {
     ).toBeDisabled();
   });
 
-  it("should show FAB icon upload section in Widget tab", async () => {
+  it("should show FAB icon upload section in 通路 tab", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
@@ -289,7 +338,7 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "Widget" }));
+    await user.click(screen.getByRole("tab", { name: "通路" }));
     expect(screen.getByText("FAB 按鈕圖示")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /上傳圖片/ })).toBeInTheDocument();
   });
@@ -305,11 +354,11 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "Widget" }));
+    await user.click(screen.getByRole("tab", { name: "通路" }));
     expect(screen.getByText("尚未上傳自訂圖示")).toBeInTheDocument();
   });
 
-  it("should render Widget tab content without avatar section", async () => {
+  it("should render 通路 tab content without avatar section", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
@@ -320,8 +369,9 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "Widget" }));
-    expect(screen.getByText("Web Widget")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "通路" }));
+    // Web Widget 區塊標題（可能會同時有 collapsible trigger 與 h3，使用 getAllByText）
+    expect(screen.getAllByText("Web Widget").length).toBeGreaterThan(0);
     expect(screen.getByText("允許來源")).toBeInTheDocument();
     expect(screen.getByText("對話歷史")).toBeInTheDocument();
     expect(screen.queryByText("Avatar 角色選擇")).not.toBeInTheDocument();

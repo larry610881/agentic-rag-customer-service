@@ -186,6 +186,73 @@ class ReActAgentService(AgentService):
             return {"rag_query"}
         return set(enabled_tools)
 
+    def _build_builtin_tools(
+        self,
+        *,
+        tenant_id: str,
+        kb_id: str,
+        kb_ids: list[str] | None,
+        enabled_tools: list[str] | None,
+        rag_top_k: int | None,
+        rag_score_threshold: float | None,
+        metadata: dict[str, Any] | None,
+        tool_rag_params: dict[str, dict[str, Any]] | None,
+    ) -> list[BaseTool]:
+        """Build built-in RAG tools with per-tool parameter overrides.
+
+        Per-tool params in ``tool_rag_params`` take precedence over the
+        legacy flat args (``rag_top_k``/``rag_score_threshold``/``metadata``).
+        """
+        tools: list[BaseTool] = []
+        effective = self._resolve_enabled_tools(enabled_tools)
+        _metadata = metadata or {}
+
+        def _params_for(tool_name: str) -> dict[str, Any]:
+            per = (tool_rag_params or {}).get(tool_name) or {}
+            return {
+                "rag_top_k": per.get("rag_top_k", rag_top_k),
+                "rag_score_threshold": per.get(
+                    "rag_score_threshold", rag_score_threshold
+                ),
+                "rerank_enabled": per.get(
+                    "rerank_enabled", _metadata.get("rerank_enabled")
+                ),
+                "rerank_model": per.get(
+                    "rerank_model", _metadata.get("rerank_model")
+                ),
+                "rerank_top_n": per.get(
+                    "rerank_top_n", _metadata.get("rerank_top_n")
+                ),
+            }
+
+        if "rag_query" in effective and (kb_id or kb_ids):
+            params = _params_for("rag_query")
+            tools.append(
+                self._build_rag_lc_tool(
+                    tenant_id, kb_ids, kb_id,
+                    params["rag_top_k"], params["rag_score_threshold"],
+                    rerank_cfg={
+                        "rerank_enabled": params["rerank_enabled"],
+                        "rerank_model": params["rerank_model"],
+                        "rerank_top_n": params["rerank_top_n"],
+                    },
+                )
+            )
+        if (
+            "query_dm_with_image" in effective
+            and kb_id
+            and self._dm_image_query_tool is not None
+        ):
+            params = _params_for("query_dm_with_image")
+            tools.append(
+                self._build_dm_image_lc_tool(
+                    tenant_id, kb_id,
+                    params["rag_top_k"], params["rag_score_threshold"],
+                    kb_ids=kb_ids,
+                )
+            )
+        return tools
+
     async def _resolve_llm_model(
         self, llm_params: dict[str, Any] | None
     ) -> Any:
@@ -497,6 +564,7 @@ class ReActAgentService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
+        tool_rag_params: dict[str, dict[str, Any]] | None = None,
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
         bot_id: str = "",
@@ -513,27 +581,17 @@ class ReActAgentService(AgentService):
         )
 
         async with AsyncExitStack() as stack:
-            # 1. Build built-in tools according to bot.enabled_tools
-            tools: list[BaseTool] = []
-            effective = self._resolve_enabled_tools(enabled_tools)
-            if "rag_query" in effective and (kb_id or kb_ids):
-                tools.append(
-                    self._build_rag_lc_tool(
-                        tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold,
-                        rerank_cfg=metadata,
-                    )
-                )
-            if (
-                "query_dm_with_image" in effective
-                and kb_id
-                and self._dm_image_query_tool is not None
-            ):
-                tools.append(
-                    self._build_dm_image_lc_tool(
-                        tenant_id, kb_id, rag_top_k, rag_score_threshold,
-                        kb_ids=kb_ids,
-                    )
-                )
+            # 1. Build built-in tools (per-tool params override flat args)
+            tools: list[BaseTool] = self._build_builtin_tools(
+                tenant_id=tenant_id,
+                kb_id=kb_id,
+                kb_ids=kb_ids,
+                enabled_tools=enabled_tools,
+                rag_top_k=rag_top_k,
+                rag_score_threshold=rag_score_threshold,
+                metadata=metadata,
+                tool_rag_params=tool_rag_params,
+            )
 
             # 2. Load MCP tools — sessions kept alive by stack
             if self._cached_tool_loader:
@@ -652,33 +710,24 @@ class ReActAgentService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
+        tool_rag_params: dict[str, dict[str, Any]] | None = None,
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
         bot_id: str = "",
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream version — runs the same ReAct loop, yields events."""
         async with AsyncExitStack() as stack:
-            # Build built-in tools according to bot.enabled_tools
-            tools: list[BaseTool] = []
-            effective = self._resolve_enabled_tools(enabled_tools)
-            if "rag_query" in effective and (kb_id or kb_ids):
-                tools.append(
-                    self._build_rag_lc_tool(
-                        tenant_id, kb_ids, kb_id, rag_top_k, rag_score_threshold,
-                        rerank_cfg=metadata,
-                    )
-                )
-            if (
-                "query_dm_with_image" in effective
-                and kb_id
-                and self._dm_image_query_tool is not None
-            ):
-                tools.append(
-                    self._build_dm_image_lc_tool(
-                        tenant_id, kb_id, rag_top_k, rag_score_threshold,
-                        kb_ids=kb_ids,
-                    )
-                )
+            # Build built-in tools (per-tool params override flat args)
+            tools: list[BaseTool] = self._build_builtin_tools(
+                tenant_id=tenant_id,
+                kb_id=kb_id,
+                kb_ids=kb_ids,
+                enabled_tools=enabled_tools,
+                rag_top_k=rag_top_k,
+                rag_score_threshold=rag_score_threshold,
+                metadata=metadata,
+                tool_rag_params=tool_rag_params,
+            )
 
             # Load MCP tools — sessions kept alive by stack
             if self._cached_tool_loader:

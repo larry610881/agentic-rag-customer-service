@@ -44,6 +44,7 @@ class MetaSupervisorService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
+        tool_rag_params: dict[str, dict[str, Any]] | None = None,
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
     ) -> AgentResponse:
@@ -124,6 +125,7 @@ class MetaSupervisorService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
+        tool_rag_params: dict[str, dict[str, Any]] | None = None,
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
     ) -> AsyncIterator[dict[str, Any]]:

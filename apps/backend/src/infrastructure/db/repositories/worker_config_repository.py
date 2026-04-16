@@ -9,6 +9,10 @@ from src.domain.bot.worker_config import WorkerConfig
 from src.domain.bot.worker_repository import WorkerConfigRepository
 from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.bot_worker_model import BotWorkerModel
+from src.infrastructure.db.repositories.bot_repository import (
+    _dict_to_tool_configs,
+    _tool_configs_to_dict,
+)
 
 
 class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
@@ -30,6 +34,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
             max_tool_calls=model.max_tool_calls,
             enabled_mcp_ids=list(model.enabled_mcp_ids or []),
             knowledge_base_ids=list(model.knowledge_base_ids or []),
+            tool_configs=_dict_to_tool_configs(model.tool_configs),
             sort_order=model.sort_order,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -53,6 +58,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
                 existing.max_tool_calls = worker.max_tool_calls
                 existing.enabled_mcp_ids = worker.enabled_mcp_ids
                 existing.knowledge_base_ids = worker.knowledge_base_ids
+                existing.tool_configs = _tool_configs_to_dict(worker.tool_configs)
                 existing.sort_order = worker.sort_order
                 existing.updated_at = now
             else:
@@ -69,6 +75,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
                     max_tool_calls=worker.max_tool_calls,
                     enabled_mcp_ids=worker.enabled_mcp_ids,
                     knowledge_base_ids=worker.knowledge_base_ids,
+                    tool_configs=_tool_configs_to_dict(worker.tool_configs),
                     sort_order=worker.sort_order,
                     created_at=worker.created_at,
                     updated_at=now,

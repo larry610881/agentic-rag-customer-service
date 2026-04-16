@@ -44,6 +44,21 @@ class IntentRoute:
     system_prompt: str     # 該意圖專用 prompt
 
 
+@dataclass(frozen=True)
+class ToolRagConfig:
+    """Per-tool RAG 參數覆蓋（Value Object）。
+
+    所有欄位皆為 Optional — None 代表繼承上一層（Worker per-tool →
+    Bot per-tool → Bot 全域預設）。由 ``tool_rag_resolver`` 合併。
+    """
+
+    rag_top_k: int | None = None
+    rag_score_threshold: float | None = None
+    rerank_enabled: bool | None = None
+    rerank_model: str | None = None
+    rerank_top_n: int | None = None
+
+
 @dataclass
 class BotLLMParams:
     temperature: float = 0.3
@@ -91,6 +106,9 @@ class Bot:
     rerank_enabled: bool = False
     rerank_model: str = ""          # 空 = 用系統預設 (haiku)
     rerank_top_n: int = 20          # Stage 1: embedding 召回數量
+    # Per-tool RAG 參數覆蓋（key = tool name，例如 "rag_query" / "query_dm_with_image"）
+    # 未設定時走 Bot 全域 rag_top_k / rag_score_threshold / rerank_*
+    tool_configs: dict[str, ToolRagConfig] = field(default_factory=dict)
     intent_routes: list[IntentRoute] = field(default_factory=list)  # deprecated → bot_workers
     router_model: str = ""  # LLM router 分類用 model（空 = bot default）
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"

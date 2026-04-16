@@ -27,6 +27,12 @@ import {
 import { useMcpRegistryAccessible } from "@/hooks/queries/use-mcp-registry";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { WorkerConfig } from "@/types/worker-config";
+import type { ToolRagConfig } from "@/types/bot";
+import {
+  ToolRagConfigSection,
+  type ModelOption,
+  type ToolRagInherited,
+} from "./tool-rag-config-section";
 
 type EnabledModel = {
   provider_name: string;
@@ -44,7 +50,39 @@ type WorkersSectionProps = {
   botTenantId: string;
   enabledModels?: EnabledModel[];
   knowledgeBases?: KnowledgeBaseInfo[];
+  /** Bot 全域 RAG 預設，作為 worker 繼承的 fallback 值 */
+  botDefaults?: ToolRagInherited;
+  /** Bot per-tool 覆蓋，worker 未覆蓋時先繼承此層 */
+  botToolConfigs?: Record<string, ToolRagConfig>;
+  /** 需要顯示 per-tool 覆蓋 UI 的 tool 名稱白名單 */
+  ragToolNames?: readonly string[];
+  /** tool_name → 顯示 label 的對照表 */
+  ragToolLabels?: Record<string, string>;
+  rerankModelOptions?: ModelOption[];
 };
+
+/** 結合 bot per-tool 覆蓋 + bot 全域預設，算出 worker 視角的繼承值與來源 label。 */
+function resolveWorkerInherited(
+  toolName: string,
+  botDefaults: ToolRagInherited,
+  botToolConfig: ToolRagConfig | undefined,
+): { inherited: ToolRagInherited; label: string } {
+  if (botToolConfig && Object.keys(botToolConfig).length > 0) {
+    return {
+      inherited: {
+        rag_top_k: botToolConfig.rag_top_k ?? botDefaults.rag_top_k,
+        rag_score_threshold:
+          botToolConfig.rag_score_threshold ?? botDefaults.rag_score_threshold,
+        rerank_enabled:
+          botToolConfig.rerank_enabled ?? botDefaults.rerank_enabled,
+        rerank_model: botToolConfig.rerank_model ?? botDefaults.rerank_model,
+        rerank_top_n: botToolConfig.rerank_top_n ?? botDefaults.rerank_top_n,
+      },
+      label: `繼承自 Bot 的 ${toolName}`,
+    };
+  }
+  return { inherited: botDefaults, label: "繼承 Bot 預設" };
+}
 
 function WorkerCard({
   worker,
@@ -52,12 +90,22 @@ function WorkerCard({
   enabledModels,
   mcpServers,
   knowledgeBases,
+  botDefaults,
+  botToolConfigs,
+  ragToolNames,
+  ragToolLabels,
+  rerankModelOptions,
 }: {
   worker: WorkerConfig;
   botId: string;
   enabledModels: EnabledModel[];
   mcpServers: { id: string; name: string }[];
   knowledgeBases: { id: string; name: string }[];
+  botDefaults?: ToolRagInherited;
+  botToolConfigs?: Record<string, ToolRagConfig>;
+  ragToolNames?: readonly string[];
+  ragToolLabels?: Record<string, string>;
+  rerankModelOptions?: ModelOption[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const updateMutation = useUpdateWorker(botId);
@@ -65,7 +113,13 @@ function WorkerCard({
 
   const handleFieldUpdate = (
     field: string,
-    value: string | number | boolean | string[] | null,
+    value:
+      | string
+      | number
+      | boolean
+      | string[]
+      | null
+      | Record<string, ToolRagConfig>,
   ) => {
     updateMutation.mutate(
       { workerId: worker.id, data: { [field]: value } },
@@ -283,6 +337,50 @@ function WorkerCard({
             </div>
           )}
 
+          {/* Per-tool RAG 覆蓋 */}
+          {botDefaults && ragToolNames && ragToolNames.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs">
+                Per-tool RAG 參數覆蓋（未填 = 繼承 Bot）
+              </Label>
+              <div className="flex flex-col gap-2">
+                {ragToolNames.map((toolName) => {
+                  const botToolCfg = botToolConfigs?.[toolName];
+                  const { inherited, label } = resolveWorkerInherited(
+                    toolName,
+                    botDefaults,
+                    botToolCfg,
+                  );
+                  const currentValue = worker.tool_configs?.[toolName];
+                  const toolLabel =
+                    ragToolLabels?.[toolName] ?? toolName;
+                  return (
+                    <ToolRagConfigSection
+                      key={toolName}
+                      toolName={toolName}
+                      toolLabel={toolLabel}
+                      value={currentValue}
+                      inherited={inherited}
+                      inheritedLabel={label}
+                      rerankModelOptions={rerankModelOptions}
+                      onChange={(next) => {
+                        const nextMap = {
+                          ...(worker.tool_configs ?? {}),
+                        } as Record<string, ToolRagConfig>;
+                        if (next === undefined) {
+                          delete nextMap[toolName];
+                        } else {
+                          nextMap[toolName] = next;
+                        }
+                        handleFieldUpdate("tool_configs", nextMap);
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* MCP Tools */}
           {mcpServers.length > 0 && (
             <div className="flex flex-col gap-2">
@@ -322,6 +420,11 @@ export function WorkersSection({
   botTenantId,
   enabledModels = [],
   knowledgeBases = [],
+  botDefaults,
+  botToolConfigs,
+  ragToolNames,
+  ragToolLabels,
+  rerankModelOptions,
 }: WorkersSectionProps) {
   const { data: workers, isLoading } = useWorkers(botId);
   const createMutation = useCreateWorker(botId);
@@ -384,6 +487,11 @@ export function WorkersSection({
           enabledModels={enabledModels}
           mcpServers={mcpList}
           knowledgeBases={knowledgeBases}
+          botDefaults={botDefaults}
+          botToolConfigs={botToolConfigs}
+          ragToolNames={ragToolNames}
+          ragToolLabels={ragToolLabels}
+          rerankModelOptions={rerankModelOptions}
         />
       ))}
     </section>

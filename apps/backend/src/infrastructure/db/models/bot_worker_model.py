@@ -44,6 +44,10 @@ class BotWorkerModel(Base):
     knowledge_base_ids: Mapped[list] = mapped_column(
         JSON, nullable=False, default=list
     )
+    # Per-tool RAG 參數覆蓋；None / missing 代表繼承 Bot per-tool 或 Bot 全域
+    tool_configs: Mapped[dict] = mapped_column(
+        JSON, nullable=False, default=dict, server_default="{}"
+    )
     sort_order: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
     )

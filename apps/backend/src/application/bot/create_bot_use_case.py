@@ -9,6 +9,7 @@ from src.domain.bot.entity import (
     IntentRoute,
     McpServerConfig,
     McpToolMeta,
+    ToolRagConfig,
 )
 from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
@@ -54,6 +55,8 @@ class CreateBotCommand:
     rerank_enabled: bool = False
     rerank_model: str = ""
     rerank_top_n: int = 20
+    # Per-tool RAG 參數覆蓋：{tool_name: {rag_top_k, rag_score_threshold, rerank_*}}
+    tool_configs: dict = field(default_factory=dict)
     intent_routes: list[dict] = field(default_factory=list)
     router_model: str = ""
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
@@ -143,6 +146,17 @@ class CreateBotUseCase:
             rerank_enabled=command.rerank_enabled,
             rerank_model=command.rerank_model,
             rerank_top_n=command.rerank_top_n,
+            tool_configs={
+                name: ToolRagConfig(
+                    rag_top_k=cfg.get("rag_top_k"),
+                    rag_score_threshold=cfg.get("rag_score_threshold"),
+                    rerank_enabled=cfg.get("rerank_enabled"),
+                    rerank_model=cfg.get("rerank_model"),
+                    rerank_top_n=cfg.get("rerank_top_n"),
+                )
+                for name, cfg in (command.tool_configs or {}).items()
+                if isinstance(cfg, dict)
+            },
             intent_routes=[
                 IntentRoute(
                     name=r.get("name", ""),

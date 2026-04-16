@@ -18,7 +18,9 @@ from src.application.agent.prompt_assembler import (
 )
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
+from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
+from src.domain.bot.tool_rag_resolver import resolve_tool_rag_params
 from src.domain.conversation.entity import Conversation
 from src.domain.conversation.history_strategy import (
     ConversationHistoryStrategy,
@@ -34,6 +36,30 @@ from src.domain.shared.exceptions import DomainException
 from src.infrastructure.observability.agent_trace_collector import (
     AgentTraceCollector,
 )
+
+# ── Per-tool RAG 參數組裝 ──────────────────────────────────────────
+# RAG 類工具（top_k/threshold/rerank 有意義的 built-in tools）
+_RAG_TOOL_NAMES: tuple[str, ...] = ("rag_query", "query_dm_with_image")
+
+
+def build_tool_rag_params_map(
+    *,
+    bot: Bot,
+    worker: WorkerConfig | None = None,
+    tool_names: tuple[str, ...] = _RAG_TOOL_NAMES,
+) -> dict[str, dict[str, Any]]:
+    """為每個 RAG 類工具計算最終的 RAG 參數（含繼承鏈）。
+
+    輸出 ``{tool_name: {rag_top_k, rag_score_threshold, rerank_*}}``，
+    供 ReActAgentService 的 tool builder 查表使用。
+    """
+    return {
+        name: resolve_tool_rag_params(
+            tool_name=name, bot=bot, worker=worker,
+        )
+        for name in tool_names
+    }
+
 
 if TYPE_CHECKING:
     from src.application.memory.extract_memory_use_case import (
@@ -175,6 +201,9 @@ class SendMessageUseCase:
         cfg["rag_top_k"] = bot.llm_params.rag_top_k
         cfg["rag_score_threshold"] = bot.llm_params.rag_score_threshold
         cfg["show_sources"] = bot.show_sources
+        # Stash bot entity + initial per-tool params (worker routing may override)
+        cfg["_bot"] = bot
+        cfg["tool_rag_params"] = build_tool_rag_params_map(bot=bot)
         cfg["mcp_servers"] = [
             {
                 "url": s.url,
@@ -481,6 +510,13 @@ class SendMessageUseCase:
         # If empty list explicitly set → no RAG
         # (default from bot if not configured on worker)
 
+        # Per-tool RAG 參數：Worker per-tool → Bot per-tool → Bot 全域
+        bot_entity = cfg.get("_bot")
+        if bot_entity is not None:
+            cfg["tool_rag_params"] = build_tool_rag_params_map(
+                bot=bot_entity, worker=matched,
+            )
+
         logger.info(
             "worker_routing.matched",
             worker_name=matched.name,
@@ -565,6 +601,7 @@ class SendMessageUseCase:
             enabled_tools=bot_cfg["enabled_tools"],
             rag_top_k=bot_cfg["rag_top_k"],
             rag_score_threshold=bot_cfg["rag_score_threshold"],
+            tool_rag_params=bot_cfg.get("tool_rag_params"),
             mcp_servers=bot_cfg.get("mcp_servers"),
             max_tool_calls=bot_cfg.get("max_tool_calls", 5),
             bot_id=bot_cfg.get("bot_id", ""),
@@ -715,6 +752,7 @@ class SendMessageUseCase:
             enabled_tools=bot_cfg["enabled_tools"],
             rag_top_k=bot_cfg["rag_top_k"],
             rag_score_threshold=bot_cfg["rag_score_threshold"],
+            tool_rag_params=bot_cfg.get("tool_rag_params"),
             mcp_servers=bot_cfg.get("mcp_servers"),
             max_tool_calls=bot_cfg.get("max_tool_calls", 5),
             bot_id=bot_cfg.get("bot_id", ""),

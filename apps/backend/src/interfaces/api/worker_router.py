@@ -6,6 +6,8 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from pydantic import Field
+
 from src.application.bot.worker_use_cases import (
     CreateWorkerCommand,
     CreateWorkerUseCase,
@@ -24,6 +26,16 @@ router = APIRouter(
 # --- Schemas ---
 
 
+class WorkerToolRagConfigSchema(BaseModel):
+    """Worker 層級的 per-tool RAG 參數覆蓋；None = 繼承 Bot。"""
+
+    rag_top_k: int | None = Field(default=None, ge=1, le=50)
+    rag_score_threshold: float | None = Field(default=None, ge=0, le=1)
+    rerank_enabled: bool | None = None
+    rerank_model: str | None = None
+    rerank_top_n: int | None = Field(default=None, ge=5, le=50)
+
+
 class CreateWorkerRequest(BaseModel):
     name: str
     description: str = ""
@@ -35,6 +47,9 @@ class CreateWorkerRequest(BaseModel):
     max_tool_calls: int = 5
     enabled_mcp_ids: list[str] = []
     knowledge_base_ids: list[str] = []
+    tool_configs: dict[str, WorkerToolRagConfigSchema] = Field(
+        default_factory=dict
+    )
     sort_order: int = 0
 
 
@@ -49,6 +64,7 @@ class UpdateWorkerRequest(BaseModel):
     max_tool_calls: int | None = None
     enabled_mcp_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
+    tool_configs: dict[str, WorkerToolRagConfigSchema] | None = None
     sort_order: int | None = None
 
 
@@ -65,6 +81,7 @@ class WorkerResponse(BaseModel):
     max_tool_calls: int
     enabled_mcp_ids: list[str]
     knowledge_base_ids: list[str]
+    tool_configs: dict[str, dict[str, Any]]
     sort_order: int
     created_at: str
     updated_at: str
@@ -84,6 +101,20 @@ def _to_response(w: Any) -> WorkerResponse:
         max_tool_calls=w.max_tool_calls,
         enabled_mcp_ids=w.enabled_mcp_ids,
         knowledge_base_ids=w.knowledge_base_ids,
+        tool_configs={
+            name: {
+                k: v
+                for k, v in {
+                    "rag_top_k": cfg.rag_top_k,
+                    "rag_score_threshold": cfg.rag_score_threshold,
+                    "rerank_enabled": cfg.rerank_enabled,
+                    "rerank_model": cfg.rerank_model,
+                    "rerank_top_n": cfg.rerank_top_n,
+                }.items()
+                if v is not None
+            }
+            for name, cfg in (w.tool_configs or {}).items()
+        },
         sort_order=w.sort_order,
         created_at=w.created_at.isoformat(),
         updated_at=w.updated_at.isoformat(),
@@ -131,6 +162,10 @@ async def create_worker(
             max_tool_calls=body.max_tool_calls,
             enabled_mcp_ids=body.enabled_mcp_ids,
             knowledge_base_ids=body.knowledge_base_ids,
+            tool_configs={
+                name: cfg.model_dump(exclude_none=True)
+                for name, cfg in body.tool_configs.items()
+            },
             sort_order=body.sort_order,
         )
     )
@@ -160,6 +195,14 @@ async def update_worker(
             max_tool_calls=body.max_tool_calls,
             enabled_mcp_ids=body.enabled_mcp_ids,
             knowledge_base_ids=body.knowledge_base_ids,
+            tool_configs=(
+                {
+                    name: cfg.model_dump(exclude_none=True)
+                    for name, cfg in body.tool_configs.items()
+                }
+                if body.tool_configs is not None
+                else None
+            ),
             sort_order=body.sort_order,
         )
     )

@@ -8,6 +8,7 @@ from src.domain.bot.entity import (
     IntentRoute,
     McpServerConfig,
     McpToolMeta,
+    ToolRagConfig,
 )
 from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
@@ -59,6 +60,7 @@ class UpdateBotCommand:
     rerank_enabled: object = _UNSET
     rerank_model: object = _UNSET
     rerank_top_n: object = _UNSET
+    tool_configs: object = _UNSET
     intent_routes: object = _UNSET
     router_model: object = _UNSET
     busy_reply_message: object = _UNSET
@@ -116,6 +118,18 @@ class UpdateBotUseCase:
             bot.rerank_model = command.rerank_model  # type: ignore[assignment]
         if command.rerank_top_n is not _UNSET:
             bot.rerank_top_n = command.rerank_top_n  # type: ignore[assignment]
+        if command.tool_configs is not _UNSET:
+            bot.tool_configs = {
+                name: ToolRagConfig(
+                    rag_top_k=cfg.get("rag_top_k"),
+                    rag_score_threshold=cfg.get("rag_score_threshold"),
+                    rerank_enabled=cfg.get("rerank_enabled"),
+                    rerank_model=cfg.get("rerank_model"),
+                    rerank_top_n=cfg.get("rerank_top_n"),
+                )
+                for name, cfg in (command.tool_configs or {}).items()  # type: ignore[union-attr]
+                if isinstance(cfg, dict)
+            }
         if command.intent_routes is not _UNSET:
             bot.intent_routes = [
                 IntentRoute(

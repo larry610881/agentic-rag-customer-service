@@ -90,6 +90,16 @@ class IntentRouteSchema(BaseModel):
     system_prompt: str = Field(..., min_length=1, max_length=10000)
 
 
+class ToolRagConfigSchema(BaseModel):
+    """Per-tool RAG 參數覆蓋；任何欄位為 None 代表繼承 Bot 層級。"""
+
+    rag_top_k: int | None = Field(default=None, ge=1, le=50)
+    rag_score_threshold: float | None = Field(default=None, ge=0, le=1)
+    rerank_enabled: bool | None = None
+    rerank_model: str | None = None
+    rerank_top_n: int | None = Field(default=None, ge=5, le=50)
+
+
 class CreateBotRequest(BaseModel):
     name: str
     description: str = ""
@@ -127,6 +137,7 @@ class CreateBotRequest(BaseModel):
     rerank_enabled: bool = False
     rerank_model: str = ""
     rerank_top_n: int = 20
+    tool_configs: dict[str, ToolRagConfigSchema] = Field(default_factory=dict)
     intent_routes: list[IntentRouteSchema] = []
     router_model: str = ""
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
@@ -172,6 +183,7 @@ class UpdateBotRequest(BaseModel):
     rerank_enabled: bool | None = None
     rerank_model: str | None = None
     rerank_top_n: int | None = None
+    tool_configs: dict[str, ToolRagConfigSchema] | None = None
     intent_routes: list[IntentRouteSchema] | None = None
     router_model: str | None = None
     busy_reply_message: str | None = None
@@ -221,6 +233,7 @@ class BotResponse(BaseModel):
     rerank_enabled: bool
     rerank_model: str
     rerank_top_n: int
+    tool_configs: dict[str, dict[str, Any]]
     intent_routes: list[dict[str, Any]]
     busy_reply_message: str
     line_channel_secret: str | None
@@ -291,6 +304,20 @@ def _to_response(bot) -> BotResponse:
         rerank_enabled=bot.rerank_enabled,
         rerank_model=bot.rerank_model,
         rerank_top_n=bot.rerank_top_n,
+        tool_configs={
+            name: {
+                k: v
+                for k, v in {
+                    "rag_top_k": cfg.rag_top_k,
+                    "rag_score_threshold": cfg.rag_score_threshold,
+                    "rerank_enabled": cfg.rerank_enabled,
+                    "rerank_model": cfg.rerank_model,
+                    "rerank_top_n": cfg.rerank_top_n,
+                }.items()
+                if v is not None
+            }
+            for name, cfg in bot.tool_configs.items()
+        },
         intent_routes=[
             {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
             for r in bot.intent_routes
@@ -366,6 +393,10 @@ async def create_bot(
             rerank_enabled=body.rerank_enabled,
             rerank_model=body.rerank_model,
             rerank_top_n=body.rerank_top_n,
+            tool_configs={
+                name: cfg.model_dump(exclude_none=True)
+                for name, cfg in body.tool_configs.items()
+            },
             intent_routes=[
                 {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
                 for r in body.intent_routes
@@ -443,6 +474,11 @@ def _build_update_command(
         val = getattr(body, field)
         if field == "intent_routes" and val is not None:
             val = [r.model_dump() for r in val]
+        elif field == "tool_configs" and val is not None:
+            val = {
+                name: cfg.model_dump(exclude_none=True)
+                for name, cfg in val.items()
+            }
         kwargs[field] = val
     return UpdateBotCommand(**kwargs)
 

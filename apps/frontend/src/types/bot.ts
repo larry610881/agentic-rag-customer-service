@@ -4,6 +4,19 @@ export interface IntentRoute {
   system_prompt: string;
 }
 
+/**
+ * Per-tool RAG 參數覆蓋。
+ * 欄位省略 / undefined 代表繼承上層（Bot per-tool → Bot 全域 default）。
+ * API 序列化時應省略 undefined 欄位（JSON.stringify 會自動處理）。
+ */
+export interface ToolRagConfig {
+  rag_top_k?: number;
+  rag_score_threshold?: number;
+  rerank_enabled?: boolean;
+  rerank_model?: string;
+  rerank_top_n?: number;
+}
+
 export interface McpToolMeta {
   name: string;
   description: string;
@@ -63,6 +76,7 @@ export interface Bot {
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
   line_show_sources: boolean;
+  tool_configs?: Record<string, ToolRagConfig>;
   created_at: string;
   updated_at: string;
 }
@@ -106,6 +120,7 @@ export interface CreateBotRequest {
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
   line_show_sources?: boolean;
+  tool_configs?: Record<string, ToolRagConfig>;
 }
 
 export interface UpdateBotRequest {
@@ -147,4 +162,5 @@ export interface UpdateBotRequest {
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
   line_show_sources?: boolean;
+  tool_configs?: Record<string, ToolRagConfig>;
 }

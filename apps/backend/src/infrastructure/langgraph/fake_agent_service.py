@@ -36,6 +36,9 @@ class FakeAgentService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
+        tool_rag_params: dict[str, dict[str, Any]] | None = None,
+        mcp_servers: list[dict[str, Any]] | None = None,
+        max_tool_calls: int = 5,
     ) -> AgentResponse:
         return await self._supervisor.process_message(
             tenant_id, kb_id, user_message, history, metadata=metadata
@@ -57,6 +60,9 @@ class FakeAgentService(AgentService):
         enabled_tools: list[str] | None = None,
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
+        tool_rag_params: dict[str, dict[str, Any]] | None = None,
+        mcp_servers: list[dict[str, Any]] | None = None,
+        max_tool_calls: int = 5,
     ) -> AsyncIterator[dict[str, Any]]:
         async for chunk in self._supervisor.process_message_stream(
             tenant_id, kb_id, user_message, history,

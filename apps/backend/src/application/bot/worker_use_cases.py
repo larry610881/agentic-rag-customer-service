@@ -3,8 +3,28 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.domain.bot.entity import ToolRagConfig
 from src.domain.bot.worker_config import WorkerConfig
 from src.domain.bot.worker_repository import WorkerConfigRepository
+
+
+def _build_tool_configs(
+    raw: dict | None,
+) -> dict[str, ToolRagConfig]:
+    """將 API 傳入的 dict 轉為 {tool_name: ToolRagConfig}，供 entity 使用。"""
+    if not raw:
+        return {}
+    return {
+        name: ToolRagConfig(
+            rag_top_k=cfg.get("rag_top_k"),
+            rag_score_threshold=cfg.get("rag_score_threshold"),
+            rerank_enabled=cfg.get("rerank_enabled"),
+            rerank_model=cfg.get("rerank_model"),
+            rerank_top_n=cfg.get("rerank_top_n"),
+        )
+        for name, cfg in raw.items()
+        if isinstance(cfg, dict)
+    }
 
 
 @dataclass(frozen=True)
@@ -20,6 +40,7 @@ class CreateWorkerCommand:
     max_tool_calls: int = 5
     enabled_mcp_ids: list[str] = field(default_factory=list)
     knowledge_base_ids: list[str] = field(default_factory=list)
+    tool_configs: dict = field(default_factory=dict)
     sort_order: int = 0
 
 
@@ -36,6 +57,7 @@ class UpdateWorkerCommand:
     max_tool_calls: int | None = None
     enabled_mcp_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
+    tool_configs: dict | None = None
     sort_order: int | None = None
 
 
@@ -66,6 +88,7 @@ class CreateWorkerUseCase:
             max_tool_calls=command.max_tool_calls,
             enabled_mcp_ids=list(command.enabled_mcp_ids),
             knowledge_base_ids=list(command.knowledge_base_ids),
+            tool_configs=_build_tool_configs(command.tool_configs),
             sort_order=command.sort_order,
         )
         await self._repo.save(worker)
@@ -102,6 +125,8 @@ class UpdateWorkerUseCase:
             worker.enabled_mcp_ids = list(command.enabled_mcp_ids)
         if command.knowledge_base_ids is not None:
             worker.knowledge_base_ids = list(command.knowledge_base_ids)
+        if command.tool_configs is not None:
+            worker.tool_configs = _build_tool_configs(command.tool_configs)
         if command.sort_order is not None:
             worker.sort_order = command.sort_order
         await self._repo.save(worker)
