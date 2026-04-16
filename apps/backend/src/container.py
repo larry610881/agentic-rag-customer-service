@@ -1644,4 +1644,6 @@ class Container(containers.DeclarativeContainer):
         conversation_lock=conversation_lock,
         record_usage_use_case=record_usage_use_case,
         trace_session_factory=trace_session_factory,
+        intent_classifier=intent_classifier,
+        worker_config_repo=worker_config_repository,
     )

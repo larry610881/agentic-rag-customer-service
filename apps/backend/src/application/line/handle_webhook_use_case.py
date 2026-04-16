@@ -25,6 +25,7 @@ from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.concurrency import ConversationLock
+from src.application.agent.prompt_assembler import inject_runtime_vars
 from src.application.agent.send_message_use_case import (
     build_tool_rag_params_map,
 )
@@ -86,9 +87,13 @@ class HandleWebhookUseCase:
         conversation_timeout_minutes: int = 30,
         record_usage_use_case: Any | None = None,
         trace_session_factory: Any | None = None,
+        intent_classifier: Any | None = None,
+        worker_config_repo: Any | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
+        self._intent_classifier = intent_classifier
+        self._worker_config_repo = worker_config_repo
         self._line_service_factory = line_service_factory
         self._default_line_service = default_line_service
         self._default_tenant_id = default_tenant_id
@@ -323,27 +328,85 @@ class HandleWebhookUseCase:
                 mcp_servers.append(server_cfg)
 
         # Build rerank metadata so RAG tools inherit Bot's rerank config.
-        rerank_metadata = {
+        rerank_metadata: dict[str, Any] = {
             "rerank_enabled": bot.rerank_enabled,
             "rerank_model": bot.rerank_model,
             "rerank_top_n": bot.rerank_top_n,
         }
+
+        # ── Worker Routing（Subagent 分流；與 Web path 一致） ──
+        # 預設用 bot 本體設定
+        system_prompt = bot.bot_prompt or None
+        enabled_tools = bot.enabled_tools
+        kb_ids = bot.knowledge_base_ids
+        kb_id = bot.knowledge_base_ids[0] if bot.knowledge_base_ids else ""
+        max_tool_calls = bot.max_tool_calls or 5
+        tool_rag_params = build_tool_rag_params_map(bot=bot)
+
+        if self._worker_config_repo and self._intent_classifier:
+            workers = await self._worker_config_repo.find_by_bot_id(
+                bot.id.value
+            )
+            if workers:
+                matched = await self._intent_classifier.classify_workers(
+                    user_message=event.message_text,
+                    router_context="",
+                    workers=workers,
+                    router_model=bot.router_model,
+                )
+                if matched:
+                    if matched.worker_prompt:
+                        system_prompt = inject_runtime_vars(matched.worker_prompt)
+                    if matched.llm_provider:
+                        llm_params["provider_name"] = matched.llm_provider
+                    if matched.llm_model:
+                        llm_params["model"] = matched.llm_model
+                    llm_params["temperature"] = matched.temperature
+                    llm_params["max_tokens"] = matched.max_tokens
+                    max_tool_calls = matched.max_tool_calls
+                    if matched.enabled_mcp_ids and mcp_servers:
+                        mcp_servers = [
+                            s for s in mcp_servers
+                            if s.get("name") in matched.enabled_mcp_ids
+                            or s.get("registry_id") in matched.enabled_mcp_ids
+                        ]
+                    if matched.knowledge_base_ids:
+                        kb_ids = matched.knowledge_base_ids
+                        kb_id = matched.knowledge_base_ids[0]
+                    if matched.enabled_tools is not None:
+                        enabled_tools = list(matched.enabled_tools)
+                    tool_rag_params = build_tool_rag_params_map(
+                        bot=bot, worker=matched,
+                    )
+                    rerank_metadata["_worker_routing"] = {
+                        "name": matched.name,
+                        "llm_model": matched.llm_model or "",
+                        "llm_provider": matched.llm_provider or "",
+                        "kb_count": len(matched.knowledge_base_ids),
+                    }
+                    logger.info(
+                        "worker_routing.matched",
+                        channel="line",
+                        worker_name=matched.name,
+                        llm_model=matched.llm_model,
+                    )
+
         result = await self._agent_service.process_message(
             tenant_id=bot.tenant_id,
-            kb_id=bot.knowledge_base_ids[0] if bot.knowledge_base_ids else "",
+            kb_id=kb_id,
             user_message=event.message_text,
-            kb_ids=bot.knowledge_base_ids,
-            system_prompt=bot.bot_prompt or None,
-            enabled_tools=bot.enabled_tools,
+            kb_ids=kb_ids,
+            system_prompt=system_prompt,
+            enabled_tools=enabled_tools,
             llm_params=llm_params,
             metadata=rerank_metadata,
             history=history,
             rag_top_k=bot.llm_params.rag_top_k,
             rag_score_threshold=bot.llm_params.rag_score_threshold,
-            tool_rag_params=build_tool_rag_params_map(bot=bot),
+            tool_rag_params=tool_rag_params,
             customer_service_url=bot.customer_service_url,
             mcp_servers=mcp_servers,
-            max_tool_calls=bot.max_tool_calls or 5,
+            max_tool_calls=max_tool_calls,
         )
         t1 = time.monotonic()
 
