@@ -98,33 +98,75 @@ Agent 回應完成
 
 ## RAG Pipeline
 
+### Ingestion Flow（文件上傳 → 向量化）
+
+```mermaid
+graph TD
+    U["Upload API (3 入口)"] --> UC["UploadDocumentUseCase<br/>同步建 doc(pending) + task(pending)<br/>存檔至 GCS/本地"]
+    UC --> EQ{"content_type<br/>+ kb.ocr_mode?"}
+    EQ -->|"PDF + catalog"| SP["arq: split_pdf<br/>逐頁拆成子文件"]
+    EQ -->|"其他"| PD["arq: process_document"]
+    SP --> CHILD["每個子頁 → enqueue process_document"]
+    CHILD --> PD
+    PD --> P1["1. Parse<br/>PDF 用 Claude Vision OCR / 其他 parser"]
+    P1 --> P2["2. TextPreprocess + 語言偵測"]
+    P2 --> P3["3. Chunking (content-type aware)<br/>+ Quality + Filter + Dedup"]
+    P3 --> P4["4. Contextual Retrieval (可選)<br/>LLM 每 chunk 生 1-2 句上下文"]
+    P4 --> P5["5. Embedding<br/>text-embedding-3-large (3072 維)<br/>embed 文本 = context_text + content"]
+    P5 --> P6["6. Qdrant Upsert<br/>collection=kb_{kb_id}<br/>payload.tenant_id (CRITICAL)"]
+    P6 --> P7["7. 後處理<br/>聚合父文件 + 子頁 LLM rename"]
+    P7 --> TR{"KB 無 pending?"}
+    TR -->|"是"| CK["arq: classify_kb<br/>向量聚類 + LLM 命名<br/>→ chunk_category"]
 ```
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│ Upload   │───▶│ Parse &  │───▶│ Embed    │───▶│ Store in │
-│ Document │    │ Chunk    │    │ Vectors  │    │ Qdrant   │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘
 
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│ User     │───▶│ Embed    │───▶│ Vector   │───▶│ LLM      │
-│ Query    │    │ Query    │    │ Search   │    │ Generate │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘
-```
+#### 三條上傳入口（`interfaces/api/document_router.py`）
 
-### Ingestion Flow
+| 入口 | 路徑 | 用途 |
+|------|------|------|
+| Form-data | `POST /knowledge-bases/{kb_id}/documents` | ≤100 MB 直接上傳 |
+| Signed URL | `POST /request-upload` | 回傳 GCS signed URL（繞過 Cloud Run 32 MB） |
+| Confirm | `POST /confirm-upload` | 前端直傳 GCS 後通知後端 |
 
-1. **Upload** — 使用者上傳文件（PDF, TXT, MD）
-2. **Parse** — `FileParserService` 解析文件內容
-3. **Chunk** — `TextSplitterService` 將文本分塊（500 chars, 100 overlap）
-4. **Embed** — `EmbeddingService` 將每個 chunk 向量化
-5. **Store** — `VectorStore` 存入 Qdrant（含 tenant_id payload）
+#### arq Background Jobs（`worker.py`）
+
+| Job | 觸發 | 處理 |
+|-----|------|------|
+| `process_document` | 上傳後 + PDF 拆頁後 | 完整 7 步 pipeline |
+| `split_pdf` | PDF + `ocr_mode=catalog` | 逐頁拆子文件 → 再各自 `process_document` |
+| `classify_kb` | KB 無 pending/processing 時自動觸發 | 向量聚類 + LLM 命名分類 |
+| `extract_memory` | 對話結束 | 抽取對話記憶 |
+| `run_evaluation` | Prompt Optimizer 評估請求 | 跑評估 |
+
+#### 模型解析優先級（index-time）
+
+| 步驟 | 優先級 |
+|------|-------|
+| Contextual Retrieval | `KB.context_model` → `tenant.default_context_model` → 跳過 |
+| Auto-Classification | `KB.classification_model` → `tenant.default_classification_model` → 跳過 |
+| Embedding | `text-embedding-3-large` (3072 維，全系統統一) |
 
 ### Query Flow
 
+```mermaid
+graph LR
+    Q["User Query"] --> E["Embed Query<br/>text-embedding-3-large"]
+    E --> S["Qdrant Search<br/>kb_{kb_id} + tenant_id filter"]
+    S --> R["Rerank (Bot-level)"]
+    R --> A["Augment Prompt"]
+    A --> L["LLM Generate"]
+```
+
 1. **Query** — 使用者提問
-2. **Embed** — 將問題向量化
-3. **Search** — Qdrant 向量相似搜尋（top-k + score threshold + tenant 隔離）
-4. **Augment** — 將檢索結果注入 Prompt context
-5. **Generate** — LLM 根據 context 生成回答
+2. **Embed** — 問題向量化（同一 embedding model，維度必須一致）
+3. **Search** — Qdrant 向量相似搜尋，**必須帶 `tenant_id` payload filter**（CRITICAL）+ top-k + score threshold
+4. **Rerank** — Bot 層可選，用 `bot.rerank_model` 重新排序
+5. **Augment** — 將檢索結果注入 Prompt context（結構化標記 source / relevance）
+6. **Generate** — LLM 根據 context 生成回答
+
+### 詳細規範
+
+- 完整開發規範、測試策略、BDD 場景：`.claude/rules/rag-pipeline.md`
+- RAG 調整策略（不微調）：`docs/rag-tuning-strategy.md`
 
 ## 技術棧
 
@@ -144,8 +186,8 @@ Agent 回應完成
 
 | 類別 | 技術 |
 |------|------|
-| 框架 | Next.js 15 (App Router) |
+| 框架 | React + Vite SPA（React Router v6） |
 | UI | shadcn/ui (Tailwind CSS + Radix UI) |
 | Client State | Zustand |
 | Server State | TanStack Query |
-| 測試 | Vitest + RTL + Playwright |
+| 測試 | Vitest + RTL + MSW + playwright-bdd |

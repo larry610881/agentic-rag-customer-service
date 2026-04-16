@@ -1,6 +1,8 @@
 # RAG 聊天機器人調整策略（不微調、不壓縮模型）
 
 > 在不對 LLM 進行 Fine-tuning 或模型壓縮的前提下，以下為所有可調整的維度，依影響力排序。
+>
+> **實裝現況（2026-04）**：Embedding 已統一使用 `text-embedding-3-large` (3072 維)；已實裝 **Contextual Retrieval**（chunk 前置 LLM 生成 1-2 句上下文）與 **Auto-Classification**（向量聚類 + LLM 命名）；詳見 `.claude/rules/rag-pipeline.md` 與 `docs/architecture.md`。
 
 ## 調整維度總覽
 
@@ -61,7 +63,8 @@ RAG 的上限不是模型能力，是你灌進去的資料品質。
 | **Chunk Size** | 256 / 512 / 1024 tokens | 小 chunk 精準但缺上下文；大 chunk 完整但可能帶噪音 |
 | **Chunk Overlap** | 0 / 50 / 100 tokens | 重疊防止語意被切斷 |
 | **分段策略** | 固定長度 / 語意分段 / 按標題切 | FAQ → 按問題切；長文 → 語意分段 |
-| **Embedding Model** | `text-embedding-3-small` vs `large` | small 便宜快；large 品質好 |
+| **Embedding Model** | `text-embedding-3-small` vs `large` | small 便宜快；large 品質好 — **本系統已統一用 large (3072 維)** |
+| **Contextual Enrichment** | 每個 chunk 前置 LLM 生成 1-2 句上下文 | 解決「如上所述/該條款」等指代失去語義的問題，檢索失敗率可降 49%（Anthropic 2024）— **本系統已實裝** |
 | **Top-K** | 3 / 5 / 10 | K 太小可能漏；K 太大帶入噪音 |
 | **相似度門檻** | score < 0.7 丟棄 | 避免把不相關的結果餵給 LLM |
 | **Hybrid Search** | 向量 + BM25 關鍵字混合 | 專有名詞、編號等關鍵字搜尋更準 |
