@@ -95,6 +95,7 @@ class DocumentResponse(BaseModel):
     parent_id: str | None = None
     page_number: int | None = None
     children_count: int = 0
+    completed_children_count: int = 0
     created_at: str
     updated_at: str
 
@@ -105,7 +106,10 @@ class UploadDocumentResponse(BaseModel):
 
 
 def _to_response(
-    doc, task_progress: int | None = None, children_count: int = 0
+    doc,
+    task_progress: int | None = None,
+    children_count: int = 0,
+    completed_children_count: int = 0,
 ) -> DocumentResponse:
     return DocumentResponse(
         id=doc.id.value,
@@ -125,6 +129,7 @@ def _to_response(
         parent_id=doc.parent_id,
         page_number=doc.page_number,
         children_count=children_count,
+        completed_children_count=completed_children_count,
         created_at=doc.created_at.isoformat(),
         updated_at=doc.updated_at.isoformat(),
     )
@@ -180,19 +185,27 @@ async def list_documents(
     # Filter: only show top-level documents (no children)
     top_level = [d for d in documents if d.parent_id is None]
 
-    # Count children for parents
+    # Count children for parents (total + completed 一次 query)
     children_count_map: dict[str, int] = {}
+    completed_children_count_map: dict[str, int] = {}
     parent_ids = [d.id.value for d in top_level]
     if parent_ids:
         async with async_session_factory() as session:
             stmt = (
-                select(DocumentModel.parent_id, sa_func.count())
+                select(
+                    DocumentModel.parent_id,
+                    sa_func.count().label("total"),
+                    sa_func.count()
+                    .filter(DocumentModel.status == "processed")
+                    .label("completed"),
+                )
                 .where(DocumentModel.parent_id.in_(parent_ids))
                 .group_by(DocumentModel.parent_id)
             )
             rows = await session.execute(stmt)
             for row in rows.all():
                 children_count_map[row[0]] = row[1]
+                completed_children_count_map[row[0]] = row[2]
 
     return PaginatedResponse(
         items=[
@@ -200,6 +213,9 @@ async def list_documents(
                 doc,
                 progress_map.get(doc.id.value),
                 children_count=children_count_map.get(doc.id.value, 0),
+                completed_children_count=completed_children_count_map.get(
+                    doc.id.value, 0
+                ),
             )
             for doc in top_level
         ],
