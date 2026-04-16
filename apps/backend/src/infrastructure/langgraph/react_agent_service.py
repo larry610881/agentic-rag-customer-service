@@ -632,6 +632,18 @@ class ReActAgentService(AgentService):
             has_history_context=bool(history_context),
             history_context=history_context or "",
         )
+        # Worker routing breadcrumb（Supervisor 模式才有；由 send_message_use_case 塞入 metadata）
+        _wr_info = (metadata or {}).get("_worker_routing")
+        if isinstance(_wr_info, dict) and _wr_info.get("name"):
+            AgentTraceCollector.add_node(
+                "worker_routing",
+                f"已分流至 Worker：{_wr_info['name']}",
+                None, 0.0, 0.0,
+                worker_name=_wr_info["name"],
+                worker_llm=_wr_info.get("llm_model") or "(default)",
+                worker_llm_provider=_wr_info.get("llm_provider") or "",
+                worker_kb_count=_wr_info.get("kb_count", 0),
+            )
 
         async with AsyncExitStack() as stack:
             # 1. Build built-in tools (per-tool params override flat args)
@@ -824,6 +836,18 @@ class ReActAgentService(AgentService):
                 has_history_context=bool(history_context),
                 history_context=history_context or "",
             )
+            # Worker routing breadcrumb
+            _wr_info_s = (metadata or {}).get("_worker_routing")
+            if isinstance(_wr_info_s, dict) and _wr_info_s.get("name"):
+                AgentTraceCollector.add_node(
+                    "worker_routing",
+                    f"已分流至 Worker：{_wr_info_s['name']}",
+                    None, 0.0, 0.0,
+                    worker_name=_wr_info_s["name"],
+                    worker_llm=_wr_info_s.get("llm_model") or "(default)",
+                    worker_llm_provider=_wr_info_s.get("llm_provider") or "",
+                    worker_kb_count=_wr_info_s.get("kb_count", 0),
+                )
 
             # Emit initial status so frontend shows "AI 分析中" immediately
             yield {"type": "status", "status": "react_thinking"}

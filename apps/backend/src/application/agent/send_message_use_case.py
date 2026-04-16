@@ -518,6 +518,14 @@ class SendMessageUseCase:
                 bot=bot_entity, worker=matched,
             )
 
+        # Stash for agent trace node（process_message 會讀並加到 AgentTraceCollector）
+        cfg["_worker_matched_info"] = {
+            "name": matched.name,
+            "llm_model": matched.llm_model or "",
+            "llm_provider": matched.llm_provider or "",
+            "kb_count": len(matched.knowledge_base_ids),
+        }
+
         logger.info(
             "worker_routing.matched",
             worker_name=matched.name,
@@ -569,6 +577,10 @@ class SendMessageUseCase:
         bot_cfg = await self._resolve_worker_config(
             bot_cfg, command.message, router_context,
         )
+
+        # Propagate worker routing info to agent service (for trace visualization)
+        if bot_cfg.get("_worker_matched_info"):
+            metadata["_worker_routing"] = bot_cfg["_worker_matched_info"]
 
         # ── Prompt Guard: input check ──
         if self._prompt_guard:
@@ -732,6 +744,10 @@ class SendMessageUseCase:
         bot_cfg = await self._resolve_worker_config(
             bot_cfg, command.message, router_context,
         )
+
+        # Propagate worker routing info to agent service (for trace visualization)
+        if bot_cfg.get("_worker_matched_info"):
+            metadata["_worker_routing"] = bot_cfg["_worker_matched_info"]
 
         # Stream from agent service
         full_answer = ""
