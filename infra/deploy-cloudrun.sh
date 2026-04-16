@@ -24,14 +24,7 @@ cd "$(dirname "$0")/../apps/backend"
 docker build -t ${REPO}/backend:latest .
 docker push ${REPO}/backend:latest
 
-# --- 3. Build & Push MCP Server ---
-echo ""
-echo "=== Build Carrefour MCP ==="
-cd "$(dirname "$0")/../mcp-servers/carrefour"
-docker build -t ${REPO}/mcp-carrefour:latest .
-docker push ${REPO}/mcp-carrefour:latest
-
-# --- 4. Deploy Backend to Cloud Run ---
+# --- 3. Deploy Backend to Cloud Run ---
 echo ""
 echo "=== Deploy Backend to Cloud Run ==="
 gcloud run deploy agentic-rag-backend \
@@ -49,29 +42,9 @@ gcloud run deploy agentic-rag-backend \
   --set-env-vars="APP_ENV=production" \
   --env-vars-file=deploy-backend.env
 
-# --- 5. Deploy MCP to Cloud Run ---
-echo ""
-echo "=== Deploy Carrefour MCP to Cloud Run ==="
-gcloud run deploy agentic-rag-mcp-carrefour \
-  --image=${REPO}/mcp-carrefour:latest \
-  --region=$REGION \
-  --project=$PROJECT_ID \
-  --platform=managed \
-  --port=8080 \
-  --memory=256Mi \
-  --cpu=1 \
-  --min-instances=0 \
-  --max-instances=2 \
-  --timeout=30 \
-  --allow-unauthenticated
-
 echo ""
 echo "=== 部署完成 ==="
 BACKEND_URL=$(gcloud run services describe agentic-rag-backend --region=$REGION --project=$PROJECT_ID --format='value(status.url)')
-MCP_URL=$(gcloud run services describe agentic-rag-mcp-carrefour --region=$REGION --project=$PROJECT_ID --format='value(status.url)')
 echo "Backend: ${BACKEND_URL}"
-echo "MCP: ${MCP_URL}/mcp"
 echo ""
-echo "下一步："
-echo "1. 前端 VITE_API_URL 設為 ${BACKEND_URL}"
-echo "2. 平台 MCP 工具庫註冊 ${MCP_URL}/mcp"
+echo "下一步：前端 VITE_API_URL 設為 ${BACKEND_URL}"
