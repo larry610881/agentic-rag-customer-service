@@ -154,7 +154,8 @@ const TAB_KEYS = {
   LLM_PROMPT: "llm-prompt",
   CAPABILITIES: "capabilities",
   SUBAGENT: "subagent",
-  CHANNELS: "channels",
+  WIDGET: "widget",
+  LINE: "line",
 } as const;
 
 function WebhookCopyButton({
@@ -196,7 +197,7 @@ export function BotDetailForm({
   const { data: kbData } = useKnowledgeBases();
   const { data: enabledModels } = useEnabledModels();
   const { data: builtInTools = [] } = useBuiltInTools();
-  const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.CAPABILITIES);
+  const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.LLM_PROMPT);
 
   const {
     register,
@@ -440,7 +441,7 @@ export function BotDetailForm({
         </div>
       </section>
 
-      {/* 4-Tab section */}
+      {/* 5-Tab section */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full">
           <TabsTrigger value={TAB_KEYS.LLM_PROMPT} className="flex-1">
@@ -452,8 +453,11 @@ export function BotDetailForm({
           <TabsTrigger value={TAB_KEYS.SUBAGENT} className="flex-1">
             Sub-agent
           </TabsTrigger>
-          <TabsTrigger value={TAB_KEYS.CHANNELS} className="flex-1">
-            通路
+          <TabsTrigger value={TAB_KEYS.WIDGET} className="flex-1">
+            Widget
+          </TabsTrigger>
+          <TabsTrigger value={TAB_KEYS.LINE} className="flex-1">
+            LINE
           </TabsTrigger>
         </TabsList>
 
@@ -589,7 +593,7 @@ export function BotDetailForm({
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              提示：Reranking 等檢索屬性已移至「能力」頁的「Bot 全域 RAG 預設」區塊。
+              提示：Reranking 等檢索屬性已移至「能力」頁的「知識庫與檢索」區塊。
             </p>
           </section>
 
@@ -618,11 +622,17 @@ export function BotDetailForm({
           value={TAB_KEYS.CAPABILITIES}
           className="flex flex-col gap-6 pt-4"
         >
-          {/* 知識庫綁定 */}
+          {/* 知識庫與檢索（合併：KB 綁定 + 預設檢索參數 + 預設 Reranking） */}
           <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">知識庫</h3>
+            <h3 className="text-lg font-semibold">知識庫與檢索</h3>
+            <p className="text-sm text-muted-foreground">
+              綁定此機器人可以使用的知識庫，以及預設的檢索行為。每個 RAG
+              類工具可展開「進階設定」獨立覆蓋；未覆蓋時套用這裡的預設。
+            </p>
+
+            {/* 綁定知識庫 */}
             <div className="flex flex-col gap-2">
-              <Label>已綁定的知識庫（可多選）</Label>
+              <Label>綁定的知識庫（可多選）</Label>
               <Controller
                 name="knowledge_base_ids"
                 control={control}
@@ -659,119 +669,150 @@ export function BotDetailForm({
                 )}
               />
             </div>
-          </section>
 
-          {/* Bot 全域 RAG 預設 */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">Bot 全域 RAG 預設</h3>
-            <p className="text-sm text-muted-foreground">
-              未被 per-tool 覆蓋時，RAG 類工具會使用以下預設值。
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="bot-rag-top-k">Top K（1-20）</Label>
-                <Input
-                  id="bot-rag-top-k"
-                  type="number"
-                  min="1"
-                  max="20"
-                  {...register("rag_top_k")}
-                />
-                {errors.rag_top_k && (
-                  <p className="text-sm text-destructive">
-                    {errors.rag_top_k.message}
-                  </p>
-                )}
+            {/* 預設檢索參數 */}
+            <div className="flex flex-col gap-3 rounded-md border bg-muted/20 px-3 py-3">
+              <div className="flex flex-col">
+                <Label className="text-sm font-medium">預設檢索參數</Label>
+                <p className="text-xs text-muted-foreground">
+                  未被 per-tool 覆蓋時，RAG 類工具會使用以下值。
+                </p>
               </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="bot-rag-score-threshold">
-                  分數閾值（0-1）
-                </Label>
-                <Input
-                  id="bot-rag-score-threshold"
-                  type="number"
-                  step="0.05"
-                  min="0"
-                  max="1"
-                  {...register("rag_score_threshold")}
-                />
-                {errors.rag_score_threshold && (
-                  <p className="text-sm text-destructive">
-                    {errors.rag_score_threshold.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Reranking 區塊（搬自 LLM tab） */}
-            <div className="flex flex-col gap-3 rounded-md border p-3">
-              <Controller
-                name="rerank_enabled"
-                control={control}
-                render={({ field }) => (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-sm">啟用 Reranking</Label>
-                      <p className="text-xs text-muted-foreground">
-                        用 LLM 對 RAG 召回結果重新評分排序
-                      </p>
-                    </div>
-                    <Switch
-                      checked={field.value ?? false}
-                      onCheckedChange={(v) => {
-                        field.onChange(v);
-                        if (v && !watch("rerank_model")) {
-                          setValue(
-                            "rerank_model",
-                            "claude-haiku-4-5-20251001",
-                          );
-                        }
-                      }}
-                    />
-                  </div>
-                )}
-              />
-              {watch("rerank_enabled") && (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="rerank-model">Rerank 模型</Label>
-                    <Controller
-                      name="rerank_model"
-                      control={control}
-                      render={({ field }) => (
-                        <Select
-                          value={field.value || "claude-haiku-4-5-20251001"}
-                          onValueChange={(v) => field.onChange(v)}
-                        >
-                          <SelectTrigger id="rerank-model">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {RERANK_MODEL_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="rerank-top-n">召回數量</Label>
-                    <Input
-                      id="rerank-top-n"
-                      type="number"
-                      {...register("rerank_top_n")}
-                      min={5}
-                      max={50}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Embedding 搜尋筆數（rerank 後取 RAG Top K 筆給 LLM）
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="bot-rag-top-k" className="text-xs">
+                    Top K（1-20）
+                  </Label>
+                  <Input
+                    id="bot-rag-top-k"
+                    type="number"
+                    min="1"
+                    max="20"
+                    {...register("rag_top_k")}
+                  />
+                  {errors.rag_top_k && (
+                    <p className="text-sm text-destructive">
+                      {errors.rag_top_k.message}
                     </p>
-                  </div>
+                  )}
                 </div>
-              )}
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="bot-rag-score-threshold" className="text-xs">
+                    分數閾值（0-1）
+                  </Label>
+                  <Input
+                    id="bot-rag-score-threshold"
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    {...register("rag_score_threshold")}
+                  />
+                  {errors.rag_score_threshold && (
+                    <p className="text-sm text-destructive">
+                      {errors.rag_score_threshold.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* 預設 Reranking（折疊） */}
+              <Collapsible>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 justify-start gap-2 px-2 text-sm"
+                  >
+                    <ChevronDown className="h-4 w-4 transition-transform data-[state=open]:rotate-180" />
+                    <span>
+                      預設 Reranking：
+                      <span className="font-medium">
+                        {watch("rerank_enabled") ? "已啟用" : "未啟用"}
+                      </span>
+                    </span>
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="flex flex-col gap-3 pt-2">
+                  <Controller
+                    name="rerank_enabled"
+                    control={control}
+                    render={({ field }) => (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-sm">啟用 Reranking</Label>
+                          <p className="text-xs text-muted-foreground">
+                            用 LLM 對 RAG 召回結果重新評分排序
+                          </p>
+                        </div>
+                        <Switch
+                          checked={field.value ?? false}
+                          onCheckedChange={(v) => {
+                            field.onChange(v);
+                            if (v && !watch("rerank_model")) {
+                              setValue(
+                                "rerank_model",
+                                "claude-haiku-4-5-20251001",
+                              );
+                            }
+                          }}
+                        />
+                      </div>
+                    )}
+                  />
+                  {watch("rerank_enabled") && (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="rerank-model" className="text-xs">
+                          Rerank 模型
+                        </Label>
+                        <Controller
+                          name="rerank_model"
+                          control={control}
+                          render={({ field }) => (
+                            <Select
+                              value={
+                                field.value || "claude-haiku-4-5-20251001"
+                              }
+                              onValueChange={(v) => field.onChange(v)}
+                            >
+                              <SelectTrigger id="rerank-model">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {RERANK_MODEL_OPTIONS.map((opt) => (
+                                  <SelectItem
+                                    key={opt.value}
+                                    value={opt.value}
+                                  >
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="rerank-top-n" className="text-xs">
+                          召回數量
+                        </Label>
+                        <Input
+                          id="rerank-top-n"
+                          type="number"
+                          {...register("rerank_top_n")}
+                          min={5}
+                          max={50}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Embedding 搜尋筆數（rerank 後取 RAG Top K 筆給 LLM）
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
             </div>
           </section>
 
@@ -998,25 +1039,12 @@ export function BotDetailForm({
         </TabsContent>
 
         {/* ================================================================ */}
-        {/* Tab 4: 通路（Channels = Widget + LINE）                             */}
+        {/* Tab 4: Widget                                                      */}
         {/* ================================================================ */}
         <TabsContent
-          value={TAB_KEYS.CHANNELS}
+          value={TAB_KEYS.WIDGET}
           className="flex flex-col gap-6 pt-4"
         >
-          {/* Web Widget 折疊子區 */}
-          <Collapsible defaultOpen>
-            <CollapsibleTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full justify-between"
-              >
-                <span className="text-base font-semibold">Web Widget</span>
-                <ChevronDown className="h-4 w-4 transition-transform data-[state=open]:rotate-180" />
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="flex flex-col gap-6 pt-4">
               {/* Widget 開關 */}
               <section className="flex flex-col gap-4">
                 <h3 className="text-lg font-semibold">Web Widget</h3>
@@ -1329,22 +1357,15 @@ export function BotDetailForm({
                   </p>
                 </div>
               </section>
-            </CollapsibleContent>
-          </Collapsible>
+        </TabsContent>
 
-          {/* LINE 頻道 折疊子區 */}
-          <Collapsible defaultOpen>
-            <CollapsibleTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full justify-between"
-              >
-                <span className="text-base font-semibold">LINE 頻道</span>
-                <ChevronDown className="h-4 w-4 transition-transform data-[state=open]:rotate-180" />
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="flex flex-col gap-6 pt-4">
+        {/* ================================================================ */}
+        {/* Tab 5: LINE                                                        */}
+        {/* ================================================================ */}
+        <TabsContent
+          value={TAB_KEYS.LINE}
+          className="flex flex-col gap-6 pt-4"
+        >
               {/* Webhook URL */}
               <section className="flex flex-col gap-4">
                 <h3 className="text-lg font-semibold">Webhook URL</h3>
@@ -1437,8 +1458,6 @@ export function BotDetailForm({
                   />
                 </div>
               </section>
-            </CollapsibleContent>
-          </Collapsible>
         </TabsContent>
       </Tabs>
 

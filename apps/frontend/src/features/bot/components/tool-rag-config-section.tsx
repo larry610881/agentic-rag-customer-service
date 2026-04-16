@@ -128,12 +128,19 @@ export function ToolRagConfigSection({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm">
           <span className="font-medium">{toolLabel}</span>
-          {overridden && (
+          {overridden ? (
             <span
               className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
               data-testid={`${idPrefix}-overridden-badge`}
             >
               自訂
+            </span>
+          ) : (
+            <span
+              className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+              data-testid={`${idPrefix}-inherited-badge`}
+            >
+              使用預設
             </span>
           )}
         </div>

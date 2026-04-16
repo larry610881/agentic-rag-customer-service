@@ -97,7 +97,7 @@ describe("BotDetailForm", () => {
     );
   });
 
-  it("should render LINE channel fields in 通路 tab", async () => {
+  it("should render LINE channel fields in LINE tab", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
@@ -108,12 +108,13 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "通路" }));
+    await user.click(screen.getByRole("tab", { name: "LINE" }));
     expect(screen.getByLabelText("頻道密鑰")).toBeInTheDocument();
     expect(screen.getByLabelText("存取權杖")).toBeInTheDocument();
   });
 
-  it("should render both built-in tool checkboxes", () => {
+  it("should render both built-in tool checkboxes in 能力 tab", async () => {
+    const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
         bot={mockBot}
@@ -123,11 +124,13 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
+    await user.click(screen.getByRole("tab", { name: "能力" }));
     expect(screen.getByText("知識庫查詢")).toBeInTheDocument();
     expect(screen.getByText("DM 圖卡查詢")).toBeInTheDocument();
   });
 
-  it("should reflect bot.enabled_tools in checkbox checked state", () => {
+  it("should reflect bot.enabled_tools in checkbox checked state", async () => {
+    const user = userEvent.setup();
     const botWithDmTool = {
       ...mockBot,
       enabled_tools: ["query_dm_with_image"],
@@ -141,6 +144,7 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
+    await user.click(screen.getByRole("tab", { name: "能力" }));
     const checkboxes = screen
       .getAllByRole("checkbox")
       .filter((cb) => {
@@ -176,6 +180,7 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
+    await user.click(screen.getByRole("tab", { name: "能力" }));
     const dmLabel = screen.getByText("DM 圖卡查詢").closest("label")!;
     const dmCheckbox = dmLabel.querySelector(
       'input[type="checkbox"]',
@@ -243,7 +248,7 @@ describe("BotDetailForm", () => {
     }
   });
 
-  it("should show Bot 全域 RAG 預設 section in 能力 tab", async () => {
+  it("should show 知識庫與檢索 section in 能力 tab", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
@@ -255,7 +260,8 @@ describe("BotDetailForm", () => {
       />,
     );
     await user.click(screen.getByRole("tab", { name: "能力" }));
-    expect(screen.getByText("Bot 全域 RAG 預設")).toBeInTheDocument();
+    expect(screen.getByText("知識庫與檢索")).toBeInTheDocument();
+    expect(screen.getByText("預設檢索參數")).toBeInTheDocument();
     // Top K / threshold should appear under 能力 tab (not LLM tab)
     expect(screen.getByLabelText("Top K（1-20）")).toBeInTheDocument();
     expect(screen.getByLabelText("分數閾值（0-1）")).toBeInTheDocument();
@@ -327,7 +333,7 @@ describe("BotDetailForm", () => {
     ).toBeDisabled();
   });
 
-  it("should show FAB icon upload section in 通路 tab", async () => {
+  it("should show FAB icon upload section in Widget tab", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
@@ -338,7 +344,7 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "通路" }));
+    await user.click(screen.getByRole("tab", { name: "Widget" }));
     expect(screen.getByText("FAB 按鈕圖示")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /上傳圖片/ })).toBeInTheDocument();
   });
@@ -354,11 +360,11 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "通路" }));
+    await user.click(screen.getByRole("tab", { name: "Widget" }));
     expect(screen.getByText("尚未上傳自訂圖示")).toBeInTheDocument();
   });
 
-  it("should render 通路 tab content without avatar section", async () => {
+  it("should render Widget tab content without avatar section", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotDetailForm
@@ -369,9 +375,7 @@ describe("BotDetailForm", () => {
         isDeleting={false}
       />,
     );
-    await user.click(screen.getByRole("tab", { name: "通路" }));
-    // Web Widget 區塊標題（可能會同時有 collapsible trigger 與 h3，使用 getAllByText）
-    expect(screen.getAllByText("Web Widget").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("tab", { name: "Widget" }));
     expect(screen.getByText("允許來源")).toBeInTheDocument();
     expect(screen.getByText("對話歷史")).toBeInTheDocument();
     expect(screen.queryByText("Avatar 角色選擇")).not.toBeInTheDocument();
@@ -394,7 +398,7 @@ describe("BotDetailForm", () => {
       />,
     );
     expect(screen.getByLabelText("知識模式")).toBeInTheDocument();
-    expect(screen.getByText("已綁定的知識庫（可多選）")).toBeInTheDocument();
+    expect(screen.getByText("綁定的知識庫（可多選）")).toBeInTheDocument();
     expect(screen.queryByTestId("compile-wiki-card")).not.toBeInTheDocument();
   });
 
@@ -416,7 +420,7 @@ describe("BotDetailForm", () => {
     expect(screen.getByTestId("compile-wiki-card")).toBeInTheDocument();
     // RAG-specific UI should be hidden
     expect(
-      screen.queryByText("已綁定的知識庫（可多選）"),
+      screen.queryByText("綁定的知識庫（可多選）"),
     ).not.toBeInTheDocument();
     // Avoid unused var warning
     void user;
