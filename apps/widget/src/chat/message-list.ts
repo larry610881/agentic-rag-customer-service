@@ -1,4 +1,4 @@
-import type { Source } from "../types";
+import type { ContactCard, Source } from "../types";
 import { cls } from "../constants";
 import { getVisitorId } from "../visitor";
 
@@ -62,6 +62,49 @@ export class MessageList {
   showStatusHint(bubble: HTMLElement, hint: string): void {
     bubble.textContent = hint;
     bubble.classList.add(cls("status-hint"));
+    this.scrollToBottom();
+  }
+
+  /** Build contact button href — phone type auto-prefixed with tel:. */
+  private _resolveContactHref(contact: ContactCard): string {
+    if (contact.type === "phone" && !contact.url.startsWith("tel:")) {
+      return `tel:${contact.url}`;
+    }
+    return contact.url;
+  }
+
+  /** Insert a single contact button (transfer_to_human_agent tool output). */
+  addContactButton(bubble: HTMLElement, contact: ContactCard): void {
+    if (!contact?.url) return;
+    const label = (contact.label?.trim?.() || "聯絡客服").slice(0, 30);
+    const href = this._resolveContactHref(contact);
+    const isPhone = contact.type === "phone";
+
+    const wrap = document.createElement("div");
+    wrap.className = cls("contact");
+
+    const link = document.createElement("a");
+    link.className = cls("contact__btn");
+    link.href = href;
+    if (!isPhone) {
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    }
+
+    const icon = document.createElement("span");
+    icon.className = cls("contact__icon");
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "\u{1f4de}"; // 📞
+
+    const text = document.createElement("span");
+    text.className = cls("contact__label");
+    text.textContent = label;
+
+    link.appendChild(icon);
+    link.appendChild(text);
+    wrap.appendChild(link);
+
+    bubble.parentElement?.insertBefore(wrap, bubble.nextSibling);
     this.scrollToBottom();
   }
 
@@ -248,7 +291,8 @@ export class MessageList {
     while (
       cursor &&
       (cursor.classList.contains(cls("sources")) ||
-        cursor.classList.contains(cls("gallery")))
+        cursor.classList.contains(cls("gallery")) ||
+        cursor.classList.contains(cls("contact")))
     ) {
       insertAfter = cursor;
       cursor = cursor.nextElementSibling;

@@ -142,6 +142,7 @@ class SQLAlchemyBotRepository(BotRepository):
             rerank_model=model.rerank_model or "",
             rerank_top_n=model.rerank_top_n or 20,
             tool_configs=_dict_to_tool_configs(model.tool_configs),
+            customer_service_url=model.customer_service_url or "",
             intent_routes=[
                 IntentRoute(
                     name=r.get("name", ""),
@@ -245,6 +246,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.rerank_model = bot.rerank_model
                 existing.rerank_top_n = bot.rerank_top_n
                 existing.tool_configs = _tool_configs_to_dict(bot.tool_configs)
+                existing.customer_service_url = bot.customer_service_url
                 existing.intent_routes = [
                     {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
                     for r in bot.intent_routes
@@ -318,6 +320,7 @@ class SQLAlchemyBotRepository(BotRepository):
                     rerank_model=bot.rerank_model,
                     rerank_top_n=bot.rerank_top_n,
                     tool_configs=_tool_configs_to_dict(bot.tool_configs),
+                    customer_service_url=bot.customer_service_url,
                     intent_routes=[
                         {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
                         for r in bot.intent_routes

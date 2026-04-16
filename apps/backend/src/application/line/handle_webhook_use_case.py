@@ -28,6 +28,7 @@ from src.domain.shared.concurrency import ConversationLock
 from src.infrastructure.line.flex_image_carousel_builder import (
     build_image_carousel,
 )
+from src.infrastructure.line.flex_contact_builder import build_contact_flex
 from src.infrastructure.logging.setup import get_logger
 
 logger = get_logger(__name__)
@@ -429,6 +430,15 @@ class HandleWebhookUseCase:
                 "type": "flex",
                 "altText": f"找到 {len(image_sources)} 頁 DM 相關內容",
                 "contents": build_image_carousel(image_sources),
+            })
+
+        # transfer_to_human_agent tool → 附上 Flex 聯絡按鈕
+        contact = getattr(result, "contact", None)
+        if isinstance(contact, dict) and contact.get("url"):
+            extra_messages.append({
+                "type": "flex",
+                "altText": contact.get("label") or "聯絡客服",
+                "contents": build_contact_flex(contact),
             })
 
         await line_service.reply_with_quick_reply(

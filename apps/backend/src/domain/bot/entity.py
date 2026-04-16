@@ -115,6 +115,9 @@ class Bot:
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None
     line_show_sources: bool = False
+    # 人工客服轉接 URL（POC 階段；未來會加 customer_service_phone 走 tel:）
+    # 空字串 = 未設定，transfer_to_human_agent tool 會回 fallback 訊息
+    customer_service_url: str = ""
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

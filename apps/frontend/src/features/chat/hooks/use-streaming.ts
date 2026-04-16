@@ -5,7 +5,7 @@ import { STREAMING_CONFIG } from "@/constants/streaming";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { useChatStore } from "@/stores/use-chat-store";
 import { getToolLabel } from "@/constants/tool-labels";
-import type { Source, ToolCallInfo } from "@/types/chat";
+import type { ContactCard, Source, ToolCallInfo } from "@/types/chat";
 import { API_BASE } from "@/lib/api-config";
 
 const getToolHint = (toolName: string): string =>
@@ -52,6 +52,7 @@ export function useStreaming() {
 
       let sources: Source[] = [];
       let toolCalls: ToolCallInfo[] = [];
+      let contact: ContactCard | undefined;
       let generationCount = 0;
 
       // --- Throttled hint: ensure each status is visible for a minimum duration ---
@@ -100,6 +101,9 @@ export function useStreaming() {
           case "sources":
             sources = event.sources as Source[];
             break;
+          case "contact":
+            contact = event.contact as ContactCard;
+            break;
           case "tool_calls": {
             const newCalls = event.tool_calls as ToolCallInfo[];
             toolCalls = [...toolCalls, ...newCalls];
@@ -140,7 +144,7 @@ export function useStreaming() {
               clearTimeout(hintTimer);
               hintTimer = null;
             }
-            finalizeAssistantMessage(sources, toolCalls);
+            finalizeAssistantMessage(sources, toolCalls, contact);
             setIsStreaming(false);
             break;
         }

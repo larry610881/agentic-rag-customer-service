@@ -57,6 +57,7 @@ class CreateBotCommand:
     rerank_top_n: int = 20
     # Per-tool RAG 參數覆蓋：{tool_name: {rag_top_k, rag_score_threshold, rerank_*}}
     tool_configs: dict = field(default_factory=dict)
+    customer_service_url: str = ""
     intent_routes: list[dict] = field(default_factory=list)
     router_model: str = ""
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
@@ -157,6 +158,7 @@ class CreateBotUseCase:
                 for name, cfg in (command.tool_configs or {}).items()
                 if isinstance(cfg, dict)
             },
+            customer_service_url=command.customer_service_url,
             intent_routes=[
                 IntentRoute(
                     name=r.get("name", ""),

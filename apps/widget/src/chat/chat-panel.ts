@@ -1,4 +1,4 @@
-import type { Source, WidgetConfig } from "../types";
+import type { ContactCard, Source, WidgetConfig } from "../types";
 import { cls } from "../constants";
 import { MessageList } from "./message-list";
 import { streamChat } from "./sse-client";
@@ -147,6 +147,7 @@ export class ChatPanel {
     this.messageList.showStatusHint(botBubble, getStatusHint("react_thinking"));
     let fullText = "";
     let pendingSources: Source[] = [];
+    let pendingContact: ContactCard | null = null;
     let messageId: string | null = null;
     let hasReceivedTokens = false;
 
@@ -189,6 +190,9 @@ export class ChatPanel {
           case "sources":
             pendingSources = event.sources;
             break;
+          case "contact":
+            pendingContact = event.contact;
+            break;
           case "message_id":
             messageId = event.message_id;
             break;
@@ -210,6 +214,10 @@ export class ChatPanel {
             // Render image gallery (for query_dm_with_image 等有 image_url 的 sources)
             if (pendingSources.length) {
               this.messageList.addImageGallery(botBubble, pendingSources);
+            }
+            // Render contact button (transfer_to_human_agent tool)
+            if (pendingContact) {
+              this.messageList.addContactButton(botBubble, pendingContact);
             }
             // Render feedback buttons
             if (messageId && this.conversationId) {

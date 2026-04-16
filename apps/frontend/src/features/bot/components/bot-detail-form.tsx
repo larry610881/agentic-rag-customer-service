@@ -138,6 +138,7 @@ const botFormSchema = z.object({
   rerank_model: z.string().default(""),
   rerank_top_n: z.coerce.number().int().min(5).max(50).default(20),
   tool_configs: z.record(z.string(), toolRagConfigSchema).default({}),
+  customer_service_url: z.string().default(""),
 });
 
 type BotFormValues = z.infer<typeof botFormSchema>;
@@ -249,6 +250,7 @@ export function BotDetailForm({
       line_channel_access_token: bot.line_channel_access_token,
       line_show_sources: bot.line_show_sources ?? false,
       tool_configs: bot.tool_configs ?? {},
+      customer_service_url: bot.customer_service_url ?? "",
     },
   });
 
@@ -341,6 +343,7 @@ export function BotDetailForm({
       line_channel_access_token: bot.line_channel_access_token,
       line_show_sources: bot.line_show_sources ?? false,
       tool_configs: bot.tool_configs ?? {},
+      customer_service_url: bot.customer_service_url ?? "",
     });
   }, [bot, reset]);
 
@@ -874,6 +877,27 @@ export function BotDetailForm({
                             }
                             rerankModelOptions={RERANK_MODEL_OPTIONS}
                           />
+                        )}
+                        {checked && tool.name === "transfer_to_human_agent" && (
+                          <div className="rounded-md border bg-muted/20 px-3 py-3 flex flex-col gap-2">
+                            <Label
+                              htmlFor="bot-customer-service-url"
+                              className="text-xs font-medium"
+                            >
+                              客服頁面 URL
+                            </Label>
+                            <Input
+                              id="bot-customer-service-url"
+                              type="url"
+                              placeholder="https://example.com/customer-service"
+                              {...register("customer_service_url")}
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                              使用者被轉接時會顯示此 URL 按鈕。POC 階段先接網頁；
+                              未來整合電話撥號會改用 <code>tel:</code>。未設定
+                              時此工具會回傳「未設定客服資訊」訊息。
+                            </p>
+                          </div>
                         )}
                       </div>
                     );

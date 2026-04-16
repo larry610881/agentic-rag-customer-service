@@ -138,6 +138,7 @@ class CreateBotRequest(BaseModel):
     rerank_model: str = ""
     rerank_top_n: int = 20
     tool_configs: dict[str, ToolRagConfigSchema] = Field(default_factory=dict)
+    customer_service_url: str = ""
     intent_routes: list[IntentRouteSchema] = []
     router_model: str = ""
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
@@ -184,6 +185,7 @@ class UpdateBotRequest(BaseModel):
     rerank_model: str | None = None
     rerank_top_n: int | None = None
     tool_configs: dict[str, ToolRagConfigSchema] | None = None
+    customer_service_url: str | None = None
     intent_routes: list[IntentRouteSchema] | None = None
     router_model: str | None = None
     busy_reply_message: str | None = None
@@ -234,6 +236,7 @@ class BotResponse(BaseModel):
     rerank_model: str
     rerank_top_n: int
     tool_configs: dict[str, dict[str, Any]]
+    customer_service_url: str
     intent_routes: list[dict[str, Any]]
     busy_reply_message: str
     line_channel_secret: str | None
@@ -318,6 +321,7 @@ def _to_response(bot) -> BotResponse:
             }
             for name, cfg in bot.tool_configs.items()
         },
+        customer_service_url=bot.customer_service_url,
         intent_routes=[
             {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
             for r in bot.intent_routes
@@ -397,6 +401,7 @@ async def create_bot(
                 name: cfg.model_dump(exclude_none=True)
                 for name, cfg in body.tool_configs.items()
             },
+            customer_service_url=body.customer_service_url,
             intent_routes=[
                 {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
                 for r in body.intent_routes

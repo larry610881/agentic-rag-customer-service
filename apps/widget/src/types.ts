@@ -29,6 +29,13 @@ export interface ToolCallInfo {
   reasoning?: string;
 }
 
+/** Contact card emitted by transfer_to_human_agent tool */
+export interface ContactCard {
+  label: string;
+  url: string;
+  type: "url" | "phone";
+}
+
 /** SSE event types from POST /api/v1/widget/{short_code}/chat/stream */
 export type SSEEvent =
   | { type: "token"; content: string }
@@ -37,6 +44,7 @@ export type SSEEvent =
   | { type: "status"; status: string }
   | { type: "sources"; sources: Source[] }
   | { type: "tool_calls"; tool_calls: ToolCallInfo[] }
+  | { type: "contact"; contact: ContactCard }
   | { type: "done" }
   | { type: "error"; message: string };
 

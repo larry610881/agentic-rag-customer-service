@@ -39,6 +39,7 @@ class SupervisorAgentService(AgentService):
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
         tool_rag_params: dict[str, dict[str, Any]] | None = None,
+        customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
     ) -> AgentResponse:
@@ -112,6 +113,7 @@ class SupervisorAgentService(AgentService):
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
         tool_rag_params: dict[str, dict[str, Any]] | None = None,
+        customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
     ) -> AsyncIterator[dict[str, Any]]:

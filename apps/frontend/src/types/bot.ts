@@ -77,6 +77,8 @@ export interface Bot {
   line_channel_access_token: string | null;
   line_show_sources: boolean;
   tool_configs?: Record<string, ToolRagConfig>;
+  /** 轉接真人客服按鈕的 URL（transfer_to_human_agent tool 用；空字串 = 未設定） */
+  customer_service_url?: string;
   created_at: string;
   updated_at: string;
 }
@@ -121,6 +123,7 @@ export interface CreateBotRequest {
   line_channel_access_token?: string | null;
   line_show_sources?: boolean;
   tool_configs?: Record<string, ToolRagConfig>;
+  customer_service_url?: string;
 }
 
 export interface UpdateBotRequest {
@@ -163,4 +166,5 @@ export interface UpdateBotRequest {
   line_channel_access_token?: string | null;
   line_show_sources?: boolean;
   tool_configs?: Record<string, ToolRagConfig>;
+  customer_service_url?: string;
 }

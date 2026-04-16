@@ -4,6 +4,7 @@ import { MessageBubble } from "@/features/chat/components/message-bubble";
 import { CitationList } from "@/features/chat/components/citation-list";
 import { AgentThoughtPanel } from "@/features/chat/components/agent-thought-panel";
 import { SourceImageGallery } from "@/features/chat/components/source-image-gallery";
+import { ContactCardButton } from "@/features/chat/components/contact-card-button";
 
 export function MessageList() {
   const messages = useChatStore((s) => s.messages);
@@ -29,6 +30,9 @@ export function MessageList() {
             <MessageBubble message={message} isLast={index === messages.length - 1} />
             {message.role === "assistant" && message.tool_calls && message.tool_calls.length > 0 && (
               <AgentThoughtPanel toolCalls={message.tool_calls} />
+            )}
+            {message.role === "assistant" && message.contact && (
+              <ContactCardButton contact={message.contact} />
             )}
             {message.role === "assistant" && message.sources && message.sources.length > 0 && (
               <>

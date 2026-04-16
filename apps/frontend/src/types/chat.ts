@@ -16,6 +16,13 @@ export interface ToolCallInfo {
   iteration?: number;
 }
 
+/** 由 transfer_to_human_agent tool 產生的聯絡按鈕資料 */
+export interface ContactCard {
+  label: string;
+  url: string;
+  type: "url" | "phone";
+}
+
 export interface ChatRequest {
   message: string;
   conversation_id?: string;
@@ -38,6 +45,8 @@ export interface ChatMessage {
   content: string;
   sources?: Source[];
   tool_calls?: ToolCallInfo[];
+  /** 由 transfer_to_human_agent tool 產生的聯絡按鈕（可選） */
+  contact?: ContactCard;
   timestamp: string;
   feedbackRating?: "thumbs_up" | "thumbs_down";
 }

@@ -61,6 +61,7 @@ class UpdateBotCommand:
     rerank_model: object = _UNSET
     rerank_top_n: object = _UNSET
     tool_configs: object = _UNSET
+    customer_service_url: object = _UNSET
     intent_routes: object = _UNSET
     router_model: object = _UNSET
     busy_reply_message: object = _UNSET
@@ -130,6 +131,8 @@ class UpdateBotUseCase:
                 for name, cfg in (command.tool_configs or {}).items()  # type: ignore[union-attr]
                 if isinstance(cfg, dict)
             }
+        if command.customer_service_url is not _UNSET:
+            bot.customer_service_url = command.customer_service_url  # type: ignore[assignment]
         if command.intent_routes is not _UNSET:
             bot.intent_routes = [
                 IntentRoute(

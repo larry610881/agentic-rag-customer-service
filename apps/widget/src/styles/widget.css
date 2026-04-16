@@ -285,6 +285,42 @@
   50% { opacity: 0.5; }
 }
 
+/* ── Contact button（轉接真人客服） ───────────────────────── */
+
+.aw-contact {
+  max-width: 82%;
+  align-self: flex-start;
+  margin-top: 6px;
+}
+.aw-contact__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+}
+.aw-contact__btn:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+.aw-contact__btn:active {
+  transform: scale(0.96);
+}
+.aw-contact__btn:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+.aw-contact__icon {
+  font-size: 14px;
+}
+
 /* ── Gallery（DM 圖卡等） ──────────────────────────────────── */
 
 .aw-gallery {

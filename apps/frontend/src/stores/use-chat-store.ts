@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ChatMessage, Source, ToolCallInfo } from "@/types/chat";
+import type { ChatMessage, ContactCard, Source, ToolCallInfo } from "@/types/chat";
 import type { ConversationDetail } from "@/types/conversation";
 
 interface ChatState {
@@ -14,7 +14,11 @@ interface ChatState {
   startAssistantMessage: () => void;
   appendToAssistantMessage: (token: string) => void;
   resetAssistantContent: () => void;
-  finalizeAssistantMessage: (sources: Source[], toolCalls: ToolCallInfo[]) => void;
+  finalizeAssistantMessage: (
+    sources: Source[],
+    toolCalls: ToolCallInfo[],
+    contact?: ContactCard,
+  ) => void;
   setIsStreaming: (isStreaming: boolean) => void;
   setConversationId: (id: string) => void;
   setKnowledgeBaseId: (id: string | null) => void;
@@ -92,7 +96,7 @@ export const useChatStore = create<ChatState>((set) => ({
       return { messages };
     }),
 
-  finalizeAssistantMessage: (sources, toolCalls) =>
+  finalizeAssistantMessage: (sources, toolCalls, contact) =>
     set((state) => {
       const messages = [...state.messages];
       const lastMsg = messages[messages.length - 1];
@@ -101,6 +105,7 @@ export const useChatStore = create<ChatState>((set) => ({
           ...lastMsg,
           sources,
           tool_calls: toolCalls,
+          ...(contact ? { contact } : {}),
         };
       }
       return { messages, toolHint: null };

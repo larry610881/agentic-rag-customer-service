@@ -201,6 +201,7 @@ class SendMessageUseCase:
         cfg["rag_top_k"] = bot.llm_params.rag_top_k
         cfg["rag_score_threshold"] = bot.llm_params.rag_score_threshold
         cfg["show_sources"] = bot.show_sources
+        cfg["customer_service_url"] = bot.customer_service_url
         # Stash bot entity + initial per-tool params (worker routing may override)
         cfg["_bot"] = bot
         cfg["tool_rag_params"] = build_tool_rag_params_map(bot=bot)
@@ -602,6 +603,7 @@ class SendMessageUseCase:
             rag_top_k=bot_cfg["rag_top_k"],
             rag_score_threshold=bot_cfg["rag_score_threshold"],
             tool_rag_params=bot_cfg.get("tool_rag_params"),
+            customer_service_url=bot_cfg.get("customer_service_url", ""),
             mcp_servers=bot_cfg.get("mcp_servers"),
             max_tool_calls=bot_cfg.get("max_tool_calls", 5),
             bot_id=bot_cfg.get("bot_id", ""),
@@ -753,10 +755,12 @@ class SendMessageUseCase:
             rag_top_k=bot_cfg["rag_top_k"],
             rag_score_threshold=bot_cfg["rag_score_threshold"],
             tool_rag_params=bot_cfg.get("tool_rag_params"),
+            customer_service_url=bot_cfg.get("customer_service_url", ""),
             mcp_servers=bot_cfg.get("mcp_servers"),
             max_tool_calls=bot_cfg.get("max_tool_calls", 5),
             bot_id=bot_cfg.get("bot_id", ""),
         ):
+            # contact event 不塞進 answer，透過 yield 傳給呼叫者
             if event["type"] == "token":
                 full_answer += event["content"]
             elif event["type"] == "tool_calls":

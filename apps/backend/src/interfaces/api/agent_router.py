@@ -267,10 +267,19 @@ BUILT_IN_TOOLS: list[BuiltInToolItem] = [
         name="query_dm_with_image",
         label="DM 圖卡查詢",
         description=(
-            "對 catalog PDF 知識庫（如家樂福 DM）檢索，命中頁面以 LINE Flex "
-            "carousel 推送原始 PNG 圖卡，適合促銷 / 商品查詢場景。"
+            "對 catalog PDF 知識庫（如家樂福 DM）檢索，命中頁面圖卡由各通路自動"
+            "顯示（LINE Flex / Web Gallery / Widget），適合促銷 / 商品查詢場景。"
         ),
         requires_kb=True,
+    ),
+    BuiltInToolItem(
+        name="transfer_to_human_agent",
+        label="轉接真人客服",
+        description=(
+            "當使用者要求轉人工、情緒激動或議題複雜（如退款爭議、帳務核對）時，"
+            "讓 LLM 呼叫此工具顯示客服聯絡按鈕。需要 Bot「能力」頁設定客服 URL。"
+        ),
+        requires_kb=False,
     ),
 ]
 

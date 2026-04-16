@@ -348,6 +348,9 @@ from src.infrastructure.langgraph.react_agent_service import (
     ReActAgentService,
 )
 from src.infrastructure.langgraph.tools import RAGQueryTool
+from src.infrastructure.langgraph.transfer_to_human_tool import (
+    TransferToHumanTool,
+)
 from src.infrastructure.langgraph.dm_image_query_tool import (
     DmImageQueryTool,
 )
@@ -1115,6 +1118,8 @@ class Container(containers.DeclarativeContainer):
         file_storage=document_file_storage_service,
     )
 
+    transfer_to_human_tool = providers.Factory(TransferToHumanTool)
+
     tool_registry = providers.Singleton(ToolRegistry)
 
     cached_tool_loader = providers.Singleton(CachedMCPToolLoader)
@@ -1148,6 +1153,7 @@ class Container(containers.DeclarativeContainer):
             tool_registry=tool_registry,
             cached_tool_loader=cached_tool_loader,
             dm_image_query_tool=dm_image_query_tool,
+            transfer_to_human_tool=transfer_to_human_tool,
         ),
     )
 

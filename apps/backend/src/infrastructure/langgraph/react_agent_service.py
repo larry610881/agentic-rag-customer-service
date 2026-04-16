@@ -30,6 +30,9 @@ from src.infrastructure.langgraph.tools import RAGQueryTool
 from src.infrastructure.langgraph.dm_image_query_tool import (
     DmImageQueryTool,
 )
+from src.infrastructure.langgraph.transfer_to_human_tool import (
+    TransferToHumanTool,
+)
 from src.infrastructure.langgraph.usage import (
     build_usage_event,
     extract_usage_from_langchain_messages,
@@ -77,12 +80,14 @@ class ReActAgentService(AgentService):
         tool_registry: Any | None = None,
         cached_tool_loader: Any | None = None,
         dm_image_query_tool: DmImageQueryTool | None = None,
+        transfer_to_human_tool: TransferToHumanTool | None = None,
     ) -> None:
         self._llm_service = llm_service
         self._rag_tool = rag_tool
         self._tool_registry = tool_registry
         self._cached_tool_loader = cached_tool_loader
         self._dm_image_query_tool = dm_image_query_tool
+        self._transfer_to_human_tool = transfer_to_human_tool
 
     def _build_rag_lc_tool(
         self,
@@ -172,6 +177,45 @@ class ReActAgentService(AgentService):
 
         return query_dm_with_image  # type: ignore[return-value]
 
+    def _build_transfer_to_human_lc_tool(
+        self,
+        customer_service_url: str,
+    ) -> BaseTool:
+        """Build a LangChain tool that returns the configured contact card.
+
+        The tool output is serialized JSON; channel handlers look for the
+        ``contact`` key to render a button / Flex message.
+        """
+        transfer_tool = self._transfer_to_human_tool
+
+        @tool
+        async def transfer_to_human_agent(reason: str = "") -> str:
+            """轉接真人客服 / transfer to human customer service agent.
+
+            當下列情境時呼叫本工具：
+            - 使用者明確要求轉人工（「要找真人」「轉客服」「叫主管來」）
+            - 使用者情緒激動、多次表達不滿或投訴
+            - 複雜退換貨 / 帳務爭議 / 需核對訂單明細等知識庫無法處理的議題
+            - 使用者連問 2 次以上仍未解決問題時
+
+            回傳含 context 文字訊息與 contact 聯絡按鈕（由使用者端自動顯示）。
+            **你只需用 context 文字回答，不要在回覆中嵌入或提及 URL / 電話。**
+
+            Args:
+                reason: （選填）轉接原因，會附加在回覆文字裡給使用者看
+            """
+            assert transfer_tool is not None, (
+                "transfer_to_human_tool not injected"
+            )
+            result = await transfer_tool.invoke(
+                customer_service_url=customer_service_url,
+                reason=reason,
+            )
+            import json as _json
+            return _json.dumps(result, ensure_ascii=False)
+
+        return transfer_to_human_agent  # type: ignore[return-value]
+
     @staticmethod
     def _resolve_enabled_tools(
         enabled_tools: list[str] | None,
@@ -197,6 +241,7 @@ class ReActAgentService(AgentService):
         rag_score_threshold: float | None,
         metadata: dict[str, Any] | None,
         tool_rag_params: dict[str, dict[str, Any]] | None,
+        customer_service_url: str = "",
     ) -> list[BaseTool]:
         """Build built-in RAG tools with per-tool parameter overrides.
 
@@ -250,6 +295,13 @@ class ReActAgentService(AgentService):
                     params["rag_top_k"], params["rag_score_threshold"],
                     kb_ids=kb_ids,
                 )
+            )
+        if (
+            "transfer_to_human_agent" in effective
+            and self._transfer_to_human_tool is not None
+        ):
+            tools.append(
+                self._build_transfer_to_human_lc_tool(customer_service_url)
             )
         return tools
 
@@ -565,6 +617,7 @@ class ReActAgentService(AgentService):
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
         tool_rag_params: dict[str, dict[str, Any]] | None = None,
+        customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
         bot_id: str = "",
@@ -591,6 +644,7 @@ class ReActAgentService(AgentService):
                 rag_score_threshold=rag_score_threshold,
                 metadata=metadata,
                 tool_rag_params=tool_rag_params,
+                customer_service_url=customer_service_url,
             )
 
             # 2. Load MCP tools — sessions kept alive by stack
@@ -711,6 +765,7 @@ class ReActAgentService(AgentService):
         rag_top_k: int | None = None,
         rag_score_threshold: float | None = None,
         tool_rag_params: dict[str, dict[str, Any]] | None = None,
+        customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
         bot_id: str = "",
@@ -727,6 +782,7 @@ class ReActAgentService(AgentService):
                 rag_score_threshold=rag_score_threshold,
                 metadata=metadata,
                 tool_rag_params=tool_rag_params,
+                customer_service_url=customer_service_url,
             )
 
             # Load MCP tools — sessions kept alive by stack
@@ -890,6 +946,15 @@ class ReActAgentService(AgentService):
                                                             "sources": sources,
                                                         }
                                                         _emitted_sources = True
+                                                # transfer_to_human_agent tool → emit contact event
+                                                if (
+                                                    isinstance(content, dict)
+                                                    and content.get("contact")
+                                                ):
+                                                    yield {
+                                                        "type": "contact",
+                                                        "contact": content["contact"],
+                                                    }
                                             except (json.JSONDecodeError, TypeError):
                                                 pass
                                             # 2. rag_query plain text → chunks
@@ -966,6 +1031,7 @@ class ReActAgentService(AgentService):
         answer = ""
         tool_calls: list[dict[str, Any]] = []
         sources: list[dict[str, Any]] = []
+        contact: dict[str, Any] | None = None
         iteration = 0
 
         for msg in messages:
@@ -1003,6 +1069,9 @@ class ReActAgentService(AgentService):
                         if isinstance(parsed, dict) and parsed.get("sources"):
                             sources.extend(parsed["sources"])
                             _found = True
+                        # transfer_to_human_agent tool → capture contact
+                        if isinstance(parsed, dict) and parsed.get("contact"):
+                            contact = parsed["contact"]
                     except (_json.JSONDecodeError, TypeError):
                         pass
                     # 2. rag_query plain text — split into chunks
@@ -1036,4 +1105,5 @@ class ReActAgentService(AgentService):
             sources=sources,
             conversation_id=str(uuid4()),
             usage=usage,
+            contact=contact,
         )

@@ -25,6 +25,9 @@ class AgentResponse:
     conversation_id: str = ""
     usage: TokenUsage | None = None
     refund_step: str | None = None
+    # 由 transfer_to_human_agent tool 產生的 channel-agnostic 聯絡按鈕
+    # {"label": str, "url": str, "type": "url" | "phone"}
+    contact: dict[str, Any] | None = None
 
 
 @dataclass

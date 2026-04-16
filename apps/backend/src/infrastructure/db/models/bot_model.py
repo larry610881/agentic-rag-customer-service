@@ -109,6 +109,10 @@ class BotModel(Base):
     tool_configs: Mapped[dict] = mapped_column(
         JSON, nullable=False, default=dict, server_default="{}"
     )
+    # 人工客服轉接 URL（空字串 = 未設定；transfer_to_human_agent tool 用）
+    customer_service_url: Mapped[str] = mapped_column(
+        String(512), nullable=False, default="", server_default=""
+    )
     intent_routes: Mapped[list] = mapped_column(
         JSON, nullable=False, default=list, server_default="[]"
     )
