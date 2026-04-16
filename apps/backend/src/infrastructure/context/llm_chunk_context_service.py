@@ -57,6 +57,16 @@ class LLMChunkContextService(ChunkContextService):
         log = logger.bind(model=model, chunk_count=len(chunks))
         log.info("context.generation.start")
 
+        # Pre-resolve API key once to avoid concurrent session conflicts
+        from src.infrastructure.llm.llm_caller import _parse_model_spec
+        provider, _ = _parse_model_spec(model)
+        resolved_key = ""
+        if self._api_key_resolver:
+            resolved_key = await self._api_key_resolver(provider)
+
+        async def _fixed_key_resolver(_provider: str) -> str:
+            return resolved_key
+
         async def _generate_one(chunk: Chunk) -> Chunk:
             async with sem:
                 try:
@@ -68,7 +78,7 @@ class LLMChunkContextService(ChunkContextService):
                         model_spec=model,
                         prompt=prompt,
                         max_tokens=200,
-                        api_key_resolver=self._api_key_resolver,
+                        api_key_resolver=_fixed_key_resolver,
                     )
                     return Chunk(
                         id=chunk.id,
