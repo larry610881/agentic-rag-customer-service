@@ -151,4 +151,91 @@ describe("DocumentList", () => {
     );
     expect(screen.getByTestId("negative-feedback-badge")).toHaveTextContent("3 差評");
   });
+
+  // --- StatusCell 階段切換（catalog PDF 父文件）regression ---
+
+  function makeCatalogParent(overrides: Partial<DocumentResponse> = {}): DocumentResponse {
+    return {
+      id: "parent-1",
+      kb_id: "kb-1",
+      tenant_id: "tenant-1",
+      filename: "catalog.pdf",
+      content_type: "application/pdf",
+      status: "processing",
+      chunk_count: 0,
+      avg_chunk_length: 0,
+      min_chunk_length: 0,
+      max_chunk_length: 0,
+      quality_score: 0,
+      quality_issues: [],
+      has_file: true,
+      task_progress: null,
+      parent_id: null,
+      page_number: null,
+      children_count: 8,
+      completed_children_count: 0,
+      created_at: "2026-04-16T00:00:00Z",
+      updated_at: "2026-04-16T00:00:00Z",
+      ...overrides,
+    };
+  }
+
+  it("OCR 階段：父文件 task_progress 未達 100 時顯示百分比", () => {
+    const doc = makeCatalogParent({
+      task_progress: 15,
+      children_count: 8,
+      completed_children_count: 0,
+    });
+    renderWithProviders(<DocumentList kbId="kb-1" documents={[doc]} />);
+    expect(screen.getByText(/學習中\s*15%/)).toBeInTheDocument();
+    expect(screen.queryByText(/張/)).not.toBeInTheDocument();
+  });
+
+  it("子頁階段：父 task 已完成時顯示「完成 N / 總 M 張」", () => {
+    const doc = makeCatalogParent({
+      task_progress: null,
+      children_count: 8,
+      completed_children_count: 3,
+    });
+    renderWithProviders(<DocumentList kbId="kb-1" documents={[doc]} />);
+    expect(screen.getByText("學習中 3/8 張")).toBeInTheDocument();
+    expect(screen.queryByText(/15%/)).not.toBeInTheDocument();
+  });
+
+  it("非 catalog 一般文件 processing 時保留百分比顯示（回歸）", () => {
+    const doc: DocumentResponse = {
+      ...mockDocuments[0],
+      status: "processing",
+      task_progress: 50,
+      children_count: 0,
+      completed_children_count: 0,
+    };
+    renderWithProviders(<DocumentList kbId="kb-1" documents={[doc]} />);
+    expect(screen.getByText(/學習中\s*50%/)).toBeInTheDocument();
+  });
+
+  it("processing 時不顯示 ParentPageProgress summary「頁」避免與 StatusCell 重複", () => {
+    const doc = makeCatalogParent({
+      status: "processing",
+      children_count: 8,
+      completed_children_count: 3,
+    });
+    renderWithProviders(<DocumentList kbId="kb-1" documents={[doc]} />);
+    // 檔名旁不應出現「頁」summary（它會走 StatusCell 的 "3/8 張"）
+    expect(screen.queryByText(/\d+\s*頁/)).not.toBeInTheDocument();
+  });
+
+  it("processed 時 ParentPageProgress 顯示 summary 總頁數", () => {
+    const doc = makeCatalogParent({
+      status: "processed",
+      children_count: 8,
+      completed_children_count: 8,
+      task_progress: null,
+    });
+    renderWithProviders(<DocumentList kbId="kb-1" documents={[doc]} />);
+    // ParentPageProgress 初始無 children query 資料時顯示 "(N 頁)"
+    // 即使 useQuery 拉到資料也會顯示 "(8 頁)"（全部 processed）
+    // waitFor 以保險
+    expect(screen.getByText(/8\s*頁/)).toBeInTheDocument();
+  });
 });

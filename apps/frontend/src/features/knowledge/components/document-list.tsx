@@ -145,7 +145,17 @@ interface DocumentListProps {
   onSingleExpandedChange?: (doc: DocumentResponse | null) => void;
 }
 
-function StatusCell({ status, taskProgress }: { status: DocumentResponse["status"]; taskProgress?: number | null }) {
+function StatusCell({
+  status,
+  taskProgress,
+  childrenCount,
+  completedChildrenCount,
+}: {
+  status: DocumentResponse["status"];
+  taskProgress?: number | null;
+  childrenCount?: number;
+  completedChildrenCount?: number;
+}) {
   switch (status) {
     case "pending":
       return (
@@ -154,7 +164,32 @@ function StatusCell({ status, taskProgress }: { status: DocumentResponse["status
           等待中
         </span>
       );
-    case "processing":
+    case "processing": {
+      const isCatalogParent = (childrenCount ?? 0) > 0;
+      const inChildrenPhase =
+        isCatalogParent &&
+        (taskProgress == null || taskProgress >= 100);
+
+      if (inChildrenPhase) {
+        const total = childrenCount ?? 1;
+        const completed = Math.min(completedChildrenCount ?? 0, total);
+        const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+              學習中 {completed}/{total} 張
+            </span>
+            <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-green-500 transition-all duration-500"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="flex flex-col gap-1">
           <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
@@ -171,6 +206,7 @@ function StatusCell({ status, taskProgress }: { status: DocumentResponse["status
           )}
         </div>
       );
+    }
     case "processed":
       return (
         <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
@@ -531,7 +567,7 @@ export function DocumentList({
                       onClick={() => openDocumentPreview(kbId, doc, setTextPreviewDoc, setTextPreviewContent)}
                     />
                     <span>{doc.filename.replace(/\.[^.]+$/, '')}</span>
-                    {doc.children_count > 0 && (
+                    {doc.children_count > 0 && doc.status === "processed" && (
                       <ParentPageProgress kbId={kbId} parentId={doc.id} totalCount={doc.children_count} token={token} />
                     )}
                     {(statsMap.get(doc.id)?.negative_feedback_count ?? 0) > 0 && (
@@ -553,7 +589,12 @@ export function DocumentList({
                   </QualityTooltip>
                 </td>
                 <td className="border-b px-4 py-2">
-                  <StatusCell status={doc.status} taskProgress={doc.task_progress} />
+                  <StatusCell
+                    status={doc.status}
+                    taskProgress={doc.task_progress}
+                    childrenCount={doc.children_count}
+                    completedChildrenCount={doc.completed_children_count}
+                  />
                 </td>
                 <td className="border-b px-4 py-2">
                   {formatDate(doc.created_at)}

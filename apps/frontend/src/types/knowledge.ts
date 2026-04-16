@@ -30,6 +30,7 @@ export interface DocumentResponse {
   parent_id: string | null;
   page_number: number | null;
   children_count: number;
+  completed_children_count?: number;
   created_at: string;
   updated_at: string;
 }
