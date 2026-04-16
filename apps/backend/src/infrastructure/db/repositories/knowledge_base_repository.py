@@ -35,11 +35,14 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
 
     @staticmethod
     def _doc_count_subquery():
+        # 只算 top-level documents (parent_id IS NULL)；catalog PDF 的子頁
+        # 屬於父文件的 children，不該計入「文件數」呈現
         return (
             select(
                 DocumentModel.kb_id,
                 func.count().label("doc_count"),
             )
+            .where(DocumentModel.parent_id.is_(None))
             .group_by(DocumentModel.kb_id)
             .subquery()
         )
