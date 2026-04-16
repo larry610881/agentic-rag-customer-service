@@ -244,3 +244,40 @@ async def agent_chat_stream(
         event_generator(),
         media_type="text/event-stream",
     )
+
+
+# === Built-in tools registry ===
+
+
+class BuiltInToolItem(BaseModel):
+    name: str
+    label: str
+    description: str
+    requires_kb: bool
+
+
+BUILT_IN_TOOLS: list[BuiltInToolItem] = [
+    BuiltInToolItem(
+        name="rag_query",
+        label="知識庫查詢",
+        description="對 bot 連結的知識庫做向量檢索，適合一般文字問答。",
+        requires_kb=True,
+    ),
+    BuiltInToolItem(
+        name="query_dm_with_image",
+        label="DM 圖卡查詢",
+        description=(
+            "對 catalog PDF 知識庫（如家樂福 DM）檢索，命中頁面以 LINE Flex "
+            "carousel 推送原始 PNG 圖卡，適合促銷 / 商品查詢場景。"
+        ),
+        requires_kb=True,
+    ),
+]
+
+
+@router.get("/built-in-tools", response_model=list[BuiltInToolItem])
+async def list_built_in_tools(
+    _: CurrentTenant = Depends(get_current_tenant),
+) -> list[BuiltInToolItem]:
+    """列出系統內建可啟用的 tools，供 bot 編輯 UI 顯示多選清單。"""
+    return BUILT_IN_TOOLS
