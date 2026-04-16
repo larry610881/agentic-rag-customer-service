@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye, FileText, FileSpreadsheet, FileJson, FileType, ChevronRight, ChevronDown } from "lucide-react";
+import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye, FileText, FileSpreadsheet, FileJson, FileType, FileImage, ChevronRight, ChevronDown } from "lucide-react";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { API_BASE } from "@/lib/api-config";
 import { useAuthStore } from "@/stores/use-auth-store";
@@ -41,6 +41,10 @@ const BROWSER_VIEWABLE = new Set([
   "application/json",
   "application/xml",
   "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
 ]);
 
 const CONTENT_TYPE_MAP: Record<string, { label: string; icon: typeof FileText; color: string }> = {
@@ -50,6 +54,10 @@ const CONTENT_TYPE_MAP: Record<string, { label: string; icon: typeof FileText; c
   "application/json": { label: "JSON", icon: FileJson, color: "text-amber-600 bg-amber-50 dark:bg-amber-950 dark:text-amber-400" },
   "text/plain": { label: "TXT", icon: FileType, color: "text-slate-600 bg-slate-50 dark:bg-slate-950 dark:text-slate-400" },
   "text/markdown": { label: "MD", icon: FileType, color: "text-purple-600 bg-purple-50 dark:bg-purple-950 dark:text-purple-400" },
+  "image/png": { label: "PNG", icon: FileImage, color: "text-blue-600 bg-blue-50 dark:bg-blue-950 dark:text-blue-400" },
+  "image/jpeg": { label: "JPG", icon: FileImage, color: "text-blue-600 bg-blue-50 dark:bg-blue-950 dark:text-blue-400" },
+  "image/webp": { label: "WEBP", icon: FileImage, color: "text-blue-600 bg-blue-50 dark:bg-blue-950 dark:text-blue-400" },
+  "image/gif": { label: "GIF", icon: FileImage, color: "text-blue-600 bg-blue-50 dark:bg-blue-950 dark:text-blue-400" },
 };
 
 function ContentTypeBadge({ contentType, onClick }: { contentType: string; onClick?: () => void }) {
@@ -287,11 +295,15 @@ function ChildrenRows({
   parentId,
   token,
   onViewChunks,
+  setTextPreviewDoc,
+  setTextPreviewContent,
 }: {
   kbId: string;
   parentId: string;
   token: string | null;
   onViewChunks: (doc: DocumentResponse) => void;
+  setTextPreviewDoc: (d: DocumentResponse) => void;
+  setTextPreviewContent: (t: string) => void;
 }) {
   const { data: children, isLoading } = useQuery({
     queryKey: ["document-children", kbId, parentId],
@@ -334,7 +346,17 @@ function ChildrenRows({
             <td className="border-b px-4 py-1" />
             <td className="border-b px-4 py-1 pl-12">
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">🖼️</span>
+                <ContentTypeBadge
+                  contentType={child.content_type}
+                  onClick={() =>
+                    openDocumentPreview(
+                      kbId,
+                      child,
+                      setTextPreviewDoc,
+                      setTextPreviewContent,
+                    )
+                  }
+                />
                 <span>{displayName}</span>
               </div>
             </td>
@@ -644,6 +666,8 @@ export function DocumentList({
                   parentId={doc.id}
                   token={token}
                   onViewChunks={(child) => setChunkDoc(child)}
+                  setTextPreviewDoc={setTextPreviewDoc}
+                  setTextPreviewContent={setTextPreviewContent}
                 />
               )}
               </Fragment>
