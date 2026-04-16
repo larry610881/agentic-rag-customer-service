@@ -213,7 +213,48 @@ function QualityCell({ score, status }: { score: number; status: DocumentRespons
   );
 }
 
-function ChildrenRows({ kbId, parentId, token }: { kbId: string; parentId: string; token: string | null }) {
+function ParentPageProgress({ kbId, parentId, totalCount, token }: { kbId: string; parentId: string; totalCount: number; token: string | null }) {
+  const { data: children } = useQuery({
+    queryKey: ["document-children", kbId, parentId],
+    queryFn: () =>
+      apiFetch<DocumentResponse[]>(
+        API_ENDPOINTS.documents.children(kbId, parentId),
+        {},
+        token ?? undefined,
+      ),
+    enabled: !!token,
+    refetchInterval: (query) => {
+      const items = query.state.data;
+      if (items?.some((d) => d.status === "pending" || d.status === "processing")) return 3000;
+      return false;
+    },
+  });
+
+  if (!children) {
+    return <span className="text-xs text-muted-foreground">（{totalCount} 頁）</span>;
+  }
+
+  const processed = children.filter((c) => c.status === "processed").length;
+  const isComplete = processed === totalCount;
+
+  return (
+    <span className="text-xs text-muted-foreground">
+      （{isComplete ? `${totalCount} 頁` : `${processed}/${totalCount} 頁`}）
+    </span>
+  );
+}
+
+function ChildrenRows({
+  kbId,
+  parentId,
+  token,
+  onViewChunks,
+}: {
+  kbId: string;
+  parentId: string;
+  token: string | null;
+  onViewChunks: (doc: DocumentResponse) => void;
+}) {
   const { data: children, isLoading } = useQuery({
     queryKey: ["document-children", kbId, parentId],
     queryFn: () =>
@@ -242,28 +283,49 @@ function ChildrenRows({ kbId, parentId, token }: { kbId: string; parentId: strin
 
   return (
     <>
-      {children?.map((child) => (
-        <tr key={child.id} className="bg-muted/30">
-          <td className="border-b px-4 py-1" />
-          <td className="border-b px-4 py-1 pl-12">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">🖼️</span>
-              <span>{child.page_number != null ? `第 ${child.page_number} 頁` : child.filename}</span>
-            </div>
-          </td>
-          <td className="border-b px-4 py-1 text-sm">{child.chunk_count}</td>
-          <td className="border-b px-4 py-1 text-sm">
-            {child.status === "processed" ? child.quality_score.toFixed(1) : "-"}
-          </td>
-          <td className="border-b px-4 py-1">
-            <StatusCell status={child.status} taskProgress={child.task_progress} />
-          </td>
-          <td className="border-b px-4 py-1 text-sm text-muted-foreground">
-            {formatDate(child.created_at)}
-          </td>
-          <td className="border-b px-4 py-1" />
-        </tr>
-      ))}
+      {children?.map((child) => {
+        // Check if filename was renamed by LLM (not the default page_XXX.png)
+        const isRenamed = !child.filename.match(/^page_\d+\.png$/i);
+        const displayName = isRenamed
+          ? child.filename
+          : child.page_number != null
+            ? `第 ${child.page_number} 頁`
+            : child.filename;
+        return (
+          <tr key={child.id} className="bg-muted/30">
+            <td className="border-b px-4 py-1" />
+            <td className="border-b px-4 py-1 pl-12">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">🖼️</span>
+                <span>{displayName}</span>
+              </div>
+            </td>
+            <td className="border-b px-4 py-1 text-sm">{child.chunk_count}</td>
+            <td className="border-b px-4 py-1 text-sm">
+              {child.status === "processed" ? child.quality_score.toFixed(1) : "-"}
+            </td>
+            <td className="border-b px-4 py-1">
+              <StatusCell status={child.status} taskProgress={child.task_progress} />
+            </td>
+            <td className="border-b px-4 py-1 text-sm text-muted-foreground">
+              {formatDate(child.created_at)}
+            </td>
+            <td className="border-b px-4 py-1">
+              {child.status === "processed" && child.chunk_count > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => onViewChunks(child)}
+                >
+                  <Eye className="mr-1 h-3.5 w-3.5" />
+                  查看分塊
+                </Button>
+              )}
+            </td>
+          </tr>
+        );
+      })}
     </>
   );
 }
@@ -455,7 +517,7 @@ export function DocumentList({
                     />
                     <span>{doc.filename.replace(/\.[^.]+$/, '')}</span>
                     {doc.children_count > 0 && (
-                      <span className="text-xs text-muted-foreground">（{doc.children_count} 頁）</span>
+                      <ParentPageProgress kbId={kbId} parentId={doc.id} totalCount={doc.children_count} token={token} />
                     )}
                     {(statsMap.get(doc.id)?.negative_feedback_count ?? 0) > 0 && (
                       <span
@@ -521,7 +583,12 @@ export function DocumentList({
                 )}
               </tr>
               {doc.children_count > 0 && expandedParents.has(doc.id) && (
-                <ChildrenRows kbId={kbId} parentId={doc.id} token={token} />
+                <ChildrenRows
+                  kbId={kbId}
+                  parentId={doc.id}
+                  token={token}
+                  onViewChunks={(child) => setChunkDoc(child)}
+                />
               )}
               </Fragment>
             ))}

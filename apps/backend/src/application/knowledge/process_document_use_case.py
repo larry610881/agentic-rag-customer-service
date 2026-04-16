@@ -407,6 +407,15 @@ class ProcessDocumentUseCase:
                 duration_ms=upsert_ms,
             )
 
+            # If child document (PDF page), generate semantic filename
+            if document.parent_id and document.page_number:
+                try:
+                    await self._rename_child_page(
+                        document_id, document.page_number, content, kb, log
+                    )
+                except Exception:
+                    log.warning("child.rename_failed", exc_info=True)
+
             # Update doc → processed
             await self._doc_repo.update_status(
                 document_id, "processed", chunk_count=len(chunks)
@@ -439,9 +448,31 @@ class ProcessDocumentUseCase:
                     failed = status_counts.get("failed", 0)
                     if done + failed == total:
                         parent_status = "processed" if failed == 0 else "failed"
-                        # Sum chunk counts from all children
+                        # Aggregate chunk counts + quality from all children
                         children = await self._doc_repo.find_children(document.parent_id)
                         total_chunks = sum(c.chunk_count for c in children)
+                        # Average quality across children with chunks
+                        children_with_chunks = [c for c in children if c.chunk_count > 0]
+                        if children_with_chunks:
+                            avg_quality = sum(c.quality_score for c in children_with_chunks) / len(children_with_chunks)
+                            avg_chunk_len = sum(c.avg_chunk_length for c in children_with_chunks) // len(children_with_chunks)
+                            min_chunk_len = min(c.min_chunk_length for c in children_with_chunks if c.min_chunk_length > 0) if any(c.min_chunk_length > 0 for c in children_with_chunks) else 0
+                            max_chunk_len = max(c.max_chunk_length for c in children_with_chunks)
+                            # Union of quality issues
+                            all_issues = set()
+                            for c in children_with_chunks:
+                                all_issues.update(c.quality_issues)
+                            try:
+                                await self._doc_repo.update_quality(
+                                    document.parent_id,
+                                    quality_score=round(avg_quality, 3),
+                                    avg_chunk_length=avg_chunk_len,
+                                    min_chunk_length=min_chunk_len,
+                                    max_chunk_length=max_chunk_len,
+                                    quality_issues=list(all_issues),
+                                )
+                            except Exception:
+                                log.warning("parent.quality_update_failed", exc_info=True)
                         await self._doc_repo.update_status(
                             document.parent_id, parent_status, chunk_count=total_chunks
                         )
@@ -480,6 +511,73 @@ class ProcessDocumentUseCase:
                 pass
             # Re-raise so safe_background_task can write to Error Tracking
             raise
+
+    async def _rename_child_page(
+        self, document_id: str, page_number: int, content: str, kb, log
+    ) -> None:
+        """Use LLM to generate a semantic filename for a PDF page."""
+        if not content or not content.strip():
+            return
+
+        # Resolve context_model (reuse the same one for rename)
+        model = getattr(kb, "context_model", "") if kb else ""
+        if not model and self._tenant_repo:
+            try:
+                from src.infrastructure.db.engine import async_session_factory
+                from src.infrastructure.db.models.tenant_model import TenantModel
+                from sqlalchemy import select
+                async with async_session_factory() as session:
+                    doc = await self._doc_repo.find_by_id(document_id)
+                    if doc:
+                        stmt = select(TenantModel.default_context_model).where(
+                            TenantModel.id == doc.tenant_id
+                        )
+                        result = await session.execute(stmt)
+                        model = result.scalar_one_or_none() or ""
+            except Exception:
+                pass
+
+        if not model:
+            return
+
+        from src.infrastructure.llm.llm_caller import call_llm
+
+        prompt = f"""\
+以下是 PDF 第 {page_number} 頁的 OCR 內容（截取前 2000 字）：
+
+{content[:2000]}
+
+請用 5-15 個繁體中文字總結這頁的主題，作為頁面標題。
+格式：「第 N 頁 — 主題」，例如「第 3 頁 — 肉品促銷」。
+只輸出標題，不要其他內容。"""
+
+        try:
+            result = await call_llm(
+                model_spec=model,
+                prompt=prompt,
+                max_tokens=50,
+                api_key_resolver=(
+                    self._context_service._api_key_resolver
+                    if self._context_service and hasattr(self._context_service, '_api_key_resolver')
+                    else None
+                ),
+            )
+            new_filename = result.text.strip()[:100]
+            if new_filename:
+                # Use independent session to avoid conflicts
+                from src.infrastructure.db.engine import async_session_factory
+                from src.infrastructure.db.models.document_model import DocumentModel
+                from sqlalchemy import update
+                async with async_session_factory() as session:
+                    await session.execute(
+                        update(DocumentModel)
+                        .where(DocumentModel.id == document_id)
+                        .values(filename=new_filename)
+                    )
+                    await session.commit()
+                log.info("child.renamed", document_id=document_id, new_name=new_filename)
+        except Exception:
+            log.warning("child.rename_llm_failed", exc_info=True)
 
     async def _maybe_trigger_classification(
         self, kb_id: str, tenant_id: str, log

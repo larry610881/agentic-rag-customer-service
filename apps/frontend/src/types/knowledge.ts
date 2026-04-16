@@ -40,6 +40,9 @@ export interface ChunkPreviewItem {
   context_text: string;
   chunk_index: number;
   issues: string[];
+  page_number?: number | null;
+  document_id?: string;
+  document_filename?: string;
 }
 
 export interface ChunkPreviewResponse {

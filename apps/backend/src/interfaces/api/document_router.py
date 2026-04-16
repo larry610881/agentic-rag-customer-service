@@ -487,6 +487,9 @@ class ChunkPreviewItemResponse(BaseModel):
     context_text: str = ""
     chunk_index: int
     issues: list[str]
+    page_number: int | None = None
+    document_id: str = ""
+    document_filename: str = ""
 
 
 class ChunkPreviewListResponse(BaseModel):
@@ -515,6 +518,9 @@ async def get_document_chunks(
                 context_text=c.context_text,
                 chunk_index=c.chunk_index,
                 issues=c.issues,
+                page_number=c.page_number,
+                document_id=c.document_id,
+                document_filename=c.document_filename,
             )
             for c in result.chunks
         ],
