@@ -1336,11 +1336,11 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | Worker 層級 `enabled_tools` 覆蓋 | ✅ | Commit [84df8f3](https://github.com/larry610881/agentic-rag-customer-service/commit/84df8f3) + [b501dc7](https://github.com/larry610881/agentic-rag-customer-service/commit/b501dc7)（UI 簡化）|
 
 ### S-Gov.2 Tool 系統層級管控
-| 項目 | 說明 |
-|------|------|
-| Tool 租戶可見性設定 | `BuiltInTool` 加 scope 欄位：`global`（所有租戶可用）/ `tenant`（指定租戶白名單）|
-| 系統層 Tool 清單 UI | 列出所有 built-in + MCP tool，切換 global / tenant scope，可勾選白名單租戶 |
-| Agent 資料流過濾 | `BUILT_IN_TOOLS` list 在 tool metadata API 上依使用者 tenant_id 過濾 |
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Tool 租戶可見性設定 | ✅ | Commit [cd27b81](https://github.com/larry610881/agentic-rag-customer-service/commit/cd27b81) — `BuiltInTool` entity + scope/tenant_ids，DB table + Repository `find_accessible` |
+| 系統層 Tool 清單 UI | ✅ | Commit [cd27b81](https://github.com/larry610881/agentic-rag-customer-service/commit/cd27b81) — `/admin/tools` 頁面 + Dialog（scope select + 租戶 checkbox + 可見租戶 N/M 摘要）|
+| Agent 資料流過濾 | ✅ | Commit [cd27b81](https://github.com/larry610881/agentic-rag-customer-service/commit/cd27b81) — GET `/agent/built-in-tools` 依 tenant_id 過濾 + Bot create/update 驗證 enabled_tools（未授權回 422）|
 
 ### S-Gov.3 系統層 KB / Bot 清單整理
 | 項目 | 說明 |

@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [S-Gov.2 — Built-in Tool Tenant Scope（Attribute-Based 樣板複用）](#s-gov2--built-in-tool-tenant-scopeattribute-based-樣板複用)
 - [統一麵包屑導覽系統 — Discriminated Union + State-driven 頁內展開](#統一麵包屑導覽系統--discriminated-union--state-driven-頁內展開)
 - [Sub-agent Worker 架構升級 — IntentRoute → WorkerConfig + LLM Router + Per-Worker ReAct](#sub-agent-worker-架構升級--intentroute--workerconfig--llm-router--per-worker-react)
 - [Agent 執行追蹤視覺化 — ContextVar Collector + React Flow DAG + 瀑布時間軸](#agent-執行追蹤視覺化--contextvar-collector--react-flow-dag--瀑布時間軸)
@@ -77,6 +78,39 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## S-Gov.2 — Built-in Tool Tenant Scope（Attribute-Based 樣板複用）
+
+**日期**：2026-04-17
+**Sprint**：S-Gov.2 Tool 系統層級管控
+**涉及層級**：Domain / Application / Infrastructure / Interfaces / Frontend 全棧（Issue #28 / Commit cd27b81）
+
+### 本次相關主題
+
+Attribute-Based Access Control（租戶 ID 作為 attribute）、Pattern Replay（MCP scope 樣板直接複用）、Idempotent Seed（ON CONFLICT DO UPDATE 保留使用者設定）、tenant-aware API（同一端點依角色分流 response shape）
+
+### 做得好的地方
+
+- **樣板直接複用，零新 pattern 引入**：`McpServerRegistration.scope + tenant_ids` + `find_accessible(tenant_id)` + JSONB.contains 查詢在 MCP bounded context 已經驗證過。本次 built-in tools 直接 1:1 複製——entity 結構、repository 查詢語法、Infrastructure model schema 全部對稱。好處：日後新增其他「系統層資源的租戶白名單」只要套這個 3-attribute 三角（`scope`, `tenant_ids[]`, `find_accessible`）即可，不用重新設計
+- **Seed 冪等策略精準區分「可變」與「不可變」欄位**：`seed_defaults()` 用 `ON CONFLICT DO UPDATE SET label, description, requires_kb`——僅刷新 metadata，保留 admin 設定的 scope/tenant_ids。這樣 hardcoded defaults 可以迭代更新（例如改 description 文案），但不會毀掉營運已設定的白名單。冪等 + partial update 是 seed 邏輯的黃金分水嶺
+- **驗證邏輯分離 built-in 與 MCP**：`validate_bot_enabled_tools` 只驗 built-in 名稱，MCP 名稱 passthrough。原因是 MCP 已有自己的 accessible 過濾機制（mcp_bindings + find_accessible），不該混雜。Validator 的「universe = find_all()」set-membership 判斷非常精準：名稱屬於 built-in universe 且不在 accessible → reject；名稱不屬於 universe → 視為外部/自訂 tool，跳過
+- **同一端點 tenant-aware response shape**：`GET /agent/built-in-tools` 依 `tenant.role` 分流——admin 得到含 `scope/tenant_ids` 的完整 response，一般租戶得到無 scope 的精簡 response。用同一個 Pydantic model（fields 全設 optional）而非兩個 DTO，維持 API contract 的簡潔性
+- **Cache invalidation 同時清後端 Redis 與前端 TanStack queryKey**：admin 改 scope 成功後，後端清 `bot:*`（避免 Bot cached tool list 還是舊值），前端同時 invalidate `["built-in-tools"]` + `["admin-tools"]`（讓 admin 列表與 tenant 用的 Bot 編輯頁都同步刷新）。跨端 cache 同步在 RAG/Agent 類應用常被忽略
+
+### 潛在隱憂
+
+- **（中）`react_agent_service._build_builtin_tools` 已載入的 LangChain tool 實例不會因 scope 改變而清空**：目前後端 cache 清的是 `bot:*`（Bot 層級的 cache），但 `react_agent_service` 內部依 `enabled_tools` build 的 LangChain tool instance 若被 conversation-level / agent-level 快取，scope 縮減後使用者可能仍能呼到已移除的 tool。建議：追查 react_agent_service 是否 per-request rebuild tool；若否，需加 bot version 戳記 → 優先級：中
+- **（中）未來若要「多環境 built-in tools」（如僅 staging 啟用某 tool）需再擴充**：目前 scope 只有 global / tenant 二元。若出現「僅 staging 環境開放」或「特定 user role 才能用」的需求，就要加第三維度（environment / role），此時單純兩欄位會不夠。建議：保留 scope 欄位作為 discriminator 字串，未來擴展 `scope = "env:staging"` 或 `scope = "role:premium"`，避免多加欄位 → 優先級：中
+- **（低）Tool 加刪仍需改 code 重新部署**：admin 頁面只能切 scope，不能新增/刪除 tool。`BUILT_IN_TOOL_DEFAULTS` 仍 hardcoded。若需求演化為「plugin-style tool registry」（例如 tenant 自己上傳 tool），本設計要推翻重來。現階段 POC 符合 YAGNI → 優先級：低
+- **（低）既有前端測試債**：12 個既有測試（provider-list / bot-detail-form / pagination-controls / document-list）因 fixture 常數漂移而 fail，非本次引入；若 CI 卡住需另起 issue 修繕 → 優先級：低
+
+### 延伸學習
+
+- **ABAC（Attribute-Based Access Control）vs RBAC**：本次是簡化版 ABAC——將 `tenant_id` 當成 attribute，`find_accessible(tenant_id)` 是 policy query。RBAC 只有 role→permission 二層，ABAC 能表達「tenant X 且 subscription=premium」等多 attribute 組合。未來若擴展 scope 維度（env / role / subscription），可以平滑演化為正式 ABAC。搜尋：_ABAC vs RBAC_ / _NIST SP 800-162_ / _Open Policy Agent Rego_
+- **Idempotent DB Seed — 為什麼 partial update 比 full upsert 更安全**：Full upsert（`ON CONFLICT DO UPDATE SET *`）會覆寫使用者的營運設定；Partial update（`ON CONFLICT DO UPDATE SET only_metadata`）只更新「程式碼來源的 truth」而保留「使用者來源的 truth」。這是 CRDT 思維的基礎——資料每個欄位都應明確歸屬一個 source of truth。搜尋：_idempotent migration pattern_ / _CRDT last-write-wins_ / _ON CONFLICT DO UPDATE partial update_
+- **跨端 Cache Invalidation 的 3 層思考**：後端 Redis cache、應用層 in-memory cache、前端 TanStack queryKey 是 3 個 layer，改動任一資源後需同時清三者。本次只清前兩層（react_agent 層是隱憂），常見事故都是有 1 層沒清導致 stale state。推薦：用 event bus + cache tag 統一觸發，而非在每個 mutation 點手動清。搜尋：_cache invalidation event-driven_ / _Rails russian doll caching_ / _tag-based cache invalidation_
 
 ---
 
