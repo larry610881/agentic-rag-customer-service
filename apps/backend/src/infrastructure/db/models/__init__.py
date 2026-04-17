@@ -39,6 +39,16 @@ from src.infrastructure.db.models.agent_trace_model import (
 )
 from src.infrastructure.db.models.bot_worker_model import BotWorkerModel
 from src.infrastructure.db.models.built_in_tool_model import BuiltInToolModel
+from src.infrastructure.db.models.chunk_category_model import ChunkCategoryModel
+from src.infrastructure.db.models.eval_dataset_model import (
+    EvalDatasetModel,
+    EvalTestCaseModel,
+)
+from src.infrastructure.db.models.guard_log_model import GuardLogModel
+from src.infrastructure.db.models.guard_rules_config_model import (
+    GuardRulesConfigModel,
+)
+from src.infrastructure.db.models.prompt_opt_run_model import PromptOptRunModel
 __all__ = [
     "TenantModel",
     "KnowledgeBaseModel",
@@ -69,4 +79,10 @@ __all__ = [
     "AgentExecutionTraceModel",
     "BotWorkerModel",
     "BuiltInToolModel",
+    "ChunkCategoryModel",
+    "EvalDatasetModel",
+    "EvalTestCaseModel",
+    "GuardLogModel",
+    "GuardRulesConfigModel",
+    "PromptOptRunModel",
 ]

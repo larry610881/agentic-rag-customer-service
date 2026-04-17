@@ -858,6 +858,11 @@ class SendMessageUseCase:
         )
         await self._conversation_repo.save(conversation)
 
+        # 在 _persist_agent_trace 之前取 trace_id（finish 後 ContextVar 會被清掉）
+        # 用於 SSE done 事件回傳給前端，讓 Studio canvas 等可 fetch 完整 DAG。
+        _current_trace = AgentTraceCollector.current()
+        stream_trace_id = _current_trace.trace_id if _current_trace else None
+
         # Fire-and-forget: persist agent execution trace
         await self._persist_agent_trace(
             conversation_id=conversation.id.value,
@@ -895,7 +900,10 @@ class SendMessageUseCase:
             "type": "conversation_id",
             "conversation_id": conversation.id.value,
         }
-        yield {"type": "done"}
+        done_event: dict[str, Any] = {"type": "done"}
+        if stream_trace_id:
+            done_event["trace_id"] = stream_trace_id
+        yield done_event
 
     async def _load_or_create_conversation(
         self, command: SendMessageCommand

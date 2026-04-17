@@ -31,6 +31,9 @@ class ChatRequest(BaseModel):
     bot_id: str | None = None
     knowledge_base_id: str | None = None
     conversation_id: str | None = None
+    # 來源識別（"web" / "widget" / "line" / "studio"），影響 agent_execution_traces.source；
+    # 預設 "web" 對應後台 chat / Studio 試運轉等網頁來源。
+    identity_source: str | None = None
 
 
 class ToolCallInfo(BaseModel):
@@ -83,7 +86,7 @@ async def agent_chat(
             message=request.message,
             conversation_id=request.conversation_id,
             bot_id=request.bot_id,
-            identity_source="web",
+            identity_source=request.identity_source or "web",
         )
     )
 
@@ -158,7 +161,7 @@ async def agent_chat_stream(
         message=request.message,
         conversation_id=request.conversation_id,
         bot_id=request.bot_id,
-        identity_source="web",
+        identity_source=request.identity_source or "web",
     )
 
     async def event_generator():

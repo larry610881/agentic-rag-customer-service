@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [S-Gov.7 — Bot Studio：設定即時試運轉（既有契約延伸 + 前端共用 lib 抽出 + Source 識別最小路徑）](#s-gov7--bot-studio設定即時試運轉既有契約延伸--前端共用-lib-抽出--source-識別最小路徑)
 - [BUG-01 — Tool Rich Content 持久化 + Trace Source of Truth（Collector Metadata 延伸 + 聚合累加器）](#bug-01--tool-rich-content-持久化--trace-source-of-truthcollector-metadata-延伸--聚合累加器)
 - [S-Gov.3 — Admin 視角職責分離（Caller Tenant vs Resource Tenant 解耦）](#s-gov3--admin-視角職責分離caller-tenant-vs-resource-tenant-解耦)
 - [S-Gov.2 — Built-in Tool Tenant Scope（Attribute-Based 樣板複用）](#s-gov2--built-in-tool-tenant-scopeattribute-based-樣板複用)
@@ -80,6 +81,39 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## S-Gov.7 — Bot Studio：設定即時試運轉（既有契約延伸 + 前端共用 lib 抽出 + Source 識別最小路徑）
+
+**日期**：2026-04-17
+**Sprint**：S-Gov.7 Bot Studio
+**涉及層級**：Interfaces（agent_router）+ Application（send_message_use_case stream done）+ Frontend（共用 lib + 新 hook + 新 canvas + Tab 整合）（Issue #33）
+
+### 本次相關主題
+
+Plan validation as scope shrinker、ContextVar trace_id propagation through async generator、ASGI streaming response 的 done 事件作為「post-execution metadata channel」、前端共用視覺 lib 的抽出時機、test isolation 的 trace_session_factory DI 模式、KISS 原則下的「自然事件節奏 + CSS transition」取代「animation queue + delay slider」
+
+### 做得好的地方
+
+- **Plan Validation 大幅縮減 scope**：原計畫預估後端 ~14 處 stream event 插樁加 `node_id` + `ts_ms`、新加 `ConversationSource` enum、PG ENUM migration、`messages.is_test` flag。Stage 1 驗證發現 (1) `Conversation` 沒 source 欄位但 `AgentExecutionTrace.source` 已存在 (2) `SendMessageCommand.identity_source` 已 plumbing 完成 (3) stream done 帶 trace_id 一處改動就夠 — 結果後端從 14 處 → **3 處**改動。這是「不要相信你的 plan，先驗證」最具體的回報
+- **trace_id 在 ContextVar 清掉前先取**：`AgentTraceCollector.finish()` 會 reset ContextVar，所以必須在 `_persist_agent_trace()` 呼叫**之前** `current().trace_id` 取出存到 local var，再於 done event 帶出。這種「lifecycle 邊界附近的取值順序」是 ContextVar / generator 模式常見坑
+- **抽 NODE_COLORS 共用 lib 是「真實兩個 consumer」才抽**：在 Studio canvas 落地之前，`NODE_COLORS` / `NODE_ICONS` 只在 admin trace graph 用，不該預先抽。Studio canvas 出現後才有真正的「重複」可消除 — 這是 Rule of Three 的實踐（兩次重複再抽）
+- **Test 環境順手修 + 對齊 stash 比對基線**：5 個 ORM model 漏 import 是先前未處理的測試 infra debt，順手補（5 行 import）連帶修好 2 個既有 fail（baseline 16 fails → 我的 PR 14 fails + 2 新 pass）。用 `git stash` 跑 baseline 比對「我有沒有引入回歸」是 PR 級別的標配
+- **KISS 戰勝 over-engineering**：原計畫有「animation queue + delay consumer + 0-5000ms slider + 執行 vs 動畫解耦」，使用者問了一句「即時 stream 不就好了」就把整套抽象拆掉。剩下 CSS transition 200ms + 演示模式 800ms switch + 自然事件節奏，**前端少寫一個 hook、少一個元件抽象、UI 少一個 slider**
+
+### 潛在隱憂
+
+- **Studio canvas 內 feedback gate 採「不渲染」而非「prop 傳遞」**：目前 BotStudioCanvas 自走 `ExecutionFeed` 顯示 bot 回覆，沒用 `MessageBubble` → feedback 按鈕天然不出現。但若日後想複用 MessageBubble（例如顯示 sources、structured content），這個天然隔離會失效，要補 `hideFeedback` prop。建議 Phase 2 想擴充 message rendering 時再評估 → **優先級：低**
+- **動畫節點點亮邏輯靠 event.type → name 對應**：`tool_calls` 事件帶 tool_name → 找藍圖中對應 tool 卡片點亮，但若 worker A 跟 worker B 都掛 `rag_query`，點亮哪一個？目前簡化為「兩個都點亮」（藍圖卡片用 tool name 全域 match）。實作時故意如此，因為 stream 沒有 worker_id 標記。要更精準需要 stream 帶 `worker_routing` 事件 → **優先級：中**，等真實使用反饋若混淆再加
+- **Studio 對話與正式對話同表，feedback 不送但 token usage 照計**：POC 階段 trade-off。長遠若要「免計費試用」，可走 S-Gov.4 的 per-tenant 計費開關 + 進一步在 RecordUsageUseCase 加 `is_billable` 判斷（依 source）→ **優先級：低**（POC 不會衝量）
+- **observability_router GET endpoint 仍直接 import 模組層 `async_session_factory`**：寫路徑（`_persist_agent_trace`）已 DI 化用 `trace_session_factory`，讀路徑沒跟進。這次 BDD 就因此繞道用「直接查 test DB」驗證持久化（避過 router 的 dev DB 連線）。應補一致性 → **優先級：中**（PR scope 外，獨立 issue 處理）
+
+### 延伸學習
+
+- **ContextVar in async generators**：generator function 內每次 `yield` 都可能切到別的 task。ContextVar 的 set/reset 必須留意 yield boundary —— 例如 `start()` 在 generator 內、`finish()` 在 generator 外（caller 的 finally），就會踩到「ContextVar 已被 caller reset」的雷。本次解法：caller 在 finish 前 snapshot trace_id 到 local
+- **Rule of Three（refactoring.com）**：寫到第 3 個重複才抽出共用，避免過早抽象（DRY 過度）導致錯誤的抽象。本次 NODE_COLORS 是第 2 次使用就抽 — 因為**兩個 consumer 都已穩定且確定不會分歧**（同一份視覺語義）。Rule of Three 是 default，但「同一份語義保證」可以提早一輪
+- **建議搜尋**：`Streaming SSE done as metadata channel`、`Python ContextVar with async generators pitfalls`、`React Query auto fetch on enabled toggle`（Studio canvas 收到 trace_id 後 useAgentTraceDetail 自動 fire 的模式）
 
 ---
 

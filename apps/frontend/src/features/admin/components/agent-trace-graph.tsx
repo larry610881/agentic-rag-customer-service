@@ -11,51 +11,15 @@ import {
   type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import {
-  Brain,
-  Wrench,
-  MessageCircle,
-  Router,
-  Users,
-  User,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react";
+import { Brain, ChevronDown, ChevronRight } from "lucide-react";
 import { JsonView, darkStyles } from "react-json-view-lite";
 import "react-json-view-lite/dist/index.css";
-import type { ExecutionNode, ExecutionNodeType } from "@/types/agent-trace";
-
-const NODE_ICONS: Record<ExecutionNodeType, React.ElementType> = {
-  user_input: User,
-  router: Router,
-  meta_router: Router,
-  supervisor_dispatch: Users,
-  worker_routing: Router,
-  agent_llm: Brain,
-  tool_call: Wrench,
-  tool_result: Wrench,
-  final_response: MessageCircle,
-  worker_execution: Users,
-};
-
-const NODE_COLORS: Record<ExecutionNodeType, string> = {
-  user_input: "border-slate-400 bg-slate-50 dark:bg-slate-900",
-  router: "border-amber-400 bg-amber-50 dark:bg-amber-950",
-  meta_router: "border-amber-400 bg-amber-50 dark:bg-amber-950",
-  supervisor_dispatch: "border-purple-400 bg-purple-50 dark:bg-purple-950",
-  worker_routing: "border-purple-400 bg-purple-50 dark:bg-purple-950",
-  agent_llm: "border-blue-400 bg-blue-50 dark:bg-blue-950",
-  tool_call: "border-emerald-400 bg-emerald-50 dark:bg-emerald-950",
-  tool_result: "border-emerald-400 bg-emerald-50 dark:bg-emerald-950",
-  final_response: "border-green-400 bg-green-50 dark:bg-green-950",
-  worker_execution: "border-indigo-400 bg-indigo-50 dark:bg-indigo-950",
-};
-
-function durationColor(ms: number) {
-  if (ms >= 2000) return "text-red-600 dark:text-red-400";
-  if (ms >= 500) return "text-yellow-600 dark:text-yellow-400";
-  return "text-green-600 dark:text-green-400";
-}
+import type { ExecutionNode } from "@/types/agent-trace";
+import {
+  NODE_COLORS,
+  NODE_ICONS,
+  durationColor,
+} from "@/features/admin/lib/trace-node-style";
 
 function str(v: unknown): string {
   return String(v ?? "");

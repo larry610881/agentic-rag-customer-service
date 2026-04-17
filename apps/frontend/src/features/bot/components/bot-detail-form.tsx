@@ -8,9 +8,11 @@ import {
   Check,
   ImageIcon,
   Plus,
+  Sparkles,
   Trash2,
   Upload,
 } from "lucide-react";
+import { BotStudioCanvas } from "./bot-studio-canvas";
 import { API_BASE, PUBLIC_API_URL } from "@/lib/api-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -155,6 +157,7 @@ const TAB_KEYS = {
   LLM_PROMPT: "llm-prompt",
   CAPABILITIES: "capabilities",
   SUBAGENT: "subagent",
+  STUDIO: "studio",
   WIDGET: "widget",
   LINE: "line",
 } as const;
@@ -455,6 +458,10 @@ export function BotDetailForm({
           </TabsTrigger>
           <TabsTrigger value={TAB_KEYS.SUBAGENT} className="flex-1">
             Sub-agent
+          </TabsTrigger>
+          <TabsTrigger value={TAB_KEYS.STUDIO} className="flex-1">
+            <Sparkles className="mr-1 h-3.5 w-3.5" />
+            工作室
           </TabsTrigger>
           <TabsTrigger value={TAB_KEYS.WIDGET} className="flex-1">
             Widget
@@ -1071,7 +1078,21 @@ export function BotDetailForm({
         </TabsContent>
 
         {/* ================================================================ */}
-        {/* Tab 4: Widget                                                      */}
+        {/* Tab 4: Studio — 設定即時試運轉                                    */}
+        {/* ================================================================ */}
+        <TabsContent
+          value={TAB_KEYS.STUDIO}
+          className="flex flex-col gap-4 pt-4"
+        >
+          <p className="text-sm text-muted-foreground">
+            送出測試訊息後，藍圖中對應的 agent / tool 會點亮；結束後下方顯示完整執行 DAG。
+            測試對話以 <code className="rounded bg-muted px-1">studio</code> 來源寫入 trace，跟正式對話分流。
+          </p>
+          <BotStudioCanvas bot={bot} />
+        </TabsContent>
+
+        {/* ================================================================ */}
+        {/* Tab 5: Widget                                                     */}
         {/* ================================================================ */}
         <TabsContent
           value={TAB_KEYS.WIDGET}
