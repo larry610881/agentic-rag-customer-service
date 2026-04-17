@@ -38,6 +38,7 @@ from src.infrastructure.langgraph.usage import (
     extract_usage_from_langchain_messages,
 )
 from src.infrastructure.llm.dynamic_llm_factory import DynamicLLMServiceProxy
+from src.application.agent.tool_label_resolver import resolve_tool_label
 from src.infrastructure.observability.agent_trace_collector import (
     AgentTraceCollector,
 )
@@ -749,6 +750,7 @@ class ReActAgentService(AgentService):
         for tc in msg.tool_calls:
             entry: dict[str, Any] = {
                 "tool_name": tc["name"],
+                "label": resolve_tool_label(tc["name"]),
                 "tool_call_id": tc.get("id", ""),
                 "reasoning": "",
                 "tool_input": tc.get("args", {}),
@@ -1069,6 +1071,7 @@ class ReActAgentService(AgentService):
                     for tc in msg.tool_calls:
                         entry: dict[str, Any] = {
                             "tool_name": tc["name"],
+                            "label": resolve_tool_label(tc["name"]),
                             "tool_call_id": tc.get("id", ""),
                             "reasoning": "",
                             "tool_input": tc.get("args", {}),

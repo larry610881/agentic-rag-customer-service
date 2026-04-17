@@ -818,7 +818,11 @@ class SendMessageUseCase:
                 event = {
                     "type": "tool_calls",
                     "tool_calls": [
-                        {"tool_name": tc.get("tool_name", ""), "reasoning": ""}
+                        {
+                            "tool_name": tc.get("tool_name", ""),
+                            "label": tc.get("label", ""),
+                            "reasoning": "",
+                        }
                         for tc in tcs
                     ],
                 }

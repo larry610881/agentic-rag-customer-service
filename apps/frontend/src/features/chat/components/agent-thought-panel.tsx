@@ -3,7 +3,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { getToolLabel } from "@/constants/tool-labels";
 import { ToolCallBadge } from "@/features/chat/components/tool-call-badge";
 import type { ToolCallInfo } from "@/types/chat";
 

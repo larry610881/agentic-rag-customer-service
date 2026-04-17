@@ -37,6 +37,7 @@ class ChatRequest(BaseModel):
 
 class ToolCallInfo(BaseModel):
     tool_name: str
+    label: str = ""  # Backend resolve 後的中文顯示名稱，空值時前端 fallback 為 tool_name
     reasoning: str
 
 
@@ -128,6 +129,7 @@ async def agent_chat(
         tool_calls=[
             ToolCallInfo(
                 tool_name=tc["tool_name"],
+                label=tc.get("label", ""),
                 reasoning=tc.get("reasoning", ""),
             )
             for tc in result.tool_calls

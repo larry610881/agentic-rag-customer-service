@@ -1,12 +1,11 @@
-// NOTE: 與 backend src/domain/agent/built_in_tool.py 的 BUILT_IN_TOOL_DEFAULTS 對齊。
-// 這是架構 smell（同一份 label 兩處維護），理想做法是改為透過 GET /api/v1/agent/built-in-tools
-// 動態抓 label 並 cache。短期先手動同步文案。
+// i18n safety-net：backend 已在 tool_calls / ChatResponse 的 ToolCallInfo.label 欄位
+// 直接帶 resolve 後的顯示名稱（見 Issue #30 / backend src/application/agent/tool_label_resolver.py）。
+// 本檔僅作為 streaming status hint 等「無 ToolCallInfo 物件可讀 label」的場景 fallback。
+// 前端不新增 built-in tool 到本表 — 新 tool 的 label 統一交由 backend BUILT_IN_TOOL_DEFAULTS。
 export const TOOL_LABELS: Record<string, string> = {
-  // Built-in tools（來源：backend BUILT_IN_TOOL_DEFAULTS）
   rag_query: "知識庫查詢",
   query_dm_with_image: "DM 圖卡查詢",
   transfer_to_human_agent: "轉接真人客服",
-  // MCP tools（範例：窩廚房）
   search_products: "查詢商品",
   search_courses: "查詢課程",
 };

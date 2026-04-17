@@ -81,6 +81,100 @@ def setup_agent_plain_text(context):
     _make_use_case(context)
 
 
+def _make_streaming_use_case(context, *, events):
+    """events: list[dict] — 模擬 agent.process_message_stream yield 的序列"""
+    async def stream_generator(**_kwargs):
+        for ev in events:
+            yield ev
+
+    mock_agent = AsyncMock()
+    mock_agent.process_message_stream = stream_generator
+    mock_repo = AsyncMock()
+    mock_repo.find_by_id = AsyncMock(return_value=None)
+    mock_repo.save = AsyncMock()
+
+    context["mock_agent"] = mock_agent
+    context["mock_repo"] = mock_repo
+    context["use_case"] = SendMessageUseCase(
+        agent_service=mock_agent,
+        conversation_repository=mock_repo,
+    )
+
+
+@given("一個會在 streaming 中 yield contact event 的 Agent Service")
+def setup_streaming_agent_with_contact(context):
+    _make_streaming_use_case(
+        context,
+        events=[
+            {"type": "token", "content": "為您轉接真人客服"},
+            {"type": "contact", "contact": {
+                "label": "聯絡真人客服",
+                "url": "https://example.com/support",
+                "type": "url",
+            }},
+            {"type": "done"},
+        ],
+    )
+
+
+@given("一個會在 streaming 中 yield sources event 的 Agent Service")
+def setup_streaming_agent_with_sources(context):
+    _make_streaming_use_case(
+        context,
+        events=[
+            {"type": "token", "content": "退貨政策內容"},
+            {"type": "sources", "sources": [
+                {"document_name": "退貨政策.md",
+                 "content_snippet": "30 天內可退貨",
+                 "score": 0.95},
+            ]},
+            {"type": "done"},
+        ],
+    )
+
+
+@when(parsers.parse('使用者以 streaming 模式發送訊息 "{msg}"'))
+def send_message_streaming(context, msg):
+    async def collect():
+        async for _ev in context["use_case"].execute_stream(
+            SendMessageCommand(
+                tenant_id="tenant-001",
+                kb_id="kb-001",
+                message=msg,
+            )
+        ):
+            pass
+
+    _run(collect())
+
+    save_call = context["mock_repo"].save.call_args
+    conversation = save_call[0][0]
+    assistant_msgs = [m for m in conversation.messages if m.role == "assistant"]
+    context["assistant_message"] = assistant_msgs[-1] if assistant_msgs else None
+
+
+@then("streaming 助理訊息的 structured_content 應包含 contact 欄位")
+def verify_streaming_contact(context):
+    msg = context["assistant_message"]
+    assert msg is not None
+    assert msg.structured_content is not None
+    contact = msg.structured_content.get("contact")
+    assert contact is not None
+    assert contact["label"] == "聯絡真人客服"
+    assert contact["url"] == "https://example.com/support"
+
+
+@then("streaming 助理訊息的 structured_content 應包含 sources 列表")
+def verify_streaming_sources(context):
+    msg = context["assistant_message"]
+    assert msg is not None
+    assert msg.structured_content is not None
+    sources = msg.structured_content.get("sources")
+    assert isinstance(sources, list)
+    assert len(sources) >= 1
+    assert sources[0]["document_name"] == "退貨政策.md"
+
+
 @when(parsers.parse('使用者發送訊息 "{msg}"'))
 def send_message(context, msg):
     _run(

@@ -12,6 +12,8 @@ export interface Source {
 
 export interface ToolCallInfo {
   tool_name: string;
+  /** Backend resolve 後的中文顯示名稱；缺省時前端 fallback 為 tool_name */
+  label?: string;
   reasoning: string;
   iteration?: number;
 }

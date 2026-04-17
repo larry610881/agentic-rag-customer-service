@@ -16,3 +16,14 @@ Feature: Message Structured Content 持久化
     Given 一個只回傳純文字的 Agent Service
     When 使用者發送訊息 "你好"
     Then 助理訊息的 structured_content 應為 None
+
+  # Streaming 路徑（execute_stream）：BUG-01 原實作在此路徑聚合 contact event
+  Scenario: Streaming 過程 yield contact event 時聚合至 structured_content
+    Given 一個會在 streaming 中 yield contact event 的 Agent Service
+    When 使用者以 streaming 模式發送訊息 "我要找真人客服"
+    Then streaming 助理訊息的 structured_content 應包含 contact 欄位
+
+  Scenario: Streaming 過程 yield sources event 時併入 structured_content
+    Given 一個會在 streaming 中 yield sources event 的 Agent Service
+    When 使用者以 streaming 模式發送訊息 "查詢退貨政策"
+    Then streaming 助理訊息的 structured_content 應包含 sources 列表
