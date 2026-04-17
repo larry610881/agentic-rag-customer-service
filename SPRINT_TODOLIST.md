@@ -1364,6 +1364,33 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | 計費範例 | 月訂閱 2000 萬 + 加值 500 萬，本月用 2100 萬 → 下月額度 = 2000（新訂閱）+ 400（加值遞延）= 2400 |
 | 系統層雙視圖 | (A) 絕對總量（看整個平台 token 消耗）; (B) 租戶計費視角（同租戶看到的額度/超用/加值狀態）|
 
+### S-Gov.6 Agent 執行追蹤 UI 可讀性強化
+> 既有 `agent_execution_traces` 已落地（見 S-Gov.1），本 Sprint 聚焦**前端 UI 可讀性**與**查詢能力**，後端只做欄位/索引補強。
+
+| 項目 | 說明 |
+|------|------|
+| Conversation 級聚合視圖 | 目前一次 chat = 一筆 trace，多輪對話散落。新增「依 `conversation_id` 聚合」的列表模式，一組 conversation 內的多筆 trace 可展開一起看（時間軸 + 摘要）|
+| 分類標籤明確化 | Trace 依 `agent_mode`（Router/ReAct/Supervisor）、`outcome`（success/partial/failed）、`route`（worker 名稱）等維度標示；列表以色塊 + badge 呈現 |
+| Trace ID 易讀化 | 現在 UUID 難以辨識/搜尋 → 補短格式（例 `trc_20260417_a1b2`）或 slug；列表提供點擊複製；詳情頁標題顯示 |
+| Filter / Search 強化 | 新增：日期範圍、bot、tenant、conversation_id、agent_mode、outcome、有無錯誤、keyword（搜 prompt/answer 片段）多條件組合 |
+| URL 可分享 | Filter / 聚合狀態序列化進 query string，可直接貼連結給同事對照 |
+| 詳情頁 DAG 可讀性 | Node 依節點類型（LLM/Tool/RAG/Router）上色一致；hover tooltip 顯示耗時/token；失敗節點紅框閃爍 |
+| 後端 index / 欄位補強 | 依 `(tenant_id, conversation_id, started_at)` 建複合 index；若 outcome/agent_mode 未持久化則補欄位（migration `IF NOT EXISTS`）|
+
+---
+
+## Bug Backlog（待重現 + 待排入 Sprint）
+
+> 已發現但尚未建 issue / 進 Sprint 的 bug，先集中盤點。真的要開工時再走 Bug Fix 工作流（重現 → regression test → 修復）。
+
+### ✅ BUG-01 Tool 輸出 rich content 持久化 + Trace 完整記錄 — `Closes #29`
+| 項目 | 說明 |
+|------|------|
+| 根因 | `messages` 表無欄位存 rich payload；`_execute_stream_inner` 未聚合 contact event；`react_agent_service` 只存 `result_preview` 字串；`loadConversation()` 丟棄 structured 欄位 |
+| 修復範圍 | Domain Message 加 `structured_content: dict \| None` → ORM Text 欄位 + migration → Application 聚合 contact/sources → API response schema → Trace metadata 存完整 tool_output dict → Frontend MessageDetail type + loadConversation map |
+| 交付驗證 | Backend 617 unit tests 全綠（新增 6 scenarios）；Frontend chat store 10 tests 全綠；前端 typecheck 無新錯誤 |
+| 不變項 | LINE handler 不動（payload 已送達手機）；舊資料不往回兼容（structured_content NULL 時 fallback 純文字） |
+
 ---
 
 ## Backlog — GitHub Issues 追蹤
