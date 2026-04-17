@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [BUG-01 — Tool Rich Content 持久化 + Trace Source of Truth（Collector Metadata 延伸 + 聚合累加器）](#bug-01--tool-rich-content-持久化--trace-source-of-truthcollector-metadata-延伸--聚合累加器)
 - [S-Gov.2 — Built-in Tool Tenant Scope（Attribute-Based 樣板複用）](#s-gov2--built-in-tool-tenant-scopeattribute-based-樣板複用)
 - [統一麵包屑導覽系統 — Discriminated Union + State-driven 頁內展開](#統一麵包屑導覽系統--discriminated-union--state-driven-頁內展開)
 - [Sub-agent Worker 架構升級 — IntentRoute → WorkerConfig + LLM Router + Per-Worker ReAct](#sub-agent-worker-架構升級--intentroute--workerconfig--llm-router--per-worker-react)
@@ -78,6 +79,40 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## BUG-01 — Tool Rich Content 持久化 + Trace Source of Truth（Collector Metadata 延伸 + 聚合累加器）
+
+**日期**：2026-04-17
+**Bug**：Issue #29
+**涉及層級**：Domain / Application / Infrastructure（ORM + Repository + Trace）/ Interfaces / Frontend 全棧
+
+### 本次相關主題
+
+DB Schema 統一容器 vs Flat 欄位、Streaming Event 聚合器模式、Trace as Source of Truth、Observability Metadata 延伸、Channel-Agnostic Payload 傳遞、Backward Compatibility（舊資料 NULL fallback）
+
+### 做得好的地方
+
+- **「統一容器 `structured_content`」擊敗 Flat 欄位的關鍵理由是「未來擴展成本」而非「當下簡潔性」**：Flat schema 與既有 `tool_calls_json` / `retrieved_chunks` 對齊，當下可少寫轉換層；但加新 block type（card / image_carousel / calendar event）時都要 migration。容器 schema 一次性加欄位、未來 payload 演進零 DB 異動——這是 JSON column 的典型 trade-off：**寫入便宜但 query 困難**。本 bug 的讀寫比極度偏寫（99% 案例只讀整包回傳前端 render），反而是 JSON 容器的完美場景
+- **Tool Output 完整保留改用「純函式 helper + ExecutionNode.metadata JSON column」而非新增專用欄位**：`ExecutionNode.metadata: dict` 本來就是 JSON column，schema 完全不動；`record_tool_output(node, content_str)` 純函式（無 I/O 無 state）讓 BDD 測試零 mock 即可驗證——這是把「基礎設施變更」變成「純邏輯變更」的典範。Trade-off：metadata 變大時索引效率下降，目前 payload < 10KB 可接受
+- **Streaming 路徑與同步路徑統一用 `_build_structured_content(contact, sources)` helper**：`execute()` 與 `_execute_stream_inner()` 各自從不同來源收集 contact（前者從 `AgentResponse.contact` / 後者從 event loop 累加器），但最終都匯入同一個 helper 組 payload。這種「雙路徑單一聚合點」保證兩條路徑輸出一致，避免 streaming 與非 streaming 的 DB 記錄不對稱
+- **LINE handler 刻意不動是戰略選擇，非技術遺漏**：LINE Flex Message 已在 tool 回傳後立即 build 出 Flex JSON 送達 LINE client → 使用者手機已渲染並保留，Web Bot 的「重整丟失」不適用 LINE。若強行統一 LINE 也經 `structured_content`，等於把「Web 需要 persistence」的需求強加給「已有 client-side persistence」的通路，是架構耦合的過度設計。範圍邊界劃清比寫更多 code 更重要
+- **紅燈測試先於實作的證據**：在 `tool_trace_recorder.py` 還不存在時先寫 `from ... import record_tool_output` 的測試——pytest collection ImportError 就是最乾淨的紅燈。另外 `Message.structured_content` 欄位的三個 BDD scenarios 用 `AttributeError` 證明 entity 尚未擴展。Stage 3 完成後紅燈清晰可見，Stage 4 實作推進就是綠燈逐個亮
+
+### 潛在隱憂
+
+- **（中）`retrieved_chunks` 與 `structured_content.sources` 雙寫造成資料冗餘**：為了不動既有 `retrieved_chunks` 欄位（向後相容、測試不回歸），目前 sources 在 DB 被存兩次。短期無害，但長期若 `retrieved_chunks` 與 `structured_content.sources` 因某次只改其中一處導致不一致，會產生「哪個才是 source of truth」的糾結。建議：下個 Sprint 評估 `retrieved_chunks` 是否仍有獨立消費者（evaluation / RAG metrics 路徑），若否則 deprecate 僅保留 `structured_content.sources`  → 優先級：中
+- **（中）`structured_content` 為 TEXT（JSON string）而非 PostgreSQL JSONB**：對齊既有 `tool_calls_json` / `retrieved_chunks` 的 Text pattern 走最小驚訝原則，但喪失 JSONB 的 index / @> 查詢能力。若未來要做「查某 Bot 觸發過多少次 contact 按鈕」這類 analytics 會卡——要全表 scan + json.loads。建議：Observability / Analytics 需求浮現時遷移到 JSONB，或用 materialized view 把 `structured_content.contact` 抽成獨立統計表 → 優先級：中
+- **（中）ExecutionNode.metadata 存 raw tool_output dict 沒有 size guard**：某些 tool（如 RAG 回傳 50 chunks）可能產生幾百 KB 的 JSON。目前 `record_tool_output` 無上限檢查，全量存 DB 會放大 `agent_execution_traces.nodes` 欄位。建議：設 size cap（例如 50KB），超過時保留 metadata 結構但內容換成 `{"_truncated": true, "size_bytes": N}` → 優先級：中
+- **（低）前端 `loadConversation()` 的 `?? undefined` 是防禦但沒 runtime 驗證**：若後端 API 回的 `structured_content.contact` 格式不符 `ContactCard` type（例如缺 url 欄位），TS 不會在 runtime 報錯，會在 `ContactCardButton` 渲染時才失敗。建議：用 Zod 在 API boundary validate，或至少加 runtime type guard → 優先級：低
+- **（低）未處理「assistant 回覆更新」情境**：目前 `Message` 是 immutable append-only，若未來加「assistant 訊息編輯」功能，`structured_content` 需同步更新、Repository 的 insert-only 邏輯要改成 upsert → 優先級：低
+
+### 延伸學習
+
+- **Channel-Agnostic vs Channel-Specific Payload**：LINE 走自己的 Flex schema、Web/Widget 走 `structured_content`——這是 channel-specific；若強行統一成單一 schema（例如只用 `structured_content`，LINE handler 在 send 時轉譯為 Flex），就是 channel-agnostic。前者耦合度低但要寫多份 renderer，後者統一但需要「中介 schema」夠豐富（能表達所有 channel 的特性）。實務上多數 RAG 客服系統選 channel-specific（本案例亦然）。搜尋：_adaptive cards_ / _UI portability patterns_ / _message-passing protocols_
+- **Observability Source of Truth 原則**：Trace 層記錄的資料應「完整 + 原始 + 不取樣」，任何下游消費（UI、Alert、Analytics）都從 Trace 派生。本次把 `tool_output` 完整 dict 塞進 `ExecutionNode.metadata` 就是落實此原則——未來若要做「跨 request 的 tool 呼叫分析」，Trace 就是唯一資料源。反例：只存 `result_preview[:500]` 等於「提前 summarize」，永遠回不去原始資料。搜尋：_observability vs monitoring_ / _structured logging_ / _event sourcing for observability_
+- **聚合累加器模式（Event Loop Accumulator）在 Streaming 中的應用**：`_execute_stream_inner` 邊 yield 邊用 `contact_payload = None` / `sources_list = []` 累積結果，stream 結束後組 `structured_content`。這是把 async stream 當成 event source、用 reducer 思維聚合的典型作法。相比「stream 結束後再 parse AgentResponse」的方式，累加器能零額外呼叫就拿到過程中的 event。搜尋：_async stream reducer_ / _Kafka stream aggregation_ / _async iterator fold_
 
 ---
 

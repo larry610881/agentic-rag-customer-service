@@ -155,6 +155,8 @@ export const useChatStore = create<ChatState>((set) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
         timestamp: m.created_at,
+        contact: m.structured_content?.contact ?? undefined,
+        sources: m.structured_content?.sources ?? undefined,
       })),
     }),
 }));

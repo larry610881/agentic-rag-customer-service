@@ -20,6 +20,7 @@ class MessageModel(Base):
     tool_calls_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     retrieved_chunks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    structured_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

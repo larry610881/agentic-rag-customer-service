@@ -41,6 +41,9 @@ from src.infrastructure.llm.dynamic_llm_factory import DynamicLLMServiceProxy
 from src.infrastructure.observability.agent_trace_collector import (
     AgentTraceCollector,
 )
+from src.infrastructure.observability.tool_trace_recorder import (
+    record_tool_output,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -573,6 +576,7 @@ class ReActAgentService(AgentService):
                                     content_str
                                 )
                                 node.metadata["result_preview"] = content_str
+                                record_tool_output(node, content_str)
                                 break
 
             return result

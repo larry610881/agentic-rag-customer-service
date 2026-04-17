@@ -16,6 +16,8 @@ class Message:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     latency_ms: int | None = None
     retrieved_chunks: list[dict[str, Any]] | None = None
+    # 聚合 tool 產生的 rich payload（contact/sources/blocks），讓歷史對話能還原顯示
+    structured_content: dict[str, Any] | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -39,6 +41,7 @@ class Conversation:
         tool_calls: list[dict[str, Any]] | None = None,
         latency_ms: int | None = None,
         retrieved_chunks: list[dict[str, Any]] | None = None,
+        structured_content: dict[str, Any] | None = None,
     ) -> Message:
         message = Message(
             id=MessageId(),
@@ -48,6 +51,7 @@ class Conversation:
             tool_calls=tool_calls or [],
             latency_ms=latency_ms,
             retrieved_chunks=retrieved_chunks,
+            structured_content=structured_content,
         )
         self.messages.append(message)
         return message

@@ -5,6 +5,12 @@ export interface ConversationSummary {
   created_at: string;
 }
 
+export interface MessageStructuredContent {
+  contact?: import("./chat").ContactCard | null;
+  sources?: import("./chat").Source[] | null;
+  blocks?: unknown[] | null;
+}
+
 export interface MessageDetail {
   id: string;
   role: string;
@@ -12,6 +18,7 @@ export interface MessageDetail {
   created_at: string;
   latency_ms?: number | null;
   retrieved_chunks?: Record<string, unknown>[] | null;
+  structured_content?: MessageStructuredContent | null;
 }
 
 export interface ConversationDetail {

@@ -28,6 +28,7 @@ class MessageResponse(BaseModel):
     id: str
     role: str
     content: str
+    structured_content: dict | None = None
     created_at: datetime
 
 
@@ -116,6 +117,7 @@ async def get_conversation(
                 id=m.id.value,
                 role=m.role,
                 content=m.content,
+                structured_content=m.structured_content,
                 created_at=m.created_at,
             )
             for m in conversation.messages

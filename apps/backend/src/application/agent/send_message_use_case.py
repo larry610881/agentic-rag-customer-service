@@ -81,6 +81,18 @@ logger = structlog.get_logger(__name__)
 _REFUND_METADATA_MARKER = "__refund_metadata"
 
 
+def _build_structured_content(
+    *,
+    contact: dict[str, Any] | None,
+    sources: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """聚合 tool 產生的 rich payload。全部為空時回傳 None，
+    讓下游歷史對話可還原 contact/sources，LINE 路徑不受影響。"""
+    if not contact and not sources:
+        return None
+    return {"contact": contact, "sources": sources}
+
+
 @dataclass(frozen=True)
 class SendMessageCommand:
     tenant_id: str
@@ -630,6 +642,10 @@ class SendMessageUseCase:
             if response.sources
             else None
         )
+        structured_content = _build_structured_content(
+            contact=response.contact,
+            sources=retrieved_chunks,
+        )
 
         tool_calls_to_save = response.tool_calls[:]
         if response.refund_step:
@@ -659,6 +675,7 @@ class SendMessageUseCase:
             tool_calls=tool_calls_to_save,
             latency_ms=latency_ms,
             retrieved_chunks=retrieved_chunks,
+            structured_content=structured_content,
         )
         await self._conversation_repo.save(conversation)
 
@@ -756,6 +773,7 @@ class SendMessageUseCase:
         full_answer = ""
         tool_calls: list[dict[str, Any]] = []
         sources_list: list[dict[str, Any]] = []
+        contact_payload: dict[str, Any] | None = None
         refund_step_value: str | None = None
 
         t0 = time.perf_counter()
@@ -786,6 +804,8 @@ class SendMessageUseCase:
                 tool_calls = event.get("tool_calls", [])
             elif event["type"] == "sources":
                 sources_list = event.get("sources", [])
+            elif event["type"] == "contact":
+                contact_payload = event.get("contact")
             elif event["type"] == "refund_step":
                 refund_step_value = event.get("refund_step")
                 continue  # Internal metadata, not sent to client
@@ -809,6 +829,10 @@ class SendMessageUseCase:
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
         retrieved_chunks = sources_list if sources_list else None
+        structured_content = _build_structured_content(
+            contact=contact_payload,
+            sources=retrieved_chunks,
+        )
 
         # Save conversation after streaming completes
         # Persist refund_step metadata marker (same logic as execute())
@@ -826,6 +850,7 @@ class SendMessageUseCase:
             tool_calls=tool_calls_to_save,
             latency_ms=latency_ms,
             retrieved_chunks=retrieved_chunks,
+            structured_content=structured_content,
         )
         await self._conversation_repo.save(conversation)
 

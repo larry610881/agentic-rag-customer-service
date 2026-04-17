@@ -59,6 +59,7 @@ class ChatResponse(BaseModel):
     conversation_id: str
     tool_calls: list[ToolCallInfo]
     sources: list[SourceResponse]
+    structured_content: dict | None = None
     usage: TokenUsageResponse | None = None
 
 
@@ -111,6 +112,16 @@ async def agent_chat(
             estimated_cost=result.usage.estimated_cost,
         )
 
+    sources_dicts = (
+        [s.to_dict() for s in result.sources] if result.sources else None
+    )
+    structured_content: dict | None = None
+    if result.contact or sources_dicts:
+        structured_content = {
+            "contact": result.contact,
+            "sources": sources_dicts,
+        }
+
     return ChatResponse(
         answer=result.answer,
         conversation_id=result.conversation_id,
@@ -129,6 +140,7 @@ async def agent_chat(
             )
             for s in result.sources
         ],
+        structured_content=structured_content,
         usage=usage_resp,
     )
 

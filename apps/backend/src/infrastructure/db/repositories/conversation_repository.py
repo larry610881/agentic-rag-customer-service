@@ -61,6 +61,13 @@ class SQLAlchemyConversationRepository(ConversationRepository):
                                 if msg.retrieved_chunks is not None
                                 else None
                             ),
+                            structured_content=(
+                                json.dumps(
+                                    msg.structured_content, ensure_ascii=False
+                                )
+                                if msg.structured_content is not None
+                                else None
+                            ),
                             created_at=msg.created_at,
                         )
                         self._session.add(msg_model)
@@ -91,6 +98,11 @@ class SQLAlchemyConversationRepository(ConversationRepository):
                 retrieved_chunks=(
                     json.loads(r.retrieved_chunks)
                     if r.retrieved_chunks is not None
+                    else None
+                ),
+                structured_content=(
+                    json.loads(r.structured_content)
+                    if r.structured_content is not None
                     else None
                 ),
                 created_at=r.created_at,
@@ -191,6 +203,11 @@ class SQLAlchemyConversationRepository(ConversationRepository):
                 retrieved_chunks=(
                     json.loads(r.retrieved_chunks)
                     if r.retrieved_chunks is not None
+                    else None
+                ),
+                structured_content=(
+                    json.loads(r.structured_content)
+                    if r.structured_content is not None
                     else None
                 ),
                 created_at=r.created_at,
