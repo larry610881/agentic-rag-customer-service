@@ -1342,13 +1342,18 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | 系統層 Tool 清單 UI | ✅ | Commit [cd27b81](https://github.com/larry610881/agentic-rag-customer-service/commit/cd27b81) — `/admin/tools` 頁面 + Dialog（scope select + 租戶 checkbox + 可見租戶 N/M 摘要）|
 | Agent 資料流過濾 | ✅ | Commit [cd27b81](https://github.com/larry610881/agentic-rag-customer-service/commit/cd27b81) — GET `/agent/built-in-tools` 依 tenant_id 過濾 + Bot create/update 驗證 enabled_tools（未授權回 422）|
 
-### S-Gov.3 系統層 KB / Bot 清單整理（⏭️ POC 暫緩）
-> POC 階段 admin 只會是自己，混合視圖不致誤操作。上測試機前再評估是否真的要做。
+### S-Gov.3 Admin 視角職責分離 — 一般功能頁限 SYSTEM 租戶
+> 已完成 commit [ca2961a](https://github.com/larry610881/agentic-rag-customer-service/commit/ca2961a) · Issue [#32](https://github.com/larry610881/agentic-rag-customer-service/issues/32)
 
-| 項目 | 說明 |
-|------|------|
-| 清除租戶隔離重疊 | 目前 KB / Bot 頁面已顯示全部租戶資料（system admin 視角），但系統層本來就有另一個清單頁 |
-| 保留方向 | **移除混合視圖**，讓租戶級頁面只看自己的；跨租戶查詢一律走系統層清單（減少認知負擔）|
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| 移除 conversation_router admin override | ✅ | 移除 61-67 effective_tenant_id 切換 |
+| 移除 agent_router admin override (sync + stream) | ✅ | 80-86 / 163-172 兩處全移 |
+| 移除 feedback_router admin override | ✅ | 130-134 跨租戶 feedback 回填邏輯 |
+| observability auth guard + tenant filter | ✅ | 4 個 GET 端點補 get_current_tenant + _effective_tenant_filter helper；PUT/reset 需 system_admin |
+| AdminEmptyStateHint 元件 + 5 處接入 | ✅ | bot-list / knowledge-base-list (isEmpty) + bot-selector / feedback / token-usage 頁 |
+| BDD scenarios (8 個) | ✅ | integration/auth/admin_tenant_scope.feature (4) + integration/observability/admin_auth_guard.feature (4) |
+| BREAKING CHANGE 標記 | ✅ | admin 失去從一般 API 路徑跨租戶操作能力（替代方案見 Bug Backlog）|
 
 ### S-Gov.4 Token 追蹤租戶開關
 | 項目 | 說明 |
@@ -1392,6 +1397,16 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | 修復範圍 | Domain Message 加 `structured_content: dict \| None` → ORM Text 欄位 + migration → Application 聚合 contact/sources → API response schema → Trace metadata 存完整 tool_output dict → Frontend MessageDetail type + loadConversation map |
 | 交付驗證 | Backend 617 unit tests 全綠（新增 6 scenarios）；Frontend chat store 10 tests 全綠；前端 typecheck 無新錯誤 |
 | 不變項 | LINE handler 不動（payload 已送達手機）；舊資料不往回兼容（structured_content NULL 時 fallback 純文字） |
+
+### FOLLOW-01 Admin 跨租戶測試替代方案（S-Gov.3 衍生）
+| 項目 | 說明 |
+|------|------|
+| 觸發源 | S-Gov.3 (commit [ca2961a](https://github.com/larry610881/agentic-rag-customer-service/commit/ca2961a)) 移除 agent_router / conversation_router / feedback_router 的 effective_tenant_id override |
+| 選項 A | Shadow login：admin「以其他租戶身份臨時登入」取得該租戶 JWT |
+| 選項 B | 專屬端點：新增 POST /api/v1/admin/bots/{id}/test-chat（admin token + 自帶 tenant context），只供系統管理區頁面使用 |
+| 選項 C | 取消跨租戶測試，admin 要測某租戶 bot 只能以該租戶帳號登入 |
+| POC 立場 | 採 C（admin 只能登入自己租戶 / SYSTEM 測試），有使用者反映再評估 A/B |
+| 優先級 | 低 |
 
 ---
 

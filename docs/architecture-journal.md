@@ -10,6 +10,7 @@
 ## 目錄
 
 - [BUG-01 — Tool Rich Content 持久化 + Trace Source of Truth（Collector Metadata 延伸 + 聚合累加器）](#bug-01--tool-rich-content-持久化--trace-source-of-truthcollector-metadata-延伸--聚合累加器)
+- [S-Gov.3 — Admin 視角職責分離（Caller Tenant vs Resource Tenant 解耦）](#s-gov3--admin-視角職責分離caller-tenant-vs-resource-tenant-解耦)
 - [S-Gov.2 — Built-in Tool Tenant Scope（Attribute-Based 樣板複用）](#s-gov2--built-in-tool-tenant-scopeattribute-based-樣板複用)
 - [統一麵包屑導覽系統 — Discriminated Union + State-driven 頁內展開](#統一麵包屑導覽系統--discriminated-union--state-driven-頁內展開)
 - [Sub-agent Worker 架構升級 — IntentRoute → WorkerConfig + LLM Router + Per-Worker ReAct](#sub-agent-worker-架構升級--intentroute--workerconfig--llm-router--per-worker-react)
@@ -79,6 +80,38 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## S-Gov.3 — Admin 視角職責分離（Caller Tenant vs Resource Tenant 解耦）
+
+**日期**：2026-04-17
+**Sprint**：S-Gov.3 Admin 視角職責分離
+**涉及層級**：Interfaces（4 routers）+ Frontend（1 共用元件 + 5 接入點）（Issue #32 / Commit ca2961a）
+
+### 本次相關主題
+
+Role-Based API Override 反模式、Caller Tenant vs Resource Tenant 分離、Middle-Ware 化重複邏輯、Admin UX 職責分離、ABAC（Attribute-Based Access Control）中「身份 attribute」vs「授權 scope」、跨租戶操作的替代路徑設計
+
+### 做得好的地方
+
+- **一口氣清除 3 個 override 而非漸進式移除**：conversation / agent / feedback router 的 `effective_tenant_id` override 有相同反模式（`if role == "system_admin" and bot_id: effective = bot.tenant_id`），若分多 commit 逐個修，中間狀態是「API 語意部分一致」— 反而混亂。一次性移除讓 breaking change 清晰集中、commit message 單一權威
+- **`_effective_tenant_filter(tenant, tenant_id)` helper 統一三種「可選過濾」行為**：observability 有 4 個 GET endpoint 的 tenant filter 規則完全相同（admin optional / non-admin forced-self），抽出 helper 後每個 endpoint 只需一行 `effective_tid = _effective_tenant_filter(tenant, tenant_id)`。這種「模板化 per-request 權限邏輯」比手寫 if-else 更不易漏；屬於 policy-as-function 的輕量版本
+- **AdminEmptyStateHint 作為「跨頁一致的 UX pattern 工具」**：一個元件被 5 處引用（bots / knowledge / chat 空態 / feedback / token-usage），帶 `resource` prop 產生一致文案 + 對應 admin 路由 link。如果 5 頁各自寫 `if (role === "system_admin" && empty) return <...>`，維護成本就很高；抽成元件後新頁接入只需 1 行
+- **BREAKING CHANGE 透明標記**：commit message 明確說「admin 失去 X 能力」+ 替代方案已在 SPRINT_TODOLIST Bug Backlog 作 FOLLOW-01 紀錄，不是單純移除就走。這種「破壞 + 重定向 + 追蹤待辦」的完整交付，比純 refactor 更符合真實產品節奏
+
+### 潛在隱憂
+
+- (高) **admin 從系統管理頁測試跨租戶 bot 的流程完全斷掉**：移除 override 後 `POST /agent/chat` 帶他租戶 bot_id 必失敗（bot.tenant_id != SYSTEM）。POC 階段可忍受（admin 只會是開發者自己），上測試機遇到真實管理員需求時必須優先解 FOLLOW-01 → 建議選 B（專屬端點）而非 A（shadow login），後者牽涉 JWT 生成機制異動風險較高
+- (中) **observability 頁面 admin 不帶 tenant_id 預設看 SYSTEM 的 UX 可能反直覺**：admin 過往習慣打開 /admin/observability 看「所有租戶聚合」，新行為下會看到空頁（SYSTEM 本來就沒 bot 運作），需要手動帶 `?tenant_id=xxx` 才能看到資料 → 短期：觀察性頁加「租戶選擇器 dropdown」列出所有租戶供 admin 選；長期：加「跨租戶聚合視圖」選項（`?tenant_id=all` 之類）
+- (中) **測試策略偏整合而非單元**：本次 8 個 BDD scenario 全走 integration（FastAPI TestClient + 真實 DB），無 unit-level 覆蓋。原因是 override 邏輯全在 router 層（`@inject` + `Depends`），純 unit mock 複雜度太高。Trade-off：執行慢 + 要求 DB 起服 + 依賴 network timing；但契約更真實。如果未來 router 邏輯複雜化（如 permission matrix），要重新評估是否把過濾邏輯抽到 Application 層便於 unit 測試
+- (低) **AdminEmptyStateHint 未來到 8+ 頁會重複 prop-drilling 風險**：每頁 `<AdminEmptyStateHint resource="..." isEmpty />` 兩個 prop，scale 後可能變成「加一個觀察性頁忘記加 hint」的類別錯誤。屆時考慮 layout 層 HOC 或 route config-driven 注入
+
+### 延伸學習
+
+- **Caller Tenant vs Resource Tenant**：本 sprint 的反模式名稱可概括為「API 為了 admin 便利而讓 **caller tenant** 跟隨 **resource tenant**」。這其實是認證系統設計的一大誤區——`caller.tenant_id` 應該是**不可變的身份屬性**（綁在 JWT，request 存在期間唯一），而 `resource.tenant_id` 是資料屬性。若要讓 caller 跨越到不同 resource scope，唯一合法方式是重新認證（re-login）或顯式授權切換（switch tenant UI）。搜尋：_caller identity vs resource identity_ / _ABAC policy evaluation_ / _Anti-pattern effective identity override_
+- **Policy-as-Function vs Middleware**：`_effective_tenant_filter` 是 policy-as-function 的輕量版本——4 行邏輯組成「誰能看什麼」的政策。若未來 policy 維度增加（role × resource × environment × subscription），建議升級到正式 policy engine（如 Open Policy Agent + Rego DSL），或至少統一為 decorator / dependency。搜尋：_OPA Rego_ / _FastAPI dependency-based authorization_ / _policy-as-code_
+- **Breaking Change 的三段式交付**：移除 + 替代方案紀錄 + 追蹤 issue。本次完整走完三步；在 SaaS 多租戶產品裡，這種「API 語意收緊」的操作若少任一步都容易失控（用戶以為功能壞了 / 團隊忘記為何移除 / 新來的工程師不知道要不要做替代）。這對應到 Martin Fowler 的 _Parallel Change_ pattern（expand → migrate → contract）的 contract 階段——本次執行是 abrupt contract（直接斷），比漸進式契約風險高但對 POC 階段可接受
 
 ---
 
