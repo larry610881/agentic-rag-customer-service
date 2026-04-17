@@ -6,6 +6,23 @@
 
 本專案**無 Alembic / 無 auto-migration**，所有 schema 變更都必須有對應的 `.sql` 檔案 + 人工確認路徑。
 
+## 時序規範（PR 改 DB schema 時必須遵守）
+
+**CI/CD auto-deploy 下，ORM 改動先於 migration 套用 = 部署後 runtime 500**。
+因此所有涉及 schema 的 PR 必須依此順序操作：
+
+1. ✍️ 寫 `apps/backend/migrations/*.sql`
+2. 🐳 套到 `local-docker`（走五步流程）
+3. ☁️ 套到 `dev-vm`（走五步流程）← **不可跳過**；Cloud Run 連的是 dev-vm，跳過就會重現 BUG-01 的 Cloud Run 500
+4. 📝 改 ORM model / Domain entity
+5. 🔧 改 Application / Interfaces
+6. 📦 `git commit + push` → GitHub Actions auto-deploy
+7. ✅ 驗證 Cloud Run 新版本 pick up，API 無回歸
+
+**違反此時序 = CRITICAL 違規**。Claude 若偵測到「ORM 欄位新增但 dev-vm 的 `_applied_migrations` 無對應紀錄」且 PR 即將 push，必須攔阻並提示「請先套 dev-vm migration」。
+
+若要臨時跳過（例如只改 ORM type hint 不影響 DB），必須在 commit message 加 `[no-migration]` tag 顯式聲明。
+
 ## Phase Gate（先看環境再決定怎麼做）
 
 執行任何 DDL 前，**必須先讀 `.claude/project-phase.md` 的 Environment Phase Matrix**：
