@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import {
+  ArrowRight,
   Copy,
   Check,
   ImageIcon,
@@ -12,7 +13,8 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { BotStudioCanvas } from "./bot-studio-canvas";
+import { useNavigate } from "react-router-dom";
+import { ROUTES } from "@/routes/paths";
 import { API_BASE, PUBLIC_API_URL } from "@/lib/api-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -202,6 +204,7 @@ export function BotDetailForm({
   const { data: enabledModels } = useEnabledModels();
   const { data: builtInTools = [] } = useBuiltInTools();
   const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.LLM_PROMPT);
+  const navigate = useNavigate();
 
   const {
     register,
@@ -1078,17 +1081,37 @@ export function BotDetailForm({
         </TabsContent>
 
         {/* ================================================================ */}
-        {/* Tab 4: Studio — 設定即時試運轉                                    */}
+        {/* Tab 4: Studio — 設定即時試運轉（獨立頁面）                       */}
         {/* ================================================================ */}
         <TabsContent
           value={TAB_KEYS.STUDIO}
           className="flex flex-col gap-4 pt-4"
         >
-          <p className="text-sm text-muted-foreground">
-            送出測試訊息後，藍圖中對應的 agent / tool 會點亮；結束後下方顯示完整執行 DAG。
-            測試對話以 <code className="rounded bg-muted px-1">studio</code> 來源寫入 trace，跟正式對話分流。
-          </p>
-          <BotStudioCanvas bot={bot} />
+          <div className="rounded-lg border bg-gradient-to-br from-violet-50 to-fuchsia-50 p-6 dark:from-violet-950 dark:to-fuchsia-950">
+            <div className="mb-2 flex items-center gap-2 text-base font-semibold">
+              <Sparkles className="h-5 w-5 text-violet-500" />
+              Bot 工作室 — 設定即時試運轉
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              送出測試訊息後，藍圖中對應的 agent / tool 會點亮、失敗節點會紅框 ping，
+              結束後顯示完整執行 DAG。對話以 <code className="rounded bg-muted px-1">studio</code> 來源寫入 trace，跟正式對話分流。
+            </p>
+            <ul className="mb-4 space-y-1 text-xs text-muted-foreground">
+              <li>· 左側儀表板：藍圖 + 執行紀錄 + 完整 DAG</li>
+              <li>· 右側對話：多輪測試 + 演示模式（可慢速展示給客戶看）</li>
+              <li>· 多 worker 場景能精準看出路由到哪個 worker</li>
+            </ul>
+            <Button
+              type="button"
+              onClick={() =>
+                navigate(ROUTES.BOT_STUDIO.replace(":id", bot.id))
+              }
+              className="bg-violet-600 hover:bg-violet-700"
+            >
+              開啟工作室
+              <ArrowRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
         </TabsContent>
 
         {/* ================================================================ */}

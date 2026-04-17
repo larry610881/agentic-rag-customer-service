@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import { Send, Sparkles } from "lucide-react";
+import { useCallback, useMemo, useRef, useState, useEffect } from "react";
+import { Send, Sparkles, Eraser, Bot as BotIcon, User as UserIcon } from "lucide-react";
 import type { SSEEvent } from "@/lib/sse-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,52 +13,58 @@ import { AgentTraceGraph } from "@/features/admin/components/agent-trace-graph";
 import { useStudioStreaming } from "@/features/bot/hooks/use-studio-streaming";
 import {
   BlueprintCanvas,
-  blueprintToolNodeId,
   type BlueprintAgentSpec,
   type ChunkNodeSpec,
 } from "./blueprint-canvas";
 import type { Bot } from "@/types/bot";
+import { cn } from "@/lib/utils";
 
-type BotStudioCanvasProps = {
+type BotStudioWorkspaceProps = {
   bot: Bot;
 };
 
 const STREAM_RESET_LIMIT = 80;
 
+type ChatTurn = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  isStreaming: boolean;
+  traceId?: string;
+};
+
 /**
- * Bot Studio Canvas — Phase 1 升級版（真實對應）。
+ * Bot Studio Workspace — 獨立頁面 2-column layout：
+ *  左：StudioDashboard（藍圖 + 執行紀錄 + 完整 DAG）
+ *  右：StudioChatPanel（多輪對話 + slowMode + 清除按鈕）
  *
- * 上半：BlueprintCanvas (ReactFlow) 顯示 main agent + workers + tools，
- *   stream events 帶 node_id 來精準點亮對應節點（取代 MVP 的字串啟發式）。
- * 中間：聊天輸入 + 演示模式 Switch。
- * 下半：執行紀錄 feed + 結束後完整 DAG。
+ * Phase 1 升級已完成（commit c4d78a0），本檔負責新版 layout 與多輪對話狀態管理。
  *
- * Phase 1 變更：
- *  - worker_routing event → 對應 worker 卡片點亮（不再是「全亮」）
- *  - sources event → 動態長出 chunk 子節點到 rag tool 下方
- *  - error event → 對應 node_id 紅框 + 一次性 ping 動畫
+ * 多輪：保留 conversationId 跨 turn，每輪重置 lit/failed/chunks 但保留 chat history。
  */
-export function BotStudioCanvas({ bot }: BotStudioCanvasProps) {
+export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
   const { data: workers = [] } = useWorkers(bot.id);
   const { data: builtInTools = [] } = useBuiltInTools();
 
-  const [message, setMessage] = useState("");
   const [slowMode, setSlowMode] = useState(false);
 
-  // Phase 1: 用 worker.name (BlueprintAgentSpec.id) 來追蹤啟用的 agent
+  // 多輪對話狀態
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const assistantTurnIdRef = useRef<string | null>(null);
+
+  // 藍圖狀態（每輪重置）
   const [activeAgentIds, setActiveAgentIds] = useState<Set<string>>(new Set());
-  // tool key = "{agentId}::{toolName}"
   const [activeToolKeys, setActiveToolKeys] = useState<Set<string>>(new Set());
-  // failed node id = blueprint id ("agent:main" / "agent:{name}" / "tool:{agentId}:{toolName}")
   const [failedNodeIds, setFailedNodeIds] = useState<Set<string>>(new Set());
   const [errorMessages, setErrorMessages] = useState<Record<string, string>>({});
   const [chunkNodes, setChunkNodes] = useState<ChunkNodeSpec[]>([]);
 
+  // 執行紀錄（每輪重置）
   const [eventLog, setEventLog] = useState<SSEEvent[]>([]);
   const [traceId, setTraceId] = useState<string | null>(null);
-  const [assistantText, setAssistantText] = useState("");
 
-  // 目前選中的 worker（worker_routing 後設定）— 該 worker 的 tools 要啟用
+  // 當前選中的 worker（worker_routing 後設定）
   const [selectedWorkerName, setSelectedWorkerName] = useState<string | null>(
     null,
   );
@@ -106,10 +112,30 @@ export function BotStudioCanvas({ bot }: BotStudioCanvasProps) {
     builtInToolByName,
   ]);
 
-  // 目前的「執行中 agent」：worker_routing 選定 → 該 worker；未選 → main
   const currentAgentId = selectedWorkerName ?? "main";
 
   const { data: completedTrace } = useAgentTraceDetail(traceId);
+
+  const appendAssistantContent = useCallback((delta: string) => {
+    setTurns((prev) => {
+      const id = assistantTurnIdRef.current;
+      if (!id) return prev;
+      return prev.map((t) =>
+        t.id === id ? { ...t, content: t.content + delta } : t,
+      );
+    });
+  }, []);
+
+  const finalizeAssistantTurn = useCallback((tid?: string) => {
+    setTurns((prev) => {
+      const id = assistantTurnIdRef.current;
+      if (!id) return prev;
+      return prev.map((t) =>
+        t.id === id ? { ...t, isStreaming: false, traceId: tid } : t,
+      );
+    });
+    assistantTurnIdRef.current = null;
+  }, []);
 
   const { sendMessage, isStreaming } = useStudioStreaming({
     onEvent: (event) => {
@@ -117,20 +143,25 @@ export function BotStudioCanvas({ bot }: BotStudioCanvasProps) {
         prev.length >= STREAM_RESET_LIMIT ? prev : [...prev, event],
       );
       if (event.type === "token" && typeof event.content === "string") {
-        setAssistantText((t) => t + event.content);
+        appendAssistantContent(event.content);
       }
       if (event.type === "tool_calls" && Array.isArray(event.tool_calls)) {
         const calls = event.tool_calls as Array<{ tool_name: string }>;
         setActiveToolKeys((prev) => {
           const next = new Set(prev);
           for (const c of calls) {
-            // 找對應 agent 的 tool（用 enrich 後的 label 對應）
             const enrichedName =
               builtInToolByName.get(c.tool_name)?.label ?? c.tool_name;
             next.add(`${currentAgentId}::${enrichedName}`);
           }
           return next;
         });
+      }
+      if (
+        event.type === "conversation_id" &&
+        typeof event.conversation_id === "string"
+      ) {
+        setConversationId(event.conversation_id);
       }
     },
     onWorkerRouting: ({ worker_name }) => {
@@ -154,136 +185,294 @@ export function BotStudioCanvas({ bot }: BotStudioCanvasProps) {
       setChunkNodes((prev) => [...prev, newChunk]);
     },
     onFailedNode: ({ error_message }) => {
-      // node_id 由 stream 提供 → 但藍圖節點 id 是 blueprint 命名（"agent:xx"），
-      // Phase 1 失敗一般落在 current agent 上，標記 currentAgent。
       const targetId = `agent:${currentAgentId}`;
       setFailedNodeIds((prev) => new Set([...prev, targetId]));
       setErrorMessages((prev) => ({
         ...prev,
         [targetId]: error_message,
       }));
+      // 失敗時也要把 assistant turn 收尾（不是 streaming）
+      appendAssistantContent(`⚠️ ${error_message}`);
     },
-    onTraceComplete: (id) => setTraceId(id),
+    onTraceComplete: (id) => {
+      setTraceId(id);
+      finalizeAssistantTurn(id);
+    },
     onError: (err) => {
       console.error("[Studio] streaming error:", err);
+      finalizeAssistantTurn();
     },
   });
 
-  const handleSend = useCallback(() => {
-    if (!message.trim() || isStreaming) return;
-    setActiveAgentIds(new Set(["main"]));
+  const handleSend = useCallback(
+    (message: string) => {
+      if (!message.trim() || isStreaming) return;
+
+      // 加 user turn + assistant turn (streaming)
+      const userId = `u-${Date.now()}`;
+      const assistantId = `a-${Date.now() + 1}`;
+      assistantTurnIdRef.current = assistantId;
+      setTurns((prev) => [
+        ...prev,
+        { id: userId, role: "user", content: message.trim(), isStreaming: false },
+        { id: assistantId, role: "assistant", content: "", isStreaming: true },
+      ]);
+
+      // 重置藍圖 / chunks / 執行紀錄（保留 chat history）
+      setActiveAgentIds(new Set(["main"]));
+      setActiveToolKeys(new Set());
+      setFailedNodeIds(new Set());
+      setErrorMessages({});
+      setChunkNodes([]);
+      setEventLog([]);
+      setTraceId(null);
+      setSelectedWorkerName(null);
+
+      void sendMessage({
+        message: message.trim(),
+        botId: bot.id,
+        conversationId,
+        slowMode,
+      });
+    },
+    [isStreaming, sendMessage, bot.id, conversationId, slowMode],
+  );
+
+  const handleClearConversation = useCallback(() => {
+    if (isStreaming) return;
+    setTurns([]);
+    setConversationId(null);
+    setActiveAgentIds(new Set());
     setActiveToolKeys(new Set());
     setFailedNodeIds(new Set());
     setErrorMessages({});
     setChunkNodes([]);
     setEventLog([]);
     setTraceId(null);
-    setAssistantText("");
     setSelectedWorkerName(null);
-    void sendMessage({ message: message.trim(), botId: bot.id, slowMode });
-    setMessage("");
-  }, [message, isStreaming, sendMessage, bot.id, slowMode]);
+    assistantTurnIdRef.current = null;
+  }, [isStreaming]);
 
   return (
-    <div className="space-y-4">
-      <Card className="p-4">
-        <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-          <Sparkles className="h-4 w-4 text-violet-500" />
-          Bot 配置藍圖
-          <span className="text-xs font-normal text-muted-foreground">
-            {agents.length} agent · 對話開始後對應節點會點亮、失敗節點會紅框 ping
-          </span>
-        </div>
-        <BlueprintCanvas
-          agents={agents}
-          activeAgentIds={activeAgentIds}
-          activeToolKeys={activeToolKeys}
-          failedNodeIds={failedNodeIds}
-          errorMessages={errorMessages}
-          chunkNodes={chunkNodes}
-        />
-      </Card>
+    <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
+      {/* 左：儀表板 */}
+      <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+        <Card className="p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+            <Sparkles className="h-4 w-4 text-violet-500" />
+            Bot 配置藍圖
+            <span className="text-xs font-normal text-muted-foreground">
+              {agents.length} agent · 對話開始後對應節點會點亮、失敗節點會紅框 ping
+            </span>
+          </div>
+          <BlueprintCanvas
+            agents={agents}
+            activeAgentIds={activeAgentIds}
+            activeToolKeys={activeToolKeys}
+            failedNodeIds={failedNodeIds}
+            errorMessages={errorMessages}
+            chunkNodes={chunkNodes}
+          />
+        </Card>
 
-      <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
-        <Input
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          placeholder="輸入測試訊息（例：你好 / 查產品 / 退貨流程）"
-          disabled={isStreaming}
-          className="flex-1"
-        />
-        <div className="flex items-center gap-2">
+        {eventLog.length > 0 && <ExecutionFeed events={eventLog} />}
+
+        {completedTrace && (
+          <Card className="p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+              <Sparkles className="h-4 w-4 text-violet-500" />
+              本輪執行 DAG
+              <span className="ml-auto text-xs text-muted-foreground">
+                {completedTrace.total_ms.toFixed(0)} ms · trace_id={" "}
+                <code className="font-mono">
+                  {completedTrace.trace_id.slice(0, 8)}
+                </code>
+              </span>
+            </div>
+            <AgentTraceGraph execNodes={completedTrace.nodes} />
+          </Card>
+        )}
+      </div>
+
+      {/* 右：對話 */}
+      <StudioChatPanel
+        turns={turns}
+        isStreaming={isStreaming}
+        slowMode={slowMode}
+        onSlowModeChange={setSlowMode}
+        onSend={handleSend}
+        onClear={handleClearConversation}
+        conversationId={conversationId}
+      />
+    </div>
+  );
+}
+
+// 向後相容 alias — 既有匯入名（若 BotDetailForm 還用 BotStudioCanvas）
+export const BotStudioCanvas = BotStudioWorkspace;
+
+type StudioChatPanelProps = {
+  turns: ChatTurn[];
+  isStreaming: boolean;
+  slowMode: boolean;
+  onSlowModeChange: (v: boolean) => void;
+  onSend: (message: string) => void;
+  onClear: () => void;
+  conversationId: string | null;
+};
+
+function StudioChatPanel({
+  turns,
+  isStreaming,
+  slowMode,
+  onSlowModeChange,
+  onSend,
+  onClear,
+  conversationId,
+}: StudioChatPanelProps) {
+  const [message, setMessage] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // 新訊息進來時自動捲到底
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [turns]);
+
+  const handleSubmit = useCallback(() => {
+    const trimmed = message.trim();
+    if (!trimmed || isStreaming) return;
+    onSend(trimmed);
+    setMessage("");
+  }, [message, isStreaming, onSend]);
+
+  return (
+    <Card className="flex h-full min-h-0 flex-col p-0">
+      {/* Header */}
+      <div className="flex items-center gap-2 border-b p-3">
+        <BotIcon className="h-4 w-4 text-violet-500" />
+        <span className="text-sm font-medium">試運轉對話</span>
+        {conversationId && (
+          <span className="text-xs text-muted-foreground">
+            轉 #{conversationId.slice(0, 6)}
+          </span>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClear}
+          disabled={isStreaming || turns.length === 0}
+          className="ml-auto"
+          aria-label="清除對話"
+        >
+          <Eraser className="mr-1 h-3.5 w-3.5" />
+          清除
+        </Button>
+      </div>
+
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 min-h-0 space-y-3 overflow-y-auto p-4">
+        {turns.length === 0 && (
+          <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
+            <Sparkles className="mb-2 h-6 w-6 text-violet-400" />
+            送出第一則訊息開始試運轉
+            <span className="mt-1 text-xs">
+              觀察左側藍圖會跟著點亮、失敗會紅框 ping
+            </span>
+          </div>
+        )}
+        {turns.map((turn) => (
+          <ChatBubble key={turn.id} turn={turn} />
+        ))}
+      </div>
+
+      {/* Input + slowMode */}
+      <div className="border-t p-3">
+        <div className="mb-2 flex items-center gap-2">
           <Switch
             id="studio-slow-mode"
             checked={slowMode}
-            onCheckedChange={setSlowMode}
+            onCheckedChange={onSlowModeChange}
             disabled={isStreaming}
           />
           <Label
             htmlFor="studio-slow-mode"
             className="cursor-pointer text-xs text-muted-foreground"
           >
-            演示模式
+            演示模式（每事件間隔 800ms）
           </Label>
         </div>
-        <Button onClick={handleSend} disabled={isStreaming || !message.trim()}>
-          <Send className="mr-1 h-4 w-4" />
-          送出
-        </Button>
+        <div className="flex items-end gap-2">
+          <Input
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit();
+              }
+            }}
+            placeholder="輸入測試訊息（例：你好 / 查產品 / 退貨流程）"
+            disabled={isStreaming}
+            className="flex-1"
+          />
+          <Button
+            onClick={handleSubmit}
+            disabled={isStreaming || !message.trim()}
+          >
+            <Send className="mr-1 h-4 w-4" />
+            送出
+          </Button>
+        </div>
       </div>
+    </Card>
+  );
+}
 
-      {(eventLog.length > 0 || assistantText) && (
-        <ExecutionFeed events={eventLog} assistantText={assistantText} />
+function ChatBubble({ turn }: { turn: ChatTurn }) {
+  const isUser = turn.role === "user";
+  return (
+    <div className={cn("flex gap-2", isUser ? "justify-end" : "justify-start")}>
+      {!isUser && (
+        <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900">
+          <BotIcon className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+        </div>
       )}
-
-      {completedTrace && (
-        <Card className="p-4">
-          <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-            <Sparkles className="h-4 w-4 text-violet-500" />
-            完整執行 DAG
-            <span className="ml-auto text-xs text-muted-foreground">
-              {completedTrace.total_ms.toFixed(0)} ms · trace_id={" "}
-              <code className="font-mono">
-                {completedTrace.trace_id.slice(0, 8)}
-              </code>
-            </span>
-          </div>
-          <AgentTraceGraph execNodes={completedTrace.nodes} />
-        </Card>
+      <div
+        className={cn(
+          "max-w-[78%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words",
+          isUser
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted",
+          turn.isStreaming && !turn.content && "italic opacity-60",
+        )}
+      >
+        {turn.content || (turn.isStreaming ? "思考中..." : "")}
+      </div>
+      {isUser && (
+        <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15">
+          <UserIcon className="h-4 w-4 text-primary" />
+        </div>
       )}
     </div>
   );
 }
 
-// 確保 blueprintToolNodeId import 不被 tree-shake 掉（給未來精準對應 tool 用）
-void blueprintToolNodeId;
-
 type ExecutionFeedProps = {
   events: SSEEvent[];
-  assistantText: string;
 };
 
-function ExecutionFeed({ events, assistantText }: ExecutionFeedProps) {
+function ExecutionFeed({ events }: ExecutionFeedProps) {
   const visible = events.filter((e) => e.type !== "token");
   return (
-    <Card className="p-4">
-      <div className="mb-2 text-sm font-medium">執行紀錄</div>
-      <div className="space-y-1 text-xs">
+    <Card className="p-3">
+      <div className="mb-1 text-xs font-medium text-muted-foreground">
+        執行紀錄
+      </div>
+      <div className="max-h-[160px] space-y-0.5 overflow-y-auto text-xs">
         {visible.map((event, idx) => (
           <FeedRow key={idx} event={event} />
         ))}
-        {assistantText && (
-          <div className="mt-3 rounded border bg-background p-3 text-sm">
-            <div className="mb-1 text-xs text-muted-foreground">Bot 回覆</div>
-            {assistantText}
-          </div>
-        )}
       </div>
     </Card>
   );

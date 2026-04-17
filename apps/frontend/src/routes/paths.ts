@@ -4,6 +4,7 @@ export const ROUTES = {
   CHAT: "/chat",
   BOTS: "/bots",
   BOT_DETAIL: "/bots/:id",
+  BOT_STUDIO: "/bots/:id/studio",
   KNOWLEDGE: "/knowledge",
   KNOWLEDGE_DETAIL: "/knowledge/:id",
   TOKEN_USAGE: "/token-usage",

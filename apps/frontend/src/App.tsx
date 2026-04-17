@@ -27,6 +27,7 @@ const LoginPage = lazyWithRetry(() => import("@/pages/login"));
 const ChatPage = lazyWithRetry(() => import("@/pages/chat"));
 const BotsPage = lazyWithRetry(() => import("@/pages/bots"));
 const BotDetailPage = lazyWithRetry(() => import("@/pages/bot-detail"));
+const BotStudioPage = lazyWithRetry(() => import("@/pages/bot-studio"));
 const KnowledgePage = lazyWithRetry(() => import("@/pages/knowledge"));
 const KnowledgeDetailPage = lazyWithRetry(() => import("@/pages/knowledge-detail"));
 const FeedbackPage = lazyWithRetry(() => import("@/pages/feedback"));
@@ -90,6 +91,7 @@ export function App() {
             <Route path={ROUTES.CHAT} element={<ChatPage />} />
             <Route path={ROUTES.BOTS} element={<BotsPage />} />
             <Route path={ROUTES.BOT_DETAIL} element={<BotDetailPage />} />
+            <Route path={ROUTES.BOT_STUDIO} element={<BotStudioPage />} />
             <Route path={ROUTES.KNOWLEDGE} element={<KnowledgePage />} />
             <Route
               path={ROUTES.KNOWLEDGE_DETAIL}
