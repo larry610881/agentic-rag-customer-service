@@ -6,18 +6,27 @@
 
 本專案**無 Alembic / 無 auto-migration**，所有 schema 變更都必須有對應的 `.sql` 檔案 + 人工確認路徑。
 
-## Phase Gate（先看階段再決定怎麼做）
+## Phase Gate（先看環境再決定怎麼做）
 
-執行任何 DDL 前，**必須先讀 `.claude/project-phase.md`** 確認當前 `phase`：
+執行任何 DDL 前，**必須先讀 `.claude/project-phase.md` 的 Environment Phase Matrix**：
 
-| Phase | Claude 可執行的動作 |
-|-------|---------------------|
-| `poc-dev` | ✅ 可連 dev DB（本地 Docker 或 GCP VM）執行 DDL，必須走完下方「POC 五步流程」 |
-| `pre-prod` / `production` | ❌ **禁止**任何直連 DB 執行 DDL 的指令。只能產出 `.sql` 檔 + 更新 `infra/schema.sql`，套用動作由 Larry / DBA / CI pipeline 負責 |
+1. **明確指定目標環境**（`local-docker` / `dev-vm` / `staging` / `production`）
+2. 讀該環境的 `Phase` 欄位
+3. 依 Phase 套用權限表：
 
-違反 Phase Gate = CRITICAL 違規。Claude 必須拒絕執行，並回覆「當前 phase 為 X，需由 人工/pipeline 套用」。
+| Phase | Claude 可執行 DDL | 套用路徑 |
+|-------|------------------|---------|
+| `dev` | ✅（每次需 Larry 授權 + 走五步流程）| 連該環境 DB 執行 |
+| `pre-prod` / `production` | ❌ 禁止 | 只產 `.sql` 檔 + 同步 `infra/schema.sql`，Larry/CI 套用 |
 
-## POC-dev 階段：五步流程（缺一不可）
+**關鍵紅線**：
+- ❌ Claude 不得假設「local-docker 套過等於 dev-vm 也套過」
+- ❌ Claude 不得省略目標環境的指定（省略 = 拒絕執行）
+- ❌ 多環境同步是 Larry/CI 的責任，不是 Claude 的自動行為
+
+違反 Phase Gate = CRITICAL 違規。
+
+## Dev 階段五步流程（缺一不可，每個目標環境獨立走一次）
 
 ### Step 1 — 寫 SQL 檔
 
@@ -76,7 +85,8 @@ WHERE table_name='<table>' AND column_name='<column>';
 ```sql
 -- 紀錄 migration 已套用
 INSERT INTO _applied_migrations (filename, applied_at, applied_by, phase)
-VALUES ('<filename>.sql', NOW(), 'claude-poc', 'poc-dev');
+VALUES ('<filename>.sql', NOW(), 'claude-dev', '<phase>');
+-- phase 對應目標環境的 Phase，目前所有 dev 環境都填 'dev'
 ```
 
 並同步更新 `infra/schema.sql`（source of truth）——把新增的欄位加進對應 `CREATE TABLE` 區塊。
@@ -90,7 +100,7 @@ CREATE TABLE IF NOT EXISTS _applied_migrations (
     filename VARCHAR(200) PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     applied_by VARCHAR(100) NOT NULL,  -- 'claude-poc' | 'larry-manual' | 'ci-pipeline'
-    phase VARCHAR(20) NOT NULL         -- 'poc-dev' | 'pre-prod' | 'production'
+    phase VARCHAR(20) NOT NULL         -- 'dev' | 'pre-prod' | 'production'
 );
 ```
 
@@ -111,7 +121,7 @@ CREATE TABLE IF NOT EXISTS _applied_migrations (
 | 違規 | 級別 |
 |------|------|
 | ORM model 新增欄位但無對應 `migrations/*.sql` | CRITICAL |
-| `migrations/*.sql` 存在但 `_applied_migrations` 無紀錄 | CRITICAL（POC 階段）|
+| `migrations/*.sql` 存在但**目標 dev 環境**的 `_applied_migrations` 無紀錄 | CRITICAL（dev 階段）|
 | `infra/schema.sql` 未同步 | HIGH |
 | Phase 為 `pre-prod`/`production` 時 Claude 執行了 DDL | CRITICAL |
 | 用 Python script + engine 跑 DDL（繞過 psql preview）| MEDIUM |
@@ -120,6 +130,6 @@ CREATE TABLE IF NOT EXISTS _applied_migrations (
 
 | 情境 | 處理方式 |
 |------|---------|
-| `DROP TABLE` / `DROP COLUMN` | 即使 POC 也要 Larry **口頭明確確認**（不可依賴 Claude 的 preview 自動判斷） |
+| `DROP TABLE` / `DROP COLUMN` | 即使 dev 也要 Larry **口頭明確確認**（不可依賴 Claude 的 preview 自動判斷） |
 | Data migration（`UPDATE ... SET ...`）| 同 DDL 走五步流程，Step 2 preview 要附「預期影響的 row 數」|
 | 批次 migration（多檔） | 每個檔都走完整五步，**不合併**，避免一支失敗難回滾 |
