@@ -64,10 +64,14 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
   const [eventLog, setEventLog] = useState<SSEEvent[]>([]);
   const [traceId, setTraceId] = useState<string | null>(null);
 
-  // 當前選中的 worker（worker_routing 後設定）
-  const [selectedWorkerName, setSelectedWorkerName] = useState<string | null>(
-    null,
-  );
+  // Refs 用來繞過 useStudioStreaming callbacks 的 closure 陷阱：
+  // sendMessage 被呼叫時 callbacks 內的 currentAgentId 會被「凍結」為當下值，
+  // 之後 setState re-render 不會更新 stream 內的舊 closure。
+  // 改用 ref → 每次 stream event 都讀最新值。
+  const currentAgentIdRef = useRef<string>("main");
+  // Stream 收到 tool_calls 時記下對應的 BlueprintCanvas tool node id，
+  // 之後 sources event 進來才能把 chunk 子節點掛到對的 tool 下面。
+  const lastToolBlueprintIdRef = useRef<string | null>(null);
 
   const builtInToolByName = useMemo(() => {
     const m = new Map<string, { label: string }>();
@@ -112,8 +116,6 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
     builtInToolByName,
   ]);
 
-  const currentAgentId = selectedWorkerName ?? "main";
-
   const { data: completedTrace } = useAgentTraceDetail(traceId);
 
   const appendAssistantContent = useCallback((delta: string) => {
@@ -147,15 +149,24 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
       }
       if (event.type === "tool_calls" && Array.isArray(event.tool_calls)) {
         const calls = event.tool_calls as Array<{ tool_name: string }>;
+        // 從 ref 讀「最新」當前 agent，避開 useStudioStreaming callbacks closure 凍結問題
+        const agentId = currentAgentIdRef.current;
         setActiveToolKeys((prev) => {
           const next = new Set(prev);
           for (const c of calls) {
             const enrichedName =
               builtInToolByName.get(c.tool_name)?.label ?? c.tool_name;
-            next.add(`${currentAgentId}::${enrichedName}`);
+            next.add(`${agentId}::${enrichedName}`);
           }
           return next;
         });
+        // 記下對應的 BlueprintCanvas tool node id，給接下來 sources event 的 chunk 子節點掛載
+        if (calls.length > 0) {
+          const first = calls[0];
+          const enrichedName =
+            builtInToolByName.get(first.tool_name)?.label ?? first.tool_name;
+          lastToolBlueprintIdRef.current = `tool:${agentId}:${enrichedName}`;
+        }
       }
       if (
         event.type === "conversation_id" &&
@@ -165,13 +176,23 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
       }
     },
     onWorkerRouting: ({ worker_name }) => {
-      setSelectedWorkerName(worker_name);
-      setActiveAgentIds((prev) => new Set([...prev, worker_name]));
+      // 同步更新 ref 讓接下來 stream callbacks 讀到最新 agent
+      currentAgentIdRef.current = worker_name;
+      // 替換語意：main 自動消失、選定 worker 點亮
+      setActiveAgentIds(new Set([worker_name]));
+      // main 上殘留的 tool 點亮也清掉（避免「跨 agent 點亮錯位」）
+      setActiveToolKeys(new Set());
+      // routing 後重置 lastTool，等 worker 真的呼叫 tool 才指派 parent
+      lastToolBlueprintIdRef.current = null;
     },
-    onChunkNode: (toolNodeId, source, idx) => {
+    onChunkNode: (_unusedBackendUuid, source, idx) => {
+      // hook 傳的 toolNodeId 是後端 trace UUID（不是 BlueprintCanvas node id）；
+      // 改用 ref 中記下的 BlueprintCanvas tool node id 才能正確掛在對應 tool 下面
+      const parentId = lastToolBlueprintIdRef.current;
+      if (!parentId) return;
       const newChunk: ChunkNodeSpec = {
-        id: `${toolNodeId}::${idx}::${Date.now()}`,
-        parentToolNodeId: toolNodeId,
+        id: `${parentId}::${idx}::${Date.now()}`,
+        parentToolNodeId: parentId,
         documentName:
           (typeof source.document_name === "string" && source.document_name) ||
           (typeof source.source === "string" && source.source) ||
@@ -185,7 +206,8 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
       setChunkNodes((prev) => [...prev, newChunk]);
     },
     onFailedNode: ({ error_message }) => {
-      const targetId = `agent:${currentAgentId}`;
+      // 從 ref 讀「真正當前」的 agent，不用 closure 凍結值
+      const targetId = `agent:${currentAgentIdRef.current}`;
       setFailedNodeIds((prev) => new Set([...prev, targetId]));
       setErrorMessages((prev) => ({
         ...prev,
@@ -226,7 +248,9 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
       setChunkNodes([]);
       setEventLog([]);
       setTraceId(null);
-      setSelectedWorkerName(null);
+      // refs 同步重置（避免上一輪遺留的 worker 名 / tool id 影響本輪 closure-bypass 邏輯）
+      currentAgentIdRef.current = "main";
+      lastToolBlueprintIdRef.current = null;
 
       void sendMessage({
         message: message.trim(),
@@ -249,8 +273,9 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
     setChunkNodes([]);
     setEventLog([]);
     setTraceId(null);
-    setSelectedWorkerName(null);
     assistantTurnIdRef.current = null;
+    currentAgentIdRef.current = "main";
+    lastToolBlueprintIdRef.current = null;
   }, [isStreaming]);
 
   return (
