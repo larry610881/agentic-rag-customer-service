@@ -3,7 +3,7 @@
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
 from src.application.bot.create_bot_use_case import (
@@ -12,7 +12,6 @@ from src.application.bot.create_bot_use_case import (
 )
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
-from src.application.bot.list_all_bots_use_case import ListAllBotsUseCase
 from src.application.bot.list_bots_use_case import ListBotsUseCase
 from src.application.bot.update_bot_use_case import UpdateBotCommand, UpdateBotUseCase
 from src.application.bot.validate_bot_enabled_tools import (
@@ -435,28 +434,20 @@ async def create_bot(
 @router.get("", response_model=PaginatedResponse[BotResponse])
 @inject
 async def list_bots(
-    tenant_id: str | None = Query(default=None),
     pagination: PaginationQuery = Depends(),
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: ListBotsUseCase = Depends(
         Provide[Container.list_bots_use_case]
     ),
-    list_all_use_case: ListAllBotsUseCase = Depends(
-        Provide[Container.list_all_bots_use_case]
-    ),
 ) -> PaginatedResponse[BotResponse]:
+    """租戶視角列表；system_admin 在此看到的是 SYSTEM_TENANT 的 Bot。
+    跨租戶總覽請改呼叫 /api/v1/admin/bots（見 S-Gov.3）。"""
     limit = pagination.page_size
     offset = (pagination.page - 1) * pagination.page_size
-    if tenant.role == "system_admin":
-        bots = await list_all_use_case.execute(
-            tenant_id=tenant_id, limit=limit, offset=offset,
-        )
-        total = await list_all_use_case.count(tenant_id=tenant_id)
-    else:
-        bots = await use_case.execute(
-            tenant.tenant_id, limit=limit, offset=offset,
-        )
-        total = await use_case.count(tenant.tenant_id)
+    bots = await use_case.execute(
+        tenant.tenant_id, limit=limit, offset=offset,
+    )
+    total = await use_case.count(tenant.tenant_id)
     from math import ceil
     total_pages = ceil(total / pagination.page_size) if total > 0 else 0
     return PaginatedResponse(

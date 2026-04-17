@@ -446,6 +446,8 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.provider_setting_router",
             "src.interfaces.api.admin_router",
             "src.interfaces.api.admin_tools_router",
+            "src.interfaces.api.admin_bot_router",
+            "src.interfaces.api.admin_knowledge_base_router",
             "src.interfaces.api.mcp_router",
             "src.interfaces.api.mcp_server_router",
             "src.interfaces.api.observability_router",

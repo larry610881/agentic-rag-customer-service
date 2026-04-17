@@ -41,7 +41,6 @@ from src.infrastructure.db.models import (  # noqa: F401
     TenantModel,
     UsageRecordModel,
     UserModel,
-    WikiGraphModel,
 )
 
 ADMIN_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/agentic_rag"

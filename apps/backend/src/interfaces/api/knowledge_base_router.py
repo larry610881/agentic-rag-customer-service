@@ -1,5 +1,5 @@
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from src.application.knowledge.create_knowledge_base_use_case import (
@@ -8,9 +8,6 @@ from src.application.knowledge.create_knowledge_base_use_case import (
 )
 from src.application.knowledge.delete_knowledge_base_use_case import (
     DeleteKnowledgeBaseUseCase,
-)
-from src.application.knowledge.list_all_knowledge_bases_use_case import (
-    ListAllKnowledgeBasesUseCase,
 )
 from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
@@ -106,28 +103,20 @@ async def create_knowledge_base(
 @router.get("", response_model=PaginatedResponse[KnowledgeBaseResponse])
 @inject
 async def list_knowledge_bases(
-    tenant_id: str | None = Query(default=None),
     pagination: PaginationQuery = Depends(),
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: ListKnowledgeBasesUseCase = Depends(
         Provide[Container.list_knowledge_bases_use_case]
     ),
-    list_all_use_case: ListAllKnowledgeBasesUseCase = Depends(
-        Provide[Container.list_all_knowledge_bases_use_case]
-    ),
 ) -> PaginatedResponse[KnowledgeBaseResponse]:
+    """租戶視角列表；system_admin 在此看到的是 SYSTEM_TENANT 的 KB。
+    跨租戶總覽請改呼叫 /api/v1/admin/knowledge-bases（見 S-Gov.3）。"""
     limit = pagination.page_size
     offset = (pagination.page - 1) * pagination.page_size
-    if tenant.role == "system_admin":
-        kbs = await list_all_use_case.execute(
-            tenant_id=tenant_id, limit=limit, offset=offset,
-        )
-        total = await list_all_use_case.count(tenant_id=tenant_id)
-    else:
-        kbs = await use_case.execute(
-            tenant.tenant_id, limit=limit, offset=offset,
-        )
-        total = await use_case.count(tenant.tenant_id)
+    kbs = await use_case.execute(
+        tenant.tenant_id, limit=limit, offset=offset,
+    )
+    total = await use_case.count(tenant.tenant_id)
     from math import ceil
     total_pages = ceil(total / pagination.page_size) if total > 0 else 0
     return PaginatedResponse(

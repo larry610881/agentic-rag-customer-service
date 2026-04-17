@@ -122,6 +122,12 @@ export const API_ENDPOINTS = {
     discover: "/api/v1/mcp-servers/discover",
     testConnection: (id: string) => `/api/v1/mcp-servers/${id}/test-connection`,
   },
+  adminBots: {
+    list: "/api/v1/admin/bots",
+  },
+  adminKnowledgeBases: {
+    list: "/api/v1/admin/knowledge-bases",
+  },
   adminUsers: {
     list: "/api/v1/admin/users",
     create: "/api/v1/admin/users",

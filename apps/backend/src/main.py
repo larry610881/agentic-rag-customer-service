@@ -288,8 +288,16 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.admin_tools_router import (
             router as admin_tools_router,
         )
+        from src.interfaces.api.admin_bot_router import (
+            router as admin_bot_router,
+        )
+        from src.interfaces.api.admin_knowledge_base_router import (
+            router as admin_knowledge_base_router,
+        )
 
         application.include_router(admin_tools_router)
+        application.include_router(admin_bot_router)
+        application.include_router(admin_knowledge_base_router)
 
         from src.interfaces.api.mcp_router import router as mcp_router
         from src.interfaces.api.mcp_server_router import router as mcp_server_router
