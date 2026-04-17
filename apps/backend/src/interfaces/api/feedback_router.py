@@ -123,18 +123,10 @@ async def submit_feedback(
     use_case: SubmitFeedbackUseCase = Depends(
         Provide[Container.submit_feedback_use_case]
     ),
-    conversation_repo: ConversationRepository = Depends(
-        Provide[Container.conversation_repository]
-    ),
 ) -> FeedbackResponse:
-    effective_tenant_id = tenant.tenant_id
-    if tenant.role == "system_admin":
-        conversation = await conversation_repo.find_by_id(body.conversation_id)
-        if conversation:
-            effective_tenant_id = conversation.tenant_id
-
+    # S-Gov.3: 移除 admin 跨租戶 feedback 回填；admin 一律用自己的 tenant_id。
     command = SubmitFeedbackCommand(
-        tenant_id=effective_tenant_id,
+        tenant_id=tenant.tenant_id,
         conversation_id=body.conversation_id,
         message_id=body.message_id,
         channel=body.channel,

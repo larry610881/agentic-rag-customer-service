@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AdminEmptyStateHint } from "@/components/shared/admin-empty-state-hint";
 import { useBots } from "@/hooks/queries/use-bots";
 import { useChatStore } from "@/stores/use-chat-store";
 import type { Bot } from "@/types/bot";
@@ -41,12 +42,15 @@ export function BotSelector() {
 
   if (activeBots.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-8">
+      <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
         <BotIcon className="h-10 w-10 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">目前沒有可用的機器人</p>
         <p className="text-xs text-muted-foreground">
           請先到機器人頁面建立並啟用一個機器人。
         </p>
+        <div className="w-full max-w-lg">
+          <AdminEmptyStateHint resource="bots" isEmpty />
+        </div>
       </div>
     );
   }

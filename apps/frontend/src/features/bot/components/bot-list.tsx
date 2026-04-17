@@ -2,6 +2,7 @@ import { useBots } from "@/hooks/queries/use-bots";
 import { BotCard } from "@/features/bot/components/bot-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PaginationControls } from "@/components/shared/pagination-controls";
+import { AdminEmptyStateHint } from "@/components/shared/admin-empty-state-hint";
 import { usePagination } from "@/hooks/use-pagination";
 
 export function BotList() {
@@ -24,9 +25,12 @@ export function BotList() {
 
   if (!data || data.items.length === 0) {
     return (
-      <p className="text-muted-foreground">
-        尚無機器人，請建立一個來開始使用。
-      </p>
+      <div className="flex flex-col gap-3">
+        <AdminEmptyStateHint resource="bots" isEmpty />
+        <p className="text-muted-foreground">
+          尚無機器人，請建立一個來開始使用。
+        </p>
+      </div>
     );
   }
 

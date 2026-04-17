@@ -10,6 +10,7 @@ import {
 import { FeedbackStatsSummary } from "@/features/feedback/components/feedback-stats-summary";
 import { TokenPeriodSelector } from "@/features/feedback/components/token-period-selector";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AdminEmptyStateHint } from "@/components/shared/admin-empty-state-hint";
 import { ROUTES } from "@/routes/paths";
 
 const ChartSkeleton = () => <Skeleton className="h-[300px] w-full rounded-lg" />;
@@ -62,6 +63,9 @@ export default function FeedbackPage() {
       initial="hidden"
       animate="show"
     >
+      <motion.div variants={itemVariants}>
+        <AdminEmptyStateHint resource="feedback" isEmpty />
+      </motion.div>
       <motion.div variants={itemVariants} className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold font-heading tracking-wide text-primary">回饋分析</h2>
         <div className="flex items-center gap-3">

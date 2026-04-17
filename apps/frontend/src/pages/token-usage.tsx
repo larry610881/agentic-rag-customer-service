@@ -5,6 +5,7 @@ import { TokenPeriodSelector } from "@/features/feedback/components/token-period
 import { UsageSummaryCards } from "@/features/usage/components/usage-summary-cards";
 import { UsageTrendLineChart } from "@/features/usage/components/usage-daily-line-chart";
 import { UsagePieChart } from "@/features/usage/components/usage-bot-pie-chart";
+import { AdminEmptyStateHint } from "@/components/shared/admin-empty-state-hint";
 import type { DailyUsageStat, MonthlyUsageStat } from "@/types/token-usage";
 
 function getDefaultRange() {
@@ -71,6 +72,9 @@ export default function TokenUsagePage() {
       initial="hidden"
       animate="show"
     >
+      <motion.div variants={itemVariants}>
+        <AdminEmptyStateHint resource="token-usage" isEmpty />
+      </motion.div>
       <motion.div variants={itemVariants} className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold font-heading tracking-wide text-primary">
           Token 用量

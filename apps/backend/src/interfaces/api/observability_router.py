@@ -27,9 +27,23 @@ from src.infrastructure.db.models.bot_model import BotModel
 from src.infrastructure.db.models.rag_eval_model import RAGEvalModel
 from src.infrastructure.db.models.tenant_model import TenantModel
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
-from src.interfaces.api.deps import require_role
+from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
 
 router = APIRouter(prefix="/api/v1/observability", tags=["observability"])
+
+
+def _effective_tenant_filter(
+    tenant: CurrentTenant, tenant_id: str | None
+) -> str:
+    """S-Gov.3 tenant filter resolution for observability read endpoints.
+
+    - admin (system_admin): 可透過 `tenant_id` query 指定跨租戶查詢；
+      未指定時 fallback 到 admin 自己的 tenant_id（SYSTEM_TENANT_ID）
+    - 一般租戶：強制用自己的 tenant_id，忽略 query param（防止越權）
+    """
+    if tenant.role == "system_admin":
+        return tenant_id or tenant.tenant_id
+    return tenant.tenant_id
 
 
 
@@ -41,19 +55,20 @@ async def list_evaluations(
     tenant_id: str | None = Query(default=None),
     layer: str | None = Query(default=None),
     min_score: float | None = Query(default=None, ge=0, le=1),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     get_rules_uc: GetDiagnosticRulesUseCase = Depends(
         Provide[Container.get_diagnostic_rules_use_case]
     ),
 ):
+    effective_tid = _effective_tenant_filter(tenant, tenant_id)
     rule_config = await get_rules_uc.execute()
 
     async with async_session_factory() as session:
         stmt = select(RAGEvalModel).order_by(RAGEvalModel.created_at.desc())
         count_stmt = select(func.count()).select_from(RAGEvalModel)
 
-        if tenant_id:
-            stmt = stmt.where(RAGEvalModel.tenant_id == tenant_id)
-            count_stmt = count_stmt.where(RAGEvalModel.tenant_id == tenant_id)
+        stmt = stmt.where(RAGEvalModel.tenant_id == effective_tid)
+        count_stmt = count_stmt.where(RAGEvalModel.tenant_id == effective_tid)
         if layer:
             stmt = stmt.where(RAGEvalModel.layer == layer)
             count_stmt = count_stmt.where(RAGEvalModel.layer == layer)
@@ -103,7 +118,10 @@ async def list_agent_traces(
     conversation_id: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
+    tenant: CurrentTenant = Depends(get_current_tenant),
 ):
+    effective_tid = _effective_tenant_filter(tenant, tenant_id)
+
     async with async_session_factory() as session:
         stmt = select(AgentExecutionTraceModel).order_by(
             AgentExecutionTraceModel.created_at.desc()
@@ -111,9 +129,8 @@ async def list_agent_traces(
         T = AgentExecutionTraceModel  # noqa: N806
         count_stmt = select(func.count()).select_from(T)
 
-        if tenant_id:
-            stmt = stmt.where(T.tenant_id == tenant_id)
-            count_stmt = count_stmt.where(T.tenant_id == tenant_id)
+        stmt = stmt.where(T.tenant_id == effective_tid)
+        count_stmt = count_stmt.where(T.tenant_id == effective_tid)
         if agent_mode:
             stmt = stmt.where(T.agent_mode == agent_mode)
             count_stmt = count_stmt.where(T.agent_mode == agent_mode)
@@ -154,7 +171,10 @@ async def list_agent_traces(
 
 
 @router.get("/agent-traces/{trace_id}")
-async def get_agent_trace(trace_id: str):
+async def get_agent_trace(
+    trace_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+):
     async with async_session_factory() as session:
         stmt = select(AgentExecutionTraceModel).where(
             AgentExecutionTraceModel.trace_id == trace_id
@@ -162,6 +182,12 @@ async def get_agent_trace(trace_id: str):
         row = (await session.execute(stmt)).scalar_one_or_none()
 
     if row is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="Agent trace not found")
+
+    # S-Gov.3: 非 admin 只能看自己 tenant 的 trace；admin 可跨租戶
+    if tenant.role != "system_admin" and row.tenant_id != tenant.tenant_id:
         from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail="Agent trace not found")
@@ -185,7 +211,9 @@ async def get_agent_trace(trace_id: str):
 async def get_token_usage(
     days: int = Query(default=30, ge=1, le=365),
     tenant_id: str | None = Query(default=None),
+    tenant: CurrentTenant = Depends(get_current_tenant),
 ):
+    effective_tid = _effective_tenant_filter(tenant, tenant_id)
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
     async with async_session_factory() as session:
@@ -214,10 +242,8 @@ async def get_token_usage(
                 UsageRecordModel.tenant_id == TenantModel.id,
             )
             .where(UsageRecordModel.created_at >= since)
+            .where(UsageRecordModel.tenant_id == effective_tid)
         )
-
-        if tenant_id:
-            stmt = stmt.where(UsageRecordModel.tenant_id == tenant_id)
 
         stmt = stmt.group_by(
             UsageRecordModel.tenant_id,
@@ -288,6 +314,7 @@ class _DiagnosticRulesBody(BaseModel):
 @router.get("/diagnostic-rules")
 @inject
 async def get_diagnostic_rules(
+    _: CurrentTenant = Depends(get_current_tenant),
     use_case: GetDiagnosticRulesUseCase = Depends(
         Provide[Container.get_diagnostic_rules_use_case]
     ),
@@ -305,6 +332,7 @@ async def get_diagnostic_rules(
 @inject
 async def update_diagnostic_rules(
     body: _DiagnosticRulesBody,
+    _: CurrentTenant = Depends(require_role("system_admin")),
     use_case: UpdateDiagnosticRulesUseCase = Depends(
         Provide[Container.update_diagnostic_rules_use_case]
     ),
@@ -326,6 +354,7 @@ async def update_diagnostic_rules(
 @router.post("/diagnostic-rules/reset")
 @inject
 async def reset_diagnostic_rules(
+    _: CurrentTenant = Depends(require_role("system_admin")),
     use_case: ResetDiagnosticRulesUseCase = Depends(
         Provide[Container.reset_diagnostic_rules_use_case]
     ),

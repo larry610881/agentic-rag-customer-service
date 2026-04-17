@@ -13,10 +13,8 @@ from src.application.agent.send_message_use_case import (
     SendMessageCommand,
     SendMessageUseCase,
 )
-from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
-from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.streaming_errors import classify_streaming_error
 
@@ -75,19 +73,12 @@ async def agent_chat(
     record_usage: RecordUsageUseCase = Depends(
         Provide[Container.record_usage_use_case]
     ),
-    get_bot: GetBotUseCase = Depends(Provide[Container.get_bot_use_case]),
 ) -> ChatResponse:
-    effective_tenant_id = tenant.tenant_id
-    if tenant.role == "system_admin" and request.bot_id:
-        try:
-            bot = await get_bot.execute(request.bot_id)
-        except EntityNotFoundError:
-            raise HTTPException(status_code=404, detail="Bot not found")
-        effective_tenant_id = bot.tenant_id
-
+    # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
+    # 跨租戶測試流程請走系統管理專用端點（尚未實作，另立 issue）。
     result = await use_case.execute(
         SendMessageCommand(
-            tenant_id=effective_tenant_id,
+            tenant_id=tenant.tenant_id,
             kb_id=request.knowledge_base_id or "",
             message=request.message,
             conversation_id=request.conversation_id,
@@ -158,18 +149,11 @@ async def agent_chat_stream(
     record_usage: RecordUsageUseCase = Depends(
         Provide[Container.record_usage_use_case]
     ),
-    get_bot: GetBotUseCase = Depends(Provide[Container.get_bot_use_case]),
 ) -> StreamingResponse:
-    effective_tenant_id = tenant.tenant_id
-    if tenant.role == "system_admin" and request.bot_id:
-        try:
-            bot = await get_bot.execute(request.bot_id)
-        except EntityNotFoundError:
-            raise HTTPException(status_code=404, detail="Bot not found")
-        effective_tenant_id = bot.tenant_id
-
+    # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
+    # 跨租戶測試流程請走系統管理專用端點（尚未實作，另立 issue）。
     command = SendMessageCommand(
-        tenant_id=effective_tenant_id,
+        tenant_id=tenant.tenant_id,
         kb_id=request.knowledge_base_id or "",
         message=request.message,
         conversation_id=request.conversation_id,
