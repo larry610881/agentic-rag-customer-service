@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [S-Gov.7 Phase 1 — Bot Studio：真實對應的命脈（ContextVar last_node_id + 失敗節點視覺 + ReactFlow 動態 chunks）](#s-gov7-phase-1--bot-studio真實對應的命脈contextvar-last_node_id--失敗節點視覺--reactflow-動態-chunks)
 - [S-Gov.7 — Bot Studio：設定即時試運轉（既有契約延伸 + 前端共用 lib 抽出 + Source 識別最小路徑）](#s-gov7--bot-studio設定即時試運轉既有契約延伸--前端共用-lib-抽出--source-識別最小路徑)
 - [BUG-01 — Tool Rich Content 持久化 + Trace Source of Truth（Collector Metadata 延伸 + 聚合累加器）](#bug-01--tool-rich-content-持久化--trace-source-of-truthcollector-metadata-延伸--聚合累加器)
 - [S-Gov.3 — Admin 視角職責分離（Caller Tenant vs Resource Tenant 解耦）](#s-gov3--admin-視角職責分離caller-tenant-vs-resource-tenant-解耦)
@@ -81,6 +82,39 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## S-Gov.7 Phase 1 — Bot Studio：真實對應的命脈（ContextVar last_node_id + 失敗節點視覺 + ReactFlow 動態 chunks）
+
+**日期**：2026-04-17
+**Sprint**：S-Gov.7 Phase 1（升級 MVP）
+**涉及層級**：Domain（ExecutionNode + outcome）+ Infrastructure（AgentTraceCollector ContextVar / react_agent_service stream yield 11 處 / globals.css keyframe）+ Interfaces（agent_router exception path）+ Frontend（trace-node-style FAILED variant / agent-trace-graph TraceNode 失敗處理 / 新元件 BlueprintCanvas / hooks 擴充）（Issue #34）
+
+### 本次相關主題
+
+ContextVar 作為「最近一次 add_node 結果」的隱式參數通道、Inline 巢狀 helper（`_ev`）vs 全域裝飾器在 generator 內的取捨、stream event ↔ trace node 強對應 vs 啟發式對應、ReactFlow `useNodesState` 動態節點 + 既有節點分區更新、CSS keyframe 一次性動畫設計、雙視圖（藍圖 + DAG）vs 單一合併視圖
+
+### 做得好的地方
+
+- **`AgentTraceCollector.last_node_id()` ContextVar 取代「nonlocal var passing」**：原本 `_handle_text_chunk` / `_handle_tool_call_chunk` 等 helper 沒有 trace 概念，要把 node_id 帶到 stream yield 點得用 nonlocal var 鏈路傳遞 — 容易漏。改成 `add_node()` 內部 `_last_node_id.set(node_id)` + 提供 `last_node_id()` 取讀取，11 處 yield 點只要 `_ev(d)` 一行。**ContextVar 在這扮演「同 task 內的隱式回傳通道」**，比顯式參數穿透乾淨太多
+- **Inline `_ev` 巢狀 helper 取代 module-level decorator**：`_ev` 是 `process_message_stream` 的 closure，因為它依賴 `AgentTraceCollector.last_node_id()` 是 ContextVar-local。如果做成 module-level static helper 也能 work，但 inline 形式：(1) 視覺上靠近 yield 點易理解、(2) 沒被誤用到 stream 外的風險。**「Helper 的作用域 = 它應該被使用的範圍」**
+- **`worker_routing` 事件設計：trace node 加完立即 yield，不在 use case 層另外 yield**：`_resolve_worker_config` 在 use case 層，但 `AgentTraceCollector.start()` 在 react_agent_service 內。如果 use case yield worker_routing event，會在 trace start 之前 → trace_id 與 node_id 都不存在。改成「react_agent_service trace start 後立刻檢查 metadata['_worker_routing']，有則 yield event」— **資料準備好的位置 = yield 的位置**
+- **失敗紅框 + ping-once 而非 animate-pulse**：原本想用 Tailwind `animate-pulse` 持續閃爍，但失敗節點可能多個（router 失敗 + tool 失敗 + agent 失敗）→ 同時閃爍會干擾診斷。改成 CSS `studio-ping-once` 一次性 keyframe 一鍵 0.6s scale + box-shadow expand，**靜態紅框 + 一次性 ping** 兼顧吸引目光與閱讀舒適
+- **雙視圖（藍圖 + DAG）放棄 `use-trace-merger`**：原 plan 預想合併 trace.nodes + 前端 chunks 為單一視圖，實作時發現雙視圖更易讀（藍圖 = 設定者觀點：我配了什麼 + 哪個被執行；DAG = 執行追蹤觀點：精確時序與 metadata）。**勇於砍掉計畫裡的「合併」抽象**，少寫一個 hook 反而視覺更清晰
+
+### 潛在隱憂
+
+- **失敗節點 id 對應策略過於簡化**：目前 `onFailedNode` 只標記 `currentAgent`（main 或選定 worker），不會精準到「失敗的具體 tool」。如果 LLM 失敗很明顯（agent_llm 節點），但 tool execution 失敗（rag_query 401）— 紅框會錯位到 agent 而非 tool。**建議**：擴充 stream error event 帶 failed_node_type（"agent" / "tool" / "router"）讓前端精準對應 → **優先級：中**（POC 階段失敗一般是 LLM key / DB connection，agent 層級紅框已足夠）
+- **`mark_current_failed` 把最後一筆節點打 failed，但「最後一筆」可能不對**：`AgentTraceCollector.add_node` 後 _last_node_id 立刻被 set。若 LLM 呼叫失敗，當下 _last_node_id 可能是「user_input」（agent_llm node 還沒 add）。**建議**：在 add_node("agent_llm", ...) 後再 raise，或讓 mark 接受 explicit node_id → **優先級：中**
+- **BlueprintCanvas useEffect 重新計算 layout 會閃**：每次 agents/active 變更都 setNodes 重設靜態 + 保留動態 chunk 節點。如果 stream events 高頻來，會看到藍圖節點瞬間重繪（sub-100ms）。**建議**：用 `React.memo` + structural diff，或把 chunks 拆成獨立 layer（不跟靜態 layout 共用 setNodes）→ **優先級：低**（一般 stream 速率不會觸發明顯閃爍）
+- **agent_router exception 路徑直接呼叫 `use_case._persist_agent_trace`**：用 `# noqa: SLF001` 繞過 protected member 警告。應該由 use_case 暴露 `persist_failed_trace` public method。**建議**：refactor 出 PersistAgentTraceUseCase 或加 use_case.persist_trace() public 入口 → **優先級：低**
+
+### 延伸學習
+
+- **ContextVar in async generators with yield boundaries**：每次 yield 之間可能切到別的 task（在 asyncio scheduler 下）。但同一個 generator instance 的 ContextVar 操作仍是「該 generator 自己的 context」。Python 3.7+ ContextVar 在 asyncio task 之間自動 copy，但 generator yield 不切 task → 安全可用。本次 `_last_node_id` 在 `_stream` generator 內 add_node → yield → 下次 add_node 之間都是同 context
+- **Rule of Three 反向應用：早抽 vs 等三次**：MVP 抽 NODE_COLORS 是「兩個 consumer 都已穩定」的早抽。Phase 1 抽 NODE_COLORS_FAILED + PING_ONCE_CLASS 也是早抽（admin trace graph + Studio canvas 兩個 consumer）。**「同一份語義保證」是早抽的必要條件**，不是看次數
+- **建議搜尋**：`Python ContextVar with asyncio generators`、`React Flow useNodesState dynamic add nodes`、`CSS @keyframes one-shot animation pattern`
 
 ---
 

@@ -160,3 +160,14 @@
 
 /* Prevent nested scrollbars: hide scrollbar on body (app uses flex h-screen layout) */
 html, body { overflow: hidden; height: 100%; }
+
+/* Bot Studio Phase 1: failed node 一次性 ping 動畫
+   一次完成不重複，避免多失敗節點同時閃爍導致畫面躁動。 */
+@keyframes studio-ping-once {
+  0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgb(239 68 68 / 0.7); }
+  60%  { transform: scale(1.08); box-shadow: 0 0 0 12px rgb(239 68 68 / 0); }
+  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgb(239 68 68 / 0); }
+}
+.studio-ping-once {
+  animation: studio-ping-once 0.6s ease-out 1;
+}

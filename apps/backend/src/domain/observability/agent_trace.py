@@ -16,13 +16,16 @@ class ExecutionNode:
 
     node_id: str = field(default_factory=lambda: str(uuid4()))
     node_type: str = ""  # user_input | router | meta_router | supervisor_dispatch
-    # agent_llm | tool_call | tool_result | final_response | worker_execution
+    # agent_llm | tool_call | tool_result | final_response | worker_execution | error
     label: str = ""
     parent_id: str | None = None
     start_ms: float = 0.0  # 相對於 trace 起點
     end_ms: float = 0.0
     duration_ms: float = 0.0
     token_usage: dict[str, Any] | None = None
+    # Phase 1: 失敗節點視覺化的 source of truth。"success" / "failed" / "partial"。
+    # error_message 當 outcome=="failed" 時放在 metadata["error_message"]。
+    outcome: str = "success"
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -35,6 +38,7 @@ class ExecutionNode:
             "end_ms": self.end_ms,
             "duration_ms": self.duration_ms,
             "token_usage": self.token_usage,
+            "outcome": self.outcome,
             "metadata": self.metadata,
         }
 
@@ -64,6 +68,7 @@ class AgentExecutionTrace:
         start_ms: float,
         end_ms: float,
         token_usage: dict[str, Any] | None = None,
+        outcome: str = "success",
         **metadata: Any,
     ) -> str:
         """Add a node and return its node_id."""
@@ -75,6 +80,7 @@ class AgentExecutionTrace:
             end_ms=round(end_ms, 1),
             duration_ms=round(end_ms - start_ms, 1),
             token_usage=token_usage,
+            outcome=outcome,
             metadata=metadata,
         )
         self.nodes.append(node)

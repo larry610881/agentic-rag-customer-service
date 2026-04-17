@@ -24,6 +24,10 @@ export type ExecutionNode = {
     output_tokens?: number;
     estimated_cost?: number;
   } | null;
+  /** Phase 1: 失敗節點視覺化 source of truth；
+   *  outcome=="failed" 時 metadata.error_message 應為字串。
+   *  舊 trace 沒此欄位時 fallback 為 "success"。 */
+  outcome?: "success" | "failed" | "partial";
   metadata: Record<string, unknown>;
 };
 

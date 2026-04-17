@@ -17,9 +17,12 @@ import "react-json-view-lite/dist/index.css";
 import type { ExecutionNode } from "@/types/agent-trace";
 import {
   NODE_COLORS,
+  NODE_COLORS_FAILED,
   NODE_ICONS,
+  PING_ONCE_CLASS,
   durationColor,
 } from "@/features/admin/lib/trace-node-style";
+import { cn } from "@/lib/utils";
 
 function str(v: unknown): string {
   return String(v ?? "");
@@ -197,11 +200,15 @@ function TraceNode({ data }: { data: CustomNodeData }) {
   const [expanded, setExpanded] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const n = data.execNode;
+  const isFailed = n.outcome === "failed";
   const Icon = NODE_ICONS[n.node_type] ?? Brain;
-  const colorClass =
-    NODE_COLORS[n.node_type] ??
-    "border-gray-400 bg-gray-50 dark:bg-gray-900";
+  const colorClass = isFailed
+    ? NODE_COLORS_FAILED
+    : NODE_COLORS[n.node_type] ??
+      "border-gray-400 bg-gray-50 dark:bg-gray-900";
   const meta = n.metadata;
+  const errorMessage =
+    typeof meta.error_message === "string" ? meta.error_message : "";
   const hasDetail =
     !!meta.answer_preview ||
     !!meta.result_preview ||
@@ -214,12 +221,28 @@ function TraceNode({ data }: { data: CustomNodeData }) {
 
   return (
     <div
-      className={`rounded-lg border-2 px-3 py-2 shadow-sm min-w-[180px] ${showRaw ? "max-w-[600px]" : expanded ? "max-w-[500px]" : "max-w-[280px]"} ${colorClass}`}
+      title={errorMessage || undefined}
+      className={cn(
+        "rounded-lg border-2 px-3 py-2 shadow-sm min-w-[180px]",
+        showRaw ? "max-w-[600px]" : expanded ? "max-w-[500px]" : "max-w-[280px]",
+        colorClass,
+        isFailed && PING_ONCE_CLASS,
+      )}
     >
       <Handle type="target" position={Position.Left} className="!bg-gray-400" />
       <div className="drag-handle flex items-center gap-2 cursor-grab active:cursor-grabbing">
-        <Icon className="h-4 w-4 shrink-0 opacity-70" />
+        <Icon
+          className={cn(
+            "h-4 w-4 shrink-0",
+            isFailed ? "text-red-600 dark:text-red-400" : "opacity-70",
+          )}
+        />
         <span className="text-sm font-medium truncate">{n.label}</span>
+        {isFailed && (
+          <span className="rounded bg-red-100 px-1 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-900 dark:text-red-200">
+            FAILED
+          </span>
+        )}
         {n.duration_ms > 0 && (
           <span
             className={`ml-auto font-mono text-xs ${durationColor(n.duration_ms)}`}
@@ -228,6 +251,11 @@ function TraceNode({ data }: { data: CustomNodeData }) {
           </span>
         )}
       </div>
+      {isFailed && errorMessage && (
+        <div className="mt-1 rounded bg-red-100 px-2 py-1 text-xs text-red-800 dark:bg-red-900 dark:text-red-200">
+          {errorMessage}
+        </div>
+      )}
       {n.token_usage && (
         <div className="mt-1 flex gap-2 text-xs text-muted-foreground">
           {n.token_usage.input_tokens != null && (

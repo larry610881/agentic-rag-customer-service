@@ -1343,7 +1343,9 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | Agent 資料流過濾 | ✅ | Commit [cd27b81](https://github.com/larry610881/agentic-rag-customer-service/commit/cd27b81) — GET `/agent/built-in-tools` 依 tenant_id 過濾 + Bot create/update 驗證 enabled_tools（未授權回 422）|
 
 ### S-Gov.7 Bot Studio — 設定即時試運轉 + Agent 動畫回放
-> Issue [#33](https://github.com/larry610881/agentic-rag-customer-service/issues/33) · Plan `agent-main-bright-leaf.md`
+> MVP: Issue [#33](https://github.com/larry610881/agentic-rag-customer-service/issues/33) · Phase 1: Issue [#34](https://github.com/larry610881/agentic-rag-customer-service/issues/34) · Plan `agent-main-bright-leaf.md`
+
+#### MVP（已 ship）
 
 | 項目 | 狀態 | 說明 |
 |------|------|------|
@@ -1355,6 +1357,33 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | BotDetailForm 新增 Studio Tab | ✅ | 6-tab 結構（SUBAGENT 後 / WIDGET 前），icon Sparkles |
 | Feedback gate | ✅ | Studio canvas 內不渲染 MessageBubble，自走 ExecutionFeed 顯示 bot 回覆，feedback 按鈕天然不出現 |
 | Test 環境修復順手補 | ✅ | 5 個 ORM model 加進 metadata `__init__.py`（chunk_category / eval_dataset / guard_log / guard_rules / prompt_opt_run）→ 2 個既有 integration tests 從 fail → pass |
+
+#### Phase 1（真實對應的命脈，已 ship）
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| ExecutionNode.outcome 欄位 | ✅ | success/failed/partial，向後相容預設 success |
+| AgentTraceCollector 新 API | ✅ | `last_node_id()` ContextVar + `mark_current_failed(error_message)` |
+| Stream 11 處 yield 帶 node_id + ts_ms | ✅ | `_ev` helper inline 一行加入，零侵入 |
+| worker_routing event 新增 | ✅ | react_agent_service start trace 後 yield 含 worker_name/worker_llm，前端對應 worker 點亮 |
+| TimeoutError trace 寫入 | ✅ | 失敗節點 outcome=failed + error_message 寫進 metadata |
+| agent_router exception → mark_current_failed + persist_trace | ✅ | 異常路徑也持久化 trace + done event 帶 trace_id |
+| BlueprintCanvas (ReactFlow) | ✅ | 取代 MVP 的 cards，Agent / Tool / Chunk 三類自訂節點 |
+| RAG chunks 動態長出 | ✅ | sources event 進來，每 chunk 為一子節點往對應 rag_query tool 下方加 |
+| 失敗節點視覺 | ✅ | NODE_COLORS_FAILED 紅色 variant + studio-ping-once 一次性 ping CSS keyframe + XCircle icon + FAILED badge |
+| 節點 hover/click 互動 | ✅ | hover tooltip 顯示 error_message，click 開 Dialog 含 JsonView 完整 metadata |
+| BDD 4 scenarios | ✅ | stream node_id 對應 / worker_routing event / outcome=failed 寫入 / 既有 web 通路無破壞 |
+| React Query invalidation 已運作驗證 | ✅ | useWorkers invalidation 已具備（不寫程式，僅確認） |
+
+#### Phase 2 / Phase 3（待真實使用反饋後排）
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Phase 2 — 演示模式速度多檔（即時 / 慢 / 演示）| ⏳ 等回饋 | 目前只有 on/off Switch；客戶 demo / 訓練教學若要更細控制再加 SegmentedControl |
+| Phase 2 — 多輪對話延續 + 清除按鈕 | ⏳ 等回饋 | 保留 conversation_id state 連續測 N 輪，現在每次送出都重置 |
+| Phase 2 — 預設情境快捷鍵 | ⏳ 等回饋 | "打招呼 / 查商品 / 查 KB / 範圍外" 4 個按鈕一鍵送，demo 客戶常用入口 |
+| Phase 2 — ReAct iteration 多輪同 tool 視覺化 | ⏳ 等回饋 | 同 tool 重複呼叫時長出第 2/3 個同 name 節點，目前只在第 1 次呼叫節點點亮 |
+| Phase 3 — Test case 儲存 / 重播 | ⏳ 等回饋 | 接 prompt_optimizer eval_dataset BC（加 `source="studio"` 區隔）+ 一鍵重跑 |
 
 ### S-Gov.3 Admin 視角職責分離 — 一般功能頁限 SYSTEM 租戶
 > 已完成 commit [ca2961a](https://github.com/larry610881/agentic-rag-customer-service/commit/ca2961a) · Issue [#32](https://github.com/larry610881/agentic-rag-customer-service/issues/32)

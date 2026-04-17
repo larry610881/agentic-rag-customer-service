@@ -36,6 +36,13 @@ export const NODE_ICONS: Record<ExecutionNodeType, React.ElementType> = {
   worker_execution: Users,
 };
 
+// Phase 1: 失敗節點視覺 (outcome=="failed") — 一致紅色 variant 取代各 type 既有色
+// + ping-once 一次性動畫吸引目光，不持續閃爍以免畫面躁動。
+export const NODE_COLORS_FAILED =
+  "border-red-500 bg-red-50 dark:bg-red-950 ring-1 ring-red-400/50";
+
+export const PING_ONCE_CLASS = "studio-ping-once";
+
 export function durationColor(ms: number): string {
   if (ms >= 2000) return "text-red-600 dark:text-red-400";
   if (ms >= 500) return "text-yellow-600 dark:text-yellow-400";

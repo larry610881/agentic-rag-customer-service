@@ -219,9 +219,34 @@ async def agent_chat_stream(
         except Exception as exc:
             logger.exception("agent.chat.stream.error")
             error_msg = classify_streaming_error(exc)
+            # Phase 1: 標記 trace 最後一筆節點為 failed，讓 Studio 紅框可見
+            from src.infrastructure.observability.agent_trace_collector import (
+                AgentTraceCollector,
+            )
+            AgentTraceCollector.mark_current_failed(error_msg)
+
+            # Phase 1: 同時持久化 trace（exception 路徑 use_case 來不及 _persist_agent_trace）
+            # + 帶 trace_id 給前端 fetch 完整 DAG（含 failed 節點）
+            failed_trace_id = ""
+            _trace = AgentTraceCollector.current()
+            if _trace is not None:
+                failed_trace_id = _trace.trace_id
+                try:
+                    await use_case._persist_agent_trace(  # noqa: SLF001
+                        conversation_id=command.conversation_id,
+                        message_id=None,
+                        latency_ms=0,
+                        source=command.identity_source or "web",
+                    )
+                except Exception:
+                    logger.exception("agent.chat.stream.persist_failed_trace_error")
+
             error_payload = {"type": "error", "message": error_msg}
+            done_payload: dict = {"type": "done"}
+            if failed_trace_id:
+                done_payload["trace_id"] = failed_trace_id
             yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
 
         # Record usage after stream completes
         if usage_data:

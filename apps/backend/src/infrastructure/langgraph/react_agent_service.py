@@ -844,6 +844,7 @@ class ReActAgentService(AgentService):
             )
             # Worker routing breadcrumb
             _wr_info_s = (metadata or {}).get("_worker_routing")
+            _wr_event: dict[str, Any] | None = None
             if isinstance(_wr_info_s, dict) and _wr_info_s.get("name"):
                 AgentTraceCollector.add_node(
                     "worker_routing",
@@ -854,9 +855,27 @@ class ReActAgentService(AgentService):
                     worker_llm_provider=_wr_info_s.get("llm_provider") or "",
                     worker_kb_count=_wr_info_s.get("kb_count", 0),
                 )
+                # Phase 1: 讓 Studio canvas 知道路由到哪個 worker（藍圖點亮對應卡片）
+                _wr_event = {
+                    "type": "worker_routing",
+                    "worker_name": _wr_info_s["name"],
+                    "worker_llm": _wr_info_s.get("llm_model") or "(default)",
+                    "worker_llm_provider": _wr_info_s.get("llm_provider") or "",
+                    "worker_kb_count": _wr_info_s.get("kb_count", 0),
+                }
+
+            # Phase 1: 統一附加 node_id + ts_ms 到每個 stream event；
+            # 讓前端 Studio canvas 用 node_id 精準對應 trace 節點，取代 MVP 的字串啟發式。
+            def _ev(d: dict[str, Any]) -> dict[str, Any]:
+                d.setdefault("node_id", AgentTraceCollector.last_node_id())
+                d.setdefault("ts_ms", round(AgentTraceCollector.offset_ms(), 1))
+                return d
+
+            if _wr_event is not None:
+                yield _ev(_wr_event)
 
             # Emit initial status so frontend shows "AI 分析中" immediately
-            yield {"type": "status", "status": "react_thinking"}
+            yield _ev({"type": "status", "status": "react_thinking"})
 
             # Stream graph execution with dual mode:
             #   "messages" → per-token LLM streaming
@@ -888,7 +907,7 @@ class ReActAgentService(AgentService):
                                 )
                             )
                             for ev in events:
-                                yield ev
+                                yield _ev(ev)
 
                         elif mode == "updates":
                             for node_name, node_output in data.items():
@@ -905,16 +924,16 @@ class ReActAgentService(AgentService):
                                                     call_count,
                                                     tool_calls_emitted,
                                                 ):
-                                                    yield ev
+                                                    yield _ev(ev)
                                             elif msg.content:
                                                 # Fallback: if messages mode didn't
                                                 # stream tokens (e.g. mock LLM without
                                                 # astream), emit content as one chunk.
                                                 if not llm_generating_emitted:
-                                                    yield {
+                                                    yield _ev({
                                                         "type": "status",
                                                         "status": "llm_generating",
-                                                    }
+                                                    })
                                                     content = (
                                                         msg.content
                                                         if isinstance(
@@ -922,20 +941,20 @@ class ReActAgentService(AgentService):
                                                         )
                                                         else str(msg.content)
                                                     )
-                                                    yield {
+                                                    yield _ev({
                                                         "type": "token",
                                                         "content": content,
-                                                    }
+                                                    })
                                                 llm_generating_emitted = False
 
                                 elif node_name == "tools":
                                     messages = node_output.get("messages", [])
                                     for msg in messages:
                                         if hasattr(msg, "name") and msg.name:
-                                            yield {
+                                            yield _ev({
                                                 "type": "status",
                                                 "status": f"{msg.name}_done",
-                                            }
+                                            })
                                         # Backfill tool_output to tool_calls_emitted
                                         if (
                                             hasattr(msg, "content")
@@ -971,20 +990,20 @@ class ReActAgentService(AgentService):
                                                 ):
                                                     sources = content["sources"]
                                                     if sources:
-                                                        yield {
+                                                        yield _ev({
                                                             "type": "sources",
                                                             "sources": sources,
-                                                        }
+                                                        })
                                                         _emitted_sources = True
                                                 # transfer_to_human_agent tool → emit contact event
                                                 if (
                                                     isinstance(content, dict)
                                                     and content.get("contact")
                                                 ):
-                                                    yield {
+                                                    yield _ev({
                                                         "type": "contact",
                                                         "contact": content["contact"],
-                                                    }
+                                                    })
                                             except (json.JSONDecodeError, TypeError):
                                                 pass
                                             # 2. rag_query plain text → chunks
@@ -1012,26 +1031,32 @@ class ReActAgentService(AgentService):
                                                         if c.strip()
                                                     ]
                                                     if rag_sources:
-                                                        yield {
+                                                        yield _ev({
                                                             "type": "sources",
                                                             "sources": rag_sources,
-                                                        }
-                                    yield {
+                                                        })
+                                    yield _ev({
                                         "type": "status",
                                         "status": "react_thinking",
-                                    }
+                                    })
             except asyncio.TimeoutError:
                 timeout_s = _settings.agent_stream_timeout
                 logger.error(
                     "react.stream.timeout", timeout_s=timeout_s
                 )
-                yield {
-                    "type": "error",
-                    "message": (
-                        f"Agent 回應逾時（{timeout_s}s）"
-                        "，請縮短問題或更換模型"
-                    ),
-                }
+                # Phase 1: 失敗節點寫入 trace（outcome=failed），讓 Studio 紅框可見
+                _err_msg = f"Agent 回應逾時（{timeout_s}s），請縮短問題或更換模型"
+                _err_ms = AgentTraceCollector.offset_ms()
+                AgentTraceCollector.add_node(
+                    "agent_llm",
+                    "agent timeout",
+                    None,
+                    _err_ms,
+                    _err_ms,
+                    outcome="failed",
+                    error_message=_err_msg,
+                )
+                yield _ev({"type": "error", "message": _err_msg})
 
             # Trace: final_response node
             end_ms = AgentTraceCollector.offset_ms()
@@ -1044,9 +1069,9 @@ class ReActAgentService(AgentService):
                 extract_usage_from_langchain_messages(all_ai_messages)
             )
             if usage_event:
-                yield usage_event
+                yield _ev(usage_event)
 
-            yield {"type": "done"}
+            yield _ev({"type": "done"})
 
     @staticmethod
     def _parse_response(
