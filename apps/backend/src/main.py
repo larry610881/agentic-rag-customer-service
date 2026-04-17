@@ -22,6 +22,7 @@ try:
     from src.infrastructure.db.models import (  # noqa: F401
         BotKnowledgeBaseModel,
         BotModel,
+        BuiltInToolModel,
         ChunkModel,
         ConversationModel,
         DocumentModel,
@@ -90,6 +91,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log_level=settings.effective_log_level,
         enabled_modules=settings.enabled_modules,
     )
+
+    # Seed built-in tools (idempotent — preserves admin-set scope/tenant_ids)
+    try:
+        from copy import deepcopy
+
+        from src.domain.agent.built_in_tool import BUILT_IN_TOOL_DEFAULTS
+
+        container = app.container  # type: ignore[attr-defined]
+        session_factory = container.trace_session_factory()
+        async with session_factory() as session:
+            from src.infrastructure.db.repositories.built_in_tool_repository import (
+                SQLAlchemyBuiltInToolRepository,
+            )
+
+            repo = SQLAlchemyBuiltInToolRepository(session=session)
+            await repo.seed_defaults(deepcopy(BUILT_IN_TOOL_DEFAULTS))
+        logger.info("built_in_tool.seed.success", count=len(BUILT_IN_TOOL_DEFAULTS))
+    except Exception:
+        logger.warning("built_in_tool.seed.failed", exc_info=True)
 
     # Start background log cleanup
     cleanup_task = asyncio.create_task(
@@ -264,6 +284,12 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         application.include_router(provider_setting_router)
         application.include_router(feedback_router)
         application.include_router(admin_router)
+
+        from src.interfaces.api.admin_tools_router import (
+            router as admin_tools_router,
+        )
+
+        application.include_router(admin_tools_router)
 
         from src.interfaces.api.mcp_router import router as mcp_router
         from src.interfaces.api.mcp_server_router import router as mcp_server_router

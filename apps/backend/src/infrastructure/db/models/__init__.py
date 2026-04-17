@@ -38,6 +38,7 @@ from src.infrastructure.db.models.agent_trace_model import (
     AgentExecutionTraceModel,
 )
 from src.infrastructure.db.models.bot_worker_model import BotWorkerModel
+from src.infrastructure.db.models.built_in_tool_model import BuiltInToolModel
 __all__ = [
     "TenantModel",
     "KnowledgeBaseModel",
@@ -67,4 +68,5 @@ __all__ = [
     "NotificationChannelModel",
     "AgentExecutionTraceModel",
     "BotWorkerModel",
+    "BuiltInToolModel",
 ]

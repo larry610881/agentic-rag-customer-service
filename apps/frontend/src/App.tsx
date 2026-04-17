@@ -47,6 +47,7 @@ const AdminUsersPage = lazyWithRetry(() => import("@/pages/admin-users"));
 const AdminObservabilityPage = lazyWithRetry(() => import("@/pages/admin-observability"));
 const AdminTokenUsagePage = lazyWithRetry(() => import("@/pages/admin-token-usage"));
 const AdminMcpRegistryPage = lazyWithRetry(() => import("@/pages/admin-mcp-registry"));
+const AdminToolsPage = lazyWithRetry(() => import("@/pages/admin-tools"));
 const AdminTenantsPage = lazyWithRetry(() => import("@/pages/admin-tenants"));
 const AdminPromptsPage = lazyWithRetry(() => import("@/pages/admin-prompts"));
 const AdminGuardRulesPage = lazyWithRetry(() => import("@/pages/admin-guard-rules"));
@@ -143,6 +144,10 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_MCP_REGISTRY}
               element={<AdminMcpRegistryPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_TOOLS}
+              element={<AdminToolsPage />}
             />
             <Route
               path={ROUTES.ADMIN_TENANTS}

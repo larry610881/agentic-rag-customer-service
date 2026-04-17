@@ -2,8 +2,14 @@ import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
 from src.application.agent.intent_classifier import IntentClassifier
+from src.application.agent.list_built_in_tools_use_case import (
+    ListBuiltInToolsUseCase,
+)
 from src.application.agent.send_message_use_case import SendMessageUseCase
 from src.application.agent.tool_registry import ToolRegistry
+from src.application.agent.update_built_in_tool_scope_use_case import (
+    UpdateBuiltInToolScopeUseCase,
+)
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.list_users_use_case import ListUsersUseCase
@@ -288,6 +294,9 @@ from src.infrastructure.db.repositories.log_retention_policy_repository import (
 from src.infrastructure.db.repositories.mcp_server_repository import (
     SQLAlchemyMcpServerRepository,
 )
+from src.infrastructure.db.repositories.built_in_tool_repository import (
+    SQLAlchemyBuiltInToolRepository,
+)
 from src.infrastructure.db.repositories.memory_fact_repository import (
     SQLAlchemyMemoryFactRepository,
 )
@@ -436,6 +445,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.worker_router",
             "src.interfaces.api.provider_setting_router",
             "src.interfaces.api.admin_router",
+            "src.interfaces.api.admin_tools_router",
             "src.interfaces.api.mcp_router",
             "src.interfaces.api.mcp_server_router",
             "src.interfaces.api.observability_router",
@@ -582,6 +592,11 @@ class Container(containers.DeclarativeContainer):
 
     mcp_server_repository = providers.Factory(
         SQLAlchemyMcpServerRepository,
+        session=db_session,
+    )
+
+    built_in_tool_repository = providers.Factory(
+        SQLAlchemyBuiltInToolRepository,
         session=db_session,
     )
 
@@ -1593,6 +1608,18 @@ class Container(containers.DeclarativeContainer):
 
     test_mcp_connection_use_case = providers.Factory(
         TestMcpConnectionUseCase,
+    )
+
+    # --- Agent: Built-in Tool Scope Registry ---
+
+    list_built_in_tools_use_case = providers.Factory(
+        ListBuiltInToolsUseCase,
+        repository=built_in_tool_repository,
+    )
+
+    update_built_in_tool_scope_use_case = providers.Factory(
+        UpdateBuiltInToolScopeUseCase,
+        repository=built_in_tool_repository,
     )
 
     # --- Platform: System Prompt Config ---

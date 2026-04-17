@@ -106,6 +106,13 @@ export const API_ENDPOINTS = {
   mcp: {
     discover: "/api/v1/mcp/discover",
   },
+  adminTools: {
+    list: "/api/v1/admin/tools",
+    update: (name: string) => `/api/v1/admin/tools/${name}`,
+  },
+  builtInTools: {
+    list: "/api/v1/agent/built-in-tools",
+  },
   mcpRegistry: {
     list: "/api/v1/mcp-servers",
     create: "/api/v1/mcp-servers",

@@ -21,6 +21,7 @@ export const ROUTES = {
   ADMIN_OBSERVABILITY: "/admin/observability",
   ADMIN_TOKEN_USAGE: "/admin/token-usage",
   ADMIN_MCP_REGISTRY: "/admin/mcp-registry",
+  ADMIN_TOOLS: "/admin/tools",
   ADMIN_TENANTS: "/admin/tenants",
   ADMIN_PROMPTS: "/admin/prompts",
   ADMIN_DIAGNOSTIC_RULES: "/admin/diagnostic-rules",

@@ -15,6 +15,9 @@ from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.bot.list_all_bots_use_case import ListAllBotsUseCase
 from src.application.bot.list_bots_use_case import ListBotsUseCase
 from src.application.bot.update_bot_use_case import UpdateBotCommand, UpdateBotUseCase
+from src.application.bot.validate_bot_enabled_tools import (
+    validate_bot_enabled_tools,
+)
 from src.application.bot.upload_bot_icon_use_case import (
     UploadBotIconCommand,
     UploadBotIconUseCase,
@@ -347,6 +350,9 @@ async def create_bot(
     use_case: CreateBotUseCase = Depends(
         Provide[Container.create_bot_use_case]
     ),
+    built_in_tool_repo=Depends(
+        Provide[Container.built_in_tool_repository]
+    ),
 ) -> BotResponse:
     if body.eval_depth not in _VALID_EVAL_DEPTHS:
         raise HTTPException(
@@ -358,6 +364,17 @@ async def create_bot(
         body.eval_provider, body.eval_model,
     )
     _validate_intent_routes(body.intent_routes)
+    try:
+        await validate_bot_enabled_tools(
+            enabled_tools=body.enabled_tools,
+            tenant_id=tenant.tenant_id,
+            built_in_tool_repository=built_in_tool_repo,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     bot = await use_case.execute(
         CreateBotCommand(
             tenant_id=tenant.tenant_id,
@@ -497,6 +514,9 @@ async def update_bot(
     use_case: UpdateBotUseCase = Depends(
         Provide[Container.update_bot_use_case]
     ),
+    built_in_tool_repo=Depends(
+        Provide[Container.built_in_tool_repository]
+    ),
 ) -> BotResponse:
     if body.eval_depth is not None and body.eval_depth not in _VALID_EVAL_DEPTHS:
         raise HTTPException(
@@ -509,6 +529,18 @@ async def update_bot(
     )
     if body.intent_routes is not None:
         _validate_intent_routes(body.intent_routes)
+    if body.enabled_tools is not None:
+        try:
+            await validate_bot_enabled_tools(
+                enabled_tools=body.enabled_tools,
+                tenant_id=tenant.tenant_id,
+                built_in_tool_repository=built_in_tool_repo,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
     command = _build_update_command(bot_id, body)
     try:
         bot = await use_case.execute(command)

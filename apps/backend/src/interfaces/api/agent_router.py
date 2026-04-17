@@ -246,7 +246,7 @@ async def agent_chat_stream(
     )
 
 
-# === Built-in tools registry ===
+# === Built-in tools registry (tenant-aware) ===
 
 
 class BuiltInToolItem(BaseModel):
@@ -254,39 +254,34 @@ class BuiltInToolItem(BaseModel):
     label: str
     description: str
     requires_kb: bool
-
-
-BUILT_IN_TOOLS: list[BuiltInToolItem] = [
-    BuiltInToolItem(
-        name="rag_query",
-        label="知識庫查詢",
-        description="對 bot 連結的知識庫做向量檢索，適合一般文字問答。",
-        requires_kb=True,
-    ),
-    BuiltInToolItem(
-        name="query_dm_with_image",
-        label="DM 圖卡查詢",
-        description=(
-            "對 catalog PDF 知識庫（如家樂福 DM）檢索，命中頁面圖卡由各通路自動"
-            "顯示（LINE Flex / Web Gallery / Widget），適合促銷 / 商品查詢場景。"
-        ),
-        requires_kb=True,
-    ),
-    BuiltInToolItem(
-        name="transfer_to_human_agent",
-        label="轉接真人客服",
-        description=(
-            "當使用者要求轉人工、情緒激動或議題複雜（如退款爭議、帳務核對）時，"
-            "讓 LLM 呼叫此工具顯示客服聯絡按鈕。需要 Bot「能力」頁設定客服 URL。"
-        ),
-        requires_kb=False,
-    ),
-]
+    scope: str | None = None  # admin-only
+    tenant_ids: list[str] | None = None  # admin-only
 
 
 @router.get("/built-in-tools", response_model=list[BuiltInToolItem])
+@inject
 async def list_built_in_tools(
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case=Depends(Provide[Container.list_built_in_tools_use_case]),
 ) -> list[BuiltInToolItem]:
-    """列出系統內建可啟用的 tools，供 bot 編輯 UI 顯示多選清單。"""
-    return BUILT_IN_TOOLS
+    """列出 current user 可使用的 built-in tools。
+
+    system_admin → 所有工具（含 scope 與白名單，用於管理 UI）
+    一般租戶 → global + 白名單包含自己 tenant_id 的工具
+    """
+    is_admin = tenant.role == "system_admin"
+    tools = await use_case.execute(
+        tenant_id=tenant.tenant_id or None,
+        is_admin=is_admin,
+    )
+    return [
+        BuiltInToolItem(
+            name=t.name,
+            label=t.label,
+            description=t.description,
+            requires_kb=t.requires_kb,
+            scope=t.scope if is_admin else None,
+            tenant_ids=list(t.tenant_ids) if is_admin else None,
+        )
+        for t in tools
+    ]
