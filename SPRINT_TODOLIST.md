@@ -1330,7 +1330,7 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 ### S-Gov.1 Sub-agent 驗證與追蹤穩定化
 | 項目 | 狀態 | 說明 |
 |------|------|------|
-| Web/LINE 雙通路 subagent 端到端測試 | ⏳ | 建 30 題分類 rubric（閒聊 10 / 商品 10 / 高階 10）量化 classifier 準確率 |
+| ~~Web/LINE 雙通路 subagent 端到端測試~~ | ⏭️ POC 略過 | POC 階段交由真實使用者測試，不另做 30 題 rubric 工程化驗證 |
 | Agent 執行追蹤 UI 顯示 `worker_routing` 節點 | ✅ | Commit [de71c50](https://github.com/larry610881/agentic-rag-customer-service/commit/de71c50) 補上 NODE_COLORS 紫色節點 + metadata 欄位表 worker_name/llm/provider/kb_count |
 | LINE 通路 subagent 支援 | ✅ | Commit [e6e0ef4](https://github.com/larry610881/agentic-rag-customer-service/commit/e6e0ef4) LINE handler 接入 worker routing，Web/LINE 行為一致 |
 | Worker 層級 `enabled_tools` 覆蓋 | ✅ | Commit [84df8f3](https://github.com/larry610881/agentic-rag-customer-service/commit/84df8f3) + [b501dc7](https://github.com/larry610881/agentic-rag-customer-service/commit/b501dc7)（UI 簡化）|
@@ -1342,7 +1342,9 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | 系統層 Tool 清單 UI | ✅ | Commit [cd27b81](https://github.com/larry610881/agentic-rag-customer-service/commit/cd27b81) — `/admin/tools` 頁面 + Dialog（scope select + 租戶 checkbox + 可見租戶 N/M 摘要）|
 | Agent 資料流過濾 | ✅ | Commit [cd27b81](https://github.com/larry610881/agentic-rag-customer-service/commit/cd27b81) — GET `/agent/built-in-tools` 依 tenant_id 過濾 + Bot create/update 驗證 enabled_tools（未授權回 422）|
 
-### S-Gov.3 系統層 KB / Bot 清單整理
+### S-Gov.3 系統層 KB / Bot 清單整理（⏭️ POC 暫緩）
+> POC 階段 admin 只會是自己，混合視圖不致誤操作。上測試機前再評估是否真的要做。
+
 | 項目 | 說明 |
 |------|------|
 | 清除租戶隔離重疊 | 目前 KB / Bot 頁面已顯示全部租戶資料（system admin 視角），但系統層本來就有另一個清單頁 |
