@@ -16,7 +16,9 @@ import {
   type BlueprintAgentSpec,
   type ChunkNodeSpec,
 } from "./blueprint-canvas";
+import { ContactCardButton } from "@/features/chat/components/contact-card-button";
 import type { Bot } from "@/types/bot";
+import type { ContactCard } from "@/types/chat";
 import { cn } from "@/lib/utils";
 
 type BotStudioWorkspaceProps = {
@@ -31,6 +33,8 @@ type ChatTurn = {
   content: string;
   isStreaming: boolean;
   traceId?: string;
+  /** transfer_to_human_agent tool 產生的聯絡按鈕（電話 / URL）— 與 web bot / widget 共用同一份視覺 */
+  contact?: ContactCard;
 };
 
 /**
@@ -139,6 +143,14 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
     assistantTurnIdRef.current = null;
   }, []);
 
+  const setAssistantContact = useCallback((contact: ContactCard) => {
+    setTurns((prev) => {
+      const id = assistantTurnIdRef.current;
+      if (!id) return prev;
+      return prev.map((t) => (t.id === id ? { ...t, contact } : t));
+    });
+  }, []);
+
   const { sendMessage, isStreaming } = useStudioStreaming({
     onEvent: (event) => {
       setEventLog((prev) =>
@@ -173,6 +185,15 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
         typeof event.conversation_id === "string"
       ) {
         setConversationId(event.conversation_id);
+      }
+      // transfer_to_human_agent tool 觸發 → 將 contact card 掛到當前 assistant turn，
+      // chat panel 用同一個 ContactCardButton 與 web bot / widget 視覺一致。
+      if (
+        event.type === "contact" &&
+        event.contact &&
+        typeof event.contact === "object"
+      ) {
+        setAssistantContact(event.contact as ContactCard);
       }
     },
     onWorkerRouting: ({ worker_name }) => {
@@ -457,26 +478,39 @@ function StudioChatPanel({
 function ChatBubble({ turn }: { turn: ChatTurn }) {
   const isUser = turn.role === "user";
   return (
-    <div className={cn("flex gap-2", isUser ? "justify-end" : "justify-start")}>
-      {!isUser && (
-        <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900">
-          <BotIcon className="h-4 w-4 text-violet-600 dark:text-violet-300" />
-        </div>
+    <div
+      className={cn(
+        "flex flex-col gap-2",
+        isUser ? "items-end" : "items-start",
       )}
-      <div
-        className={cn(
-          "max-w-[78%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words",
-          isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted",
-          turn.isStreaming && !turn.content && "italic opacity-60",
+    >
+      <div className={cn("flex gap-2", isUser ? "justify-end" : "justify-start")}>
+        {!isUser && (
+          <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900">
+            <BotIcon className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+          </div>
         )}
-      >
-        {turn.content || (turn.isStreaming ? "思考中..." : "")}
+        <div
+          className={cn(
+            "max-w-[78%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words",
+            isUser
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted",
+            turn.isStreaming && !turn.content && "italic opacity-60",
+          )}
+        >
+          {turn.content || (turn.isStreaming ? "思考中..." : "")}
+        </div>
+        {isUser && (
+          <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15">
+            <UserIcon className="h-4 w-4 text-primary" />
+          </div>
+        )}
       </div>
-      {isUser && (
-        <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15">
-          <UserIcon className="h-4 w-4 text-primary" />
+      {/* transfer_to_human_agent tool 產生的聯絡按鈕，與 web bot / widget 共用 ContactCardButton */}
+      {!isUser && turn.contact && (
+        <div className="ml-9">
+          <ContactCardButton contact={turn.contact} />
         </div>
       )}
     </div>
