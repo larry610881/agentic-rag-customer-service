@@ -97,10 +97,17 @@ class QueryRAGUseCase:
         all_results.sort(key=lambda r: r.score, reverse=True)
 
         # Trace: vector search results
+        # parent_id 用 label-based 反查 — ContextVar tool_parent() 在 LLM parallel
+        # tool calls 場景會被「最後一個 tool」覆蓋（例如同時 emit rag_query +
+        # transfer_to_human_agent 時，tool_parent 會指向 transfer 而非 rag_query）。
+        # 用 find_last_node_by 確保 parent 永遠指向真正的 rag_query 呼叫者。
         AgentTraceCollector.add_node(
             node_type="tool_result",
             label="RAG 向量搜尋",
-            parent_id=AgentTraceCollector.tool_parent(),
+            parent_id=(
+                AgentTraceCollector.find_last_node_by("tool_call", "rag_query")
+                or AgentTraceCollector.tool_parent()
+            ),
             start_ms=AgentTraceCollector.offset_ms() - search_ms,
             end_ms=AgentTraceCollector.offset_ms(),
             result_count=len(all_results),
@@ -222,10 +229,17 @@ class QueryRAGUseCase:
         all_results.sort(key=lambda r: r.score, reverse=True)
 
         # Trace: vector search results
+        # parent_id 用 label-based 反查 — ContextVar tool_parent() 在 LLM parallel
+        # tool calls 場景會被「最後一個 tool」覆蓋（例如同時 emit rag_query +
+        # transfer_to_human_agent 時，tool_parent 會指向 transfer 而非 rag_query）。
+        # 用 find_last_node_by 確保 parent 永遠指向真正的 rag_query 呼叫者。
         AgentTraceCollector.add_node(
             node_type="tool_result",
             label="RAG 向量搜尋",
-            parent_id=AgentTraceCollector.tool_parent(),
+            parent_id=(
+                AgentTraceCollector.find_last_node_by("tool_call", "rag_query")
+                or AgentTraceCollector.tool_parent()
+            ),
             start_ms=AgentTraceCollector.offset_ms() - search_ms,
             end_ms=AgentTraceCollector.offset_ms(),
             result_count=len(all_results),

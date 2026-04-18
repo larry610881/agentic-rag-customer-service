@@ -148,5 +148,22 @@ class AgentTraceCollector:
         return val or None
 
     @staticmethod
+    def find_last_node_by(node_type: str, label: str) -> str | None:
+        """找最近一筆 node_type + label 都吻合的節點 id，無則回 None。
+
+        用途：RAG 等「inner tool result」要 attach 到對應的 tool_call 節點時，
+        不能依賴 ContextVar 的 tool_parent()（單值會被 LLM parallel tool calls
+        覆蓋成「最後一個」tool 的 nid）。改用 label 反查最近一筆對應 tool_call，
+        確保 parent 永遠指向真正的呼叫者。
+        """
+        trace = _agent_trace.get()
+        if trace is None:
+            return None
+        for node in reversed(trace.nodes):
+            if node.node_type == node_type and node.label == label:
+                return node.node_id
+        return None
+
+    @staticmethod
     def current() -> AgentExecutionTrace | None:
         return _agent_trace.get()
