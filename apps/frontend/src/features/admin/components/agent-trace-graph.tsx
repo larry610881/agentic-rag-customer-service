@@ -194,6 +194,10 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
 
 type CustomNodeData = {
   execNode: ExecutionNode;
+  /** 同 type + 同 start_ms 的相鄰節點視為平行群組 — true 時顯示 ⚡ badge */
+  isParallelGroup?: boolean;
+  /** 平行群組總共有幾個節點（含自己） */
+  parallelCount?: number;
 };
 
 function TraceNode({ data }: { data: CustomNodeData }) {
@@ -201,6 +205,8 @@ function TraceNode({ data }: { data: CustomNodeData }) {
   const [showRaw, setShowRaw] = useState(false);
   const n = data.execNode;
   const isFailed = n.outcome === "failed";
+  const isParallel = data.isParallelGroup === true;
+  const parallelCount = data.parallelCount ?? 1;
   const Icon = NODE_ICONS[n.node_type] ?? Brain;
   const colorClass = isFailed
     ? NODE_COLORS_FAILED
@@ -238,6 +244,14 @@ function TraceNode({ data }: { data: CustomNodeData }) {
           )}
         />
         <span className="text-sm font-medium truncate">{n.label}</span>
+        {isParallel && (
+          <span
+            title={`平行呼叫（共 ${parallelCount} 個工具同時執行）`}
+            className="rounded bg-violet-100 px-1 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900 dark:text-violet-200"
+          >
+            ⚡ 並行
+          </span>
+        )}
         {isFailed && (
           <span className="rounded bg-red-100 px-1 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-900 dark:text-red-200">
             FAILED
@@ -330,6 +344,31 @@ function TraceNode({ data }: { data: CustomNodeData }) {
 
 const nodeTypes = { traceNode: TraceNode };
 
+/**
+ * 把連續的同 type + 同 start_ms（差距 < 50ms 容忍）節點群組為 parallel group。
+ * 避免把不相關的 start_ms=0 節點（如 user_input + worker_routing）誤合，
+ * 只有「相鄰」且「節點類型一致」的視為真正的平行呼叫。
+ */
+function groupParallelByStartMs(nodes: ExecutionNode[]): ExecutionNode[][] {
+  const groups: ExecutionNode[][] = [];
+  let current: ExecutionNode[] = [];
+  for (const n of nodes) {
+    const last = current[current.length - 1];
+    if (
+      last &&
+      n.node_type === last.node_type &&
+      Math.abs(n.start_ms - last.start_ms) < 50
+    ) {
+      current.push(n);
+    } else {
+      if (current.length > 0) groups.push(current);
+      current = [n];
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
+}
+
 function buildGraph(execNodes: ExecutionNode[]): {
   nodes: Node[];
   edges: Edge[];
@@ -358,62 +397,84 @@ function buildGraph(execNodes: ExecutionNode[]): {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  // Layout main-line nodes horizontally
-  for (let i = 0; i < mainLine.length; i++) {
-    const n = mainLine[i];
-    nodes.push({
-      id: n.node_id,
-      type: "traceNode",
-      position: { x: i * 300, y: 0 },
-      data: { execNode: n } satisfies CustomNodeData,
-      dragHandle: ".drag-handle",
-    });
+  // 主線按「相鄰同 type 同 start_ms」分組 → 同 group 共享一個 column（x），
+  // 同 group 內部以 y offset 上下並排，視覺上呈現 LLM parallel tool calls。
+  const mainGroups = groupParallelByStartMs(mainLine);
+  let prevGroupLastNodeId: string | null = null;
 
-    // Sequential edge
-    if (i > 0) {
-      edges.push({
-        id: `e-seq-${i}`,
-        source: mainLine[i - 1].node_id,
-        target: n.node_id,
-        animated: true,
-        style: { stroke: "#cbd5e1" },
+  for (let g = 0; g < mainGroups.length; g++) {
+    const group = mainGroups[g];
+    const isParallel = group.length > 1;
+    const groupX = g * 300;
+
+    for (let k = 0; k < group.length; k++) {
+      const n = group[k];
+      nodes.push({
+        id: n.node_id,
+        type: "traceNode",
+        position: { x: groupX, y: k * 110 },
+        data: {
+          execNode: n,
+          isParallelGroup: isParallel,
+          parallelCount: group.length,
+        } satisfies CustomNodeData,
+        dragHandle: ".drag-handle",
       });
-    }
 
-    // Layout child nodes vertically below parent
-    const children = childrenOf.get(n.node_id);
-    if (children) {
-      for (let j = 0; j < children.length; j++) {
-        const child = children[j];
-        nodes.push({
-          id: child.node_id,
-          type: "traceNode",
-          position: { x: i * 300 + j * 280, y: 160 },
-          data: { execNode: child } satisfies CustomNodeData,
-          dragHandle: ".drag-handle",
-        });
-
-        // Edge from parent to child
+      // Sequential edge from 前一個 group 的最後一個節點 → 本 group 的每個並行節點
+      if (prevGroupLastNodeId) {
         edges.push({
-          id: `e-child-${n.node_id}-${child.node_id}`,
-          source: n.node_id,
-          target: child.node_id,
+          id: `e-seq-${prevGroupLastNodeId}-${n.node_id}`,
+          source: prevGroupLastNodeId,
+          target: n.node_id,
           animated: true,
-          style: { stroke: "#94a3b8", strokeDasharray: "5 3" },
+          style: { stroke: isParallel ? "#a78bfa" : "#cbd5e1" },
         });
+      }
 
-        // Sequential edge between siblings
-        if (j > 0) {
-          edges.push({
-            id: `e-sibling-${j}`,
-            source: children[j - 1].node_id,
-            target: child.node_id,
-            animated: true,
-            style: { stroke: "#94a3b8" },
-          });
+      // Layout child nodes vertically below parent (parallel-aware sub-layout)
+      const children = childrenOf.get(n.node_id);
+      if (children) {
+        const childGroups = groupParallelByStartMs(children);
+        let childYBase = 160 + k * 110;  // 與 parent 的 y 對齊
+        for (let cg = 0; cg < childGroups.length; cg++) {
+          const cgroup = childGroups[cg];
+          const cIsParallel = cgroup.length > 1;
+          for (let ck = 0; ck < cgroup.length; ck++) {
+            const child = cgroup[ck];
+            nodes.push({
+              id: child.node_id,
+              type: "traceNode",
+              position: {
+                x: groupX + cg * 280,
+                y: childYBase + ck * 100,
+              },
+              data: {
+                execNode: child,
+                isParallelGroup: cIsParallel,
+                parallelCount: cgroup.length,
+              } satisfies CustomNodeData,
+              dragHandle: ".drag-handle",
+            });
+
+            // Edge from parent to child
+            edges.push({
+              id: `e-child-${n.node_id}-${child.node_id}`,
+              source: n.node_id,
+              target: child.node_id,
+              animated: true,
+              style: {
+                stroke: cIsParallel ? "#a78bfa" : "#94a3b8",
+                strokeDasharray: "5 3",
+              },
+            });
+          }
         }
       }
     }
+
+    // 取本 group 的最後一個節點當下一輪 sequential edge 的 source
+    prevGroupLastNodeId = group[group.length - 1].node_id;
   }
 
   return { nodes, edges };

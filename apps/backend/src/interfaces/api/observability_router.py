@@ -34,15 +34,21 @@ router = APIRouter(prefix="/api/v1/observability", tags=["observability"])
 
 def _effective_tenant_filter(
     tenant: CurrentTenant, tenant_id: str | None
-) -> str:
+) -> str | None:
     """S-Gov.3 tenant filter resolution for observability read endpoints.
 
-    - admin (system_admin): 可透過 `tenant_id` query 指定跨租戶查詢；
-      未指定時 fallback 到 admin 自己的 tenant_id（SYSTEM_TENANT_ID）
+    Observability 是 admin 本職就該跨租戶觀察的場景，所以這裡的解析跟一般
+    保護性 helper 不同：
+
+    - admin (system_admin):
+        - tenant_id 指定 → 過濾該租戶
+        - tenant_id 未指定（None）→ 回傳 None（**不過濾**，看全部租戶）
     - 一般租戶：強制用自己的 tenant_id，忽略 query param（防止越權）
+
+    呼叫端必須對 None 結果做條件式 WHERE：`if tid: stmt.where(...)`。
     """
     if tenant.role == "system_admin":
-        return tenant_id or tenant.tenant_id
+        return tenant_id  # None → 全部租戶（觀測場景）
     return tenant.tenant_id
 
 
@@ -67,8 +73,10 @@ async def list_evaluations(
         stmt = select(RAGEvalModel).order_by(RAGEvalModel.created_at.desc())
         count_stmt = select(func.count()).select_from(RAGEvalModel)
 
-        stmt = stmt.where(RAGEvalModel.tenant_id == effective_tid)
-        count_stmt = count_stmt.where(RAGEvalModel.tenant_id == effective_tid)
+        # admin + 未指定 tenant_id → effective_tid 為 None，不加 WHERE → 看全部租戶
+        if effective_tid is not None:
+            stmt = stmt.where(RAGEvalModel.tenant_id == effective_tid)
+            count_stmt = count_stmt.where(RAGEvalModel.tenant_id == effective_tid)
         if layer:
             stmt = stmt.where(RAGEvalModel.layer == layer)
             count_stmt = count_stmt.where(RAGEvalModel.layer == layer)
@@ -129,8 +137,10 @@ async def list_agent_traces(
         T = AgentExecutionTraceModel  # noqa: N806
         count_stmt = select(func.count()).select_from(T)
 
-        stmt = stmt.where(T.tenant_id == effective_tid)
-        count_stmt = count_stmt.where(T.tenant_id == effective_tid)
+        # admin + 未指定 tenant_id → effective_tid 為 None，不加 WHERE → 看全部租戶
+        if effective_tid is not None:
+            stmt = stmt.where(T.tenant_id == effective_tid)
+            count_stmt = count_stmt.where(T.tenant_id == effective_tid)
         if agent_mode:
             stmt = stmt.where(T.agent_mode == agent_mode)
             count_stmt = count_stmt.where(T.agent_mode == agent_mode)
@@ -242,8 +252,10 @@ async def get_token_usage(
                 UsageRecordModel.tenant_id == TenantModel.id,
             )
             .where(UsageRecordModel.created_at >= since)
-            .where(UsageRecordModel.tenant_id == effective_tid)
         )
+        # admin + 未指定 tenant_id → effective_tid 為 None，不加 WHERE → 看全部租戶
+        if effective_tid is not None:
+            stmt = stmt.where(UsageRecordModel.tenant_id == effective_tid)
 
         stmt = stmt.group_by(
             UsageRecordModel.tenant_id,
