@@ -10,6 +10,7 @@
 ## 目錄
 
 - [Ollama A/B 測試 Debug — 模型 Tag 驗證 + Router Prefix + RHF shouldDirty](#ollama-ab-測試-debug--模型-tag-驗證--router-prefix--rhf-shoulddirty)
+- [S-Token-Gov.2.5 — 額度可視化：3-Query Application Join + has_ledger Flag + 視覺先於自動化](#s-token-gov25--額度可視化3-query-application-join--has_ledger-flag--視覺先於自動化)
 - [S-Token-Gov.2 — Token Ledger：扣費引擎 + 第一個 arq cron + Cross-Cutting Hook 容錯設計](#s-token-gov2--token-ledger扣費引擎--第一個-arq-cron--cross-cutting-hook-容錯設計)
 - [S-Token-Gov.1 — Plan Template CRUD：String Name FK 設計 + 軟/硬刪 + DDD 違反順手修](#s-token-gov1--plan-template-crudstring-name-fk-設計--軟硬刪--ddd-違反順手修)
 - [S-Token-Gov.0 — Token 追蹤完整性：Audit 5 條漏網 + UsageCategory enum + 累計屬性 Pattern](#s-token-gov0--token-追蹤完整性audit-5-條漏網--usagecategory-enum--累計屬性-pattern)
@@ -159,6 +160,110 @@
 
 - **RHF `setValue` 的 `shouldDirty` / `shouldTouch` / `shouldValidate`**：三個 flag 控制不同的副作用——`shouldDirty` 標記欄位為已修改（觸發 `watch` 和 `isDirty`）；`shouldValidate` 觸發 zod 驗證；`shouldTouch` 標記為已互動。外部觸發表單值變更（如按鈕覆寫）時應加 `{ shouldDirty: true }` 確保訂閱方感知到變化
 - **MoE 模型的 active params**：`qwen3.6:35b-a3b` 的 35b 是總參數，3b 是每次 inference 實際啟用的參數（active）。推理成本接近 3B dense model，但模型容量接近 35B，是 edge/local deploy 的高 CP 值選擇
+
+---
+
+## S-Token-Gov.2.5 — 額度可視化：3-Query Application Join + has_ledger Flag + 視覺先於自動化
+
+**日期**：2026-04-20
+**Sprint**：S-Token-Gov.2.5（5 sprint 系列第 4 步 — 在 .3 auto-topup 之前先補可視化）
+**涉及層級**：Application 層擴 1 use case + Interfaces 層擴 1 endpoint + 前端 2 新頁 + 1 新 hook + 路由/sidebar — 約 10 檔變動，純讀取 + UI 為主。
+
+### 本次相關主題
+
+- 視覺化先於自動化（Observability before Automation）
+- N+1 query 規避：3-query application 層 join
+- 「未啟用」狀態的顯式 flag（has_ledger）vs 隱式判斷
+- 純讀取 endpoint 的「不副作用」原則
+- 既有 hook 重用（`useTenantQuota`）vs 新 hook 創建
+
+### 做得好的地方
+
+#### 1. 「視覺先於自動化」的 Sprint 排序判斷
+
+原本 5-sprint 計畫為 `.0 → .1 → .2 → .3 (auto-topup + email) → .4 (revenue dashboard)`。Token-Gov.2 結束後 Larry 問：「我系統層看不到每個租戶的當月用量？」這個問題揭露了一個 Sprint 排序的盲點 — auto-topup 是「機器自動行為」，但**沒有可視化，根本不知道該不該續、續了之後狀態如何**。
+
+→ 將 `.4` 中「租戶額度頁 + 系統儀表板基礎視圖」拆出 `.2.5` 先做。Token-Gov.4 留給「BillingTransaction 聚合 + 收益分析」（要等 .3 產出 transaction data 後才有意義）。
+
+**設計原則**：自動化機制（auto-topup / cron）上線前，必須先有人類可觀察的 dashboard。否則自動行為發生時，運維側完全黑盒 → 無法判斷 health，更無法 debug。
+
+#### 2. 3-Query Application 層 Join — 避免 N+1 也避免 lazy-create N 個 ledger
+
+兩個誘人但錯誤的設計：
+- **誘惑 A**：對每個 tenant 跑一次 `EnsureLedgerUseCase`（重用既有單筆查詢邏輯）→ N 個 INSERT，列表頁變寫入操作
+- **誘惑 B**：在 SQL 層 LEFT JOIN tenants/ledgers/plans → 跨 BC repo 邊界，違反 DDD repository 隔離
+
+最終做法：
+```python
+tenants = await self._tenants.find_all()                     # 1 query
+ledgers = await self._ledgers.find_all_for_cycle(cycle)      # 1 query
+plans = await self._plans.find_all(include_inactive=True)    # 1 query
+ledger_by_tenant = {l.tenant_id: l for l in ledgers}
+plan_by_name = {p.name: p for p in plans}
+# 在 application 層 join，每個 tenant O(1) 字典查找
+```
+
+**為什麼這比 SQL JOIN 好**：
+- 各 BC 的 Repository 維持獨立 — 未來 ledger 改 NoSQL / 拆服務都不用改 application 層
+- 容量評估：100 tenants × 1 ledger row × 5 plan rows ≈ 105 rows，純讀取輕量
+- 可讀性：3 個簡單 query > 1 個 3-table JOIN with conditional aggregation
+
+#### 3. `has_ledger: bool` flag — 顯式區分「未啟用」與「滿載」
+
+最容易踩的坑：用 `total_used_in_cycle == 0` 判斷「未啟用」，會與「本月剛結算還沒開始用」混淆。
+
+→ 加 `has_ledger` flag 顯式回傳「該 tenant 該 cycle 的 ledger row 存不存在」。前端 UI 才能畫出 `<Badge>未啟用</Badge>` 提示，與「base 滿載=10M / used=0」明確區分。
+
+這是「**在 DTO 加一個 boolean 比讓 client 從多欄位推導語意更穩**」的典型例子 — domain knowledge 應該被顯式編碼到 API 契約，而非散落在前後端各自的條件判斷。
+
+#### 4. 既有 hook 重用 — `useTenantQuota` 服務了兩個頁面
+
+Token-Gov.2 為 admin tenant-config-dialog 寫的 `useTenantQuota(tenantId)` hook，本次 `/quota` 租戶自助頁直接重用：
+```ts
+const tenantId = useAuthStore((s) => s.tenantId);
+const { data } = useTenantQuota(tenantId);
+```
+
+→ 零後端工作就完成租戶頁。設計層面驗證了「hook 而非 component-internal fetch」的好處 — 同一個 query 邏輯可以被多個視圖重用。
+
+### 潛在隱憂
+
+#### 1. 100+ 租戶後表格效能 → 中
+
+目前實作前端不分頁、不虛擬化、client-side sort。當租戶數成長到 100+ 後：
+- 後端：3 個 query 仍 OK（PostgreSQL `find_all` 對 < 10k rows 都很快）
+- 前端：全量渲染 100+ row 進 DOM，shadcn/ui Table 無虛擬化 → 滾動可能卡
+
+**改善方向**：
+- 後端加 `?limit & ?offset` 支援分頁（Repository 層 `find_all` 已有此 API）
+- 前端用 `@tanstack/react-virtual` 虛擬列表（既有依賴中沒有，需新加）
+- 短期觸發點：當「table 行數 > 50」時加 console warning 當作技術債 marker
+
+#### 2. cycle 切換時的 race condition → 低
+
+連續快速切 cycle picker（例如 demo 時來回點），TanStack Query 的請求順序 vs 回應順序可能錯位 — 後 issue 的 request 先回，前一個慢回的 response 覆蓋了「最新」資料。
+
+**目前緩解**：TanStack Query 內建的 `queryKey` 隔離（每個 cycle 不同 key 自動互不污染）+ `staleTime: 30_000` 讓快速切換命中 cache。
+
+**可能改善**：用 `useQuery({ structuralSharing: true })`，或顯式加 `signal` cancel — 但目前 demo 場景未踩到，先觀察。
+
+#### 3. `find_all` 沒過濾 `is_active=False` → 中
+
+`PlanRepository.find_all(include_inactive=True)` 為了**確保「歷史 ledger 用了已軟刪 plan」也能正確顯示 plan_name**，傳了 `include_inactive=True`。但這意味列表順序不可控（無 `created_at` 排序），未來新增「方案管理」UI 排序需求時要記得不靠 plan list 順序。
+
+**改善方向**：在 PlanRepository 增加 `find_active_for_tenants(tenant_ids: list[str])` 精準查詢，或對 `find_all` 加 `order_by` 預設值。
+
+### 延伸學習
+
+- **N+1 query vs Read-Only Lazy Create**：本次主動避開「lazy create on read」的誘惑。OOP 社群有「Active Record Pattern」鼓勵在讀取時自動補完缺少資料，但在 multi-tenant + cron 並存的系統，讀取觸發寫入會造成 race condition + 計費奇異點。延伸閱讀：Domain-Driven Design (Evans) Ch. 6 Aggregate「修改與查詢分離」
+- **CQRS 雛形**：本次 endpoint 是純查詢，跨 3 個 BC（Tenant + Ledger + Plan）。當未來查詢需求複雜化（aggregate by plan / by month），可考慮拉一個 `QueryProjection` 表或 materialized view，將「跨聚合查詢」從寫入路徑中物理隔離。延伸閱讀：CQRS pattern + Read Model
+- **DTO `has_*` flag 的設計力**：domain knowledge encoded into API contract — 凡是「multiple optional fields 共同決定一個語意」的場景，加一個 explicit boolean / enum 永遠比讓 client 自行推導好。常見案例：API 回傳 `is_default` / `is_owner` / `is_pending` 等，都可看作此模式
+
+### 思考題
+
+「我們未來要做的 Token-Gov.3 auto-topup 是 cron + 條件判斷自動發生。如果使用者開啟此頁時，cron 剛好正在 trigger auto-topup（addon += 10M）— 使用者看到的 `addon_remaining` 數字會錯位嗎？該怎麼設計這個一致性？」
+
+提示：考慮 PostgreSQL 預設 isolation level（Read Committed），以及 `staleTime: 30_000` 與「本月已扣費」的時序關係。如果是高頻計費場景（如即時通訊每秒扣 token），這頁需要怎樣的 refresh policy？
 
 ---
 

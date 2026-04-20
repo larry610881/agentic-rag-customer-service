@@ -27,6 +27,7 @@ import {
   Wand2,
   Wrench,
   Package,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ const generalNavItems = [
   { href: "/knowledge", label: "知識庫", icon: BookOpen },
   { href: "/feedback", label: "回饋分析", icon: BarChart3 },
   { href: "/token-usage", label: "Token 用量", icon: Coins },
+  { href: "/quota", label: "本月額度", icon: Wallet },
 ];
 
 const systemAdminItems = [
@@ -57,6 +59,7 @@ const systemAdminItems = [
   { href: "/admin/log-retention", label: "日誌清理", icon: Trash2 },
   { href: "/admin/observability", label: "可觀測性", icon: Activity },
   { href: "/admin/token-usage", label: "Token 用量", icon: Coins },
+  { href: "/admin/quota-overview", label: "額度總覽", icon: Wallet },
   { href: "/admin/mcp-registry", label: "MCP 工具庫", icon: Puzzle },
   { href: "/admin/tools", label: "工具權限", icon: Wrench },
   { href: "/admin/error-events", label: "錯誤追蹤", icon: AlertTriangle },

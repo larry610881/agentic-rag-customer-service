@@ -147,6 +147,12 @@ export const API_ENDPOINTS = {
     delete: (id: string) => `/api/v1/admin/users/${id}`,
     resetPassword: (id: string) => `/api/v1/admin/users/${id}/reset-password`,
   },
+  adminQuotas: {
+    list: (cycle?: string) =>
+      cycle
+        ? `/api/v1/admin/tenants/quotas?cycle=${encodeURIComponent(cycle)}`
+        : "/api/v1/admin/tenants/quotas",
+  },
   systemPrompts: {
     get: "/api/v1/system/prompts",
     update: "/api/v1/system/prompts",

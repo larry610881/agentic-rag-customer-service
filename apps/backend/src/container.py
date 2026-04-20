@@ -229,6 +229,9 @@ from src.application.ledger.ensure_ledger_use_case import EnsureLedgerUseCase
 from src.application.ledger.get_tenant_quota_use_case import (
     GetTenantQuotaUseCase,
 )
+from src.application.ledger.list_all_tenants_quotas_use_case import (
+    ListAllTenantsQuotasUseCase,
+)
 from src.application.ledger.process_monthly_reset_use_case import (
     ProcessMonthlyResetUseCase,
 )
@@ -1042,6 +1045,14 @@ class Container(containers.DeclarativeContainer):
         GetTenantQuotaUseCase,
         tenant_repository=tenant_repository,
         ensure_ledger=ensure_ledger_use_case,
+    )
+
+    # S-Token-Gov.2.5: 系統層額度總覽 use case
+    list_all_tenants_quotas_use_case = providers.Factory(
+        ListAllTenantsQuotasUseCase,
+        tenant_repository=tenant_repository,
+        ledger_repository=token_ledger_repository,
+        plan_repository=plan_repository,
     )
 
     record_usage_use_case = providers.Factory(

@@ -1488,6 +1488,22 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | BDD 5 scenarios | ✅ | `integration/admin/token_ledger.feature` — 第一次扣費自動建/連續扣費累計/base用完addon變負/月度重置carryover/included_categories過濾 全綠 |
 | 後端 unit + 前端 vitest 不退步 | ✅ | backend 624 baseline 不退步；frontend 223 passed / 12 failed = baseline 零退步 |
 
+#### S-Token-Gov.2.5 額度可視化（系統層 + 租戶層）✅ 完成 (2026-04-20)
+> 在 .3 auto-topup 之前，先讓系統管理員看到所有租戶當月用量、租戶 admin 看自己。視覺先行於自動化。
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| ListAllTenantsQuotasUseCase | ✅ | 3 query (tenants/ledgers/plans) → application 層 join；不為了顯示而建 ledger |
+| TenantQuotaItem dataclass | ✅ | 含 has_ledger flag 區分「未啟用」與「base 滿載」 |
+| GET /api/v1/admin/tenants/quotas | ✅ | system_admin only，?cycle=YYYY-MM 預設當月 |
+| Container DI 註冊 | ✅ | list_all_tenants_quotas_use_case in container.py |
+| 前端 useAdminTenantsQuotas hook | ✅ | TanStack Query + 30 秒 staleTime + queryKey: ["admin","tenants","quotas",cycle] |
+| /admin/quota-overview 頁 | ✅ | cycle picker (12 個月) + 4 彙總卡 + 排序表（按 used desc）+ Empty/Error/Loading state |
+| /quota 租戶自助頁 | ✅ | 重用 useTenantQuota；3 卡（used/base/addon）+ 計費類別唯讀；base ≥80% 警示色 |
+| 路由 + sidebar 入口 | ✅ | ROUTES.QUOTA + ADMIN_QUOTA_OVERVIEW；Wallet icon 加在 generalNavItems + systemAdminItems |
+| BDD 3 scenarios | ✅ | `integration/admin/quota_overview.feature` — system_admin 列出當月/查歷史月份/非 admin 403 全綠 |
+| tsc + vitest 不退步 | ✅ | tsc 114→112 (零新錯誤)；vitest 223 passed baseline 維持 |
+
 #### S-Token-Gov.3 自動續約 + Email 通知
 > 軟上限觸發 auto-buy + 門檻通知；POC 不設防爆
 

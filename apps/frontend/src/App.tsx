@@ -32,6 +32,7 @@ const KnowledgePage = lazyWithRetry(() => import("@/pages/knowledge"));
 const KnowledgeDetailPage = lazyWithRetry(() => import("@/pages/knowledge-detail"));
 const FeedbackPage = lazyWithRetry(() => import("@/pages/feedback"));
 const TokenUsagePage = lazyWithRetry(() => import("@/pages/token-usage"));
+const QuotaPage = lazyWithRetry(() => import("@/pages/quota"));
 const FeedbackBrowserPage = lazyWithRetry(() => import("@/pages/feedback-browser"));
 const FeedbackConversationPage = lazy(
   () => import("@/pages/feedback-conversation"),
@@ -47,6 +48,7 @@ const AdminBotDetailPage = lazyWithRetry(() => import("@/pages/admin-bot-detail"
 const AdminUsersPage = lazyWithRetry(() => import("@/pages/admin-users"));
 const AdminObservabilityPage = lazyWithRetry(() => import("@/pages/admin-observability"));
 const AdminTokenUsagePage = lazyWithRetry(() => import("@/pages/admin-token-usage"));
+const AdminQuotaOverviewPage = lazyWithRetry(() => import("@/pages/admin-quota-overview"));
 const AdminMcpRegistryPage = lazyWithRetry(() => import("@/pages/admin-mcp-registry"));
 const AdminToolsPage = lazyWithRetry(() => import("@/pages/admin-tools"));
 const AdminTenantsPage = lazyWithRetry(() => import("@/pages/admin-tenants"));
@@ -100,6 +102,7 @@ export function App() {
             />
             <Route path={ROUTES.FEEDBACK} element={<FeedbackPage />} />
             <Route path={ROUTES.TOKEN_USAGE} element={<TokenUsagePage />} />
+            <Route path={ROUTES.QUOTA} element={<QuotaPage />} />
             <Route
               path={ROUTES.FEEDBACK_BROWSER}
               element={<FeedbackBrowserPage />}
@@ -143,6 +146,10 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_TOKEN_USAGE}
               element={<AdminTokenUsagePage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_QUOTA_OVERVIEW}
+              element={<AdminQuotaOverviewPage />}
             />
             <Route
               path={ROUTES.ADMIN_MCP_REGISTRY}

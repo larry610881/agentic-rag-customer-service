@@ -1,12 +1,18 @@
 from math import ceil
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
+
+from dataclasses import asdict
 
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.list_users_use_case import ListUsersUseCase
+from src.application.ledger.list_all_tenants_quotas_use_case import (
+    ListAllTenantsQuotasUseCase,
+)
+from src.domain.ledger.entity import current_year_month
 from src.application.auth.register_user_use_case import (
     RegisterUserCommand,
     RegisterUserUseCase,
@@ -360,3 +366,40 @@ async def reset_password(
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, detail="User not found"
         ) from None
+
+
+# --- Tenant Quota Overview (S-Token-Gov.2.5) ---
+
+
+class TenantQuotaOverviewResponse(BaseModel):
+    tenant_id: str
+    tenant_name: str
+    plan_name: str
+    cycle_year_month: str
+    base_total: int
+    base_remaining: int
+    addon_remaining: int
+    total_remaining: int
+    total_used_in_cycle: int
+    included_categories: list[str] | None = None
+    has_ledger: bool
+
+
+@router.get(
+    "/tenants/quotas",
+    response_model=list[TenantQuotaOverviewResponse],
+)
+@inject
+async def list_all_tenants_quotas(
+    cycle: str | None = Query(
+        None, description="YYYY-MM format; defaults to current month"
+    ),
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
+    use_case: ListAllTenantsQuotasUseCase = Depends(
+        Provide[Container.list_all_tenants_quotas_use_case]
+    ),
+) -> list[TenantQuotaOverviewResponse]:
+    """List all tenants' quota for a given cycle (system_admin only)."""
+    target_cycle = cycle or current_year_month()
+    items = await use_case.execute(target_cycle)
+    return [TenantQuotaOverviewResponse(**asdict(i)) for i in items]
