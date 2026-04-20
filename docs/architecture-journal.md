@@ -10,6 +10,7 @@
 ## 目錄
 
 - [Ollama A/B 測試 Debug — 模型 Tag 驗證 + Router Prefix + RHF shouldDirty](#ollama-ab-測試-debug--模型-tag-驗證--router-prefix--rhf-shoulddirty)
+- [S-Token-Gov.3.5 — SendGrid Email 整合：Sync SDK in Async Worker + Mock Sender via DI Override + 「永遠 mark vs 不 mark」的容錯策略](#s-token-gov35--sendgrid-email-整合sync-sdk-in-async-worker--mock-sender-via-di-override--永遠-mark-vs-不-mark的容錯策略)
 - [S-Token-Gov.4 — 收益儀表板：跨表 Aggregation in Application 層 + Recharts LineChart + 跨 loop 連線陷阱](#s-token-gov4--收益儀表板跨表-aggregation-in-application-層--recharts-linechart--跨-loop-連線陷阱)
 - [S-Token-Gov.3 — 自動續約 + 門檻警示：DB 層冪等、行為變更如何同步既有測試、optional DI 漸進演化](#s-token-gov3--自動續約--門檻警示db-層冪等行為變更如何同步既有測試optional-di-漸進演化)
 - [S-Token-Gov.2.5 — 額度可視化：3-Query Application Join + has_ledger Flag + 視覺先於自動化](#s-token-gov25--額度可視化3-query-application-join--has_ledger-flag--視覺先於自動化)
@@ -162,6 +163,154 @@
 
 - **RHF `setValue` 的 `shouldDirty` / `shouldTouch` / `shouldValidate`**：三個 flag 控制不同的副作用——`shouldDirty` 標記欄位為已修改（觸發 `watch` 和 `isDirty`）；`shouldValidate` 觸發 zod 驗證；`shouldTouch` 標記為已互動。外部觸發表單值變更（如按鈕覆寫）時應加 `{ shouldDirty: true }` 確保訂閱方感知到變化
 - **MoE 模型的 active params**：`qwen3.6:35b-a3b` 的 35b 是總參數，3b 是每次 inference 實際啟用的參數（active）。推理成本接近 3B dense model，但模型容量接近 35B，是 edge/local deploy 的高 CP 值選擇
+
+---
+
+## S-Token-Gov.3.5 — SendGrid Email 整合：Sync SDK in Async Worker + Mock Sender via DI Override + 「永遠 mark vs 不 mark」的容錯策略
+
+**日期**：2026-04-21
+**Sprint**：S-Token-Gov.3.5（Email 通道接 .3 預留接口）
+**涉及層級**：跨 4 層 + 前端 1 處 — Domain (1 ABC + 2 repo method + 1 user repo method) + Infrastructure (1 SendGrid sender + 2 repo impl + 1 user repo impl) + Application (1 use case + 1 template helper) + Interfaces 0 改 + Worker 加 1 cron + Container DI + 前端只加 1 個 badge。約 11 檔。
+
+### 本次相關主題
+
+- Sync SDK 在 async worker 內的 idiomatic wrap (`asyncio.to_thread`)
+- Email 寄送容錯設計：哪些情況該標 delivered（永遠跳過）、哪些不該（下次重試）
+- Test 用 DI override 注入 Mock sender — 不打真實 SendGrid 卻仍走完整路徑
+- Domain ABC 加 method 時對既有實作的破壞範圍評估
+- 「Port (Domain ABC) + Adapter (Infrastructure)」hexagonal 模式的小範例
+- HTML email template 簡化策略 — 不引 Jinja2 也能做到合理的視覺呈現
+
+### 做得好的地方
+
+#### 1. Sync SDK + asyncio.to_thread — 別在 async worker 阻塞 event loop
+
+SendGrid 官方 Python SDK 是 sync（內部用 `python-http-client` 走 urllib3）。直接在 `async def send` 內呼叫會阻塞整個 worker event loop（其他 task 在 SendGrid 回 200 之前都動不了）。
+
+正確 idiom：
+
+```python
+async def send(self, *, to_email, ...):
+    message = Mail(...)
+    client = SendGridAPIClient(self._api_key)
+    response = await asyncio.to_thread(client.send, message)
+    # ↑ 把 sync call 丟到 default ThreadPoolExecutor，await 其結果
+    if response.status_code >= 300:
+        raise RuntimeError(...)
+```
+
+`asyncio.to_thread` 是 Python 3.9+ 內建（無需額外依賴）。pattern：「sync I/O → to_thread」、「sync CPU-heavy → ProcessPoolExecutor」。本案 SendGrid HTTPS request 是典型 I/O bound，to_thread 是最便宜也最正確的選擇。
+
+替代方案：找 sendgrid-asyncio 之類的 third-party async wrapper — 但 maintenance status / 安全性需要額外評估，POC 階段直接 to_thread 最低風險。
+
+#### 2. 容錯設計的 3 種寫法 — 「永遠 mark」vs「不 mark」如何選
+
+寫 dispatch use case 時最容易出錯的地方：哪些情況要 `mark_delivered`？
+
+| 情況 | 處理 | 理由 |
+|------|------|------|
+| ✅ 寄送成功 (200) | mark | 顯然 |
+| ⚠️ 無 admin email | mark + log warning | 「沒收件者」是 metadata 問題，不是寄送失敗。下次 cron 重掃還是沒收件者 → 無限重試浪費 |
+| ⚠️ Tenant 已被刪 | mark + log warning | FK CASCADE 遲早會清掉 alert，但中間可能有 race window。先 mark 比卡住 cron 重要 |
+| ❌ SendGrid 5xx / network error | **不 mark** + log warning | 暫時性錯誤，下次 cron 自動 retry。隔 24hr 給 SendGrid 恢復時間 |
+| ❌ SendGrid 429 (rate limit) | **不 mark** | 同上 — retry 是對的 |
+| ❌ SendGrid 401 / API key invalid | 不 mark + log error | 嚴格說應該 alert 維運（這是 config bug 不是 transient），但 POC 先靠 log |
+
+關鍵原則：
+- **永久性原因（無收件者 / 租戶不存在）→ mark，避免無限重試**
+- **暫時性原因（網路 / SendGrid 故障 / rate limit）→ 不 mark，給下次機會**
+
+這個 trade-off 的本質：**重試的成本（多打一次 SendGrid + 多寫一次 log）vs 永遠卡住的代價（cron 變慢、log 充斥）**。POC 階段重試成本極低，所以 transient error 一律不 mark。
+
+#### 3. DI Override 注入 Mock Sender — Integration Test 不打外部 API
+
+Integration test 不該真的打 SendGrid（會花錢、會被 rate limit、會發垃圾信給真人）。
+
+```python
+@pytest.fixture(autouse=True)
+def _override_sender(app, ctx):
+    mock = MockQuotaAlertEmailSender()
+    ctx["mock_sender"] = mock
+    container = app.container
+    container.quota_alert_email_sender.override(providers.Object(mock))
+    yield
+    container.quota_alert_email_sender.reset_override()
+```
+
+這個 pattern 用 `dependency-injector` 內建的 `override` / `reset_override` 機制 — 不用改 production code 就能把 SendGrid sender 換成記錄 call 的 spy。
+
+收益：
+- **完整路徑驗證**：DB query → use case 邏輯 → sender 呼叫順序 → 結果回傳 → DB 寫回 — 每一段都是真實的，只有最外層的 SendGrid call 被攔
+- **可控失敗注入**：`ctx["mock_sender"].fail = True` → 測「寄送失敗不 mark」scenario
+- **Test 不依賴外部 service**：CI 環境不需要 SENDGRID_API_KEY，也不會在 SendGrid dashboard 看到 test 寄出的信
+
+這個 Mock-via-DI-Override pattern 在所有「Port/Adapter」都適用 — 未來若要測 LLM call、Qdrant search 也是同寫法。
+
+#### 4. UserRepository.find_admin_email_by_tenant — 簡單 query 為什麼值得獨立 method
+
+直觀做法：在 use case 裡 `users = await user_repo.find_all_by_tenant(tenant_id); admins = [u for u in users if u.role == "tenant_admin"]; return admins[0].email if admins else None`。
+
+實際做的：在 UserRepository 加新 abstractmethod `find_admin_email_by_tenant(tenant_id) -> str | None`。
+
+差別：
+- 直觀做法：use case 要知道 Role 內部值（"tenant_admin" string），N user 全 fetch 再 filter
+- 實際做法：DB SQL `WHERE role = 'tenant_admin' LIMIT 1`，少抓記憶體；use case 不知道 Role enum 字串值
+
+對「常用、語意明確、可被多處呼叫」的 query，獨立 method 比 `find_all + filter` 更適合 — 是 Repository pattern 的原始用意（封裝 query intent，而不只是 CRUD wrapper）。
+
+### 潛在隱憂
+
+#### 1. Tenant 多個 admin → 只寄第一個 → 中
+
+`find_admin_email_by_tenant` 只回最早建立的 admin 的 email（`ORDER BY created_at ASC LIMIT 1`）。如果某 tenant 有 3 個 admin，只有最早那一個收到信，其他 2 個都收不到。
+
+**改善方向**：
+- 短期：改回 `find_admin_emails_by_tenant(tenant_id) -> list[str]`，sender 變成接受多個 to_email
+- 中期：在 Tenant 加 `notification_email` 欄位 — 由 tenant 自己指定收件人（不依賴 user role）
+- 長期：每個 alert_type 可獨立 routing — 80% 寄給營運、100% 寄給技術主管
+
+#### 2. SendGrid free tier 100 emails/day → POC 充足，正式時要付費 → 低
+
+POC 全平台一天大概 0-5 封警示信（多數租戶不會每天觸 80%），100/day 完全夠。
+
+但若 platform 成長到 50+ 客戶 + 每客戶月底常觸發 → 月底某幾天可能瞬間 30+ 信，靠近 free tier 上限。
+
+**監控指標**：在 SendGrid dashboard 設 80% quota webhook，超過就升級 paid tier ($19.95/mo for 50K emails)。
+
+#### 3. Email template 改版需要 deploy → 中
+
+目前 template 是 hard-coded f-string（`_email_templates.py`），改文案要改 code → push → CI build → deploy。對 POC OK，對「客服文案常微調」的場景不友善。
+
+**改善方向**：
+- 短期：把 template 抽到 `email_templates/quota_alert_warning_80.html` 之類，仍然是 git 管理但檔案分離
+- 中期：改 Jinja2 + 從 DB 載 template (`email_templates` 表)，admin UI 可即時編輯
+- 長期：第三方 transactional email service (SendGrid Dynamic Templates / Postmark Templates / Customer.io)
+
+#### 4. 同一 cycle 短時間內 80% → 100% 變化 → 兩封信 → 中
+
+ProcessQuotaAlertsUseCase (Token-Gov.3) 一天跑一次。若某租戶在凌晨 02:00 觸 80% → cron 在 02:01 (UTC 01:00 + 排程延遲) 寫 warning_80 alert → quota_email_dispatch 在 02:31 寄 80% 信。
+
+下午 3pm 該租戶又用爆 → 到隔天 cron 才寫 exhausted_100 alert → 隔天再寄 100% 信。
+
+這個 lag 在「即時客服支援」需求下是不可接受的（下午 3pm 突發狀況沒人收到通知）。
+
+**改善方向**：
+- 在 DeductTokensUseCase 同步 hook alert 檢查（每筆 deduct 後檢查 ledger ratio 變化，跨閾值就立即寫 alert + email）
+- 或：用 Redis pub/sub，cron 每天 backfill，但 deduct 時用 LISTEN/NOTIFY 即時觸
+
+POC 一天 1 次能 demo「自動通知」就夠，正式階段再升級。
+
+### 延伸學習
+
+- **Hexagonal / Ports & Adapters in Python**：本 sprint 是經典示範 — `QuotaAlertEmailSender` (port in domain/) → `SendGridQuotaAlertSender` (adapter in infrastructure/) → DI container 注入。Application 層完全不知道 SendGrid 存在。延伸閱讀：Cosmic Python (Bob Gregory) Ch.6 "Unit of Work" + Ch.13 "Dependency Injection"
+- **Idempotent retry semantics in cron**：本 sprint 的「永遠 mark vs 不 mark」決策反映了 cron-driven email pipeline 的核心設計問題。經典參考：Stripe 的 webhook retry policy（exponential backoff + 3 days max retry window + dead letter queue）
+- **Async wrap of sync I/O**：`asyncio.to_thread` 是 Python 3.9+ 標準解。對比 Node.js 的 `worker_threads` / Rust 的 `tokio::task::spawn_blocking` — 都是「在 async runtime 內安全跑 sync I/O」的同模式。延伸閱讀：PEP 647 + asyncio docs
+
+### 思考題
+
+「我們現在『無 admin email → mark delivered』的策略是『沉默地略過』。如果某個租戶剛好 onboarding 階段 admin user 還沒建好，這個策略會讓他們完全錯過警示。怎樣設計『暫時保留 + 後補寄送』機制？需要新欄位嗎？需要 retention policy 嗎？」
+
+提示：考慮加 `delivery_attempt_count` 欄位（嘗試 N 次後才放棄）、加「無 email 標 deferred 而非 delivered」、或週期性把 deferred 重新激活。POC 階段選哪個？
 
 ---
 

@@ -96,3 +96,23 @@ class SQLAlchemyQuotaAlertLogRepository(QuotaAlertLogRepository):
         )
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
+
+    # --- S-Token-Gov.3.5: Email dispatch ---
+
+    async def find_undelivered(
+        self, *, limit: int = 100
+    ) -> list[QuotaAlertLog]:
+        stmt = (
+            select(QuotaAlertLogModel)
+            .where(QuotaAlertLogModel.delivered_to_email.is_(False))
+            .order_by(QuotaAlertLogModel.created_at.asc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def mark_delivered(self, alert_id: str) -> None:
+        async with atomic(self._session):
+            existing = await self._session.get(QuotaAlertLogModel, alert_id)
+            if existing is not None:
+                existing.delivered_to_email = True

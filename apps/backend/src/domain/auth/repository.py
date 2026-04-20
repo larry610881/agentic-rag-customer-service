@@ -38,3 +38,10 @@ class UserRepository(ABC):
 
     @abstractmethod
     async def delete(self, user_id: str) -> None: ...
+
+    @abstractmethod
+    async def find_admin_email_by_tenant(
+        self, tenant_id: str
+    ) -> str | None:
+        """回該租戶任一 admin 角色的 email；無則 None。S-Token-Gov.3.5"""
+        ...

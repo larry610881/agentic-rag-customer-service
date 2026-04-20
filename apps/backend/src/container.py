@@ -230,6 +230,9 @@ from src.application.billing.get_billing_dashboard_use_case import (
 from src.application.billing.list_quota_events_use_case import (
     ListQuotaEventsUseCase,
 )
+from src.application.billing.quota_email_dispatch_use_case import (
+    QuotaEmailDispatchUseCase,
+)
 from src.application.billing.process_quota_alerts_use_case import (
     ProcessQuotaAlertsUseCase,
 )
@@ -427,6 +430,9 @@ from src.infrastructure.memory.llm_memory_extraction_service import (
 )
 from src.infrastructure.milvus.milvus_vector_store import MilvusVectorStore
 from src.infrastructure.notification.email_sender import EmailNotificationSender
+from src.infrastructure.notification.sendgrid_quota_alert_sender import (
+    SendGridQuotaAlertSender,
+)
 from src.infrastructure.notification.redis_throttle import RedisNotificationThrottle
 from src.infrastructure.prompt_optimizer.run_manager import RunManager
 from src.infrastructure.storage.gcs_document_file_storage import (
@@ -1080,6 +1086,31 @@ class Container(containers.DeclarativeContainer):
         GetBillingDashboardUseCase,
         billing_transaction_repository=billing_transaction_repository,
         tenant_repository=tenant_repository,
+    )
+
+    # S-Token-Gov.3.5: Quota Alert Email
+    quota_alert_email_sender = providers.Singleton(
+        SendGridQuotaAlertSender,
+        api_key=providers.Callable(
+            lambda cfg: cfg.sendgrid_api_key, config
+        ),
+        from_email=providers.Callable(
+            lambda cfg: cfg.quota_alert_from_email, config
+        ),
+        from_name=providers.Callable(
+            lambda cfg: cfg.quota_alert_from_name, config
+        ),
+    )
+
+    quota_email_dispatch_use_case = providers.Factory(
+        QuotaEmailDispatchUseCase,
+        alert_repository=quota_alert_log_repository,
+        tenant_repository=tenant_repository,
+        user_repository=user_repository,
+        email_sender=quota_alert_email_sender,
+        dashboard_url=providers.Callable(
+            lambda cfg: cfg.quota_alert_dashboard_url, config
+        ),
     )
 
     deduct_tokens_use_case = providers.Factory(

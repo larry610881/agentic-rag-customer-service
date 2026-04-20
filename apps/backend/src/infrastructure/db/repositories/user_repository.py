@@ -108,3 +108,24 @@ class SQLAlchemyUserRepository(UserRepository):
         async with atomic(self._session):
             stmt = sa_delete(UserModel).where(UserModel.id == user_id)
             await self._session.execute(stmt)
+
+    async def find_admin_email_by_tenant(
+        self, tenant_id: str
+    ) -> str | None:
+        """回該租戶任一 tenant_admin 角色的 email；無則 None。
+
+        S-Token-Gov.3.5: 給 quota_email_dispatch_task 用作收件者。
+        若該 tenant 沒任何 admin user → 回 None；caller 決定是否 mark delivered
+        以避免無限重試。
+        """
+        stmt = (
+            select(UserModel.email)
+            .where(
+                UserModel.tenant_id == tenant_id,
+                UserModel.role == "tenant_admin",
+            )
+            .order_by(UserModel.created_at.asc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()

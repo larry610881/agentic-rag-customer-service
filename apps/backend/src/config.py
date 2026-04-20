@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     litellm_api_key: str = ""
 
+    # S-Token-Gov.3.5: Quota Alert Email (SendGrid)
+    sendgrid_api_key: str = ""
+    quota_alert_from_email: str = "noreply@example.com"
+    quota_alert_from_name: str = "AI 客服平台"
+    quota_alert_dashboard_url: str = "http://localhost:5174/quota"
+
     # Ollama (RunPod 地端模型)
     ollama_base_url: str = "http://localhost:11434"  # e.g. http://<pod-id>-11434.proxy.runpod.net
 

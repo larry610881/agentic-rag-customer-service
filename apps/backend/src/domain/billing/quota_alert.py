@@ -63,3 +63,15 @@ class QuotaAlertLogRepository(ABC):
     ) -> list[QuotaAlertLog]:
         """測試 + 排查用 — 不分 alert_type 全部回。"""
         ...
+
+    @abstractmethod
+    async def find_undelivered(
+        self, *, limit: int = 100
+    ) -> list[QuotaAlertLog]:
+        """掃 delivered_to_email=False 的 row（cron dispatch 用）。S-Token-Gov.3.5"""
+        ...
+
+    @abstractmethod
+    async def mark_delivered(self, alert_id: str) -> None:
+        """寄成功（或無收件者）後標記。S-Token-Gov.3.5"""
+        ...

@@ -37,6 +37,8 @@ class QuotaEventItem:
     used_ratio: Decimal | None = None
     message: str | None = None
     reason: str | None = None
+    # S-Token-Gov.3.5: alert 是否已寄出 email（auto_topup 為 None）
+    delivered_to_email: bool | None = None
     extra: dict = field(default_factory=dict)
 
 
@@ -98,6 +100,7 @@ class ListQuotaEventsUseCase:
                     created_at=alert.created_at,
                     used_ratio=alert.used_ratio,
                     message=alert.message or None,
+                    delivered_to_email=alert.delivered_to_email,
                 )
             )
 

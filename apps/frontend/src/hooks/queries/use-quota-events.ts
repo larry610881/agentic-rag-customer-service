@@ -17,6 +17,8 @@ export interface QuotaEventItem {
   used_ratio: string | null;
   message: string | null;
   reason: string | null;
+  /** S-Token-Gov.3.5: alert 是否已寄信；auto_topup 為 null */
+  delivered_to_email: boolean | null;
 }
 
 export interface PaginatedQuotaEvents {

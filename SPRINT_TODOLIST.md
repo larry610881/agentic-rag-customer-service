@@ -1548,6 +1548,27 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | 後端 admin integration + unit baseline 不退步 | ✅ | admin 22 passed (.2 + .2.5 + .3 + .4 共 22)；unit 624 passed；3 pre-existing bot 失敗不變 |
 | 前端 tsc + vitest 不退步 | ✅ | tsc 112 baseline 維持（零新錯誤）；vitest 223 passed 維持 |
 
+#### S-Token-Gov.3.5 SendGrid Email 整合 ✅ 完成 (2026-04-21)
+> 把 .3 寫的 quota_alert_logs (delivered_to_email=False) 透過 SendGrid 寄給 tenant_admin。
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| sendgrid 依賴 + config 4 env | ✅ | `uv add sendgrid` + sendgrid_api_key / quota_alert_from_email / from_name / dashboard_url |
+| Domain: QuotaAlertEmailSender ABC | ✅ | port for sending one alert email；失敗 raise，caller 決定 retry |
+| Domain: QuotaAlertLogRepository 加 2 method | ✅ | find_undelivered (limit=100) + mark_delivered |
+| Domain: UserRepository 加 find_admin_email_by_tenant | ✅ | 查 role='tenant_admin' 的最早建立 user.email |
+| Infrastructure: SendGridQuotaAlertSender | ✅ | sync SDK 用 asyncio.to_thread 包；HTTP API 非 SMTP（避開 IP 信譽問題）|
+| Infrastructure: 2 repo 實作 | ✅ | find_undelivered + mark_delivered + UserRepository.find_admin_email_by_tenant |
+| Application: QuotaEmailDispatchUseCase | ✅ | 掃 undelivered → 補 tenant + admin email → render → send → mark；無 admin email 也 mark（避免無限重試）；send fail 不 mark（下次 cron retry）|
+| Application: _email_templates.py | ✅ | render_quota_alert_email 回 (subject, text, html)；80%/100% 兩種 variant |
+| Container DI 註冊 | ✅ | quota_alert_email_sender (Singleton) + quota_email_dispatch_use_case |
+| Worker 第 3 cron | ✅ | quota_email_dispatch_task @ UTC 01:30（跟在 quota_alerts_task 之後 30min）|
+| QuotaEventItem 加 delivered_to_email | ✅ | application 層 + endpoint Pydantic + frontend hook 三處同步 |
+| /admin/quota-events 頁加 ✉ 已寄信 / ⏳ 未寄 badge | ✅ | alert 類型才顯示（auto_topup 不顯示）|
+| BDD 3 scenarios | ✅ | `integration/admin/quota_email.feature` — 正常寄送 / 無 admin email / 寄送失敗不 mark；mock sender 用 DI override |
+| 後端 admin integration 不退步 | ✅ | admin 25 passed (.2 + .2.5 + .3 + .4 + .3.5 = 25)；unit 624 baseline 維持 |
+| 前端 tsc + vitest 不退步 | ✅ | tsc 112 baseline 維持；vitest 223 passed 維持 |
+
 ### S-Gov.6 Agent 執行追蹤 UI 可讀性強化
 > 既有 `agent_execution_traces` 已落地（見 S-Gov.1），本 Sprint 聚焦**前端 UI 可讀性**與**查詢能力**，後端只做欄位/索引補強。
 

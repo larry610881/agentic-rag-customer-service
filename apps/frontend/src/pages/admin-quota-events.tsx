@@ -206,13 +206,28 @@ export default function AdminQuotaEventsPage() {
                               )}
                             </span>
                           ) : (
-                            <span>
-                              {event.message ?? "—"}
+                            <span className="inline-flex flex-wrap items-center gap-2">
+                              <span>{event.message ?? "—"}</span>
                               {event.used_ratio && (
-                                <span className="ml-2 text-xs text-muted-foreground">
+                                <span className="text-xs text-muted-foreground">
                                   使用率 {formatRatio(event.used_ratio)}
                                 </span>
                               )}
+                              {event.delivered_to_email === true ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-emerald-500 text-emerald-700 text-xs"
+                                >
+                                  ✉ 已寄信
+                                </Badge>
+                              ) : event.delivered_to_email === false ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-muted-foreground text-xs"
+                                >
+                                  ⏳ 未寄
+                                </Badge>
+                              ) : null}
                             </span>
                           )}
                         </TableCell>

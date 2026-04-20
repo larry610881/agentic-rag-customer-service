@@ -429,6 +429,7 @@ class QuotaEventResponse(BaseModel):
     used_ratio: Decimal | None = None
     message: str | None = None
     reason: str | None = None
+    delivered_to_email: bool | None = None
 
 
 @router.get(
@@ -466,6 +467,7 @@ async def list_quota_events(
                 used_ratio=i.used_ratio,
                 message=i.message,
                 reason=i.reason,
+                delivered_to_email=i.delivered_to_email,
             )
             for i in items
         ],

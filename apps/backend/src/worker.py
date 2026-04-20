@@ -174,6 +174,25 @@ async def quota_alerts_task(ctx: dict) -> None:
     )
 
 
+# --- Cron Task: quota_email_dispatch (S-Token-Gov.3.5) ---
+
+async def quota_email_dispatch_task(ctx: dict) -> None:
+    """每天掃 quota_alert_logs.delivered_to_email=False，呼叫 SendGrid 寄出。
+
+    Cron 排程：UTC 每天 01:30 = Asia/Taipei 09:30（等 quota_alerts_task 跑完）。
+    冪等：mark_delivered 後下次 find_undelivered 不會回該筆。
+    """
+    logger.info("[quota_email_dispatch] start")
+    container = _new_container()
+    use_case = container.quota_email_dispatch_use_case()
+    stats = await use_case.execute()
+    logger.info(
+        f"[quota_email_dispatch] done scanned={stats['scanned']} "
+        f"sent={stats['sent']} skipped_no_email={stats['skipped_no_email']} "
+        f"failed={stats['failed']}"
+    )
+
+
 class WorkerSettings:
     """arq worker configuration."""
 
@@ -186,9 +205,11 @@ class WorkerSettings:
     ]
     # S-Token-Gov.2: 月度重置（每月 1 日 00:05 UTC = 08:05 Asia/Taipei）
     # S-Token-Gov.3: 額度警示（每天 01:00 UTC = 09:00 Asia/Taipei）
+    # S-Token-Gov.3.5: 警示 email 寄送（每天 01:30 UTC = 09:30 Asia/Taipei）
     cron_jobs = [
         cron(monthly_reset_task, hour={0}, minute={5}, day={1}),
         cron(quota_alerts_task, hour={1}, minute={0}),
+        cron(quota_email_dispatch_task, hour={1}, minute={30}),
     ]
     on_startup = startup
     on_shutdown = shutdown
