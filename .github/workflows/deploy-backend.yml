@@ -80,6 +80,7 @@ jobs:
             GCS_BUCKET_NAME=${{ secrets.GCS_BUCKET_NAME }}
             CORS_ORIGINS=${{ vars.CORS_ORIGINS }}
             RATE_LIMIT_ENABLED=${{ vars.RATE_LIMIT_ENABLED || 'true' }}
+            OLLAMA_BASE_URL=${{ vars.OLLAMA_BASE_URL }}
             APP_ENV=production
             LOG_LEVEL=INFO
           flags: |
