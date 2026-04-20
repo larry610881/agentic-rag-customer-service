@@ -109,6 +109,18 @@
 - **Router prefix 缺乏統一約束** → 新增 router 時容易漏加 `/api/v1`，目前靠 code review 人工發現；可在 `main.py` 的 `include_router` 統一加 `prefix="/api/v1"` 避免遺漏 → 優先級：中
 - **RunPod Pod URL 與 `OLLAMA_BASE_URL` 一對一綁定** → 若 Pod terminate 重建，URL 換掉後需手動更新 GitHub Variable 並重新部署；MoE 模型啟動後 Ollama 的 keep-alive 行為也需觀察 → 優先級：低（測試期可接受）
 
+### ModelSelect 互斥 + Radix Select 清空（後續追加）
+
+**問題**：選 A/B 後 ModelSelect 下拉不清空。根因：`ModelSelect` 內部有 `value={value || undefined}`，傳 `""` 進去被轉成 `undefined`（uncontrolled），Radix Select 保留內部狀態不清空。
+
+**修法**：在 `bot-detail-form.tsx` 的 `<ModelSelect>` 加 `key={selectedAbModel ? "ollama" : "cloud"}`。Key 切換時 React 強制 remount，Radix 內部狀態重置，placeholder 正常顯示。
+
+**Radix UI Select controlled/uncontrolled 陷阱**：
+- `value={someString}` → controlled（跟著 prop 走）
+- `value={undefined}` → uncontrolled（有內部 state，不受外部 prop 控制）
+- `""` 是 falsy → `"" || undefined` = `undefined` → 不小心從 controlled 切到 uncontrolled
+- 解法：傳 sentinel value（不匹配任何 option → 顯示 placeholder）或 `key` remount
+
 ### 互斥 UX + RHF 欄位生命週期（後續追加）
 
 **問題根因**：`llm_provider` 在 `defaultValues` 但未 `register()`。試圖加 `<input type="hidden" {...register("llm_provider")} />` 反而讓 RHF 用 DOM input 的空字串 `""` 覆蓋 `defaultValues`，導致提交 payload 出現 `llm_provider: ""`。
