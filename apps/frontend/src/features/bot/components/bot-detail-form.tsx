@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+// HARDCODE - 地端模型 A/B 測試，正式上線前移除此 import
+import { useOllamaAbPresets, useOllamaModelStatus } from "@/hooks/queries/use-ollama";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -206,6 +208,12 @@ export function BotDetailForm({
   const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.LLM_PROMPT);
   const navigate = useNavigate();
 
+  // HARDCODE - 地端模型 A/B 測試狀態，正式上線前移除
+  const { data: abPresets = [] } = useOllamaAbPresets();
+  const [pollModel, setPollModel] = useState<string | null>(null);
+  const { data: ollamaStatus } = useOllamaModelStatus(pollModel, !!pollModel);
+  const savedOllamaModel = useRef<string | null>(null);
+
   const {
     register,
     handleSubmit,
@@ -353,6 +361,20 @@ export function BotDetailForm({
     });
   }, [bot, reset]);
 
+  // HARDCODE - Ollama polling 結果 toast，正式上線前移除
+  useEffect(() => {
+    if (!ollamaStatus || !savedOllamaModel.current) return;
+    if (ollamaStatus.status === "ready") {
+      toast.success(`✅ 模型 ${ollamaStatus.model} 已就緒`);
+      setPollModel(null);
+      savedOllamaModel.current = null;
+    } else if (ollamaStatus.status === "unreachable") {
+      toast.error("無法連線至 Ollama，請確認 RunPod Pod 已啟動");
+      setPollModel(null);
+      savedOllamaModel.current = null;
+    }
+  }, [ollamaStatus]);
+
   const onSubmit = async (data: BotFormValues) => {
     if (data.enabled_tools.length === 0) {
       toast.error("請至少啟用一個工具");
@@ -376,7 +398,14 @@ export function BotDetailForm({
     };
     try {
       await onSave(payload);
-      toast.success("機器人設定已儲存");
+      // HARDCODE - Ollama 存檔後啟動 polling 確認模型就緒，正式上線前移除
+      if (payload.llm_provider === "ollama" && payload.llm_model) {
+        savedOllamaModel.current = payload.llm_model as string;
+        setPollModel(payload.llm_model as string);
+        toast.success("機器人設定已儲存，正在確認模型狀態...");
+      } else {
+        toast.success("機器人設定已儲存");
+      }
     } catch {
       toast.error("儲存失敗，請稍後再試");
     }
@@ -515,6 +544,49 @@ export function BotDetailForm({
                 }}
               />
             </div>
+
+            {/* HARDCODE - 地端模型 A/B 快速切換，正式上線前移除 */}
+            {abPresets.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <Label className="text-xs text-muted-foreground">
+                  地端模型快速切換（測試用）
+                </Label>
+                <div className="flex gap-2">
+                  {abPresets.map((preset) => {
+                    const isActive =
+                      watch("llm_provider") === "ollama" &&
+                      watch("llm_model") === preset.model;
+                    return (
+                      <Button
+                        key={preset.label}
+                        type="button"
+                        size="sm"
+                        variant={isActive ? "default" : "outline"}
+                        onClick={() => {
+                          setValue("llm_provider", "ollama");
+                          setValue("llm_model", preset.model);
+                        }}
+                      >
+                        {preset.label}：{preset.description}
+                        {isActive && pollModel === preset.model && (
+                          <span className="ml-1 animate-spin">⏳</span>
+                        )}
+                        {isActive &&
+                          ollamaStatus?.status === "ready" &&
+                          !pollModel && (
+                            <span className="ml-1 text-green-500">✓</span>
+                          )}
+                      </Button>
+                    );
+                  })}
+                </div>
+                {pollModel && (
+                  <p className="text-xs text-muted-foreground animate-pulse">
+                    正在確認模型 {pollModel} 是否就緒...
+                  </p>
+                )}
+              </div>
+            )}
           </section>
 
           {/* LLM 參數 */}

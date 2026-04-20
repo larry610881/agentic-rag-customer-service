@@ -1,6 +1,9 @@
 """更新機器人用例"""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
 
 from src.domain.bot.entity import (
     Bot,
@@ -14,6 +17,10 @@ from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
+from src.infrastructure.llm.ollama_bot_config import get_ollama_model_for_bot
+
+if TYPE_CHECKING:
+    from src.infrastructure.llm.ollama_warm_up import OllamaWarmUpService
 
 _UNSET = object()
 
@@ -76,10 +83,12 @@ class UpdateBotUseCase:
         bot_repository: BotRepository,
         cache_service: CacheService | None = None,
         encryption_service: EncryptionService | None = None,
+        ollama_warm_up: OllamaWarmUpService | None = None,
     ) -> None:
         self._bot_repo = bot_repository
         self._cache_service = cache_service
         self._encryption = encryption_service
+        self._ollama_warm_up = ollama_warm_up
 
     @staticmethod
     def _apply_updates(bot: Bot, command: UpdateBotCommand) -> None:
@@ -210,10 +219,19 @@ class UpdateBotUseCase:
             )
         return result
 
-    async def execute(self, command: UpdateBotCommand) -> Bot:
+    async def execute(self, command: UpdateBotCommand) -> tuple[Bot, str]:
         bot = await self._bot_repo.find_by_id(command.bot_id)
         if bot is None:
             raise EntityNotFoundError("Bot", command.bot_id)
+
+        # 記錄切換前的 Ollama 模型，之後判斷是否需要 warm-up
+        old_ollama_model = bot.llm_model if bot.llm_provider == "ollama" else ""
+
+        # Hardcode：若 bot 名稱在設定表中，自動套用對應 Ollama 模型
+        hardcoded_model = get_ollama_model_for_bot(bot.name)
+        if hardcoded_model and command.llm_provider is _UNSET and command.llm_model is _UNSET:
+            bot.llm_provider = "ollama"
+            bot.llm_model = hardcoded_model
 
         # Capture old bindings before update (may contain encrypted env_values)
         old_bindings_map = {b.registry_id: b for b in bot.mcp_bindings}
@@ -229,9 +247,18 @@ class UpdateBotUseCase:
 
         await self._bot_repo.save(bot)
         if self._cache_service is not None:
-            # Invalidate both LINE handler cache keys so UI changes reflect immediately.
             await self._cache_service.delete(f"bot:{command.bot_id}")
-            await self._cache_service.delete(
-                f"bot:sc:{bot.short_code.value}"
-            )
-        return bot
+            await self._cache_service.delete(f"bot:sc:{bot.short_code.value}")
+
+        # Ollama 模型切換：等待新模型載入完成再回傳
+        warm_up_status = "skipped"
+        if (
+            self._ollama_warm_up is not None
+            and bot.llm_provider == "ollama"
+            and bot.llm_model
+            and bot.llm_model != old_ollama_model
+        ):
+            await self._ollama_warm_up.warm_up(bot.llm_model)
+            warm_up_status = "ready"
+
+        return bot, warm_up_status

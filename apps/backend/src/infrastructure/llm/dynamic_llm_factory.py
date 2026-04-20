@@ -20,6 +20,8 @@ _DEFAULT_BASE_URLS: dict[str, str] = {
     ProviderName.GOOGLE.value: "https://generativelanguage.googleapis.com/v1beta/openai",
     ProviderName.OPENROUTER.value: "https://openrouter.ai/api/v1",
     ProviderName.LITELLM.value: "https://litellm-server.pic-ai.work",
+    # Ollama: 從 Settings 動態取得，這裡僅作 fallback
+    ProviderName.OLLAMA.value: "http://localhost:11434/v1",
 }
 
 # Default model per provider
@@ -31,6 +33,7 @@ _DEFAULT_MODELS: dict[str, str] = {
     ProviderName.GOOGLE.value: "gemini-2.5-flash-lite",
     ProviderName.OPENROUTER.value: "openai/gpt-4o",
     ProviderName.LITELLM.value: "azure_ai/claude-sonnet-4-5",
+    ProviderName.OLLAMA.value: "qwen3.6:14b",
 }
 
 # Map provider_name -> Settings attribute for .env fallback API key
@@ -42,6 +45,7 @@ _ENV_KEY_MAP: dict[str, str] = {
     ProviderName.QWEN.value: "qwen_api_key",
     ProviderName.OPENROUTER.value: "openrouter_api_key",
     ProviderName.LITELLM.value: "litellm_api_key",
+    ProviderName.OLLAMA.value: "",  # Ollama 不需要 API key
 }
 
 
@@ -159,9 +163,15 @@ class DynamicLLMServiceFactory:
                     setting.provider_name.value, ""
                 )
 
-            base_url = setting.base_url or _DEFAULT_BASE_URLS.get(
-                setting.provider_name.value, ""
-            )
+            if setting.base_url:
+                base_url = setting.base_url
+            elif setting.provider_name == ProviderName.OLLAMA:
+                # Ollama base_url 優先從環境變數讀，讓 pod URL 可動態設定
+                cfg = Settings()
+                ollama_root = cfg.ollama_base_url.rstrip("/")
+                base_url = f"{ollama_root}/v1"
+            else:
+                base_url = _DEFAULT_BASE_URLS.get(setting.provider_name.value, "")
 
             if setting.provider_name == ProviderName.MOCK:
                 return self._fallback

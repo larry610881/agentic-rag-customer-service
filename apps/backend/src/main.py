@@ -285,6 +285,10 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         application.include_router(feedback_router)
         application.include_router(admin_router)
 
+        # HARDCODE - 地端模型 A/B 測試路由，正式上線前移除
+        from src.interfaces.api.ollama_router import router as ollama_router
+        application.include_router(ollama_router)
+
         from src.interfaces.api.admin_tools_router import (
             router as admin_tools_router,
         )

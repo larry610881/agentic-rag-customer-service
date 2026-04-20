@@ -186,4 +186,10 @@ export const API_ENDPOINTS = {
     validate: "/api/v1/prompt-optimizer/validate",
     exchangeRate: "/api/v1/prompt-optimizer/exchange-rate",
   },
+  // HARDCODE - 地端模型 A/B 測試，正式上線前移除
+  ollama: {
+    abPresets: "/api/v1/ollama/ab-presets",
+    modelStatus: (model: string) =>
+      `/api/v1/ollama/model-status?model=${encodeURIComponent(model)}`,
+  },
 } as const;

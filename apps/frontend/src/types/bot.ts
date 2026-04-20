@@ -81,6 +81,8 @@ export interface Bot {
   customer_service_url?: string;
   created_at: string;
   updated_at: string;
+  /** HARDCODE - 地端模型切換狀態，正式上線前移除 */
+  warm_up_status?: "ready" | "skipped" | null;
 }
 
 export interface CreateBotRequest {

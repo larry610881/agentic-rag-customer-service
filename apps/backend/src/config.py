@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     litellm_api_key: str = ""
 
+    # Ollama (RunPod 地端模型)
+    ollama_base_url: str = "http://localhost:11434"  # e.g. http://<pod-id>-11434.proxy.runpod.net
+
+    # RunPod
+    runpod_api_key: str = ""
+    runpod_pod_id: str = ""
+
     # Embedding — "fake" | "openai" | "google"
     embedding_provider: str = "openai"
     embedding_api_key: str = ""
