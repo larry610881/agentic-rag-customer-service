@@ -9,6 +9,9 @@ from dataclasses import asdict
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.list_users_use_case import ListUsersUseCase
+from src.application.billing.get_billing_dashboard_use_case import (
+    GetBillingDashboardUseCase,
+)
 from src.application.billing.list_quota_events_use_case import (
     ListQuotaEventsUseCase,
 )
@@ -470,4 +473,88 @@ async def list_quota_events(
         page=pagination.page,
         page_size=pagination.page_size,
         total_pages=total_pages,
+    )
+
+
+# --- Billing Dashboard (S-Token-Gov.4) ---
+
+
+class MonthlyRevenuePointResponse(BaseModel):
+    cycle_year_month: str
+    total_amount: Decimal
+    transaction_count: int
+    addon_tokens_total: int
+
+
+class PlanRevenuePointResponse(BaseModel):
+    plan_name: str
+    total_amount: Decimal
+    transaction_count: int
+
+
+class TopTenantItemResponse(BaseModel):
+    tenant_id: str
+    tenant_name: str
+    total_amount: Decimal
+    transaction_count: int
+
+
+class BillingDashboardResponse(BaseModel):
+    monthly_revenue: list[MonthlyRevenuePointResponse]
+    by_plan: list[PlanRevenuePointResponse]
+    top_tenants: list[TopTenantItemResponse]
+    total_revenue: Decimal
+    total_transactions: int
+    cycle_start: str
+    cycle_end: str
+
+
+def _calc_start_cycle(end_cycle: str, *, months_back: int) -> str:
+    """從 end_cycle (YYYY-MM) 往前 N 個月，回傳 start_cycle 字串。"""
+    year, month = end_cycle.split("-")
+    y, m = int(year), int(month)
+    # 往前 months_back-1 個月（含當月共 months_back 個月）
+    for _ in range(months_back - 1):
+        m -= 1
+        if m < 1:
+            m = 12
+            y -= 1
+    return f"{y:04d}-{m:02d}"
+
+
+@router.get(
+    "/billing/dashboard",
+    response_model=BillingDashboardResponse,
+)
+@inject
+async def get_billing_dashboard(
+    start: str | None = Query(None, description="YYYY-MM, defaults to 6 months back"),
+    end: str | None = Query(None, description="YYYY-MM, defaults to current month"),
+    top_n: int = Query(10, ge=1, le=50),
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
+    use_case: GetBillingDashboardUseCase = Depends(
+        Provide[Container.get_billing_dashboard_use_case]
+    ),
+) -> BillingDashboardResponse:
+    """Aggregated billing data for revenue dashboard (system_admin only)."""
+    end_cycle = end or current_year_month()
+    start_cycle = start or _calc_start_cycle(end_cycle, months_back=6)
+    result = await use_case.execute(
+        start_cycle=start_cycle, end_cycle=end_cycle, top_n=top_n,
+    )
+    return BillingDashboardResponse(
+        monthly_revenue=[
+            MonthlyRevenuePointResponse(**asdict(m))
+            for m in result.monthly_revenue
+        ],
+        by_plan=[
+            PlanRevenuePointResponse(**asdict(p)) for p in result.by_plan
+        ],
+        top_tenants=[
+            TopTenantItemResponse(**asdict(t)) for t in result.top_tenants
+        ],
+        total_revenue=result.total_revenue,
+        total_transactions=result.total_transactions,
+        cycle_start=result.cycle_start,
+        cycle_end=result.cycle_end,
     )

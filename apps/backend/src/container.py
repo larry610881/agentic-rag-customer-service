@@ -224,6 +224,9 @@ from src.application.security.guard_rules_use_cases import (
     UpdateGuardRulesUseCase,
 )
 from src.application.security.prompt_guard_service import PromptGuardService
+from src.application.billing.get_billing_dashboard_use_case import (
+    GetBillingDashboardUseCase,
+)
 from src.application.billing.list_quota_events_use_case import (
     ListQuotaEventsUseCase,
 )
@@ -1069,6 +1072,13 @@ class Container(containers.DeclarativeContainer):
         ListQuotaEventsUseCase,
         billing_transaction_repository=billing_transaction_repository,
         alert_repository=quota_alert_log_repository,
+        tenant_repository=tenant_repository,
+    )
+
+    # S-Token-Gov.4: Billing dashboard
+    get_billing_dashboard_use_case = providers.Factory(
+        GetBillingDashboardUseCase,
+        billing_transaction_repository=billing_transaction_repository,
         tenant_repository=tenant_repository,
     )
 

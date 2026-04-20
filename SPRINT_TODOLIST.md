@@ -1527,18 +1527,26 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | 後端 admin integration + unit baseline 不退步 | ✅ | admin 19 passed (.2 + .2.5 + .3 共 19)；unit 624 passed；3 pre-existing bot 失敗不變 |
 | 前端 tsc + vitest 不退步 | ✅ | tsc 112 baseline 維持（零新錯誤）；vitest 223 passed 維持 |
 
-#### S-Token-Gov.4 收益儀表板 + 租戶額度頁
-> 對外可視化 — 系統層看收入、租戶看自己額度
+#### S-Token-Gov.4 收益儀表板 ✅ 完成 (2026-04-20)
+> 系統管理員從 BillingTransaction aggregate 月營收 + plan 分布 + top 租戶
+> 租戶額度頁 / Category 分布視覺化已在 .2.5 + .3 完成；BillingTransaction 列表已在 .3 (`/admin/quota-events`) 完成。本 sprint 專注「跨表聚合 + 圖表化」。
 
-| 項目 | 說明 |
-|------|------|
-| 系統層收益 API | /admin/billing/revenue?from&to&group_by=plan/tenant/month — 從 BillingTransaction 聚合 |
-| 系統層收益儀表板 | /admin/billing 頁：收入趨勢線圖 + plan 分布 + top 租戶表 |
-| 租戶額度頁 API | /tenants/{id}/quota — base_remaining / addon_remaining / 本月用量 / 自動續約次數 / 歷史 |
-| 租戶額度頁 UI | /tenant/quota 頁面（給租戶 admin 看自己） |
-| Category 分布視覺化 | 租戶頁 + admin 頁都顯示 category-wise 用量分布（pie + bar） |
-| BillingTransaction 列表 | 租戶可看自己歷史購買記錄；系統 admin 可跨租戶看 |
-| BDD scenarios | 收益聚合正確 / 租戶只能看自己 / category 分布 |
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| 3 個聚合 abstractmethod + dataclass | ✅ | aggregate_monthly_revenue / aggregate_by_plan / aggregate_top_tenants + MonthlyRevenuePoint/PlanRevenuePoint/TenantRevenuePoint dataclass |
+| SQLAlchemy aggregation 實作 | ✅ | 仿 usage_repository.get_daily_usage_stats pattern (func.sum + group_by + filter by cycle string range) |
+| GetBillingDashboardUseCase | ✅ | 並行 3 query + 1 tenant 列表，application 層 join tenant_name |
+| GET /api/v1/admin/billing/dashboard | ✅ | system_admin only；?start=YYYY-MM&end=YYYY-MM&top_n=10；預設往前 6 個月 |
+| _calc_start_cycle helper | ✅ | 純字串日期算 N 個月前（避免拉 dateutil 依賴）|
+| Container DI 註冊 | ✅ | get_billing_dashboard_use_case provider |
+| 前端 useBillingDashboard hook | ✅ | TanStack Query + 60s staleTime + queryKey 含 start/end/topN |
+| 3 chart/table 元件 | ✅ | BillingRevenueLineChart (Recharts LineChart) + BillingByPlanPieChart (Recharts PieChart) + BillingTopTenantsTable (點 row 跳 /admin/quota-events?tenant_id) |
+| format-currency helper | ✅ | formatCurrency(amount, currency='TWD') 千分位 + currency prefix |
+| /admin/billing 頁 | ✅ | cycle range picker (24 個月，start ≤ end 互鎖) + 4 彙總卡 (總/交易數/平均月/本月) + 2-col chart grid + top tenant 表 |
+| 路由 + sidebar 入口 | ✅ | ROUTES.ADMIN_BILLING + TrendingUp icon "收益儀表板" |
+| BDD 3 scenarios | ✅ | `integration/admin/billing_dashboard.feature` — 聚合正確 / cycle range filter / 非 admin 403 全綠 |
+| 後端 admin integration + unit baseline 不退步 | ✅ | admin 22 passed (.2 + .2.5 + .3 + .4 共 22)；unit 624 passed；3 pre-existing bot 失敗不變 |
+| 前端 tsc + vitest 不退步 | ✅ | tsc 112 baseline 維持（零新錯誤）；vitest 223 passed 維持 |
 
 ### S-Gov.6 Agent 執行追蹤 UI 可讀性強化
 > 既有 `agent_execution_traces` 已落地（見 S-Gov.1），本 Sprint 聚焦**前端 UI 可讀性**與**查詢能力**，後端只做欄位/索引補強。

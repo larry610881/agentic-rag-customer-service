@@ -165,6 +165,18 @@ export const API_ENDPOINTS = {
         : "/api/v1/admin/quota-events";
     },
   },
+  adminBilling: {
+    dashboard: (params: { start?: string; end?: string; topN?: number }) => {
+      const qs = new URLSearchParams();
+      if (params.start) qs.set("start", params.start);
+      if (params.end) qs.set("end", params.end);
+      if (params.topN) qs.set("top_n", String(params.topN));
+      const tail = qs.toString();
+      return tail
+        ? `/api/v1/admin/billing/dashboard?${tail}`
+        : "/api/v1/admin/billing/dashboard";
+    },
+  },
   systemPrompts: {
     get: "/api/v1/system/prompts",
     update: "/api/v1/system/prompts",

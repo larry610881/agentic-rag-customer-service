@@ -10,6 +10,7 @@
 ## 目錄
 
 - [Ollama A/B 測試 Debug — 模型 Tag 驗證 + Router Prefix + RHF shouldDirty](#ollama-ab-測試-debug--模型-tag-驗證--router-prefix--rhf-shoulddirty)
+- [S-Token-Gov.4 — 收益儀表板：跨表 Aggregation in Application 層 + Recharts LineChart + 跨 loop 連線陷阱](#s-token-gov4--收益儀表板跨表-aggregation-in-application-層--recharts-linechart--跨-loop-連線陷阱)
 - [S-Token-Gov.3 — 自動續約 + 門檻警示：DB 層冪等、行為變更如何同步既有測試、optional DI 漸進演化](#s-token-gov3--自動續約--門檻警示db-層冪等行為變更如何同步既有測試optional-di-漸進演化)
 - [S-Token-Gov.2.5 — 額度可視化：3-Query Application Join + has_ledger Flag + 視覺先於自動化](#s-token-gov25--額度可視化3-query-application-join--has_ledger-flag--視覺先於自動化)
 - [S-Token-Gov.2 — Token Ledger：扣費引擎 + 第一個 arq cron + Cross-Cutting Hook 容錯設計](#s-token-gov2--token-ledger扣費引擎--第一個-arq-cron--cross-cutting-hook-容錯設計)
@@ -161,6 +162,165 @@
 
 - **RHF `setValue` 的 `shouldDirty` / `shouldTouch` / `shouldValidate`**：三個 flag 控制不同的副作用——`shouldDirty` 標記欄位為已修改（觸發 `watch` 和 `isDirty`）；`shouldValidate` 觸發 zod 驗證；`shouldTouch` 標記為已互動。外部觸發表單值變更（如按鈕覆寫）時應加 `{ shouldDirty: true }` 確保訂閱方感知到變化
 - **MoE 模型的 active params**：`qwen3.6:35b-a3b` 的 35b 是總參數，3b 是每次 inference 實際啟用的參數（active）。推理成本接近 3B dense model，但模型容量接近 35B，是 edge/local deploy 的高 CP 值選擇
+
+---
+
+## S-Token-Gov.4 — 收益儀表板：跨表 Aggregation in Application 層 + Recharts LineChart + 跨 loop 連線陷阱
+
+**日期**：2026-04-20
+**Sprint**：S-Token-Gov.4（Token-Gov 系列收尾 — 收益視覺化）
+**涉及層級**：跨 4 層 + 前端 — Domain (3 dataclass + 3 abstractmethod) + Infrastructure (3 SQLAlchemy aggregation) + Application (1 use case) + Interfaces (1 endpoint + helper) + 前端 1 頁 + 3 元件 + 1 hook + 1 helper。約 14 檔。
+
+### 本次相關主題
+
+- 跨 BC aggregation：repo 層只回原始 dataclass，application 層補 tenant_name（避免 SQL JOIN 跨 BC 邊界）
+- SQLAlchemy `func.sum + group_by + label` pattern 與既有 `usage_repository` 一致性
+- Recharts LineChart vs PieChart 共通 ResponsiveContainer pattern
+- Cycle range picker 的 start ≤ end 互鎖 UI（純 client-side 過濾 options）
+- Integration test 「got Future attached to a different loop」陷阱再現（解法：multi-op 包進單一 `_run`）
+- Sprint 收尾「整合視圖」的設計：把前置 sprint 的 BillingTransaction snapshot 真正轉化為 SaaS KPI
+
+### 做得好的地方
+
+#### 1. Application 層 Join 而非 SQL JOIN — 守住 BC 邊界
+
+`top_tenants` 需要 `tenant_id + tenant_name`。最容易的做法是 SQL JOIN：
+```sql
+SELECT t.id, t.name, SUM(bt.amount_value) ...
+FROM billing_transactions bt JOIN tenants t ON bt.tenant_id = t.id
+GROUP BY t.id, t.name ORDER BY ... DESC LIMIT 10
+```
+
+但這讓 `BillingTransactionRepository` 的 query 跨 BC 引用 `tenants` 表 — 違反 DDD 「one repo per aggregate root」原則。
+
+最終做法：repo 只回 `TenantRevenuePoint(tenant_id, total_amount, ...)`，application 層另外 fetch tenant 列表 → dict map → 補 tenant_name。
+
+成本：多 1 個 query（`SELECT * FROM tenants`），對 N < 100 租戶完全可接受。
+
+收益：
+- **未來 ledger / billing 拆服務**：repo 不知道 tenants 表存在，搬遷 0 改動
+- **快取友善**：tenant 列表可獨立加 cache layer，不影響聚合 query
+- **測試易**：repo unit test 不用 mock tenants 表
+
+這是 .2.5 已驗證的 pattern（系統層額度總覽用同設計）— 本 sprint 直接 fork。
+
+#### 2. SQLAlchemy aggregation 沿襲既有 pattern 而非自創
+
+新 3 個聚合方法直接 fork `usage_repository.get_daily_usage_stats` 的寫法：
+
+```python
+total_col = func.sum(BillingTransactionModel.amount_value).label("total")
+stmt = (
+    select(plan_col.label("plan"), total_col, func.count().label("cnt"))
+    .where(cycle_col >= start_cycle, cycle_col <= end_cycle)
+    .group_by(plan_col)
+    .order_by(total_col.desc())
+)
+```
+
+**為什麼 sticking 到既有 pattern 是正確的**：
+- ORM aggregation pattern 是 codebase 的「方言」— 用法不一致會讓未來 onboarding 痛苦（每個 repo 都得讀一次才懂）
+- 既有 pattern 已經被 conftest fixtures + integration test 驗證過 — fresh event loop / NullPool / asyncpg 兼容問題都踩過
+- 如果換新寫法（如 SQLAlchemy 2.0 的 ORM-style aggregate），test infrastructure 可能要跟著改 → 投資報酬不划算
+
+「Boring code is good code」— 在 dependency-rich 的 codebase（SQLAlchemy + asyncpg + dependency-injector + NullPool + fresh event loop），守舊的代價最低。
+
+#### 3. Cycle Range Picker 的 start ≤ end 互鎖 — Client-Side UI Constraint
+
+兩個 dropdown 互相約束：
+
+```tsx
+const validStartOptions = cycleOptions.filter((o) => o.value <= end);
+const validEndOptions = cycleOptions.filter((o) => o.value >= start);
+```
+
+→ 使用者不會選到無效 range，無需 server side validation 也不需 toast 警示。
+
+`YYYY-MM` string 比較剛好可用（lexicographic 順序與時間順序一致），不用 Date object 轉換。
+
+未來若要支援更靈活範圍（quarter / year-to-date / custom），可加 preset selector，但目前設計可線性擴展。
+
+#### 4. Test 的 Cross-Loop 陷阱 — 一次解決 + 立即記錄
+
+Step `seed_billing_transactions` 第一次寫法是「呼叫 helper `_ensure_ledger_for` (含 _run)，回 ledger 後再 _run save tx」— 結果踩到 `Task got Future attached to a different loop` exception（asyncpg 連線跨 event loop）。
+
+對策（與 .2 / .3 同模式）：把 ensure_ledger + n 個 save 包進單一 `async def _seed()` 函式，外層只 `_run(_seed())` 一次。
+
+```python
+def seed_billing_transactions(...):
+    async def _seed():
+        tenant = await tenant_repo.find_by_id(...)
+        ledger = await ledger_repo.find_by_tenant_and_cycle(...)
+        if ledger is None:
+            ledger = TokenLedger(...)
+            await ledger_repo.save(ledger)
+        for _ in range(n):
+            tx = BillingTransaction(...)
+            await billing_repo.save(tx)
+    _run(_seed())
+```
+
+這個陷阱在 token_ledger_steps.py / auto_topup_steps.py / 本次都重複出現 → 顯示**測試 helper 應該封裝這個 pattern**，避免每個 step 都重寫。
+
+未來改善：在 `tests/integration/conftest.py` 加 `@pytest.fixture run_async`，吃 `async def` callback + 自動單一 _run 包裝。減少未來 sprint 重踩。
+
+### 潛在隱憂
+
+#### 1. 全平台 single-currency 假設 → 中
+
+目前 `total_revenue` 直接加總所有 transaction 的 `amount_value`，假設全平台單一幣別（TWD）。如果未來開放 USD plan，加總會錯（混算）。
+
+**緩解現況**：所有 plan 註冊時都是 TWD（POC seed 寫死）。
+
+**改善方向**：
+- 短期：在 `aggregate_*` query 加 `WHERE amount_currency = ?` 並由 caller 指定（每幣別獨立 dashboard）
+- 中期：加匯率服務 + 統一轉換成「報表幣別」（usually USD or platform base currency）
+- 長期：multi-currency dashboard with toggle
+
+#### 2. 無 cache → POC 階段可接受，未來瓶頸 → 低
+
+每次切 cycle range → 3 個 group_by query 重跑。對 N < 10K transactions / month 沒問題。當 transaction 數成長到 1M+ 後，每次 dashboard refresh 會吃 DB CPU。
+
+**改善方向**：
+- 快速：加 query result cache（Redis，TTL 60s — 與前端 staleTime 對齊）
+- 永久：建 materialized view `billing_monthly_summary`，每月 1 日 cron refresh
+- 終極：把月聚合資料寫進獨立 `billing_summary_cache` 表，新 transaction 增量更新
+
+當前 60s TanStack staleTime + 60s server cache 連發，對 5-10 admin 同時開頁仍能扛。
+
+#### 3. Top tenant 點擊跳轉 query string 沒對應 hook 過濾 → 低
+
+`BillingTopTenantsTable` 點 row 跳 `/admin/quota-events?tenant_id=X`，但 `useQuotaEvents` 從 React state 讀 tenantId，不從 URL search params 讀。所以跳過去後 URL 有 query string，但表格沒實際過濾。
+
+**改善方向**：
+- 簡單：用 `useSearchParams` 同步 state ↔ URL（既有 React Router pattern）
+- 短期：把 `/admin/quota-events` 改成 read query param init state
+
+這個 bug 不影響 .4 demo（功能存在但 cross-page filter 不通），未來補 .3.5 或下個 UI sprint 一起修。
+
+#### 4. cycle_year_month 字串比較的潛在邊界 → 極低
+
+`WHERE cycle_year_month >= '2025-12' AND cycle_year_month <= '2026-04'` 完全靠字串字典序。
+
+對 `YYYY-MM` 格式 100% 等於時間序，沒問題。
+
+**前提**：所有寫入端必須嚴格遵守 `YYYY-MM`（4 位年 + dash + 2 位月）。這個在 `current_year_month()` helper 已 enforce，但若有人手動 SQL insert 寫成 `2026-4` 就會排序錯。
+
+**緩解**：DB schema 用 `VARCHAR(7) NOT NULL` 不是 enforce 的。
+
+**改善方向**：加 CHECK constraint `cycle_year_month ~ '^\d{4}-\d{2}$'`（PostgreSQL regex check）。下次 migration 一起做。
+
+### 延伸學習
+
+- **Aggregation 在 DDD 的歸屬**：當 query 跨 aggregate root 時，「Application Service 補資料」vs「Read Model / CQRS Q-side」vs「Specification pattern in repo」三選一。本次選 application 層補（成本最低），但若聚合需求變多，CQRS Q-side 是值得長期的方向。延伸閱讀：「Read Model」、「Materialized View Pattern」
+- **Recharts vs Visx vs D3**：Recharts 是 React + SVG declarative chart 的最普及選擇 — 抽象到「Pie/Line/Bar」level，dev velocity 高。當客製化需求超過內建組件（如自訂 axis tick / 互動 hover state），visx 或 D3 才划算。本 sprint Pie + Line 都在 Recharts 舒適區
+- **`label.label("...")` 的 SQLAlchemy 慣例**：`func.sum(col).label("total")` + `.order_by(total.desc())` 讓 select column 與 ORDER BY 共用 alias，避免 PostgreSQL 重複計算。也讓 `result.row.total` 取值 — 整段 query 可讀性 +30%
+
+### 思考題
+
+「我們現在每次切 cycle range 都重跑 3 個 group_by query。如果有 100 個 admin 同時開儀表板（demo 給董事會看），DB CPU 會不會吃滿？什麼指標可以衡量這個風險？什麼時間點該從『純查詢』升級為『預先聚合』（materialized view 或 summary table）？」
+
+提示：考慮 PostgreSQL `pg_stat_statements` 的 `mean_exec_time` 與 `calls`，再思考「快取命中率 > 95%」與「DB CPU < 30%」哪個是更早的警訊。
 
 ---
 

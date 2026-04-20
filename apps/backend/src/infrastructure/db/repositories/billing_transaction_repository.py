@@ -1,10 +1,17 @@
-"""SQLAlchemy BillingTransaction Repository — S-Token-Gov.3"""
+"""SQLAlchemy BillingTransaction Repository — S-Token-Gov.3 (+.4 aggregations)"""
 
 from __future__ import annotations
+
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.domain.billing.aggregates import (
+    MonthlyRevenuePoint,
+    PlanRevenuePoint,
+    TenantRevenuePoint,
+)
 from src.domain.billing.entity import BillingTransaction
 from src.domain.billing.repository import BillingTransactionRepository
 from src.infrastructure.db.atomic import atomic
@@ -90,3 +97,105 @@ class SQLAlchemyBillingTransactionRepository(BillingTransactionRepository):
             stmt = stmt.where(BillingTransactionModel.tenant_id == tenant_id)
         result = await self._session.execute(stmt)
         return int(result.scalar() or 0)
+
+    # --- S-Token-Gov.4: Aggregations ---
+
+    async def aggregate_monthly_revenue(
+        self,
+        *,
+        start_cycle: str,
+        end_cycle: str,
+        tenant_id: str | None = None,
+    ) -> list[MonthlyRevenuePoint]:
+        cycle_col = BillingTransactionModel.cycle_year_month
+        stmt = (
+            select(
+                cycle_col.label("cycle"),
+                func.sum(BillingTransactionModel.amount_value).label("total"),
+                func.count().label("cnt"),
+                func.sum(BillingTransactionModel.addon_tokens_added).label(
+                    "tokens"
+                ),
+            )
+            .where(cycle_col >= start_cycle, cycle_col <= end_cycle)
+            .group_by(cycle_col)
+            .order_by(cycle_col.asc())
+        )
+        if tenant_id is not None:
+            stmt = stmt.where(
+                BillingTransactionModel.tenant_id == tenant_id
+            )
+        result = await self._session.execute(stmt)
+        return [
+            MonthlyRevenuePoint(
+                cycle_year_month=row.cycle,
+                total_amount=Decimal(row.total or 0),
+                transaction_count=int(row.cnt or 0),
+                addon_tokens_total=int(row.tokens or 0),
+            )
+            for row in result.all()
+        ]
+
+    async def aggregate_by_plan(
+        self,
+        *,
+        start_cycle: str,
+        end_cycle: str,
+    ) -> list[PlanRevenuePoint]:
+        plan_col = BillingTransactionModel.plan_name
+        cycle_col = BillingTransactionModel.cycle_year_month
+        total_col = func.sum(BillingTransactionModel.amount_value).label(
+            "total"
+        )
+        stmt = (
+            select(
+                plan_col.label("plan"),
+                total_col,
+                func.count().label("cnt"),
+            )
+            .where(cycle_col >= start_cycle, cycle_col <= end_cycle)
+            .group_by(plan_col)
+            .order_by(total_col.desc())
+        )
+        result = await self._session.execute(stmt)
+        return [
+            PlanRevenuePoint(
+                plan_name=row.plan,
+                total_amount=Decimal(row.total or 0),
+                transaction_count=int(row.cnt or 0),
+            )
+            for row in result.all()
+        ]
+
+    async def aggregate_top_tenants(
+        self,
+        *,
+        start_cycle: str,
+        end_cycle: str,
+        limit: int = 10,
+    ) -> list[TenantRevenuePoint]:
+        tenant_col = BillingTransactionModel.tenant_id
+        cycle_col = BillingTransactionModel.cycle_year_month
+        total_col = func.sum(BillingTransactionModel.amount_value).label(
+            "total"
+        )
+        stmt = (
+            select(
+                tenant_col.label("tid"),
+                total_col,
+                func.count().label("cnt"),
+            )
+            .where(cycle_col >= start_cycle, cycle_col <= end_cycle)
+            .group_by(tenant_col)
+            .order_by(total_col.desc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return [
+            TenantRevenuePoint(
+                tenant_id=row.tid,
+                total_amount=Decimal(row.total or 0),
+                transaction_count=int(row.cnt or 0),
+            )
+            for row in result.all()
+        ]
