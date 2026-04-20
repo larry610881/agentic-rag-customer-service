@@ -278,6 +278,8 @@ export function BotDetailForm({
   const showSources = watch("show_sources");
   const greetingMessages = watch("widget_greeting_messages") ?? [];
   const mcpServers = watch("mcp_servers") ?? [];
+  const currentLlmProvider = watch("llm_provider");
+  const currentLlmModel = watch("llm_model");
   const toolConfigs = (watch("tool_configs") ?? {}) as Record<
     string,
     ToolRagConfig
@@ -554,8 +556,8 @@ export function BotDetailForm({
                 <div className="flex gap-2">
                   {abPresets.map((preset) => {
                     const isActive =
-                      watch("llm_provider") === "ollama" &&
-                      watch("llm_model") === preset.model;
+                      currentLlmProvider === "ollama" &&
+                      currentLlmModel === preset.model;
                     return (
                       <Button
                         key={preset.label}
