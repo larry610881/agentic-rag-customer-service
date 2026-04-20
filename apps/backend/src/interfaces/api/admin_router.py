@@ -9,10 +9,15 @@ from dataclasses import asdict
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.list_users_use_case import ListUsersUseCase
+from src.application.billing.list_quota_events_use_case import (
+    ListQuotaEventsUseCase,
+)
 from src.application.ledger.list_all_tenants_quotas_use_case import (
     ListAllTenantsQuotasUseCase,
 )
 from src.domain.ledger.entity import current_year_month
+from datetime import datetime
+from decimal import Decimal
 from src.application.auth.register_user_use_case import (
     RegisterUserCommand,
     RegisterUserUseCase,
@@ -403,3 +408,66 @@ async def list_all_tenants_quotas(
     target_cycle = cycle or current_year_month()
     items = await use_case.execute(target_cycle)
     return [TenantQuotaOverviewResponse(**asdict(i)) for i in items]
+
+
+# --- Quota Events (S-Token-Gov.3) ---
+
+
+class QuotaEventResponse(BaseModel):
+    event_id: str
+    event_type: str
+    tenant_id: str
+    tenant_name: str
+    cycle_year_month: str
+    created_at: datetime
+    addon_tokens_added: int | None = None
+    amount_currency: str | None = None
+    amount_value: Decimal | None = None
+    used_ratio: Decimal | None = None
+    message: str | None = None
+    reason: str | None = None
+
+
+@router.get(
+    "/quota-events",
+    response_model=PaginatedResponse[QuotaEventResponse],
+)
+@inject
+async def list_quota_events(
+    tenant_id: str | None = None,
+    pagination: PaginationQuery = Depends(),
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
+    use_case: ListQuotaEventsUseCase = Depends(
+        Provide[Container.list_quota_events_use_case]
+    ),
+) -> PaginatedResponse[QuotaEventResponse]:
+    """List auto-topup events + quota threshold alerts merged by created_at desc."""
+    items, total = await use_case.execute(
+        tenant_id=tenant_id,
+        limit=pagination.page_size,
+        offset=(pagination.page - 1) * pagination.page_size,
+    )
+    total_pages = ceil(total / pagination.page_size) if total > 0 else 0
+    return PaginatedResponse(
+        items=[
+            QuotaEventResponse(
+                event_id=i.event_id,
+                event_type=i.event_type,
+                tenant_id=i.tenant_id,
+                tenant_name=i.tenant_name,
+                cycle_year_month=i.cycle_year_month,
+                created_at=i.created_at,
+                addon_tokens_added=i.addon_tokens_added,
+                amount_currency=i.amount_currency,
+                amount_value=i.amount_value,
+                used_ratio=i.used_ratio,
+                message=i.message,
+                reason=i.reason,
+            )
+            for i in items
+        ],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        total_pages=total_pages,
+    )

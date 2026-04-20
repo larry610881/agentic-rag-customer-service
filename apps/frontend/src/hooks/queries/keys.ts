@@ -77,6 +77,8 @@ export const queryKeys = {
       ["admin", "users", tenantId ?? "all"] as const,
     tenantsQuotas: (cycle: string) =>
       ["admin", "tenants", "quotas", cycle] as const,
+    quotaEvents: (tenantId: string, page: number, pageSize: number) =>
+      ["admin", "quota-events", tenantId, page, pageSize] as const,
   },
   systemPrompts: {
     all: ["system-prompts"] as const,

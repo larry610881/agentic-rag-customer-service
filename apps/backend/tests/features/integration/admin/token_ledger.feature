@@ -19,11 +19,14 @@ Feature: Token Ledger 扣費 + 月度重置 — S-Token-Gov.2
     And record_usage 寫入 500 tokens 給 ledger-co
     Then base_remaining 應為 9998500
 
-  Scenario: base 用完 — addon 變負（軟上限）
+  Scenario: base 用完 — addon 觸發自動續約（S-Token-Gov.3 改變行為）
+    # 原 .2 行為：addon 變負 (-400)
+    # .3 之後：addon ≤ 0 → topup +5M（starter plan addon_pack_tokens）
+    # → addon 從 -400 變 4_999_600
     Given ledger-co 本月 ledger base_remaining=100 addon_remaining=0
     When record_usage 寫入 500 tokens 給 ledger-co
     Then base_remaining 應為 0
-    And addon_remaining 應為 -400
+    And addon_remaining 應為 4999600
 
   Scenario: 月度重置 — addon 從上月 carryover
     Given ledger-co 上月 ledger addon_remaining=2000

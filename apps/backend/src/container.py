@@ -224,6 +224,13 @@ from src.application.security.guard_rules_use_cases import (
     UpdateGuardRulesUseCase,
 )
 from src.application.security.prompt_guard_service import PromptGuardService
+from src.application.billing.list_quota_events_use_case import (
+    ListQuotaEventsUseCase,
+)
+from src.application.billing.process_quota_alerts_use_case import (
+    ProcessQuotaAlertsUseCase,
+)
+from src.application.billing.topup_addon_use_case import TopupAddonUseCase
 from src.application.ledger.deduct_tokens_use_case import DeductTokensUseCase
 from src.application.ledger.ensure_ledger_use_case import EnsureLedgerUseCase
 from src.application.ledger.get_tenant_quota_use_case import (
@@ -334,6 +341,12 @@ from src.infrastructure.db.repositories.provider_setting_repository import (
 )
 from src.infrastructure.db.repositories.plan_repository import (
     SQLAlchemyPlanRepository,
+)
+from src.infrastructure.db.repositories.billing_transaction_repository import (
+    SQLAlchemyBillingTransactionRepository,
+)
+from src.infrastructure.db.repositories.quota_alert_log_repository import (
+    SQLAlchemyQuotaAlertLogRepository,
 )
 from src.infrastructure.db.repositories.token_ledger_repository import (
     SQLAlchemyTokenLedgerRepository,
@@ -627,6 +640,17 @@ class Container(containers.DeclarativeContainer):
 
     token_ledger_repository = providers.Factory(
         SQLAlchemyTokenLedgerRepository,
+        session=db_session,
+    )
+
+    # S-Token-Gov.3: Billing + QuotaAlert repositories
+    billing_transaction_repository = providers.Factory(
+        SQLAlchemyBillingTransactionRepository,
+        session=db_session,
+    )
+
+    quota_alert_log_repository = providers.Factory(
+        SQLAlchemyQuotaAlertLogRepository,
         session=db_session,
     )
 
@@ -1028,10 +1052,33 @@ class Container(containers.DeclarativeContainer):
         plan_repository=plan_repository,
     )
 
+    # S-Token-Gov.3: Billing 3 個 use case（必須先於 deduct_tokens 註冊）
+    topup_addon_use_case = providers.Factory(
+        TopupAddonUseCase,
+        ledger_repository=token_ledger_repository,
+        billing_transaction_repository=billing_transaction_repository,
+    )
+
+    process_quota_alerts_use_case = providers.Factory(
+        ProcessQuotaAlertsUseCase,
+        ledger_repository=token_ledger_repository,
+        alert_repository=quota_alert_log_repository,
+    )
+
+    list_quota_events_use_case = providers.Factory(
+        ListQuotaEventsUseCase,
+        billing_transaction_repository=billing_transaction_repository,
+        alert_repository=quota_alert_log_repository,
+        tenant_repository=tenant_repository,
+    )
+
     deduct_tokens_use_case = providers.Factory(
         DeductTokensUseCase,
         ledger_repository=token_ledger_repository,
         ensure_ledger=ensure_ledger_use_case,
+        # S-Token-Gov.3: 注入 auto-topup hook
+        topup_addon=topup_addon_use_case,
+        plan_repository=plan_repository,
     )
 
     process_monthly_reset_use_case = providers.Factory(

@@ -1504,20 +1504,28 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | BDD 3 scenarios | ✅ | `integration/admin/quota_overview.feature` — system_admin 列出當月/查歷史月份/非 admin 403 全綠 |
 | tsc + vitest 不退步 | ✅ | tsc 114→112 (零新錯誤)；vitest 223 passed baseline 維持 |
 
-#### S-Token-Gov.3 自動續約 + Email 通知
-> 軟上限觸發 auto-buy + 門檻通知；POC 不設防爆
+#### S-Token-Gov.3 自動續約 + 門檻警示（DB log only）✅ 完成 (2026-04-20)
+> 軟上限觸發 auto-buy + DB log 警示；Email 留 .3.5
 
-| 項目 | 說明 |
-|------|------|
-| ProcessAutoTopupUseCase | 餘額 ≤ 0 時 trigger：addon_remaining += plan.addon_pack_tokens + 記一筆 BillingTransaction（應收帳款） |
-| BillingTransaction entity | `tenant_id + plan_id + type (base_subscription / addon_topup) + tokens + amount + currency + created_at` |
-| NotificationConfig per-tenant | `tenant_id + threshold_type (percent / absolute) + threshold_value + email_recipients + subject_template + body_template` |
-| 門檻檢查 | RecordUsageUseCase 後檢查 ledger.total_remaining 是否觸發任一 NotificationConfig，呼叫 SendQuotaAlertUseCase |
-| EmailService ABC + SendGrid impl | Domain ABC + Infrastructure SendGrid client（API Key 進 .env） |
-| SendQuotaAlertUseCase | 渲染 template + send via EmailService + 寫 notification_log |
-| 防重複寄信機制 | 同 cycle + 同 threshold 只寄一次（NotificationConfig 加 last_sent_at） |
-| 通知設定 UI | /admin/tenants/{id}/notifications 頁面（CRUD threshold + template） |
-| BDD scenarios | 觸發 auto-buy / 寄信 / 防重複寄信 / template 渲染 |
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Migration: billing_transactions + quota_alert_logs | ✅ | 套 local-docker + dev-vm；FK CASCADE + UNIQUE(tenant_id,cycle,alert_type) DB 層保證冪等 |
+| Domain: Billing BC | ✅ | BillingTransaction entity（snapshot plan_name/amount/currency）+ QuotaAlertLog entity + 2 repository ABC |
+| Infrastructure: 2 ORM + 2 repo | ✅ | quota_alert_log_repository.save_if_new 用 IntegrityError catch 達成冪等 |
+| TopupAddonUseCase | ✅ | addon += plan.addon_pack_tokens + 寫 BillingTransaction snapshot；plan.addon_pack_tokens=0 視為「不續約」回 None |
+| DeductTokensUseCase hook | ✅ | 扣完若 addon ≤ 0 → trigger TopupAddonUseCase（topup 內部 save，外層不再 save 避免 lost-update）；try/except 容錯 |
+| ProcessQuotaAlertsUseCase | ✅ | cron 每天掃所有租戶本月 ledger，達 80%/100% 寫警示；UNIQUE 防重 |
+| ListQuotaEventsUseCase | ✅ | 合併 BillingTransaction + QuotaAlertLog 為單一時間軸（QuotaEventItem dataclass），按 created_at desc |
+| Container DI 註冊 | ✅ | 4 use case + 2 repo；DeductTokens 注入 topup_addon + plan_repo（optional 不破壞既有 unit test） |
+| Worker arq cron | ✅ | quota_alerts_task @ UTC 01:00（= Asia/Taipei 09:00，避開月度重置 00:05） |
+| GET /admin/quota-events | ✅ | system_admin only；?tenant_id 過濾 + page/page_size 分頁；PaginatedResponse |
+| 前端 useQuotaEvents hook | ✅ | TanStack Query + 30s staleTime + queryKey 含 tenantId/page/pageSize |
+| /admin/quota-events 頁 | ✅ | 表格按 created_at desc；3 種 event_type 分色 badge（emerald/orange/destructive）+ tenant filter + 分頁 |
+| 路由 + sidebar 入口 | ✅ | ROUTES.ADMIN_QUOTA_EVENTS + Bell icon "額度事件" |
+| BDD 4 scenarios | ✅ | `integration/admin/auto_topup.feature` — 第一次續約 / POC plan 不續約 / 連續 2 次續約 / cron 警示冪等 全綠 |
+| Token-Gov.2 既有 scenario 同步 | ✅ | "base 用完 → addon 變負" 改為 "→ 自動續約 +5M"（行為改變需求驅動 — 非弱化測試） |
+| 後端 admin integration + unit baseline 不退步 | ✅ | admin 19 passed (.2 + .2.5 + .3 共 19)；unit 624 passed；3 pre-existing bot 失敗不變 |
+| 前端 tsc + vitest 不退步 | ✅ | tsc 112 baseline 維持（零新錯誤）；vitest 223 passed 維持 |
 
 #### S-Token-Gov.4 收益儀表板 + 租戶額度頁
 > 對外可視化 — 系統層看收入、租戶看自己額度

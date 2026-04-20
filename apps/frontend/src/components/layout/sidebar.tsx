@@ -60,6 +60,7 @@ const systemAdminItems = [
   { href: "/admin/observability", label: "可觀測性", icon: Activity },
   { href: "/admin/token-usage", label: "Token 用量", icon: Coins },
   { href: "/admin/quota-overview", label: "額度總覽", icon: Wallet },
+  { href: "/admin/quota-events", label: "額度事件", icon: Bell },
   { href: "/admin/mcp-registry", label: "MCP 工具庫", icon: Puzzle },
   { href: "/admin/tools", label: "工具權限", icon: Wrench },
   { href: "/admin/error-events", label: "錯誤追蹤", icon: AlertTriangle },

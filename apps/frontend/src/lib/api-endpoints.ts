@@ -153,6 +153,18 @@ export const API_ENDPOINTS = {
         ? `/api/v1/admin/tenants/quotas?cycle=${encodeURIComponent(cycle)}`
         : "/api/v1/admin/tenants/quotas",
   },
+  adminQuotaEvents: {
+    list: (params: { tenantId?: string; page?: number; pageSize?: number }) => {
+      const qs = new URLSearchParams();
+      if (params.tenantId) qs.set("tenant_id", params.tenantId);
+      if (params.page) qs.set("page", String(params.page));
+      if (params.pageSize) qs.set("page_size", String(params.pageSize));
+      const tail = qs.toString();
+      return tail
+        ? `/api/v1/admin/quota-events?${tail}`
+        : "/api/v1/admin/quota-events";
+    },
+  },
   systemPrompts: {
     get: "/api/v1/system/prompts",
     update: "/api/v1/system/prompts",

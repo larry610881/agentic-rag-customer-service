@@ -10,6 +10,7 @@
 ## 目錄
 
 - [Ollama A/B 測試 Debug — 模型 Tag 驗證 + Router Prefix + RHF shouldDirty](#ollama-ab-測試-debug--模型-tag-驗證--router-prefix--rhf-shoulddirty)
+- [S-Token-Gov.3 — 自動續約 + 門檻警示：DB 層冪等、行為變更如何同步既有測試、optional DI 漸進演化](#s-token-gov3--自動續約--門檻警示db-層冪等行為變更如何同步既有測試optional-di-漸進演化)
 - [S-Token-Gov.2.5 — 額度可視化：3-Query Application Join + has_ledger Flag + 視覺先於自動化](#s-token-gov25--額度可視化3-query-application-join--has_ledger-flag--視覺先於自動化)
 - [S-Token-Gov.2 — Token Ledger：扣費引擎 + 第一個 arq cron + Cross-Cutting Hook 容錯設計](#s-token-gov2--token-ledger扣費引擎--第一個-arq-cron--cross-cutting-hook-容錯設計)
 - [S-Token-Gov.1 — Plan Template CRUD：String Name FK 設計 + 軟/硬刪 + DDD 違反順手修](#s-token-gov1--plan-template-crudstring-name-fk-設計--軟硬刪--ddd-違反順手修)
@@ -160,6 +161,181 @@
 
 - **RHF `setValue` 的 `shouldDirty` / `shouldTouch` / `shouldValidate`**：三個 flag 控制不同的副作用——`shouldDirty` 標記欄位為已修改（觸發 `watch` 和 `isDirty`）；`shouldValidate` 觸發 zod 驗證；`shouldTouch` 標記為已互動。外部觸發表單值變更（如按鈕覆寫）時應加 `{ shouldDirty: true }` 確保訂閱方感知到變化
 - **MoE 模型的 active params**：`qwen3.6:35b-a3b` 的 35b 是總參數，3b 是每次 inference 實際啟用的參數（active）。推理成本接近 3B dense model，但模型容量接近 35B，是 edge/local deploy 的高 CP 值選擇
+
+---
+
+## S-Token-Gov.3 — 自動續約 + 門檻警示：DB 層冪等、行為變更如何同步既有測試、optional DI 漸進演化
+
+**日期**：2026-04-20
+**Sprint**：S-Token-Gov.3（5 sprint 系列第 5 步 — auto-topup + DB log alerts，email 留 .3.5）
+**涉及層級**：跨 4 層 + worker cron — 新 BC（Billing）+ 4 use case + 2 ORM + 2 repo + DeductTokensUseCase 改造 + admin_router 加 endpoint + worker 加第 2 個 cron + 前端 1 新頁 + 1 新 hook + 路由/sidebar。約 17 檔變動。
+
+### 本次相關主題
+
+- DB UNIQUE 約束 vs application 層去重（IntegrityError catch pattern）
+- 行為變更時既有測試的處理：弱化 vs 同步更新（test-integrity rule 應用）
+- Optional DI 注入漸進演化（不破壞既有 unit test 的兼容性策略）
+- 「topup 內部 save」vs「外層 save」的 lost-update 防範
+- 跨 BC 事件流（DeductTokensUseCase → TopupAddonUseCase → BillingTransaction）的 transaction 邊界
+- Sprint 拆分：「DB log first, email later」的工作流隔離
+
+### 做得好的地方
+
+#### 1. DB UNIQUE 是冪等的最後防線，cron 不必自己防重
+
+`quota_alert_logs` 加 `UNIQUE(tenant_id, cycle_year_month, alert_type)`，搭配 repo 的 `save_if_new`：
+
+```python
+async def save_if_new(self, alert: QuotaAlertLog) -> QuotaAlertLog | None:
+    try:
+        async with atomic(self._session):
+            self._session.add(model)
+        return alert
+    except IntegrityError:
+        await self._session.rollback()
+        return None
+```
+
+→ Cron 重跑同一 alert 不會重複寫，即使 application 層忘了檢查也擋得住。比起在 application 層先 `find_by_tenant_and_cycle` 查再決定要不要 INSERT，這個 pattern：
+- **Race condition 安全**：兩個 cron 進程同時跑也只會有一個成功
+- **無需事先讀**：少一次 query，cron 全速跑
+- **單一真相來源**：「哪個 alert 已存在」由 DB 約束唯一決定，不是 application 層的快照
+
+「在 DB 層強制不變式 (invariant)」是分散式系統設計的基本紀律之一 — application 層的檢查永遠是 best-effort，DB 約束才是真正的 contract。
+
+#### 2. 行為變更同步既有測試 — 不弱化、不刪除、明確標註
+
+Token-Gov.2 有一個 scenario：`base 用完 → addon 變負（軟上限）`。Token-Gov.3 改變了這個行為：addon ≤ 0 觸發 auto-topup → addon 變正。
+
+兩個壞做法 + 一個正確做法：
+
+| 做法 | 評價 |
+|------|------|
+| ❌ 加 `@pytest.mark.skip` 跳過該 scenario | 違反 test-integrity rule — 撕毀契約 |
+| ❌ 在 setup 強制不注入 topup（讓該測試走老路徑） | 測試與 production code 行為背離，風險長期累積 |
+| ✅ **更新 scenario 描述 + 斷言為新行為** | 明確記錄「行為變更需求驅動」，未來讀 git log 看得到原意 |
+
+實作上做了：
+1. Scenario 名稱從 `base 用完 — addon 變負（軟上限）` 改為 `base 用完 — addon 觸發自動續約（S-Token-Gov.3 改變行為）`
+2. 加註解：`# 原 .2 行為：addon 變負 (-400) | .3 之後：addon ≤ 0 → topup +5M`
+3. 斷言從 `addon_remaining 應為 -400` 改為 `addon_remaining 應為 4999600`
+
+「軟上限負數」的測試需求並未消失 — 在 Token-Gov.3 新 feature 內加了 `Scenario: POC plan (addon_pack_tokens=0) 不續約` 涵蓋（POC plan 沒設 topup pack → 仍會走老 path 變負）。
+
+→ 測試契約完整保留，覆蓋率沒有遺失，只是「哪個 plan 觸發哪個行為」的條件被精細化。
+
+#### 3. Optional DI 注入：DeductTokensUseCase 既向後相容也向前演化
+
+```python
+class DeductTokensUseCase:
+    def __init__(
+        self,
+        ledger_repository: TokenLedgerRepository,
+        ensure_ledger: EnsureLedgerUseCase,
+        topup_addon=None,         # ← .3 新加，預設 None
+        plan_repository: PlanRepository | None = None,
+    ): ...
+```
+
+→ 既有 unit test 用 `AsyncMock(spec=TokenLedgerRepository)` 等 mock 直接呼叫，不傳 topup → 仍走純扣費路徑（行為與 .2 完全相同）。
+→ 真實 container 注入 topup → addon ≤ 0 自動續約。
+
+兩條 path 在 application 層用單一 `if self._topup_addon is not None` 分流。這個 pattern 解決了「需要演化既有 use case 但不想破壞 N 個現有 caller / test」的常見痛點：
+- 不用建 V2 class
+- 不用加 feature flag
+- DI 解析時自動決定行為
+
+關鍵限制：兩個 path 必須**確定行為等價**（差別只在「有/無 topup」），否則 unit test 的綠燈會掩蓋 production bug。
+
+#### 4. 「topup 內部 save」vs「外層 save」的 transaction 邊界處理
+
+問題：`DeductTokensUseCase` 扣完先 `ledger.deduct(tokens)` 變更 entity 狀態。若 addon ≤ 0，呼叫 `TopupAddonUseCase.execute(ledger=...)` — 它**內部會 `ledger_repo.save(ledger)`** 一次。
+
+最容易的 bug：外層也 save 一次 → 第二次 save 用記憶體狀態覆蓋第一次的成功 → 看似沒事但 `updated_at` 紀錄會偏掉，極端情況下若 topup 改動 `addon_remaining` 後外層讀到 stale 資料覆寫 → lost update。
+
+修正 pattern：
+
+```python
+triggered_topup = False
+if topup_condition:
+    result = await self._topup_addon.execute(ledger=ledger, plan=plan)
+    if result is not None:
+        triggered_topup = True  # topup 內部 save 過了
+
+if not triggered_topup:
+    await self._ledger_repo.save(ledger)
+```
+
+→ 「誰 save」由 boolean flag 明確定義，避免 double-save。
+→ 若未來再加第三個 hook（例如 .4 統計累計），同樣套用這個 pattern。
+
+「狀態變更與持久化的責任歸屬」是跨 use case 協作時最容易被忽略的設計細節。
+
+#### 5. Sprint 拆分原則：DB log first, External integration later
+
+原始 5-sprint 計畫把 .3 寫成 `auto-topup + email`。實作時拆成：
+- **.3**：auto-topup + DB log（本 sprint）
+- **.3.5**：SendGrid 整合 + email template（未做）
+
+理由：
+- SendGrid 帳號申請、template 設計、退信處理是另一個獨立工作流
+- 扣帳邏輯不該被外部 API 進度阻塞
+- DB log 已產出 `quota_alert_logs.delivered_to_email = false` row → .3.5 只需「掃 false 的 row 寄出 + 標 true」就接得起來
+- 中間留 `delivered_to_email` 欄位作為「事件 vs 通知通道分離」的接口
+
+這個拆分讓 .3 可以**獨立交付驗證**（demo 給 Larry 看 admin/quota-events 表格 → 證明邏輯正確）→ .3.5 才上線 email。
+
+### 潛在隱憂
+
+#### 1. Cron 跑頻率 vs alert 即時性 → 中
+
+目前 quota_alerts 每天 1 次跑（UTC 01:00）。對「使用者下午 3 點突然用爆 10M tokens」的場景，alert 要隔到隔天 01:00 才寫入。對 demo / POC 沒問題，對「即時客服支援」不夠快。
+
+**改善方向**：
+- 在 `DeductTokensUseCase` 同步 hook alert 檢查（與 topup 同層）→ 即時 trigger，但每筆 deduct 多 1 次 query
+- 或：用 LISTEN/NOTIFY，cron 仍每天跑做 backup，主要 alert 由 deduct hook 觸發
+- 短期：先觀察使用模式，若有客戶反映再優化
+
+#### 2. `BillingTransaction` 無「失敗交易」概念 → 中
+
+目前只有 topup 成功才寫 row。若 `_billing_repo.save(tx)` 噴例外（DB 連不上、磁碟滿），addon 已加 5M 但帳款沒記 → 對帳會少一筆。
+
+**緩解現況**：try/except 包在外層 `DeductTokensUseCase`，topup 失敗不影響扣費，但帳款 leak 仍在。
+
+**改善方向**：
+- 將 ledger save + billing save 包在同一個 transaction（兩個 repo 共用 session，atomic block）— 目前架構已支援，但 TopupAddonUseCase 的 save 與 billing save 是分兩次 `async with atomic` 沒辦法保證 atomic。需要重構 TopupAddonUseCase 接受外部 atomic context
+- 加 `BillingTransaction.status: 'success' | 'pending' | 'failed'` 欄位，先寫 pending 再寫 success
+- POC 階段先 monitor 一段時間，看實際發生率
+
+#### 3. 跨表 list 的 total count 不精確 → 低
+
+`ListQuotaEventsUseCase.execute()` 回的 `total = total_billing + total_alert`。這在「同一筆事件分散在兩表」時會重複計（不會 — 兩表 row 物理不同），但若未來加 filter（如「只看 auto_topup」），分母仍然回兩表加總會誤導。
+
+**改善方向**：
+- 加 `event_type` filter 時，根據 type 只取對應的 table count
+- 或：建一個 materialized view `quota_events_v` 把兩表 UNION ALL 起來，count 就一致
+
+#### 4. 「續約上限」未實作 → 中
+
+目前邏輯：addon ≤ 0 就無條件 topup。如果 LLM 回應卡 loop、bug 異常燒 token，可能一晚 topup 100 次（買了 500M tokens）。對客戶帳單是災難。
+
+**改善方向**：
+- 加 `MAX_TOPUPS_PER_CYCLE = 10` 之類的 hard cap，超過就停 + 寫一筆「topup_blocked」事件
+- 加 `MAX_TOPUPS_PER_HOUR` rate limit
+- 短期：observability — 在 quota_alerts cron 內加「本月已 topup N 次」的高 N 警示
+- Token-Gov.4 收益儀表板會自然暴露這個 — N 次 topup × addon_price = 異常營收
+
+### 延伸學習
+
+- **冪等性的 4 層防線**（從外到內）：UI 防雙擊 / API 客戶端 retry-token / Application 層 dedupe 邏輯 / DB UNIQUE 約束。本 sprint 用了 4 → 即使前 3 全 bypass，DB 仍能保證單筆 alert per cycle。延伸閱讀：「Idempotent Receiver Pattern」、Stripe API 的 `Idempotency-Key` header
+- **Snapshot pattern 在會計系統的普及度**：本次 BillingTransaction snapshot `plan_name + amount_value + amount_currency`，與會計系統的「帳本不可變」原則一致。延伸閱讀：「Append-Only Ledger」、Event Sourcing
+- **Optional DI 漸進演化的限制**：若新 path 與舊 path 的契約不等價（例如 .3 改變了 ledger.addon_remaining 的更新時機），unit test 的「不傳 topup」綠燈就會誤導。對策：integration test 必須涵蓋「真實 container」場景驗證新行為
+
+### 思考題
+
+「我們未來 .4 收益儀表板要 aggregate `BillingTransaction` 算月營收。如果某個月某客戶的 plan 改了（base/addon price 變更），他過去的 topup transaction 會以舊 price 計入舊月營收，新 topup 以新 price 計入新月。這樣的『snapshot price 在不同月混雜』在會計上 OK 嗎？我們要不要在 plan 改價時鎖月底結算？」
+
+提示：考慮 SaaS 真實情境（如 Stripe 對 plan change 的 proration 處理），以及法務角度（合約簽訂價 vs 系統 snapshot 價的差異）。
 
 ---
 

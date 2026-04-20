@@ -156,6 +156,24 @@ async def monthly_reset_task(ctx: dict) -> None:
     )
 
 
+# --- Cron Task: quota_alerts (S-Token-Gov.3) ---
+
+async def quota_alerts_task(ctx: dict) -> None:
+    """每天掃所有租戶本月 ledger，達 80% / 100% 寫 alert log。
+
+    Cron 排程：UTC 每天 01:00 = Asia/Taipei 09:00（避開月度重置 00:05）。
+    冪等：QuotaAlertLogRepository.save_if_new 利用 DB UNIQUE 擋重複。
+    """
+    logger.info("[quota_alerts] start")
+    container = _new_container()
+    use_case = container.process_quota_alerts_use_case()
+    stats = await use_case.execute()
+    logger.info(
+        f"[quota_alerts] done checked={stats['checked']} "
+        f"warnings={stats['warnings']} exhausted={stats['exhausted']}"
+    )
+
+
 class WorkerSettings:
     """arq worker configuration."""
 
@@ -166,12 +184,11 @@ class WorkerSettings:
         func(run_evaluation_task, name="run_evaluation"),
         func(classify_kb_task, name="classify_kb"),
     ]
-    # S-Token-Gov.2: 第一個 cron job — 月度重置
-    # arq cron 用 UTC。為避免月份邊界混淆，採 UTC 每月 1 日 00:05
-    # = Asia/Taipei 每月 1 日 08:05（離午夜略晚但語意清楚）。
-    # current_year_month() 也用 UTC，與 cron 對齊不會跨月錯位。
+    # S-Token-Gov.2: 月度重置（每月 1 日 00:05 UTC = 08:05 Asia/Taipei）
+    # S-Token-Gov.3: 額度警示（每天 01:00 UTC = 09:00 Asia/Taipei）
     cron_jobs = [
         cron(monthly_reset_task, hour={0}, minute={5}, day={1}),
+        cron(quota_alerts_task, hour={1}, minute={0}),
     ]
     on_startup = startup
     on_shutdown = shutdown
