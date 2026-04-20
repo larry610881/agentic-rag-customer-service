@@ -536,6 +536,7 @@ export function BotDetailForm({
 
                   return (
                     <ModelSelect
+                      key={selectedAbModel ? "ollama" : "cloud"}
                       id="bot-llm-model"
                       value={selectValue}
                       onValueChange={(v) => {
