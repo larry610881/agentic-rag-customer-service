@@ -22,6 +22,10 @@ import {
   PING_ONCE_CLASS,
   durationColor,
 } from "@/features/admin/lib/trace-node-style";
+import {
+  getLayoutedElements,
+  makeParallelGroupId,
+} from "@/features/admin/lib/trace-layout";
 import { cn } from "@/lib/utils";
 
 function str(v: unknown): string {
@@ -198,6 +202,8 @@ export type CustomNodeData = {
   isParallelGroup?: boolean;
   /** 平行群組總共有幾個節點（含自己） */
   parallelCount?: number;
+  /** 同 (parent_id, start_ms bucket) 的節點共享，給 trace-layout post-process 反查群組 */
+  parallelGroupId?: string;
 };
 
 export function TraceNode({ data }: { data: CustomNodeData }) {
@@ -397,26 +403,25 @@ function buildGraph(execNodes: ExecutionNode[]): {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  // 主線按「相鄰同 type 同 start_ms」分組 → 同 group 共享一個 column（x），
-  // 同 group 內部以 y offset 上下並排，視覺上呈現 LLM parallel tool calls。
+  // 主線按「相鄰同 type 同 start_ms」分組 — dagre 不知道哪些是「並行 sibling」，
+  // 我們在 emit 節點時打 isParallelGroup + parallelGroupId tag，
+  // 讓 trace-layout post-process 把同 group 拉回同 x + stack y。
   const mainGroups = groupParallelByStartMs(mainLine);
   let prevGroupLastNodeId: string | null = null;
 
-  for (let g = 0; g < mainGroups.length; g++) {
-    const group = mainGroups[g];
+  for (const group of mainGroups) {
     const isParallel = group.length > 1;
-    const groupX = g * 300;
-
-    for (let k = 0; k < group.length; k++) {
-      const n = group[k];
+    for (const n of group) {
+      const groupId = makeParallelGroupId(n.parent_id, n.start_ms);
       nodes.push({
         id: n.node_id,
         type: "traceNode",
-        position: { x: groupX, y: k * 110 },
+        position: { x: 0, y: 0 },  // dagre 會覆寫
         data: {
           execNode: n,
           isParallelGroup: isParallel,
           parallelCount: group.length,
+          parallelGroupId: isParallel ? groupId : undefined,
         } satisfies CustomNodeData,
         dragHandle: ".drag-handle",
       });
@@ -432,32 +437,30 @@ function buildGraph(execNodes: ExecutionNode[]): {
         });
       }
 
-      // Layout child nodes vertically below parent (parallel-aware sub-layout)
+      // 子節點（tool_result 等）— 同樣 emit 並打 parallel tag，dagre 自動排版
       const children = childrenOf.get(n.node_id);
       if (children) {
         const childGroups = groupParallelByStartMs(children);
-        let childYBase = 160 + k * 110;  // 與 parent 的 y 對齊
-        for (let cg = 0; cg < childGroups.length; cg++) {
-          const cgroup = childGroups[cg];
+        for (const cgroup of childGroups) {
           const cIsParallel = cgroup.length > 1;
-          for (let ck = 0; ck < cgroup.length; ck++) {
-            const child = cgroup[ck];
+          for (const child of cgroup) {
+            const childGroupId = makeParallelGroupId(
+              child.parent_id,
+              child.start_ms,
+            );
             nodes.push({
               id: child.node_id,
               type: "traceNode",
-              position: {
-                x: groupX + cg * 280,
-                y: childYBase + ck * 100,
-              },
+              position: { x: 0, y: 0 },  // dagre 會覆寫
               data: {
                 execNode: child,
                 isParallelGroup: cIsParallel,
                 parallelCount: cgroup.length,
+                parallelGroupId: cIsParallel ? childGroupId : undefined,
               } satisfies CustomNodeData,
               dragHandle: ".drag-handle",
             });
 
-            // Edge from parent to child
             edges.push({
               id: `e-child-${n.node_id}-${child.node_id}`,
               source: n.node_id,
@@ -477,7 +480,8 @@ function buildGraph(execNodes: ExecutionNode[]): {
     prevGroupLastNodeId = group[group.length - 1].node_id;
   }
 
-  return { nodes, edges };
+  // 用 dagre 算 position（不重疊）+ post-process 保留平行群組同 column 視覺
+  return getLayoutedElements(nodes, edges, { direction: "LR" });
 }
 
 type AgentTraceGraphProps = {

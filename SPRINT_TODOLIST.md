@@ -1388,6 +1388,19 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | traceResetSignal 機制 | ✅ | handleSend / handleClearConversation 時 +1 觸發 LiveTraceGraph 內部清空節點 |
 | tsc + vitest 不退步 | ✅ | 本次新檔零 tsc 錯誤；vitest 223 passed / 12 failed = phase 1 baseline 完全一致 |
 
+#### Phase 1.6（Dagre 自動 layout + 區塊顯示 toggle，已 ship）
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| 引入 `@dagrejs/dagre` | ✅ | npm install + ReactFlow v12 整合，~30KB gzip |
+| `trace-layout.ts` 共用 helper | ✅ | `getLayoutedElements(nodes, edges)` dagre LR layout + `makeParallelGroupId(parent_id, start_ms)` |
+| Parallel group post-process | ✅ | 同 (parent_id, start_ms 50ms bucket) 拉回同 x + y 中心對稱 stack，保留「⚡ 並行同 column」視覺語意 |
+| AgentTraceGraph (admin + studio final) 接入 | ✅ | `buildGraph` 移除手算 position（300px column / k×110 公式），改 dagre 自動排版 |
+| LiveTraceGraph (studio 即時) 接入 | ✅ | `buildLiveGraph` 同步接入；`setCenter` 邏輯不變（讀 dagre 結果 position） |
+| ToggleGroup 區塊顯示 | ✅ | 4 區塊（藍圖/時序/即時 DAG/完整 DAG）可選顯示，min 1（最後 1 個 disabled + tooltip），不持久化 |
+| shadcn `toggle.tsx` + `toggle-group.tsx` | ✅ | `npx shadcn add toggle-group` 產生 |
+| tsc + vitest 不退步 | ✅ | 本次新檔零 tsc 錯誤；vitest 223 passed / 12 failed = baseline 零退步 |
+
 #### Phase 2 / Phase 3（待真實使用反饋後排）
 
 | 項目 | 狀態 | 說明 |

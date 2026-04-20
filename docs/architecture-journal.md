@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [S-Gov.7 Phase 1.6 — Bot Studio：Dagre 自動 Layout + Parallel Post-Process + 區塊 Toggle](#s-gov7-phase-16--bot-studiodagre-自動-layout--parallel-post-process--區塊-toggle)
 - [S-Gov.7 Phase 1.5 — Bot Studio：雙橫向時序軸 + 即時/完整 DAG 並存（關注點分離 + ReactFlow setCenter 自動置中）](#s-gov7-phase-15--bot-studio雙橫向時序軸--即時完整-dag-並存關注點分離--reactflow-setcenter-自動置中)
 - [S-Gov.7 Phase 1 — Bot Studio：真實對應的命脈（ContextVar last_node_id + 失敗節點視覺 + ReactFlow 動態 chunks）](#s-gov7-phase-1--bot-studio真實對應的命脈contextvar-last_node_id--失敗節點視覺--reactflow-動態-chunks)
 - [S-Gov.7 — Bot Studio：設定即時試運轉（既有契約延伸 + 前端共用 lib 抽出 + Source 識別最小路徑）](#s-gov7--bot-studio設定即時試運轉既有契約延伸--前端共用-lib-抽出--source-識別最小路徑)
@@ -83,6 +84,40 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## S-Gov.7 Phase 1.6 — Bot Studio：Dagre 自動 Layout + Parallel Post-Process + 區塊 Toggle
+
+**日期**：2026-04-20
+**Sprint**：S-Gov.7 Phase 1.6（互動體驗強化）
+**涉及層級**：純 Frontend / Interfaces — 5 檔（1 新 lib + 1 新元件 shadcn 自產 + 3 改）：trace-layout.ts (新)、agent-trace-graph.tsx (改)、live-trace-graph.tsx (改)、bot-studio-canvas.tsx (改 + ToggleGroup 整合)、shadcn 產生的 toggle.tsx + toggle-group.tsx
+
+### 本次相關主題
+
+外部 layout engine 整合策略（Dagre vs Elkjs vs 手刻）、語意保留型 Post-Process（dagre 之後拉回平行群組同 column）、BFS 拓撲 layout 對節點寬高估算的容忍度、shadcn 元件按需安裝模式、UI 控制 state「不持久化的明確選擇」（每次進來預設全顯示而非 localStorage）
+
+### 做得好的地方
+
+- **拒絕「先用手算 layout 撐到撐不住才換」的拖延**：Phase 1 已知手算 `groupX = g * 300` + `y = k * 110 + ck * 100` 數學上必定在某些 trace 結構下重疊，但當時為了 ship MVP 先收下技術債。Phase 1.6 看到 trace 一複雜重疊機率就高 → 立刻引入 dagre。**「夠了就換」比「再手調 50px」省時間且效果好太多**。Dagre 是 ReactFlow ecosystem 標配（官方範例就是 dagre），bundle ~30KB gzip 完全可接受。
+- **Parallel Post-Process 把「視覺語意」與「拓撲 layout」解耦**：dagre 把平行 sibling 拆到不同 rank 是合理（拓撲上沒有強制理由要同 column），但對使用者「⚡ 並行」的視覺直覺很重要。Post-process 用 `parallelGroupId = ${parent_id}::${start_ms_bucket}` 反查群組成員 → 拉回同 x、y 中心對稱 stack。**「Dagre 算結構，我們算語意」分工乾淨**，post-process 只 ~20 行卻保住了關鍵的「並行同欄」UX。
+- **`makeParallelGroupId` 用 50ms bucket 處理 timing jitter**：直接用 `start_ms` 完全相等可能會被 51ms vs 49ms 拆成不同 group。量化到 `Math.floor(start_ms / 50)` bucket 後，「實質同時發生」的 LLM parallel tool calls 都會被歸成一組。**「容忍度量化」比「精確比對 + 人工 50ms tolerance check」更直觀**，groupBy 就 work。
+- **ToggleGroup min-1 雙保險**：`onValueChange` 守門 (silently ignore last unclick) + `disabled={isLastSelected}` 視覺明示。disabled 比「點了沒反應」直觀；onValueChange 守門是 keyboard / a11y fallback。**「主路徑用視覺、次要路徑用守門」是 a11y 友善的常見 pattern**。
+- **「不持久化」是明確設計選擇而非偷懶**：toggle 狀態每次進來重置 = 預設全顯示。原因：這是 dashboard layout 偏好，不是「我永遠不要看某 X」的硬性設定 — 使用者每次進來都應該看到完整資訊，需要時手動隱藏。**localStorage 持久化會讓使用者忘記為什麼某 block 不見了**（昨天關掉今天看到「壞掉了」），不持久化反而更好。
+
+### 潛在隱憂
+
+- **Dagre 節點尺寸用固定 240×100 估算，TraceNode 展開後實際寬達 600px**：collapsed 狀態 layout 算得漂亮，但使用者點「詳情」展開節點後不會 re-layout → 展開的大節點可能蓋到旁邊小節點。**建議**：在 `onNodeResize` 或 `useReactFlow().updateNode` 後重跑 `getLayoutedElements`；或使用 ReactFlow 內建 `useNodesInitialized` hook 等真實寬高 measure 後再 layout → **優先級：中**（一般使用者展開後就停留在該節點，重新 layout 反而干擾，目前的「展開後不重排」其實 UX 上更穩定，可暫不修）。
+- **Cross-feature import 持續擴大**：`features/bot/components/live-trace-graph.tsx` 從 `features/admin/components/agent-trace-graph` 引 `TraceNode + groupParallelByStartMs + CustomNodeData`，又新增引 `features/admin/lib/trace-layout`。**Phase 1.5 已標記過此隱憂，Phase 1.6 沒處理反而加劇**。**建議**：把 `agent-trace-graph` 內的 `TraceNode + groupParallelByStartMs + CustomNodeData` + `trace-layout.ts` 一併 promote 到 `@/components/trace/` 或 `@/lib/trace/` 共用層 → **優先級：中**（POC 階段先 work，但 admin / studio 任一邊重構時務必同步處理）。
+- **`getLayoutedElements` 每次 buildGraph 都跑，沒有 memo**：`buildGraph(execNodes)` 的 `useMemo` 已在外層元件（`AgentTraceGraph` 行 488 / `LiveTraceGraph` graphNodes useMemo）幫忙，所以實務上只有 execNodes 變動才重算。但 LiveTraceGraph 每收一筆 stream event 就會重跑整圖 dagre，雖然 50 個節點以下 < 10ms 沒感知，>200 節點時可能 lag。**建議**：未來若 trace 大量化，改成 incremental layout（只算新增節點 + 鄰居）→ **優先級：低**。
+- **dagre 對 disconnected graph 處理**：若 trace 有「孤兒節點」（parent_id 指向不存在的 id），會被 fallback 為 mainLine 節點 — dagre 會把它放在獨立 rank，可能跟主線重疊。實務上 trace 應該都是 connected DAG，但若上游有 bug 產生孤兒，layout 會變醜（不會 crash）。**建議**：在 `buildGraph` 開頭加 sanity check，孤兒節點丟一筆 warn log → **優先級：低**。
+
+### 延伸學習
+
+- **Dagre 的 rank assignment 是 NP-hard 的近似解**：dagre 用「network simplex」演算法做 longest path-based ranking，對標準 DAG 表現很好。但若 graph 有「平行 sibling 想要同 rank」這種額外約束，dagre 不直接支援 → 需要 post-process（本次方案）或改用 ELKjs（支援更多 layout 約束但 bundle 大很多）。**選 layout engine 時要看「你願意自己 post-process 多少」**。
+- **「視覺語意」與「拓撲結構」是不同抽象**：拓撲只看 source→target 邊；視覺語意還包含「平行/順序/分支/合流」的暗示。Dagre 是純拓撲 engine，本身不知道「並行」。我們在 build 階段用 `start_ms` 偵測平行 → 在 post-process 階段把這個語意「強加」到拓撲 layout 上。**這是 layered abstraction 的典型範例**：底層通用，上層加 domain-specific 規則。
+- **shadcn 按需安裝（vs npm package）**：shadcn 的核心理念是「複製源碼到你的 repo 而非引入 npm dep」，好處是可改、可看、不被升級綁架。代價是要記得「我裝了哪些 shadcn 元件」（可從 `components/ui/` 看出來）。本次 toggle-group 是第一次用，未來可考慮統一 audit 一次。
+- **建議搜尋**：`ReactFlow Dagre layout example v12`、`Dagre rankdir LR ranksep nodesep tuning`、`UI state persistence vs ephemeral preferences design`、`ELKjs vs Dagre tradeoffs`
 
 ---
 

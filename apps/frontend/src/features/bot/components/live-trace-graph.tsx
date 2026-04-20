@@ -20,6 +20,10 @@ import {
   groupParallelByStartMs,
   type CustomNodeData,
 } from "@/features/admin/components/agent-trace-graph";
+import {
+  getLayoutedElements,
+  makeParallelGroupId,
+} from "@/features/admin/lib/trace-layout";
 
 const NODE_TYPES = { traceNode: TraceNode };
 
@@ -162,9 +166,8 @@ function makeNode(input: {
 }
 
 /**
- * 簡化版 buildGraph — 邏輯與 admin agent-trace-graph 相同，
- * 但少了完整版 sub-tree 排版的細節（tool_result 直接在 parent 下方），
- * 因為 streaming 階段節點稀少不需要太精細。
+ * 即時版 buildGraph — 邏輯與 admin agent-trace-graph 共用：
+ * 主線分群偵測平行 + 子節點 emit + 平行 tag，最後 dagre 自動排版。
  */
 function buildLiveGraph(execNodes: ExecutionNode[]): {
   nodes: Node[];
@@ -190,20 +193,19 @@ function buildLiveGraph(execNodes: ExecutionNode[]): {
   const mainGroups = groupParallelByStartMs(mainLine);
   let prevGroupLastId: string | null = null;
 
-  for (let g = 0; g < mainGroups.length; g++) {
-    const group = mainGroups[g];
+  for (const group of mainGroups) {
     const isParallel = group.length > 1;
-    const groupX = g * 300;
-    for (let k = 0; k < group.length; k++) {
-      const n = group[k];
+    for (const n of group) {
+      const groupId = makeParallelGroupId(n.parent_id, n.start_ms);
       nodes.push({
         id: n.node_id,
         type: "traceNode",
-        position: { x: groupX, y: k * 110 },
+        position: { x: 0, y: 0 },  // dagre 會覆寫
         data: {
           execNode: n,
           isParallelGroup: isParallel,
           parallelCount: group.length,
+          parallelGroupId: isParallel ? groupId : undefined,
         } satisfies CustomNodeData,
         dragHandle: ".drag-handle",
       });
@@ -218,32 +220,45 @@ function buildLiveGraph(execNodes: ExecutionNode[]): {
       }
       const children = childrenOf.get(n.node_id);
       if (children) {
-        children.forEach((child, ci) => {
-          nodes.push({
-            id: child.node_id,
-            type: "traceNode",
-            position: { x: groupX, y: 160 + k * 110 + ci * 100 },
-            data: {
-              execNode: child,
-              isParallelGroup: false,
-              parallelCount: 1,
-            } satisfies CustomNodeData,
-            dragHandle: ".drag-handle",
-          });
-          edges.push({
-            id: `e-child-${n.node_id}-${child.node_id}`,
-            source: n.node_id,
-            target: child.node_id,
-            animated: true,
-            style: { stroke: "#94a3b8", strokeDasharray: "5 3" },
-          });
-        });
+        const childGroups = groupParallelByStartMs(children);
+        for (const cgroup of childGroups) {
+          const cIsParallel = cgroup.length > 1;
+          for (const child of cgroup) {
+            const childGroupId = makeParallelGroupId(
+              child.parent_id,
+              child.start_ms,
+            );
+            nodes.push({
+              id: child.node_id,
+              type: "traceNode",
+              position: { x: 0, y: 0 },  // dagre 會覆寫
+              data: {
+                execNode: child,
+                isParallelGroup: cIsParallel,
+                parallelCount: cgroup.length,
+                parallelGroupId: cIsParallel ? childGroupId : undefined,
+              } satisfies CustomNodeData,
+              dragHandle: ".drag-handle",
+            });
+            edges.push({
+              id: `e-child-${n.node_id}-${child.node_id}`,
+              source: n.node_id,
+              target: child.node_id,
+              animated: true,
+              style: {
+                stroke: cIsParallel ? "#a78bfa" : "#94a3b8",
+                strokeDasharray: "5 3",
+              },
+            });
+          }
+        }
       }
     }
     prevGroupLastId = group[group.length - 1].node_id;
   }
 
-  return { nodes, edges };
+  // 用 dagre 算 position（不重疊）+ post-process 保留平行群組同 column 視覺
+  return getLayoutedElements(nodes, edges, { direction: "LR" });
 }
 
 type LiveTraceInnerProps = {

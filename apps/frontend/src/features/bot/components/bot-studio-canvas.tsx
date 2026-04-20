@@ -1,11 +1,25 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from "react";
-import { Send, Sparkles, Eraser, Bot as BotIcon, User as UserIcon } from "lucide-react";
+import {
+  Send,
+  Sparkles,
+  Eraser,
+  Bot as BotIcon,
+  User as UserIcon,
+  Activity,
+  GitBranch,
+  Network,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { SSEEvent } from "@/lib/sse-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group";
 import { useWorkers } from "@/hooks/queries/use-workers";
 import { useBuiltInTools } from "@/hooks/queries/use-built-in-tools";
 import { useAgentTraceDetail } from "@/hooks/queries/use-agent-traces";
@@ -28,6 +42,19 @@ type BotStudioWorkspaceProps = {
 };
 
 const STREAM_RESET_LIMIT = 80;
+
+type DashboardBlock = "blueprint" | "timeline" | "live" | "final";
+
+const ALL_BLOCKS: Array<{
+  key: DashboardBlock;
+  label: string;
+  icon: LucideIcon;
+}> = [
+  { key: "blueprint", label: "藍圖", icon: Sparkles },
+  { key: "timeline", label: "時序", icon: Activity },
+  { key: "live", label: "即時 DAG", icon: GitBranch },
+  { key: "final", label: "完整 DAG", icon: Network },
+];
 
 type ChatTurn = {
   id: string;
@@ -71,6 +98,11 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
   const [traceId, setTraceId] = useState<string | null>(null);
   // LiveTraceGraph 重置 signal — handleSend 時 +1 觸發即時 DAG 內部清空
   const [traceResetSignal, setTraceResetSignal] = useState(0);
+
+  // 區塊顯示 toggle — 預設全顯示，min 1，不持久化（每次進來重置）
+  const [visibleBlocks, setVisibleBlocks] = useState<Set<DashboardBlock>>(
+    () => new Set(ALL_BLOCKS.map((b) => b.key)),
+  );
 
   // Refs 用來繞過 useStudioStreaming callbacks 的 closure 陷阱：
   // sendMessage 被呼叫時 callbacks 內的 currentAgentId 會被「凍結」為當下值，
@@ -307,31 +339,75 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
 
   return (
     <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
-      {/* 左：儀表板（4 區塊：藍圖 → 時序軸 → 即時 DAG → 完整 DAG） */}
+      {/* 左：儀表板（4 區塊：藍圖 → 時序軸 → 即時 DAG → 完整 DAG，可 toggle 隱藏） */}
       <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
-        <Card className="p-4">
-          <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-            <Sparkles className="h-4 w-4 text-violet-500" />
-            Bot 配置藍圖
-            <span className="text-xs font-normal text-muted-foreground">
-              {agents.length} agent · agents 水平排列、執行中自動置中
-            </span>
-          </div>
-          <BlueprintCanvas
-            agents={agents}
-            activeAgentIds={activeAgentIds}
-            activeToolKeys={activeToolKeys}
-            failedNodeIds={failedNodeIds}
-            errorMessages={errorMessages}
-            chunkNodes={chunkNodes}
-          />
-        </Card>
+        {/* 顯示區塊 toolbar — 4 選 N，min 1，不持久化 */}
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2">
+          <span className="shrink-0 text-xs text-muted-foreground">
+            顯示區塊
+          </span>
+          <ToggleGroup
+            type="multiple"
+            size="sm"
+            variant="outline"
+            value={Array.from(visibleBlocks)}
+            onValueChange={(val) => {
+              if (val.length === 0) return; // min 1 守門：silently ignore last unclick
+              setVisibleBlocks(new Set(val as DashboardBlock[]));
+            }}
+          >
+            {ALL_BLOCKS.map(({ key, label, icon: Icon }) => {
+              const isLastSelected =
+                visibleBlocks.size === 1 && visibleBlocks.has(key);
+              return (
+                <ToggleGroupItem
+                  key={key}
+                  value={key}
+                  disabled={isLastSelected}
+                  title={
+                    isLastSelected
+                      ? "至少要保留 1 個區塊"
+                      : `切換${label}顯示`
+                  }
+                  aria-label={`切換${label}顯示`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="ml-1 text-xs">{label}</span>
+                </ToggleGroupItem>
+              );
+            })}
+          </ToggleGroup>
+        </div>
 
-        <ExecutionTimeline events={eventLog} />
+        {visibleBlocks.has("blueprint") && (
+          <Card className="p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+              <Sparkles className="h-4 w-4 text-violet-500" />
+              Bot 配置藍圖
+              <span className="text-xs font-normal text-muted-foreground">
+                {agents.length} agent · agents 水平排列、執行中自動置中
+              </span>
+            </div>
+            <BlueprintCanvas
+              agents={agents}
+              activeAgentIds={activeAgentIds}
+              activeToolKeys={activeToolKeys}
+              failedNodeIds={failedNodeIds}
+              errorMessages={errorMessages}
+              chunkNodes={chunkNodes}
+            />
+          </Card>
+        )}
 
-        <LiveTraceGraph events={eventLog} resetSignal={traceResetSignal} />
+        {visibleBlocks.has("timeline") && (
+          <ExecutionTimeline events={eventLog} />
+        )}
 
-        {completedTrace && (
+        {visibleBlocks.has("live") && (
+          <LiveTraceGraph events={eventLog} resetSignal={traceResetSignal} />
+        )}
+
+        {visibleBlocks.has("final") && completedTrace && (
           <Card className="p-4">
             <div className="mb-2 flex items-center gap-2 text-sm font-medium">
               <Sparkles className="h-4 w-4 text-violet-500" />
