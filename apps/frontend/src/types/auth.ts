@@ -9,6 +9,8 @@ export interface Tenant {
   name: string;
   plan: string;
   monthly_token_limit: number | null;
+  /** S-Token-Gov.2: NULL = 全部 category 計入；list = 只計入列表內的；[] = 全不計入 */
+  included_categories: string[] | null;
   default_ocr_model: string;
   default_context_model: string;
   default_classification_model: string;

@@ -17,6 +17,11 @@ class UpdateTenantCommand:
     tenant_id: str
     plan: str | None = None
     monthly_token_limit: int | None = None
+    # S-Token-Gov.2: included_categories
+    # 慣例：None = 不變更（保持既有值，含預設 NULL）；list = 明確寫入
+    # 故 admin 第一次勾選 → 寫入 list；想「全不計入」傳 []
+    # 想設回「全計入」(NULL) — 本 sprint 不支援，未來加 reset 端點
+    included_categories: list[str] | None = None
     default_ocr_model: str | None = None
     default_context_model: str | None = None
     default_classification_model: str | None = None
@@ -50,6 +55,8 @@ class UpdateTenantUseCase:
 
         if command.monthly_token_limit is not None:
             tenant.monthly_token_limit = command.monthly_token_limit
+        if command.included_categories is not None:
+            tenant.included_categories = command.included_categories
         if command.default_ocr_model is not None:
             tenant.default_ocr_model = command.default_ocr_model
         if command.default_context_model is not None:

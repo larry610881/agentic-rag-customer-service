@@ -10,6 +10,9 @@ class Tenant:
     name: str = ""
     plan: str = "starter"
     monthly_token_limit: int | None = None
+    # S-Token-Gov.2: 哪些 UsageCategory 計入額度。
+    # None → 全計入（safe default）；[] → 全不計入（POC 免計費）；list → 只計入列表內的
+    included_categories: list[str] | None = None
     default_ocr_model: str = ""
     default_context_model: str = ""
     default_classification_model: str = ""

@@ -11,7 +11,7 @@ Tasks:
 
 import logging
 
-from arq import func
+from arq import cron, func
 from arq.connections import RedisSettings
 
 from src.config import Settings
@@ -137,6 +137,25 @@ async def run_evaluation_task(
     logger.info(f"[run_evaluation] done trace={trace_id}")
 
 
+# --- Cron Task: monthly_reset (S-Token-Gov.2) ---
+
+async def monthly_reset_task(ctx: dict) -> None:
+    """每月 1 日為所有租戶建本月新 ledger，addon 從上月 carryover。
+
+    Cron 排程：UTC 每月 1 日 00:05 = Asia/Taipei 每月 1 日 08:05；
+    冪等：若本月 ledger 已建（如使用者月初活動先觸發 EnsureLedger），跳過。
+    """
+    logger.info("[monthly_reset] start")
+    container = _new_container()
+    use_case = container.process_monthly_reset_use_case()
+    stats = await use_case.execute()
+    logger.info(
+        f"[monthly_reset] done cycle={stats['cycle']} "
+        f"processed={stats['processed']} created={stats['created']} "
+        f"skipped={stats['skipped']} failed={stats['failed']}"
+    )
+
+
 class WorkerSettings:
     """arq worker configuration."""
 
@@ -146,6 +165,13 @@ class WorkerSettings:
         func(extract_memory_task, name="extract_memory"),
         func(run_evaluation_task, name="run_evaluation"),
         func(classify_kb_task, name="classify_kb"),
+    ]
+    # S-Token-Gov.2: 第一個 cron job — 月度重置
+    # arq cron 用 UTC。為避免月份邊界混淆，採 UTC 每月 1 日 00:05
+    # = Asia/Taipei 每月 1 日 08:05（離午夜略晚但語意清楚）。
+    # current_year_month() 也用 UTC，與 cron 對齊不會跨月錯位。
+    cron_jobs = [
+        cron(monthly_reset_task, hour={0}, minute={5}, day={1}),
     ]
     on_startup = startup
     on_shutdown = shutdown

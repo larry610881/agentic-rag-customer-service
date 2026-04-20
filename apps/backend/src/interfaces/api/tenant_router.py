@@ -4,6 +4,9 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from src.application.ledger.get_tenant_quota_use_case import (
+    GetTenantQuotaUseCase,
+)
 from src.application.tenant.create_tenant_use_case import (
     CreateTenantCommand,
     CreateTenantUseCase,
@@ -35,9 +38,21 @@ class CreateTenantRequest(BaseModel):
 class UpdateTenantConfigRequest(BaseModel):
     plan: str | None = None
     monthly_token_limit: int | None = None
+    included_categories: list[str] | None = None
     default_ocr_model: str | None = None
     default_context_model: str | None = None
     default_classification_model: str | None = None
+
+
+class TenantQuotaResponse(BaseModel):
+    cycle_year_month: str
+    plan_name: str
+    base_total: int
+    base_remaining: int
+    addon_remaining: int
+    total_remaining: int
+    total_used_in_cycle: int
+    included_categories: list[str] | None = None
 
 
 class TenantResponse(BaseModel):
@@ -45,6 +60,7 @@ class TenantResponse(BaseModel):
     name: str
     plan: str
     monthly_token_limit: int | None = None
+    included_categories: list[str] | None = None
     default_ocr_model: str = ""
     default_context_model: str = ""
     default_classification_model: str = ""
@@ -58,6 +74,7 @@ def _to_response(t: Tenant) -> TenantResponse:
         name=t.name,
         plan=t.plan,
         monthly_token_limit=t.monthly_token_limit,
+        included_categories=t.included_categories,
         default_ocr_model=t.default_ocr_model,
         default_context_model=t.default_context_model,
         default_classification_model=t.default_classification_model,
@@ -160,3 +177,38 @@ async def update_tenant_config(
     return _to_response(tenant)
 
 
+@router.get("/{tenant_id}/quota", response_model=TenantQuotaResponse)
+@inject
+async def get_tenant_quota(
+    tenant_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: GetTenantQuotaUseCase = Depends(
+        Provide[Container.get_tenant_quota_use_case]
+    ),
+) -> TenantQuotaResponse:
+    """回傳租戶本月額度狀態。系統 admin 可查任何租戶；非 admin 只能查自己。
+
+    若本月 ledger 不存在會自動建立（從 plan + 上月 addon carryover）。
+    """
+    # Permission: 非 admin 只能看自己
+    if tenant.role != "system_admin" and tenant.tenant_id != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot access other tenant's quota",
+        )
+    try:
+        result = await use_case.execute(tenant_id)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
+    return TenantQuotaResponse(
+        cycle_year_month=result.cycle_year_month,
+        plan_name=result.plan_name,
+        base_total=result.base_total,
+        base_remaining=result.base_remaining,
+        addon_remaining=result.addon_remaining,
+        total_remaining=result.total_remaining,
+        total_used_in_cycle=result.total_used_in_cycle,
+        included_categories=result.included_categories,
+    )

@@ -1465,18 +1465,28 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | BDD 7 scenarios | ✅ | `integration/admin/plan_management.feature` — list/create/dup-409/update/soft-delete/assign/403 全綠 |
 | 後端 unit + 前端 vitest 不退步 | ✅ | 後端 plan 範圍 7 BDD 全綠；前端 223 passed / 12 failed = baseline |
 
-#### S-Token-Gov.2 Token Ledger + 扣用 + 月度重置
-> 核心扣費邏輯：先 base 後 addon，月初 cron 重置 base
+#### S-Token-Gov.2 Token Ledger + 扣用 + 月度重置 ✅ 完成 (2026-04-20)
+> 核心扣費邏輯：先 base 後 addon，月初 arq cron 重置 base
 
-| 項目 | 說明 |
-|------|------|
-| TokenLedger Domain entity | `tenant_id + cycle_year_month + base_remaining + addon_remaining + total_used_in_cycle` |
-| Tenant 加 included_categories 欄位 | Set<UsageCategory>，per-tenant 直接勾選哪些 category 計入額度（per S-Token-Gov.0 audit 出的 category list） |
-| 扣用邏輯 | RecordUsageUseCase 內：若 category ∈ tenant.included_categories → ledger.deduct(tokens)；先 base 後 addon |
-| 月度重置 cron | 每月 1 日 00:00 ProcessMonthlyResetUseCase：base_remaining = plan.base_monthly_tokens；addon_remaining 不動（carryover） |
-| Cron 機制 | arq scheduled task 或 APScheduler；確認 cron 不重複執行（worker 多 instance 場景） |
-| 租戶 included_categories UI | admin 編輯租戶 dialog 加 category checkbox 區 |
-| BDD scenarios | 扣用順序 base→addon / 月度重置 base 重置 addon carryover / category 過濾 |
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Migration: token_ledgers + tenants.included_categories | ✅ | `add_token_ledger.sql` 套 local-docker + dev-vm；FK ON DELETE CASCADE + UNIQUE (tenant_id, cycle_year_month) |
+| TokenLedger Domain entity + repo ABC | ✅ | `domain/ledger/{entity,repository}.py`；`deduct(tokens)` 方法先 base 後 addon，addon 允許負數（軟上限） |
+| TokenLedger ORM + SQLAlchemyTokenLedgerRepository | ✅ | `infrastructure/db/models/token_ledger_model.py` + `repositories/token_ledger_repository.py` |
+| Tenant.included_categories JSONB 欄位 | ✅ | NULL=全計入；list=只計入列表內的；[]=全不計入；entity + ORM + repo + UpdateTenantUseCase 全鏈路打通 |
+| EnsureLedgerUseCase | ✅ | 取得本月 ledger 或自動建（plan snapshot + 上月 addon carryover） |
+| DeductTokensUseCase | ✅ | 從本月 ledger 扣 token：先 base 後 addon |
+| ProcessMonthlyResetUseCase | ✅ | cron 觸發；冪等（已建跳過）；回 stats {processed/created/skipped/failed} |
+| GetTenantQuotaUseCase | ✅ | 回 `cycle/plan_name/base_total/base_remaining/addon_remaining/total_remaining/total_used_in_cycle/included_categories` |
+| RecordUsageUseCase hook ledger | ✅ | 寫 token_usage_records 後 hook DeductTokensUseCase；try/except 包（扣費失敗不影響審計記錄） |
+| arq cron job (第一個 cron) | ✅ | `worker.py` 加 `cron_jobs = [cron(monthly_reset_task, hour={0}, minute={5}, day={1})]`（UTC 每月 1 日 00:05 = Asia/Taipei 08:05） |
+| GET /api/v1/tenants/{id}/quota endpoint | ✅ | 系統 admin 可看任何租戶；非 admin 只能看自己；本月 ledger 不存在時自動建 |
+| Frontend useTenantQuota hook | ✅ | TanStack Query 拉本月額度 |
+| TenantConfigDialog 用量區塊 | ✅ | base 進度條 (≥90% 紅 / ≥70% 黃 / 其他綠) + addon 餘額 (負數顯示「超用」紅字) + 累計用量 |
+| TenantConfigDialog included_categories checkbox | ✅ | 漸進式 disclosure「進階：自訂計費 category」開關 → 顯示 13 個 UsageCategory checkbox |
+| Container DI 更新 | ✅ | token_ledger_repository + 4 ledger use case + RecordUsage 注入 deduct_tokens + tenant_repository |
+| BDD 5 scenarios | ✅ | `integration/admin/token_ledger.feature` — 第一次扣費自動建/連續扣費累計/base用完addon變負/月度重置carryover/included_categories過濾 全綠 |
+| 後端 unit + 前端 vitest 不退步 | ✅ | backend 624 baseline 不退步；frontend 223 passed / 12 failed = baseline 零退步 |
 
 #### S-Token-Gov.3 自動續約 + Email 通知
 > 軟上限觸發 auto-buy + 門檻通知；POC 不設防爆

@@ -224,6 +224,14 @@ from src.application.security.guard_rules_use_cases import (
     UpdateGuardRulesUseCase,
 )
 from src.application.security.prompt_guard_service import PromptGuardService
+from src.application.ledger.deduct_tokens_use_case import DeductTokensUseCase
+from src.application.ledger.ensure_ledger_use_case import EnsureLedgerUseCase
+from src.application.ledger.get_tenant_quota_use_case import (
+    GetTenantQuotaUseCase,
+)
+from src.application.ledger.process_monthly_reset_use_case import (
+    ProcessMonthlyResetUseCase,
+)
 from src.application.plan.assign_plan_to_tenant_use_case import (
     AssignPlanToTenantUseCase,
 )
@@ -323,6 +331,9 @@ from src.infrastructure.db.repositories.provider_setting_repository import (
 )
 from src.infrastructure.db.repositories.plan_repository import (
     SQLAlchemyPlanRepository,
+)
+from src.infrastructure.db.repositories.token_ledger_repository import (
+    SQLAlchemyTokenLedgerRepository,
 )
 from src.infrastructure.db.repositories.rate_limit_config_repository import (
     SQLAlchemyRateLimitConfigRepository,
@@ -608,6 +619,11 @@ class Container(containers.DeclarativeContainer):
 
     plan_repository = providers.Factory(
         SQLAlchemyPlanRepository,
+        session=db_session,
+    )
+
+    token_ledger_repository = providers.Factory(
+        SQLAlchemyTokenLedgerRepository,
         session=db_session,
     )
 
@@ -1002,9 +1018,38 @@ class Container(containers.DeclarativeContainer):
         document_file_storage=document_file_storage_service,
     )
 
+    # S-Token-Gov.2: Ledger 4 個 use case
+    ensure_ledger_use_case = providers.Factory(
+        EnsureLedgerUseCase,
+        ledger_repository=token_ledger_repository,
+        plan_repository=plan_repository,
+    )
+
+    deduct_tokens_use_case = providers.Factory(
+        DeductTokensUseCase,
+        ledger_repository=token_ledger_repository,
+        ensure_ledger=ensure_ledger_use_case,
+    )
+
+    process_monthly_reset_use_case = providers.Factory(
+        ProcessMonthlyResetUseCase,
+        tenant_repository=tenant_repository,
+        ledger_repository=token_ledger_repository,
+        ensure_ledger=ensure_ledger_use_case,
+    )
+
+    get_tenant_quota_use_case = providers.Factory(
+        GetTenantQuotaUseCase,
+        tenant_repository=tenant_repository,
+        ensure_ledger=ensure_ledger_use_case,
+    )
+
     record_usage_use_case = providers.Factory(
         RecordUsageUseCase,
         usage_repository=usage_repository,
+        # S-Token-Gov.2: 注入後每筆 usage 寫入會 hook ledger.deduct
+        deduct_tokens=deduct_tokens_use_case,
+        tenant_repository=tenant_repository,
     )
 
     chunk_context_service = providers.Factory(

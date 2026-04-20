@@ -50,6 +50,7 @@ from src.infrastructure.db.models.guard_rules_config_model import (
 )
 from src.infrastructure.db.models.plan_model import PlanModel
 from src.infrastructure.db.models.prompt_opt_run_model import PromptOptRunModel
+from src.infrastructure.db.models.token_ledger_model import TokenLedgerModel
 __all__ = [
     "TenantModel",
     "KnowledgeBaseModel",
@@ -87,4 +88,5 @@ __all__ = [
     "GuardRulesConfigModel",
     "PlanModel",
     "PromptOptRunModel",
+    "TokenLedgerModel",
 ]

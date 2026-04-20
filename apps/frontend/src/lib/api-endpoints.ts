@@ -7,6 +7,7 @@ export const API_ENDPOINTS = {
     list: "/api/v1/tenants",
     create: "/api/v1/tenants",
     config: (id: string) => `/api/v1/tenants/${id}/config`,
+    quota: (id: string) => `/api/v1/tenants/${id}/quota`,
   },
   plans: {
     list: "/api/v1/admin/plans",

@@ -1,6 +1,7 @@
 export const queryKeys = {
   tenants: {
     all: ["tenants"] as const,
+    quota: (id: string) => ["tenants", id, "quota"] as const,
   },
   plans: {
     all: ["plans"] as const,

@@ -10,6 +10,7 @@
 ## 目錄
 
 - [Ollama A/B 測試 Debug — 模型 Tag 驗證 + Router Prefix + RHF shouldDirty](#ollama-ab-測試-debug--模型-tag-驗證--router-prefix--rhf-shoulddirty)
+- [S-Token-Gov.2 — Token Ledger：扣費引擎 + 第一個 arq cron + Cross-Cutting Hook 容錯設計](#s-token-gov2--token-ledger扣費引擎--第一個-arq-cron--cross-cutting-hook-容錯設計)
 - [S-Token-Gov.1 — Plan Template CRUD：String Name FK 設計 + 軟/硬刪 + DDD 違反順手修](#s-token-gov1--plan-template-crudstring-name-fk-設計--軟硬刪--ddd-違反順手修)
 - [S-Token-Gov.0 — Token 追蹤完整性：Audit 5 條漏網 + UsageCategory enum + 累計屬性 Pattern](#s-token-gov0--token-追蹤完整性audit-5-條漏網--usagecategory-enum--累計屬性-pattern)
 - [S-Gov.7 Phase 1.6 — Bot Studio：Dagre 自動 Layout + Parallel Post-Process + 區塊 Toggle](#s-gov7-phase-16--bot-studiodagre-自動-layout--parallel-post-process--區塊-toggle)
@@ -109,6 +110,22 @@
 - **Router prefix 缺乏統一約束** → 新增 router 時容易漏加 `/api/v1`，目前靠 code review 人工發現；可在 `main.py` 的 `include_router` 統一加 `prefix="/api/v1"` 避免遺漏 → 優先級：中
 - **RunPod Pod URL 與 `OLLAMA_BASE_URL` 一對一綁定** → 若 Pod terminate 重建，URL 換掉後需手動更新 GitHub Variable 並重新部署；MoE 模型啟動後 Ollama 的 keep-alive 行為也需觀察 → 優先級：低（測試期可接受）
 
+### Polling 停止條件 + warm-up 同步設計（後續追加）
+
+**問題**：`pollModel` 在 `ollamaStatus.status === "ready"` 後沒有清掉，⏳ 永遠轉動。
+
+**修法**：加 `useEffect` 監聽 `ollamaStatus?.status`，`=== "ready"` 時 `setPollModel(null)`。
+
+**設計決策**：warm-up 是後端同步等待（`OllamaWarmUpService.warm_up()` block 直到模型回應），因此：
+- API 回傳 = 模型已就緒
+- blocking dialog（`bot-detail.tsx`）是主要等待 UI，按鈕 ⏳ 是次要確認
+- polling 本身是防禦性設計（confirm ready），不是主流程的必要等待
+
+**正確 UX 流程**：
+1. 點 A/B → 按鈕實心、ModelSelect 清空（互斥）
+2. 儲存 → blocking dialog 鎖畫面（30-90s warm-up）
+3. API 回傳 → dialog 消失 → 短暫 ⏳ polling confirm → `ready` → ⏳ 變 ✓ → polling 停
+
 ### ModelSelect 互斥 + Radix Select 清空（後續追加）
 
 **問題**：選 A/B 後 ModelSelect 下拉不清空。根因：`ModelSelect` 內部有 `value={value || undefined}`，傳 `""` 進去被轉成 `undefined`（uncontrolled），Radix Select 保留內部狀態不清空。
@@ -142,6 +159,47 @@
 
 - **RHF `setValue` 的 `shouldDirty` / `shouldTouch` / `shouldValidate`**：三個 flag 控制不同的副作用——`shouldDirty` 標記欄位為已修改（觸發 `watch` 和 `isDirty`）；`shouldValidate` 觸發 zod 驗證；`shouldTouch` 標記為已互動。外部觸發表單值變更（如按鈕覆寫）時應加 `{ shouldDirty: true }` 確保訂閱方感知到變化
 - **MoE 模型的 active params**：`qwen3.6:35b-a3b` 的 35b 是總參數，3b 是每次 inference 實際啟用的參數（active）。推理成本接近 3B dense model，但模型容量接近 35B，是 edge/local deploy 的高 CP 值選擇
+
+---
+
+## S-Token-Gov.2 — Token Ledger：扣費引擎 + 第一個 arq cron + Cross-Cutting Hook 容錯設計
+
+**日期**：2026-04-20
+**Sprint**：S-Token-Gov.2（5 sprint 系列第 3 步 — 核心扣費引擎）
+**涉及層級**：跨 4 層 + worker cron + 前端 — Domain 新 BC（Ledger）+ 4 use case + 1 ORM + 1 repo + Tenant 欄位擴充 + RecordUsageUseCase hook 改造 + tenant_router 加 endpoint + worker 加第一個 cron + 前端 dialog quota 區塊 + categories checkbox。20+ 檔變動。
+
+### 本次相關主題
+
+「snapshot 欄位」設計（base_total / plan_name 凍結歷史）、軟上限 + 負數欄位設計（addon_remaining 可為負）、cross-cutting hook 容錯（try/except 包扣費邏輯，審計優先計費）、arq cron 第一次接入 + UTC vs Asia/Taipei 換算陷阱、JSONB column with `dependency-injector` test override、Pydantic dataclass + sentinel 跟 Pydantic body 整合的不相容、test session factory vs module-level async_session_factory 區分、整合測試 `_run()` 多次跨 event loop 的 connection pool 問題
+
+### 做得好的地方
+
+- **Snapshot 欄位設計凍結歷史**：`token_ledgers` 表既存 `tenant_id` (FK) 又存 `plan_name` (string snapshot) + `base_total` (snapshot from plan.base_monthly_tokens)。為什麼 `plan_name` 不用 `plan_id` FK？因為**未來 plan 改名 / plan 刪除 / plan 改額度**時，本月 ledger 的歷史不應該被影響 — 「2026-03 收了 NT$3000，當時 starter 是 1000 萬 token」這個事實必須凍結。**snapshot pattern 是會計系統的金科玉律**：「事件時的狀態」≠「現在的狀態」，財務記帳必須保留事件時間點的快照。
+- **軟上限 + 負數欄位設計**：`addon_remaining` 允許負數（base 用完吃 addon → addon < 0 = 超用未付費）。為什麼不 reject 而是允許負數？因為使用者體驗：突然 429 比「先讓你用，月底結算超用」差太多。Token-Gov.3 自動續約會在「addon < threshold」時觸發，正常情況下不會真的負很多。**「先記錄 + 後處理」比「即時阻擋」更貼合計費系統實務**（信用卡也是先扣後對帳，不是每筆刷之前先驗額度）。
+- **Cross-cutting hook 容錯：審計優先於計費**：`RecordUsageUseCase.execute()` 內 hook ledger.deduct 用 try/except 包，扣費失敗只 log warning 不 raise。為什麼？因為 token_usage_records 是審計帳，必須 100% 寫入；ledger 是衍生帳，扣失敗不影響合規 — 後續對帳時可從 token_usage_records 重算 ledger 修正。**「審計層 vs 計費層分離容錯」**這是金融系統常見原則：合規記錄不能丟，計算錯了可以重算。
+- **第一個 arq cron 用最簡單的時區方案**：原本想 Asia/Taipei 00:05 跑 → 換算 UTC 變成「上月最後一天 16:05」要寫 `day={28,29,30,31}` 處理閏年。複雜易錯。改用 **UTC 每月 1 日 00:05**（= Asia/Taipei 08:05），對齊 `datetime.now(UTC)` 的月份計算 — 沒有跨月邊界問題。**「對齊系統時鐘比對齊使用者時鐘簡單」**，使用者體感差幾小時不重要（本來就是後台 cron）。
+- **「不在範圍」清晰守住 3 件事**：本 sprint 沒做自動續約 / Email 通知 / 收益儀表板（都標 Token-Gov.3/.4）。雖然有衝動「順手做完通知」（因為餘額負數警告會用到），但範圍紀律守住 — 確認本 sprint 的扣費邏輯穩了再做下一步。**「失控的 sprint 比慢的 sprint 危險」**，Token-Gov.2 寫得太大會讓「真的能扣費」這件事拖延上線。
+
+### 潛在隱憂
+
+- **`_run()` 多次跨 event loop 的 connection pool 問題**：BDD scenario 4 (carryover) 第一版用兩次 `_run()` (清舊 ledger + 寫上月 ledger)，撞 "Task got Future attached to a different loop"。改為**單一 async function 內做完**才 work。**潛在風險**：未來 BDD scenarios 若需要多步驟 DB 操作，每個 step 都要小心合併。**建議**：寫個 `@pytest.fixture` 提供 helper `db_run_sequence([fn1, fn2, ...])` 自動串接 → **優先級：低**（POC 階段每個 scenario 重寫一次可接受）。
+- **`Pydantic body.model_dump()` 跟 dataclass sentinel 不相容**：原本想用 `_UNSET = object()` sentinel 區分「不變更」vs「明確設 None」for `included_categories`。但 Pydantic body 的 `model_dump()` 一律輸出 None（沒設的欄位也是 None），sentinel 永遠不會留住。最後**簡化為「None = 不變更，list = 明確寫入」**，代價是「設回 NULL（全計入）」操作不支援（需獨立端點）。**業界常見作法**：用 `JsonPatchOperation` 標準 (RFC 6902)，每個變更明確指定 `{op: "replace", path: "/included_categories", value: [...]}` 或 `{op: "remove"}`。POC 階段不值得引入 → **優先級：低**。
+- **arq cron 在多 worker 場景會重複觸發**：若 prod 部 N 個 arq worker，cron job 預設**所有 worker 同時觸發**（除非 arq 有 leader election）。雖然 ProcessMonthlyResetUseCase 是冪等的（已建跳過），但 N 個 worker 同時掃所有 tenants 會有 N 倍的「重複 SELECT 然後 skipped」浪費。**建議**：未來部署多 worker 時用 Redis SETNX 加 monthly_reset:cycle 互斥鎖，或用 `arq.cron(unique=True)` 參數（如有支援） → **優先級：中**（Cloud Run 單 instance 階段沒問題）。
+- **JSONB column 等值比對效能**：`_should_count_for_quota` 用 `category in tenant.included_categories` Python 端篩選 — 每筆 RecordUsage 都會 SELECT tenant 完整 row。**目前 OK**：tenant.included_categories 是 list，in 操作 O(13)。但若未來 ledger 計算邏輯往 SQL 推（例如「找所有 included 'rag' 的 tenant」），需要 GIN index。**建議**：未來如果 query 模式改變，加 `CREATE INDEX ... USING GIN (included_categories);` → **優先級：低**。
+
+### 延伸學習
+
+- **「審計帳」(immutable log) vs 「衍生帳」(materialized view)**：Token Ledger 系統有兩層數據：
+  - `token_usage_records`（每筆原子 token 用量）— append-only，**審計帳**，永不修改
+  - `token_ledgers`（每月聚合 base/addon 餘額）— **衍生帳**，可重算
+
+  這跟銀行系統一樣：transactions 表是不可變的，account_balances 是 cached snapshot。重算 balance 永遠可從 transactions 還原。**設計原則**：先寫審計層、再算衍生層、且衍生層一律可重算（永遠不要從 ledger 反推 transactions）。
+
+- **「snapshot 欄位 vs 即時 JOIN」trade-off**：`token_ledgers.plan_name` 是 string snapshot，不是 `plan_id` FK。優點：plan 改名/刪除歷史不變、無需 JOIN 顯示。缺點：plan 改價格時，本月 ledger 的 base_price 不變（已 snapshot），新月才生效。**判準**：「該屬性變更時，業務語意是『回溯改寫』還是『新事件適用』？」— 後者用 snapshot，前者用即時 JOIN。Plan 改價格屬於「新事件適用」，所以 snapshot 對。
+
+- **`dependency-injector` 的 `provider.override()` vs `provider.cls`**：本 sprint 試圖從 test 的 `container.db_session.provider.cls` 拿 session factory 失敗（被 override 後是 `Delegate` 物件）。正確做法是**直接 call provider** (`container.db_session()`) 取得實際 session — provider 已被 test conftest override 為 test factory。**「provider 是個黑盒子，永遠用 call 而非 attribute access」**是 dependency-injector 慣例。
+
+- **建議搜尋**：`Snapshot vs Reference foreign key billing systems`、`arq cron multiple workers leader election`、`PostgreSQL JSONB GIN index performance`、`JSON Patch RFC 6902 partial update API design`、`audit log vs materialized view CQRS pattern`
 
 ---
 

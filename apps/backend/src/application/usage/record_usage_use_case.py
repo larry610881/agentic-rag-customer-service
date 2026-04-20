@@ -1,15 +1,48 @@
 """記錄 Token 使用量用例"""
 
+from typing import TYPE_CHECKING
+
+import structlog
+
 from src.domain.platform.model_registry import DEFAULT_MODELS
 from src.domain.rag.pricing import calculate_usage
 from src.domain.rag.value_objects import TokenUsage
+from src.domain.tenant.entity import Tenant
 from src.domain.usage.entity import UsageRecord
 from src.domain.usage.repository import UsageRepository
 
+if TYPE_CHECKING:
+    from src.application.ledger.deduct_tokens_use_case import (
+        DeductTokensUseCase,
+    )
+    from src.domain.tenant.repository import TenantRepository
+
+logger = structlog.get_logger(__name__)
+
 
 class RecordUsageUseCase:
-    def __init__(self, usage_repository: UsageRepository) -> None:
+    def __init__(
+        self,
+        usage_repository: UsageRepository,
+        deduct_tokens: "DeductTokensUseCase | None" = None,
+        tenant_repository: "TenantRepository | None" = None,
+    ) -> None:
         self._repo = usage_repository
+        # S-Token-Gov.2: 注入後會在每筆 usage 寫入後扣 ledger
+        self._deduct = deduct_tokens
+        self._tenant_repo = tenant_repository
+
+    @staticmethod
+    def _should_count_for_quota(tenant: Tenant, category: str) -> bool:
+        """判斷該租戶 + 該 category 是否計入額度。
+
+        - included_categories is None → 全部計入（safe default）
+        - included_categories == [] → 全部不計入（POC 免計費）
+        - 否則 → 只計入列表內的
+        """
+        if tenant.included_categories is None:
+            return True
+        return category in tenant.included_categories
 
     async def execute(
         self,
@@ -42,6 +75,26 @@ class RecordUsageUseCase:
             bot_id=bot_id,
         )
         await self._repo.save(record)
+
+        # S-Token-Gov.2: 扣 ledger（若該 category 對該租戶計入額度）
+        # 包 try/except — 扣費失敗不應影響 token 記錄主流程（審計優先於計費）
+        if self._deduct and self._tenant_repo:
+            try:
+                tenant = await self._tenant_repo.find_by_id(tenant_id)
+                if tenant and self._should_count_for_quota(tenant, request_type):
+                    await self._deduct.execute(
+                        tenant_id=tenant_id,
+                        tokens=usage.total_tokens,
+                        plan_name=tenant.plan,
+                    )
+            except Exception:
+                logger.warning(
+                    "ledger.deduct_failed",
+                    tenant_id=tenant_id,
+                    request_type=request_type,
+                    tokens=usage.total_tokens,
+                    exc_info=True,
+                )
 
     @staticmethod
     def _estimate_cost_from_registry(
