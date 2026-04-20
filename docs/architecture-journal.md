@@ -109,6 +109,23 @@
 - **Router prefix 缺乏統一約束** → 新增 router 時容易漏加 `/api/v1`，目前靠 code review 人工發現；可在 `main.py` 的 `include_router` 統一加 `prefix="/api/v1"` 避免遺漏 → 優先級：中
 - **RunPod Pod URL 與 `OLLAMA_BASE_URL` 一對一綁定** → 若 Pod terminate 重建，URL 換掉後需手動更新 GitHub Variable 並重新部署；MoE 模型啟動後 Ollama 的 keep-alive 行為也需觀察 → 優先級：低（測試期可接受）
 
+### 互斥 UX + RHF 欄位生命週期（後續追加）
+
+**問題根因**：`llm_provider` 在 `defaultValues` 但未 `register()`。試圖加 `<input type="hidden" {...register("llm_provider")} />` 反而讓 RHF 用 DOM input 的空字串 `""` 覆蓋 `defaultValues`，導致提交 payload 出現 `llm_provider: ""`。
+
+**正確結論**：
+- 非 register 欄位（只在 defaultValues）→ `setValue` 仍能正確寫入 form store，`handleSubmit` 會包含更新後的值，不需要 hidden input
+- 視覺 active state 不應依賴 `watch` on unregistered field → 用獨立 `useState(selectedAbModel)` 完全解耦
+- ModelSelect 與 A/B 按鈕互斥：`onValueChange` 時 `setSelectedAbModel(null)`，點 A/B 時 `selectValue = ""`
+
+**RHF 欄位狀態 3 種模式對照**：
+
+| 模式 | 提交時有值？ | watch re-render？ | 適用場景 |
+|------|------------|-------------------|---------|
+| `register()` | ✅ | ✅ | 一般表單欄位 |
+| `Controller` | ✅ | ✅ | 自訂 UI 元件（Select、DatePicker）|
+| defaultValues only | ✅（setValue 後更新） | ⚠️ 不穩定 | 隱藏邏輯欄位，視覺用 useState 解耦 |
+
 ### 延伸學習
 
 - **RHF `setValue` 的 `shouldDirty` / `shouldTouch` / `shouldValidate`**：三個 flag 控制不同的副作用——`shouldDirty` 標記欄位為已修改（觸發 `watch` 和 `isDirty`）；`shouldValidate` 觸發 zod 驗證；`shouldTouch` 標記為已互動。外部觸發表單值變更（如按鈕覆寫）時應加 `{ shouldDirty: true }` 確保訂閱方感知到變化

@@ -522,7 +522,6 @@ export function BotDetailForm({
               選擇此機器人使用的 LLM 模型。可用模型由「系統設定 &gt;
               供應商設定」管理。
             </p>
-            <input type="hidden" {...register("llm_provider")} />
             <div className="flex flex-col gap-2">
               <Label htmlFor="bot-llm-model">模型</Label>
               <Controller
