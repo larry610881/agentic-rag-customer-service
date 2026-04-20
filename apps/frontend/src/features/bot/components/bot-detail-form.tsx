@@ -288,6 +288,13 @@ export function BotDetailForm({
     ToolRagConfig
   >;
 
+  // HARDCODE - 模型就緒後停止 polling
+  useEffect(() => {
+    if (ollamaStatus?.status === "ready") {
+      setPollModel(null);
+    }
+  }, [ollamaStatus?.status]);
+
   // LINE show_sources 連動：主開關關閉時，LINE 也關閉
   useEffect(() => {
     if (!showSources) {
