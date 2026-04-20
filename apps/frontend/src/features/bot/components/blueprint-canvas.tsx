@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
   Handle,
   Position,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   type Node,
   type Edge,
 } from "@xyflow/react";
@@ -85,13 +87,13 @@ type ChunkNodeData = {
 
 const AGENT_W = 200;
 const AGENT_H = 90;
-const TOOL_W = 150;
 const TOOL_H = 44;
-const CHUNK_W = 180;
 const CHUNK_H = 56;
-const COL_GAP = 240;
-const ROW_GAP = 110;
-const TOOL_VERTICAL_GAP = 60;
+const COL_GAP = 60;            // agent 之間的水平間距
+const TOOL_TOP_OFFSET = 24;    // tool 區從 agent 底部往下的距離
+const TOOL_VERTICAL_GAP = 12;
+const CHUNK_TOP_OFFSET = 16;
+const CHUNK_VERTICAL_GAP = 10;
 
 function AgentBlueprintNode({ data }: { data: AgentNodeData }) {
   const { spec, isLit, isFailed, errorMessage, onInspect } = data;
@@ -111,7 +113,7 @@ function AgentBlueprintNode({ data }: { data: AgentNodeData }) {
             : "border-muted bg-muted/20 opacity-60",
       )}
     >
-      <Handle type="source" position={Position.Right} className="!bg-gray-400" />
+      <Handle type="source" position={Position.Bottom} className="!bg-gray-400" />
       <div className="flex items-center gap-2">
         {spec.isMain ? (
           <BotIcon className="h-4 w-4" />
@@ -152,8 +154,8 @@ function ToolBlueprintNode({ data }: { data: ToolNodeData }) {
             : "border-muted bg-background text-muted-foreground opacity-60",
       )}
     >
-      <Handle type="target" position={Position.Left} className="!bg-gray-400" />
-      <Handle type="source" position={Position.Right} className="!bg-gray-400" />
+      <Handle type="target" position={Position.Top} className="!bg-gray-400" />
+      <Handle type="source" position={Position.Bottom} className="!bg-gray-400" />
       <Wrench className="h-3 w-3 shrink-0" />
       <span className="truncate">{toolName}</span>
     </button>
@@ -180,7 +182,7 @@ function ChunkNode({ data }: { data: ChunkNodeData }) {
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
       )}
     >
-      <Handle type="target" position={Position.Left} className="!bg-sky-400" />
+      <Handle type="target" position={Position.Top} className="!bg-sky-400" />
       <div className="flex items-center gap-1 text-[10px] font-medium">
         <FileText className="h-3 w-3 text-sky-600 dark:text-sky-400" />
         <span className="truncate">{spec.documentName || "chunk"}</span>
@@ -206,7 +208,7 @@ type InspectTarget =
   | { kind: "tool"; toolName: string; agentId: string }
   | { kind: "chunk"; spec: ChunkNodeSpec };
 
-export function BlueprintCanvas({
+function BlueprintInner({
   agents,
   activeAgentIds,
   activeToolKeys,
@@ -215,18 +217,24 @@ export function BlueprintCanvas({
   chunkNodes,
 }: BlueprintCanvasProps) {
   const [inspect, setInspect] = useState<InspectTarget | null>(null);
+  const reactFlow = useReactFlow();
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useMemo(() => {
+  // 水平 layout：agents 從左到右排列，tools 在 agent 下方堆疊。
+  // 每個 agent 各自佔一個 column，column 寬度 = max(AGENT_W, longest tool 寬度)。
+  const { nodes: layoutNodes, edges: layoutEdges, agentPositions } = useMemo(() => {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
+    const positions: Record<string, { x: number; y: number }> = {};
 
     agents.forEach((agent, agentIdx) => {
       const agentNodeId = `agent:${agent.id}`;
-      const agentY = agentIdx * (AGENT_H + ROW_GAP);
+      const agentX = agentIdx * (AGENT_W + COL_GAP);
+      const agentY = 0;
+      positions[agent.id] = { x: agentX, y: agentY };
       nodes.push({
         id: agentNodeId,
         type: "agent",
-        position: { x: 0, y: agentY },
+        position: { x: agentX, y: agentY },
         data: {
           spec: agent,
           isLit: activeAgentIds.has(agent.id),
@@ -238,19 +246,18 @@ export function BlueprintCanvas({
         draggable: false,
       });
 
-      const toolCount = agent.toolNames.length;
-      const totalH = toolCount * TOOL_H + (toolCount - 1) * 12;
-      const startY = agentY + AGENT_H / 2 - totalH / 2;
-
       agent.toolNames.forEach((toolName, toolIdx) => {
         const toolNodeId = `tool:${agent.id}:${toolName}`;
         const toolKey = `${agent.id}::${toolName}`;
+        const toolY =
+          agentY + AGENT_H + TOOL_TOP_OFFSET +
+          toolIdx * (TOOL_H + TOOL_VERTICAL_GAP);
         nodes.push({
           id: toolNodeId,
           type: "tool",
           position: {
-            x: COL_GAP,
-            y: startY + toolIdx * (TOOL_H + 12),
+            x: agentX + (AGENT_W - 150) / 2,  // 置中對齊 agent
+            y: toolY,
           },
           data: {
             toolName,
@@ -272,7 +279,7 @@ export function BlueprintCanvas({
       });
     });
 
-    return { nodes, edges };
+    return { nodes, edges, agentPositions: positions };
   }, [agents, activeAgentIds, activeToolKeys, failedNodeIds, errorMessages]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(layoutNodes);
@@ -291,7 +298,7 @@ export function BlueprintCanvas({
     });
   }, [layoutNodes, layoutEdges, setNodes, setEdges]);
 
-  // 動態加 chunk 節點
+  // 動態加 chunk 節點（在對應 tool 下方）
   useEffect(() => {
     setNodes((prev) => {
       const existingChunkIds = new Set(
@@ -310,14 +317,16 @@ export function BlueprintCanvas({
         const id = `chunk:${c.id}`;
         if (existingChunkIds.has(id)) return;
         const parentNode = prev.find((n) => n.id === c.parentToolNodeId);
-        const baseX = (parentNode?.position.x ?? COL_GAP) + COL_GAP;
-        const baseY = parentNode?.position.y ?? 0;
+        if (!parentNode) return;
+        const baseX = parentNode.position.x;
+        const parentBottomY =
+          parentNode.position.y + TOOL_H + CHUNK_TOP_OFFSET;
         const idx = positionsByParent[c.parentToolNodeId] ?? 0;
         positionsByParent[c.parentToolNodeId] = idx + 1;
         newOnes.push({
           id,
           type: "chunk",
-          position: { x: baseX, y: baseY + idx * (CHUNK_H + 12) },
+          position: { x: baseX, y: parentBottomY + idx * (CHUNK_H + CHUNK_VERTICAL_GAP) },
           data: {
             spec: c,
             onInspect: (spec: ChunkNodeSpec) =>
@@ -347,9 +356,23 @@ export function BlueprintCanvas({
     });
   }, [chunkNodes, setNodes, setEdges]);
 
+  // 自動置中：當 activeAgentIds 變化時，pan 視窗到「最後一個亮燈 agent」
+  useEffect(() => {
+    if (activeAgentIds.size === 0) return;
+    const activeIds = Array.from(activeAgentIds);
+    const lastActive = activeIds[activeIds.length - 1];
+    const pos = agentPositions[lastActive];
+    if (!pos) return;
+    // pan 到 agent 中心點 + tool 區塊中段（讓 agent + 第一個 tool 都在視窗）
+    reactFlow.setCenter(pos.x + AGENT_W / 2, pos.y + AGENT_H + 40, {
+      duration: 400,
+      zoom: 0.9,
+    });
+  }, [activeAgentIds, agentPositions, reactFlow]);
+
   return (
     <>
-      <div style={{ height: 480 }} className="rounded-lg border bg-muted/10">
+      <div style={{ height: 320 }} className="rounded-lg border bg-muted/10">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -408,6 +431,15 @@ export function BlueprintCanvas({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+export function BlueprintCanvas(props: BlueprintCanvasProps) {
+  // useReactFlow 必須在 ReactFlowProvider 內使用，所以這層包一下。
+  return (
+    <ReactFlowProvider>
+      <BlueprintInner {...props} />
+    </ReactFlowProvider>
   );
 }
 

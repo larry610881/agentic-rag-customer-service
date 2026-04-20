@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [S-Gov.7 Phase 1.5 — Bot Studio：雙橫向時序軸 + 即時/完整 DAG 並存（關注點分離 + ReactFlow setCenter 自動置中）](#s-gov7-phase-15--bot-studio雙橫向時序軸--即時完整-dag-並存關注點分離--reactflow-setcenter-自動置中)
 - [S-Gov.7 Phase 1 — Bot Studio：真實對應的命脈（ContextVar last_node_id + 失敗節點視覺 + ReactFlow 動態 chunks）](#s-gov7-phase-1--bot-studio真實對應的命脈contextvar-last_node_id--失敗節點視覺--reactflow-動態-chunks)
 - [S-Gov.7 — Bot Studio：設定即時試運轉（既有契約延伸 + 前端共用 lib 抽出 + Source 識別最小路徑）](#s-gov7--bot-studio設定即時試運轉既有契約延伸--前端共用-lib-抽出--source-識別最小路徑)
 - [BUG-01 — Tool Rich Content 持久化 + Trace Source of Truth（Collector Metadata 延伸 + 聚合累加器）](#bug-01--tool-rich-content-持久化--trace-source-of-truthcollector-metadata-延伸--聚合累加器)
@@ -82,6 +83,39 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## S-Gov.7 Phase 1.5 — Bot Studio：雙橫向時序軸 + 即時/完整 DAG 並存（關注點分離 + ReactFlow setCenter 自動置中）
+
+**日期**：2026-04-18
+**Sprint**：S-Gov.7 Phase 1.5（互動體驗強化）
+**涉及層級**：純 Frontend / Interfaces — 5 檔（2 新 3 改）：admin agent-trace-graph export 共用元件、bot blueprint-canvas 改水平 layout、新元件 execution-timeline + live-trace-graph、bot-studio-canvas 整合（無 Domain / Application / Infrastructure 變更）
+
+### 本次相關主題
+
+關注點分離（時序流 vs 圖形結構 vs 拓撲圖）、ReactFlow `useReactFlow()` + `setCenter()` 視窗自動 pan、Stream Event → ExecutionNode 即時 mapping（前端自組 partial trace）、共用元件抽出（TraceNode + groupParallelByStartMs 跨 admin / studio reuse）、Reset Signal Pattern（外部 `traceResetSignal++` 觸發子元件 useEffect 清空 internal state）、Horizontal Timeline + `scrollIntoView({ inline: "center" })`
+
+### 做得好的地方
+
+- **三段視覺資訊各司其職，拒絕「合併成一塊」誘惑**：藍圖（哪些 agent / tool 可被呼叫 → 設定觀點）、時序軸（事件序流 → 簡單線性 timeline）、即時 DAG（圖形結構 → parent/parallel 關係）。三者觀點不同，UX 上互補；硬合併會出現「拓撲圖摻時間軸」這種雜訊圖。**「同一份資料的多視角呈現」優於「強行融合一個視覺」**
+- **ReactFlow setCenter 取代手動 scrollIntoView**：對於 ReactFlow 內節點 pan 用 `useReactFlow().setCenter(x, y, { duration, zoom })`，比手動找 DOM ref + scrollIntoView 直觀；對於非 ReactFlow 的 horizontal flex（ExecutionTimeline）才用 ref + scrollIntoView。**選對「視窗座標系」的工具：ReactFlow 內用它的 viewport API，DOM 內才用瀏覽器 scrollIntoView**
+- **共用 TraceNode + groupParallelByStartMs export 而非複製**：LiveTraceGraph 與 admin AgentTraceGraph 視覺一致是 user 明確要求。直接 `export function TraceNode` + `export function groupParallelByStartMs` 給跨 feature import — 雖然破例 cross-feature import（features/bot 引 features/admin），但比「複製貼上 TraceNode」維護成本低太多。**Cross-feature import 不是禁忌，是「共用 UI primitive」的合理選擇**（未來該 promote 到 components/ 共用層）
+- **Reset Signal 比 Imperative Handle 簡潔**：LiveTraceGraph 內部 state（execNodes / processedCount / seed）需要在外部 send 新訊息時清空。選 props 加 `resetSignal: number`，外層 setState 加 1 → 子元件 `useEffect([resetSignal], () => clear())`。比 `useImperativeHandle + ref.current.reset()` 少寫 forwardRef + ref hookup，純 React data flow
+- **PreSignal vs reset detection 雙保險**：LiveTraceGraph 同時處理 `resetSignal++`（外部主動清空）+ `events.length < processedCount`（events array 被替換成更短的）兩種情境。後者是 bot-studio-canvas 那邊也已經 `setEventLog([])` 的 implicit reset 路徑，雙寫一次容錯
+
+### 潛在隱憂
+
+- **LiveTraceGraph 與後端最終 trace 排版不完全一致**：LiveTraceGraph 用 stream events 自組的 partial ExecutionNode，layout 簡化（沒處理 worker_execution / agent_llm 子節點），所以「即時長」跟「最終完整 DAG」中間會有視覺跳變（節點數變多、x/y 位置重排）。User 接受並存（即時 + 完整兩段），但邏輯上有「排版規則 fork」風險。**建議**：把 buildGraph 抽成 `@/features/admin/lib/trace-layout.ts` 共用 module，LiveTraceGraph 只是「partial 餵入」走相同 layout function → **優先級：中**
+- **ExecutionTimeline 卡片 ID 用 `${type}-${idx}-${tsMs}`，重渲染可能造成 React re-mount**：events 陣列若中間插入新事件，後續所有 idx 變動 → key 全變 → React 全部重 mount → CSS transition 失效。目前 events 是 append-only 所以實務上沒問題，但 fragile。**建議**：events 進來時就 stamp `event.id = uuid()`，或用 `node_id + type` 當 stable key → **優先級：低**
+- **BlueprintCanvas tools 改 agent 下方堆疊後，工具多時 column 高度爆炸**：原本 tools 在 agent 右邊垂直堆疊不影響 agent 之間的水平距離；現在 tools 接在 agent 下方，columns 之間水平距離仍是 `AGENT_W + COL_GAP`，但 column 高度 = `AGENT_H + tools × (TOOL_H + 12)` 可能很長 → ReactFlow `fitView` 會 zoom out 到看不清楚。**建議**：工具數 > 5 時自動分兩欄，或加「展開工具列表」摺疊功能 → **優先級：低**（一般 bot 配 3-5 個 tool 內，水平 layout 已合理）
+- **Cross-feature import (features/bot → features/admin)**：違反「features 應自治」的隱性原則。當前是「視覺一致」的合理 trade-off，但若未來 admin 重構或刪除 agent-trace-graph，會打破 bot studio。**建議**：把共用的 TraceNode / groupParallelByStartMs / NODE_COLORS 等抽到 `@/components/trace/` 或 `@/lib/trace/`，作為 trace 視覺化的共用 primitive layer → **優先級：中**
+
+### 延伸學習
+
+- **ReactFlow `useReactFlow` hook 的 Provider 邊界**：`useReactFlow()` 必須在 `<ReactFlowProvider>` 內呼叫，否則 throw。本次 BlueprintCanvas 內外層用 `BlueprintInner` 拆出 + `<ReactFlowProvider>` 包，是 ReactFlow 文件推薦 pattern。LiveTraceGraph 同樣處理。**「使用 hook 的元件 vs render Provider 的元件」必須拆兩層**，這在 useImperativeHandle / 自定 hook 共用 context 也是常見 pattern
+- **「多視角呈現」vs「過度設計」邊界**：本次三段視覺（藍圖 + 時序 + DAG）+ 完整 DAG 是 user 明確要求的「並存」。一般情境下，多視角會增加認知負擔；但 Studio 的對象是「設定者要驗證 bot 行為」，看不同切面才能放心 → **多視角存在是因為 user 任務本身需要「同時觀察結構與時序」**。設計時要問：「使用者真的同時需要這兩個視角嗎？」而非「這個資料還能怎麼切」
+- **建議搜尋**：`React Flow setCenter useReactFlow Provider`、`React partial state with stable keys array index pitfall`、`UI design pattern multi-view of same data trace visualization`
 
 ---
 

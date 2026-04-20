@@ -1375,6 +1375,19 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | BDD 4 scenarios | ✅ | stream node_id 對應 / worker_routing event / outcome=failed 寫入 / 既有 web 通路無破壞 |
 | React Query invalidation 已運作驗證 | ✅ | useWorkers invalidation 已具備（不寫程式，僅確認） |
 
+#### Phase 1.5（互動體驗強化 — 雙橫向時序軸 + 即時/完整 DAG 並存，已 ship）
+> Plan `agent-main-bright-leaf.md`（同 plan 重啟）
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| BlueprintCanvas 水平 layout | ✅ | agents 改左→右排列、tools 改 agent 下方堆疊、Handle 改 Bottom/Top；activeAgent 變更時 `useReactFlow().setCenter()` 自動 pan 居中 |
+| ExecutionTimeline 水平卡片時序軸 | ✅ | 取代既有直立 ExecutionFeed；最新一張卡 `scrollIntoView({ inline: "center" })` 自動置中，工具多時不會看不到當前位置 |
+| LiveTraceGraph 即時 DAG | ✅ | 每 SSE event 增量 add ExecutionNode → ReactFlow setCenter 到新節點；reuse `TraceNode` + `groupParallelByStartMs`，與 admin 視覺一致 |
+| Final AgentTraceGraph 並存 | ✅ | done 後 fetch 完整 trace 顯示「最終精確 layout」（reuse 既有元件，標題改「本輪完整 DAG（最終 layout）」） |
+| TraceNode + groupParallelByStartMs export | ✅ | agent-trace-graph.tsx 加 export 給 LiveTraceGraph 重用，避免重複 Node 視覺定義 |
+| traceResetSignal 機制 | ✅ | handleSend / handleClearConversation 時 +1 觸發 LiveTraceGraph 內部清空節點 |
+| tsc + vitest 不退步 | ✅ | 本次新檔零 tsc 錯誤；vitest 223 passed / 12 failed = phase 1 baseline 完全一致 |
+
 #### Phase 2 / Phase 3（待真實使用反饋後排）
 
 | 項目 | 狀態 | 說明 |

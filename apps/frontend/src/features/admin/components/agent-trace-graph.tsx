@@ -192,7 +192,7 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
   );
 }
 
-type CustomNodeData = {
+export type CustomNodeData = {
   execNode: ExecutionNode;
   /** 同 type + 同 start_ms 的相鄰節點視為平行群組 — true 時顯示 ⚡ badge */
   isParallelGroup?: boolean;
@@ -200,7 +200,7 @@ type CustomNodeData = {
   parallelCount?: number;
 };
 
-function TraceNode({ data }: { data: CustomNodeData }) {
+export function TraceNode({ data }: { data: CustomNodeData }) {
   const [expanded, setExpanded] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const n = data.execNode;
@@ -349,7 +349,7 @@ const nodeTypes = { traceNode: TraceNode };
  * 避免把不相關的 start_ms=0 節點（如 user_input + worker_routing）誤合，
  * 只有「相鄰」且「節點類型一致」的視為真正的平行呼叫。
  */
-function groupParallelByStartMs(nodes: ExecutionNode[]): ExecutionNode[][] {
+export function groupParallelByStartMs(nodes: ExecutionNode[]): ExecutionNode[][] {
   const groups: ExecutionNode[][] = [];
   let current: ExecutionNode[] = [];
   for (const n of nodes) {

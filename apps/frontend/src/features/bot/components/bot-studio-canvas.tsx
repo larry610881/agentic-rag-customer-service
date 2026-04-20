@@ -16,6 +16,8 @@ import {
   type BlueprintAgentSpec,
   type ChunkNodeSpec,
 } from "./blueprint-canvas";
+import { ExecutionTimeline } from "./execution-timeline";
+import { LiveTraceGraph } from "./live-trace-graph";
 import { ContactCardButton } from "@/features/chat/components/contact-card-button";
 import type { Bot } from "@/types/bot";
 import type { ContactCard } from "@/types/chat";
@@ -67,6 +69,8 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
   // 執行紀錄（每輪重置）
   const [eventLog, setEventLog] = useState<SSEEvent[]>([]);
   const [traceId, setTraceId] = useState<string | null>(null);
+  // LiveTraceGraph 重置 signal — handleSend 時 +1 觸發即時 DAG 內部清空
+  const [traceResetSignal, setTraceResetSignal] = useState(0);
 
   // Refs 用來繞過 useStudioStreaming callbacks 的 closure 陷阱：
   // sendMessage 被呼叫時 callbacks 內的 currentAgentId 會被「凍結」為當下值，
@@ -269,6 +273,7 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
       setChunkNodes([]);
       setEventLog([]);
       setTraceId(null);
+      setTraceResetSignal((s) => s + 1);
       // refs 同步重置（避免上一輪遺留的 worker 名 / tool id 影響本輪 closure-bypass 邏輯）
       currentAgentIdRef.current = "main";
       lastToolBlueprintIdRef.current = null;
@@ -294,6 +299,7 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
     setChunkNodes([]);
     setEventLog([]);
     setTraceId(null);
+    setTraceResetSignal((s) => s + 1);
     assistantTurnIdRef.current = null;
     currentAgentIdRef.current = "main";
     lastToolBlueprintIdRef.current = null;
@@ -301,14 +307,14 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
 
   return (
     <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
-      {/* 左：儀表板 */}
+      {/* 左：儀表板（4 區塊：藍圖 → 時序軸 → 即時 DAG → 完整 DAG） */}
       <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
         <Card className="p-4">
           <div className="mb-3 flex items-center gap-2 text-sm font-medium">
             <Sparkles className="h-4 w-4 text-violet-500" />
             Bot 配置藍圖
             <span className="text-xs font-normal text-muted-foreground">
-              {agents.length} agent · 對話開始後對應節點會點亮、失敗節點會紅框 ping
+              {agents.length} agent · agents 水平排列、執行中自動置中
             </span>
           </div>
           <BlueprintCanvas
@@ -321,13 +327,15 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
           />
         </Card>
 
-        {eventLog.length > 0 && <ExecutionFeed events={eventLog} />}
+        <ExecutionTimeline events={eventLog} />
+
+        <LiveTraceGraph events={eventLog} resetSignal={traceResetSignal} />
 
         {completedTrace && (
           <Card className="p-4">
             <div className="mb-2 flex items-center gap-2 text-sm font-medium">
               <Sparkles className="h-4 w-4 text-violet-500" />
-              本輪執行 DAG
+              本輪完整 DAG（最終 layout）
               <span className="ml-auto text-xs text-muted-foreground">
                 {completedTrace.total_ms.toFixed(0)} ms · trace_id={" "}
                 <code className="font-mono">
@@ -517,74 +525,3 @@ function ChatBubble({ turn }: { turn: ChatTurn }) {
   );
 }
 
-type ExecutionFeedProps = {
-  events: SSEEvent[];
-};
-
-function ExecutionFeed({ events }: ExecutionFeedProps) {
-  const visible = events.filter((e) => e.type !== "token");
-  return (
-    <Card className="p-3">
-      <div className="mb-1 text-xs font-medium text-muted-foreground">
-        執行紀錄
-      </div>
-      <div className="max-h-[160px] space-y-0.5 overflow-y-auto text-xs">
-        {visible.map((event, idx) => (
-          <FeedRow key={idx} event={event} />
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function FeedRow({ event }: { event: SSEEvent }) {
-  const labels: Record<string, string> = {
-    status: "🧠",
-    tool_calls: "🔧",
-    sources: "📚",
-    contact: "👤",
-    worker_routing: "🎯",
-    message_id: "🆔",
-    conversation_id: "💬",
-    done: "✅",
-    error: "⚠️",
-  };
-  const icon = labels[event.type] ?? "·";
-
-  let detail = "";
-  if (event.type === "status" && typeof event.status === "string") {
-    detail = event.status;
-  } else if (event.type === "tool_calls" && Array.isArray(event.tool_calls)) {
-    const names = (event.tool_calls as Array<{ tool_name: string }>)
-      .map((c) => c.tool_name)
-      .join(", ");
-    detail = names;
-  } else if (event.type === "sources" && Array.isArray(event.sources)) {
-    detail = `${event.sources.length} chunks`;
-  } else if (
-    event.type === "worker_routing" &&
-    typeof event.worker_name === "string"
-  ) {
-    detail = `→ ${event.worker_name}`;
-  } else if (event.type === "done" && typeof event.trace_id === "string") {
-    detail = `trace_id=${event.trace_id.slice(0, 8)}`;
-  } else if (event.type === "error" && typeof event.message === "string") {
-    detail = event.message;
-  }
-
-  const tsBadge =
-    typeof event.ts_ms === "number" && event.ts_ms > 0
-      ? ` ${event.ts_ms.toFixed(0)}ms`
-      : "";
-
-  return (
-    <div className="flex gap-2 font-mono">
-      <span>{icon}</span>
-      <span className="text-muted-foreground">{event.type}</span>
-      {detail && <span className="text-foreground/80 truncate">{detail}</span>}
-      {tsBadge && (
-        <span className="ml-auto text-muted-foreground/60">{tsBadge}</span>
-      )}
-    </div>
-  );
-}
