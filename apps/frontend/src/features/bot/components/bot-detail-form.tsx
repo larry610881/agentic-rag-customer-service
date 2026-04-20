@@ -213,6 +213,9 @@ export function BotDetailForm({
   const [pollModel, setPollModel] = useState<string | null>(null);
   const { data: ollamaStatus } = useOllamaModelStatus(pollModel, !!pollModel);
   const savedOllamaModel = useRef<string | null>(null);
+  const [selectedAbModel, setSelectedAbModel] = useState<string | null>(
+    bot.llm_provider === "ollama" ? (bot.llm_model ?? null) : null,
+  );
 
   const {
     register,
@@ -556,9 +559,7 @@ export function BotDetailForm({
                 </Label>
                 <div className="flex gap-2">
                   {abPresets.map((preset) => {
-                    const isActive =
-                      currentLlmProvider === "ollama" &&
-                      currentLlmModel === preset.model;
+                    const isActive = selectedAbModel === preset.model;
                     return (
                       <Button
                         key={preset.label}
@@ -566,15 +567,16 @@ export function BotDetailForm({
                         size="sm"
                         variant={isActive ? "default" : "outline"}
                         onClick={() => {
+                          setSelectedAbModel(preset.model);
                           setValue("llm_provider", "ollama", { shouldDirty: true });
                           setValue("llm_model", preset.model, { shouldDirty: true });
                         }}
                       >
                         {preset.label}：{preset.description}
-                        {isActive && pollModel === preset.model && (
+                        {selectedAbModel === preset.model && pollModel === preset.model && (
                           <span className="ml-1 animate-spin">⏳</span>
                         )}
-                        {isActive &&
+                        {selectedAbModel === preset.model &&
                           ollamaStatus?.status === "ready" &&
                           !pollModel && (
                             <span className="ml-1 text-green-500">✓</span>
