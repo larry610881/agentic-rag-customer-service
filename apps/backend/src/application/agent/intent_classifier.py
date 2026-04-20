@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from src.domain.rag.services import LLMService
+from src.domain.usage.category import UsageCategory
 
 if TYPE_CHECKING:
+    from src.application.usage.record_usage_use_case import RecordUsageUseCase
     from src.domain.bot.entity import IntentRoute
     from src.domain.bot.worker_config import WorkerConfig
 
@@ -39,8 +41,13 @@ def _build_classify_prompt(
 class IntentClassifier:
     """Classify user intent — supports both WorkerConfig and legacy IntentRoute."""
 
-    def __init__(self, llm_service: LLMService) -> None:
+    def __init__(
+        self,
+        llm_service: LLMService,
+        record_usage: "RecordUsageUseCase | None" = None,
+    ) -> None:
         self._llm = llm_service
+        self._record_usage = record_usage
 
     async def classify_workers(
         self,
@@ -48,6 +55,8 @@ class IntentClassifier:
         router_context: str,
         workers: list[WorkerConfig],
         router_model: str = "",
+        tenant_id: str = "",
+        bot_id: str | None = None,
     ) -> WorkerConfig | None:
         """Classify into a WorkerConfig, or None for default fallback."""
         if not workers:
@@ -62,6 +71,7 @@ class IntentClassifier:
 
         raw = await self._call_llm(
             prompt, [w.name for w in workers], router_model,
+            tenant_id=tenant_id, bot_id=bot_id,
         )
         if raw is None:
             return None
@@ -74,6 +84,8 @@ class IntentClassifier:
         user_message: str,
         router_context: str,
         intent_routes: list[IntentRoute],
+        tenant_id: str = "",
+        bot_id: str | None = None,
     ) -> IntentRoute | None:
         """Legacy: classify into an IntentRoute."""
         if not intent_routes:
@@ -88,6 +100,7 @@ class IntentClassifier:
 
         raw = await self._call_llm(
             prompt, [r.name for r in intent_routes],
+            tenant_id=tenant_id, bot_id=bot_id,
         )
         if raw is None:
             return None
@@ -100,6 +113,8 @@ class IntentClassifier:
         prompt: str,
         route_names: list[str],
         router_model: str = "",
+        tenant_id: str = "",
+        bot_id: str | None = None,
     ) -> str | None:
         try:
             kwargs: dict[str, Any] = {
@@ -120,6 +135,16 @@ class IntentClassifier:
                 raw_output=raw,
                 routes=route_names,
             )
+
+            # Token-Gov.0: 記錄 intent classify token 用量
+            if self._record_usage and result.usage and result.usage.total_tokens > 0:
+                await self._record_usage.execute(
+                    tenant_id=tenant_id,
+                    request_type=UsageCategory.INTENT_CLASSIFY.value,
+                    usage=result.usage,
+                    bot_id=bot_id,
+                )
+
             return raw
         except Exception:
             logger.warning(

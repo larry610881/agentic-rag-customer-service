@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [S-Token-Gov.0 — Token 追蹤完整性：Audit 5 條漏網 + UsageCategory enum + 累計屬性 Pattern](#s-token-gov0--token-追蹤完整性audit-5-條漏網--usagecategory-enum--累計屬性-pattern)
 - [S-Gov.7 Phase 1.6 — Bot Studio：Dagre 自動 Layout + Parallel Post-Process + 區塊 Toggle](#s-gov7-phase-16--bot-studiodagre-自動-layout--parallel-post-process--區塊-toggle)
 - [S-Gov.7 Phase 1.5 — Bot Studio：雙橫向時序軸 + 即時/完整 DAG 並存（關注點分離 + ReactFlow setCenter 自動置中）](#s-gov7-phase-15--bot-studio雙橫向時序軸--即時完整-dag-並存關注點分離--reactflow-setcenter-自動置中)
 - [S-Gov.7 Phase 1 — Bot Studio：真實對應的命脈（ContextVar last_node_id + 失敗節點視覺 + ReactFlow 動態 chunks）](#s-gov7-phase-1--bot-studio真實對應的命脈contextvar-last_node_id--失敗節點視覺--reactflow-動態-chunks)
@@ -84,6 +85,57 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## S-Token-Gov.0 — Token 追蹤完整性：Audit 5 條漏網 + UsageCategory enum + 累計屬性 Pattern
+
+**日期**：2026-04-20
+**Sprint**：S-Token-Gov.0（5 sprint 系列的前置作業）
+**涉及層級**：Domain (新 enum) + Application (3 use case 注入更新) + Infrastructure (3 service 累計 token + reranker 接 record_usage) + tests (5 BDD scenarios)。10 檔變動跨 4 層。
+
+### Token 追蹤覆蓋率（Audit 結果）
+
+| 路徑 | Audit 前 | Audit 後 | category |
+|---|---|---|---|
+| RAG 查詢（sync + stream） | ✅ | ✅ | `rag` |
+| Web Chat（sync + stream） | ✅ | ✅ | `chat_web` |
+| Widget Chat | ✅ | ✅ | `chat_widget` |
+| LINE Chat | ✅ | ✅ | `chat_line` |
+| OCR (PDF Vision) | ✅ | ✅ | `ocr` |
+| Embedding (document ingest) | ✅ | ✅ | `embedding` |
+| Prompt Guard | ✅ | ✅ | `guard` |
+| ReAct streaming token usage | ✅ | ✅ | `chat_*`（合併） |
+| **LLM Reranker** | ❌ 漏網 | ✅ + cache 欄位 | `rerank` |
+| **Contextual Retrieval** | ❌ silent skip (hasattr 永遠 False) | ✅ | `contextual_retrieval` |
+| **PDF 子頁 Rename** | ❌ 漏網 | ✅ | `pdf_rename` |
+| **Auto-Classification** | ❌ use case 沒注入 record_usage | ✅ | `auto_classification` |
+| **IntentClassifier** | ❌ 沒注入 record_usage | ✅ | `intent_classify` |
+
+### 本次相關主題
+
+「累計屬性 Pattern」設計選擇（vs 回傳 tuple / vs callback / vs Domain Event）、`request_type` enum 不改 schema 向後相容策略、跨 service 注入 `RecordUsageUseCase` 的依賴鏈管理、BDD 5 scenarios 用 `patch + side_effect=Exception` 跳過下游 SQL 操作只驗 `record_usage` 觸發、測試 fixture 共享變數透過 context dict 傳遞、`hasattr` silent skip 是極隱蔽的 bug 反模式
+
+### 做得好的地方
+
+- **「累計屬性 Pattern」取代回傳值改造**：原本 `LLMChunkContextService.generate_contexts` 回傳 `list[Chunk]`、`ClusterClassificationService.classify` 回傳 `(categories, mapping)`。要記 token 用量有 3 個選項：(A) 改回傳值塞 token、(B) 加 callback 參數、(C) 加 instance attribute。**選 C** 因為：(1) 不破壞既有回傳 type signature → 既有 callers 不動；(2) 累計天然語意（多 chunk LLM 呼叫 → 加總）；(3) caller 端 `hasattr` 檢查 + `getattr(..., 0)` 預設值就能做 graceful degradation。**「不破壞既有 API」是修 bug 時最大的保險**。
+- **`request_type` 維持 String 欄位 + 加 enum 規範值**：本來想加新 `category` 欄位，但發現 `UsageRecord.request_type` 已是分類維度（line 16 entity），重複設兩個分類欄位會語意混亂 + 涉及 ORM migration + 既有 7 處 caller 改動。改為「保留欄位名 + 新增 `UsageCategory` enum 規範值」，零 migration、向後相容、zero risk。**「先看現有 schema 是否已有合適欄位」永遠先於「加新欄位」**。
+- **`hasattr` silent skip 是 bug 反模式**：原 `process_document_use_case.py:308` 寫 `if self._record_usage and hasattr(self._context_service, "last_input_tokens")`。問題：`LLMChunkContextService` 從沒定義過 `last_input_tokens` 屬性 → `hasattr` 永遠 False → record_usage 永遠不執行 → 沒人發現。**修法**：在 service 的 `__init__` 顯式初始化 `self.last_input_tokens = 0`，讓 hasattr 檢查恆 True；同時 caller 的 `getattr(..., 0)` 也保險。**「靜默跳過」永遠是潛伏 bug**，比 raise/log 危險百倍。
+- **5 條漏網依複雜度由低到高排序實作**：B.1 Contextual Retrieval（1 行屬性 + 改 caller） → B.2 PDF Rename（1 行 record_usage） → B.3 Reranker（function 參數延伸） → B.4 Auto-Classification（use case 注入 + service 屬性累計） → B.5 IntentClassifier（function 簽章改 + caller 多處傳 tenant_id）。**「先快快簡單，後處理難」讓信心累積、發現共通 pattern**（累計屬性 + record_usage 注入），最後 B.5 寫得最快。
+- **BDD 用 `patch + side_effect=Exception` 跳過下游驗證**：B.4 ClassifyKbUseCase 在 record_usage 之後還會做 SQL 操作（assign chunks → categories）。Test 只想驗 record_usage 被呼叫，不想 mock 整個 SQL 鏈。**用 `patch("...async_session_factory", side_effect=Exception("skip"))` + `try/except`**，前面的 record_usage 已執行（測試重點），後面的 SQL session 因為 exception 被截斷（測試不關心）。**「精確界定測試邊界」比「mock 全鏈」省工 10 倍**。
+
+### 潛在隱憂
+
+- **`asyncio.gather` 並發更新 instance int attribute 嚴格說有 race**：`generate_contexts` 用 `asyncio.gather` 並發 5 個 `_generate_one`，每個內部 `self.last_input_tokens += result.input_tokens`。CPython GIL 保護單一 bytecode 指令但 `+=` 是 read-add-write 三步。實測上 sem(5) 限制 + asyncio 單 thread 不會真的同時跑，但**理論上有 race**。**建議**：改用 `asyncio.Lock` 或 `accumulator: list = []` + 最後 sum → **優先級：低**（POC 階段不會撞，但生產環境若提高並發要修）。
+- **5 條漏網如何防止「再漏網」**：本 sprint 修了 5 條，但未來新增 LLM 呼叫路徑（例如新 worker / 新 tool）也可能忘記接 record_usage。**建議**：寫一個 lint rule / pytest plugin，掃描所有 `await call_llm(...)` / `await self._llm.generate(...)` 呼叫點，檢查同一函式內是否有 `record_usage.execute(...)` 配對 → **優先級：中**（Token-Gov.4 收益儀表板上線後若仍發現「神秘」零用量，這就是急迫題）。
+- **`UsageCategory` enum 增加新值需要前後端同步**：未來新增分類（例如新增 `validate_eval` category）時，後端 enum 加值即可（向後相容）；但前端如果有 hardcode 對應顯示文字（如 `category-display.ts` 之類），會缺翻譯。**建議**：前端的 category label map 應該以 enum.value 為 key，遇到未知 category 顯示原始 value（fallback），避免硬性依賴 → **優先級：低**（Token-Gov.4 前端開發時順便處理）。
+- **`ClassifyKbUseCase.execute` complexity 從 11 → 12 觸發 ruff C901**：本身就是長 use case，本次加 record_usage 區塊讓它再多 1 點複雜度。**建議**：未來把 `_record_classification_usage` 抽成 private method 把該段 18 行降到 1 行 call → **優先級：低**（不影響功能，code smell only）。
+
+### 延伸學習
+
+- **「Cross-Cutting Concern」的 DI 痛點**：Token 追蹤是典型的 cross-cutting concern（影響每一個 LLM 呼叫點）。本 sprint 把 `RecordUsageUseCase` 注入到 5 個不同 service / use case 的 `__init__`，雖然 work 但繁瑣。**業界更優方案**：用 AOP（aspect-oriented programming）或 decorator pattern — 例如把 `@track_token_usage(category="rerank")` 套在任何 LLM 函式上，自動讀取 result.usage 寫入。Python 沒有原生 AOP 但可用 `functools.wraps` + middleware pattern 做。但代價是「魔法太多」debug 困難。**「明確注入 vs 隱式 AOP」永遠有取捨**。
+- **「Silent Skip」是分散式系統常見的隱形 bug**：`hasattr` silent skip 範例只是 in-process 版本。分散式系統更常見：服務 A 呼叫 B，B 失敗了但回 200，A 繼續走。**對策**：(1) 任何「跳過」必有 log warning；(2) 對「應該觸發但沒觸發」的關鍵步驟加 metric（例如 `usage_record_skipped_total{reason="no_record_usage_use_case"}`）；(3) 加全鏈路測試確認端到端 token 數可對得上。本 sprint 第 (3) 點是 BDD scenarios，但 (1)(2) 還沒做。
+- **建議搜尋**：`Python ContextVar vs instance attribute for accumulator`、`Cross-cutting concern AOP Python decorator pattern`、`Silent skip antipattern observability`、`Strenum vs Enum vs Literal Python 3.12`
 
 ---
 

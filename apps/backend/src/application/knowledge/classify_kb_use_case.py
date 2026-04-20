@@ -4,16 +4,23 @@ Orchestrates: fetch chunks/vectors → cluster → name → save categories → 
 Runs as arq background job.
 """
 
+from typing import TYPE_CHECKING
+
 from src.domain.knowledge.repository import (
     ChunkCategoryRepository,
     DocumentRepository,
     KnowledgeBaseRepository,
 )
-from src.domain.rag.services import EmbeddingService, VectorStore
+from src.domain.rag.services import VectorStore
+from src.domain.rag.value_objects import TokenUsage
+from src.domain.usage.category import UsageCategory
 from src.infrastructure.classification.cluster_classification_service import (
     ClusterClassificationService,
 )
 from src.infrastructure.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.application.usage.record_usage_use_case import RecordUsageUseCase
 
 logger = get_logger(__name__)
 
@@ -26,12 +33,14 @@ class ClassifyKbUseCase:
         category_repository: ChunkCategoryRepository,
         vector_store: VectorStore,
         classification_service: ClusterClassificationService,
+        record_usage: "RecordUsageUseCase | None" = None,
     ) -> None:
         self._kb_repo = knowledge_base_repository
         self._doc_repo = document_repository
         self._cat_repo = category_repository
         self._vector_store = vector_store
         self._classification = classification_service
+        self._record_usage = record_usage
 
     async def execute(self, kb_id: str, tenant_id: str) -> None:
         log = logger.bind(kb_id=kb_id, tenant_id=tenant_id)
@@ -75,9 +84,10 @@ class ClassifyKbUseCase:
         classification_model = getattr(kb, "classification_model", "")
         if not classification_model:
             try:
+                from sqlalchemy import select
+
                 from src.infrastructure.db.engine import async_session_factory
                 from src.infrastructure.db.models.tenant_model import TenantModel
-                from sqlalchemy import select
                 async with async_session_factory() as session:
                     stmt = select(TenantModel.default_classification_model).where(
                         TenantModel.id == tenant_id
@@ -99,6 +109,24 @@ class ClassifyKbUseCase:
             log.info("classify_kb.no_categories_generated")
             return
 
+        # Token-Gov.0: 記錄 auto-classification token 用量
+        if self._record_usage and (
+            self._classification.last_input_tokens
+            + self._classification.last_output_tokens
+        ) > 0:
+            cls_in = self._classification.last_input_tokens
+            cls_out = self._classification.last_output_tokens
+            await self._record_usage.execute(
+                tenant_id=tenant_id,
+                request_type=UsageCategory.AUTO_CLASSIFICATION.value,
+                usage=TokenUsage(
+                    model=self._classification.last_model,
+                    input_tokens=cls_in,
+                    output_tokens=cls_out,
+                    total_tokens=cls_in + cls_out,
+                ),
+            )
+
         # 4. Delete old categories
         await self._cat_repo.delete_by_kb(kb_id)
 
@@ -106,9 +134,10 @@ class ClassifyKbUseCase:
         await self._cat_repo.save_batch(categories)
 
         # 6. Assign chunks to categories (use independent session)
+        from sqlalchemy import update
+
         from src.infrastructure.db.engine import async_session_factory
         from src.infrastructure.db.models.chunk_model import ChunkModel
-        from sqlalchemy import update
 
         async with async_session_factory() as session:
             for cat in categories:

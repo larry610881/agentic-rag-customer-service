@@ -1424,21 +1424,81 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | BDD scenarios (8 個) | ✅ | integration/auth/admin_tenant_scope.feature (4) + integration/observability/admin_auth_guard.feature (4) |
 | BREAKING CHANGE 標記 | ✅ | admin 失去從一般 API 路徑跨租戶操作能力（替代方案見 Bug Backlog）|
 
-### S-Gov.4 Token 追蹤租戶開關
-| 項目 | 說明 |
-|------|------|
-| Token 追蹤總開關（系統層）| 所有 token 一律寫進系統層 usage log |
-| Per-tenant 計費開關 | 系統層可勾選「此租戶的用量要計費嗎」，不勾則僅記錄不扣額度 |
-| 差異化優惠策略 | 每個租戶獨立設定 → POC 租戶 / 內部測試帳號可「免計費」；正式客戶正常計費 |
+### S-Token-Gov — Token 治理 + 計費完整體系（5 sprint，2026-04-20 立案）
 
-### S-Gov.5 租戶 Token 額度計費機制（訂閱 + 加值）
+> 取代既有 S-Gov.4 / S-Gov.5 草案。給使用者測試前的核心剎車。
+> 設計決策：軟上限 + 無限 auto-buy（純信任）/ Per-tenant 直接設 category 計費 / SendGrid SaaS / 全 5 sprint 按序做。
+
+#### S-Token-Gov.0 追蹤完整性 audit + 5 條漏網修復 ✅ 完成 (2026-04-20)
+> 目的：所有 LLM/Embedding 路徑都進 RecordUsageUseCase，否則後面額度算錯
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Audit 既有 LLM 呼叫路徑 | ✅ | 用 Explore agent 掃完整 codebase：8 條已覆蓋 + 5 條漏網（reranker / contextual_retrieval / pdf_rename / auto_classification / intent_classify） |
+| UsageCategory enum 標準化 | ✅ | 新檔 `domain/usage/category.py` 定義 13 個分類；不改 schema（`request_type` 仍 String 欄位向後相容） |
+| Cache token 欄位 | ✅ | 既有 UsageRecord 已有 `cache_read_tokens / cache_creation_tokens`，本 sprint 接入 reranker 也記錄這兩欄位 |
+| 漏網 1: Contextual Retrieval | ✅ | `LLMChunkContextService` 加 `last_input/output_tokens` 屬性 + `process_document_use_case` 跑完讀屬性 → record_usage(category=contextual_retrieval) |
+| 漏網 2: PDF 子頁 Rename | ✅ | `_rename_child_page` 接 `tenant_id` 參數 + call_llm 後 record_usage(category=pdf_rename) |
+| 漏網 3: LLM Reranker | ✅ | `llm_rerank` 加 `record_usage / tenant_id / bot_id` 參數 + Anthropic response.usage 補 cache 欄位 + record_usage(category=rerank) |
+| 漏網 4: Auto-Classification | ✅ | `ClusterClassificationService` 累計 token 屬性 + `ClassifyKbUseCase` 注入 record_usage → record_usage(category=auto_classification) |
+| 漏網 5: IntentClassifier | ✅ | `IntentClassifier` 注入 record_usage + classify/classify_workers 加 tenant_id/bot_id 參數 + caller (`send_message_use_case`) 帶入 |
+| Container DI 更新 | ✅ | `query_rag_use_case / classify_kb_use_case / intent_classifier` 三 provider 注入 `record_usage_use_case` |
+| BDD 5 scenarios | ✅ | `tests/features/unit/usage/usage_tracking_audit.feature` 5 scenarios 全綠 + 全套 627 unit tests baseline 不退步 |
+| Migration | N/A | 不改 schema，零 migration |
+
+#### S-Token-Gov.1 Plan Template + 租戶綁 plan
+> 系統層後台管理「方案」概念
+
 | 項目 | 說明 |
 |------|------|
-| 訂閱額度 | 每月固定額度（例 2000 萬 tokens），月末歸零重計（use-it-or-lose-it）|
-| 加值包 | 單次購買額外 tokens（例 500 萬），有剩餘可遞延至下月 |
-| 扣用順序 | 先扣訂閱額度，扣完再吃加值餘額 |
-| 計費範例 | 月訂閱 2000 萬 + 加值 500 萬，本月用 2100 萬 → 下月額度 = 2000（新訂閱）+ 400（加值遞延）= 2400 |
-| 系統層雙視圖 | (A) 絕對總量（看整個平台 token 消耗）; (B) 租戶計費視角（同租戶看到的額度/超用/加值狀態）|
+| Plan Domain entity | `name + base_monthly_tokens + addon_pack_tokens + base_price + addon_price + currency` |
+| Plan Repository + ORM | plans 表 + tenant_plans 關聯表（含 assigned_at / billing_cycle_start） |
+| Plan CRUD Use Cases | List/Create/Update/Delete + AssignPlanToTenant + UnassignPlan |
+| Plan CRUD API | /admin/plans + /admin/tenants/{id}/plan |
+| 系統層 Plan 管理 UI | /admin/plans 頁面（列表 + 新增/編輯 dialog） |
+| 租戶 plan assign UI | 既有 tenant 編輯 dialog 加 plan 下拉 |
+| BDD scenarios | Plan CRUD + 租戶綁 plan + 換 plan |
+
+#### S-Token-Gov.2 Token Ledger + 扣用 + 月度重置
+> 核心扣費邏輯：先 base 後 addon，月初 cron 重置 base
+
+| 項目 | 說明 |
+|------|------|
+| TokenLedger Domain entity | `tenant_id + cycle_year_month + base_remaining + addon_remaining + total_used_in_cycle` |
+| Tenant 加 included_categories 欄位 | Set<UsageCategory>，per-tenant 直接勾選哪些 category 計入額度（per S-Token-Gov.0 audit 出的 category list） |
+| 扣用邏輯 | RecordUsageUseCase 內：若 category ∈ tenant.included_categories → ledger.deduct(tokens)；先 base 後 addon |
+| 月度重置 cron | 每月 1 日 00:00 ProcessMonthlyResetUseCase：base_remaining = plan.base_monthly_tokens；addon_remaining 不動（carryover） |
+| Cron 機制 | arq scheduled task 或 APScheduler；確認 cron 不重複執行（worker 多 instance 場景） |
+| 租戶 included_categories UI | admin 編輯租戶 dialog 加 category checkbox 區 |
+| BDD scenarios | 扣用順序 base→addon / 月度重置 base 重置 addon carryover / category 過濾 |
+
+#### S-Token-Gov.3 自動續約 + Email 通知
+> 軟上限觸發 auto-buy + 門檻通知；POC 不設防爆
+
+| 項目 | 說明 |
+|------|------|
+| ProcessAutoTopupUseCase | 餘額 ≤ 0 時 trigger：addon_remaining += plan.addon_pack_tokens + 記一筆 BillingTransaction（應收帳款） |
+| BillingTransaction entity | `tenant_id + plan_id + type (base_subscription / addon_topup) + tokens + amount + currency + created_at` |
+| NotificationConfig per-tenant | `tenant_id + threshold_type (percent / absolute) + threshold_value + email_recipients + subject_template + body_template` |
+| 門檻檢查 | RecordUsageUseCase 後檢查 ledger.total_remaining 是否觸發任一 NotificationConfig，呼叫 SendQuotaAlertUseCase |
+| EmailService ABC + SendGrid impl | Domain ABC + Infrastructure SendGrid client（API Key 進 .env） |
+| SendQuotaAlertUseCase | 渲染 template + send via EmailService + 寫 notification_log |
+| 防重複寄信機制 | 同 cycle + 同 threshold 只寄一次（NotificationConfig 加 last_sent_at） |
+| 通知設定 UI | /admin/tenants/{id}/notifications 頁面（CRUD threshold + template） |
+| BDD scenarios | 觸發 auto-buy / 寄信 / 防重複寄信 / template 渲染 |
+
+#### S-Token-Gov.4 收益儀表板 + 租戶額度頁
+> 對外可視化 — 系統層看收入、租戶看自己額度
+
+| 項目 | 說明 |
+|------|------|
+| 系統層收益 API | /admin/billing/revenue?from&to&group_by=plan/tenant/month — 從 BillingTransaction 聚合 |
+| 系統層收益儀表板 | /admin/billing 頁：收入趨勢線圖 + plan 分布 + top 租戶表 |
+| 租戶額度頁 API | /tenants/{id}/quota — base_remaining / addon_remaining / 本月用量 / 自動續約次數 / 歷史 |
+| 租戶額度頁 UI | /tenant/quota 頁面（給租戶 admin 看自己） |
+| Category 分布視覺化 | 租戶頁 + admin 頁都顯示 category-wise 用量分布（pie + bar） |
+| BillingTransaction 列表 | 租戶可看自己歷史購買記錄；系統 admin 可跨租戶看 |
+| BDD scenarios | 收益聚合正確 / 租戶只能看自己 / category 分布 |
 
 ### S-Gov.6 Agent 執行追蹤 UI 可讀性強化
 > 既有 `agent_execution_traces` 已落地（見 S-Gov.1），本 Sprint 聚焦**前端 UI 可讀性**與**查詢能力**，後端只做欄位/索引補強。

@@ -1,12 +1,12 @@
 import asyncio
 import time
 
+from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.domain.knowledge.repository import (
     DocumentRepository,
     KnowledgeBaseRepository,
     ProcessingTaskRepository,
 )
-from src.domain.tenant.repository import TenantRepository
 from src.domain.knowledge.services import (
     ChunkContextService,
     ChunkDeduplicationService,
@@ -20,7 +20,8 @@ from src.domain.knowledge.services import (
 )
 from src.domain.rag.services import EmbeddingService, VectorStore
 from src.domain.rag.value_objects import TokenUsage
-from src.application.usage.record_usage_use_case import RecordUsageUseCase
+from src.domain.tenant.repository import TenantRepository
+from src.domain.usage.category import UsageCategory
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -29,11 +30,12 @@ logger = get_logger(__name__)
 async def _update_progress(task_id: str, progress: int) -> None:
     """Update task progress using independent session (best-effort)."""
     try:
+        from sqlalchemy import update
+
         from src.infrastructure.db.engine import async_session_factory
         from src.infrastructure.db.models.processing_task_model import (
             ProcessingTaskModel,
         )
-        from sqlalchemy import update
 
         async with async_session_factory() as session:
             await session.execute(
@@ -147,7 +149,9 @@ class ProcessDocumentUseCase:
                 # PNG/image: single page OCR (child of split PDF)
                 if document.content_type.startswith("image/") and hasattr(self._file_parser, "_ocr"):
                     ocr_engine = self._file_parser._ocr
-                    from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import OCR_PROMPTS
+                    from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import (
+                        OCR_PROMPTS,
+                    )
                     prompt = OCR_PROMPTS.get(ocr_mode, OCR_PROMPTS.get("general", ""))
                     content = await ocr_engine.ocr_page(raw_content, prompt=prompt)
                     await _update_progress(task_id, 70)
@@ -316,6 +320,29 @@ class ProcessDocumentUseCase:
                     total=len(chunks),
                     duration_ms=ctx_ms,
                 )
+
+                # Token-Gov.0: 記錄 contextual retrieval token 用量
+                if self._record_usage and getattr(
+                    self._context_service, "last_input_tokens", 0
+                ) + getattr(
+                    self._context_service, "last_output_tokens", 0
+                ) > 0:
+                    ctx_in = self._context_service.last_input_tokens
+                    ctx_out = self._context_service.last_output_tokens
+                    ctx_model = getattr(
+                        self._context_service, "last_model", context_model
+                    )
+                    await self._record_usage.execute(
+                        tenant_id=document.tenant_id,
+                        request_type=UsageCategory.CONTEXTUAL_RETRIEVAL.value,
+                        usage=TokenUsage(
+                            model=ctx_model,
+                            input_tokens=ctx_in,
+                            output_tokens=ctx_out,
+                            total_tokens=ctx_in + ctx_out,
+                        ),
+                    )
+
                 await _update_progress(task_id, 73)
 
                 # Refresh session after LLM calls
@@ -411,7 +438,12 @@ class ProcessDocumentUseCase:
             if document.parent_id and document.page_number:
                 try:
                     await self._rename_child_page(
-                        document_id, document.page_number, content, kb, log
+                        document_id,
+                        document.page_number,
+                        content,
+                        kb,
+                        log,
+                        tenant_id=document.tenant_id,
                     )
                 except Exception:
                     log.warning("child.rename_failed", exc_info=True)
@@ -513,7 +545,13 @@ class ProcessDocumentUseCase:
             raise
 
     async def _rename_child_page(
-        self, document_id: str, page_number: int, content: str, kb, log
+        self,
+        document_id: str,
+        page_number: int,
+        content: str,
+        kb,
+        log,
+        tenant_id: str = "",
     ) -> None:
         """Use LLM to generate a semantic filename for a PDF page."""
         if not content or not content.strip():
@@ -523,9 +561,10 @@ class ProcessDocumentUseCase:
         model = getattr(kb, "context_model", "") if kb else ""
         if not model and self._tenant_repo:
             try:
+                from sqlalchemy import select
+
                 from src.infrastructure.db.engine import async_session_factory
                 from src.infrastructure.db.models.tenant_model import TenantModel
-                from sqlalchemy import select
                 async with async_session_factory() as session:
                     doc = await self._doc_repo.find_by_id(document_id)
                     if doc:
@@ -563,11 +602,29 @@ class ProcessDocumentUseCase:
                 ),
             )
             new_filename = result.text.strip()[:100]
+
+            # Token-Gov.0: 記錄 PDF 子頁 rename 的 token 用量
+            if (
+                self._record_usage
+                and (result.input_tokens + result.output_tokens) > 0
+            ):
+                await self._record_usage.execute(
+                    tenant_id=tenant_id,
+                    request_type=UsageCategory.PDF_RENAME.value,
+                    usage=TokenUsage(
+                        model=model,
+                        input_tokens=result.input_tokens,
+                        output_tokens=result.output_tokens,
+                        total_tokens=result.input_tokens + result.output_tokens,
+                    ),
+                )
+
             if new_filename:
                 # Use independent session to avoid conflicts
+                from sqlalchemy import update
+
                 from src.infrastructure.db.engine import async_session_factory
                 from src.infrastructure.db.models.document_model import DocumentModel
-                from sqlalchemy import update
                 async with async_session_factory() as session:
                     await session.execute(
                         update(DocumentModel)
@@ -585,9 +642,10 @@ class ProcessDocumentUseCase:
         """If no more pending/processing docs in KB, trigger auto-classification."""
         try:
             # Use independent session to avoid stale data from refreshed sessions
+            from sqlalchemy import func, select
+
             from src.infrastructure.db.engine import async_session_factory
             from src.infrastructure.db.models.document_model import DocumentModel
-            from sqlalchemy import select, func
 
             async with async_session_factory() as session:
                 stmt = (

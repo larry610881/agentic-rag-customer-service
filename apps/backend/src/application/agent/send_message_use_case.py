@@ -21,6 +21,8 @@ from src.domain.agent.services import AgentService
 from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
 from src.domain.bot.tool_rag_resolver import resolve_tool_rag_params
+from src.domain.bot.worker_config import WorkerConfig
+from src.domain.bot.worker_repository import WorkerConfigRepository
 from src.domain.conversation.entity import Conversation
 from src.domain.conversation.history_strategy import (
     ConversationHistoryStrategy,
@@ -30,8 +32,6 @@ from src.domain.conversation.repository import ConversationRepository
 from src.domain.platform.repository import SystemPromptConfigRepository
 from src.domain.platform.services import EncryptionService
 from src.domain.shared.concurrency import ConversationLock
-from src.domain.bot.worker_config import WorkerConfig
-from src.domain.bot.worker_repository import WorkerConfigRepository
 from src.domain.shared.exceptions import DomainException
 from src.infrastructure.observability.agent_trace_collector import (
     AgentTraceCollector,
@@ -375,9 +375,6 @@ class SendMessageUseCase:
             return
 
         try:
-            from src.application.memory.extract_memory_use_case import (
-                ExtractMemoryCommand,
-            )
             from src.application.memory.resolve_identity_use_case import (
                 ResolveIdentityCommand,
             )
@@ -444,6 +441,7 @@ class SendMessageUseCase:
         bot_cfg: dict[str, Any],
         message: str,
         router_context: str,
+        tenant_id: str = "",
     ) -> dict[str, Any]:
         """Worker routing: classify → override bot_cfg with worker settings.
 
@@ -466,6 +464,8 @@ class SendMessageUseCase:
                     user_message=message,
                     router_context=router_context,
                     intent_routes=intent_routes,
+                    tenant_id=tenant_id,
+                    bot_id=bot_id,
                 )
                 if matched:
                     bot_cfg["system_prompt"] = inject_runtime_vars(
@@ -478,6 +478,8 @@ class SendMessageUseCase:
             router_context=router_context,
             workers=workers,
             router_model=bot_cfg.get("router_model", ""),
+            tenant_id=tenant_id,
+            bot_id=bot_id,
         )
         if not matched:
             return bot_cfg
@@ -591,6 +593,7 @@ class SendMessageUseCase:
         # Worker routing: classify → override bot_cfg
         bot_cfg = await self._resolve_worker_config(
             bot_cfg, command.message, router_context,
+            tenant_id=command.tenant_id,
         )
 
         # Propagate worker routing info to agent service (for trace visualization)
@@ -763,6 +766,7 @@ class SendMessageUseCase:
         # Worker routing: classify → override bot_cfg
         bot_cfg = await self._resolve_worker_config(
             bot_cfg, command.message, router_context,
+            tenant_id=command.tenant_id,
         )
 
         # Propagate worker routing info to agent service (for trace visualization)

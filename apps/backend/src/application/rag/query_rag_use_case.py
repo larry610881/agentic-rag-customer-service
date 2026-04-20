@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.rag.services import EmbeddingService, LLMService, VectorStore
 from src.domain.rag.value_objects import RAGResponse, Source
-from src.infrastructure.rag.llm_reranker import llm_rerank
-from src.infrastructure.observability.agent_trace_collector import AgentTraceCollector
 from src.domain.shared.exceptions import EntityNotFoundError, NoRelevantKnowledgeError
 from src.infrastructure.logging import get_logger
+from src.infrastructure.observability.agent_trace_collector import AgentTraceCollector
+from src.infrastructure.rag.llm_reranker import llm_rerank
 
 logger = get_logger(__name__)
 
@@ -51,12 +51,14 @@ class QueryRAGUseCase:
         vector_store: VectorStore,
         llm_service: LLMService,
         api_key_resolver=None,
+        record_usage=None,  # Token-Gov.0: 給 reranker 記錄 token 用量
     ) -> None:
         self._kb_repo = knowledge_base_repository
         self._embedding_service = embedding_service
         self._vector_store = vector_store
         self._llm_service = llm_service
         self._api_key_resolver = api_key_resolver  # async (provider_name) -> str
+        self._record_usage = record_usage
 
     async def execute(self, command: QueryRAGCommand) -> RAGResponse:
         t_total = time.perf_counter()
@@ -132,6 +134,8 @@ class QueryRAGUseCase:
                 model=command.rerank_model or "claude-haiku-4-5-20251001",
                 top_k=final_k,
                 api_key=rerank_api_key,
+                record_usage=self._record_usage,
+                tenant_id=command.tenant_id,
             )
             # Map back to original results
             results = []
@@ -263,6 +267,8 @@ class QueryRAGUseCase:
                 ],
                 model=command.rerank_model or "claude-haiku-4-5-20251001",
                 top_k=final_k,
+                record_usage=self._record_usage,
+                tenant_id=command.tenant_id,
             )
             results = []
             for rc in reranked:

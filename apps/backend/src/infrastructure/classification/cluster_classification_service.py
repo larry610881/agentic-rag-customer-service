@@ -14,7 +14,7 @@ import asyncio
 import random
 import uuid
 from datetime import datetime, timezone
-from typing import Callable, Awaitable
+from typing import Awaitable, Callable
 
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
@@ -45,6 +45,10 @@ class ClusterClassificationService:
         api_key_resolver: Callable[[str], Awaitable[str]] | None = None,
     ) -> None:
         self._api_key_resolver = api_key_resolver
+        # Token-Gov.0: 累計每次 classify 的 LLM token 用量
+        self.last_input_tokens: int = 0
+        self.last_output_tokens: int = 0
+        self.last_model: str = ""
 
     async def classify(
         self,
@@ -65,7 +69,12 @@ class ClusterClassificationService:
             logger.info("classification.skip", reason="too_few_chunks", count=len(chunk_ids))
             return [], {}
 
+        # Token-Gov.0: 重置 token 累計
+        self.last_input_tokens = 0
+        self.last_output_tokens = 0
+
         model = model or DEFAULT_MODEL
+        self.last_model = model
         # Don't strip provider prefix — call_llm handles "provider:model" format
 
         log = logger.bind(kb_id=kb_id, model=model, chunk_count=len(chunk_ids))
@@ -122,6 +131,10 @@ class ClusterClassificationService:
                     api_key_resolver=self._api_key_resolver,
                 )
                 name = result.text[:200]
+                # Token-Gov.0: 累計（asyncio.gather 並發但群組數一般 < 20，
+                # CPython int 加法 GIL 安全）
+                self.last_input_tokens += result.input_tokens
+                self.last_output_tokens += result.output_tokens
             except Exception:
                 log.warning("classification.naming_failed", label=label, exc_info=True)
                 name = f"分類 {label + 1}"

@@ -5,8 +5,12 @@
 """
 
 import json
+from typing import TYPE_CHECKING
 
 import structlog
+
+if TYPE_CHECKING:
+    from src.application.usage.record_usage_use_case import RecordUsageUseCase
 
 logger = structlog.get_logger(__name__)
 
@@ -30,6 +34,9 @@ async def llm_rerank(
     model: str = "claude-haiku-4-5-20251001",
     top_k: int = 5,
     api_key: str = "",
+    record_usage: "RecordUsageUseCase | None" = None,
+    tenant_id: str = "",
+    bot_id: str | None = None,
 ) -> list[dict]:
     """Rerank chunks using LLM scoring.
 
@@ -39,6 +46,10 @@ async def llm_rerank(
         model: LLM model to use for reranking
         top_k: Number of top results to return
         api_key: Anthropic API key (resolved from DB or env)
+        record_usage: Token-Gov.0 — 注入 RecordUsageUseCase 後會記錄
+                      rerank LLM 的 token 用量到 token_usage_records
+        tenant_id: 對應 record_usage 的 tenant
+        bot_id: 對應 record_usage 的 bot
 
     Returns:
         Reranked list of chunks (top_k items)
@@ -116,6 +127,12 @@ async def llm_rerank(
             chunk = {**chunks[idx], "_rerank_score": score}
             result.append(chunk)
 
+        # Token-Gov.0: 補 cache token（Anthropic SDK response.usage 提供）
+        cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+        cache_creation = (
+            getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+        )
+
         end_ms = AgentTraceCollector.offset_ms()
         AgentTraceCollector.add_node(
             node_type="tool_call",
@@ -127,6 +144,8 @@ async def llm_rerank(
                 "model": model,
                 "input_tokens": response.usage.input_tokens,
                 "output_tokens": response.usage.output_tokens,
+                "cache_read_tokens": cache_read,
+                "cache_creation_tokens": cache_creation,
             },
             input_chunks=len(chunks),
             output_chunks=len(result),
@@ -134,6 +153,29 @@ async def llm_rerank(
             llm_input=f"[System] {_RERANK_SYSTEM_PROMPT}\n\n[User] {user_prompt}",
             llm_output=raw,
         )
+
+        # Token-Gov.0: 寫進 token_usage_records（與其他 LLM 路徑一致）
+        if record_usage and (
+            response.usage.input_tokens + response.usage.output_tokens
+        ) > 0:
+            from src.domain.rag.value_objects import TokenUsage
+            from src.domain.usage.category import UsageCategory
+
+            await record_usage.execute(
+                tenant_id=tenant_id,
+                request_type=UsageCategory.RERANK.value,
+                usage=TokenUsage(
+                    model=model,
+                    input_tokens=response.usage.input_tokens,
+                    output_tokens=response.usage.output_tokens,
+                    total_tokens=(
+                        response.usage.input_tokens + response.usage.output_tokens
+                    ),
+                    cache_read_tokens=cache_read,
+                    cache_creation_tokens=cache_creation,
+                ),
+                bot_id=bot_id,
+            )
 
         logger.info(
             "rerank.done",
@@ -143,6 +185,8 @@ async def llm_rerank(
             top_score=scored[0][1] if scored else 0,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
+            cache_read=cache_read,
+            cache_creation=cache_creation,
         )
         return result
 

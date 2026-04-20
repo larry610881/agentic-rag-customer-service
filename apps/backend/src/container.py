@@ -91,17 +91,18 @@ from src.application.eval_dataset.update_eval_dataset_use_case import (
     UpdateEvalDatasetUseCase,
 )
 from src.application.health.health_check_use_case import HealthCheckUseCase
+from src.application.knowledge.classify_kb_use_case import ClassifyKbUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
-)
-from src.application.knowledge.update_knowledge_base_use_case import (
-    UpdateKnowledgeBaseUseCase,
 )
 from src.application.knowledge.delete_document_use_case import (
     DeleteDocumentUseCase,
 )
 from src.application.knowledge.delete_knowledge_base_use_case import (
     DeleteKnowledgeBaseUseCase,
+)
+from src.application.knowledge.get_category_chunks_use_case import (
+    GetCategoryChunksUseCase,
 )
 from src.application.knowledge.get_document_chunks_use_case import (
     GetDocumentChunksUseCase,
@@ -121,37 +122,15 @@ from src.application.knowledge.list_documents_use_case import (
 from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
 )
-from src.application.knowledge.classify_kb_use_case import ClassifyKbUseCase
-from src.application.knowledge.get_category_chunks_use_case import (
-    GetCategoryChunksUseCase,
-)
-from src.application.security.prompt_guard_service import PromptGuardService
-from src.application.security.guard_rules_use_cases import (
-    GetGuardRulesUseCase,
-    UpdateGuardRulesUseCase,
-    ResetGuardRulesUseCase,
-)
-from src.infrastructure.db.repositories.guard_rules_config_repository import (
-    SQLAlchemyGuardRulesConfigRepository,
-)
-from src.infrastructure.db.repositories.guard_log_repository import (
-    SQLAlchemyGuardLogRepository,
-)
-from src.application.knowledge.split_pdf_use_case import SplitPdfUseCase
-from src.infrastructure.classification.cluster_classification_service import (
-    ClusterClassificationService,
-)
-from src.infrastructure.context.llm_chunk_context_service import (
-    LLMChunkContextService,
-)
-from src.infrastructure.db.repositories.chunk_category_repository import (
-    SQLAlchemyChunkCategoryRepository,
-)
 from src.application.knowledge.process_document_use_case import (
     ProcessDocumentUseCase,
 )
 from src.application.knowledge.reprocess_document_use_case import (
     ReprocessDocumentUseCase,
+)
+from src.application.knowledge.split_pdf_use_case import SplitPdfUseCase
+from src.application.knowledge.update_knowledge_base_use_case import (
+    UpdateKnowledgeBaseUseCase,
 )
 from src.application.knowledge.upload_document_use_case import (
     UploadDocumentUseCase,
@@ -239,6 +218,12 @@ from src.application.ratelimit.seed_defaults_use_case import SeedDefaultsUseCase
 from src.application.ratelimit.update_rate_limit_use_case import (
     UpdateRateLimitUseCase,
 )
+from src.application.security.guard_rules_use_cases import (
+    GetGuardRulesUseCase,
+    ResetGuardRulesUseCase,
+    UpdateGuardRulesUseCase,
+)
+from src.application.security.prompt_guard_service import PromptGuardService
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
@@ -252,7 +237,13 @@ from src.domain.agent.team_supervisor import TeamSupervisor
 from src.infrastructure.auth.bcrypt_password_service import BcryptPasswordService
 from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.cache.redis_cache_service import RedisCacheService
+from src.infrastructure.classification.cluster_classification_service import (
+    ClusterClassificationService,
+)
 from src.infrastructure.concurrency import RedisConversationLock
+from src.infrastructure.context.llm_chunk_context_service import (
+    LLMChunkContextService,
+)
 from src.infrastructure.conversation import (
     FullHistoryStrategy,
     RAGHistoryStrategy,
@@ -266,6 +257,12 @@ from src.infrastructure.db.engine import (
 from src.infrastructure.db.health_repository import HealthRepository
 from src.infrastructure.db.repositories.bot_repository import (
     SQLAlchemyBotRepository,
+)
+from src.infrastructure.db.repositories.built_in_tool_repository import (
+    SQLAlchemyBuiltInToolRepository,
+)
+from src.infrastructure.db.repositories.chunk_category_repository import (
+    SQLAlchemyChunkCategoryRepository,
 )
 from src.infrastructure.db.repositories.conversation_repository import (
     SQLAlchemyConversationRepository,
@@ -285,6 +282,12 @@ from src.infrastructure.db.repositories.eval_dataset_repository import (
 from src.infrastructure.db.repositories.feedback_repository import (
     SQLAlchemyFeedbackRepository,
 )
+from src.infrastructure.db.repositories.guard_log_repository import (
+    SQLAlchemyGuardLogRepository,
+)
+from src.infrastructure.db.repositories.guard_rules_config_repository import (
+    SQLAlchemyGuardRulesConfigRepository,
+)
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
 )
@@ -293,9 +296,6 @@ from src.infrastructure.db.repositories.log_retention_policy_repository import (
 )
 from src.infrastructure.db.repositories.mcp_server_repository import (
     SQLAlchemyMcpServerRepository,
-)
-from src.infrastructure.db.repositories.built_in_tool_repository import (
-    SQLAlchemyBuiltInToolRepository,
 )
 from src.infrastructure.db.repositories.memory_fact_repository import (
     SQLAlchemyMemoryFactRepository,
@@ -350,6 +350,9 @@ from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import (
 from src.infrastructure.file_parser.ocr_file_parser_service import (
     OcrFileParserService,
 )
+from src.infrastructure.langgraph.dm_image_query_tool import (
+    DmImageQueryTool,
+)
 from src.infrastructure.langgraph.meta_supervisor_service import (
     MetaSupervisorService,
 )
@@ -359,9 +362,6 @@ from src.infrastructure.langgraph.react_agent_service import (
 from src.infrastructure.langgraph.tools import RAGQueryTool
 from src.infrastructure.langgraph.transfer_to_human_tool import (
     TransferToHumanTool,
-)
-from src.infrastructure.langgraph.dm_image_query_tool import (
-    DmImageQueryTool,
 )
 from src.infrastructure.langgraph.workers.fake_main_worker import FakeMainWorker
 from src.infrastructure.langgraph.workers.fake_refund_worker import FakeRefundWorker
@@ -377,6 +377,7 @@ from src.infrastructure.llm.dynamic_llm_factory import (
     DynamicLLMServiceProxy,
 )
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
+from src.infrastructure.llm.ollama_warm_up import OllamaWarmUpService
 from src.infrastructure.logging.db_error_reporter import DBErrorReporter
 from src.infrastructure.mcp.cached_tool_loader import CachedMCPToolLoader
 from src.infrastructure.memory.llm_memory_extraction_service import (
@@ -463,6 +464,11 @@ class Container(containers.DeclarativeContainer):
     )
 
     config = providers.Singleton(Settings)
+
+    ollama_warm_up = providers.Singleton(
+        OllamaWarmUpService,
+        base_url=providers.Callable(lambda cfg: cfg.ollama_base_url, config),
+    )
 
     # --- Infrastructure ---
 
@@ -1023,6 +1029,7 @@ class Container(containers.DeclarativeContainer):
         category_repository=chunk_category_repository,
         vector_store=vector_store,
         classification_service=classification_service,
+        record_usage=record_usage_use_case,
     )
 
     view_document_use_case = providers.Factory(
@@ -1047,6 +1054,7 @@ class Container(containers.DeclarativeContainer):
             lambda factory: factory.resolve_api_key,
             _llm_factory,
         ),
+        record_usage=record_usage_use_case,
     )
 
     get_conversation_use_case = providers.Factory(
@@ -1219,6 +1227,7 @@ class Container(containers.DeclarativeContainer):
         bot_repository=bot_repository,
         cache_service=cache_service,
         encryption_service=encryption_service,
+        ollama_warm_up=ollama_warm_up,
     )
 
     delete_bot_use_case = providers.Factory(
@@ -1519,6 +1528,7 @@ class Container(containers.DeclarativeContainer):
     intent_classifier = providers.Factory(
         IntentClassifier,
         llm_service=llm_service,
+        record_usage=record_usage_use_case,
     )
 
     send_message_use_case = providers.Factory(
