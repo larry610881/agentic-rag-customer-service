@@ -529,8 +529,9 @@ export function BotDetailForm({
                 name="llm_model"
                 control={control}
                 render={({ field }) => {
-                  const selectValue =
-                    watch("llm_provider") && field.value
+                  const selectValue = selectedAbModel
+                    ? ""
+                    : watch("llm_provider") && field.value
                       ? `${watch("llm_provider")}:${field.value}`
                       : currentModelValue;
 
@@ -541,7 +542,8 @@ export function BotDetailForm({
                       onValueChange={(v) => {
                         const [provider, ...modelParts] = v.split(":");
                         const model = modelParts.join(":");
-                        setValue("llm_provider", provider);
+                        setSelectedAbModel(null);
+                        setValue("llm_provider", provider, { shouldDirty: true });
                         field.onChange(model);
                       }}
                       enabledModels={enabledModels}
