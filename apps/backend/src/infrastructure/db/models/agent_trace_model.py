@@ -27,6 +27,13 @@ class AgentExecutionTraceModel(Base):
     source: Mapped[str] = mapped_column(
         String(20), nullable=False, default="", server_default=""
     )
+    llm_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
+    llm_provider: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="", server_default=""
+    )
+    bot_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     nodes: Mapped[list | None] = mapped_column(JSON, nullable=True)
     total_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     total_tokens: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -40,4 +47,5 @@ class AgentExecutionTraceModel(Base):
         Index("ix_agent_exec_traces_tenant_id", "tenant_id"),
         Index("ix_agent_exec_traces_created_at", "created_at"),
         Index("ix_agent_exec_traces_conversation_id", "conversation_id"),
+        Index("ix_agent_exec_traces_bot_id", "bot_id"),
     )

@@ -132,6 +132,11 @@ export function AgentTraceDetail({ trace, onBack }: AgentTraceDetailProps) {
             {toolNodes.length} 工具呼叫
           </Badge>
         )}
+        {trace.llm_model && (
+          <Badge variant="secondary" className="font-mono text-xs">
+            {trace.llm_provider ? `${trace.llm_provider}/` : ""}{trace.llm_model}
+          </Badge>
+        )}
         {trace.conversation_id && (
           <span className="text-xs text-muted-foreground">
             Conversation: {trace.conversation_id.slice(0, 12)}...

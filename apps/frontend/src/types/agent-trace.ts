@@ -39,6 +39,9 @@ export type AgentExecutionTrace = {
   conversation_id: string | null;
   agent_mode: "react" | "supervisor" | "meta_supervisor";
   source: string;
+  llm_model: string;
+  llm_provider: string;
+  bot_id: string | null;
   nodes: ExecutionNode[];
   total_ms: number;
   total_tokens: {

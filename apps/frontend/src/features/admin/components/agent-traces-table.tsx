@@ -98,6 +98,7 @@ export function AgentTracesTable({ onSelectTrace }: AgentTracesTableProps) {
               <TableHead className="w-24">租戶</TableHead>
               <TableHead className="w-28">Agent 模式</TableHead>
               <TableHead className="w-20">來源</TableHead>
+              <TableHead className="w-36">模型</TableHead>
               <TableHead className="w-20 text-center">節點數</TableHead>
               <TableHead className="w-24 text-right">耗時 (ms)</TableHead>
               <TableHead className="w-32">對話</TableHead>
@@ -106,7 +107,7 @@ export function AgentTracesTable({ onSelectTrace }: AgentTracesTableProps) {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center">
+                <TableCell colSpan={8} className="py-8 text-center">
                   載入中...
                 </TableCell>
               </TableRow>
@@ -135,6 +136,15 @@ export function AgentTracesTable({ onSelectTrace }: AgentTracesTableProps) {
                 <TableCell className="text-xs">
                   {t.source === "line" ? "📱 LINE" : t.source === "widget" ? "💬 Widget" : t.source === "web" ? "🌐 Web" : t.source || "-"}
                 </TableCell>
+                <TableCell>
+                  {t.llm_model ? (
+                    <Badge variant="outline" className="max-w-[130px] truncate font-mono text-xs">
+                      {t.llm_model}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </TableCell>
                 <TableCell className="text-center">
                   <Badge variant="outline">{t.nodes?.length ?? 0}</Badge>
                 </TableCell>
@@ -149,7 +159,7 @@ export function AgentTracesTable({ onSelectTrace }: AgentTracesTableProps) {
             {data && data.items.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={8}
                   className="py-8 text-center text-muted-foreground"
                 >
                   沒有 Agent 執行追蹤記錄

@@ -36,12 +36,18 @@ class AgentTraceCollector:
         agent_mode: str,
         message_id: str | None = None,
         conversation_id: str | None = None,
+        llm_model: str = "",
+        llm_provider: str = "",
+        bot_id: str | None = None,
     ) -> AgentExecutionTrace:
         trace = AgentExecutionTrace(
             tenant_id=tenant_id,
             agent_mode=agent_mode,
             message_id=message_id,
             conversation_id=conversation_id,
+            llm_model=llm_model,
+            llm_provider=llm_provider,
+            bot_id=bot_id,
         )
         _agent_trace.set(trace)
         _trace_t0.set(time.monotonic())

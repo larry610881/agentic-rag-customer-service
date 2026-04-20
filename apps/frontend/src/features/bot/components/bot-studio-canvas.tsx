@@ -62,6 +62,8 @@ type ChatTurn = {
   content: string;
   isStreaming: boolean;
   traceId?: string;
+  llm_model?: string;
+  llm_provider?: string;
   /** transfer_to_human_agent tool 產生的聯絡按鈕（電話 / URL）— 與 web bot / widget 共用同一份視覺 */
   contact?: ContactCard;
 };
@@ -157,6 +159,19 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
   ]);
 
   const { data: completedTrace } = useAgentTraceDetail(traceId);
+
+  // 當 trace 詳情載入後，把模型資訊回寫到對應的 turn
+  const completedTraceId = completedTrace?.trace_id;
+  useEffect(() => {
+    if (!completedTrace || !completedTraceId || !completedTrace.llm_model) return;
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.traceId === completedTrace.trace_id
+          ? { ...t, llm_model: completedTrace.llm_model, llm_provider: completedTrace.llm_provider }
+          : t
+      )
+    );
+  }, [completedTraceId, completedTrace]);
 
   const appendAssistantContent = useCallback((delta: string) => {
     setTurns((prev) => {
@@ -595,6 +610,12 @@ function ChatBubble({ turn }: { turn: ChatTurn }) {
       {!isUser && turn.contact && (
         <div className="ml-9">
           <ContactCardButton contact={turn.contact} />
+        </div>
+      )}
+      {/* Trace meta bar — 顯示模型 / 耗時等資訊（回覆完成後才顯示） */}
+      {!isUser && !turn.isStreaming && turn.llm_model && (
+        <div className="ml-9 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span className="font-mono">{turn.llm_provider}/{turn.llm_model}</span>
         </div>
       )}
     </div>

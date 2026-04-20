@@ -53,6 +53,9 @@ class AgentExecutionTrace:
     conversation_id: str | None = None
     agent_mode: str = ""  # react | supervisor | meta_supervisor
     source: str = ""  # web | widget | line
+    llm_model: str = ""
+    llm_provider: str = ""
+    bot_id: str | None = None
     nodes: list[ExecutionNode] = field(default_factory=list)
     total_ms: float = 0.0
     total_tokens: dict[str, Any] | None = None

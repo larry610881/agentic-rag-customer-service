@@ -628,7 +628,13 @@ class ReActAgentService(AgentService):
         bot_id: str = "",
     ) -> AgentResponse:
         # Start agent trace
-        AgentTraceCollector.start(tenant_id, "react")
+        _llm_params = llm_params or {}
+        AgentTraceCollector.start(
+            tenant_id, "react",
+            llm_model=_llm_params.get("model", ""),
+            llm_provider=_llm_params.get("provider_name", ""),
+            bot_id=bot_id or None,
+        )
         history_len = len(history) if history else 0
         AgentTraceCollector.add_node(
             "user_input", "使用者輸入", None, 0.0, 0.0,
@@ -834,7 +840,13 @@ class ReActAgentService(AgentService):
 
             # Start agent trace
             history_len = len(history) if history else 0
-            AgentTraceCollector.start(tenant_id, "react")
+            _llm_params_s = llm_params or {}
+            AgentTraceCollector.start(
+                tenant_id, "react",
+                llm_model=_llm_params_s.get("model", ""),
+                llm_provider=_llm_params_s.get("provider_name", ""),
+                bot_id=bot_id or None,
+            )
             AgentTraceCollector.add_node(
                 "user_input", "使用者輸入", None, 0.0, 0.0,
                 message_preview=user_message[:200],

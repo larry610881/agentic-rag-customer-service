@@ -49,7 +49,13 @@ class MetaSupervisorService(AgentService):
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
     ) -> AgentResponse:
-        AgentTraceCollector.start(tenant_id, "meta_supervisor")
+        _llm_params = llm_params or {}
+        AgentTraceCollector.start(
+            tenant_id, "meta_supervisor",
+            llm_model=_llm_params.get("model", ""),
+            llm_provider=_llm_params.get("provider_name", ""),
+            bot_id=_llm_params.get("bot_id") or None,
+        )
         AgentTraceCollector.add_node(
             "user_input", "使用者輸入", None, 0.0, 0.0,
             message_preview=user_message[:200],
