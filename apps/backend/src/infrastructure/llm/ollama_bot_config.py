@@ -16,7 +16,7 @@ Bot 名稱 → Ollama 模型的對應。
 # Bot 名稱（完全比對）→ Ollama 模型
 # HARDCODE - REMOVE BEFORE PRODUCTION
 OLLAMA_BOT_MODEL_MAP: dict[str, str] = {
-    "家樂福subagent測試": "qwen3.6:14b",  # HARDCODE - 切換此處模型進行 A/B 測試
+    "家樂福subagent測試": "qwen3.6:35b-a3b",  # HARDCODE - 切換此處模型進行 A/B 測試
 }
 
 

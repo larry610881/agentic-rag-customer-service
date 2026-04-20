@@ -9,8 +9,8 @@ router = APIRouter(prefix="/ollama", tags=["ollama-test"])
 
 # HARDCODE - A/B 測試預設模型，正式上線前移除
 _AB_PRESETS = [
-    {"label": "A", "model": "qwen3.6:14b",  "description": "Qwen 3.6 14B"},
-    {"label": "B", "model": "qwen3.5:27b",  "description": "Qwen 3.5 27B"},
+    {"label": "A", "model": "qwen3.6:35b-a3b", "description": "Qwen 3.6 35B MoE"},
+    {"label": "B", "model": "qwen3.5:27b",    "description": "Qwen 3.5 27B"},
 ]
 
 
