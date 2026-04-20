@@ -563,8 +563,8 @@ export function BotDetailForm({
                         size="sm"
                         variant={isActive ? "default" : "outline"}
                         onClick={() => {
-                          setValue("llm_provider", "ollama");
-                          setValue("llm_model", preset.model);
+                          setValue("llm_provider", "ollama", { shouldDirty: true });
+                          setValue("llm_model", preset.model, { shouldDirty: true });
                         }}
                       >
                         {preset.label}：{preset.description}
