@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import httpx
 from src.config import Settings
 
-router = APIRouter(prefix="/ollama", tags=["ollama-test"])
+router = APIRouter(prefix="/api/v1/ollama", tags=["ollama-test"])
 
 # HARDCODE - A/B 測試預設模型，正式上線前移除
 _AB_PRESETS = [
