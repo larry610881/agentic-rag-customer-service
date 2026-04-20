@@ -2,6 +2,10 @@ export const queryKeys = {
   tenants: {
     all: ["tenants"] as const,
   },
+  plans: {
+    all: ["plans"] as const,
+    detail: (id: string) => ["plans", "detail", id] as const,
+  },
   knowledgeBases: {
     all: (tenantId: string) => ["knowledge-bases", tenantId] as const,
   },

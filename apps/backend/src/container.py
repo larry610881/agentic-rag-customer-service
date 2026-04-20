@@ -224,9 +224,18 @@ from src.application.security.guard_rules_use_cases import (
     UpdateGuardRulesUseCase,
 )
 from src.application.security.prompt_guard_service import PromptGuardService
+from src.application.plan.assign_plan_to_tenant_use_case import (
+    AssignPlanToTenantUseCase,
+)
+from src.application.plan.create_plan_use_case import CreatePlanUseCase
+from src.application.plan.delete_plan_use_case import DeletePlanUseCase
+from src.application.plan.get_plan_use_case import GetPlanUseCase
+from src.application.plan.list_plans_use_case import ListPlansUseCase
+from src.application.plan.update_plan_use_case import UpdatePlanUseCase
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
+from src.application.tenant.update_tenant_use_case import UpdateTenantUseCase
 from src.application.usage.query_bot_usage_use_case import QueryBotUsageUseCase
 from src.application.usage.query_daily_usage_use_case import QueryDailyUsageUseCase
 from src.application.usage.query_monthly_usage_use_case import QueryMonthlyUsageUseCase
@@ -311,6 +320,9 @@ from src.infrastructure.db.repositories.processing_task_repository import (
 )
 from src.infrastructure.db.repositories.provider_setting_repository import (
     SQLAlchemyProviderSettingRepository,
+)
+from src.infrastructure.db.repositories.plan_repository import (
+    SQLAlchemyPlanRepository,
 )
 from src.infrastructure.db.repositories.rate_limit_config_repository import (
     SQLAlchemyRateLimitConfigRepository,
@@ -449,6 +461,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.admin_tools_router",
             "src.interfaces.api.admin_bot_router",
             "src.interfaces.api.admin_knowledge_base_router",
+            "src.interfaces.api.plan_router",
             "src.interfaces.api.mcp_router",
             "src.interfaces.api.mcp_server_router",
             "src.interfaces.api.observability_router",
@@ -590,6 +603,11 @@ class Container(containers.DeclarativeContainer):
 
     rate_limit_config_repository = providers.Factory(
         SQLAlchemyRateLimitConfigRepository,
+        session=db_session,
+    )
+
+    plan_repository = providers.Factory(
+        SQLAlchemyPlanRepository,
         session=db_session,
     )
 
@@ -843,6 +861,43 @@ class Container(containers.DeclarativeContainer):
 
     list_tenants_use_case = providers.Factory(
         ListTenantsUseCase,
+        tenant_repository=tenant_repository,
+    )
+
+    update_tenant_use_case = providers.Factory(
+        UpdateTenantUseCase,
+        tenant_repository=tenant_repository,
+        plan_repository=plan_repository,
+    )
+
+    list_plans_use_case = providers.Factory(
+        ListPlansUseCase,
+        plan_repository=plan_repository,
+    )
+
+    get_plan_use_case = providers.Factory(
+        GetPlanUseCase,
+        plan_repository=plan_repository,
+    )
+
+    create_plan_use_case = providers.Factory(
+        CreatePlanUseCase,
+        plan_repository=plan_repository,
+    )
+
+    update_plan_use_case = providers.Factory(
+        UpdatePlanUseCase,
+        plan_repository=plan_repository,
+    )
+
+    delete_plan_use_case = providers.Factory(
+        DeletePlanUseCase,
+        plan_repository=plan_repository,
+    )
+
+    assign_plan_to_tenant_use_case = providers.Factory(
+        AssignPlanToTenantUseCase,
+        plan_repository=plan_repository,
         tenant_repository=tenant_repository,
     )
 

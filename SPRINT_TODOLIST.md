@@ -1446,18 +1446,24 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | BDD 5 scenarios | ✅ | `tests/features/unit/usage/usage_tracking_audit.feature` 5 scenarios 全綠 + 全套 627 unit tests baseline 不退步 |
 | Migration | N/A | 不改 schema，零 migration |
 
-#### S-Token-Gov.1 Plan Template + 租戶綁 plan
-> 系統層後台管理「方案」概念
+#### S-Token-Gov.1 Plan Template + 租戶綁 plan ✅ 完成 (2026-04-20)
+> 系統層後台管理「方案」概念，作為 Token-Gov.2 ledger 的基準參數來源
 
-| 項目 | 說明 |
-|------|------|
-| Plan Domain entity | `name + base_monthly_tokens + addon_pack_tokens + base_price + addon_price + currency` |
-| Plan Repository + ORM | plans 表 + tenant_plans 關聯表（含 assigned_at / billing_cycle_start） |
-| Plan CRUD Use Cases | List/Create/Update/Delete + AssignPlanToTenant + UnassignPlan |
-| Plan CRUD API | /admin/plans + /admin/tenants/{id}/plan |
-| 系統層 Plan 管理 UI | /admin/plans 頁面（列表 + 新增/編輯 dialog） |
-| 租戶 plan assign UI | 既有 tenant 編輯 dialog 加 plan 下拉 |
-| BDD scenarios | Plan CRUD + 租戶綁 plan + 換 plan |
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Migration: plans 表 + 3 seed | ✅ | `add_plans_table.sql` 套 local-docker + dev-vm 完成 + 3 seed plan (poc / starter / pro) |
+| Plan Domain entity + Repository ABC | ✅ | `domain/plan/{entity,repository}.py`；name 為 string FK，is_active 軟刪 |
+| Plan ORM + SQLAlchemyPlanRepository | ✅ | `infrastructure/db/models/plan_model.py` + `repositories/plan_repository.py`（含 `count_tenants_using_plan` 給軟/硬刪判斷） |
+| 5 Plan CRUD Use Cases | ✅ | List/Get/Create(驗 name 唯一)/Update(不可改 name)/Delete(soft+force) |
+| AssignPlanToTenantUseCase | ✅ | 驗 plan exists & is_active → 改 tenant.plan |
+| UpdateTenantUseCase（修 DDD 違反） | ✅ | tenant_router PATCH /config 改用此 use case，欄位含 plan / monthly_token_limit / default_*_model |
+| plan_router 6 endpoints | ✅ | `/api/v1/admin/plans` GET list/detail + POST + PATCH + DELETE + `/{plan_name}/assign/{tenant_id}` (限 system_admin) |
+| Container DI 更新 | ✅ | plan_repository + 5 use case + assign + update_tenant providers |
+| Frontend types + 5 hooks | ✅ | `types/plan.ts` + `hooks/queries/use-plans.ts`（usePlans / useCreatePlan / useUpdatePlan / useDeletePlan / useAssignPlanToTenant） |
+| Frontend `/admin/plans` 頁 | ✅ | admin-plans.tsx 列表 + 新增 + 編輯 + 軟/硬刪 + plan-form-dialog（CRUD 共用）+ sidebar 入口「方案管理」(Package icon) |
+| tenant-config-dialog 加 plan 下拉 | ✅ | 既有 dialog 加 plan Select（filter is_active）+ 顯示綁定後 base_monthly_tokens 預覽 |
+| BDD 7 scenarios | ✅ | `integration/admin/plan_management.feature` — list/create/dup-409/update/soft-delete/assign/403 全綠 |
+| 後端 unit + 前端 vitest 不退步 | ✅ | 後端 plan 範圍 7 BDD 全綠；前端 223 passed / 12 failed = baseline |
 
 #### S-Token-Gov.2 Token Ledger + 扣用 + 月度重置
 > 核心扣費邏輯：先 base 後 addon，月初 cron 重置 base

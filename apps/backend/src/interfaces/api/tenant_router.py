@@ -10,8 +10,16 @@ from src.application.tenant.create_tenant_use_case import (
 )
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
+from src.application.tenant.update_tenant_use_case import (
+    UpdateTenantCommand,
+    UpdateTenantUseCase,
+)
 from src.container import Container
-from src.domain.shared.exceptions import DuplicateEntityError, EntityNotFoundError
+from src.domain.shared.exceptions import (
+    DomainException,
+    DuplicateEntityError,
+    EntityNotFoundError,
+)
 from src.domain.tenant.entity import Tenant
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
@@ -25,6 +33,7 @@ class CreateTenantRequest(BaseModel):
 
 
 class UpdateTenantConfigRequest(BaseModel):
+    plan: str | None = None
     monthly_token_limit: int | None = None
     default_ocr_model: str | None = None
     default_context_model: str | None = None
@@ -132,26 +141,22 @@ async def update_tenant_config(
     tenant_id: str,
     body: UpdateTenantConfigRequest,
     _: CurrentTenant = Depends(require_role("system_admin")),
-    use_case: GetTenantUseCase = Depends(
-        Provide[Container.get_tenant_use_case]
+    use_case: UpdateTenantUseCase = Depends(
+        Provide[Container.update_tenant_use_case]
     ),
-    tenant_repo=Depends(Provide[Container.tenant_repository]),
 ) -> TenantResponse:
     try:
-        tenant = await use_case.execute(tenant_id)
+        tenant = await use_case.execute(
+            UpdateTenantCommand(tenant_id=tenant_id, **body.model_dump())
+        )
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from None
-    if body.monthly_token_limit is not None:
-        tenant.monthly_token_limit = body.monthly_token_limit
-    if body.default_ocr_model is not None:
-        tenant.default_ocr_model = body.default_ocr_model
-    if body.default_context_model is not None:
-        tenant.default_context_model = body.default_context_model
-    if body.default_classification_model is not None:
-        tenant.default_classification_model = body.default_classification_model
-    await tenant_repo.save(tenant)
+    except DomainException as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from None
     return _to_response(tenant)
 
 

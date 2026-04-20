@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [S-Token-Gov.1 — Plan Template CRUD：String Name FK 設計 + 軟/硬刪 + DDD 違反順手修](#s-token-gov1--plan-template-crudstring-name-fk-設計--軟硬刪--ddd-違反順手修)
 - [S-Token-Gov.0 — Token 追蹤完整性：Audit 5 條漏網 + UsageCategory enum + 累計屬性 Pattern](#s-token-gov0--token-追蹤完整性audit-5-條漏網--usagecategory-enum--累計屬性-pattern)
 - [S-Gov.7 Phase 1.6 — Bot Studio：Dagre 自動 Layout + Parallel Post-Process + 區塊 Toggle](#s-gov7-phase-16--bot-studiodagre-自動-layout--parallel-post-process--區塊-toggle)
 - [S-Gov.7 Phase 1.5 — Bot Studio：雙橫向時序軸 + 即時/完整 DAG 並存（關注點分離 + ReactFlow setCenter 自動置中）](#s-gov7-phase-15--bot-studio雙橫向時序軸--即時完整-dag-並存關注點分離--reactflow-setcenter-自動置中)
@@ -85,6 +86,39 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## S-Token-Gov.1 — Plan Template CRUD：String Name FK 設計 + 軟/硬刪 + DDD 違反順手修
+
+**日期**：2026-04-20
+**Sprint**：S-Token-Gov.1（5 sprint 系列第 2 步）
+**涉及層級**：跨 4 層 + 前端 + Migration — 新 BC（Plan）+ 6 use case + 1 ORM + 1 repo + 1 router + 5 frontend new + 4 frontend modify。20+ 檔變動。
+
+### 本次相關主題
+
+「String Name FK」vs「UUID FK」的 schema 設計取捨、軟刪 vs 硬刪的雙模式 API、DDD 違反「順手修」的範圍控制、Migration 5 步流程實踐（local-docker + dev-vm 雙套）、Pydantic Decimal 序列化、shadcn Select + Switch + Textarea 組合表單、test DB 無 seed 的 BDD self-contained 解法、parsers.parse 的 step 命名衝突陷阱、既有測試（label rename）導致回歸的責任歸屬
+
+### 做得好的地方
+
+- **「String name FK」省一個 migration**：Plan 與 Tenant 的關聯選擇直接用 `tenant.plan = plan_name`（既有欄位），而不加 `tenant.plan_id = plans.id` UUID FK。原因：(1) `tenant.plan` 既有欄位 + 既有資料無衝突；(2) plan name 本就唯一鍵，「starter」就是辨識；(3) 加 UUID FK 要多寫 migration + 既有資料 backfill + ORM relationship。**「先看現有欄位語意」的決策模式跟 Token-Gov.0 完全一致**。代價：plan 改名變麻煩（要 cascade update tenants），所以策略上禁止改名（要改就刪除重建）— 這個限制在 UpdatePlanUseCase 顯式編碼。
+- **軟刪 + 硬刪雙模式 API**：`DELETE /admin/plans/{id}` 預設軟刪（`is_active=False`），`?force=true` 嘗試硬刪但若有租戶綁定回 409。前端 UI 體現：is_active=true 時顯示「停用」icon (XCircle)，已停用時才顯示「永久刪除」icon (Trash2 紅色)。**「dangerous action 兩段式 progressive disclosure」**比一個按鈕硬問「真的要刪嗎」直觀 — 使用者大多只想停用、極少想 hard delete。
+- **DDD 違反「順手修」嚴格控制範圍**：發現 `tenant_router.py:141-154` PATCH /config 直接操作 repo（違反 DDD）。本可以「不在範圍」忽略，但因為要在 dialog 加 plan 欄位、PATCH body 也要 plan 欄位，必然要動這段。順手補 `UpdateTenantUseCase` 把這個違反一併修掉，**範圍剛好覆蓋必要程度，不擴大**。如果擴大成「同時補 default_*_model 欄位 UI」就 sprint 失控。
+- **Migration 5 步流程的雙環境同步**：先 preview SQL 給 Larry 確認 → local-docker 套 → 驗證 → 紀錄 _applied_migrations → dev-vm 同套（gcloud ssh + IAP tunnel）→ 驗證 → 紀錄。每一步都有具體 verify SQL 確認真套到了。**這個流程跟 BUG-01「ORM 改了沒套 dev-vm 結果 Cloud Run 500」的痛是直接的對策實踐**，沒任何環境跳過。
+- **BDD test 用 self-contained pattern 不依賴 seed**：原本想依賴 migration 的 3 seed plan 寫 test，但 integration test 用獨立 test DB 沒有 seed → 測試 fail。改 background step「admin 已登入並 seed 三個方案」每次測試自己 POST 建 — 完全 self-contained。**「test 不該依賴外部 state」是金科玉律**，POC 階段尤其如此。
+
+### 潛在隱憂
+
+- **`plan` 欄位是 string FK 沒 DB 強制約束**：tenant.plan 可以填任何字串，DB 層不會拒絕「starter2」這種不存在的 plan。目前靠 application 層 (`UpdateTenantUseCase` + `AssignPlanToTenantUseCase`) 驗證 plan exists & is_active，但若有人繞過這兩個 use case 直接寫 DB 就破。**建議**：未來 Token-Gov.2 ledger 上線時，加一個 weekly cron 對帳 — `SELECT id, plan FROM tenants WHERE plan NOT IN (SELECT name FROM plans)`，找到 orphan tenant 警報 → **優先級：低**（POC 階段不會繞過 use case）。
+- **軟刪後 `is_active=false` 仍可被 UpdateTenantUseCase 綁**：`UpdateTenantUseCase` 在 plan 變更時驗 active，但若 tenant 原本就綁了 starter 然後 starter 被軟刪，tenant 仍可正常使用該 plan（既有綁定不受影響，這是設計）。但編輯 dialog 的 plan 下拉用 `usePlans(false)` filter is_active，stale plan 不會顯示 → 看起來 UI 正常。**隱憂**：若 admin 手動切到別 plan 又想切回 stale plan 就切不回。**建議**：dialog 顯示「目前綁定」時即使 stale 也顯示，加標籤「(已停用)」 → **優先級：低**。
+- **Plan 價格用 Decimal 但前端用 number**：後端 `Numeric(10, 2)` + Pydantic Decimal 序列化為 string；前端 `useState<number>` + `Number(p.base_price)`。轉換在 4 處（CreatePlanRequest body、UpdatePlanRequest body、Plan response display、Plan response form load）。雖然 work，但有「string ↔ number 來回轉」的失真風險（NT$3000.50 看起來無問題，但 NT$3000.005 會被截）。**建議**：前端統一用 string + 表單時 Input type="text" + 自己 validate decimal 格式 → **優先級：低**（POC 階段價格都是整數）。
+- **Test DB seed 重複跨 scenario 重新 POST**：每個 scenario 的 background 都跑「seed 三個方案」step，POST 3 次。第二個 scenario 跑時前一個 scenario 的 plan 還在（test DB 不重置），導致 starter POST 回 409 — 我用 `if 201 elif 409 else error` 容錯。但實際上 test DB 在 scenario 之間是否會 reset？conftest 沒看清。**隱憂**：若 test DB scenario 之間真會 reset，我的 elif 409 永遠不會走到；若不 reset，第二個以後 scenario 都會踩 409 fallback → 慢。**建議**：之後 Token-Gov 系列若 BDD scenarios 繼續加，把 seed plan 提到 module-level autouse fixture → **優先級：低**。
+
+### 延伸學習
+
+- **「String Name FK」vs「UUID FK」trade-off**：DB 設計中常見抉擇。String name FK 優點是可讀（log 看到 `plan='starter'` 比 `plan_id='6e111e99-...'` 直覺）+ 省 JOIN（直接顯示）；缺點是改名 cascade 成本高。UUID FK 優點是改名零成本 + 強約束；缺點是查詢必須 JOIN。**判準**：「該欄位變更頻率 vs 改名頻率」— Plan name 幾乎不改（business identity），所以 string FK 合理。如果是 user nickname，UUID FK 才合理。
+- **「DDD 違反順手修」的範圍紀律**：本 sprint 順手補 `UpdateTenantUseCase` 對應 plan 欄位需求是合理範圍。但如果順手連 default_*_model UI 也加 (那 sprint 變成「Plan + Tenant Config 大改造」)，sprint scope 就失控。**「順手修」的 60% 規則**：若修改的工作量 ≤ 主任務的 30%，順手；若 > 50%，獨立 sprint。
+- **建議搜尋**：`PostgreSQL String FK vs UUID FK design tradeoff`、`Soft delete vs Hard delete REST API design`、`Pydantic Decimal serialization JSON`、`pytest-bdd self-contained test no shared state`、`Migration workflow staging vs production`
 
 ---
 

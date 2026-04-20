@@ -48,6 +48,7 @@ from src.infrastructure.db.models.guard_log_model import GuardLogModel
 from src.infrastructure.db.models.guard_rules_config_model import (
     GuardRulesConfigModel,
 )
+from src.infrastructure.db.models.plan_model import PlanModel
 from src.infrastructure.db.models.prompt_opt_run_model import PromptOptRunModel
 __all__ = [
     "TenantModel",
@@ -84,5 +85,6 @@ __all__ = [
     "EvalTestCaseModel",
     "GuardLogModel",
     "GuardRulesConfigModel",
+    "PlanModel",
     "PromptOptRunModel",
 ]

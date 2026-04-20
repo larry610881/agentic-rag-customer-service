@@ -24,6 +24,7 @@ export const ROUTES = {
   ADMIN_MCP_REGISTRY: "/admin/mcp-registry",
   ADMIN_TOOLS: "/admin/tools",
   ADMIN_TENANTS: "/admin/tenants",
+  ADMIN_PLANS: "/admin/plans",
   ADMIN_PROMPTS: "/admin/prompts",
   ADMIN_DIAGNOSTIC_RULES: "/admin/diagnostic-rules",
   ADMIN_RATE_LIMITS: "/admin/rate-limits",

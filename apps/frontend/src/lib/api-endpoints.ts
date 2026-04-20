@@ -8,6 +8,16 @@ export const API_ENDPOINTS = {
     create: "/api/v1/tenants",
     config: (id: string) => `/api/v1/tenants/${id}/config`,
   },
+  plans: {
+    list: "/api/v1/admin/plans",
+    detail: (id: string) => `/api/v1/admin/plans/${id}`,
+    create: "/api/v1/admin/plans",
+    update: (id: string) => `/api/v1/admin/plans/${id}`,
+    delete: (id: string, force = false) =>
+      `/api/v1/admin/plans/${id}${force ? "?force=true" : ""}`,
+    assign: (planName: string, tenantId: string) =>
+      `/api/v1/admin/plans/${planName}/assign/${tenantId}`,
+  },
   knowledgeBases: {
     list: "/api/v1/knowledge-bases",
     create: "/api/v1/knowledge-bases",
