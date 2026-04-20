@@ -184,14 +184,17 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
   }, []);
 
   const finalizeAssistantTurn = useCallback((tid?: string) => {
-    setTurns((prev) => {
-      const id = assistantTurnIdRef.current;
-      if (!id) return prev;
-      return prev.map((t) =>
-        t.id === id ? { ...t, isStreaming: false, traceId: tid } : t,
-      );
-    });
+    // Capture ref value synchronously before clearing — the setTurns updater
+    // runs in a deferred microtask (React 18 batching), so reading the ref
+    // inside the updater would see null after the clear below.
+    const id = assistantTurnIdRef.current;
     assistantTurnIdRef.current = null;
+    if (!id) return;
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id === id ? { ...t, isStreaming: false, traceId: tid } : t,
+      )
+    );
   }, []);
 
   const setAssistantContact = useCallback((contact: ContactCard) => {
