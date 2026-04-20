@@ -9,6 +9,7 @@
 
 ## 目錄
 
+- [Ollama A/B 測試 Debug — 模型 Tag 驗證 + Router Prefix + RHF shouldDirty](#ollama-ab-測試-debug--模型-tag-驗證--router-prefix--rhf-shoulddirty)
 - [S-Token-Gov.1 — Plan Template CRUD：String Name FK 設計 + 軟/硬刪 + DDD 違反順手修](#s-token-gov1--plan-template-crudstring-name-fk-設計--軟硬刪--ddd-違反順手修)
 - [S-Token-Gov.0 — Token 追蹤完整性：Audit 5 條漏網 + UsageCategory enum + 累計屬性 Pattern](#s-token-gov0--token-追蹤完整性audit-5-條漏網--usagecategory-enum--累計屬性-pattern)
 - [S-Gov.7 Phase 1.6 — Bot Studio：Dagre 自動 Layout + Parallel Post-Process + 區塊 Toggle](#s-gov7-phase-16--bot-studiodagre-自動-layout--parallel-post-process--區塊-toggle)
@@ -86,6 +87,32 @@
 - [S6 — Agentic 工作流 + 多輪對話](#s6--agentic-工作流--多輪對話)
 - [S5 — 前端 MVP + LINE Bot](#s5--前端-mvp--line-bot)
 - [S4 — AI Agent 框架](#s4--ai-agent-框架)
+
+---
+
+## Ollama A/B 測試 Debug — 模型 Tag 驗證 + Router Prefix + RHF shouldDirty
+
+**Sprint 來源**：feat(ollama) HARDCODE 地端模型 A/B 測試基礎建設（75c8db9）的後續 debug session
+
+**本次相關主題**：外部 API Tag 驗證、FastAPI Router Prefix 慣例、React Hook Form setValue 副作用
+
+### 做得好的地方
+
+- **在部署前驗證第三方 tag**：到 Ollama Hub 確認 `qwen3.6:14b` 不存在，改為正確的 `qwen3.6:35b-a3b`（MoE 架構只有 35b 版本），避免 warm-up 在 runtime 才發生 404
+- **Root cause 定位**：Cloud Run 回傳 404 時，從 router prefix 切入找到根因（其他 router 用 `/api/v1/xxx`，ollama 只有 `/ollama`），而非從網路層或 Auth 層猜測
+- **RHF 狀態修復精準**：`setValue` 缺少 `{ shouldDirty: true }` 導致 `watch` 沒觸發 re-render，是 RHF 的已知行為，修法最小
+
+### 潛在隱憂
+
+- **`_AB_PRESETS` hardcode 在 router 檔案** → 模型切換需要重新部署；正式環境應改為從 DB provider settings 動態讀取 → 優先級：中（目前標記 HARDCODE，正式上線前移除整個 router）
+- **`ollama_bot_config.py` 雙重維護點** → `_AB_PRESETS`（router）與 `OLLAMA_BOT_MODEL_MAP`（bot config）需手動保持一致，容易漂移 → 優先級：低（HARDCODE 生命週期短）
+- **Router prefix 缺乏統一約束** → 新增 router 時容易漏加 `/api/v1`，目前靠 code review 人工發現；可在 `main.py` 的 `include_router` 統一加 `prefix="/api/v1"` 避免遺漏 → 優先級：中
+- **RunPod Pod URL 與 `OLLAMA_BASE_URL` 一對一綁定** → 若 Pod terminate 重建，URL 換掉後需手動更新 GitHub Variable 並重新部署；MoE 模型啟動後 Ollama 的 keep-alive 行為也需觀察 → 優先級：低（測試期可接受）
+
+### 延伸學習
+
+- **RHF `setValue` 的 `shouldDirty` / `shouldTouch` / `shouldValidate`**：三個 flag 控制不同的副作用——`shouldDirty` 標記欄位為已修改（觸發 `watch` 和 `isDirty`）；`shouldValidate` 觸發 zod 驗證；`shouldTouch` 標記為已互動。外部觸發表單值變更（如按鈕覆寫）時應加 `{ shouldDirty: true }` 確保訂閱方感知到變化
+- **MoE 模型的 active params**：`qwen3.6:35b-a3b` 的 35b 是總參數，3b 是每次 inference 實際啟用的參數（active）。推理成本接近 3B dense model，但模型容量接近 35B，是 edge/local deploy 的高 CP 值選擇
 
 ---
 
