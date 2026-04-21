@@ -12,7 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TenantBotUsageStat } from "@/types/token-usage";
 import { getRequestTypeLabel } from "@/types/token-usage";
-import { CHART_TOOLTIP } from "@/lib/chart-styles";
+import { CHART_TOOLTIP_CURSOR } from "@/lib/chart-styles";
+import { ChartTooltipContent } from "@/lib/chart-tooltip-content";
 
 interface TokenUsageBarChartProps {
   data: TenantBotUsageStat[] | undefined;
@@ -70,12 +71,15 @@ export function TokenUsageBarChart({ data, isLoading }: TokenUsageBarChartProps)
             <XAxis dataKey="type" fontSize={12} stroke="oklch(1 0 0 / 40%)" />
             <YAxis fontSize={12} stroke="oklch(1 0 0 / 40%)" />
             <Tooltip
-              {...CHART_TOOLTIP}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              formatter={(value: any, name: any) => [
-                Number(value).toLocaleString(),
-                name === "input_tokens" ? "輸入 Tokens" : "輸出 Tokens",
-              ]}
+              content={
+                <ChartTooltipContent
+                  formatter={(value, name) => [
+                    Number(value).toLocaleString(),
+                    name === "input_tokens" ? "輸入 Tokens" : "輸出 Tokens",
+                  ]}
+                />
+              }
+              cursor={CHART_TOOLTIP_CURSOR}
             />
             <Bar
               dataKey="input_tokens"

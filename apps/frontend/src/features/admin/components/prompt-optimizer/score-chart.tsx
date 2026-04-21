@@ -9,7 +9,8 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CHART_TOOLTIP } from "@/lib/chart-styles";
+import { CHART_TOOLTIP_CURSOR } from "@/lib/chart-styles";
+import { ChartTooltipContent } from "@/lib/chart-tooltip-content";
 
 interface ScoreChartProps {
   data: { iteration: number; score: number; bestScore: number }[];
@@ -61,12 +62,15 @@ export function ScoreChart({ data, baselineScore }: ScoreChartProps) {
               domain={[0, 1]}
             />
             <Tooltip
-              {...CHART_TOOLTIP}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              formatter={(value: any, name: any) => [
-                Number(value).toFixed(3),
-                name === "score" ? "Current Score" : "Best Score",
-              ]}
+              content={
+                <ChartTooltipContent
+                  formatter={(value, name) => [
+                    Number(value).toFixed(3),
+                    name === "score" ? "Current Score" : "Best Score",
+                  ]}
+                />
+              }
+              cursor={CHART_TOOLTIP_CURSOR}
             />
             <Line
               type="monotone"

@@ -10,7 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { BotUsageStat } from "@/types/token-usage";
 import { getRequestTypeLabel } from "@/types/token-usage";
-import { CHART_COLORS, CHART_LABEL_FILL, CHART_TOOLTIP } from "@/lib/chart-styles";
+import { CHART_COLORS, CHART_LABEL_FILL } from "@/lib/chart-styles";
+import { ChartTooltipContent } from "@/lib/chart-tooltip-content";
 
 type ViewMode = "type" | "bot" | "model";
 
@@ -103,7 +104,7 @@ export function UsagePieChart({ data, isLoading }: UsagePieChartProps) {
                 cy="50%"
                 outerRadius={100}
                 label={({ name, percent }) =>
-                  `${name} ${(percent * 100).toFixed(0)}%`
+                  `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
                 }
                 labelLine={false}
                 stroke={CHART_LABEL_FILL}
@@ -114,8 +115,11 @@ export function UsagePieChart({ data, isLoading }: UsagePieChartProps) {
                 ))}
               </Pie>
               <Tooltip
-                {...CHART_TOOLTIP}
-                formatter={(value: number) => [value.toLocaleString(), "Tokens"]}
+                content={
+                  <ChartTooltipContent
+                    formatter={(value) => [value.toLocaleString(), "Tokens"]}
+                  />
+                }
               />
             </PieChart>
           </ResponsiveContainer>

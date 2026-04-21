@@ -13,7 +13,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { MonthlyUsageStat } from "@/types/token-usage";
-import { CHART_TOOLTIP } from "@/lib/chart-styles";
+import { CHART_TOOLTIP_CURSOR } from "@/lib/chart-styles";
+import { ChartTooltipContent } from "@/lib/chart-tooltip-content";
 
 interface TrendDataPoint {
   label: string;
@@ -120,7 +121,10 @@ export function UsageTrendLineChart({
               <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 5%)" />
               <XAxis dataKey="label" fontSize={12} stroke="oklch(1 0 0 / 40%)" />
               <YAxis fontSize={12} stroke="oklch(1 0 0 / 40%)" />
-              <Tooltip {...CHART_TOOLTIP} formatter={formatLabel} />
+              <Tooltip
+                content={<ChartTooltipContent formatter={formatLabel} />}
+                cursor={CHART_TOOLTIP_CURSOR}
+              />
               {mode === "month" ? (
                 <Line
                   type="monotone"
@@ -156,7 +160,10 @@ export function UsageTrendLineChart({
               <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 5%)" />
               <XAxis dataKey="label" fontSize={12} stroke="oklch(1 0 0 / 40%)" />
               <YAxis fontSize={12} stroke="oklch(1 0 0 / 40%)" />
-              <Tooltip {...CHART_TOOLTIP} formatter={formatLabel} />
+              <Tooltip
+                content={<ChartTooltipContent formatter={formatLabel} />}
+                cursor={CHART_TOOLTIP_CURSOR}
+              />
               {mode === "month" ? (
                 <Bar
                   dataKey="total"
