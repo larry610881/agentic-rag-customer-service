@@ -40,11 +40,15 @@ class DeductTokensUseCase:
         ledger = await self._ensure_ledger.execute(tenant_id, plan_name)
         ledger.deduct(tokens)
 
-        # S-Token-Gov.3: addon ≤ 0 → 自動續約
+        # S-Token-Gov.3: 自動續約觸發條件
+        # Token-Gov.7 D (bug 修復): 必須 base 和 addon **都耗盡** 才 topup。
+        # 原先只檢查 `addon <= 0` 會在「初始 addon=0（無上月 carryover）」狀況下，
+        # 第一次扣費（base 還充足）就觸發 topup，產生虛假計費 (Carrefour 2026-04 實例)。
         triggered_topup = False
         if (
             self._topup_addon is not None
             and self._plan_repo is not None
+            and ledger.base_remaining <= 0
             and ledger.addon_remaining <= 0
         ):
             try:

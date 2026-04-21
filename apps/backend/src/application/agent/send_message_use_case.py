@@ -472,6 +472,8 @@ class SendMessageUseCase:
             # No workers configured — also try legacy intent_routes
             intent_routes = bot_cfg.get("intent_routes", [])
             if intent_routes:
+                # Token-Gov.7 A: 包 trace node 記錄 intent classifier LLM 時間
+                t_start = AgentTraceCollector.offset_ms()
                 matched = await self._intent_classifier.classify(
                     user_message=message,
                     router_context=router_context,
@@ -479,12 +481,27 @@ class SendMessageUseCase:
                     tenant_id=tenant_id,
                     bot_id=bot_id,
                 )
+                t_end = AgentTraceCollector.offset_ms()
+                AgentTraceCollector.add_node(
+                    node_type="intent_classify",
+                    label=(
+                        f"意圖分類 → {matched.name}" if matched
+                        else "意圖分類 → 預設 fallback"
+                    ),
+                    parent_id=None,
+                    start_ms=t_start,
+                    end_ms=t_end,
+                    matched=matched.name if matched else None,
+                    candidates=[r.name for r in intent_routes],
+                )
                 if matched:
                     bot_cfg["system_prompt"] = inject_runtime_vars(
                         matched.system_prompt
                     )
             return bot_cfg
 
+        # Token-Gov.7 A: 包 trace node 記錄 intent classifier LLM 時間
+        t_start = AgentTraceCollector.offset_ms()
         matched = await self._intent_classifier.classify_workers(
             user_message=message,
             router_context=router_context,
@@ -492,6 +509,20 @@ class SendMessageUseCase:
             router_model=bot_cfg.get("router_model", ""),
             tenant_id=tenant_id,
             bot_id=bot_id,
+        )
+        t_end = AgentTraceCollector.offset_ms()
+        AgentTraceCollector.add_node(
+            node_type="intent_classify",
+            label=(
+                f"意圖分類 → {matched.name}" if matched
+                else "意圖分類 → 預設 fallback"
+            ),
+            parent_id=None,
+            start_ms=t_start,
+            end_ms=t_end,
+            matched=matched.name if matched else None,
+            candidates=[w.name for w in workers],
+            classifier_model=bot_cfg.get("router_model", ""),
         )
         if not matched:
             return bot_cfg

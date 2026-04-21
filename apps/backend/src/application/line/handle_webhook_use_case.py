@@ -348,11 +348,30 @@ class HandleWebhookUseCase:
                 bot.id.value
             )
             if workers:
+                # Token-Gov.7 A: 包 trace node 記錄 intent classifier LLM 時間
+                from src.infrastructure.observability.agent_trace_collector import (
+                    AgentTraceCollector,
+                )
+                t_start = AgentTraceCollector.offset_ms()
                 matched = await self._intent_classifier.classify_workers(
                     user_message=event.message_text,
                     router_context="",
                     workers=workers,
                     router_model=bot.router_model,
+                )
+                t_end = AgentTraceCollector.offset_ms()
+                AgentTraceCollector.add_node(
+                    node_type="intent_classify",
+                    label=(
+                        f"意圖分類 → {matched.name}" if matched
+                        else "意圖分類 → 預設 fallback"
+                    ),
+                    parent_id=None,
+                    start_ms=t_start,
+                    end_ms=t_end,
+                    matched=matched.name if matched else None,
+                    candidates=[w.name for w in workers],
+                    classifier_model=bot.router_model,
                 )
                 if matched:
                     if matched.worker_prompt:

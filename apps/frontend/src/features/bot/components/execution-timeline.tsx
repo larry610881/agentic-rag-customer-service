@@ -51,6 +51,12 @@ const TYPE_ICONS: Record<string, LucideIcon> = {
 
 function eventToCard(event: SSEEvent): TimelineCardSpec | null {
   if (event.type === "token") return null;
+  // Token-Gov.7 C: react_thinking / llm_generating 是 loading 指示，不是 trace 節點
+  // （chat 頁的 status indicator 已另外顯示「AI 思考中」loading 文字）
+  if (event.type === "status") {
+    const s = typeof event.status === "string" ? event.status : "";
+    if (s === "react_thinking" || s === "llm_generating") return null;
+  }
   const tsMs =
     typeof event.ts_ms === "number" && event.ts_ms > 0 ? event.ts_ms : 0;
   const icon = TYPE_ICONS[event.type] ?? Activity;

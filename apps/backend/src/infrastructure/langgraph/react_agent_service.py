@@ -648,7 +648,7 @@ class ReActAgentService(AgentService):
         if isinstance(_wr_info, dict) and _wr_info.get("name"):
             AgentTraceCollector.add_node(
                 "worker_routing",
-                f"已分流至 Worker：{_wr_info['name']}",
+                f"✓ 分流結果：{_wr_info['name']}",
                 None, 0.0, 0.0,
                 worker_name=_wr_info["name"],
                 worker_llm=_wr_info.get("llm_model") or "(default)",
@@ -860,7 +860,7 @@ class ReActAgentService(AgentService):
             if isinstance(_wr_info_s, dict) and _wr_info_s.get("name"):
                 AgentTraceCollector.add_node(
                     "worker_routing",
-                    f"已分流至 Worker：{_wr_info_s['name']}",
+                    f"✓ 分流結果：{_wr_info_s['name']}",
                     None, 0.0, 0.0,
                     worker_name=_wr_info_s["name"],
                     worker_llm=_wr_info_s.get("llm_model") or "(default)",
