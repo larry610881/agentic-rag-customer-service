@@ -7,6 +7,43 @@
 
 ---
 
+## Token-Gov.7 — Trace marker 語意 vs 計時節點 + Auto-topup trigger 條件雙因子守門
+
+**Sprint 來源**：Larry 質疑「路由決策 0ms → 閒聊 0ms → react_thinking 0ms 我好像看了很多次」時深挖 agent trace 設計，順手發現 auto_topup trigger 有計費 bug（Carrefour 2026-04 實例：1500 TWD 虛假計費）。
+
+**主題**：把「marker 節點」跟「計時節點」概念分開，順便補計費邏輯的雙因子條件。
+
+### 做得好的地方
+
+- **從 UI 現象回推到架構語意混淆**：Larry 直覺「路由決策不該是 0ms」完全對 — 但 code 層面的 `worker_routing` 節點本來就是 marker（記錄「分流結果」事實，不計時）。真正耗時的 intent classifier LLM call **完全沒有 trace node**（只有 token_usage_records 計費）。這暴露了「trace node 設計缺漏」+ 「label 誤導」雙重問題。
+- **SQL 實測 + code 交叉驗證**：先跑 `jsonb_array_elements(nodes)` 統計 node_type × duration 分佈，確認「只有 5 種 marker 節點 100% 是 0ms，其他節點都有正常時間」— 用資料排除「計時 bug」，確認是「語意 + 缺節點」問題。比盲改 code 有效率。
+- **連帶發現計費 bug 並順手修**：追 Carrefour addon=5M 的由來時查 `billing_transactions` 發現真有一筆 auto_topup。深入讀 `DeductTokensUseCase.execute()` 發現 trigger 條件 `if addon_remaining <= 0` 缺 `base_remaining <= 0` 前置。若沒追到底只修 trace，這個計費 bug 會繼續默默產生虛假收入。
+- **regression guard 用場景名而非 token 值寫 test**：`test_no_topup_when_base_sufficient_and_addon_zero` 直接以「Carrefour 復刻」語意命名，未來任何人改 `DeductTokensUseCase` 都被這條守門擋住。比光測 token 數字更耐讀。
+- **E (Data remediation) 跟 D (code fix) 分開提**：code fix 確保**未來不再發生**，data remediation 撤銷**已發生**的虛假記錄。User 可以分開決策：前者 sprint 內直接做，後者需要口頭授權（因為動 billing_transactions 是 audit trail 敏感操作）。
+
+### 潛在隱憂
+
+- **Trace node 設計沒有明確「marker vs action」元類型** → 目前靠 `start_ms==end_ms` 隱式約定，但 UI 層渲染時無法區分「故意 0ms 的 marker」vs「bug 導致 0ms 的 action」。建議下版加 `node_category: Literal["marker", "action"]` 欄位，marker 顯示為小 dot，action 顯示為 bar 並強制顯示 duration。中優先級。
+- **ReAct `react_thinking` status event 沒有節點 counterpart** → 前端 timeline 被迫「過濾該 status 避免爆卡」，但這也讓 trace 中看不到「LLM 在想什麼」的階段。理想做法：ReAct 每次 LLM call **前**就 add_node 一個 `react_iteration_start` 節點（包含 thinking 的 prompt），**後** update 它的 end_ms + token_usage。當前 `agent_llm` 節點已有這資訊，但 label 是「ReAct 迭代 N」不是「思考階段」— UX 上可再精修。低優先級。
+- **Auto-topup trigger 條件改為雙因子後，「正常 carryover 空」場景的 topup 時機延後** → 現在必須 base 真的歸零才 topup。如果租戶想「cycle 一開始就 prebuild addon」用，需要手動 API 觸發（現有 `TopupAddonUseCase` 已 expose，但沒在 tenant-facing UI 提供按鈕）。屬於 UX 枝葉，非架構問題。
+
+### 延伸學習
+
+- **Span vs Marker 在 observability 的分野**：OpenTelemetry / Jaeger 等成熟系統把 trace 單位分為 `Span`（有 start/end，必有 duration）和 `Event`（單點、屬於某 Span 的 log 事件）。本 sprint 的 `user_input` / `final_response` / `worker_routing` 都該是 **Event** 而非 Span — 本 repo 用同一個 `add_node()` 混用兩種語意是簡化設計。延伸閱讀：OpenTelemetry 的 `Span.add_event()` API 設計。
+- **Trigger 條件的「雙因子守門」pattern**：單因子守門（`if addon <= 0`）易被「初始狀態就滿足」欺騙，雙因子（`if base <= 0 AND addon <= 0`）把 precondition 顯式化。這跟 SQL 的 `CHECK (a > 0 OR b > 0)` 約束、或 DDD 的 invariant 都是同一思路。若未來有更複雜的「cycle 中途升級 plan」要求，建議再導入 **state machine**（pending / active / exhausted / topup_triggered）替代裸布林組合。
+- **Bug 追查從 UI → DB → Code 三階段方法論**：本次 Larry 提「0ms 看起來不對」時，我先看 code pattern 理解設計意圖、然後查 DB 確認實際資料分佈、最後回 code 找 trigger 邏輯。每階段都排除一種可能性（code 設計問題 vs 資料異常 vs trigger 邏輯 bug）。這個 heuristic 比「直接改 code 試試看」省很多時間。
+
+### 討論題
+
+> 本 sprint 修完 auto-topup trigger 變成「base 和 addon 同時 ≤ 0」才觸發。如果下一版要提供「拋錯式 hard cap」—例如免費方案租戶 base 用完就回 429，不給 topup：
+> (a) 在 `DeductTokensUseCase` 再加一個 `if plan.hard_cap and base == 0: raise QuotaExceededError` 分支
+> (b) 在 `TokenLedger.deduct()` Domain 層 raise
+> (c) 建獨立 `QuotaGuard` Domain Service，`DeductTokensUseCase` 先呼叫它檢查
+>
+> 哪種最符合 DDD 分層？哪種對未來「per-tenant override cap」最彈性？
+
+---
+
 ## Token-Gov.6 — 刪冗餘欄位 + SQL expression SUM + Frontend i18n SSOT + 圖表樣式共用
 
 **Sprint 來源**：Token-Gov.5 完成後 Larry 在驗證中提出兩個架構原則：
@@ -94,6 +131,7 @@
 
 ## 目錄
 
+- [Token-Gov.7 — Trace marker 語意 vs 計時節點 + Auto-topup trigger 條件雙因子守門](#token-gov7--trace-marker-語意-vs-計時節點--auto-topup-trigger-條件雙因子守門)
 - [Token-Gov.6 — 刪冗餘欄位 + SQL expression SUM + Frontend i18n SSOT + 圖表樣式共用](#token-gov6--刪冗餘欄位--sql-expression-sum--frontend-i18n-ssot--圖表樣式共用)
 - [Route B — Token 兩頁一致性：累計狀態 vs Read-time SUM + Sentinel Pattern + 錢相關測試密度](#route-b--token-兩頁一致性累計狀態-vs-read-time-sum--sentinel-pattern--錢相關測試密度)
 - [Ollama A/B 測試 Debug — 模型 Tag 驗證 + Router Prefix + RHF shouldDirty](#ollama-ab-測試-debug--模型-tag-驗證--router-prefix--rhf-shoulddirty)

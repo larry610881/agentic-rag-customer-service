@@ -1622,6 +1622,20 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | 全量測試 | ✅ | unit 749 passed（3 pre-existing bot fail 非本 sprint）；lint all-pass |
 | Data remediation (dev-vm migration) | ⏳ 待 Larry 授權 | 走 migration-workflow：preview `\d token_usage_records` → `ALTER TABLE ... DROP COLUMN` → verify + INSERT _applied_migrations；**時序：必須先部署新 code 到 Cloud Run，才能套 DB migration** |
 
+#### S-Token-Gov.7 Agent Trace 語意 + auto_topup trigger bug ✅ 完成 (2026-04-21)
+> Carrefour 驗證時發現：0ms 節點語意誤導 + auto_topup 在 base 未耗盡時誤觸發 bug。
+> 5 項同時修：A trace node 補齊 + B label 加 ✓ + C 前端過濾 status + D trigger 條件 + E 資料修復。
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| A: intent_classify trace node | ✅ | send_message_use_case + line/handle_webhook 兩處 classify_workers 前後包 AgentTraceCollector.add_node()；trace 頁可看到分類 LLM 時間 |
+| B: worker_routing label 加 ✓ 明示結論 | ✅ | react_agent_service.py 兩處 "已分流至 Worker：X" → "✓ 分流結果：X" |
+| C: 前端 timeline 過濾 status loading 指示 | ✅ | execution-timeline.tsx 跳過 status=react_thinking/llm_generating（chat 另有 loading 文字）|
+| D: auto_topup trigger 條件修 | ✅ | DeductTokensUseCase: 加 `base_remaining <= 0 AND addon_remaining <= 0` 雙條件 |
+| D unit test regression guard | ✅ | test_deduct_tokens_trigger_condition.py (4 case: Carrefour 複刻 / 雙 0 才 topup / addon 為負防禦 / base 耗盡但 addon 充足不 topup) |
+| E: Carrefour 資料修復 (dev-vm) | ✅ 已執行 (2026-04-21) | DELETE billing_transactions auto_topup 1 row + UPDATE token_ledgers SET addon_remaining=0 |
+| 既有 auto_topup BDD 維持綠 | ✅ | 9 passed — 舊 scenarios 都 preset base=0，雙條件仍成立 |
+
 ### S-Gov.6 Agent 執行追蹤 UI 可讀性強化
 > 既有 `agent_execution_traces` 已落地（見 S-Gov.1），本 Sprint 聚焦**前端 UI 可讀性**與**查詢能力**，後端只做欄位/索引補強。
 
