@@ -1569,6 +1569,31 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | 後端 admin integration 不退步 | ✅ | admin 25 passed (.2 + .2.5 + .3 + .4 + .3.5 = 25)；unit 624 baseline 維持 |
 | 前端 tsc + vitest 不退步 | ✅ | tsc 112 baseline 維持；vitest 223 passed 維持 |
 
+#### S-Token-Gov.5 兩頁一致性修復 + included_categories 三態語意 ✅ 完成 (2026-04-21)
+> 修 Carrefour 用戶回報的「Token 用量 295,992 / 本月額度 14,912」兩頁不一致 (#35)。
+> Root cause：Token-Gov.2 部署前歷史 usage 無 ledger 可扣是固有問題，非 hook bug。
+> Route B = `total_used_in_cycle` 改由 `token_usage_records` 即時 SUM（部署前/後一致）。
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Domain: UsageRepository.sum_tokens_in_cycle abstract | ✅ | `func.sum(total_tokens)` by (tenant_id, YYYY-MM cycle)；走既有 ix_token_usage_records_tenant_created 複合 index |
+| Domain: UsageCategory.OTHER 刪除 | ✅ | src/ 零 caller 的 dead code；UI 同步移除「其他」checkbox；剩 12 個具名分類 |
+| Infrastructure: SQLAlchemyUsageRepository.sum_tokens_in_cycle | ✅ | mirror get_monthly_usage_stats pattern；COALESCE SUM 回 0 |
+| Application: GetTenantQuotaUseCase 注入 UsageRepo | ✅ | DTO.total_used_in_cycle 改從 SUM；ledger.total_used_in_cycle 保留 legacy 但不再 read |
+| Application: ListAllTenantsQuotasUseCase 同步 | ✅ | admin 總覽每個 tenant 一次 SUM（N+1，tenants >100 再改 batch） |
+| Application: UpdateTenantCommand _UNSET sentinel | ✅ | Bug 2 修復；三態語意「未傳 / 顯式 null / list」；Router 用 Pydantic v2 `model_fields_set` 判斷 |
+| Application: RecordUsageUseCase 入口加白名單 | ✅ | `request_type not in UsageCategory → raise ValueError`；防 legacy 字串潛入 DB |
+| Interfaces: tenant_router PATCH 改 model_fields_set | ✅ | 只把顯式傳入的欄位放進 UpdateTenantCommand kwargs；未傳者維持 _UNSET |
+| Frontend Bug 1 修復 | ✅ | tenant-config-dialog.tsx 展開「進階」但 disable 自訂 → body 送 `included_categories: null` 清空 |
+| Frontend UI 清 "其他" | ✅ | USAGE_CATEGORIES 移除 other；useEffect 初始化 filter legacy 殘留值（防禦性 normalize）|
+| BDD 6 scenarios | ✅ | `quota_usage_consistency.feature` 3 + `tenant_config_reset.feature` 3；全綠 |
+| Unit Test filter matrix | ✅ | 71 條錢相關精確斷言（12 category × 5 狀態 + enum fence + 白名單 reject 5 + deduction audit 12）|
+| Unit Test update/quota sum source | ✅ | 6 sentinel case + 5 sum-source case + 5 integration step defs |
+| Frontend dialog test 擴充 | ✅ | 4 新 case：未展開不送 / 啟用勾選送 list / 取消送 null / 「其他」不應出現 |
+| 測試結果 | ✅ | Backend unit 701 passed + 新增 77 全綠；new integration 6/6 全綠；frontend 6/6 全綠 |
+| 架構筆記 | ✅ | `docs/architecture-journal.md` — Route B 筆記（累計 vs 讀時、Sentinel Pattern、錢相關測試密度）|
+| Data remediation (dev-vm) | ⏳ 待 Larry 授權 | 走 migration-workflow 五步：(1) 清 tenants.included_categories 的 "other" 殘留 (2) Carrefour reset 成 NULL |
+
 ### S-Gov.6 Agent 執行追蹤 UI 可讀性強化
 > 既有 `agent_execution_traces` 已落地（見 S-Gov.1），本 Sprint 聚焦**前端 UI 可讀性**與**查詢能力**，後端只做欄位/索引補強。
 
