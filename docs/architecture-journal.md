@@ -7,8 +7,47 @@
 
 ---
 
+## Route B — Token 兩頁一致性：累計狀態 vs Read-time SUM + Sentinel Pattern + 錢相關測試密度
+
+**Sprint 來源**：Issue #35（Carrefour 用戶反映「Token 用量 295,992 / 本月額度 14,912 兩頁不一致」）
+
+**主題**：把「累計狀態欄位」改成「讀取時即時計算」，修 Pydantic/dataclass 的三態語意 bug，刪 dead enum + 加白名單。
+
+### 做得好的地方
+
+- **先查 SQL 再動 code**：原本推論「10:53 後 deduction hook 失效」，實測 minute-level 後發現 `ledger.updated_at = last_usage + 22ms`，10:53 後根本沒請求 — 沒 bug，差距純粹是「Token-Gov.2 部署前的歷史 usage 無 ledger 可扣」。這避免了「寫一堆修 hook 的 code，結果 hook 沒壞」的反工。
+- **保留 `ledger.deduct()` 對 `total_used_in_cycle` 的寫入**：不碰既有 `token_ledger.feature` 6 個 assertion，只改 DTO 投影。最小 blast radius 換最大收益。
+- **Sentinel + Pydantic `model_fields_set`**：Bug 2 的 `included_categories` 無法 reset 為 NULL，純 code 解決（不建 reset 端點）。Router 用 Pydantic v2 原生 `body.model_fields_set` 區分「未傳」vs「顯式 null」，Use Case 用 `_UNSET = object()` sentinel 反映三態語意。
+- **錢相關測試密度**：填 filter matrix 64 條參數化斷言（12 category × 5 狀態 + enum fence + 白名單 reject 5 case + deduction failure audit 12 case）。FIXED_TOKENS=12345（奇數）避免「剛好等於 default 0 的假陽性」。
+- **紅綠燈先行**：新寫 4 個 unit test 檔先確認紅燈符合預期（26 fail → 實作 Stage 4 後 77/77 綠）。
+
+### 潛在隱憂
+
+- **`base_remaining` / `addon_remaining` 仍是累計狀態** → 如果 deduction hook 真的在某天大量失敗，這兩個欄位會 drift，UI 顯示「餘額夠」但 user 看到的用量已超 → **中優先級**，下一版應考慮一致性校正排程（每週 `UPDATE base_remaining = base_total - SUM(usage) WHERE category IN included_categories`）。
+- **`list_all_tenants_quotas_use_case` N+1 query**：每個 tenant 一次 `sum_tokens_in_cycle`，tenants >100 後需改 `GROUP BY tenant_id` 的 batch SQL → **低優先級**。
+- **白名單直接 `raise ValueError`**：上線後如果有 hidden call site（測試覆蓋不到）用舊字串，會變 500。已驗證 DB 只有 4 個 request_type 字串且都合法，但**下一次加 `UsageCategory` 成員時，enum_coverage_fence 單測會提醒同步更新** → 防禦機制到位。
+- **Frontend Dialog 的 "peek then save" 邊界**：展開「進階」沒動東西直接儲存會觸發 reset → null。POC 期 admin 使用者少、可接受，正式版建議加「重設為預設」明確按鈕 → **低優先級**。
+
+### 延伸學習
+
+- **Command Sentinel Pattern**：DDD 世界裡 Command 是否「顯式傳某欄位」vs「不傳」是 PATCH 語意的基本問題。搜尋關鍵字：`PATCH semantics`, `dataclass sentinel default`, `Pydantic v2 model_fields_set`, JSON Merge Patch (RFC 7396) vs JSON Patch (RFC 6902)。
+- **累計狀態 vs 讀時計算的 trade-off**：本例中 `total_used_in_cycle` 從 hook 累計轉成 SUM 的設計就是典型「Event Sourcing vs Snapshot State」。Event Sourcing 讀耗電但永遠一致；Snapshot 讀便宜但需 reconciliation。延伸閱讀：Martin Kleppmann《DDIA》第 11 章「Stream Processing」。
+- **錢相關測試的密度設計**：parameterize 每個枚舉值 × 每個邊界，加「enum_coverage_fence」這種**防止 regression drift** 的斷言是關鍵。概念來源：「Pact Contract Testing」+ 「Golden Test」。
+
+### 討論題
+
+> 如果下一個 Sprint 要把 `base_remaining` / `addon_remaining` 也改成 single source of truth，你會選：
+> (a) 讀時計算 `base_total - SUM(billable_usage)` — 但 auto-topup 事件會讓公式失效
+> (b) 另建 `ledger_events` 表記 DEDUCT / TOPUP / RESET 事件，每次讀 fold 一遍
+> (c) 保留現況 + 每週 reconciliation cron
+>
+> 哪個路徑在 POC → 正式 → GKE 規模下 trade-off 最佳？
+
+---
+
 ## 目錄
 
+- [Route B — Token 兩頁一致性：累計狀態 vs Read-time SUM + Sentinel Pattern + 錢相關測試密度](#route-b--token-兩頁一致性累計狀態-vs-read-time-sum--sentinel-pattern--錢相關測試密度)
 - [Ollama A/B 測試 Debug — 模型 Tag 驗證 + Router Prefix + RHF shouldDirty](#ollama-ab-測試-debug--模型-tag-驗證--router-prefix--rhf-shoulddirty)
 - [S-Gov.6a — Agent Trace UI 強化：JSON ILIKE 中文 escape 陷阱 + Module-level Session 的 Test Monkeypatch + URL ↔ Filter 雙向 Sync](#s-gov6a--agent-trace-ui-強化json-ilike-中文-escape-陷阱--module-level-session-的-test-monkeypatch--url--filter-雙向-sync)
 - [S-Token-Gov.3.5 — SendGrid Email 整合：Sync SDK in Async Worker + Mock Sender via DI Override + 「永遠 mark vs 不 mark」的容錯策略](#s-token-gov35--sendgrid-email-整合sync-sdk-in-async-worker--mock-sender-via-di-override--永遠-mark-vs-不-mark的容錯策略)

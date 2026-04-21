@@ -1133,6 +1133,7 @@ class Container(containers.DeclarativeContainer):
         GetTenantQuotaUseCase,
         tenant_repository=tenant_repository,
         ensure_ledger=ensure_ledger_use_case,
+        usage_repository=usage_repository,
     )
 
     # S-Token-Gov.2.5: 系統層額度總覽 use case
@@ -1141,6 +1142,7 @@ class Container(containers.DeclarativeContainer):
         tenant_repository=tenant_repository,
         ledger_repository=token_ledger_repository,
         plan_repository=plan_repository,
+        usage_repository=usage_repository,
     )
 
     record_usage_use_case = providers.Factory(

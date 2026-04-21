@@ -8,6 +8,7 @@ from src.domain.platform.model_registry import DEFAULT_MODELS
 from src.domain.rag.pricing import calculate_usage
 from src.domain.rag.value_objects import TokenUsage
 from src.domain.tenant.entity import Tenant
+from src.domain.usage.category import UsageCategory
 from src.domain.usage.entity import UsageRecord
 from src.domain.usage.repository import UsageRepository
 
@@ -18,6 +19,9 @@ if TYPE_CHECKING:
     from src.domain.tenant.repository import TenantRepository
 
 logger = structlog.get_logger(__name__)
+
+# Token-Gov: request_type 白名單 — 只接受 UsageCategory enum 值，擋掉 legacy 字串與 typo
+_VALID_CATEGORIES: frozenset[str] = frozenset(c.value for c in UsageCategory)
 
 
 class RecordUsageUseCase:
@@ -53,6 +57,13 @@ class RecordUsageUseCase:
     ) -> None:
         if usage is None or usage.total_tokens == 0:
             return
+
+        # Token-Gov: 禁止非 enum 字串寫入 usage_records（防 legacy / typo）
+        if request_type not in _VALID_CATEGORIES:
+            raise ValueError(
+                f"request_type={request_type!r} is not a valid UsageCategory. "
+                f"Valid values: {sorted(_VALID_CATEGORIES)}"
+            )
 
         # Fallback: ReAct 路徑的 TokenUsage 可能缺少 cost，從 registry 重算
         cost = usage.estimated_cost

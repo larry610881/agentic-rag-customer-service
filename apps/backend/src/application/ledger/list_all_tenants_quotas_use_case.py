@@ -6,7 +6,8 @@
 策略：
 - 3 query 取全（tenants / ledgers for cycle / plans），application 層 join
 - 不為了顯示而建 ledger（避免 N 個 INSERT）— 沒 ledger 的租戶顯示 0 + has_ledger=False
-- 計算邏輯與 GetTenantQuotaUseCase 對齊（base_remaining + addon_remaining = total_remaining）
+- 計算邏輯與 GetTenantQuotaUseCase 對齊
+  （base_remaining + addon_remaining = total_remaining）
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from dataclasses import dataclass
 from src.domain.ledger.repository import TokenLedgerRepository
 from src.domain.plan.repository import PlanRepository
 from src.domain.tenant.repository import TenantRepository
+from src.domain.usage.repository import UsageRepository
 
 
 @dataclass(frozen=True)
@@ -39,10 +41,12 @@ class ListAllTenantsQuotasUseCase:
         tenant_repository: TenantRepository,
         ledger_repository: TokenLedgerRepository,
         plan_repository: PlanRepository,
+        usage_repository: UsageRepository,
     ) -> None:
         self._tenants = tenant_repository
         self._ledgers = ledger_repository
         self._plans = plan_repository
+        self._usage = usage_repository
 
     async def execute(self, cycle: str) -> list[TenantQuotaItem]:
         tenants = await self._tenants.find_all()
@@ -58,6 +62,12 @@ class ListAllTenantsQuotasUseCase:
             ledger = ledger_by_tenant.get(tenant_id)
             plan = plan_by_name.get(tenant.plan)
 
+            # Route B: total_used_in_cycle 由 usage_records SUM 取得
+            # （每個 tenant 一次 query，N+1；tenants 數多再優化 batch）
+            total_used = await self._usage.sum_tokens_in_cycle(
+                tenant_id=tenant_id, cycle_year_month=cycle
+            )
+
             if ledger is not None:
                 items.append(
                     TenantQuotaItem(
@@ -69,7 +79,7 @@ class ListAllTenantsQuotasUseCase:
                         base_remaining=ledger.base_remaining,
                         addon_remaining=ledger.addon_remaining,
                         total_remaining=ledger.total_remaining,
-                        total_used_in_cycle=ledger.total_used_in_cycle,
+                        total_used_in_cycle=total_used,
                         included_categories=tenant.included_categories,
                         has_ledger=True,
                     )
@@ -87,7 +97,7 @@ class ListAllTenantsQuotasUseCase:
                     base_remaining=base_total,
                     addon_remaining=0,
                     total_remaining=base_total,
-                    total_used_in_cycle=0,
+                    total_used_in_cycle=total_used,
                     included_categories=tenant.included_categories,
                     has_ledger=False,
                 )

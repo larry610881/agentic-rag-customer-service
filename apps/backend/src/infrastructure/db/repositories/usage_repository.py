@@ -277,3 +277,23 @@ class SQLAlchemyUsageRepository(UsageRepository):
             )
             for row in result.all()
         ]
+
+    async def sum_tokens_in_cycle(
+        self, tenant_id: str, cycle_year_month: str
+    ) -> int:
+        """SUM total_tokens for (tenant_id, YYYY-MM cycle). Return 0 if no records.
+
+        Route B: GetTenantQuotaUseCase / ListAllTenantsQuotasUseCase 用此方法
+        計算 total_used_in_cycle，取代 ledger.total_used_in_cycle。
+        Index: ix_token_usage_records_tenant_created (tenant_id, created_at)。
+        """
+        stmt = select(
+            func.coalesce(func.sum(UsageRecordModel.total_tokens), 0)
+        ).where(
+            UsageRecordModel.tenant_id == tenant_id,
+            func.to_char(UsageRecordModel.created_at, "YYYY-MM")
+            == cycle_year_month,
+        )
+        result = await self._session.execute(stmt)
+        value = result.scalar_one()
+        return int(value) if value is not None else 0

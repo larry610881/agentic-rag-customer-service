@@ -162,10 +162,26 @@ async def update_tenant_config(
         Provide[Container.update_tenant_use_case]
     ),
 ) -> TenantResponse:
+    # Bug 2 修復：用 model_fields_set 區分「client 未傳」vs「client 顯式傳 None」。
+    # 只把 client 顯式傳入的欄位放進 command，未傳者維持 _UNSET sentinel，
+    # 讓 UpdateTenantUseCase 能正確保留 / 重置欄位。
+    fields_set = body.model_fields_set
+    cmd_kwargs: dict = {"tenant_id": tenant_id}
+    if "plan" in fields_set:
+        cmd_kwargs["plan"] = body.plan
+    if "monthly_token_limit" in fields_set:
+        cmd_kwargs["monthly_token_limit"] = body.monthly_token_limit
+    if "included_categories" in fields_set:
+        cmd_kwargs["included_categories"] = body.included_categories  # 含顯式 null
+    if "default_ocr_model" in fields_set:
+        cmd_kwargs["default_ocr_model"] = body.default_ocr_model
+    if "default_context_model" in fields_set:
+        cmd_kwargs["default_context_model"] = body.default_context_model
+    if "default_classification_model" in fields_set:
+        cmd_kwargs["default_classification_model"] = body.default_classification_model
+
     try:
-        tenant = await use_case.execute(
-            UpdateTenantCommand(tenant_id=tenant_id, **body.model_dump())
-        )
+        tenant = await use_case.execute(UpdateTenantCommand(**cmd_kwargs))
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message

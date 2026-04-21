@@ -13,7 +13,7 @@ class UsageRecord:
 
     id: str = field(default_factory=lambda: str(uuid4()))
     tenant_id: str = ""
-    request_type: str = ""  # "rag" or "agent"
+    request_type: str = ""  # See UsageCategory enum (src/domain/usage/category.py)
     model: str = ""
     input_tokens: int = 0
     output_tokens: int = 0

@@ -161,7 +161,7 @@ def run_record_usage(context):
     _run(
         context["use_case"].execute(
             tenant_id="tenant-001",
-            request_type="agent",
+            request_type="rag",  # Token-Gov: 白名單需 UsageCategory enum value
             usage=context["usage"],
             bot_id="bot-001",
         )

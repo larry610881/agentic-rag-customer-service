@@ -40,7 +40,7 @@ interface UpdateTenantConfigBody {
 }
 
 // S-Token-Gov.2: UsageCategory enum 對應前端顯示
-// 與後端 src/domain/usage/category.py 的 13 個值同步
+// 與後端 src/domain/usage/category.py 的 12 個具名值同步（OTHER 已刪）
 const USAGE_CATEGORIES: { value: string; label: string }[] = [
   { value: "rag", label: "RAG 查詢" },
   { value: "chat_web", label: "Web 對話" },
@@ -54,7 +54,6 @@ const USAGE_CATEGORIES: { value: string; label: string }[] = [
   { value: "pdf_rename", label: "PDF 子頁 Rename" },
   { value: "auto_classification", label: "Auto Classification" },
   { value: "intent_classify", label: "意圖分類" },
-  { value: "other", label: "其他" },
 ];
 
 function formatTokens(n: number): string {
@@ -109,7 +108,10 @@ export function TenantConfigDialog({
       const cats = tenant.included_categories;
       if (cats !== null && cats !== undefined) {
         setCategoriesEnabled(true);
-        setSelectedCats(new Set(cats));
+        // 過濾 legacy 值（例如刪除 OTHER 前殘留的 "other"），
+        // 只保留 UI 認識的 12 個 — admin 儲存時會自然清掉殘留
+        const validValues = new Set(USAGE_CATEGORIES.map((c) => c.value));
+        setSelectedCats(new Set(cats.filter((c) => validValues.has(c))));
       } else {
         setCategoriesEnabled(false);
         setSelectedCats(new Set(USAGE_CATEGORIES.map((c) => c.value)));
@@ -125,9 +127,13 @@ export function TenantConfigDialog({
     if (plan && plan !== tenant?.plan) {
       body.plan = plan;
     }
-    // 只在 admin 顯式打開「進階」時才送 included_categories
-    if (categoriesEnabled) {
-      body.included_categories = Array.from(selectedCats);
+    // Bug 1 修復：只要 admin 展開過「進階」就送 included_categories，
+    // 區分「啟用自訂」=list 與「取消自訂」=null（全計入）。未展開則不送，
+    // 後端用 Pydantic model_fields_set 判斷「未傳」→ 維持 tenant 既有值。
+    if (showAdvanced) {
+      body.included_categories = categoriesEnabled
+        ? Array.from(selectedCats)
+        : null;
     }
     mutation.mutate(body);
   };
