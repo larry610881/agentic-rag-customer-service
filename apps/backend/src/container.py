@@ -71,6 +71,12 @@ from src.application.conversation.list_feedback_use_case import (
 from src.application.conversation.submit_feedback_use_case import (
     SubmitFeedbackUseCase,
 )
+from src.application.conversation.generate_summary_use_case import (
+    GenerateConversationSummaryUseCase,
+)
+from src.application.conversation.search_conversations_use_case import (
+    SearchConversationsUseCase,
+)
 from src.application.eval_dataset.create_eval_dataset_use_case import (
     CreateEvalDatasetUseCase,
 )
@@ -283,6 +289,9 @@ from src.infrastructure.conversation import (
     RAGHistoryStrategy,
     SlidingWindowStrategy,
     SummaryRecentStrategy,
+)
+from src.infrastructure.conversation.llm_summary_service import (
+    LLMConversationSummaryService,
 )
 from src.infrastructure.crypto.aes_encryption_service import AESEncryptionService
 from src.infrastructure.db.engine import (
@@ -1293,6 +1302,30 @@ class Container(containers.DeclarativeContainer):
     list_feedback_use_case = providers.Factory(
         ListFeedbackUseCase,
         feedback_repository=feedback_repository,
+    )
+
+    # S-Gov.6b: Conversation Summary + Hybrid Search
+    conversation_summary_service = providers.Factory(
+        LLMConversationSummaryService,
+        llm_service=llm_service,
+        embedding_service=embedding_service,
+    )
+
+    generate_conversation_summary_use_case = providers.Factory(
+        GenerateConversationSummaryUseCase,
+        conversation_repository=conversation_repository,
+        summary_service=conversation_summary_service,
+        vector_store=vector_store,
+        record_usage=record_usage_use_case,
+    )
+
+    search_conversations_use_case = providers.Factory(
+        SearchConversationsUseCase,
+        conversation_repository=conversation_repository,
+        tenant_repository=tenant_repository,
+        embedding_service=embedding_service,
+        vector_store=vector_store,
+        record_usage=record_usage_use_case,
     )
 
     get_satisfaction_trend_use_case = providers.Factory(

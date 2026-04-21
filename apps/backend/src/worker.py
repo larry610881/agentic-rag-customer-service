@@ -193,6 +193,35 @@ async def quota_email_dispatch_task(ctx: dict) -> None:
     )
 
 
+# --- Cron + Job: conversation_summary (S-Gov.6b) ---
+
+async def conversation_summary_scan_task(ctx: dict) -> None:
+    """每分鐘掃 conversations 找需要生 summary 的，個別 enqueue arq job。
+
+    避免單一 cron 跑 100 個 LLM 呼叫卡住下次 cron — 拆 fan-out。
+    """
+    container = _new_container()
+    conv_repo = container.conversation_repository()
+    pending = await conv_repo.find_pending_summary(idle_minutes=5, limit=200)
+    if not pending:
+        return
+    logger.info(f"[conv_summary_scan] enqueue {len(pending)} jobs")
+    redis = ctx["redis"]
+    for conv_id in pending:
+        await redis.enqueue_job("process_conversation_summary", conv_id)
+
+
+async def process_conversation_summary_task(
+    ctx: dict, conversation_id: str,
+) -> None:
+    """單 conversation 生 summary + embed + Milvus upsert + 兩次 record_usage。"""
+    logger.info(f"[conv_summary] start conv={conversation_id}")
+    container = _new_container()
+    use_case = container.generate_conversation_summary_use_case()
+    result = await use_case.execute(conversation_id)
+    logger.info(f"[conv_summary] done conv={conversation_id} {result}")
+
+
 class WorkerSettings:
     """arq worker configuration."""
 
@@ -202,14 +231,21 @@ class WorkerSettings:
         func(extract_memory_task, name="extract_memory"),
         func(run_evaluation_task, name="run_evaluation"),
         func(classify_kb_task, name="classify_kb"),
+        # S-Gov.6b: 對話 summary 個別 job（cron fan-out）
+        func(
+            process_conversation_summary_task,
+            name="process_conversation_summary",
+        ),
     ]
     # S-Token-Gov.2: 月度重置（每月 1 日 00:05 UTC = 08:05 Asia/Taipei）
     # S-Token-Gov.3: 額度警示（每天 01:00 UTC = 09:00 Asia/Taipei）
     # S-Token-Gov.3.5: 警示 email 寄送（每天 01:30 UTC = 09:30 Asia/Taipei）
+    # S-Gov.6b: 對話摘要掃 pending（每分鐘 — 5min 閒置即生）
     cron_jobs = [
         cron(monthly_reset_task, hour={0}, minute={5}, day={1}),
         cron(quota_alerts_task, hour={1}, minute={0}),
         cron(quota_email_dispatch_task, hour={1}, minute={30}),
+        cron(conversation_summary_scan_task, minute=set(range(60))),
     ]
     on_startup = startup
     on_shutdown = shutdown

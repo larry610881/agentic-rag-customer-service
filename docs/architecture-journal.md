@@ -7,6 +7,207 @@
 
 ---
 
+## S-Gov.6b — LLM 對話摘要 + Hybrid 搜尋：Stateful vs Result-Based + Schema Reuse 跨 Domain + Race-Safe Cron Re-trigger
+
+**日期**：2026-04-21
+**Sprint**：S-Gov.6b（Agent 執行追蹤 UI 強化第二段）
+**涉及層級**：跨 4 層 + Worker + Milvus + 前端 — Migration（5 欄位 + partial index）+ Domain 加 enum/ABC/repo method + Infrastructure 加 LLM impl + Milvus 3 wrapper method + Application 2 use cases + SendMessageUseCase hook + worker fan-out cron + admin endpoint + 前端 1 新頁 + 1 hook + 1 component。約 18 檔變動。
+
+### 本次相關主題
+
+- Token tracking 設計：result-based vs stateful 取捨
+- Schema reuse 跨 domain（Milvus chunks collection schema 套用 conv_summaries）
+- Race-safe cron 重觸發（snapshot message_count 不需 lock）
+- Cron fan-out pattern（一個 cron 拆成多個 arq job）
+- Admin 行為 token 歸帳策略（SYSTEM tenant）
+- 既有 SSOT helper 維護成本攤提（usage-categories.ts / chart-styles.ts）
+
+### 做得好的地方
+
+#### 1. Result-Based vs Stateful — 在「同時做兩件事」場景下選對 pattern
+
+`LLMChunkContextService` 用 stateful pattern（`last_input_tokens / last_output_tokens / last_model`）— 適合「LLM 一段流程，caller 讀完寫一次 record_usage」。
+
+但 `ConversationSummaryService` 同時做 LLM + embedding 兩件事，stateful 會變成 6 個 attributes（`last_summary_input_tokens / last_summary_output_tokens / last_summary_model / last_embedding_tokens / last_embedding_model / ...`），caller 容易讀錯欄位。
+
+→ 改用 **result-based**（`ConversationSummaryResult` dataclass 含 5 個欄位），純函數風格：
+
+```python
+@dataclass(frozen=True)
+class ConversationSummaryResult:
+    summary: str
+    embedding: list[float]
+    summary_input_tokens: int
+    summary_output_tokens: int
+    summary_model: str
+    embedding_tokens: int
+    embedding_model: str
+```
+
+caller 取 result.summary_* 寫一次 record_usage、取 result.embedding_* 寫第二次。語意明確，unit test 易寫（return value 直接 assert）。
+
+**判斷準則**：「一段流程一個值」走 stateful 沒問題；「一段流程多種 outcome 都要追蹤」走 result-based。
+
+#### 2. Schema Reuse 跨 Domain — 不為 conv_summary 開新 Milvus schema
+
+Milvus `conv_summaries` collection 的需求：
+- vector dim: 3072（同 KB chunks）
+- 需要 tenant_id filter
+- 需要 bot_id filter（admin 想搜某個 bot 的對話）
+- 需要回顯 summary 文字
+
+既有 KB chunks schema 已有：`id / vector / tenant_id / document_id / content / chunk_index / content_type / language / extra (JSON)`。
+
+決策：**reuse 既有 schema，不為 conv_summary 開第二套**。Mapping：
+- `id` ← conversation_id (PK，upsert 同 conv_id 自動覆蓋)
+- `tenant_id` ← conv.tenant_id
+- `document_id` ← bot_id（語意 reuse — 用 bot_id 過濾）
+- `content` ← summary text
+- `extra` JSON ← 其他 metadata（first_message_at / message_count / summary_at）
+- 其他欄位（chunk_index, content_type, language）留空字串
+
+收益：
+- ✅ 不用新增 schema 維護
+- ✅ Milvus collection 配置參數一致（index type / metric）
+- ✅ 既有 search code path 100% reuse
+- ✅ 寫個 thin wrapper（`ensure_conv_summaries_collection / upsert_conv_summary / search_conv_summaries`）就完事
+
+代價：欄位語意輕微 abuse（`document_id` 拿來放 bot_id），但有清楚註解 + thin wrapper 隔離，使用方不會混淆。
+
+「既有 schema 80% match 時 reuse + thin wrapper > 開新 schema」是務實工程判斷。
+
+#### 3. Race-Safe Cron Re-trigger — 用 DB 條件取代 application 層 lock
+
+問題：cron 跑「為閒置 5min 的 conversation 生 summary」，若 LLM 跑到一半，使用者又回了新訊息，怎麼辦？
+
+3 種解法：
+- ❌ **Application 層 distributed lock**（Redis SETEX）— 複雜、要處理 lock 過期、Redis 故障
+- ❌ **取消 in-flight job**（arq 不直接支援 cancel）
+- ✅ **DB 條件 + snapshot pattern** — 不需 lock 不需 cancel
+
+實作（`find_pending_summary` query）：
+```sql
+WHERE last_message_at < NOW() - INTERVAL '5 minutes'
+  AND (summary IS NULL OR summary_message_count < message_count)
+```
+
+LLM 完成後 snapshot 當下 N 寫入 `summary_message_count`：
+```python
+n_at_start = conv.message_count  # snapshot 在 LLM call 前
+result = await self._summary_service.summarize(...)  # 可能慢 5-30s
+# ... LLM 完成期間使用者可能又寫了新 message → message_count 變大
+conv.summary_message_count = n_at_start  # 仍寫 snapshot 值
+await conv_repo.save(conv)
+```
+
+下次 cron 掃時：若 conv.message_count 已變大（例如 N → N+1），條件 `summary_message_count < message_count` 自動命中，重觸發新 summary 覆蓋舊版。
+
+→ summary 永遠是「最新閒置時刻」的最新版本，**完全 self-healing**。
+
+DB 條件當 lock 比 application 層 lock 簡單 10 倍 — 條件本身就是「正確性 invariant」。
+
+#### 4. Cron Fan-Out Pattern — 拆 cron 與 arq job
+
+ProcessMonthlyReset (Token-Gov.2) / ProcessQuotaAlerts (Token-Gov.3) 都是「cron 內直接遍歷處理」— OK 因為都是輕量 DB 操作。
+
+但 conversation_summary 每筆要打 LLM（5-30 秒），若 100 個 pending → cron 跑 5+ 分鐘 → 卡下次 cron。
+
+→ 拆成兩段：
+- **`conversation_summary_scan_task`**（cron @ 每分鐘）：只 query pending list + enqueue arq jobs
+- **`process_conversation_summary_task`**（arq job）：單筆 conversation 處理
+
+```python
+async def conversation_summary_scan_task(ctx: dict) -> None:
+    pending = await conv_repo.find_pending_summary(idle_minutes=5, limit=200)
+    for conv_id in pending:
+        await ctx["redis"].enqueue_job("process_conversation_summary", conv_id)
+```
+
+收益：
+- arq `max_jobs=3` 自動 throttle 並行度
+- 失敗只重試該 conv，不影響其他
+- Cron 永遠秒級結束，不會 backpressure
+
+「掃 + fan-out」是 worker queue 的經典 pattern — 任何「N 個 LLM 呼叫」都該這麼拆。
+
+#### 5. Admin 行為 token 歸 SYSTEM Tenant — 既有約定的延伸
+
+semantic search 內部會 embed 一次 query（admin 操作的隱藏 token cost）。歸給誰？
+
+既有約定：admin 操作不歸租戶帳，歸 `SYSTEM tenant`（"00000000-0000-0000-0000-000000000000"）。`AdminTenantFilter` 早已過濾掉這個 tenant。
+
+→ 直接套用約定，不開新 enum：
+
+```python
+await self._record_usage.execute(
+    tenant_id="00000000-0000-0000-0000-000000000000",  # SYSTEM
+    request_type=UsageCategory.EMBEDDING.value,
+    usage=TokenUsage(model=..., total_tokens=embedding_tokens, ...),
+    bot_id=None,
+)
+```
+
+「不擴大 scope，套用既有約定」是 sprint 紀律 — 每次跨入新行為時都該檢查「這已經有人解決過了嗎？」
+
+#### 6. SSOT Helper 維護成本攤提 — 加 1 行受惠 4 個頁面
+
+Token-Gov.6 建的 `usage-categories.ts` SSOT 在 6b 兌現了：
+```ts
+{ value: "conversation_summary", label: "對話 LLM 摘要", shortLabel: "摘要" }
+```
+
+加這一行，自動讓 `tenant-config-dialog` / `quota-overview` / `quota` / `admin-token-usage` 4 個既有頁面顯示「對話 LLM 摘要」中文 label，不需動 4 個檔案。
+
+這正是 SSOT 的本質回報 — 建立成本一次，維護成本零。
+
+「越早建 SSOT 越划算」— 但反面：「過早建 SSOT」（YAGNI 違反）會讓未來改 schema 痛苦。Token-Gov.6 是「等 4 處重複後再 extract」的好範例。
+
+### 潛在隱憂
+
+#### 1. Milvus collection PK 衝突 → 中
+
+`conv_summaries` 用 `conversation_id` 當 PK，與 KB chunks 的 `chunk_id` 同 namespace。理論上 UUID 不會碰撞，但若未來 collection 拆分策略改變，可能有 race。
+
+**改善方向**：collection 內加 prefix（`conv_<uuid>` vs `chunk_<uuid>`），或為 conv_summaries 開獨立 collection schema。POC 階段不做。
+
+#### 2. Re-summary cost 可能爆 → 中
+
+Race-safe 重生 trade-off：long conversation 每閒置 5min 後可能重生 summary，最壞 case 一條對話生 5+ 次 summary（每次 ~1-2K input + 100 output tokens）。
+
+對 POC 量級（< 100 對話/天）= 一天 < 500 次 summary call，Haiku 成本 < TWD 5/天。OK。
+
+對正式量級（10K 對話/天）= 50K LLM calls/天，成本爆 → 需要：
+- 加 `cooldown_minutes` 機制（同 conv 上次生完 N 分鐘內不再重生）
+- 或：只在「conversation closed」（明確 marker）時生
+
+POC checklist 已記。
+
+#### 3. Embedding service stateful attribute 是 implicit contract → 低
+
+`getattr(self._embedding, "last_total_tokens", 0)` 依賴於 `OpenAIEmbeddingService` 的內部 state。若有 admin 自定義 embedding 沒實作這個 attribute，token 會記為 0（silent miss）。
+
+**改善方向**：把 `last_total_tokens` 提升為 EmbeddingService ABC 介面（必填 property），強制所有實作回報 token usage。但這是 Token-Gov.0/.6 的範圍，本 sprint 不做。
+
+#### 4. Mock SearchResult vs 真實 Milvus payload → 低
+
+BDD scenario 4 的 `mock Milvus search` 回 `SearchResult(id=cid, score=0.85, payload={})` — payload 為空。實際 Milvus search 會回 entity 完整 payload，但因 search use case 只用 `id + score` 來 hydrate from PG，所以測試覆蓋率仍 OK。
+
+未來若 search use case 改用 Milvus payload 直接顯示（不去 PG hydrate），測試 mock 要對應加 payload。
+
+### 延伸學習
+
+- **Snapshot pattern in Race-Safe Async Workflow**：不只用於 cron — 任何「讀-改-寫」可能被打斷的 async 流程都適用。經典參考：CRDT (Conflict-free Replicated Data Types) / Lamport Timestamp / Optimistic Concurrency Control
+- **Schema Reuse vs New Schema 權衡**：軟體設計常見抉擇。延伸閱讀：「Domain Driven Design」Aggregate Boundary 章節 — 何時該共享 entity，何時該拆獨立 BC
+- **Hybrid Search (Keyword + Vector)**：semantic search 不是萬能 — 對「找精確字」場景反而不如 keyword。OpenAI / Anthropic 內部的 RAG 都是 hybrid。下一步可學 BM25 + dense vector hybrid + RRF (Reciprocal Rank Fusion) reranker
+
+### 思考題
+
+「我們現在 admin search 用 keyword 與 semantic 互斥（UI 強制只能擇一），為什麼不做 hybrid（同時用兩個 + 結果合併排序）？」
+
+提示：考慮 (a) RRF (Reciprocal Rank Fusion) 或 (b) 加權平均 score 兩種合併策略；考慮 admin 操作頻率（一天 < 100 次 search）vs 額外複雜度的 ROI；考慮使用者教育成本（要解釋 hybrid 比兩個按鈕難）。
+
+---
+
 ## S-Auth.1 — 租戶自助改密碼 + 為何「舊密碼錯」該回 400 不是 401
 
 **Sprint 來源**：帳號開通給 Carrefour 時，Larry 發現 UI 只有 `admin/users/{id}/reset-password`，租戶登入後沒有「自助改密碼」功能（密碼都得找 admin 改）。先補 ① Change Password，先不做「③ 首次登入強制改」（多人共用測試帳號會互相打架）。

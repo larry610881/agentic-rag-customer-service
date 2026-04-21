@@ -178,6 +178,23 @@ export const API_ENDPOINTS = {
         : "/api/v1/admin/billing/dashboard";
     },
   },
+  adminConversations: {
+    search: (params: {
+      keyword?: string;
+      semantic?: string;
+      tenantId?: string;
+      botId?: string;
+      limit?: number;
+    }) => {
+      const qs = new URLSearchParams();
+      if (params.keyword) qs.set("keyword", params.keyword);
+      if (params.semantic) qs.set("semantic", params.semantic);
+      if (params.tenantId) qs.set("tenant_id", params.tenantId);
+      if (params.botId) qs.set("bot_id", params.botId);
+      if (params.limit) qs.set("limit", String(params.limit));
+      return `/api/v1/admin/conversations/search?${qs.toString()}`;
+    },
+  },
   systemPrompts: {
     get: "/api/v1/system/prompts",
     update: "/api/v1/system/prompts",

@@ -459,6 +459,11 @@ class HandleWebhookUseCase:
 
         # Persist conversation + messages
         if self._conversation_repo:
+            # S-Gov.6b: bump counters for cron pending-summary detection
+            from datetime import datetime, timezone
+
+            conversation.message_count = len(conversation.messages)
+            conversation.last_message_at = datetime.now(timezone.utc)
             await self._conversation_repo.save(conversation)
 
         # Persist agent trace to DB

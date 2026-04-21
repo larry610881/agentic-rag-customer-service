@@ -29,6 +29,7 @@ import {
   Package,
   Wallet,
   TrendingUp,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,7 @@ const systemAdminItems = [
   { href: "/admin/quota-overview", label: "額度總覽", icon: Wallet },
   { href: "/admin/quota-events", label: "額度事件", icon: Bell },
   { href: "/admin/billing", label: "收益儀表板", icon: TrendingUp },
+  { href: "/admin/conversations", label: "對話搜尋", icon: Search },
   { href: "/admin/mcp-registry", label: "MCP 工具庫", icon: Puzzle },
   { href: "/admin/tools", label: "工具權限", icon: Wrench },
   { href: "/admin/error-events", label: "錯誤追蹤", icon: AlertTriangle },

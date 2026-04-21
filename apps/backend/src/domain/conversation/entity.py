@@ -33,6 +33,12 @@ class Conversation:
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
+    # S-Gov.6b: LLM 摘要 + race-safe 觸發追蹤
+    summary: str | None = None
+    message_count: int = 0
+    summary_message_count: int | None = None
+    last_message_at: datetime | None = None
+    summary_at: datetime | None = None
 
     def add_message(
         self,

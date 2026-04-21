@@ -24,5 +24,7 @@ class UsageCategory(str, Enum):
     PDF_RENAME = "pdf_rename"
     AUTO_CLASSIFICATION = "auto_classification"
     INTENT_CLASSIFY = "intent_classify"
+    # S-Gov.6b: 對話 LLM 摘要（cron 行為，POC 預設不計入 quota）
+    CONVERSATION_SUMMARY = "conversation_summary"
     # OTHER 已刪 — src/ 零 caller 是 dead code；UI 不再提供「其他」checkbox。
     # RecordUsageUseCase 入口會白名單拒絕非此 enum 的字串。

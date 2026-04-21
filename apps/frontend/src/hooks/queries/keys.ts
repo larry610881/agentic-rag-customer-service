@@ -81,6 +81,13 @@ export const queryKeys = {
       ["admin", "quota-events", tenantId, page, pageSize] as const,
     billingDashboard: (start: string, end: string, topN: number) =>
       ["admin", "billing", "dashboard", start, end, topN] as const,
+    conversationSearch: (
+      mode: "keyword" | "semantic",
+      query: string,
+      tenantId: string,
+      botId: string,
+    ) =>
+      ["admin", "conversations", "search", mode, query, tenantId, botId] as const,
   },
   systemPrompts: {
     all: ["system-prompts"] as const,

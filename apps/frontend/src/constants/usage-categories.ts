@@ -28,6 +28,8 @@ export const USAGE_CATEGORIES: readonly UsageCategoryDef[] = [
   { value: "pdf_rename", label: "PDF 子頁 Rename", shortLabel: "PDF Rename" },
   { value: "auto_classification", label: "Auto Classification", shortLabel: "Auto Class." },
   { value: "intent_classify", label: "意圖分類", shortLabel: "意圖" },
+  // S-Gov.6b: 對話 LLM 摘要（cron 行為，POC 預設不計入 quota）
+  { value: "conversation_summary", label: "對話 LLM 摘要", shortLabel: "摘要" },
 ] as const;
 
 const LABEL_BY_VALUE: Record<string, string> = Object.fromEntries(

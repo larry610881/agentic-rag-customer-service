@@ -1672,8 +1672,32 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | 後端 admin integration + unit baseline 不退步 | ✅ | admin 29 passed (.2 + .2.5 + .3 + .3.5 + .4 + .6a 共 29)；unit 624 passed；3 pre-existing bot 失敗不變 |
 | 前端 tsc + vitest 不退步 | ✅ | tsc 119→112（refactor 順手清掉 7 errors，零新增）；vitest 223 passed 維持 |
 
-#### S-Gov.6b LLM 對話摘要 + Hybrid 搜尋 (待規劃實作)
-> 等 6a demo 後再上；plan 已完整寫於 `.claude/plans/agent-main-bright-leaf.md` §2
+#### S-Gov.6b LLM 對話摘要 + Hybrid 搜尋 ✅ 完成 (2026-04-21)
+> 對話結束 5 分鐘後 LLM 生中文一句話摘要 + embed 進 Milvus；admin 可走「關鍵字 (PG ILIKE)」或「意思 (Milvus vector)」搜對話。
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Migration: conversations + 5 欄位 + partial index | ✅ | summary / message_count / summary_message_count / last_message_at / summary_at；backfill local 729 / dev-vm 33；partial index 對應 cron query 條件 |
+| Domain: UsageCategory.CONVERSATION_SUMMARY enum | ✅ | 自動納入 RecordUsageUseCase 白名單（Token-Gov.5 _VALID_CATEGORIES frozenset comprehension） |
+| Domain: ConversationSummaryService ABC | ✅ | result-based 設計（不 stateful）— ConversationSummaryResult 含 5 個 token tracking fields |
+| Domain: Conversation entity 5 欄位 + repository.find_pending_summary + search_summary_by_keyword + find_by_ids | ✅ | repo 介面擴 3 method 給 cron/keyword 搜/semantic hydrate 用 |
+| Infrastructure: ConversationModel 5 欄位 + repo save 全更新 / find_* 全載入 5 欄 + 3 新 method 實作 | ✅ | 既有 save 邏輯擴 update path；ILIKE on summary + nulls_last + tenant/bot filter |
+| Infrastructure: LLMConversationSummaryService | ✅ | 中文 system prompt → LLM 生 ≤50 字摘要 → embed → 從 stateful last_total_tokens 抓 embedding token |
+| Infrastructure: Milvus conv_summaries collection | ✅ | reuse 既有 schema（id=conv_id, document_id=bot_id reuse 為 filter, content=summary）+ ensure / upsert / search 3 wrapper method |
+| Application: GenerateConversationSummaryUseCase | ✅ | snapshot message_count race-safe + 2 次 record_usage（CONVERSATION_SUMMARY + EMBEDDING）+ Milvus upsert + PG snapshot |
+| Application: SearchConversationsUseCase | ✅ | search_by_keyword (PG) + search_by_semantic (Milvus + admin embed token 歸 SYSTEM tenant) |
+| SendMessageUseCase + LINE webhook hook | ✅ | 寫 message 後 _bump_conversation_counters 更新 message_count + last_message_at（3 個 web save 點 + 1 個 LINE save 點） |
+| Worker cron + arq job | ✅ | conversation_summary_scan_task @ 每分鐘 + process_conversation_summary_task fan-out（避免單 cron 卡 100 LLM 呼叫） |
+| Container DI | ✅ | LLMConversationSummaryService Singleton + 2 use case Factory |
+| GET /admin/conversations/search | ✅ | system_admin only；keyword + semantic 互斥 422 reject；hydrate tenant_name |
+| Frontend: usage-categories.ts SSOT 加 conversation_summary | ✅ | 自動讓 4 個既有 admin 頁面顯示「對話 LLM 摘要」label |
+| Frontend: useConversationSearch hook | ✅ | TanStack Query + 60s staleTime + queryKey 含 mode/query/tenantId/botId |
+| Frontend: /admin/conversations 頁 | ✅ | ToggleGroup 切 keyword/semantic + Input + AdminTenantFilter + AdminBotFilter + ConversationSearchResultCard 列表 + Loading/Empty/Error 三態 |
+| Frontend: 路由 + sidebar | ✅ | ROUTES.ADMIN_CONVERSATIONS + Search icon 「對話搜尋」 |
+| BDD 5 scenarios | ✅ | conversation_summary.feature — 正常 cron + 2 token tracking / race-safe 重生 / keyword 搜尋 / semantic 搜尋 / POC quota 不計 全綠 |
+| Token tracking 整合 Token-Gov.5/.6/.7 規範 | ✅ | enum 加值自動納入白名單；UsageRecord total_tokens 是 @property 不傳；included_categories 三態語意嚴格遵守；auto-topup trigger 不會誤觸發 |
+| 後端 admin integration + unit baseline 不退步 | ✅ | admin 43 passed (29 + 9 + 5)；unit 727 passed（fence test 已同步加 conversation_summary）；既有 fixture 失敗不變 |
+| 前端 tsc + vitest 不退步 | ✅ | tsc 112→107（順手清掉 5 errors，零新增）；vitest 223→226 passed |
 
 ---
 

@@ -21,7 +21,8 @@ from src.domain.usage.category import UsageCategory
 
 ALL_CATEGORIES = sorted(c.value for c in UsageCategory)
 
-# Stage 4.1 刪除 OTHER 後，enum 應剛好是這 12 個具名分類
+# Stage 4.1 刪除 OTHER 後 → 12 個。
+# S-Gov.6b 加 conversation_summary → 13 個。
 EXPECTED_CATEGORIES: set[str] = {
     "rag",
     "chat_web",
@@ -35,6 +36,7 @@ EXPECTED_CATEGORIES: set[str] = {
     "pdf_rename",
     "auto_classification",
     "intent_classify",
+    "conversation_summary",  # S-Gov.6b
 }
 
 FIXED_TOKENS = 12345  # 明確 odd 數，避免意外等於預設 0 導致假陽性

@@ -12,6 +12,9 @@ from src.application.auth.list_users_use_case import ListUsersUseCase
 from src.application.billing.get_billing_dashboard_use_case import (
     GetBillingDashboardUseCase,
 )
+from src.application.conversation.search_conversations_use_case import (
+    SearchConversationsUseCase,
+)
 from src.application.billing.list_quota_events_use_case import (
     ListQuotaEventsUseCase,
 )
@@ -560,3 +563,87 @@ async def get_billing_dashboard(
         cycle_start=result.cycle_start,
         cycle_end=result.cycle_end,
     )
+
+
+# --- Conversation Hybrid Search (S-Gov.6b) ---
+
+
+class ConversationSearchResultResponse(BaseModel):
+    conversation_id: str
+    tenant_id: str
+    tenant_name: str
+    bot_id: str | None = None
+    summary: str
+    first_message_at: str | None = None
+    last_message_at: str | None = None
+    message_count: int
+    score: float | None = None  # 僅 semantic 模式有
+    matched_via: str  # "keyword" | "semantic"
+
+
+@router.get(
+    "/conversations/search",
+    response_model=list[ConversationSearchResultResponse],
+)
+@inject
+async def search_conversations(
+    keyword: str | None = Query(
+        None, description="PG ILIKE on summary（精準字面）"
+    ),
+    semantic: str | None = Query(
+        None, description="Milvus vector search（語意相近）"
+    ),
+    tenant_id: str | None = Query(
+        None, description="限定租戶（admin 跨租戶可省略）"
+    ),
+    bot_id: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
+    use_case: SearchConversationsUseCase = Depends(
+        Provide[Container.search_conversations_use_case]
+    ),
+) -> list[ConversationSearchResultResponse]:
+    """S-Gov.6b: keyword (PG ILIKE) 或 semantic (Milvus vector) 搜對話摘要。
+    兩者擇一傳入；不可同時。
+    """
+    if not keyword and not semantic:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="需提供 keyword 或 semantic 至少一個",
+        )
+    if keyword and semantic:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="keyword 與 semantic 互斥，請擇一",
+        )
+
+    if keyword:
+        items = await use_case.search_by_keyword(
+            keyword=keyword,
+            tenant_id=tenant_id,
+            bot_id=bot_id,
+            limit=limit,
+        )
+    else:
+        items = await use_case.search_by_semantic(
+            query=semantic,  # type: ignore[arg-type]
+            tenant_id=tenant_id,
+            bot_id=bot_id,
+            limit=limit,
+        )
+
+    return [
+        ConversationSearchResultResponse(
+            conversation_id=i.conversation_id,
+            tenant_id=i.tenant_id,
+            tenant_name=i.tenant_name,
+            bot_id=i.bot_id,
+            summary=i.summary,
+            first_message_at=i.first_message_at,
+            last_message_at=i.last_message_at,
+            message_count=i.message_count,
+            score=i.score,
+            matched_via=i.matched_via,
+        )
+        for i in items
+    ]

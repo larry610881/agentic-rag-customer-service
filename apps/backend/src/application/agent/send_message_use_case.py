@@ -4,6 +4,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -91,6 +92,16 @@ def _compute_trace_outcome(nodes: list[dict[str, Any]]) -> str:
     if any(n.get("outcome") == "partial" for n in nodes):
         return "partial"
     return "success"
+
+
+def _bump_conversation_counters(conversation: Any) -> None:
+    """S-Gov.6b: 寫 message 後同步更新 conversation 的 message_count
+    + last_message_at（給 cron 判斷閒置 / pending summary）。
+
+    在 conv_repo.save() 前呼叫，repo 會把這 2 欄位寫入 PG。
+    """
+    conversation.message_count = len(conversation.messages)
+    conversation.last_message_at = datetime.now(timezone.utc)
 
 
 def _build_structured_content(
@@ -654,6 +665,7 @@ class SendMessageUseCase:
             if not guard_result.passed:
                 conversation.add_message("user", command.message)
                 conversation.add_message("assistant", guard_result.blocked_response)
+                _bump_conversation_counters(conversation)
                 await self._conversation_repo.save(conversation)
                 return AgentResponse(
                     answer=guard_result.blocked_response,
@@ -723,6 +735,7 @@ class SendMessageUseCase:
             retrieved_chunks=retrieved_chunks,
             structured_content=structured_content,
         )
+        _bump_conversation_counters(conversation)
         await self._conversation_repo.save(conversation)
 
         response.conversation_id = conversation.id.value
@@ -903,6 +916,7 @@ class SendMessageUseCase:
             retrieved_chunks=retrieved_chunks,
             structured_content=structured_content,
         )
+        _bump_conversation_counters(conversation)
         await self._conversation_repo.save(conversation)
 
         # 在 _persist_agent_trace 之前取 trace_id（finish 後 ContextVar 會被清掉）

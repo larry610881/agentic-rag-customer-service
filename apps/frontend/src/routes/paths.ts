@@ -26,6 +26,7 @@ export const ROUTES = {
   ADMIN_QUOTA_OVERVIEW: "/admin/quota-overview",
   ADMIN_QUOTA_EVENTS: "/admin/quota-events",
   ADMIN_BILLING: "/admin/billing",
+  ADMIN_CONVERSATIONS: "/admin/conversations",
   ADMIN_MCP_REGISTRY: "/admin/mcp-registry",
   ADMIN_TOOLS: "/admin/tools",
   ADMIN_TENANTS: "/admin/tenants",

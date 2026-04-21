@@ -254,3 +254,79 @@ class MilvusVectorStore(VectorStore):
             latency_ms=elapsed_ms,
         )
         return search_results
+
+    # ──────────────────────────────────────────────────────────────────
+    # S-Gov.6b: Conversation Summary collection methods
+    # ──────────────────────────────────────────────────────────────────
+    #
+    # 設計：reuse 既有 schema（id / vector / tenant_id / document_id / content / extra）
+    # mapping：
+    #   id          → conversation_id（PK，upsert 同 conv_id 自動覆蓋）
+    #   tenant_id   → conv.tenant_id（filter 用）
+    #   document_id → bot_id（語意 reuse — 用 bot_id 過濾同 bot 的對話）
+    #   content     → summary text（搜尋結果回顯）
+    #   extra       → 其他 metadata（first_message_at / message_count / summary_at）
+
+    CONV_SUMMARIES_COLLECTION = "conv_summaries"
+    CONV_SUMMARY_VECTOR_DIM = 3072  # text-embedding-3-large
+
+    async def ensure_conv_summaries_collection(self) -> None:
+        """確保 conv_summaries collection 存在（vector dim=3072）。"""
+        await self.ensure_collection(
+            self.CONV_SUMMARIES_COLLECTION,
+            self.CONV_SUMMARY_VECTOR_DIM,
+        )
+
+    async def upsert_conv_summary(
+        self,
+        *,
+        conversation_id: str,
+        embedding: list[float],
+        tenant_id: str,
+        bot_id: str | None,
+        summary: str,
+        first_message_at: str | None = None,
+        message_count: int = 0,
+        summary_at: str | None = None,
+    ) -> None:
+        """Upsert 單一對話 summary vector（同 conv_id 自動覆蓋）。"""
+        await self.ensure_conv_summaries_collection()
+        payload: dict[str, Any] = {
+            "tenant_id": tenant_id,
+            "document_id": bot_id or "",  # reuse 為 bot_id filter
+            "content": summary,
+            "first_message_at": first_message_at or "",
+            "message_count": message_count,
+            "summary_at": summary_at or "",
+        }
+        await self.upsert(
+            collection=self.CONV_SUMMARIES_COLLECTION,
+            ids=[conversation_id],
+            vectors=[embedding],
+            payloads=[payload],
+        )
+
+    async def search_conv_summaries(
+        self,
+        *,
+        query_vector: list[float],
+        tenant_id: str | None = None,
+        bot_id: str | None = None,
+        limit: int = 20,
+        score_threshold: float = 0.3,
+    ) -> list[SearchResult]:
+        """Semantic search 對話摘要。回傳 SearchResult 含 conversation_id (id)
+        + summary (content) + payload metadata。
+        """
+        filters: dict[str, Any] = {}
+        if tenant_id is not None:
+            filters["tenant_id"] = tenant_id
+        if bot_id is not None:
+            filters["document_id"] = bot_id  # reuse semantic
+        return await self.search(
+            collection=self.CONV_SUMMARIES_COLLECTION,
+            query_vector=query_vector,
+            limit=limit,
+            score_threshold=score_threshold,
+            filters=filters or None,
+        )
