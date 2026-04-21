@@ -88,7 +88,9 @@ def update_temperature(context, update_use_case, temp):
         bot_id=context["bot_id"],
         temperature=temp,
     )
-    context["result"] = _run(update_use_case.execute(command))
+    # UpdateBotUseCase.execute() 回傳 (Bot, warm_up_status)；本測試只驗 Bot 欄位
+    bot, _warm_up_status = _run(update_use_case.execute(command))
+    context["result"] = bot
 
 
 @when(parsers.parse('更新機器人名稱為 "{name}"'))
@@ -97,7 +99,8 @@ def update_name(context, update_use_case, name):
         bot_id=context["bot_id"],
         name=name,
     )
-    context["result"] = _run(update_use_case.execute(command))
+    bot, _warm_up_status = _run(update_use_case.execute(command))
+    context["result"] = bot
 
 
 @when("刪除機器人")

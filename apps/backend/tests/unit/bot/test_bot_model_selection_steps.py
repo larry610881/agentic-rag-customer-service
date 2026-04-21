@@ -94,7 +94,8 @@ def existing_bot(mock_bot_repo):
 )
 def update_model(context):
     uc = UpdateBotUseCase(bot_repository=context["repo"])
-    return _run(
+    # UpdateBotUseCase.execute() 回傳 (Bot, warm_up_status)；本測試只驗 Bot 欄位
+    bot, _warm_up_status = _run(
         uc.execute(
             UpdateBotCommand(
                 bot_id="bot-1",
@@ -103,6 +104,7 @@ def update_model(context):
             )
         )
     )
+    return bot
 
 
 @then('機器人的 llm_provider 應為 "anthropic"')
