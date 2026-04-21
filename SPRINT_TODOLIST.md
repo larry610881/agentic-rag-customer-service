@@ -1592,7 +1592,10 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | Frontend dialog test 擴充 | ✅ | 4 新 case：未展開不送 / 啟用勾選送 list / 取消送 null / 「其他」不應出現 |
 | 測試結果 | ✅ | Backend unit 701 passed + 新增 77 全綠；new integration 6/6 全綠；frontend 6/6 全綠 |
 | 架構筆記 | ✅ | `docs/architecture-journal.md` — Route B 筆記（累計 vs 讀時、Sentinel Pattern、錢相關測試密度）|
-| Data remediation (dev-vm) | ⏳ 待 Larry 授權 | 走 migration-workflow 五步：(1) 清 tenants.included_categories 的 "other" 殘留 (2) Carrefour reset 成 NULL |
+| Data remediation 1 (dev-vm) | ✅ 已執行 (2026-04-21) | 清 tenants.included_categories 的 "other" 殘留（UPDATE 1 row）+ Carrefour reset 成 NULL |
+| Data remediation 2 base_remaining 校正 | ✅ 已執行 (2026-04-21) | `UPDATE token_ledgers SET base_remaining = base_total - SUM(usage)` Carrefour 2026-04；9,985,088 → 9,704,008；total_used_in_cycle 14,912 → 295,992；部署前歷史 usage drift 一次性補正；未來靠 Route B 不再 drift |
+| Token-Gov.6 Recalibrate 端點 (修法 2) | ⏳ 規劃中 | `POST /admin/tenants/{id}/recalibrate-ledger`：一鍵重算 base_remaining = base_total - SUM(billable_usage)；對應「設定後偶發 drift 要能手動修」的 Ops 需求 |
+| git push fix/token-two-page-consistency → origin | ⏳ 待 Larry 授權 | sandbox 阻擋直接 push main 與 feature branch；本地 `main` ahead of origin/main by 2 commits（cf07675 + 8fecbf4），等 Larry 決定 push main 或走 PR |
 
 ### S-Gov.6 Agent 執行追蹤 UI 可讀性強化
 > 既有 `agent_execution_traces` 已落地（見 S-Gov.1），本 Sprint 聚焦**前端 UI 可讀性**與**查詢能力**，後端只做欄位/索引補強。
