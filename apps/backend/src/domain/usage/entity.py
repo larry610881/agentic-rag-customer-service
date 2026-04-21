@@ -9,7 +9,7 @@ from uuid import uuid4
 
 @dataclass
 class UsageRecord:
-    """LLM 使用記錄"""
+    """LLM 使用記錄 (Token-Gov.6: total_tokens 改為 @property，不再儲存冗餘欄位)"""
 
     id: str = field(default_factory=lambda: str(uuid4()))
     tenant_id: str = ""
@@ -17,7 +17,6 @@ class UsageRecord:
     model: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
-    total_tokens: int = 0
     estimated_cost: float = 0.0
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
@@ -26,3 +25,17 @@ class UsageRecord:
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
+
+    @property
+    def total_tokens(self) -> int:
+        """Token-Gov.6: total = input + output + cache_read + cache_creation (動態計算)
+
+        以前是儲存欄位，與 4 個 raw 欄位重複；改為 property 後永不 drift。
+        外部 read API（`.total_tokens`）維持不變。
+        """
+        return (
+            self.input_tokens
+            + self.output_tokens
+            + self.cache_read_tokens
+            + self.cache_creation_tokens
+        )

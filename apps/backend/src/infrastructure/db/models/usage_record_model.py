@@ -27,9 +27,8 @@ class UsageRecordModel(Base):
     output_tokens: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
     )
-    total_tokens: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
+    # Token-Gov.6: total_tokens 欄位已刪除（與 4 個 raw 欄位重複儲存）
+    # SUM query 動態計算：input + output + cache_read + cache_creation
     estimated_cost: Mapped[float] = mapped_column(
         Float, nullable=False, default=0.0
     )

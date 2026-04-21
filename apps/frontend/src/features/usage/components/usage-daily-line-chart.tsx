@@ -13,6 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { MonthlyUsageStat } from "@/types/token-usage";
+import { CHART_TOOLTIP } from "@/lib/chart-styles";
 
 interface TrendDataPoint {
   label: string;
@@ -30,11 +31,7 @@ interface UsageTrendChartProps {
   mode: "month" | "year";
 }
 
-const tooltipStyle = {
-  background: "oklch(0.14 0.02 250)",
-  border: "1px solid oklch(0.75 0.15 195 / 20%)",
-  borderRadius: "8px",
-};
+// Token-Gov.6: tooltip 樣式移至共用 @/lib/chart-styles
 
 function formatLabel(value: number, name: string) {
   return [
@@ -123,7 +120,7 @@ export function UsageTrendLineChart({
               <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 5%)" />
               <XAxis dataKey="label" fontSize={12} stroke="oklch(1 0 0 / 40%)" />
               <YAxis fontSize={12} stroke="oklch(1 0 0 / 40%)" />
-              <Tooltip contentStyle={tooltipStyle} formatter={formatLabel} />
+              <Tooltip {...CHART_TOOLTIP} formatter={formatLabel} />
               {mode === "month" ? (
                 <Line
                   type="monotone"
@@ -159,7 +156,7 @@ export function UsageTrendLineChart({
               <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 5%)" />
               <XAxis dataKey="label" fontSize={12} stroke="oklch(1 0 0 / 40%)" />
               <YAxis fontSize={12} stroke="oklch(1 0 0 / 40%)" />
-              <Tooltip contentStyle={tooltipStyle} formatter={formatLabel} />
+              <Tooltip {...CHART_TOOLTIP} formatter={formatLabel} />
               {mode === "month" ? (
                 <Bar
                   dataKey="total"

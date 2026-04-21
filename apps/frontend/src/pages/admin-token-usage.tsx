@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { REQUEST_TYPE_LABELS } from "@/types/token-usage";
+import { USAGE_CATEGORIES } from "@/constants/usage-categories";
 
 const containerVariants: Variants = {
   hidden: {},
@@ -25,11 +25,10 @@ const itemVariants: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0, 0, 0.2, 1] as const } },
 };
 
+// Token-Gov.6: filter 下拉從 single source of truth 生成（12 類全包）
 const TYPE_FILTER_OPTIONS = [
   { value: "all", label: "全部類型" },
-  ...Object.entries(REQUEST_TYPE_LABELS)
-    .filter(([k]) => k !== "agent") // skip legacy alias
-    .map(([value, label]) => ({ value, label })),
+  ...USAGE_CATEGORIES.map((c) => ({ value: c.value, label: c.label })),
 ];
 
 export default function AdminTokenUsagePage() {
@@ -40,12 +39,8 @@ export default function AdminTokenUsagePage() {
 
   const data = useMemo(() => {
     if (!rawData || typeFilter === "all") return rawData;
-    return rawData.filter((row) => {
-      if (typeFilter === "chat_web") {
-        return row.request_type === "chat_web" || row.request_type === "agent";
-      }
-      return row.request_type === typeFilter;
-    });
+    // Token-Gov.5 白名單後 DB 只會有 UsageCategory enum 值，legacy "agent" 字串已不會出現
+    return rawData.filter((row) => row.request_type === typeFilter);
   }, [rawData, typeFilter]);
 
   return (

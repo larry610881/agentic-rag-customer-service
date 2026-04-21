@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TenantBotUsageStat } from "@/types/token-usage";
 import { getRequestTypeLabel } from "@/types/token-usage";
+import { CHART_TOOLTIP } from "@/lib/chart-styles";
 
 interface TokenUsageBarChartProps {
   data: TenantBotUsageStat[] | undefined;
@@ -69,16 +70,12 @@ export function TokenUsageBarChart({ data, isLoading }: TokenUsageBarChartProps)
             <XAxis dataKey="type" fontSize={12} stroke="oklch(1 0 0 / 40%)" />
             <YAxis fontSize={12} stroke="oklch(1 0 0 / 40%)" />
             <Tooltip
+              {...CHART_TOOLTIP}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               formatter={(value: any, name: any) => [
                 Number(value).toLocaleString(),
                 name === "input_tokens" ? "輸入 Tokens" : "輸出 Tokens",
               ]}
-              contentStyle={{
-                background: "oklch(0.14 0.02 250)",
-                border: "1px solid oklch(0.75 0.15 195 / 20%)",
-                borderRadius: "8px",
-              }}
             />
             <Bar
               dataKey="input_tokens"

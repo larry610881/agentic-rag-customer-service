@@ -13,22 +13,7 @@ import {
   CardContent,
   CardDescription,
 } from "@/components/ui/card";
-
-const USAGE_CATEGORY_LABEL: Record<string, string> = {
-  rag: "RAG 查詢",
-  chat_web: "Web 對話",
-  chat_widget: "Widget 對話",
-  chat_line: "LINE 對話",
-  ocr: "OCR",
-  embedding: "Embedding",
-  guard: "Prompt Guard",
-  rerank: "LLM Reranker",
-  contextual_retrieval: "Contextual Retrieval",
-  pdf_rename: "PDF 子頁 Rename",
-  auto_classification: "Auto Classification",
-  intent_classify: "意圖分類",
-  other: "其他",
-};
+import { getCategoryLabel } from "@/constants/usage-categories";
 
 const containerVariants: Variants = {
   hidden: {},
@@ -189,7 +174,7 @@ export default function QuotaPage() {
                   <div className="flex flex-wrap gap-2">
                     {data.included_categories.map((c) => (
                       <Badge key={c} variant="outline">
-                        {USAGE_CATEGORY_LABEL[c] ?? c}
+                        {getCategoryLabel(c)}
                       </Badge>
                     ))}
                   </div>

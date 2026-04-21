@@ -10,6 +10,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { MonthlyUsageStat } from "@/types/token-usage";
+import { CHART_TOOLTIP } from "@/lib/chart-styles";
 
 interface UsageMonthlyBarChartProps {
   data: MonthlyUsageStat[] | undefined;
@@ -53,11 +54,7 @@ export function UsageMonthlyBarChart({ data, isLoading }: UsageMonthlyBarChartPr
             <XAxis dataKey="label" fontSize={12} stroke="oklch(1 0 0 / 40%)" />
             <YAxis fontSize={12} stroke="oklch(1 0 0 / 40%)" />
             <Tooltip
-              contentStyle={{
-                background: "oklch(0.14 0.02 250)",
-                border: "1px solid oklch(0.75 0.15 195 / 20%)",
-                borderRadius: "8px",
-              }}
+              {...CHART_TOOLTIP}
               formatter={(value: number, name: string) => [
                 value.toLocaleString(),
                 name === "input" ? "輸入 Tokens" : "輸出 Tokens",

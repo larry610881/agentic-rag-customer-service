@@ -1,6 +1,6 @@
 """SQLAlchemy Usage Repository 實作"""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,15 @@ from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.message_model import MessageModel
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
 
+# Token-Gov.6: total_tokens 欄位已從 DB 刪除；由 4 個 raw 欄位動態加總
+# 所有 SUM aggregate 走此 expression，避免各處重複
+_TOTAL_TOKENS_EXPR = (
+    UsageRecordModel.input_tokens
+    + UsageRecordModel.output_tokens
+    + UsageRecordModel.cache_read_tokens
+    + UsageRecordModel.cache_creation_tokens
+)
+
 
 class SQLAlchemyUsageRepository(UsageRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -32,7 +41,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 model=record.model,
                 input_tokens=record.input_tokens,
                 output_tokens=record.output_tokens,
-                total_tokens=record.total_tokens,
+                # Token-Gov.6: total_tokens 欄位已刪，不寫入
                 estimated_cost=record.estimated_cost,
                 cache_read_tokens=record.cache_read_tokens,
                 cache_creation_tokens=record.cache_creation_tokens,
@@ -68,7 +77,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 model=r.model,
                 input_tokens=r.input_tokens,
                 output_tokens=r.output_tokens,
-                total_tokens=r.total_tokens,
+                # Token-Gov.6: total_tokens 由 @property 自動計算
                 estimated_cost=r.estimated_cost,
                 cache_read_tokens=r.cache_read_tokens,
                 cache_creation_tokens=r.cache_creation_tokens,
@@ -169,7 +178,8 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 func.count().label("cnt"),
                 func.sum(UsageRecordModel.input_tokens).label("sum_input"),
                 func.sum(UsageRecordModel.output_tokens).label("sum_output"),
-                func.sum(UsageRecordModel.total_tokens).label("sum_total"),
+                # Token-Gov.6: total_tokens 欄位已刪，改 SQL expression 動態加總
+                func.sum(_TOTAL_TOKENS_EXPR).label("sum_total"),
                 func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
             )
             .outerjoin(BotModel, UsageRecordModel.bot_id == BotModel.id)
@@ -216,7 +226,8 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 func.count().label("cnt"),
                 func.sum(UsageRecordModel.input_tokens).label("sum_input"),
                 func.sum(UsageRecordModel.output_tokens).label("sum_output"),
-                func.sum(UsageRecordModel.total_tokens).label("sum_total"),
+                # Token-Gov.6: total_tokens 欄位已刪，改 SQL expression 動態加總
+                func.sum(_TOTAL_TOKENS_EXPR).label("sum_total"),
                 func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
             )
             .where(UsageRecordModel.tenant_id == tenant_id)
@@ -254,7 +265,8 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 func.count().label("cnt"),
                 func.sum(UsageRecordModel.input_tokens).label("sum_input"),
                 func.sum(UsageRecordModel.output_tokens).label("sum_output"),
-                func.sum(UsageRecordModel.total_tokens).label("sum_total"),
+                # Token-Gov.6: total_tokens 欄位已刪，改 SQL expression 動態加總
+                func.sum(_TOTAL_TOKENS_EXPR).label("sum_total"),
                 func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
             )
             .where(UsageRecordModel.tenant_id == tenant_id)
@@ -278,21 +290,21 @@ class SQLAlchemyUsageRepository(UsageRepository):
             for row in result.all()
         ]
 
-    async def sum_tokens_in_cycle(
-        self, tenant_id: str, cycle_year_month: str
+    async def sum_tokens_in_range(
+        self, tenant_id: str, start: datetime, end: datetime
     ) -> int:
-        """SUM total_tokens for (tenant_id, YYYY-MM cycle). Return 0 if no records.
+        """SUM total_tokens for (tenant_id, [start, end) range). Return 0 if no records.
 
-        Route B: GetTenantQuotaUseCase / ListAllTenantsQuotasUseCase 用此方法
-        計算 total_used_in_cycle，取代 ledger.total_used_in_cycle。
+        Token-Gov.6: 唯一的 SUM 入口（sum_tokens_in_cycle 改為 Domain ABC 的薄 wrapper
+        delegate 到此方法）。本月額度頁 + Token 用量頁共用這個 SQL path。
         Index: ix_token_usage_records_tenant_created (tenant_id, created_at)。
         """
         stmt = select(
-            func.coalesce(func.sum(UsageRecordModel.total_tokens), 0)
+            func.coalesce(func.sum(_TOTAL_TOKENS_EXPR), 0)
         ).where(
             UsageRecordModel.tenant_id == tenant_id,
-            func.to_char(UsageRecordModel.created_at, "YYYY-MM")
-            == cycle_year_month,
+            UsageRecordModel.created_at >= start,
+            UsageRecordModel.created_at < end,
         )
         result = await self._session.execute(stmt)
         value = result.scalar_one()

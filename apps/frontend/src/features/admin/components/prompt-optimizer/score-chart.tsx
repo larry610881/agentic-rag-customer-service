@@ -9,6 +9,7 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CHART_TOOLTIP } from "@/lib/chart-styles";
 
 interface ScoreChartProps {
   data: { iteration: number; score: number; bestScore: number }[];
@@ -60,11 +61,7 @@ export function ScoreChart({ data, baselineScore }: ScoreChartProps) {
               domain={[0, 1]}
             />
             <Tooltip
-              contentStyle={{
-                background: "oklch(0.14 0.02 250)",
-                border: "1px solid oklch(0.75 0.15 195 / 20%)",
-                borderRadius: "8px",
-              }}
+              {...CHART_TOOLTIP}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               formatter={(value: any, name: any) => [
                 Number(value).toFixed(3),

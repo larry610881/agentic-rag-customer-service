@@ -7,6 +7,53 @@
 
 ---
 
+## Token-Gov.6 — 刪冗餘欄位 + SQL expression SUM + Frontend i18n SSOT + 圖表樣式共用
+
+**Sprint 來源**：Token-Gov.5 完成後 Larry 在驗證中提出兩個架構原則：
+1. 「我不想要同樣的值存兩個欄位」— 指 `token_usage_records.total_tokens` = input+output+cache_read+cache_creation 的冗餘儲存
+2. 「兩頁總和一定要一樣…最好使用同一個 table 欄位跟 function」— 指兩頁走不同 Repository 方法仍有 drift 風險
+
+**主題**：Schema 層刪冗餘欄位 + Domain 層 @property 補償 + SQL expression aggregate + 前端 SSOT 兩道（label constants + chart styles）。
+
+### 做得好的地方
+
+- **分層職責釐清**：`UsageRecord`（Entity / ORM reconstruct）改 `@property`，但 `TokenUsage`（Value Object / Provider SDK 邊界）保留 field。理由：OpenAI/Anthropic SDK 回傳的 `total_tokens` 可能與 computed sum 不同（特殊計費），Value Object 應忠實承接 provider 值；ORM/DB 層才刪冗餘。分層拆開後語意乾淨。
+- **SQL expression 而非 Python 端 sum**：所有 aggregate method 改走 `func.sum(input + output + cache_read + cache_creation)`，PostgreSQL 可 push-down 計算，效能接近（仍走 composite index `ix_token_usage_records_tenant_created`）。避免先 fetch all records 再 Python sum 的 memory cost。
+- **Domain ABC wrapper delegate**：`sum_tokens_in_cycle` 改為 ABC 的 concrete wrapper 呼叫 `sum_tokens_in_range`，subclass 只要實作 range 版本就能同時支援兩個。Application 層（`GetTenantQuotaUseCase`）call site 不用改，降低 blast radius。
+- **前端 SSOT 兩道獨立抽出**：
+  - `constants/usage-categories.ts` — 12 個 category label 從 4 處散落（tenant-config-dialog / types / admin-quota-overview / quota）統一到一處，順便加 `shortLabel` 對應窄欄 table、`isChatType` helper
+  - `lib/chart-styles.ts` — 5 個 chart 檔（pie / 2 bar / line / score）各自重複的 tooltip style 統一，同時加 `color` / `itemStyle` / `labelStyle` 明確指定（user 原本反映 tooltip 文字看不清就是因為預設色在 dark bg 吃掉）
+- **修 UI bug 的副作用發現**：`REQUEST_TYPE_LABELS` 原本只有 7 個 key（缺 5 個 Token-Gov.0 新增的 category）— 這是為什麼系統 Token 用量頁的「按類型」filter 只有 7 個、bar chart 顯示 `intent_classify` 英文。SSOT 重構後自動修復。
+
+### 潛在隱憂
+
+- **`TokenUsage.total_tokens` 跟 `UsageRecord.total_tokens` 語意不對稱** → Value Object 是 provider 值（可能有 cache discount 特殊計費），Entity 是 4 欄加總。若未來 provider 給的值 != computed（例如 Anthropic 新版 cache 規則），寫進 DB 時會被「正規化」為 computed，audit trail 上看不出 provider 原回傳。中優先級，目前 provider 回的 total_tokens 都等同 computed，未見問題。
+- **Migration 時序敏感性（延續 Token-Gov.5 的 BUG-01 經驗）** → 必須先部署新 code（不寫 total_tokens）→ 再套 dev-vm DB migration。反過來會 runtime 500。本 sprint 的 plan 已明確標註，但實務要靠 Larry 人工把關（CI auto-deploy 不等 migration）。
+- **19 個 test 檔 `total_tokens` assertion 隱性依賴** → 刪除 DB 欄位後，dataclass 建構子不再接受 `total_tokens=` 參數。依賴 Python `dataclass` 會自動 reject（TypeError），不是 silent drop — 所以修測試會「一次爆光、集中解決」，不會埋伏隱患。
+- **Frontend `REQUEST_TYPE_LABELS` 保留 re-export 為 deprecated backward-compat** → Stage 5 後應逐一檢視 import 並替換成直接 `getCategoryLabel`。留短期 compat 是為了讓本 sprint commit 盡量乾淨、不碰無關檔。低優先級。
+
+### 延伸學習
+
+- **Field vs Property in dataclass**：Python dataclass 的 `@property` 不是 field，不進 constructor、不進 `asdict()`。這對「從 dataclass 序列化成 JSON / 回傳 API」有微妙影響 — 要記得 `model_dump()` / FastAPI response_model 如果是 Pydantic 會自動 include property，但純 dataclass + `json.dumps(asdict(...))` 會遺漏。本 sprint 因為 API 走 Pydantic DTO（`TenantQuotaResponse`），不受影響。
+- **SQL 表達式 aggregate 的 index 利用**：`func.sum(a + b + c + d)` PostgreSQL 會把 `a + b + c + d` 當 computed value 每 row 算一次，不走 functional index。但 WHERE clause 仍走 `tenant_id + created_at` composite index — 效能關鍵是 row filter，aggregate computation 是後續 streaming 加總，O(n) 對已過濾 row 集合。
+- **Single Source of Truth 的粒度判斷**：3 種「同一個」的抽法：
+  - Label SSOT（本 sprint 做）— 共用「字串 → 中文對應」
+  - Aggregate function SSOT（本 sprint 做）— 共用「SUM SQL expression」
+  - Chart style SSOT（本 sprint 做）— 共用「tooltip 顏色 / 字體」
+  - 沒做：DTO SSOT（後端/前端 type 獨立定義）— 正確，因為前後端變動週期不同
+  - 口訣：「資料定義」適合 SSOT；「傳輸合約」適合獨立，以 contract test 守門
+
+### 討論題
+
+> Token-Gov.6 把 `UsageRecord.total_tokens` 改為 `@property`，外部 API `.total_tokens` 不變。如果下一版要擴充「dynamic billing discount」—例如週末 output tokens 打八折，算 `total_tokens` 時要減掉折扣差額：
+> (a) 把折扣邏輯放進 `UsageRecord.total_tokens` property（Domain-level 商業邏輯）
+> (b) 獨立 `BillingCalculator` Domain Service 算 billable_total，保持 `total_tokens` 為 raw sum
+> (c) 在 SQL aggregate 那層 join pricing table 動態算
+>
+> 哪種分層最耐改？（提示：週末折扣的「週末」定義可能會變）
+
+---
+
 ## Route B — Token 兩頁一致性：累計狀態 vs Read-time SUM + Sentinel Pattern + 錢相關測試密度
 
 **Sprint 來源**：Issue #35（Carrefour 用戶反映「Token 用量 295,992 / 本月額度 14,912 兩頁不一致」）
@@ -47,6 +94,7 @@
 
 ## 目錄
 
+- [Token-Gov.6 — 刪冗餘欄位 + SQL expression SUM + Frontend i18n SSOT + 圖表樣式共用](#token-gov6--刪冗餘欄位--sql-expression-sum--frontend-i18n-ssot--圖表樣式共用)
 - [Route B — Token 兩頁一致性：累計狀態 vs Read-time SUM + Sentinel Pattern + 錢相關測試密度](#route-b--token-兩頁一致性累計狀態-vs-read-time-sum--sentinel-pattern--錢相關測試密度)
 - [Ollama A/B 測試 Debug — 模型 Tag 驗證 + Router Prefix + RHF shouldDirty](#ollama-ab-測試-debug--模型-tag-驗證--router-prefix--rhf-shoulddirty)
 - [S-Gov.6a — Agent Trace UI 強化：JSON ILIKE 中文 escape 陷阱 + Module-level Session 的 Test Monkeypatch + URL ↔ Filter 雙向 Sync](#s-gov6a--agent-trace-ui-強化json-ilike-中文-escape-陷阱--module-level-session-的-test-monkeypatch--url--filter-雙向-sync)

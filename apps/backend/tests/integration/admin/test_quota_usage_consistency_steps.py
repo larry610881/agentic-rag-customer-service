@@ -157,7 +157,7 @@ def seed_usage_historical(ctx, tname, cycle, n):
                     model="test",
                     input_tokens=n,
                     output_tokens=0,
-                    total_tokens=n,
+                    # Token-Gov.6: total_tokens 欄位已刪，由 @property 動態算
                     estimated_cost=0.0,
                     cache_read_tokens=0,
                     cache_creation_tokens=0,

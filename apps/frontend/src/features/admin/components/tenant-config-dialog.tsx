@@ -7,6 +7,7 @@ import { queryKeys } from "@/hooks/queries/keys";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { usePlans } from "@/hooks/queries/use-plans";
 import { useTenantQuota } from "@/hooks/queries/use-tenant-quota";
+import { USAGE_CATEGORIES } from "@/constants/usage-categories";
 import type { Tenant } from "@/types/auth";
 import {
   Dialog,
@@ -38,23 +39,6 @@ interface UpdateTenantConfigBody {
   monthly_token_limit: number | null;
   included_categories?: string[] | null;
 }
-
-// S-Token-Gov.2: UsageCategory enum 對應前端顯示
-// 與後端 src/domain/usage/category.py 的 12 個具名值同步（OTHER 已刪）
-const USAGE_CATEGORIES: { value: string; label: string }[] = [
-  { value: "rag", label: "RAG 查詢" },
-  { value: "chat_web", label: "Web 對話" },
-  { value: "chat_widget", label: "Widget 對話" },
-  { value: "chat_line", label: "LINE 對話" },
-  { value: "ocr", label: "OCR" },
-  { value: "embedding", label: "Embedding" },
-  { value: "guard", label: "Prompt Guard" },
-  { value: "rerank", label: "LLM Reranker" },
-  { value: "contextual_retrieval", label: "Contextual Retrieval" },
-  { value: "pdf_rename", label: "PDF 子頁 Rename" },
-  { value: "auto_classification", label: "Auto Classification" },
-  { value: "intent_classify", label: "意圖分類" },
-];
 
 function formatTokens(n: number): string {
   if (Math.abs(n) >= 100_000_000) return `${(n / 100_000_000).toFixed(2)} 億`;

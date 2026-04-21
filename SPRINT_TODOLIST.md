@@ -1597,6 +1597,31 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | Token-Gov.6 Recalibrate 端點 (修法 2) | ⏳ 規劃中 | `POST /admin/tenants/{id}/recalibrate-ledger`：一鍵重算 base_remaining = base_total - SUM(billable_usage)；對應「設定後偶發 drift 要能手動修」的 Ops 需求 |
 | git push fix/token-two-page-consistency → origin | ⏳ 待 Larry 授權 | sandbox 阻擋直接 push main 與 feature branch；本地 `main` ahead of origin/main by 2 commits（cf07675 + 8fecbf4），等 Larry 決定 push main 或走 PR |
 
+#### S-Token-Gov.6 刪除冗餘 total_tokens + 抽共用 sum_tokens_in_range + 前端 i18n 統一 ✅ 完成 (2026-04-21)
+> 修 Larry 提出的兩個架構原則：(1) 不得重複儲存「同值」欄位 (2) 兩頁總和必走同一個 function。
+> 順手修前端 category label 4 處散落 + chart tooltip 視覺 + `intent_classify` 英文沒翻。
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Migration: drop_token_usage_total_tokens.sql | ✅ | `ALTER TABLE token_usage_records DROP COLUMN total_tokens`；local-docker 已套 + `_applied_migrations` 記錄 |
+| Domain: UsageRecord.total_tokens 改 @property | ✅ | 動態計算 = input + output + cache_read + cache_creation；外部 API 不變 |
+| Domain: UsageRepository.sum_tokens_in_range abstract | ✅ | 新的唯一 SUM 入口；sum_tokens_in_cycle 改為 ABC 薄 wrapper delegate |
+| Infrastructure: _TOTAL_TOKENS_EXPR helper | ✅ | 所有 `func.sum(UsageRecordModel.total_tokens)` 改 `func.sum(_TOTAL_TOKENS_EXPR)` |
+| Infrastructure: ORM 刪 total_tokens 欄位 | ✅ | usage_record_model.py 移除 Mapped 宣告 |
+| Infrastructure: sum_tokens_in_range 實作 | ✅ | 取代舊 sum_tokens_in_cycle（Domain wrapper 接手）|
+| Infrastructure: save()/find_by_tenant() 不傳 total_tokens | ✅ | Entity @property 自動算 |
+| Application: RecordUsageUseCase 不傳 total_tokens 給 UsageRecord | ✅ | constructor 不再有該參數 |
+| Frontend: constants/usage-categories.ts SSOT | ✅ | 12 個 `{value, label, shortLabel}` + getCategoryLabel / getCategoryShortLabel / isChatType |
+| Frontend: 4 處散落 label 改 import constants | ✅ | tenant-config-dialog.tsx / types/token-usage.ts / admin-quota-overview.tsx / quota.tsx |
+| Frontend: admin-token-usage filter 12 類 | ✅ | 從 REQUEST_TYPE_LABELS(7個) 改用 USAGE_CATEGORIES(12個)；清 legacy "agent" filter |
+| Frontend: intent_classify 顯示中文 | ✅ | 修完後系統 Token 用量頁、bar chart、table 全部中文 |
+| Frontend: lib/chart-styles.ts 共用 | ✅ | 5 個 chart 檔（pie/2 bar/line/score-chart）統一 CHART_TOOLTIP + 明確文字色 |
+| BDD: two_page_consistency.feature | ✅ | 3 scenarios（含 cache / filter 下相等 / 跨租戶隔離）全綠 |
+| Unit Tests | ✅ | test_usage_record_total_tokens_property.py (7)、test_sum_tokens_in_range.py (3)；不變性 fence |
+| Integration Tests | ✅ | test_two_page_consistency_steps.py (3) + 既有 test_quota_usage_consistency 更新 |
+| 全量測試 | ✅ | unit 749 passed（3 pre-existing bot fail 非本 sprint）；lint all-pass |
+| Data remediation (dev-vm migration) | ⏳ 待 Larry 授權 | 走 migration-workflow：preview `\d token_usage_records` → `ALTER TABLE ... DROP COLUMN` → verify + INSERT _applied_migrations；**時序：必須先部署新 code 到 Cloud Run，才能套 DB migration** |
+
 ### S-Gov.6 Agent 執行追蹤 UI 可讀性強化
 > 既有 `agent_execution_traces` 已落地（見 S-Gov.1），本 Sprint 聚焦**前端 UI 可讀性**與**查詢能力**，後端只做欄位/索引補強。
 

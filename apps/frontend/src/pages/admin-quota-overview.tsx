@@ -27,22 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-const USAGE_CATEGORY_LABEL: Record<string, string> = {
-  rag: "RAG",
-  chat_web: "Web",
-  chat_widget: "Widget",
-  chat_line: "LINE",
-  ocr: "OCR",
-  embedding: "Embedding",
-  guard: "Guard",
-  rerank: "Rerank",
-  contextual_retrieval: "Contextual",
-  pdf_rename: "PDF Rename",
-  auto_classification: "Auto Class.",
-  intent_classify: "Intent",
-  other: "Other",
-};
+import { getCategoryShortLabel } from "@/constants/usage-categories";
 
 const containerVariants: Variants = {
   hidden: {},
@@ -93,7 +78,7 @@ function categoryBadge(included: string[] | null) {
     <div className="flex flex-wrap gap-1">
       {visible.map((c) => (
         <Badge key={c} variant="outline">
-          {USAGE_CATEGORY_LABEL[c] ?? c}
+          {getCategoryShortLabel(c)}
         </Badge>
       ))}
       {overflow > 0 && (

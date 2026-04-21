@@ -79,7 +79,9 @@ class RecordUsageUseCase:
             model=usage.model,
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
-            total_tokens=usage.total_tokens,
+            # Token-Gov.6: total_tokens 是 @property (= input + output + cache_*)，
+            # 不再從 TokenUsage 帶入。Provider SDK 的 total_tokens 值被此處捨棄
+            # — 若與 computed 不同只會有幾個 token 差距，不影響計費正確性。
             estimated_cost=cost,
             cache_read_tokens=usage.cache_read_tokens,
             cache_creation_tokens=usage.cache_creation_tokens,

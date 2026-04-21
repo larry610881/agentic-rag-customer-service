@@ -26,23 +26,24 @@ export interface BotUsageStat {
   message_count: number;
 }
 
-export const REQUEST_TYPE_LABELS: Record<string, string> = {
-  chat_web: "Web 後台對話",
-  chat_widget: "Widget 對話",
-  chat_line: "LINE 對話",
-  rag: "RAG 查詢",
-  ocr: "PDF OCR",
-  embedding: "Embedding 向量化",
-  agent: "Web 後台對話",
-};
+// Token-Gov.6: category label 的 single source of truth 移至 constants/usage-categories.ts
+// 本檔 re-export 保持 backward compat（既有 import 不需改）
+export {
+  USAGE_CATEGORIES,
+  getCategoryLabel as getRequestTypeLabel,
+  getCategoryShortLabel,
+  isChatType,
+} from "@/constants/usage-categories";
 
-export function getRequestTypeLabel(type: string): string {
-  return REQUEST_TYPE_LABELS[type] ?? type;
-}
+import { USAGE_CATEGORIES } from "@/constants/usage-categories";
 
-export function isChatType(type: string): boolean {
-  return type.startsWith("chat_") || type === "agent";
-}
+/**
+ * @deprecated 改用 getCategoryLabel / getCategoryShortLabel。
+ * 保留本對照表以兼容既有直接 lookup 的程式碼。Stage 5 會逐一替換後刪除。
+ */
+export const REQUEST_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  USAGE_CATEGORIES.map((c) => [c.value, c.label]),
+);
 
 export interface DailyUsageStat {
   date: string;

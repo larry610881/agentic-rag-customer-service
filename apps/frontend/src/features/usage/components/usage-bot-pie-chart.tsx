@@ -10,16 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { BotUsageStat } from "@/types/token-usage";
 import { getRequestTypeLabel } from "@/types/token-usage";
-
-const COLORS = [
-  "oklch(0.65 0.20 250)",
-  "oklch(0.70 0.18 150)",
-  "oklch(0.65 0.20 25)",
-  "oklch(0.70 0.16 80)",
-  "oklch(0.60 0.15 300)",
-  "oklch(0.55 0.12 330)",
-  "oklch(0.65 0.18 50)",
-];
+import { CHART_COLORS, CHART_LABEL_FILL, CHART_TOOLTIP } from "@/lib/chart-styles";
 
 type ViewMode = "type" | "bot" | "model";
 
@@ -115,17 +106,15 @@ export function UsagePieChart({ data, isLoading }: UsagePieChartProps) {
                   `${name} ${(percent * 100).toFixed(0)}%`
                 }
                 labelLine={false}
+                stroke={CHART_LABEL_FILL}
+                strokeWidth={0.5}
               >
                 {chartData.map((_, i) => (
-                  <Cell key={i} fill={COLORS[i % COLORS.length]} fillOpacity={0.85} />
+                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} fillOpacity={0.85} />
                 ))}
               </Pie>
               <Tooltip
-                contentStyle={{
-                  background: "oklch(0.14 0.02 250)",
-                  border: "1px solid oklch(0.75 0.15 195 / 20%)",
-                  borderRadius: "8px",
-                }}
+                {...CHART_TOOLTIP}
                 formatter={(value: number) => [value.toLocaleString(), "Tokens"]}
               />
             </PieChart>
