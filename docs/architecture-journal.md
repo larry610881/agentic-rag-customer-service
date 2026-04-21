@@ -7,6 +7,37 @@
 
 ---
 
+## S-Auth.1 — 租戶自助改密碼 + 為何「舊密碼錯」該回 400 不是 401
+
+**Sprint 來源**：帳號開通給 Carrefour 時，Larry 發現 UI 只有 `admin/users/{id}/reset-password`，租戶登入後沒有「自助改密碼」功能（密碼都得找 admin 改）。先補 ① Change Password，先不做「③ 首次登入強制改」（多人共用測試帳號會互相打架）。
+
+**主題**：認證 API 設計中 401 vs 400 的語意差別，以及 front-end apiFetch 的 refresh-token 自動重試會怎麼坑到你。
+
+### 做得好的地方
+
+- **先走 BDD 4 scenarios 再寫 use case**：feature 檔先把「成功 / 舊密碼錯 / user 不存在 / 新舊相同」四個邊界列清，再寫 `ChangePasswordUseCase`。implementation 不到 30 行，四個 scenario 一次 green。整個半天工作沒有「實作中遇到沒想到的邊界」的 surprise。
+- **Use Case 與 Admin `ResetPasswordUseCase` 獨立**：雖然兩者都是改密碼，但語意不同 — admin 不驗舊密碼（因為要能解決「使用者忘記密碼」場景），自助則必須驗舊密碼。拆兩個 Command + 兩個 Use Case，避免「用一個 use case + optional old_password 參數」的條件分支地獄。前者是「管理員授權改」，後者是「使用者授權改」，本質就是不同 command。
+- **JWT `type=user_access` gate 前端入口**：Header 的「變更密碼」按鈕只在 `useAuthStore.userId` 存在時顯示（= 使用者用 email/password 登入拿到的是 user_access token）。dev 模式的 tenant_access token（sub=tenant_id）拿不到 userId → 按鈕消失，避免用 tenant token 打 `/auth/change-password` 永遠 401。前端 gate + 後端 gate 雙重防禦。
+
+### 潛在隱憂
+
+- **`AuthenticationError` (舊密錯) 回 400 不是 401** — 故意的，但**違反 HTTP 狀態碼慣例**。原因：前端 `apiFetch` 碰到 401 會嘗試 refresh token 然後自動重試，對「token 過期」場景是對的，但對「使用者提供的 credential 錯誤」場景會產生**無窮迴圈**（refresh 成功 → 重試 → 舊密還是錯 → 再 401 → 再 refresh → 再重試...）。解法兩個：(A) 後端改 400（domain error 不是 auth error）；(B) 前端 apiFetch 加「這個 endpoint 的 401 不要 refresh」白名單。選 A 是因為改一點、語意可接受（「你給的舊密碼是 validation error 不是 auth state error」），B 則要在 apiFetch 加 endpoint-specific 豁免 list，長期難維護。這個設計選擇值得寫進 API 文件註記，以後有人讀到會困惑。
+- **`SameAsOldPasswordError` 是 domain error vs front-end zod refine** — 後端 422 + 前端 zod refine 同時檢查「新舊密碼不同」。雙層保護本身 OK（避免前端繞過 validation），但 error message 分散：前端 refine message 是「新密碼不可與舊密碼相同」、後端是同一句。未來改其中一邊會忘記改另一邊。低優先級可容忍。
+- **無「密碼複雜度 policy」**：目前只驗「>= 8 碼 <= 128 碼」（前端 zod），後端沒再驗。對 POC 足夠，正式上線前應加複雜度規則（大小寫 / 數字 / 特殊字元）+ 常見密碼 blacklist（haveibeenpwned API or local list）。這該跟「③ 首次登入強制改」一起當 S-Auth.2 做。
+- **沒有 rate limit**：使用者可以無限次 call `/auth/change-password` 猜舊密碼。雖然每次猜錯只是 bcrypt 12 rounds 慢一點（~300ms），但仍是 brute force 通道。應加 per-user 5 次/分鐘上限（可接 sprint 有 Rate Limit infra）。
+
+### 延伸學習
+
+- **HTTP 狀態碼與「為什麼 app 層 validation error 不該用 401」**：401 的語意是「this request does not have valid authentication credentials」 — 通常觸發 client-side 的 re-auth 流程（refresh token、重導向登入頁）。當你的錯誤是「credential 格式對、邏輯有驗證但不通過」— 例如「舊密碼錯」「驗證碼錯」「security question 錯」，應該用 400 或 422，避免自動 re-auth 邏輯誤判。參考：RFC 7235 Section 3.1（401 需帶 WWW-Authenticate header）、OWASP Authentication Cheat Sheet。
+- **「只有自己能改自己」的安全性 = gated by userId from JWT subject**：`/auth/change-password` body 不接 `user_id` 參數，永遠用 JWT `sub` — 這是「讓使用者不能改別人」的最簡潔做法。對比 `/admin/users/{user_id}/reset-password` 必須有 `user_id` 路徑參數（因為 admin 就是要指定改誰），兩端 API 設計就拉開了「權限邊界」。值得在 code review 中把這模式固化：**涉及「操作對象 = 當前使用者」的 endpoint，不該在 body / path 讓 client 再傳一次 user_id**。
+- **認證 (authentication) vs 授權 (authorization) vs domain validation 的三層**：
+  - authN 失敗 → 401 (token 問題)
+  - authZ 失敗 → 403 (權限問題)
+  - domain validation 失敗 → 400 / 422 (資料問題)
+  這三層邊界該在 router / middleware / use case 分別處理，不該用同一個 HTTP status 碼。
+
+---
+
 ## Token-Gov.7 — Trace marker 語意 vs 計時節點 + Auto-topup trigger 條件雙因子守門
 
 **Sprint 來源**：Larry 質疑「路由決策 0ms → 閒聊 0ms → react_thinking 0ms 我好像看了很多次」時深挖 agent trace 設計，順手發現 auto_topup trigger 有計費 bug（Carrefour 2026-04 實例：1500 TWD 虛假計費）。

@@ -2,6 +2,11 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from src.application.auth.change_password_use_case import (
+    ChangePasswordCommand,
+    ChangePasswordUseCase,
+    SameAsOldPasswordError,
+)
 from src.application.auth.login_use_case import (
     AuthenticationError,
     LoginCommand,
@@ -13,9 +18,11 @@ from src.application.auth.register_user_use_case import (
 )
 from src.config import settings
 from src.container import Container
+from src.domain.shared.exceptions import EntityNotFoundError
 from src.domain.tenant.repository import TenantRepository
 from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.logging.trace import trace_step
+from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -156,3 +163,45 @@ async def refresh_token(
         refresh = jwt_service.create_tenant_refresh_token(sub)
 
     return TokenResponse(access_token=access, refresh_token=refresh)
+
+
+# --- S-Auth.1: 租戶自助變更密碼 -----------------------------------------------
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@router.post("/change-password", status_code=204)
+@inject
+async def change_password(
+    body: ChangePasswordRequest,
+    current: CurrentTenant = Depends(get_current_tenant),
+    use_case: ChangePasswordUseCase = Depends(
+        Provide[Container.change_password_use_case]
+    ),
+) -> None:
+    """登入中的使用者自行變更密碼 — 需 user_access JWT 且驗證舊密碼。"""
+    if not current.user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Change password requires a user-level JWT (not tenant token)",
+        )
+    command = ChangePasswordCommand(
+        user_id=current.user_id,
+        old_password=body.old_password,
+        new_password=body.new_password,
+    )
+    try:
+        await use_case.execute(command)
+    except AuthenticationError:
+        # 400（非 401）— 避免前端 apiFetch 把「舊密碼錯」
+        # 誤判為 token 過期而觸發 refresh 迴圈
+        raise HTTPException(status_code=400, detail="舊密碼錯誤") from None
+    except EntityNotFoundError:
+        raise HTTPException(status_code=404, detail="使用者不存在") from None
+    except SameAsOldPasswordError:
+        raise HTTPException(
+            status_code=422, detail="新密碼不可與舊密碼相同"
+        ) from None

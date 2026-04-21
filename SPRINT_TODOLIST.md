@@ -1327,6 +1327,18 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 
 ## 未來 Sprint — 平台治理與計費（2026-04-16 記錄）
 
+### S-Auth.1 租戶自助變更密碼（2026-04-21 ship）
+> 情境：admin 發預設密碼給租戶後，使用者需自己改掉。原本只有 admin 能改（`/admin/users/:id/reset-password`）。
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| ChangePasswordUseCase | ✅ | Application 層，驗舊密碼 + 防與舊密碼同 + Hash 新密碼 |
+| BDD feature + 4 scenarios | ✅ | `change_password.feature`：成功 / 舊密碼錯 / User 不存在 / 新舊同 |
+| POST /api/v1/auth/change-password | ✅ | 需 user_access JWT（tenant_access 拒），舊密錯回 400（避開 apiFetch 401 refresh 迴圈）|
+| Auth store userId 欄位 | ✅ | JWT `type=user_access` 才解 `sub` 為 userId；用來 gate Header 「變更密碼」入口 |
+| /change-password 前端頁 + Form | ✅ | ChangePasswordForm：舊/新/確認三欄 + zod refine + 成功提示；桌面導覽列 Header 顯示「變更密碼」按鈕 |
+| ~~首次登入強制改~~ | ⏭️ 擱置 | 多人共用測試帳號的情境下強制改會打架；先補自助改即可 |
+
 ### S-Gov.1 Sub-agent 驗證與追蹤穩定化
 | 項目 | 狀態 | 說明 |
 |------|------|------|

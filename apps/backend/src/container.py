@@ -10,6 +10,7 @@ from src.application.agent.tool_registry import ToolRegistry
 from src.application.agent.update_built_in_tool_scope_use_case import (
     UpdateBuiltInToolScopeUseCase,
 )
+from src.application.auth.change_password_use_case import ChangePasswordUseCase
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.list_users_use_case import ListUsersUseCase
@@ -17,6 +18,19 @@ from src.application.auth.login_use_case import LoginUseCase
 from src.application.auth.register_user_use_case import RegisterUserUseCase
 from src.application.auth.reset_password_use_case import ResetPasswordUseCase
 from src.application.auth.update_user_use_case import UpdateUserUseCase
+from src.application.billing.get_billing_dashboard_use_case import (
+    GetBillingDashboardUseCase,
+)
+from src.application.billing.list_quota_events_use_case import (
+    ListQuotaEventsUseCase,
+)
+from src.application.billing.process_quota_alerts_use_case import (
+    ProcessQuotaAlertsUseCase,
+)
+from src.application.billing.quota_email_dispatch_use_case import (
+    QuotaEmailDispatchUseCase,
+)
+from src.application.billing.topup_addon_use_case import TopupAddonUseCase
 from src.application.bot.create_bot_use_case import CreateBotUseCase
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
@@ -138,6 +152,17 @@ from src.application.knowledge.upload_document_use_case import (
 from src.application.knowledge.view_document_use_case import (
     ViewDocumentUseCase,
 )
+from src.application.ledger.deduct_tokens_use_case import DeductTokensUseCase
+from src.application.ledger.ensure_ledger_use_case import EnsureLedgerUseCase
+from src.application.ledger.get_tenant_quota_use_case import (
+    GetTenantQuotaUseCase,
+)
+from src.application.ledger.list_all_tenants_quotas_use_case import (
+    ListAllTenantsQuotasUseCase,
+)
+from src.application.ledger.process_monthly_reset_use_case import (
+    ProcessMonthlyResetUseCase,
+)
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
 from src.application.memory.extract_memory_use_case import ExtractMemoryUseCase
 from src.application.memory.load_memory_use_case import LoadMemoryUseCase
@@ -172,6 +197,14 @@ from src.application.observability.notification_use_cases import (
 from src.application.observability.rag_evaluation_use_case import (
     RAGEvaluationUseCase,
 )
+from src.application.plan.assign_plan_to_tenant_use_case import (
+    AssignPlanToTenantUseCase,
+)
+from src.application.plan.create_plan_use_case import CreatePlanUseCase
+from src.application.plan.delete_plan_use_case import DeletePlanUseCase
+from src.application.plan.get_plan_use_case import GetPlanUseCase
+from src.application.plan.list_plans_use_case import ListPlansUseCase
+from src.application.plan.update_plan_use_case import UpdatePlanUseCase
 from src.application.platform.create_provider_setting_use_case import (
     CreateProviderSettingUseCase,
 )
@@ -224,38 +257,6 @@ from src.application.security.guard_rules_use_cases import (
     UpdateGuardRulesUseCase,
 )
 from src.application.security.prompt_guard_service import PromptGuardService
-from src.application.billing.get_billing_dashboard_use_case import (
-    GetBillingDashboardUseCase,
-)
-from src.application.billing.list_quota_events_use_case import (
-    ListQuotaEventsUseCase,
-)
-from src.application.billing.quota_email_dispatch_use_case import (
-    QuotaEmailDispatchUseCase,
-)
-from src.application.billing.process_quota_alerts_use_case import (
-    ProcessQuotaAlertsUseCase,
-)
-from src.application.billing.topup_addon_use_case import TopupAddonUseCase
-from src.application.ledger.deduct_tokens_use_case import DeductTokensUseCase
-from src.application.ledger.ensure_ledger_use_case import EnsureLedgerUseCase
-from src.application.ledger.get_tenant_quota_use_case import (
-    GetTenantQuotaUseCase,
-)
-from src.application.ledger.list_all_tenants_quotas_use_case import (
-    ListAllTenantsQuotasUseCase,
-)
-from src.application.ledger.process_monthly_reset_use_case import (
-    ProcessMonthlyResetUseCase,
-)
-from src.application.plan.assign_plan_to_tenant_use_case import (
-    AssignPlanToTenantUseCase,
-)
-from src.application.plan.create_plan_use_case import CreatePlanUseCase
-from src.application.plan.delete_plan_use_case import DeletePlanUseCase
-from src.application.plan.get_plan_use_case import GetPlanUseCase
-from src.application.plan.list_plans_use_case import ListPlansUseCase
-from src.application.plan.update_plan_use_case import UpdatePlanUseCase
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
@@ -288,6 +289,9 @@ from src.infrastructure.db.engine import (
     async_session_factory as _async_session_factory,
 )
 from src.infrastructure.db.health_repository import HealthRepository
+from src.infrastructure.db.repositories.billing_transaction_repository import (
+    SQLAlchemyBillingTransactionRepository,
+)
 from src.infrastructure.db.repositories.bot_repository import (
     SQLAlchemyBotRepository,
 )
@@ -339,23 +343,17 @@ from src.infrastructure.db.repositories.notification_channel_repository import (
 from src.infrastructure.db.repositories.optimization_run_repository import (
     SQLAlchemyOptimizationRunRepository,
 )
+from src.infrastructure.db.repositories.plan_repository import (
+    SQLAlchemyPlanRepository,
+)
 from src.infrastructure.db.repositories.processing_task_repository import (
     SQLAlchemyProcessingTaskRepository,
 )
 from src.infrastructure.db.repositories.provider_setting_repository import (
     SQLAlchemyProviderSettingRepository,
 )
-from src.infrastructure.db.repositories.plan_repository import (
-    SQLAlchemyPlanRepository,
-)
-from src.infrastructure.db.repositories.billing_transaction_repository import (
-    SQLAlchemyBillingTransactionRepository,
-)
 from src.infrastructure.db.repositories.quota_alert_log_repository import (
     SQLAlchemyQuotaAlertLogRepository,
-)
-from src.infrastructure.db.repositories.token_ledger_repository import (
-    SQLAlchemyTokenLedgerRepository,
 )
 from src.infrastructure.db.repositories.rate_limit_config_repository import (
     SQLAlchemyRateLimitConfigRepository,
@@ -365,6 +363,9 @@ from src.infrastructure.db.repositories.system_prompt_config_repository import (
 )
 from src.infrastructure.db.repositories.tenant_repository import (
     SQLAlchemyTenantRepository,
+)
+from src.infrastructure.db.repositories.token_ledger_repository import (
+    SQLAlchemyTokenLedgerRepository,
 )
 from src.infrastructure.db.repositories.usage_repository import (
     SQLAlchemyUsageRepository,
@@ -430,10 +431,10 @@ from src.infrastructure.memory.llm_memory_extraction_service import (
 )
 from src.infrastructure.milvus.milvus_vector_store import MilvusVectorStore
 from src.infrastructure.notification.email_sender import EmailNotificationSender
+from src.infrastructure.notification.redis_throttle import RedisNotificationThrottle
 from src.infrastructure.notification.sendgrid_quota_alert_sender import (
     SendGridQuotaAlertSender,
 )
-from src.infrastructure.notification.redis_throttle import RedisNotificationThrottle
 from src.infrastructure.prompt_optimizer.run_manager import RunManager
 from src.infrastructure.storage.gcs_document_file_storage import (
     GCSDocumentFileStorageService,
@@ -988,6 +989,12 @@ class Container(containers.DeclarativeContainer):
 
     reset_password_use_case = providers.Factory(
         ResetPasswordUseCase,
+        user_repository=user_repository,
+        password_service=password_service,
+    )
+
+    change_password_use_case = providers.Factory(
+        ChangePasswordUseCase,
         user_repository=user_repository,
         password_service=password_service,
     )

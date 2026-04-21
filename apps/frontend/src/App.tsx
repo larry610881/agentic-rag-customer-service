@@ -24,6 +24,7 @@ function lazyWithRetry(factory: () => Promise<{ default: ComponentType }>) {
 }
 
 const LoginPage = lazyWithRetry(() => import("@/pages/login"));
+const ChangePasswordPage = lazyWithRetry(() => import("@/pages/change-password"));
 const ChatPage = lazyWithRetry(() => import("@/pages/chat"));
 const BotsPage = lazyWithRetry(() => import("@/pages/bots"));
 const BotDetailPage = lazyWithRetry(() => import("@/pages/bot-detail"));
@@ -105,6 +106,10 @@ export function App() {
             <Route path={ROUTES.FEEDBACK} element={<FeedbackPage />} />
             <Route path={ROUTES.TOKEN_USAGE} element={<TokenUsagePage />} />
             <Route path={ROUTES.QUOTA} element={<QuotaPage />} />
+            <Route
+              path={ROUTES.CHANGE_PASSWORD}
+              element={<ChangePasswordPage />}
+            />
             <Route
               path={ROUTES.FEEDBACK_BROWSER}
               element={<FeedbackBrowserPage />}

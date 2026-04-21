@@ -2,6 +2,7 @@ export const API_ENDPOINTS = {
   auth: {
     login: "/api/v1/auth/login",
     refresh: "/api/v1/auth/refresh",
+    changePassword: "/api/v1/auth/change-password",
   },
   tenants: {
     list: "/api/v1/tenants",
