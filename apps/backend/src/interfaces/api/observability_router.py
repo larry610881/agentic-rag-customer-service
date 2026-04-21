@@ -126,60 +126,87 @@ async def list_agent_traces(
     conversation_id: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
+    # S-Gov.6a: 7 個新 filter
+    source: str | None = Query(default=None, description="web | widget | line"),
+    bot_id: str | None = Query(default=None),
+    outcome: str | None = Query(
+        default=None, description="success | failed | partial"
+    ),
+    min_total_ms: float | None = Query(default=None, ge=0),
+    max_total_ms: float | None = Query(default=None, ge=0),
+    min_total_tokens: int | None = Query(default=None, ge=0),
+    max_total_tokens: int | None = Query(default=None, ge=0),
+    keyword: str | None = Query(default=None, description="ILIKE on nodes::text"),
+    group_by_conversation: bool = Query(
+        default=False, description="True → grouped 結構 by conversation_id"
+    ),
     tenant: CurrentTenant = Depends(get_current_tenant),
 ):
+    from src.application.observability.agent_trace_queries import (
+        TraceFilters,
+        build_where,
+        list_traces_grouped_by_conversation,
+        trace_to_dict,
+    )
+
     effective_tid = _effective_tenant_filter(tenant, tenant_id)
+    filters = TraceFilters(
+        tenant_id=effective_tid,
+        agent_mode=agent_mode,
+        conversation_id=conversation_id,
+        date_from=date_from,
+        date_to=date_to,
+        source=source,
+        bot_id=bot_id,
+        outcome=outcome,
+        min_total_ms=min_total_ms,
+        max_total_ms=max_total_ms,
+        min_total_tokens=min_total_tokens,
+        max_total_tokens=max_total_tokens,
+        keyword=keyword,
+    )
 
     async with async_session_factory() as session:
-        stmt = select(AgentExecutionTraceModel).order_by(
-            AgentExecutionTraceModel.created_at.desc()
-        )
-        T = AgentExecutionTraceModel  # noqa: N806
-        count_stmt = select(func.count()).select_from(T)
-
-        # admin + 未指定 tenant_id → effective_tid 為 None，不加 WHERE → 看全部租戶
-        if effective_tid is not None:
-            stmt = stmt.where(T.tenant_id == effective_tid)
-            count_stmt = count_stmt.where(T.tenant_id == effective_tid)
-        if agent_mode:
-            stmt = stmt.where(T.agent_mode == agent_mode)
-            count_stmt = count_stmt.where(T.agent_mode == agent_mode)
-        if conversation_id:
-            stmt = stmt.where(T.conversation_id == conversation_id)
-            count_stmt = count_stmt.where(
-                T.conversation_id == conversation_id
+        if group_by_conversation:
+            groups, total = await list_traces_grouped_by_conversation(
+                session, filters=filters, limit=limit, offset=offset,
             )
-        if date_from:
-            stmt = stmt.where(T.created_at >= date_from)
-            count_stmt = count_stmt.where(T.created_at >= date_from)
-        if date_to:
-            stmt = stmt.where(T.created_at <= date_to)
-            count_stmt = count_stmt.where(T.created_at <= date_to)
+            return {
+                "total": total,
+                "grouped": True,
+                "items": [
+                    {
+                        "conversation_id": g.conversation_id,
+                        "trace_count": g.trace_count,
+                        "first_at": g.first_at.isoformat()
+                        if g.first_at else None,
+                        "last_at": g.last_at.isoformat()
+                        if g.last_at else None,
+                        "traces": g.traces,
+                    }
+                    for g in groups
+                ],
+            }
+
+        # Flat mode
+        T = AgentExecutionTraceModel  # noqa: N806
+        where = build_where(filters)
+        stmt = (
+            select(T)
+            .where(*where)
+            .order_by(T.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        count_stmt = select(func.count()).select_from(T).where(*where)
 
         total = (await session.execute(count_stmt)).scalar() or 0
-        rows = (await session.execute(stmt.offset(offset).limit(limit))).scalars().all()
+        rows = (await session.execute(stmt)).scalars().all()
 
     return {
         "total": total,
-        "items": [
-            {
-                "id": r.id,
-                "trace_id": r.trace_id,
-                "tenant_id": r.tenant_id,
-                "message_id": r.message_id,
-                "conversation_id": r.conversation_id,
-                "agent_mode": r.agent_mode,
-                "source": getattr(r, "source", ""),
-                "llm_model": getattr(r, "llm_model", ""),
-                "llm_provider": getattr(r, "llm_provider", ""),
-                "bot_id": getattr(r, "bot_id", None),
-                "nodes": r.nodes,
-                "total_ms": r.total_ms,
-                "total_tokens": r.total_tokens,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-            }
-            for r in rows
-        ],
+        "grouped": False,
+        "items": [trace_to_dict(r) for r in rows],
     }
 
 
@@ -219,6 +246,7 @@ async def get_agent_trace(
         "nodes": row.nodes,
         "total_ms": row.total_ms,
         "total_tokens": row.total_tokens,
+        "outcome": getattr(row, "outcome", None),
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
 

@@ -96,6 +96,8 @@ export const queryKeys = {
       ["observability", "token-usage", days, tenantId ?? "all"] as const,
     agentTraces: (filters?: object) =>
       ["observability", "agent-traces", filters ?? {}] as const,
+    agentTracesGrouped: (filters?: object) =>
+      ["observability", "agent-traces", "grouped", filters ?? {}] as const,
     agentTraceDetail: (traceId: string) =>
       ["observability", "agent-traces", traceId] as const,
     diagnosticRules: ["observability", "diagnostic-rules"] as const,

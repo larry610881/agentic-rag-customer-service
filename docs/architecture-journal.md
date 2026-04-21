@@ -10,6 +10,7 @@
 ## 目錄
 
 - [Ollama A/B 測試 Debug — 模型 Tag 驗證 + Router Prefix + RHF shouldDirty](#ollama-ab-測試-debug--模型-tag-驗證--router-prefix--rhf-shoulddirty)
+- [S-Gov.6a — Agent Trace UI 強化：JSON ILIKE 中文 escape 陷阱 + Module-level Session 的 Test Monkeypatch + URL ↔ Filter 雙向 Sync](#s-gov6a--agent-trace-ui-強化json-ilike-中文-escape-陷阱--module-level-session-的-test-monkeypatch--url--filter-雙向-sync)
 - [S-Token-Gov.3.5 — SendGrid Email 整合：Sync SDK in Async Worker + Mock Sender via DI Override + 「永遠 mark vs 不 mark」的容錯策略](#s-token-gov35--sendgrid-email-整合sync-sdk-in-async-worker--mock-sender-via-di-override--永遠-mark-vs-不-mark的容錯策略)
 - [S-Token-Gov.4 — 收益儀表板：跨表 Aggregation in Application 層 + Recharts LineChart + 跨 loop 連線陷阱](#s-token-gov4--收益儀表板跨表-aggregation-in-application-層--recharts-linechart--跨-loop-連線陷阱)
 - [S-Token-Gov.3 — 自動續約 + 門檻警示：DB 層冪等、行為變更如何同步既有測試、optional DI 漸進演化](#s-token-gov3--自動續約--門檻警示db-層冪等行為變更如何同步既有測試optional-di-漸進演化)
@@ -163,6 +164,180 @@
 
 - **RHF `setValue` 的 `shouldDirty` / `shouldTouch` / `shouldValidate`**：三個 flag 控制不同的副作用——`shouldDirty` 標記欄位為已修改（觸發 `watch` 和 `isDirty`）；`shouldValidate` 觸發 zod 驗證；`shouldTouch` 標記為已互動。外部觸發表單值變更（如按鈕覆寫）時應加 `{ shouldDirty: true }` 確保訂閱方感知到變化
 - **MoE 模型的 active params**：`qwen3.6:35b-a3b` 的 35b 是總參數，3b 是每次 inference 實際啟用的參數（active）。推理成本接近 3B dense model，但模型容量接近 35B，是 edge/local deploy 的高 CP 值選擇
+
+---
+
+## S-Gov.6a — Agent Trace UI 強化：JSON ILIKE 中文 escape 陷阱 + Module-level Session 的 Test Monkeypatch + URL ↔ Filter 雙向 Sync
+
+**日期**：2026-04-21
+**Sprint**：S-Gov.6a（Agent 執行追蹤 UI 強化第一段；6b LLM 摘要 + Hybrid 搜尋待續）
+**涉及層級**：跨 4 層 + 前端 — Migration（outcome snapshot + 3 複合 index）+ Domain 寫入 hook + Application 加 query helper + Interfaces 擴 endpoint + 前端 4 新 + 6 改。約 14 檔變動。
+
+### 本次相關主題
+
+- PostgreSQL `JSON` vs `JSONB` 的 ILIKE 中文 escape 差異
+- Observability 直接 query layer（不走 DI）的測試挑戰
+- React Router `useSearchParams` 做 URL ↔ filter state 雙向 sync
+- Snapshot column vs query-time JSON 解析的成本對比
+- DDD「不過度抽象」原則：既有元件已涵蓋的需求不重複實作
+- Composite index `(tenant_id, conversation_id, created_at DESC)` 對多條件 query 的效能差
+
+### 做得好的地方
+
+#### 1. JSON `ILIKE` 中文 escape 陷阱即時診斷 + 修復
+
+第一輪 BDD 測試：seed trace `metadata.text = "我要退貨"` → 用 `?keyword=退貨` 查 → 0 結果。原因：
+
+PostgreSQL `JSON` type 存儲時會把中文 escape 成 `\u9000\u8ca8`（unicode escape）。`nodes::text` 拿到的是 escape 過的字串，所以 `ILIKE '%退貨%'` 不會 match `'\u9000\u8ca8'`。
+
+兩種修法：
+- **A**：把 keyword 也 escape 成 `\uXXXX` 格式 — 反人類，且不同 backend serializer escape rule 不同
+- **B**：`cast(JSON, JSONB)::text` — JSONB 是 normalized binary，cast 回 text 時會 decode unicode
+
+選 **B**：
+
+```python
+T.nodes.cast(JSONB).cast(Text).ilike(f"%{filters.keyword}%")
+```
+
+- 不需改 schema（保持 JSON column）
+- 不需 escape 用戶輸入
+- 一行 SQL 解決
+
+長期來看，把整個 `nodes` column 改 JSONB 才是正解（可加 GIN index + `@>` containment query）— 但本 sprint 不擴大 scope。
+
+#### 2. Module-level Session 的 Test Monkeypatch — 治標但不擴大 scope
+
+`observability_router.py` 用 module-level `from src.infrastructure.db.engine import async_session_factory`，**不**走 container DI。這是設計選擇（避免 request-scoped session 的 cross-tenant 觀測限制），但讓 integration test 卡住 — endpoint 永遠查 dev DB 而不是 test DB。
+
+兩個選項：
+- A：refactor observability 走 container DI（影響面大，可能破壞既有跨租戶查詢）
+- B：test fixture monkeypatch 該 module 變數
+
+選 **B**：
+
+```python
+@pytest.fixture(autouse=True)
+def _patch_observability_session(app, test_engine, monkeypatch):
+    test_session_factory = async_sessionmaker(
+        test_engine, class_=AsyncSession, expire_on_commit=False,
+    )
+    monkeypatch.setattr(
+        "src.interfaces.api.observability_router.async_session_factory",
+        test_session_factory,
+    )
+```
+
+- Production code 0 改動
+- 只在這個 sprint 的 BDD 測試生效
+- 紀錄為「未來可考慮 refactor」的 follow-up，不立即動手
+
+「測試適配 production design 而非反過來」是測試紀律的反面教材 — 但若硬改 production code 為了測試會引入新風險，monkeypatch 是務實選擇。
+
+#### 3. URL ↔ Filter Sync — 用 useSearchParams 做雙向綁定
+
+「URL 可分享」需求：使用者複製含 filter 的 URL 給同事，貼上後同事看到一樣畫面。
+
+實作 pattern：
+
+```ts
+export function useAgentTracesFilterUrl(): [Value, (v: Value) => void] {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const value = readParams(searchParams);  // URL → Value
+  const setValue = (v: Value) => {
+    setSearchParams(writeParams(v), { replace: true });
+  };
+  return [value, setValue];
+}
+```
+
+關鍵設計：
+- `replace: true` 不污染瀏覽器歷史（每次 filter 變化不產生 back stack entry）
+- `readParams` / `writeParams` 純函式 — 易測，可獨立 unit test
+- 預設值不寫入 URL（`if (value.days !== 30) sp.set(...)`） — keep URL 短
+- 跳到 trace detail 後返回，filter 仍保留（URL 還在）
+
+這 pattern 可被「廣播」到其他 admin 頁面（quota-events, quota-overview, billing dashboard 等）— 預計下個 sprint 一併套用。
+
+#### 4. Snapshot column vs Runtime JSON 解析
+
+`outcome` 是「trace-level 結論」(任一 node failed → trace failed)。兩個實作選擇：
+
+| 方案 | 寫入成本 | 查詢成本 | 可加 index | 結論 |
+|------|---------|---------|-----------|------|
+| A: 寫入時計算 + snapshot column | 1 次 Python loop | O(1) lookup | ✅ | **採用** |
+| B: 查詢時解 nodes JSON | 0 | 每次 query 解 N 個 JSON object | ❌（GIN 也很慢） | 拒絕 |
+
+A 雖多寫一個欄位，但：
+- 寫入是 1 次/trace（= 1 次/conversation message），讀取 N 倍多
+- snapshot 後可加 `(outcome, created_at)` 複合 index → outcome filter 加速 100x
+- 與 Token-Gov 系列 snapshot pattern 一致（plan_name / amount 都 snapshot）
+
+「在會生成的時候算好，避免在會被讀的時候算」是 backend 的萬用真理 — 寫一次成本，讀 N 次受惠。
+
+#### 5. DAG 強化「審計後判定已涵蓋」— 不重複實作
+
+原 plan 寫了「DAG hover tooltip」+「節點上色」。實際 audit `trace-node-style.ts` + `agent-trace-graph.tsx` 後發現：
+- ✅ 8 種 node_type 已分色（NODE_COLORS）
+- ✅ 失敗節點紅框 + ping animation（NODE_COLORS_FAILED + PING_ONCE_CLASS）
+- ✅ duration_ms inline 顯示（durationColor 上色）
+- ✅ token_usage inline 顯示
+- ✅ Expand 按鈕看 metadata 詳情
+
+要再加 shadcn `Tooltip` 反而會與既有 inline 顯示衝突（visual noise）。
+
+→ Mark task complete with note「audit 後判定既有實作已涵蓋」。
+
+「審計而非實作」是 sprint 紀律的關鍵 — 計畫時的「要做」要在實作時確認「真的還沒做」。
+
+### 潛在隱憂
+
+#### 1. observability_router 的 module-level session import → 中
+
+S-Gov.6a 用 monkeypatch 繞過，但長期是技術債：
+- 跨租戶 admin 視角無法走 request-scoped session（後者強制過濾 tenant）
+- 但 module-level import 讓 test / mock / inject 都困難
+
+**改善方向**：在 container 加 `admin_session_factory` provider（與 `db_session` 同 engine 但不走 ContextVar tracking），observability/admin endpoints 注入它而非直接 import。下個 sprint 處理。
+
+#### 2. Keyword search 用 ILIKE — N > 10K trace 後會慢 → 中
+
+`T.nodes.cast(JSONB).cast(Text).ilike('%X%')` 是全表 scan：
+- N=100 → < 100ms
+- N=10K → 1-3 秒
+- N=100K → 10+ 秒
+
+**改善方向**：
+- 短期：加 `pg_trgm` GIN index on `(nodes::text)`，ILIKE 加速 50x
+- 中期：用 PostgreSQL `tsvector` + GIN，full-text search 真正快
+- 長期：Elasticsearch / Meilisearch external service
+
+#### 3. JSON column 沒升級為 JSONB → 低
+
+`agent_execution_traces.nodes` 是 JSON。本 sprint 用 cast 解中文 escape 解決 keyword search，但：
+- JSON 不可加 GIN index
+- JSON 每次 cast 有 overhead
+- JSONB 是 PostgreSQL 推薦類型（normalized binary）
+
+**改善方向**：migration `ALTER COLUMN nodes TYPE JSONB USING nodes::JSONB`。一次 migration，全平台受惠。但要評估 production data migration 的鎖表時間（N=100K row 約 30 秒）。
+
+#### 4. Grouped 模式分頁以 conversation 為單位 → 低
+
+當前 limit=20 = 20 個 conversation，每個 conversation N 個 trace。若某個 conversation 有 1000 個 trace（極端 case），單頁 response payload 巨大。
+
+**改善方向**：grouped 模式內 trace 也限制（例如每 group 最多回 20 trace + `has_more` flag），詳情頁 lazy load 全部。POC 階段不需要。
+
+### 延伸學習
+
+- **PostgreSQL JSON vs JSONB 全攻略**：JSON 是 verbatim text，JSONB 是 normalized binary。後者支援 GIN index + 多種 operator (`@>`, `?`, `?&`, `?|`)。延伸閱讀：PostgreSQL Manual Ch.8.14 + Tom Lane 的 JSONB 設計文章
+- **monkeypatch 在 pytest 的常見 use case**：`monkeypatch.setattr` 換 module 變數、`monkeypatch.setenv` 設環境變數、`monkeypatch.delitem` 刪 dict key。fixture-scoped 自動還原。延伸閱讀：pytest docs `_pytest.monkeypatch`
+- **React Router v6 `useSearchParams` 設計**：`searchParams` 是 immutable，`setSearchParams(updater)` 觸發路由變更。`replace: true` 避免歷史污染。延伸閱讀：React Router v6 docs
+
+### 思考題
+
+「我們現在 keyword search 用 `cast(JSONB)::text ILIKE`，效能 N < 10K 可接受。如果未來要支援『搜 user_input 但不搜 final_response』（更精準的搜尋），SQL 該怎麼寫？要不要把 user_input / final_response 從 nodes JSON 抽出存獨立欄位？trade-off 是什麼？」
+
+提示：考慮 (a) 單一字串欄位 `concat(nodes->user_input, nodes->final_response)` + GIN trigram、(b) 兩個欄位 + 分開 query、(c) 直接走 PostgreSQL JSONB 的 path query `nodes -> 'metadata' ->> 'text'`。
 
 ---
 

@@ -37,6 +37,9 @@ class AgentExecutionTraceModel(Base):
     nodes: Mapped[list | None] = mapped_column(JSON, nullable=True)
     total_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     total_tokens: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # S-Gov.6a: snapshot trace-level outcome（success / failed / partial）
+    # 寫入時計算（_persist_trace），查詢時免解 nodes JSON
+    outcome: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,
@@ -48,4 +51,11 @@ class AgentExecutionTraceModel(Base):
         Index("ix_agent_exec_traces_created_at", "created_at"),
         Index("ix_agent_exec_traces_conversation_id", "conversation_id"),
         Index("ix_agent_exec_traces_bot_id", "bot_id"),
+        # S-Gov.6a 複合 index（migration 已建，此處宣告為 ORM 共識）
+        Index(
+            "ix_traces_tenant_conv_created",
+            "tenant_id", "conversation_id", "created_at",
+        ),
+        Index("ix_traces_outcome_created", "outcome", "created_at"),
+        Index("ix_traces_bot_created", "bot_id", "created_at"),
     )

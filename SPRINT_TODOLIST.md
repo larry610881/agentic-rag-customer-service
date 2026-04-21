@@ -1572,15 +1572,29 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 ### S-Gov.6 Agent 執行追蹤 UI 可讀性強化
 > 既有 `agent_execution_traces` 已落地（見 S-Gov.1），本 Sprint 聚焦**前端 UI 可讀性**與**查詢能力**，後端只做欄位/索引補強。
 
-| 項目 | 說明 |
-|------|------|
-| Conversation 級聚合視圖 | 目前一次 chat = 一筆 trace，多輪對話散落。新增「依 `conversation_id` 聚合」的列表模式，一組 conversation 內的多筆 trace 可展開一起看（時間軸 + 摘要）|
-| 分類標籤明確化 | Trace 依 `agent_mode`（Router/ReAct/Supervisor）、`outcome`（success/partial/failed）、`route`（worker 名稱）等維度標示；列表以色塊 + badge 呈現 |
-| Trace ID 易讀化 | 現在 UUID 難以辨識/搜尋 → 補短格式（例 `trc_20260417_a1b2`）或 slug；列表提供點擊複製；詳情頁標題顯示 |
-| Filter / Search 強化 | 新增：日期範圍、bot、tenant、conversation_id、agent_mode、outcome、有無錯誤、keyword（搜 prompt/answer 片段）多條件組合 |
-| URL 可分享 | Filter / 聚合狀態序列化進 query string，可直接貼連結給同事對照 |
-| 詳情頁 DAG 可讀性 | Node 依節點類型（LLM/Tool/RAG/Router）上色一致；hover tooltip 顯示耗時/token；失敗節點紅框閃爍 |
-| 後端 index / 欄位補強 | 依 `(tenant_id, conversation_id, started_at)` 建複合 index；若 outcome/agent_mode 未持久化則補欄位（migration `IF NOT EXISTS`）|
+#### S-Gov.6a UI 強化 + 多維 Filter + Conversation 聚合 ✅ 完成 (2026-04-21)
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Migration outcome snapshot + 3 複合 index | ✅ | local-docker (15→success) + dev-vm (47 success + 1 failed) backfill；`ix_traces_tenant_conv_created` / `ix_traces_outcome_created` / `ix_traces_bot_created` |
+| ORM model 加 outcome 欄位 + ORM index 共識 | ✅ | `agent_trace_model.py` 加 outcome：String(20) nullable + 3 個複合 index 宣告 |
+| `_persist_trace` 寫入 hook | ✅ | `_compute_trace_outcome` helper：failed > partial > success 優先級；snapshot 計算後寫入 |
+| `agent_trace_queries.py` filter builder + grouped query | ✅ | `TraceFilters` dataclass + `build_where` + `list_traces_grouped_by_conversation` 三步驟（distinct conv_id → 撈 traces → Python group） |
+| Endpoint 7 個新 query params | ✅ | source/bot_id/outcome/min/max_total_ms/min/max_total_tokens/keyword + group_by_conversation；keyword 用 `nodes::JSONB::text ILIKE` 解中文 escape |
+| BDD 4 scenarios | ✅ | `agent_trace_filters.feature` — 多維 filter 組合 / 耗時範圍 / keyword 搜尋 / conversation 聚合 全綠 |
+| Test conftest monkeypatch | ✅ | observability_router 用 module-level `async_session_factory`（dev DB），auto-fixture monkeypatch 到 test engine |
+| 前端 types + hook 擴充 | ✅ | TraceOutcome enum + GroupedAgentTraces / ConversationTraceGroup type + useAgentTracesGrouped hook + queryKey grouped |
+| Trace ID 短碼 helper + admin-bot-filter | ✅ | `formatTraceShortId` (trc_YYYYMMDD_xxxx) + admin-bot-filter 仿 admin-tenant-filter pattern |
+| Filter Row 重做 + URL sync | ✅ | 3-row layout (常用 / 狀態 + view toggle / 進階摺疊) + `useSearchParams` 雙向 sync + reset 按鈕 |
+| Grouped Table | ✅ | 每 conversation collapsible row + 展開後 mini trace cards 時間軸 + outcome 分布 badges |
+| Flat Table 升級 | ✅ | 改 props-based filter（filter 由外層管）+ TraceIdCell（短碼 + 點擊複製 UUID）+ outcome badge 欄位 |
+| Page integration | ✅ | admin-observability.tsx 加 view toggle + URL params；切 view 動態切換 flat/grouped table |
+| DAG 節點上色 + 失敗紅框 | ✅ | 已存於 trace-node-style.ts (NODE_COLORS / NODE_COLORS_FAILED + PING_ONCE_CLASS) — audit 後判定既有實作已涵蓋 |
+| 後端 admin integration + unit baseline 不退步 | ✅ | admin 29 passed (.2 + .2.5 + .3 + .3.5 + .4 + .6a 共 29)；unit 624 passed；3 pre-existing bot 失敗不變 |
+| 前端 tsc + vitest 不退步 | ✅ | tsc 119→112（refactor 順手清掉 7 errors，零新增）；vitest 223 passed 維持 |
+
+#### S-Gov.6b LLM 對話摘要 + Hybrid 搜尋 (待規劃實作)
+> 等 6a demo 後再上；plan 已完整寫於 `.claude/plans/agent-main-bright-leaf.md` §2
 
 ---
 

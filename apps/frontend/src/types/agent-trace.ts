@@ -31,6 +31,8 @@ export type ExecutionNode = {
   metadata: Record<string, unknown>;
 };
 
+export type TraceOutcome = "success" | "failed" | "partial";
+
 export type AgentExecutionTrace = {
   id: string;
   trace_id: string;
@@ -47,12 +49,32 @@ export type AgentExecutionTrace = {
   total_tokens: {
     input_tokens?: number;
     output_tokens?: number;
+    total?: number;
     estimated_cost?: number;
   } | null;
+  /** S-Gov.6a: snapshot trace-level outcome */
+  outcome?: TraceOutcome | null;
   created_at: string;
 };
 
 export type PaginatedAgentTraces = {
   total: number;
+  /** S-Gov.6a: false = flat items, true = grouped by conversation */
+  grouped: boolean;
   items: AgentExecutionTrace[];
+};
+
+/** S-Gov.6a: grouped 模式下每個 group 結構 */
+export type ConversationTraceGroup = {
+  conversation_id: string;
+  trace_count: number;
+  first_at: string;
+  last_at: string;
+  traces: AgentExecutionTrace[];
+};
+
+export type GroupedAgentTraces = {
+  total: number;
+  grouped: true;
+  items: ConversationTraceGroup[];
 };

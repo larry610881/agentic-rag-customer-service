@@ -81,6 +81,18 @@ logger = structlog.get_logger(__name__)
 _REFUND_METADATA_MARKER = "__refund_metadata"
 
 
+def _compute_trace_outcome(nodes: list[dict[str, Any]]) -> str:
+    """S-Gov.6a: 從節點 outcome 計算 trace-level outcome。
+
+    優先級：failed > partial > success
+    """
+    if any(n.get("outcome") == "failed" for n in nodes):
+        return "failed"
+    if any(n.get("outcome") == "partial" for n in nodes):
+        return "partial"
+    return "success"
+
+
 def _build_structured_content(
     *,
     contact: dict[str, Any] | None,
@@ -946,6 +958,13 @@ class SendMessageUseCase:
                 AgentExecutionTraceModel,
             )
 
+            # S-Gov.6a: trace-level outcome snapshot
+            #   - 任一節點 failed → trace failed
+            #   - 任一節點 partial → trace partial
+            #   - 全 success → trace success
+            node_dicts = [n.to_dict() for n in trace.nodes]
+            outcome = _compute_trace_outcome(node_dicts)
+
             row = AgentExecutionTraceModel(
                 id=str(uuid4()),
                 trace_id=trace.trace_id,
@@ -957,9 +976,10 @@ class SendMessageUseCase:
                 llm_model=trace.llm_model,
                 llm_provider=trace.llm_provider,
                 bot_id=trace.bot_id,
-                nodes=[n.to_dict() for n in trace.nodes],
+                nodes=node_dicts,
                 total_ms=trace.total_ms,
                 total_tokens=trace.total_tokens,
+                outcome=outcome,
             )
             async with session_factory() as session:
                 session.add(row)
