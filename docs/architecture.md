@@ -26,7 +26,7 @@
                    ↑ 實作
 ┌─────────────────────────────────────────┐
 │        Infrastructure 層                 │
-│   Repository Impl, DB, Qdrant, LangGraph │
+│   Repository Impl, DB, Milvus, LangGraph │
 │   External API Adapter, Cache            │
 └─────────────────────────────────────────┘
 ```
@@ -113,7 +113,7 @@ graph TD
     P2 --> P3["3. Chunking (content-type aware)<br/>+ Quality + Filter + Dedup"]
     P3 --> P4["4. Contextual Retrieval (可選)<br/>LLM 每 chunk 生 1-2 句上下文"]
     P4 --> P5["5. Embedding<br/>text-embedding-3-large (3072 維)<br/>embed 文本 = context_text + content"]
-    P5 --> P6["6. Qdrant Upsert<br/>collection=kb_{kb_id}<br/>payload.tenant_id (CRITICAL)"]
+    P5 --> P6["6. Milvus Upsert<br/>collection=kb_{kb_id}<br/>partition/filter tenant_id (CRITICAL)"]
     P6 --> P7["7. 後處理<br/>聚合父文件 + 子頁 LLM rename"]
     P7 --> TR{"KB 無 pending?"}
     TR -->|"是"| CK["arq: classify_kb<br/>向量聚類 + LLM 命名<br/>→ chunk_category"]
@@ -150,7 +150,7 @@ graph TD
 ```mermaid
 graph LR
     Q["User Query"] --> E["Embed Query<br/>text-embedding-3-large"]
-    E --> S["Qdrant Search<br/>kb_{kb_id} + tenant_id filter"]
+    E --> S["Milvus Search<br/>kb_{kb_id} + tenant_id filter"]
     S --> R["Rerank (Bot-level)"]
     R --> A["Augment Prompt"]
     A --> L["LLM Generate"]
@@ -158,7 +158,7 @@ graph LR
 
 1. **Query** — 使用者提問
 2. **Embed** — 問題向量化（同一 embedding model，維度必須一致）
-3. **Search** — Qdrant 向量相似搜尋，**必須帶 `tenant_id` payload filter**（CRITICAL）+ top-k + score threshold
+3. **Search** — Milvus 向量相似搜尋，**必須帶 `tenant_id` filter expression**（CRITICAL）+ top-k + score threshold
 4. **Rerank** — Bot 層可選，用 `bot.rerank_model` 重新排序
 5. **Augment** — 將檢索結果注入 Prompt context（結構化標記 source / relevance）
 6. **Generate** — LLM 根據 context 生成回答
@@ -178,7 +178,7 @@ graph LR
 | Web 框架 | FastAPI |
 | DI 容器 | dependency-injector |
 | AI 編排 | LangGraph |
-| 向量資料庫 | Qdrant |
+| 向量資料庫 | Milvus |
 | ORM | SQLAlchemy 2.0 (async) |
 | 測試 | pytest + pytest-bdd v8 |
 

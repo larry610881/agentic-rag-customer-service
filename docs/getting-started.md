@@ -27,7 +27,7 @@ cd agentic-rag-customer-service
 make dev-up
 ```
 
-這會啟動 PostgreSQL、Redis、Qdrant 等依賴服務。
+這會啟動 PostgreSQL、Redis、Milvus 等依賴服務。
 
 ### 3. 設定環境變數
 

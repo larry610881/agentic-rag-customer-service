@@ -26,21 +26,20 @@
 | `REDIS_HOST` | `localhost` | Redis 主機 |
 | `REDIS_PORT` | `6379` | Redis 埠號 |
 
-### Qdrant (Vector DB)
+### Milvus (Vector DB)
 
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
-| `QDRANT_HOST` | `localhost` | Qdrant 主機 |
-| `QDRANT_REST_PORT` | `6333` | Qdrant REST 埠號 |
-| `QDRANT_GRPC_PORT` | `6334` | Qdrant gRPC 埠號 |
+| `MILVUS_HOST` | `localhost` | Milvus 主機 |
+| `MILVUS_PORT` | `19530` | Milvus gRPC 埠號 |
 
 ### Embedding
 
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `EMBEDDING_PROVIDER` | `fake` | Provider：`fake` \| `openai` \| `qwen` |
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding 模型名稱 |
-| `EMBEDDING_VECTOR_SIZE` | `1536` | 向量維度 |
+| `EMBEDDING_MODEL` | `text-embedding-3-large` | Embedding 模型名稱（2026-04 升級） |
+| `EMBEDDING_VECTOR_SIZE` | `3072` | 向量維度（隨模型升級，全系統統一） |
 | `EMBEDDING_BASE_URL` | (auto) | 自訂 base URL（留空自動偵測） |
 
 ### LLM

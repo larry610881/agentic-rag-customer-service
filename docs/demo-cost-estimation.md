@@ -1,5 +1,11 @@
 # 成本估算 — Demo + 正式環境部署方案比較（參數化版）
 
+> ⚠️ **向量 DB 已切換（2026-04）** — 本文下方所有 Qdrant 成本項（GCE VM e2-small $19/月、
+> GKE StatefulSet $91/月 等）為 Qdrant 自建估算。專案已改採 **Milvus（含 etcd + Minio
+> 依賴）**，實際 VM 規格需求略高（建議 e2-medium 起），成本重新試算前請視本文為
+> 「舊向量 DB 的參考基準」，不代表當前預算。其他非向量 DB 條目（Cloud SQL / Cloud Run /
+> Redis / 流量估算等）仍有效。
+
 > **定價基準日**：2026-03-05
 > **部署區域**：asia-east1（台灣彰化）— GCP 服務
 > **幣別**：USD（美元）

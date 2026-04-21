@@ -14,12 +14,11 @@
 """
 
 from diagrams import Cluster, Diagram, Edge
-from diagrams.onprem.database import MySQL
+from diagrams.onprem.database import PostgreSQL
 from diagrams.onprem.inmemory import Redis
 from diagrams.onprem.client import User
 from diagrams.programming.framework import FastAPI, React
 from diagrams.programming.language import Python, TypeScript
-from diagrams.generic.database import SQL
 from diagrams.generic.compute import Rack
 from diagrams.generic.storage import Storage
 from diagrams.saas.chat import Line
@@ -62,12 +61,12 @@ with Diagram(
 
     # --- Frontend ---
     with Cluster(
-        "Frontend — Next.js 15 App Router",
+        "Frontend — React 19 + Vite SPA",
         graph_attr={"bgcolor": "#dcfce7", "style": "rounded"},
     ):
-        nextjs = React("App Router\nChat · KB · Bots")
+        nextjs = React("React Router v6\nChat · KB · Bots · Studio")
         state = TypeScript("Zustand\nTanStack Query")
-        ui = React("shadcn/ui\nTailwind CSS")
+        ui = React("shadcn/ui\nTailwind CSS 4")
 
     # --- Backend ---
     with Cluster(
@@ -103,9 +102,9 @@ with Diagram(
         "Data Layer",
         graph_attr={"bgcolor": "#e0e7ff", "style": "rounded"},
     ):
-        mysql = MySQL("MySQL 8")
-        qdrant = Storage("Qdrant\nVector DB")
-        redis = Redis("Redis")
+        postgres = PostgreSQL("PostgreSQL")
+        milvus = Storage("Milvus\nVector DB")
+        redis = Redis("Redis\n(Cache + arq)")
 
     # --- External Services ---
     with Cluster(
@@ -142,8 +141,8 @@ with Diagram(
     api >> Edge(label="Reply") >> line_api
 
     # Domain → Data
-    api >> Edge(label="Read/Write") >> mysql
-    api >> Edge(label="Vector Search") >> qdrant
-    api >> Edge(label="Cache") >> redis
+    api >> Edge(label="Read/Write") >> postgres
+    api >> Edge(label="Vector Search") >> milvus
+    api >> Edge(label="Cache / Task Queue") >> redis
 
     print("Generated: docs/images/architecture_diagrams.png")
