@@ -17,7 +17,9 @@ export function UsageSummaryCards({ data, isLoading }: UsageSummaryCardsProps) {
       (acc, row) => ({
         chatCount: acc.chatCount + (isChatType(row.request_type) ? row.message_count : 0),
         ocrCount: acc.ocrCount + (row.request_type === "ocr" ? row.message_count : 0),
-        totalTokens: acc.totalTokens + row.input_tokens + row.output_tokens,
+        // 用 DB 的 total_tokens（含 cache_read + cache_creation），
+        // 與本月額度頁 total_used_in_cycle 對齊；原本 input+output 漏算 cache tokens
+        totalTokens: acc.totalTokens + row.total_tokens,
         totalCost: acc.totalCost + row.estimated_cost,
       }),
       { chatCount: 0, ocrCount: 0, totalTokens: 0, totalCost: 0 },
