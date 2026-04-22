@@ -172,25 +172,59 @@ def _join_blocks_by_role(
 def _parse_openai_cache_tokens(
     usage: dict[str, Any], provider: str
 ) -> tuple[int, int]:
-    """解析 OpenAI-compatible response 的 cache token。
+    """解析 OpenAI-compatible response 的 cache token，跨 provider 形狀通吃。
 
-    - 標準 OpenAI：`usage.prompt_tokens_details.cached_tokens`
-    - DeepSeek：`usage.prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`
-    - 其他：fallback 0
+    優先序（多形狀都試）：
+    1. **Anthropic 形狀**（LiteLLM 代理 Claude / Bedrock 時 LiteLLM 直接 forward
+       `cache_read_input_tokens` / `cache_creation_input_tokens` 到 usage 物件）
+       — 命中 ≠ 0 才用，避免覆蓋掉其他形狀的有效值
+    2. **DeepSeek 形狀**：`prompt_cache_hit_tokens`
+    3. **OpenAI 形狀**：`prompt_tokens_details.cached_tokens`
+    4. fallback 0
 
     Returns:
         (cache_read_tokens, cache_creation_tokens)
     """
-    # DeepSeek 特有欄位優先
+    # 1. Anthropic 形狀（LiteLLM-Anthropic / Bedrock-Anthropic）
+    anth_read = usage.get("cache_read_input_tokens", 0) or 0
+    anth_create = usage.get("cache_creation_input_tokens", 0) or 0
+    if anth_read or anth_create:
+        return anth_read, anth_create
+
+    # 2. DeepSeek 特有欄位
     if provider == "deepseek":
         hit = usage.get("prompt_cache_hit_tokens", 0) or 0
         # DeepSeek 的 miss 概念接近 creation，但計費模式不同，保守先歸 0
         return hit, 0
 
-    # OpenAI / Google Gemini / OpenRouter：prompt_tokens_details.cached_tokens
+    # 3. OpenAI / Gemini / OpenRouter：prompt_tokens_details.cached_tokens
     details = usage.get("prompt_tokens_details") or {}
     cached = details.get("cached_tokens", 0) or 0
     return cached, 0
+
+
+def _has_cache_hint(blocks: list[PromptBlock]) -> bool:
+    """是否任一 block 標記 EPHEMERAL — 決定是否送結構化 content。"""
+    return any(b.cache == CacheHint.EPHEMERAL for b in blocks)
+
+
+def _to_openai_content_array(
+    blocks: list[PromptBlock], role: BlockRole
+) -> list[dict[str, Any]]:
+    """把同 role 的 blocks 轉成 OpenAI 結構化 content array，**保留 cache_control**。
+
+    LiteLLM 代理 Anthropic 模型時會把 cache_control 直接 pass-through 給 Anthropic
+    API；OpenAI / Gemini 等不支援 cache_control 但接受結構化 content（marker 被忽略）。
+    """
+    items: list[dict[str, Any]] = []
+    for b in blocks:
+        if b.role != role:
+            continue
+        item: dict[str, Any] = {"type": "text", "text": b.text}
+        if b.cache == CacheHint.EPHEMERAL:
+            item["cache_control"] = {"type": "ephemeral"}
+        items.append(item)
+    return items
 
 
 async def _call_openai_compatible(
@@ -203,12 +237,25 @@ async def _call_openai_compatible(
 ) -> LLMCallResult:
     import httpx
 
-    system_text, user_text = _join_blocks_by_role(blocks)
+    use_structured = _has_cache_hint(blocks)
+    messages: list[dict[str, Any]] = []
 
-    messages: list[dict[str, str]] = []
-    if system_text:
-        messages.append({"role": "system", "content": system_text})
-    messages.append({"role": "user", "content": user_text})
+    if use_structured:
+        # S-LLM-Cache.1.1: 結構化 content 保留 cache_control marker
+        # 主要為了 LiteLLM 代理 Anthropic 模型時能 pass-through cache 設定
+        sys_items = _to_openai_content_array(blocks, BlockRole.SYSTEM)
+        usr_items = _to_openai_content_array(blocks, BlockRole.USER)
+        if sys_items:
+            messages.append({"role": "system", "content": sys_items})
+        if usr_items:
+            messages.append({"role": "user", "content": usr_items})
+    else:
+        # 無 cache hint → 拼字串最精簡（OpenAI auto-prefix 對 byte-stable prefix
+        # 一樣有效；不送 cache_control 不影響）
+        system_text, user_text = _join_blocks_by_role(blocks)
+        if system_text:
+            messages.append({"role": "system", "content": system_text})
+        messages.append({"role": "user", "content": user_text})
 
     url = f"{base_url}/chat/completions"
     async with httpx.AsyncClient(timeout=60.0) as client:
