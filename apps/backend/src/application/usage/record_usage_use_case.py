@@ -117,7 +117,11 @@ class RecordUsageUseCase:
         cache_read_tokens: int = 0,
         cache_creation_tokens: int = 0,
     ) -> float:
-        """從 DEFAULT_MODELS registry 查定價，計算成本。"""
+        """從 DEFAULT_MODELS registry 查定價，計算成本。
+
+        S-LLM-Cache.2 fix：model 可能帶 `provider:` 前綴（例 "litellm:azure_ai/..."），
+        pricing dict key 是裸 model_id → lookup 前先 normalize 去前綴。支援兩種格式。
+        """
         pricing: dict[str, dict[str, float]] = {}
         for provider_models in DEFAULT_MODELS.values():
             for m in provider_models.get("llm", []):
@@ -131,8 +135,14 @@ class RecordUsageUseCase:
                     if m.get("cache_creation_price", 0) > 0:
                         entry["cache_creation"] = m["cache_creation_price"]
                     pricing[m["model_id"]] = entry
+
+        # 去除 provider 前綴：call_llm 經 _parse_model_spec 後 LLMCallResult.model
+        # 是裸 id，但 service 層累計的 last_model 保留 full spec（含前綴）。兩種 case
+        # 都要能查到 pricing。
+        lookup_model = model.split(":", 1)[1] if ":" in model else model
+
         return calculate_usage(
-            model, input_tokens, output_tokens, pricing,
+            lookup_model, input_tokens, output_tokens, pricing,
             cache_read_tokens=cache_read_tokens,
             cache_creation_tokens=cache_creation_tokens,
         ).estimated_cost
