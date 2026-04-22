@@ -91,8 +91,15 @@ class MilvusVectorStore(VectorStore):
                 index_type="AUTOINDEX",
                 metric_type="COSINE",
             )
-            index_params.add_index(field_name="tenant_id", index_type="")
-            index_params.add_index(field_name="document_id", index_type="")
+            # S-KB-Studio.0 hotfix: 原本 index_type="" 等於沒建 scalar index，
+            # tenant_id filter 每次走 full scan，隨資料量成長會雪崩。
+            # INVERTED 適用字串欄位（Milvus 2.4+）。
+            index_params.add_index(
+                field_name="tenant_id", index_type="INVERTED"
+            )
+            index_params.add_index(
+                field_name="document_id", index_type="INVERTED"
+            )
 
             await asyncio.to_thread(
                 self._client.create_collection,
