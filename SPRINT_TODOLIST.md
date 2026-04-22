@@ -1366,6 +1366,26 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | `record_usage` 在 worker 靜默失敗 | ✅ | 跑完 `SELECT ... FROM token_usage_records` 發現 **ever** 沒有 `contextual_retrieval` / `auto_classification` / `embedding` / `guard` 紀錄 — 非本次 commit 造成，是 Token-Gov.0 以來一直沒偵測到的 bug。根因：process_document / classify_kb 在 LLM 呼叫前 close session，後續 refresh 只更新 doc/task/kb repo 的 `_session`，**沒更新 record_usage 內部 usage_repo 的 `_session`** → record_usage.execute() 在 closed session 上跑 atomic() 沉默失敗。修法：refresh 時一併更新 `_record_usage._repo._session`，且 record_usage 呼叫移到 refresh 之後。 |
 | arq worker 從 2026-04-16 起沒 auto-deploy | ✅ | 查 systemctl 發現 `arq-worker.service` ActiveEnterTimestamp 是 6 天前。CI/CD `deploy-backend.yml` 只 deploy Cloud Run（API），**完全沒處理 VM worker**。修法：新增 `deploy-worker` job via `gcloud compute ssh --tunnel-through-iap` 做 `git reset --hard origin/main` + `uv sync` + `systemctl restart`，並 verify worker SHA == CI SHA。以後 push 就自動同步。 |
 
+### S-Pricing.1 系統層 Pricing Admin UI + 回溯重算（2026-04-22 ship，Issue #38）
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Migration: `model_pricing` + `pricing_recalc_audit` + `token_usage_records.cost_recalc_at` | ✅ | 五步流程套 local-docker + dev-vm 兩環境；append-only 版本表 + CHECK constraints（prices ≥ 0、effective_to > effective_from） |
+| Domain `domain/pricing/` | ✅ | `ModelPricing` entity + `PriceRate` VO + `PricingCategory` enum + `ModelPricingRepository` / `PricingRecalcAuditRepository` / `UsageRecalcPort` interfaces + `UsageRecalcRow` DTO |
+| Application use cases (6) | ✅ | `ListPricing` / `CreatePricing`（validate `effective_from >= NOW()`、釘死舊版 effective_to）/ `DeactivatePricing` / `DryRunRecalculate`（Redis token TTL 10min + MAX 100k row 上限）/ `ExecuteRecalculate`（token 驗證 + race detection）/ `ListRecalcHistory` |
+| Infrastructure | ✅ | `SQLAlchemyModelPricingRepository` + `SQLAlchemyPricingRecalcAuditRepository` + `SQLAlchemyUsageRecalcAdapter`（雙 model 格式 `provider:model_id` / 裸 id）+ `InMemoryPricingCache`（啟動 load + `refresh()` on change） |
+| DI wiring + RecordUsage 整合 | ✅ | container.py 註冊 5 新 providers；`RecordUsageUseCase` 新增 `_estimate_cost` 優先查 cache miss fallback `DEFAULT_MODELS`；main.py lifespan 啟動 hook `pricing_cache.refresh()` |
+| Interfaces `admin_pricing_router` | ✅ | 6 endpoints（GET list / POST create / POST {id}/deactivate / POST recalculate:dry-run / POST recalculate:execute / GET recalculate-history），全部 `Depends(require_role("system_admin"))` |
+| Seed script | ✅ | `seeds/seed_model_pricing.py` 冪等，23 個現有 `DEFAULT_MODELS` 項目 seed 成功（local-docker）；dev-vm 待 Larry 授權 |
+| Frontend | ✅ | `types/pricing.ts` + `hooks/queries/use-pricing.ts`（6 hooks）+ `pages/admin-pricing.tsx` 主頁 + `pricing-create-dialog` / `pricing-recalc-wizard`（2 步驟）/ `pricing-history-table`；sidebar 加「定價管理」；`ADMIN_PRICING` route |
+| Pricing audit structlog event | ✅ | 4 event：`pricing.create`、`pricing.deactivate`、`pricing.recalculate.dry_run`、`pricing.recalculate.execute`（欄位對齊未來 `audit_log` 表） |
+| BDD features (5) | ✅ | `pricing_crud` / `pricing_cache` / `pricing_recalculate` (unit/pricing) + `admin_pricing_api` (integration/admin) + `record_usage_with_db_pricing` (unit/usage)；共 27 scenarios |
+| 全量單元測試 | ✅ | 781 passed (baseline 754 + 27 new) |
+| 整合測試 | ✅ | `admin_pricing_api` 6 scenarios 全通過 |
+| Ruff lint | ✅ | src/domain/pricing/, src/application/pricing/, src/infrastructure/pricing/, admin_pricing_router, record_usage_use_case 無 errors |
+| **dev-vm seed** | ⏳ Pending | Larry 授權後執行 `uv run python -m seeds.seed_model_pricing`（data migration 需五步流程） |
+| **Multi-pod cache invalidation** | ⏭️ Future | 本 sprint POC 單 pod；正式收費前加 Redis pub/sub `pricing_cache_invalidate` event |
+
 ### S-Gov.1 Sub-agent 驗證與追蹤穩定化
 | 項目 | 狀態 | 說明 |
 |------|------|------|

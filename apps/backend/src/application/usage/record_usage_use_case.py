@@ -1,5 +1,6 @@
 """記錄 Token 使用量用例"""
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import structlog
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
         DeductTokensUseCase,
     )
     from src.domain.tenant.repository import TenantRepository
+    from src.infrastructure.pricing.pricing_cache import InMemoryPricingCache
 
 logger = structlog.get_logger(__name__)
 
@@ -30,11 +32,14 @@ class RecordUsageUseCase:
         usage_repository: UsageRepository,
         deduct_tokens: "DeductTokensUseCase | None" = None,
         tenant_repository: "TenantRepository | None" = None,
+        pricing_cache: "InMemoryPricingCache | None" = None,
     ) -> None:
         self._repo = usage_repository
         # S-Token-Gov.2: 注入後會在每筆 usage 寫入後扣 ledger
         self._deduct = deduct_tokens
         self._tenant_repo = tenant_repository
+        # S-Pricing.1: 先查 DB-backed pricing cache，miss 時 fallback 到 DEFAULT_MODELS
+        self._pricing_cache = pricing_cache
 
     @staticmethod
     def _should_count_for_quota(tenant: Tenant, category: str) -> bool:
@@ -65,10 +70,10 @@ class RecordUsageUseCase:
                 f"Valid values: {sorted(_VALID_CATEGORIES)}"
             )
 
-        # Fallback: ReAct 路徑的 TokenUsage 可能缺少 cost，從 registry 重算
+        # Fallback: ReAct 路徑的 TokenUsage 可能缺少 cost，從 cache / registry 重算
         cost = usage.estimated_cost
         if cost == 0.0 and usage.total_tokens > 0:
-            cost = self._estimate_cost_from_registry(
+            cost = self._estimate_cost(
                 usage.model, usage.input_tokens, usage.output_tokens,
                 usage.cache_read_tokens, usage.cache_creation_tokens,
             )
@@ -109,6 +114,40 @@ class RecordUsageUseCase:
                     exc_info=True,
                 )
 
+    def _estimate_cost(
+        self,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        cache_read_tokens: int = 0,
+        cache_creation_tokens: int = 0,
+    ) -> float:
+        """計算 estimated_cost：先查 DB PricingCache，miss 時 fallback DEFAULT_MODELS。
+
+        S-Pricing.1：admin 透過 UI 改價 → 寫入 DB → PricingCache.refresh() 後
+        hot path 立即用新價。DB 空或 model 不在 cache 時走 DEFAULT_MODELS，避免
+        estimated_cost=0（S-LLM-Cache.2 fix）。
+        """
+        # 1. 先查 cache（DB-backed）
+        if self._pricing_cache is not None:
+            rate = self._pricing_cache.lookup(
+                model_spec=model, at=datetime.now(timezone.utc)
+            )
+            if rate is not None:
+                lookup_model = model.split(":", 1)[1] if ":" in model else model
+                pricing_dict = {lookup_model: rate}
+                return calculate_usage(
+                    lookup_model, input_tokens, output_tokens, pricing_dict,
+                    cache_read_tokens=cache_read_tokens,
+                    cache_creation_tokens=cache_creation_tokens,
+                ).estimated_cost
+
+        # 2. Fallback DEFAULT_MODELS
+        return self._estimate_cost_from_registry(
+            model, input_tokens, output_tokens,
+            cache_read_tokens, cache_creation_tokens,
+        )
+
     @staticmethod
     def _estimate_cost_from_registry(
         model: str,
@@ -117,7 +156,7 @@ class RecordUsageUseCase:
         cache_read_tokens: int = 0,
         cache_creation_tokens: int = 0,
     ) -> float:
-        """從 DEFAULT_MODELS registry 查定價，計算成本。
+        """從 DEFAULT_MODELS registry 查定價（PricingCache miss 時 fallback）。
 
         S-LLM-Cache.2 fix：model 可能帶 `provider:` 前綴（例 "litellm:azure_ai/..."），
         pricing dict key 是裸 model_id → lookup 前先 normalize 去前綴。支援兩種格式。

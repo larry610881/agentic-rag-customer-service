@@ -7,6 +7,50 @@
 
 ---
 
+## S-Pricing.1 — 系統層 Pricing Admin UI + 回溯重算（Append-only 版本 + Snapshot 保證）
+
+**日期**：2026-04-22
+**Sprint**：S-Pricing.1（Issue #38）
+**涉及層級**：Migration（新 `model_pricing` + `pricing_recalc_audit` 表，`token_usage_records.cost_recalc_at` 欄位）+ Domain（新 `domain/pricing/`）+ Application（6 use cases）+ Infrastructure（SQLAlchemy repos + `InMemoryPricingCache`）+ Interfaces（`admin_pricing_router`，5 endpoints）+ Frontend（`/admin/pricing` 頁 + 新增 dialog + 2 步驟 recalc 精靈 + history table）+ 27 單元 + 6 整合測試
+
+**Sprint 來源**：S-LLM-Cache 系列完成後，Larry 問「改價能設定生效時間嗎，錯過訊息能補算嗎？」直覺想統一 `effective_from` 往前往後都允許。但這會破壞 `estimated_cost` 的 snapshot 保證，歷史月帳金額會被「悄悄改過」，法遵審計過不去。拆成**寫入嚴格 + 回溯獨立**兩條路徑才對。
+
+**主題**：pricing 以 append-only 版本管理，新版 `effective_from` 必須 `>= NOW()`；舊版 `effective_to` 被釘成新版的 `effective_from`，snapshot 天然不變。「補算歷史成本」走獨立 dry-run + execute 兩段式 API，每次留 audit 紀錄，明確、可稽核。
+
+### 做得好的地方
+
+- **把「pricing 版本」當 append-only 事實**：沒有 `UPDATE model_pricing SET input_price=...`，改價永遠是 `INSERT` 新版本 + 同 `(provider, model_id)` 舊版的 `effective_to` 釘成新版 `effective_from`。歷史價格是不可變事實，符合會計 ledger immutability 直覺。
+- **Snapshot 保證 vs 回溯需求的拆分**：寫入側 `effective_from >= NOW()`（保 snapshot 不破，不會默默動到歷史資料），「補算」另開 `/recalculate:dry-run` + `/recalculate:execute` 明確路徑，UI 還強制 2 步驟確認 + reason 必填。回溯不是「改欄位副作用」，是「按下那顆按鈕才會發生的明確動作」。
+- **Dry-run + execute 兩段 token 防 race**：dry-run 回傳 UUID token 到 Redis TTL 10min，execute 階段先從 token 取 snapshot（count + cost_before_total），再查一次 DB 比對 — 不一致就 `RuntimeError("race detected")` abort。避免 admin 預覽了 3 筆，5 分鐘內 usage 漲到 5 筆，按下 execute 卻改了 5 筆（admin 以為自己只動 3 筆）。
+- **`UsageRecalcPort` 隔離 domain 耦合**：Pricing context 需要讀寫 `token_usage_records`，但不引用 `UsageRecord` entity（那是 Usage context 的聚合根）。在 `domain/pricing/` 定義輕量 `UsageRecalcRow` DTO + `UsageRecalcPort` interface，infrastructure 層用 SQLAlchemy 直接讀 `UsageRecordModel` 轉成 DTO。Pricing 與 Usage context 解耦，DDD aggregate 邊界乾淨。
+- **`PricingCache` 避免 hot path DB query**：`RecordUsageUseCase._estimate_cost` 每次打 DB 會拖慢 LLM response。改成啟動時 load 全部版本（含未來排程）到記憶體 dict，lookup O(n) on versions per model（通常 < 5 筆）。CRUD use case 完成後 `cache.refresh()` 重 load，單 pod 即時生效。
+- **Fallback DEFAULT_MODELS 不炸裂**：`_estimate_cost(model)` 先查 cache，miss 就 fallback 到硬編碼 `DEFAULT_MODELS` dict。DB 空 / seed 漏 / 新 model 第一次跑都不會 `estimated_cost=0`。S-LLM-Cache.2 那條 pricing lookup 不匹配的 regression 徹底絕跡。
+- **Audit hook 預埋 structlog event**：`pricing.create`、`pricing.deactivate`、`pricing.recalculate.execute` 每個都打 structlog 結構化 log，欄位對齊未來 `audit_log` 表的 schema（action / actor / resource_id / before / after）。上線前補真 audit 表時直接把 event 名稱改成寫 DB，不用重構。
+- **Scope Gate 穩住**：Larry 問「能不能 effective_from 往前設」時，回答「A（允許）/ B（禁止）/ C（禁止 + 獨立重算按鈕）」三選項 + tradeoff，最後選 C。沒有順著問題直接實作 A，避免寫完發現 snapshot 破了再回頭補。
+
+### 潛在隱憂
+
+- **Multi-pod cache invalidation 尚未實作** → 目前 POC 單 pod，admin 改價 → 同一 pod `cache.refresh()` 立即生效。多 pod 時其他 pod 最多 staleness = 下次 restart。上線前要加 Redis pub/sub `pricing_cache_invalidate` event — 優先級：中（正式收費前必補）。
+- **Recalculate 大區間沒預先警示** → Dry-run 設 `MAX_AFFECTED_ROWS = 100,000`，超過拒絕。但 80k 筆 UPDATE 跑起來仍需幾十秒，單筆 UPDATE 沒合併成 `UPDATE ... WHERE id IN (...)` 或 `UNNEST` bulk → 改用 batch statement 可快 10x。優先級：低（回溯不常觸發）。
+- **Dev-vm seed 需 Larry 手動授權才能跑** → Local-docker 已 seed 23 筆，dev-vm 還沒。Cloud Run 重啟後 `PricingCache` load 到 0 筆 → 全部走 `DEFAULT_MODELS` fallback，功能上沒問題但 admin UI 看不到任何版本。本 session 停在這裡等 Larry 授權。優先級：高（dev-vm 下次部署前必補）。
+- **幣別永遠 USD 沒表示層轉換** → Pricing 存 USD 符合廠商原始計價，但 dashboard 若要顯示 TWD 或給台灣租戶看帳單 → 跟 Token-Gov checklist #7 一併處理。優先級：中（對外顯示前必補）。
+- **Effective_from 時區混淆隱患** → DB `TIMESTAMPTZ` 正確、Pydantic `datetime` 帶 tzinfo、前端 `<input type="datetime-local">` 會用瀏覽器 local timezone，ISO 轉換需顯式含時區。目前未寫整合測試驗「瀏覽器在東京 vs 紐約送出同一筆」兩端一致。優先級：低（同部門 admin 實際上都同時區）。
+- **`findByid` 沒驗 deactivated 狀態** → `ExecuteRecalculateUseCase` 用已停用的 pricing 重算，會用停用時的價格算，可能不是使用者想要的（但也可能是有意「按歷史某版本回算」）。需明確 UI 標示「此 pricing 已停用」。優先級：低。
+
+### 延伸學習
+
+- **Temporal table / System-versioned table**：PostgreSQL 17 有 `PERIOD` 子句、MSSQL 2016+ 原生 system-versioned table，ship 一段時間後可考慮把 `model_pricing` 改為原生 temporal table（`valid_from`/`valid_to` 自動管理）。搜尋關鍵字：`SQL temporal table`、`bitemporal data`、`Fowler - Patterns of Enterprise Application Architecture, Ch 11 Temporal Patterns`。
+- **Event sourcing vs CQRS 的適用邊界**：本次用了「append-only 版本 + snapshot」的 event-sourcing lite 模式，但沒走完整 CQRS（讀寫 model 分離）。判準：如果查詢維度夠複雜（例：「2025 全年所有 model 累積漲價百分比」）才值得拆 read model。本 sprint 維度簡單，不拆。
+- **Dry-run + Idempotency token 的分散式意涵**：今天的 race detection 是比對 `count + cost_before_total`，但在真多租戶高並發下要演進為 Idempotency-Key + ETag (`If-Match` header) 機制。搜尋關鍵字：`Stripe idempotency keys`、`HTTP conditional requests ETag`。
+- **SQL migrations 時序鐵律再加強一次**：本 sprint 嚴守「先 migration → 等 Larry 授權 → 套 local + dev-vm → 再改 ORM → 再 push CI」。ORM 改動先於 migration 套用 = 部署後 500。這次在 feature `token_usage_records.cost_recalc_at` 欄位新增時特別小心 — 即使一行 `ALTER TABLE ADD COLUMN`，也一定走完五步流程。
+
+### 思考題
+
+- **回溯重算的「時效鎖」該不該加？** 例如「超過 90 天前的 usage 拒絕重算」，避免 admin 誤觸碰到已出月帳的歷史。目前設計允許任意區間。正式收費後應加上「月結後只能 credit note 不能改歷史」的護欄。這會影響 billing workflow — 你會選 (a) 硬時效鎖（API 層拒絕），還是 (b) 僅 UI warning + audit 強化？
+- **Provider migrate 時的 pricing 繼承**：如果把 `anthropic:claude-haiku-4-5` 換線路到 `litellm:azure_ai/claude-haiku-4-5`，兩組 pricing 在 DB 是獨立記錄（prefix 不同）。usage 歷史如何判斷「這是同一個 model 的不同 route」做合併成本報表？這會把 pricing 邏輯推向 capability table（items 5-6 範圍）。
+
+---
+
 ## S-LLM-Cache.1 — 跨 provider Prompt Caching 抽象（PromptBlock 模式）
 
 **日期**：2026-04-22

@@ -7,6 +7,12 @@ export const queryKeys = {
     all: ["plans"] as const,
     detail: (id: string) => ["plans", "detail", id] as const,
   },
+  pricing: {
+    all: ["pricing"] as const,
+    list: (filters?: { provider?: string; category?: string }) =>
+      ["pricing", "list", filters ?? {}] as const,
+    recalcHistory: ["pricing", "recalc-history"] as const,
+  },
   knowledgeBases: {
     all: (tenantId: string) => ["knowledge-bases", tenantId] as const,
   },

@@ -214,6 +214,22 @@ from src.application.plan.update_plan_use_case import UpdatePlanUseCase
 from src.application.platform.create_provider_setting_use_case import (
     CreateProviderSettingUseCase,
 )
+from src.application.pricing.create_pricing_use_case import (
+    CreatePricingUseCase,
+)
+from src.application.pricing.deactivate_pricing_use_case import (
+    DeactivatePricingUseCase,
+)
+from src.application.pricing.dry_run_recalculate_use_case import (
+    DryRunRecalculateUseCase,
+)
+from src.application.pricing.execute_recalculate_use_case import (
+    ExecuteRecalculateUseCase,
+)
+from src.application.pricing.list_pricing_use_case import ListPricingUseCase
+from src.application.pricing.list_recalc_history_use_case import (
+    ListRecalcHistoryUseCase,
+)
 from src.application.platform.delete_provider_setting_use_case import (
     DeleteProviderSettingUseCase,
 )
@@ -357,6 +373,14 @@ from src.infrastructure.db.repositories.plan_repository import (
 )
 from src.infrastructure.db.repositories.processing_task_repository import (
     SQLAlchemyProcessingTaskRepository,
+)
+from src.infrastructure.pricing.pricing_cache import InMemoryPricingCache
+from src.infrastructure.pricing.pricing_repository import (
+    SQLAlchemyModelPricingRepository,
+    SQLAlchemyPricingRecalcAuditRepository,
+)
+from src.infrastructure.pricing.usage_recalc_adapter import (
+    SQLAlchemyUsageRecalcAdapter,
 )
 from src.infrastructure.db.repositories.provider_setting_repository import (
     SQLAlchemyProviderSettingRepository,
@@ -507,6 +531,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.admin_tools_router",
             "src.interfaces.api.admin_bot_router",
             "src.interfaces.api.admin_knowledge_base_router",
+            "src.interfaces.api.admin_pricing_router",
             "src.interfaces.api.plan_router",
             "src.interfaces.api.mcp_router",
             "src.interfaces.api.mcp_server_router",
@@ -655,6 +680,27 @@ class Container(containers.DeclarativeContainer):
     plan_repository = providers.Factory(
         SQLAlchemyPlanRepository,
         session=db_session,
+    )
+
+    # S-Pricing.1: Model Pricing repos + in-memory cache
+    model_pricing_repository = providers.Factory(
+        SQLAlchemyModelPricingRepository,
+        session=db_session,
+    )
+
+    pricing_recalc_audit_repository = providers.Factory(
+        SQLAlchemyPricingRecalcAuditRepository,
+        session=db_session,
+    )
+
+    usage_recalc_port = providers.Factory(
+        SQLAlchemyUsageRecalcAdapter,
+        session=db_session,
+    )
+
+    pricing_cache = providers.Singleton(
+        InMemoryPricingCache,
+        repo_factory=model_pricing_repository.provider,
     )
 
     token_ledger_repository = providers.Factory(
@@ -963,6 +1009,42 @@ class Container(containers.DeclarativeContainer):
         tenant_repository=tenant_repository,
     )
 
+    # S-Pricing.1: Pricing use cases
+    list_pricing_use_case = providers.Factory(
+        ListPricingUseCase,
+        repo=model_pricing_repository,
+    )
+
+    create_pricing_use_case = providers.Factory(
+        CreatePricingUseCase,
+        repo=model_pricing_repository,
+    )
+
+    deactivate_pricing_use_case = providers.Factory(
+        DeactivatePricingUseCase,
+        repo=model_pricing_repository,
+    )
+
+    dry_run_recalculate_use_case = providers.Factory(
+        DryRunRecalculateUseCase,
+        pricing_repo=model_pricing_repository,
+        usage_port=usage_recalc_port,
+        cache=cache_service,
+    )
+
+    execute_recalculate_use_case = providers.Factory(
+        ExecuteRecalculateUseCase,
+        pricing_repo=model_pricing_repository,
+        audit_repo=pricing_recalc_audit_repository,
+        usage_port=usage_recalc_port,
+        cache=cache_service,
+    )
+
+    list_recalc_history_use_case = providers.Factory(
+        ListRecalcHistoryUseCase,
+        repo=pricing_recalc_audit_repository,
+    )
+
     register_user_use_case = providers.Factory(
         RegisterUserUseCase,
         user_repository=user_repository,
@@ -1167,6 +1249,8 @@ class Container(containers.DeclarativeContainer):
         # S-Token-Gov.2: 注入後每筆 usage 寫入會 hook ledger.deduct
         deduct_tokens=deduct_tokens_use_case,
         tenant_repository=tenant_repository,
+        # S-Pricing.1: cache miss 時才 fallback 到 DEFAULT_MODELS
+        pricing_cache=pricing_cache,
     )
 
     chunk_context_service = providers.Factory(

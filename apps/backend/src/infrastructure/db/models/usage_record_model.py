@@ -49,6 +49,10 @@ class UsageRecordModel(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+    # S-Pricing.1: 若 row 曾被回溯重算，記錄重算時間戳（查月報可識別被動過的 row）
+    cost_recalc_at: Mapped[datetime | None] = mapped_column(
+        TZDateTime, nullable=True
+    )
 
     __table_args__ = (
         Index("ix_token_usage_records_tenant_created", "tenant_id", "created_at"),

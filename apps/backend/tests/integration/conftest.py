@@ -33,6 +33,8 @@ from src.infrastructure.db.models import (  # noqa: F401
     FeedbackModel,
     KnowledgeBaseModel,
     MessageModel,
+    ModelPricingModel,
+    PricingRecalcAuditModel,
     ProcessingTaskModel,
     ProviderSettingModel,
     RAGEvalModel,

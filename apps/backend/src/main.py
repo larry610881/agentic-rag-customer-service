@@ -111,6 +111,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         logger.warning("built_in_tool.seed.failed", exc_info=True)
 
+    # S-Pricing.1: 啟動時 load DB pricing 到記憶體 cache
+    # 失敗不擋啟動 — RecordUsageUseCase 會 fallback 到 DEFAULT_MODELS
+    try:
+        container = app.container  # type: ignore[attr-defined]
+        pricing_cache = container.pricing_cache()
+        await pricing_cache.refresh()
+    except Exception:
+        logger.warning("pricing_cache.startup_refresh_failed", exc_info=True)
+
     # Start background log cleanup
     cleanup_task = asyncio.create_task(
         _log_cleanup_loop(app.container)  # type: ignore[attr-defined]
@@ -302,6 +311,11 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         application.include_router(admin_tools_router)
         application.include_router(admin_bot_router)
         application.include_router(admin_knowledge_base_router)
+
+        from src.interfaces.api.admin_pricing_router import (
+            router as admin_pricing_router,
+        )
+        application.include_router(admin_pricing_router)
 
         from src.interfaces.api.plan_router import router as plan_router
         application.include_router(plan_router)

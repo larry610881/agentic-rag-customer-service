@@ -20,6 +20,14 @@ export const API_ENDPOINTS = {
     assign: (planName: string, tenantId: string) =>
       `/api/v1/admin/plans/${planName}/assign/${tenantId}`,
   },
+  pricing: {
+    list: "/api/v1/admin/pricing",
+    create: "/api/v1/admin/pricing",
+    deactivate: (id: string) => `/api/v1/admin/pricing/${id}/deactivate`,
+    recalculateDryRun: "/api/v1/admin/pricing/recalculate:dry-run",
+    recalculateExecute: "/api/v1/admin/pricing/recalculate:execute",
+    recalcHistory: "/api/v1/admin/pricing/recalculate-history",
+  },
   knowledgeBases: {
     list: "/api/v1/knowledge-bases",
     create: "/api/v1/knowledge-bases",

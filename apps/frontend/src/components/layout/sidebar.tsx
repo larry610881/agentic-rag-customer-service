@@ -27,6 +27,7 @@ import {
   Wand2,
   Wrench,
   Package,
+  DollarSign,
   Wallet,
   TrendingUp,
   Search,
@@ -49,6 +50,7 @@ const generalNavItems = [
 const systemAdminItems = [
   { href: "/admin/tenants", label: "租戶管理", icon: Building },
   { href: "/admin/plans", label: "方案管理", icon: Package },
+  { href: "/admin/pricing", label: "定價管理", icon: DollarSign },
   { href: "/admin/knowledge-bases", label: "所有知識庫", icon: BookOpen },
   { href: "/admin/bots", label: "所有機器人", icon: Bot },
   { href: "/admin/users", label: "帳號管理", icon: Users },

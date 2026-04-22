@@ -57,6 +57,10 @@ from src.infrastructure.db.models.billing_transaction_model import (
 from src.infrastructure.db.models.quota_alert_log_model import (
     QuotaAlertLogModel,
 )
+from src.infrastructure.db.models.model_pricing_model import (
+    ModelPricingModel,
+    PricingRecalcAuditModel,
+)
 __all__ = [
     "TenantModel",
     "KnowledgeBaseModel",
@@ -97,4 +101,6 @@ __all__ = [
     "TokenLedgerModel",
     "BillingTransactionModel",
     "QuotaAlertLogModel",
+    "ModelPricingModel",
+    "PricingRecalcAuditModel",
 ]
