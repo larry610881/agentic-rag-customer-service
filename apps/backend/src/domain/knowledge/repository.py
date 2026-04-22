@@ -174,6 +174,54 @@ class DocumentRepository(ABC):
         """
         ...
 
+    # --- S-KB-Studio.1 新增：single-chunk + KB-level chunk 操作 ---
+
+    @abstractmethod
+    async def find_chunk_by_id(self, chunk_id: str) -> Chunk | None:
+        """單一 chunk 查詢（for KB Studio inline edit）。"""
+        ...
+
+    @abstractmethod
+    async def update_chunk(
+        self,
+        chunk_id: str,
+        *,
+        content: str | None = None,
+        context_text: str | None = None,
+    ) -> None:
+        """更新單 chunk content 與 / 或 context_text，自動更新 updated_at。
+
+        至少需要一個非 None 欄位，否則 raise ValueError。
+        """
+        ...
+
+    @abstractmethod
+    async def delete_chunk(self, chunk_id: str) -> None:
+        """刪除單一 chunk (不級聯刪 category)。"""
+        ...
+
+    @abstractmethod
+    async def find_chunks_by_kb_paginated(
+        self,
+        kb_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        category_id: str | None = None,
+    ) -> list[Chunk]:
+        """KB-level 分頁（跨文件），可選 category filter。"""
+        ...
+
+    @abstractmethod
+    async def count_chunks_by_kb(
+        self,
+        kb_id: str,
+        *,
+        category_id: str | None = None,
+    ) -> int:
+        """KB-level chunk 總數（可選 category filter）。"""
+        ...
+
 
 class ProcessingTaskRepository(ABC):
     @abstractmethod
@@ -214,4 +262,22 @@ class ChunkCategoryRepository(ABC):
     @abstractmethod
     async def update_chunk_counts(self, kb_id: str) -> None:
         """Recalculate chunk_count for all categories in a KB."""
+        ...
+
+    # --- S-KB-Studio.1 新增：CRUD ---
+
+    @abstractmethod
+    async def delete_by_id(self, category_id: str) -> None:
+        """刪除單一 category (chunks.category_id 級聯設 NULL 由 DB constraint 處理)。"""
+        ...
+
+    @abstractmethod
+    async def assign_chunks(
+        self, category_id: str, chunk_ids: list[str]
+    ) -> None:
+        """批次把多個 chunks 指派到某 category。
+
+        對映至既有 DocumentRepository.update_chunks_category()，但入口在 category
+        layer 以便 audit log 維度對齊 category-centric 操作。
+        """
         ...

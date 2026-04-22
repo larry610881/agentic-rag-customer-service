@@ -113,3 +113,35 @@ class SQLAlchemyChunkCategoryRepository(ChunkCategoryRepository):
                     .where(ChunkCategoryModel.id == cat_id)
                     .values(chunk_count=cnt)
                 )
+
+    # --- S-KB-Studio.1 新增實作 ---
+
+    async def delete_by_id(self, category_id: str) -> None:
+        """刪除單一 category；chunks.category_id 會 SET NULL by FK constraint
+        (chunks.category_id ON DELETE SET NULL 若沒設則需 migration 補)。"""
+        async with atomic(self._session):
+            # 手動把 chunks.category_id 設 NULL（保險；不靠 FK cascade）
+            await self._session.execute(
+                update(ChunkModel)
+                .where(ChunkModel.category_id == category_id)
+                .values(category_id=None)
+            )
+            await self._session.execute(
+                delete(ChunkCategoryModel).where(
+                    ChunkCategoryModel.id == category_id
+                )
+            )
+
+    async def assign_chunks(
+        self, category_id: str, chunk_ids: list[str]
+    ) -> None:
+        """批次指派：實作等同 DocumentRepository.update_chunks_category()
+        但從 category-centric 視角入口。"""
+        if not chunk_ids:
+            return
+        async with atomic(self._session):
+            await self._session.execute(
+                update(ChunkModel)
+                .where(ChunkModel.id.in_(chunk_ids))
+                .values(category_id=category_id)
+            )

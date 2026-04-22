@@ -52,6 +52,8 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             context_text=model.context_text or "",
             chunk_index=model.chunk_index,
             metadata=model.metadata_ or {},
+            category_id=model.category_id,
+            quality_flag=model.quality_flag,
         )
 
     # --- Document write methods ---
@@ -371,3 +373,82 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    # --- S-KB-Studio.1 新增實作 ---
+
+    async def find_chunk_by_id(self, chunk_id: str) -> Chunk | None:
+        model = await self._session.get(ChunkModel, chunk_id)
+        return self._chunk_to_entity(model) if model else None
+
+    async def update_chunk(
+        self,
+        chunk_id: str,
+        *,
+        content: str | None = None,
+        context_text: str | None = None,
+    ) -> None:
+        if content is None and context_text is None:
+            raise ValueError(
+                "update_chunk requires at least one of content / context_text"
+            )
+        # Note: ChunkModel 目前無 updated_at 欄位（S-KB-Studio.1 Day 1 migration
+        # 會補）；本次僅更新 content/context_text 欄位
+        values: dict[str, object] = {}
+        if content is not None:
+            values["content"] = content
+        if context_text is not None:
+            values["context_text"] = context_text
+        async with atomic(self._session):
+            await self._session.execute(
+                update(ChunkModel)
+                .where(ChunkModel.id == chunk_id)
+                .values(**values)
+            )
+
+    async def delete_chunk(self, chunk_id: str) -> None:
+        async with atomic(self._session):
+            await self._session.execute(
+                delete(ChunkModel).where(ChunkModel.id == chunk_id)
+            )
+
+    async def find_chunks_by_kb_paginated(
+        self,
+        kb_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        category_id: str | None = None,
+    ) -> list[Chunk]:
+        offset = max(0, (page - 1) * page_size)
+        stmt = (
+            select(ChunkModel)
+            .join(DocumentModel, ChunkModel.document_id == DocumentModel.id)
+            .where(DocumentModel.kb_id == kb_id)
+        )
+        if category_id is not None:
+            stmt = stmt.where(ChunkModel.category_id == category_id)
+        # Order by (document_id, chunk_index) stable ordering; updated_at 待 Day 1 migration 後改
+        stmt = (
+            stmt.order_by(ChunkModel.document_id, ChunkModel.chunk_index)
+            .limit(page_size)
+            .offset(offset)
+        )
+        result = await self._session.execute(stmt)
+        return [self._chunk_to_entity(m) for m in result.scalars().all()]
+
+    async def count_chunks_by_kb(
+        self,
+        kb_id: str,
+        *,
+        category_id: str | None = None,
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(ChunkModel)
+            .join(DocumentModel, ChunkModel.document_id == DocumentModel.id)
+            .where(DocumentModel.kb_id == kb_id)
+        )
+        if category_id is not None:
+            stmt = stmt.where(ChunkModel.category_id == category_id)
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one() or 0)

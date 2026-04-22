@@ -65,6 +65,9 @@ class Chunk:
     context_text: str = ""
     chunk_index: int = 0
     metadata: dict = field(default_factory=dict)
+    # S-KB-Studio.1: inline edit + quality summary 用；對應 ChunkModel 既有欄位
+    category_id: str | None = None
+    quality_flag: str | None = None
 
 
 @dataclass
