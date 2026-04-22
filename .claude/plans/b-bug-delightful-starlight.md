@@ -93,8 +93,8 @@ grep -A 2 'field_name="document_id"' apps/backend/src/infrastructure/milvus/milv
 ### 現有 collection 影響
 
 - 新 collection 自動用新 index
-- 舊 collection 需 `drop_index() → create_index() → load()` 重建（`MilvusVectorStore` 加管理方法，Day 1 Milvus Dashboard API 會用到）
-- 重建期間 collection unavailable 幾秒 → 建議 off-peak 執行
+- 舊 collection 需 `drop_index() → create_index() → load()` 重建
+- **✅ 2026-04-22 已完成**：`scripts/rebuild_milvus_scalar_index.py` 跑過 local-docker (2 coll) + dev-vm (6 coll + conv_summaries)，全部雙欄位升成 INVERTED。Day 7 `/admin/milvus/collections/{name}/rebuild-index` endpoint 仍會實作（供未來個案或新增租戶後使用），但現有 collection **不用再 rebuild**
 
 ### BDD + TDD
 
