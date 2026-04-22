@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.domain.conversation.repository import ConversationRepository
-from src.domain.shared.exceptions import EntityNotFoundError
 
 
 @dataclass(frozen=True)

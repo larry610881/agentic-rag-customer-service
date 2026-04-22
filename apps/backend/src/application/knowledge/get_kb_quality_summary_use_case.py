@@ -41,7 +41,7 @@ class GetKbQualitySummaryUseCase:
     ) -> KbQualitySummary:
         kb = await self._kb_repo.find_by_id(query.kb_id)
         if kb is None or kb.tenant_id != query.tenant_id:
-            raise EntityNotFoundError(f"kb {query.kb_id} not found")
+            raise EntityNotFoundError("kb", query.kb_id)
 
         total = await self._doc_repo.count_chunks_by_kb(query.kb_id)
         # 先用粗估：掃第一頁 chunks 計 quality_flag（完整統計等 Day 2 加專用 SQL）

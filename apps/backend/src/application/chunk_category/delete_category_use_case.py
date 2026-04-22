@@ -36,13 +36,11 @@ class DeleteCategoryUseCase:
         """回傳受影響的 chunk 數。"""
         kb = await self._kb_repo.find_by_id(command.kb_id)
         if kb is None or kb.tenant_id != command.tenant_id:
-            raise EntityNotFoundError(f"kb {command.kb_id} not found")
+            raise EntityNotFoundError("kb", command.kb_id)
 
         category = await self._repo.find_by_id(command.category_id)
         if category is None or category.kb_id != command.kb_id:
-            raise EntityNotFoundError(
-                f"category {command.category_id} not found"
-            )
+            raise EntityNotFoundError("category", command.category_id)
 
         chunk_count = category.chunk_count
         await self._repo.delete_by_id(command.category_id)

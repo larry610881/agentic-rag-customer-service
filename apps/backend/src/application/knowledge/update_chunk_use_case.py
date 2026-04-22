@@ -46,16 +46,16 @@ class UpdateChunkUseCase:
         # 紅線：tenant chain 驗證 (chunk -> doc -> kb -> tenant)
         chunk = await self._doc_repo.find_chunk_by_id(command.chunk_id)
         if chunk is None:
-            raise EntityNotFoundError(f"chunk {command.chunk_id} not found")
+            raise EntityNotFoundError("chunk", command.chunk_id)
         # chunk 自帶 tenant_id，先擋；再驗 kb 層以防 entity mutation
         if chunk.tenant_id != command.tenant_id:
-            raise EntityNotFoundError(f"chunk {command.chunk_id} not found")
+            raise EntityNotFoundError("chunk", command.chunk_id)
         doc = await self._doc_repo.find_by_id(chunk.document_id)
         if doc is None or doc.tenant_id != command.tenant_id:
-            raise EntityNotFoundError(f"chunk {command.chunk_id} not found")
+            raise EntityNotFoundError("chunk", command.chunk_id)
         kb = await self._kb_repo.find_by_id(doc.kb_id)
         if kb is None or kb.tenant_id != command.tenant_id:
-            raise EntityNotFoundError(f"chunk {command.chunk_id} not found")
+            raise EntityNotFoundError("chunk", command.chunk_id)
 
         if command.content is not None and not command.content.strip():
             raise ValueError("content must not be empty")

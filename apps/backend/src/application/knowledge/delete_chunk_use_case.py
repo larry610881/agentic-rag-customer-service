@@ -40,13 +40,13 @@ class DeleteChunkUseCase:
     async def execute(self, command: DeleteChunkCommand) -> None:
         chunk = await self._doc_repo.find_chunk_by_id(command.chunk_id)
         if chunk is None or chunk.tenant_id != command.tenant_id:
-            raise EntityNotFoundError(f"chunk {command.chunk_id} not found")
+            raise EntityNotFoundError("chunk", command.chunk_id)
         doc = await self._doc_repo.find_by_id(chunk.document_id)
         if doc is None or doc.tenant_id != command.tenant_id:
-            raise EntityNotFoundError(f"chunk {command.chunk_id} not found")
+            raise EntityNotFoundError("chunk", command.chunk_id)
         kb = await self._kb_repo.find_by_id(doc.kb_id)
         if kb is None or kb.tenant_id != command.tenant_id:
-            raise EntityNotFoundError(f"chunk {command.chunk_id} not found")
+            raise EntityNotFoundError("chunk", command.chunk_id)
 
         # 1. DB delete 優先
         await self._doc_repo.delete_chunk(command.chunk_id)

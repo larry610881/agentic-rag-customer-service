@@ -40,13 +40,11 @@ class AssignChunksUseCase:
         """回傳實際 assign 的 chunk 數（全部 chunks 必須屬於該租戶的該 KB）。"""
         kb = await self._kb_repo.find_by_id(command.kb_id)
         if kb is None or kb.tenant_id != command.tenant_id:
-            raise EntityNotFoundError(f"kb {command.kb_id} not found")
+            raise EntityNotFoundError("kb", command.kb_id)
 
         category = await self._cat_repo.find_by_id(command.category_id)
         if category is None or category.kb_id != command.kb_id:
-            raise EntityNotFoundError(
-                f"category {command.category_id} not found"
-            )
+            raise EntityNotFoundError("category", command.category_id)
         if not command.chunk_ids:
             return 0
 

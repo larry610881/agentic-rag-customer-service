@@ -56,7 +56,7 @@ class TestRetrievalUseCase:
     ) -> TestRetrievalResult:
         kb = await self._kb_repo.find_by_id(command.kb_id)
         if kb is None or kb.tenant_id != command.tenant_id:
-            raise EntityNotFoundError(f"kb {command.kb_id} not found")
+            raise EntityNotFoundError("kb", command.kb_id)
         if not command.query.strip():
             raise ValueError("query must not be empty")
 

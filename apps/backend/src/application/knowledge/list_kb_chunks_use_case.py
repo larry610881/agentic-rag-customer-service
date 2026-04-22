@@ -44,7 +44,7 @@ class ListKbChunksUseCase:
     async def execute(self, query: ListKbChunksQuery) -> ListKbChunksResult:
         kb = await self._kb_repo.find_by_id(query.kb_id)
         if kb is None or kb.tenant_id != query.tenant_id:
-            raise EntityNotFoundError(f"kb {query.kb_id} not found")
+            raise EntityNotFoundError("kb", query.kb_id)
 
         items = await self._doc_repo.find_chunks_by_kb_paginated(
             query.kb_id,

@@ -11,8 +11,8 @@ Feature: Milvus Collection Dashboard 列表
     And conv_summaries 的 tenant_id index_type 應為 "INVERTED"
 
   Scenario: Tenant admin 只看自己 KB 的 collections
-    Given 租戶 "T001" 擁有 KB "kb-1" 與 "kb-2"
-    And 租戶 "T002" 擁有 KB "kb-3"
+    Given 租戶 "T001" 擁有 2 KBs "kb-1" 與 "kb-2"
+    And 租戶 "T002" 擁有 1 KB "kb-3"
     When 我以 tenant "T001" 的 tenant_admin 身分呼叫 list_collections()
     Then 回傳應含 "kb_kb-1" 與 "kb_kb-2"
     And 回傳不應含 "kb_kb-3"（跨租戶）
