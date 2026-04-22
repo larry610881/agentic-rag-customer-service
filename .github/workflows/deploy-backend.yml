@@ -125,6 +125,9 @@ jobs:
       - name: Pull latest code + sync deps + restart arq-worker on VM
         run: |
           set -euo pipefail
+          # SA 用 ephemeral Linux user 登入 VM，沒有 /home/p10359945 的讀權限，
+          # 所以 git / uv 檔案操作用 `sudo -u p10359945` 切身分；systemctl
+          # restart 本來就要 sudo。NOPASSWD 靠 gcloud SSH 預設 sudoers 規則。
           gcloud compute ssh db-services \
             --zone=asia-east1-b \
             --tunnel-through-iap \
@@ -132,14 +135,15 @@ jobs:
             --quiet \
             --command='
               set -euo pipefail
-              echo "==> git pull"
-              cd /home/p10359945/agentic-rag-customer-service
-              git fetch --quiet origin main
-              git reset --hard origin/main
-              echo "HEAD: $(git rev-parse --short HEAD)"
-              echo "==> uv sync"
-              cd apps/backend
-              /home/p10359945/.local/bin/uv sync --quiet
+              echo "==> git pull (as p10359945)"
+              sudo -u p10359945 bash -lc "
+                cd /home/p10359945/agentic-rag-customer-service
+                git fetch --quiet origin main
+                git reset --hard origin/main
+                echo HEAD: \$(git rev-parse --short HEAD)
+                cd apps/backend
+                /home/p10359945/.local/bin/uv sync --quiet
+              "
               echo "==> restart arq-worker.service"
               sudo systemctl restart arq-worker.service
               sleep 3
@@ -156,7 +160,7 @@ jobs:
             --tunnel-through-iap \
             --project=${{ env.PROJECT_ID }} \
             --quiet \
-            --command='cd /home/p10359945/agentic-rag-customer-service && git rev-parse HEAD')
+            --command='sudo -u p10359945 git -C /home/p10359945/agentic-rag-customer-service rev-parse HEAD')
           echo "Local CI SHA:  ${{ github.sha }}"
           echo "Worker VM SHA: ${REMOTE_SHA}"
           if [ "${{ github.sha }}" != "${REMOTE_SHA}" ]; then
