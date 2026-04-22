@@ -321,6 +321,28 @@ class ProcessDocumentUseCase:
                     duration_ms=ctx_ms,
                 )
 
+                # Refresh session after LLM calls — must be done **before**
+                # record_usage（否則 usage_repo._session 仍是已關閉的 session
+                # → record_usage.save 沉默失敗，token 永遠寫不進 DB）。
+                # S-LLM-Cache.1 fix：同步 refresh record_usage 的 inner repo session。
+                if hasattr(self._doc_repo, '_session'):
+                    try:
+                        from src.infrastructure.db.engine import async_session_factory
+                        new_session = async_session_factory()
+                        self._doc_repo._session = new_session
+                        self._task_repo._session = new_session
+                        self._kb_repo._session = new_session
+                        # 關鍵：record_usage 的 usage_repository 也綁同一個
+                        # ContextVar session（已被 close 了），需顯式 refresh
+                        if (
+                            self._record_usage is not None
+                            and hasattr(self._record_usage, "_repo")
+                            and hasattr(self._record_usage._repo, "_session")
+                        ):
+                            self._record_usage._repo._session = new_session
+                    except Exception:
+                        pass
+
                 # Token-Gov.0: 記錄 contextual retrieval token 用量
                 # S-LLM-Cache.1: 加上 cache_read / cache_creation 欄位
                 if self._record_usage and getattr(
@@ -353,17 +375,6 @@ class ProcessDocumentUseCase:
                     )
 
                 await _update_progress(task_id, 73)
-
-                # Refresh session after LLM calls
-                if hasattr(self._doc_repo, '_session'):
-                    try:
-                        from src.infrastructure.db.engine import async_session_factory
-                        new_session = async_session_factory()
-                        self._doc_repo._session = new_session
-                        self._task_repo._session = new_session
-                        self._kb_repo._session = new_session
-                    except Exception:
-                        pass
 
             # 75% — chunks saved
             await _update_progress(task_id, 75)

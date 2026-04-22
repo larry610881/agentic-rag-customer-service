@@ -111,10 +111,24 @@ class ClassifyKbUseCase:
 
         # Token-Gov.0: 記錄 auto-classification token 用量
         # S-LLM-Cache.1: 加上 cache_read / cache_creation 欄位
+        # Session refresh fix：LLM 長時間呼叫後 ContextVar session 可能已超時
+        # （asyncpg idle 或 PG idle_in_transaction_session_timeout）；refresh
+        # 一個新 session 給 record_usage 用，避免 silently 寫不進 DB。
         if self._record_usage and (
             self._classification.last_input_tokens
             + self._classification.last_output_tokens
         ) > 0:
+            try:
+                from src.infrastructure.db.engine import async_session_factory
+                _new_session = async_session_factory()
+                if (
+                    hasattr(self._record_usage, "_repo")
+                    and hasattr(self._record_usage._repo, "_session")
+                ):
+                    self._record_usage._repo._session = _new_session
+            except Exception:
+                pass
+
             cls_in = self._classification.last_input_tokens
             cls_out = self._classification.last_output_tokens
             cls_cache_read = getattr(

@@ -94,3 +94,72 @@ jobs:
             --max-instances=5
             --vpc-connector=db-connector
             --vpc-egress=private-ranges-only
+
+  # ---------------------------------------------------------------------------
+  # arq Worker (跑在 GCE VM `db-services` via systemd) — 跟 Cloud Run 不同部署路徑
+  # ---------------------------------------------------------------------------
+  # 為何 worker 不上 Cloud Run：worker 為 long-lived process（無 HTTP），且需與
+  # PostgreSQL / Redis / Milvus 共用 VM 內網。CI/CD 透過 IAP SSH 進 VM `git pull`
+  # + `uv sync` + `systemctl restart arq-worker.service`，與 main 程式碼同步。
+  #
+  # 不加這 job 之前的後果：worker 永遠跑著上次手動部署時的 code，新功能上線後
+  # 「Cloud Run 有但 worker 跑不到」（例：S-LLM-Cache.1 的 cache 計費 / Token-Gov 的
+  # auto-classification record_usage 全部 silently 失效 6 天）。
+  deploy-worker:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Google Auth (Workload Identity Federation)
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Pull latest code + sync deps + restart arq-worker on VM
+        run: |
+          set -euo pipefail
+          gcloud compute ssh db-services \
+            --zone=asia-east1-b \
+            --tunnel-through-iap \
+            --project=${{ env.PROJECT_ID }} \
+            --quiet \
+            --command='
+              set -euo pipefail
+              echo "==> git pull"
+              cd /home/p10359945/agentic-rag-customer-service
+              git fetch --quiet origin main
+              git reset --hard origin/main
+              echo "HEAD: $(git rev-parse --short HEAD)"
+              echo "==> uv sync"
+              cd apps/backend
+              /home/p10359945/.local/bin/uv sync --quiet
+              echo "==> restart arq-worker.service"
+              sudo systemctl restart arq-worker.service
+              sleep 3
+              sudo systemctl is-active arq-worker.service
+              echo "==> recent log:"
+              sudo journalctl -u arq-worker.service --since "10 seconds ago" --no-pager | tail -5
+            '
+
+      - name: Verify worker picked up new revision
+        run: |
+          set -euo pipefail
+          REMOTE_SHA=$(gcloud compute ssh db-services \
+            --zone=asia-east1-b \
+            --tunnel-through-iap \
+            --project=${{ env.PROJECT_ID }} \
+            --quiet \
+            --command='cd /home/p10359945/agentic-rag-customer-service && git rev-parse HEAD')
+          echo "Local CI SHA:  ${{ github.sha }}"
+          echo "Worker VM SHA: ${REMOTE_SHA}"
+          if [ "${{ github.sha }}" != "${REMOTE_SHA}" ]; then
+            echo "::error::Worker VM SHA mismatch — pull failed silently"
+            exit 1
+          fi
