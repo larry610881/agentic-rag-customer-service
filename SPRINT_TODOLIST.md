@@ -1359,6 +1359,13 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | **Items 5-6 (model_registry capability + cost 折扣)** | ⏭️ S-LLM-Cache.2 | 留下 sprint 處理 dashboard 顯示 cache 折扣後的 effective cost |
 | **KB Studio Hotfix H2** | 🔄 SUPERSEDED | KB Studio plan 的 H2 (Contextual Retrieval cache) 已被本 sprint 涵蓋 |
 
+### S-LLM-Cache.1 驗證階段發現的附帶 bug（2026-04-22 同 commit 一起修）
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| `record_usage` 在 worker 靜默失敗 | ✅ | 跑完 `SELECT ... FROM token_usage_records` 發現 **ever** 沒有 `contextual_retrieval` / `auto_classification` / `embedding` / `guard` 紀錄 — 非本次 commit 造成，是 Token-Gov.0 以來一直沒偵測到的 bug。根因：process_document / classify_kb 在 LLM 呼叫前 close session，後續 refresh 只更新 doc/task/kb repo 的 `_session`，**沒更新 record_usage 內部 usage_repo 的 `_session`** → record_usage.execute() 在 closed session 上跑 atomic() 沉默失敗。修法：refresh 時一併更新 `_record_usage._repo._session`，且 record_usage 呼叫移到 refresh 之後。 |
+| arq worker 從 2026-04-16 起沒 auto-deploy | ✅ | 查 systemctl 發現 `arq-worker.service` ActiveEnterTimestamp 是 6 天前。CI/CD `deploy-backend.yml` 只 deploy Cloud Run（API），**完全沒處理 VM worker**。修法：新增 `deploy-worker` job via `gcloud compute ssh --tunnel-through-iap` 做 `git reset --hard origin/main` + `uv sync` + `systemctl restart`，並 verify worker SHA == CI SHA。以後 push 就自動同步。 |
+
 ### S-Gov.1 Sub-agent 驗證與追蹤穩定化
 | 項目 | 狀態 | 說明 |
 |------|------|------|
