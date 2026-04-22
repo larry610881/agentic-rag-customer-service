@@ -1339,6 +1339,26 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | /change-password 前端頁 + Form | ✅ | ChangePasswordForm：舊/新/確認三欄 + zod refine + 成功提示；桌面導覽列 Header 顯示「變更密碼」按鈕 |
 | ~~首次登入強制改~~ | ⏭️ 擱置 | 多人共用測試帳號的情境下強制改會打架；先補自助改即可 |
 
+### S-LLM-Cache.1 跨 provider Prompt Caching 抽象（2026-04-22 ship）
+> 情境：4 個 call_llm caller（Contextual Retrieval / Guard / Auto-Classification / Intent Classifier）長期沒 prompt caching。Contextual Retrieval 處理多 chunk 文件每天燒 80%+ 冗餘 input token。需可跨 Anthropic 顯式 marker / OpenAI 自動 prefix / DeepSeek 特殊欄位 / Gemini / 本地推理引擎通用工作。
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Domain `PromptBlock` 抽象 | ✅ | 新 `domain/llm/prompt_block.py`：BlockRole + CacheHint + frozen dataclass，7 unit tests 全通過 |
+| `LLMCallResult` 加 cache token 欄位 | ✅ | `cache_read_tokens` / `cache_creation_tokens` (default 0 backward compat) |
+| `call_llm` 簽章 overload | ✅ | `prompt: str \| list[PromptBlock]` + `_normalize_blocks` util；str path 包成單一 user block |
+| Anthropic adapter | ✅ | system / user blocks 分流；cache_control marker；解析 `cache_read_input_tokens` / `cache_creation_input_tokens` (getattr 防禦)；5 unit tests |
+| OpenAI-compatible adapter | ✅ | blocks 按 role 拼字串；解析 `prompt_tokens_details.cached_tokens`；DeepSeek 走 `prompt_cache_hit_tokens` 特殊欄位；5 unit tests |
+| **P0 Contextual Retrieval** ⭐ | ✅ | `LLMChunkContextService` 改用 blocks，document 段 EPHEMERAL；累計 cache token 經 `process_document_use_case` → TokenUsage → UsageRecord（4 欄全寫入）。預估 ~85% input token 省 |
+| P1 PromptGuardService | ✅ | DEFAULT_OUTPUT_GUARD_PROMPT 拆 system (cacheable) + user (volatile)；`_DEFAULT_OUTPUT_GUARD_SYSTEM` 新 const；自訂 prompt 維持單段相容 |
+| P1 ClusterClassificationService | ✅ | NAMING_PROMPT 拆 system + user template；多 cluster 並發共用 system block；累計 cache token 經 `classify_kb_use_case` → TokenUsage |
+| P1 IntentClassifier 重新切分 | ✅ | 不走 call_llm（走 LLMService.generate），改 `_build_classify_prompt` → `_build_system_with_categories` + `_build_user_message`，類別清單進 system_prompt 利用既有 AnthropicLLMService cache_control |
+| BDD regression scenario | ✅ | `cache_aware_billing.feature` 新增「Contextual Retrieval 多 chunk 回傳 cache 命中」scenario，驗證 service 累計屬性正確 |
+| 全量單元測試 | ✅ | 748 passed (從 baseline 722 + 26 new) |
+| **不碰 LangGraph path** | — | `AnthropicLLMService` / `OpenAILLMService` 既已支援 cache_control，本 sprint 不動 |
+| **Items 5-6 (model_registry capability + cost 折扣)** | ⏭️ S-LLM-Cache.2 | 留下 sprint 處理 dashboard 顯示 cache 折扣後的 effective cost |
+| **KB Studio Hotfix H2** | 🔄 SUPERSEDED | KB Studio plan 的 H2 (Contextual Retrieval cache) 已被本 sprint 涵蓋 |
+
 ### S-Gov.1 Sub-agent 驗證與追蹤穩定化
 | 項目 | 狀態 | 說明 |
 |------|------|------|

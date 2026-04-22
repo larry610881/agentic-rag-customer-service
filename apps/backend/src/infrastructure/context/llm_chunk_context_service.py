@@ -2,6 +2,11 @@
 
 Anthropic's research shows this improves retrieval accuracy by ~35%.
 Supports any provider via call_llm (Anthropic, OpenAI, LiteLLM, etc.).
+
+S-LLM-Cache.1: 改用 PromptBlock — document 段標 cacheable 給 Anthropic 標
+cache_control marker，OpenAI/DeepSeek 等則靠 prefix 順序自動命中。同一份文件
+跑 N chunks 時 doc 段只計費一次（首次 creation），後續為 cached read，估省 ~85%
+input token 成本。
 """
 
 from __future__ import annotations
@@ -11,22 +16,24 @@ from typing import Awaitable, Callable
 
 from src.domain.knowledge.entity import Chunk
 from src.domain.knowledge.services import ChunkContextService
+from src.domain.llm import BlockRole, CacheHint, PromptBlock
 from src.infrastructure.llm.llm_caller import call_llm
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
 
-CONTEXT_PROMPT = """\
-<document>
-{document_content}
-</document>
+# 提示說明：固定指令塞前面，document 段第二（最大、cacheable），chunk 段最後（變動）
+# Anthropic ephemeral cache 5min TTL；OpenAI/DeepSeek 靠 byte-stable prefix 自動命中。
+INSTRUCTION_PREFIX = (
+    "你的任務：根據完整文件內容，為文件中的某個片段寫 1-2 句上下文描述。\n\n"
+)
 
-以下是文件中的一個片段：
-<chunk>
-{chunk_content}
-</chunk>
+DOCUMENT_TEMPLATE = "<document>\n{document_content}\n</document>"
 
-請用 1-2 句繁體中文描述這個片段在文件中的位置和上下文。只輸出描述，不要其他內容。"""
+CHUNK_QUESTION_TEMPLATE = (
+    "\n\n以下是文件中的一個片段：\n<chunk>\n{chunk_content}\n</chunk>\n\n"
+    "請用 1-2 句繁體中文描述這個片段在文件中的位置和上下文。只輸出描述，不要其他內容。"
+)
 
 DEFAULT_MODEL = "anthropic:claude-haiku-4-5-20251001"
 MAX_CONCURRENCY = 5
@@ -41,9 +48,12 @@ class LLMChunkContextService(ChunkContextService):
     ) -> None:
         self._api_key_resolver = api_key_resolver
         # Token-Gov.0: 累計每次 generate_contexts 的 token 用量。
-        # process_document_use_case 會在跑完讀這 3 個屬性 → record_usage。
+        # process_document_use_case 會在跑完讀這 5 個屬性 → record_usage。
         self.last_input_tokens: int = 0
         self.last_output_tokens: int = 0
+        # S-LLM-Cache.1: cache-aware token tracking
+        self.last_cache_read_tokens: int = 0
+        self.last_cache_creation_tokens: int = 0
         self.last_model: str = ""
 
     async def generate_contexts(
@@ -58,10 +68,20 @@ class LLMChunkContextService(ChunkContextService):
         # 重置 token 累計（每次呼叫獨立計算）
         self.last_input_tokens = 0
         self.last_output_tokens = 0
+        self.last_cache_read_tokens = 0
+        self.last_cache_creation_tokens = 0
 
         model = model or DEFAULT_MODEL
         self.last_model = model
         doc_text = document_content[:MAX_DOC_CHARS]
+
+        # 預組固定 prefix block（每個 chunk call 共用，提升 cache 命中）
+        document_block = PromptBlock(
+            text=INSTRUCTION_PREFIX
+            + DOCUMENT_TEMPLATE.format(document_content=doc_text),
+            role=BlockRole.USER,
+            cache=CacheHint.EPHEMERAL,
+        )
 
         sem = asyncio.Semaphore(MAX_CONCURRENCY)
         log = logger.bind(model=model, chunk_count=len(chunks))
@@ -80,13 +100,16 @@ class LLMChunkContextService(ChunkContextService):
         async def _generate_one(chunk: Chunk) -> Chunk:
             async with sem:
                 try:
-                    prompt = CONTEXT_PROMPT.format(
-                        document_content=doc_text,
-                        chunk_content=chunk.content,
+                    chunk_block = PromptBlock(
+                        text=CHUNK_QUESTION_TEMPLATE.format(
+                            chunk_content=chunk.content
+                        ),
+                        role=BlockRole.USER,
+                        cache=CacheHint.NONE,
                     )
                     result = await call_llm(
                         model_spec=model,
-                        prompt=prompt,
+                        prompt=[document_block, chunk_block],
                         max_tokens=200,
                         api_key_resolver=_fixed_key_resolver,
                     )
@@ -94,6 +117,8 @@ class LLMChunkContextService(ChunkContextService):
                     # CPython GIL 保護 int 加法，且 sem 限制並發 ≤5）
                     self.last_input_tokens += result.input_tokens
                     self.last_output_tokens += result.output_tokens
+                    self.last_cache_read_tokens += result.cache_read_tokens
+                    self.last_cache_creation_tokens += result.cache_creation_tokens
                     return Chunk(
                         id=chunk.id,
                         document_id=chunk.document_id,
@@ -117,5 +142,7 @@ class LLMChunkContextService(ChunkContextService):
             "context.generation.done",
             success=success_count,
             total=len(chunks),
+            cache_read_tokens=self.last_cache_read_tokens,
+            cache_creation_tokens=self.last_cache_creation_tokens,
         )
         return list(results)

@@ -110,12 +110,19 @@ class ClassifyKbUseCase:
             return
 
         # Token-Gov.0: 記錄 auto-classification token 用量
+        # S-LLM-Cache.1: 加上 cache_read / cache_creation 欄位
         if self._record_usage and (
             self._classification.last_input_tokens
             + self._classification.last_output_tokens
         ) > 0:
             cls_in = self._classification.last_input_tokens
             cls_out = self._classification.last_output_tokens
+            cls_cache_read = getattr(
+                self._classification, "last_cache_read_tokens", 0
+            )
+            cls_cache_creation = getattr(
+                self._classification, "last_cache_creation_tokens", 0
+            )
             await self._record_usage.execute(
                 tenant_id=tenant_id,
                 request_type=UsageCategory.AUTO_CLASSIFICATION.value,
@@ -124,6 +131,8 @@ class ClassifyKbUseCase:
                     input_tokens=cls_in,
                     output_tokens=cls_out,
                     total_tokens=cls_in + cls_out,
+                    cache_read_tokens=cls_cache_read,
+                    cache_creation_tokens=cls_cache_creation,
                 ),
             )
 

@@ -7,6 +7,49 @@
 
 ---
 
+## S-LLM-Cache.1 — 跨 provider Prompt Caching 抽象（PromptBlock 模式）
+
+**日期**：2026-04-22
+**Sprint**：S-LLM-Cache.1
+**涉及層級**：Domain (新 `domain/llm/`) + Infrastructure (`llm_caller` + `chunk_context_service` + `cluster_classification_service`) + Application (`process_document_use_case` + `classify_kb_use_case` + `prompt_guard_service` + `intent_classifier`) + 8 unit test 檔。約 11 檔變動，新增 26 個測試。
+
+**Sprint 來源**：使用者問「要不要每個 provider 寫一套 prompt 組合機制」時深挖 — 發現 LangGraph path (`AnthropicLLMService`) 早就有 cache_control，但「lightweight call_llm path」（Contextual Retrieval / Guard / Auto-Classification 4 個 service 共用）一直沒接 cache。Contextual Retrieval 處理 50 chunks 文件每天燒 ~85% 冗餘 input token，是隱形 cost leak。
+
+**主題**：用 Domain 層 `PromptBlock` 抽象「結構化 prompt + cache hint」，infrastructure 層各 provider adapter 自己翻譯 — 一份 caller code 跑遍所有 provider。
+
+### 做得好的地方
+
+- **抽象層級切對地方**：`PromptBlock` 放 Domain（`domain/llm/`），不是 Infrastructure。Domain 層只描述「prompt 由哪些 block 組成、哪些可 cache」這種**業務語意**，provider 怎麼翻譯（cache_control marker / prefix order / explicit cachedContents）是 Infrastructure 細節。新增 provider（Mistral / xAI Grok）只動 adapter，service 層 zero change。
+- **`CacheHint` 用 enum 而非 boolean**：bool 等將來要加「persistent (1hr)」「explicit cache by ID」就得 API break。enum 從 day 1 預留擴充空間。
+- **Backward compat 不靠版本切換靠 overload**：`call_llm(prompt: str | list[PromptBlock])` 用 isinstance dispatch + `_normalize_blocks` (str → 單一 user block 包裹)，**既有 4 個 caller 在 sprint 全程不需改**任何一行就持續工作。Step 5/6/7 才一個一個改成 blocks 換 cache 收益。
+- **Token tracking 已有 schema 卻沒走完 pipeline**：Token-Gov.0 早就在 `UsageRecord` / `TokenUsage` / `RecordUsageUseCase` 加好 `cache_read_tokens` / `cache_creation_tokens` 欄位，但 `LLMCallResult` 沒這兩欄 → service 層收不到 → cost 算錯。本 sprint 補的是「資料管線中間斷的一截」。這種「schema 已備好但邏輯沒接通」的 tech debt 越早補越好。
+- **Provider 差異盤點先做，再寫抽象**：先確認「兩種模式」(顯式 marker vs 自動 prefix) 才設計 `PromptBlock`，避免抽象變成只服務一家的偽通用 API。OpenAI auto-prefix 的「cacheable block 必須在前」是 caller 的 ordering contract，不是 adapter 的工作。
+- **規模再小的 caller 也走相同 pattern**：`ClusterClassificationService` 的 instruction 太短（< Anthropic Sonnet 1024 / Haiku 2048 token min cacheable size），cache marker 會被 silently 忽略，理論上「可以不改」。但仍照做，理由是**團隊心智模型一致性**：之後讀 code 不會困惑「為何 guard 改了 classification 沒改」。失敗也不會比現況差（marker 被忽略 ≠ 報錯）。
+- **`IntentClassifier` 走另一條 LLM path 也順便修**：發現它走 `LLMService.generate()` 不是 `call_llm`，但 `AnthropicLLMService` 已有 cache 機制 — 把 categories 列表從 user_message 搬進 system_prompt 一行 patch 就 cache 上手。**Sprint scope 不被 path 隔離限縮**，順手修才整體合理。
+
+### 潛在隱憂
+
+- **OpenAI-compatible adapter 的 DeepSeek 分支寫死**：目前用 `if provider == "deepseek"` 判斷該不該找 `prompt_cache_hit_tokens`。未來若 Qwen / Mistral / 其他 provider 也搞自家 cache 欄位，這條 if 鏈會長。建議下版抽 `cache_token_extractor` 對應表（provider → callable）。中優先級。
+- **未驗證實際 cache 命中率**：BDD scenario 是用 mock LLMCallResult 模擬「cache 已命中」回 cache_read_tokens > 0，**沒有真的對 Anthropic API 跑一輪驗證 cache_control marker 真的被 server 認**。Sprint Stage 5 列了 SQL 驗證指令 (`SELECT SUM(cache_read_tokens)`)，但 dev-vm 實際處理一份 50-chunks 文件後才能確認。中優先級 — 應在第一份生產文件處理時主動 query 確認。
+- **Caller 自己負責 ordering**：cacheable block 必須在前的契約寫在 docstring 裡，沒程式強制。萬一誰寫 `[volatile_block, cacheable_block]`，OpenAI auto-prefix cache 會 silently 失效（cache_read = 0 但不報錯），需要看 SUM(cache_read) 才能發現。建議下版加 lint rule 或 dev-mode runtime warning。低優先級。
+- **`IntentClassifier` 改 prompt shape 可能影響分類準確率**：把類別清單從 user_message 移到 system_prompt 改變了模型「看到」的訊息結構順序。新單測只驗證 prompt **shape**，沒驗證**分類結果不變**。Carrefour demo 前應跑既有 intent 範例做 A/B 對比。中優先級。
+- **Items 5-6 (cost 折扣計算) 沒做就會有錯誤帳單**：本 sprint 把 `cache_read_tokens` / `cache_creation_tokens` 寫進 DB，但 `_estimate_cost_from_registry` 的計算邏輯是否正確套到 cache 折扣價？需驗證 `model_registry` 的 cache_read_price / cache_creation_price 是否在 cost 計算時實際被讀取。如果沒有，cache 命中越多 dashboard cost 反而越高（因為 cache_creation 比正常 input 貴 25%）。**這是下 sprint S-LLM-Cache.2 的首要驗證項**。
+
+### 延伸學習
+
+- **「Provider abstraction」vs「Provider polymorphism」**：抽象到 Domain 層讓你**獨立於任何特定 provider 思考業務語意**（「這段 prompt 我希望它被 cache」），polymorphism 是 Infrastructure 細節。這個分界錯置（把 cache_control 直接寫進 service 層）會讓未來換 provider 時整個 service 重寫。本 sprint 是個正面案例，可作為「跨外部 SDK 抽象」的 reference pattern。
+- **Cache hint 的責任歸屬**：caller 知道「這段 prompt 是穩定的、值得 cache」這個業務知識，adapter 知道「在我這個 provider 怎麼利用 hint」這個技術細節。**hint 是 metadata，cache 行為是 implementation**，責任邊界清楚。對比反例：caller 直接傳 `cache_breakpoints=[0, 1500]` token-level 的低階參數 → adapter 變成單純 pass-through，且 caller 被綁死在 Anthropic 的「4 breakpoint」限制。
+- **Backward compat overload 是 API 演進的好工具**：`call_llm(prompt: str | list[PromptBlock])` overload 讓 sprint 的 7 個 step 可獨立 ship。Day 1 ship Domain 抽象不影響任何人；Day 5 ship Contextual Retrieval 改用 blocks 當下生效；其他 service 各自的 timeline 可以分開。對比「v2 簽章 breaking change，所有 caller 必須同 PR 改完」的反例 — sprint 整體 risk 高很多。
+- **Token tracking 設計：先補欄位後補邏輯，能省第二次 migration**：Token-Gov.0 先把 `cache_read_tokens` / `cache_creation_tokens` 欄位加進 DB schema 是對的決定 — 即使當時 service 不寫入這兩欄（永遠 0），未來只要 service 端補上邏輯，**zero downtime 切換**，不需另跑 migration。
+
+#### 思考題（給開發者）
+
+如果未來 Anthropic 推「persistent cache（1 小時 TTL，多收 50% creation 費用）」，我們的 `CacheHint` enum 要怎麼擴？是加 `PERSISTENT_1H` 還是改成帶參數的 dataclass `Cache(ttl_minutes=60)`？對 OpenAI 的自動 prefix（不能控 TTL）這個 hint 該怎麼處理 — silently ignore 還是 raise？
+
+提示：思考「caller 的業務語意」vs「provider 的能力 matrix」誰該主導 API 形狀。
+
+---
+
 ## S-Gov.6b — LLM 對話摘要 + Hybrid 搜尋：Stateful vs Result-Based + Schema Reuse 跨 Domain + Race-Safe Cron Re-trigger
 
 **日期**：2026-04-21

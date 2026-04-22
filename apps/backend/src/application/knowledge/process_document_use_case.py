@@ -322,6 +322,7 @@ class ProcessDocumentUseCase:
                 )
 
                 # Token-Gov.0: 記錄 contextual retrieval token 用量
+                # S-LLM-Cache.1: 加上 cache_read / cache_creation 欄位
                 if self._record_usage and getattr(
                     self._context_service, "last_input_tokens", 0
                 ) + getattr(
@@ -329,6 +330,12 @@ class ProcessDocumentUseCase:
                 ) > 0:
                     ctx_in = self._context_service.last_input_tokens
                     ctx_out = self._context_service.last_output_tokens
+                    ctx_cache_read = getattr(
+                        self._context_service, "last_cache_read_tokens", 0
+                    )
+                    ctx_cache_creation = getattr(
+                        self._context_service, "last_cache_creation_tokens", 0
+                    )
                     ctx_model = getattr(
                         self._context_service, "last_model", context_model
                     )
@@ -340,6 +347,8 @@ class ProcessDocumentUseCase:
                             input_tokens=ctx_in,
                             output_tokens=ctx_out,
                             total_tokens=ctx_in + ctx_out,
+                            cache_read_tokens=ctx_cache_read,
+                            cache_creation_tokens=ctx_cache_creation,
                         ),
                     )
 

@@ -23,15 +23,23 @@ _CLASSIFY_SYSTEM_PROMPT = (
 )
 
 
-def _build_classify_prompt(
-    user_message: str,
-    router_context: str,
+def _build_system_with_categories(
     names_and_descriptions: list[tuple[str, str]],
 ) -> str:
+    """S-LLM-Cache.1: 把類別列表納入 system prompt，讓 AnthropicLLMService 既有
+    cache_control 能 cache 此段（同一 bot 連續分類訊息時命中）。"""
     categories = "\n".join(
         f"- {name}: {desc}" for name, desc in names_and_descriptions
     )
-    parts = [f"類別：\n{categories}"]
+    return f"{_CLASSIFY_SYSTEM_PROMPT}\n\n類別：\n{categories}"
+
+
+def _build_user_message(
+    user_message: str,
+    router_context: str,
+) -> str:
+    """純變動部分：對話上下文 + 當下訊息（不進 cache）。"""
+    parts = []
     if router_context:
         parts.append(f"近期對話：\n{router_context}")
     parts.append(f"用戶訊息：\n{user_message}")
@@ -65,12 +73,12 @@ class IntentClassifier:
         names_descs = [
             (w.name, w.description) for w in workers
         ]
-        prompt = _build_classify_prompt(
-            user_message, router_context, names_descs,
-        )
+        system_prompt = _build_system_with_categories(names_descs)
+        user_msg = _build_user_message(user_message, router_context)
 
         raw = await self._call_llm(
-            prompt, [w.name for w in workers], router_model,
+            system_prompt, user_msg,
+            [w.name for w in workers], router_model,
             tenant_id=tenant_id, bot_id=bot_id,
         )
         if raw is None:
@@ -94,12 +102,12 @@ class IntentClassifier:
         names_descs = [
             (r.name, r.description) for r in intent_routes
         ]
-        prompt = _build_classify_prompt(
-            user_message, router_context, names_descs,
-        )
+        system_prompt = _build_system_with_categories(names_descs)
+        user_msg = _build_user_message(user_message, router_context)
 
         raw = await self._call_llm(
-            prompt, [r.name for r in intent_routes],
+            system_prompt, user_msg,
+            [r.name for r in intent_routes],
             tenant_id=tenant_id, bot_id=bot_id,
         )
         if raw is None:
@@ -110,7 +118,8 @@ class IntentClassifier:
 
     async def _call_llm(
         self,
-        prompt: str,
+        system_prompt: str,
+        user_message: str,
         route_names: list[str],
         router_model: str = "",
         tenant_id: str = "",
@@ -118,8 +127,8 @@ class IntentClassifier:
     ) -> str | None:
         try:
             kwargs: dict[str, Any] = {
-                "system_prompt": _CLASSIFY_SYSTEM_PROMPT,
-                "user_message": prompt,
+                "system_prompt": system_prompt,
+                "user_message": user_message,
                 "context": "",
                 "temperature": 0,
                 "max_tokens": 50,

@@ -31,3 +31,11 @@ Feature: Cache-Aware Token 計費
     Given 一筆包含快取 tokens 的 TokenUsage
     When 執行 RecordUsageUseCase
     Then 儲存的 UsageRecord 應包含 cache_read_tokens 和 cache_creation_tokens
+
+  Scenario: Contextual Retrieval 多 chunk 回傳 cache 命中（S-LLM-Cache.1）
+    Given LLMChunkContextService 處理同一文件的 5 個 chunks
+    And 第一個 chunk 的 LLM 回應 cache_creation_tokens=1000、cache_read_tokens=0
+    And 後續 4 個 chunks 的 LLM 回應每筆 cache_read_tokens=1000、cache_creation_tokens=0
+    When 完成 generate_contexts
+    Then service 累計 last_cache_creation_tokens 應為 1000
+    And service 累計 last_cache_read_tokens 應為 4000

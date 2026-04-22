@@ -24,13 +24,19 @@ from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
 
-NAMING_PROMPT = """\
+# S-LLM-Cache.1: 拆 system instruction (cacheable) + user samples (volatile)。
+# 註：instruction 較短可能低於某些 provider 的最小 cacheable 尺寸（Anthropic Sonnet
+# 1024 / Haiku 2048 token），那種情況下 marker 被忽略 = 不省也不害。
+_NAMING_SYSTEM_PROMPT = """\
+你的任務：根據幾個文件片段，生成一個簡短的繁體中文分類名稱。
+要求：3-8 個字、只輸出分類名稱、不要其他內容。"""
+
+_NAMING_USER_TEMPLATE = """\
 以下是同一群組中的幾個文件片段：
 
 {samples}
 
-請根據這些片段的共同主題，生成一個簡短的分類名稱（3-8 個字，繁體中文）。
-只輸出分類名稱，不要其他內容。"""
+請依上述要求生成分類名稱。"""
 
 DEFAULT_MODEL = "anthropic:claude-sonnet-4-6-20260415"
 SAMPLES_PER_CLUSTER = 5
@@ -48,6 +54,9 @@ class ClusterClassificationService:
         # Token-Gov.0: 累計每次 classify 的 LLM token 用量
         self.last_input_tokens: int = 0
         self.last_output_tokens: int = 0
+        # S-LLM-Cache.1: cache-aware token tracking
+        self.last_cache_read_tokens: int = 0
+        self.last_cache_creation_tokens: int = 0
         self.last_model: str = ""
 
     async def classify(
@@ -69,9 +78,11 @@ class ClusterClassificationService:
             logger.info("classification.skip", reason="too_few_chunks", count=len(chunk_ids))
             return [], {}
 
-        # Token-Gov.0: 重置 token 累計
+        # Token-Gov.0: 重置 token 累計（S-LLM-Cache.1 含 cache 欄位）
         self.last_input_tokens = 0
         self.last_output_tokens = 0
+        self.last_cache_read_tokens = 0
+        self.last_cache_creation_tokens = 0
 
         model = model or DEFAULT_MODEL
         self.last_model = model
@@ -109,7 +120,15 @@ class ClusterClassificationService:
         log.info("classification.clustered", n_clusters=len(clusters))
 
         # 3. Name each cluster
+        from src.domain.llm import BlockRole, CacheHint, PromptBlock
         from src.infrastructure.llm.llm_caller import call_llm
+
+        # S-LLM-Cache.1: 預組固定 system block，多 cluster 並發時利用 cache
+        system_block = PromptBlock(
+            text=_NAMING_SYSTEM_PROMPT,
+            role=BlockRole.SYSTEM,
+            cache=CacheHint.EPHEMERAL,
+        )
 
         categories: list[ChunkCategory] = []
         chunk_to_cat: dict[str, str] = {}
@@ -126,15 +145,25 @@ class ClusterClassificationService:
             try:
                 result = await call_llm(
                     model_spec=model,
-                    prompt=NAMING_PROMPT.format(samples=samples_text),
+                    prompt=[
+                        system_block,
+                        PromptBlock(
+                            text=_NAMING_USER_TEMPLATE.format(samples=samples_text),
+                            role=BlockRole.USER,
+                            cache=CacheHint.NONE,
+                        ),
+                    ],
                     max_tokens=50,
                     api_key_resolver=self._api_key_resolver,
                 )
                 name = result.text[:200]
                 # Token-Gov.0: 累計（asyncio.gather 並發但群組數一般 < 20，
                 # CPython int 加法 GIL 安全）
+                # S-LLM-Cache.1: 含 cache 欄位
                 self.last_input_tokens += result.input_tokens
                 self.last_output_tokens += result.output_tokens
+                self.last_cache_read_tokens += result.cache_read_tokens
+                self.last_cache_creation_tokens += result.cache_creation_tokens
             except Exception:
                 log.warning("classification.naming_failed", label=label, exc_info=True)
                 name = f"分類 {label + 1}"

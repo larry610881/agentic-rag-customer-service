@@ -1,14 +1,20 @@
 """Cache-Aware Token 計費 BDD Step Definitions"""
 
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
+from src.domain.knowledge.entity import Chunk
+from src.domain.knowledge.value_objects import ChunkId
 from src.domain.rag.pricing import calculate_usage
 from src.domain.rag.value_objects import TokenUsage
+from src.infrastructure.context.llm_chunk_context_service import (
+    LLMChunkContextService,
+)
+from src.infrastructure.llm.llm_caller import LLMCallResult
 
 scenarios("unit/usage/cache_aware_billing.feature")
 
@@ -205,3 +211,86 @@ def verify_saved_record(context):
     record = context["mock_repo"].save.call_args[0][0]
     assert record.cache_read_tokens == 150
     assert record.cache_creation_tokens == 50
+
+
+# ── S-LLM-Cache.1: Contextual Retrieval cache hit accumulation ─────────────
+
+
+@given("LLMChunkContextService 處理同一文件的 5 個 chunks")
+def setup_5_chunks(context):
+    context["chunks"] = [
+        Chunk(
+            id=ChunkId(),
+            document_id="doc-1",
+            tenant_id="t-1",
+            content=f"chunk content {i}",
+            chunk_index=i,
+        )
+        for i in range(5)
+    ]
+    context["doc_text"] = "very long document content " * 100
+    # 預先建好 mock 回應序列：第一個 creation，後 4 個 read
+    context["mock_responses"] = []
+
+
+@given(parsers.parse(
+    "第一個 chunk 的 LLM 回應 cache_creation_tokens={cc:d}、cache_read_tokens={cr:d}"
+))
+def setup_first_chunk_response(context, cc, cr):
+    context["first_response"] = LLMCallResult(
+        text="ctx-0",
+        input_tokens=100,
+        output_tokens=10,
+        cache_creation_tokens=cc,
+        cache_read_tokens=cr,
+        model="anthropic:claude-haiku-4-5",
+    )
+
+
+@given(parsers.parse(
+    "後續 4 個 chunks 的 LLM 回應每筆 cache_read_tokens={cr:d}、cache_creation_tokens={cc:d}"
+))
+def setup_subsequent_chunk_responses(context, cr, cc):
+    context["subsequent_response"] = LLMCallResult(
+        text="ctx-N",
+        input_tokens=50,
+        output_tokens=10,
+        cache_creation_tokens=cc,
+        cache_read_tokens=cr,
+        model="anthropic:claude-haiku-4-5",
+    )
+
+
+@when("完成 generate_contexts")
+def run_generate_contexts(context):
+    service = LLMChunkContextService(api_key_resolver=None)
+
+    call_count = {"n": 0}
+
+    async def mock_call_llm(*args, **kwargs):
+        idx = call_count["n"]
+        call_count["n"] += 1
+        if idx == 0:
+            return context["first_response"]
+        return context["subsequent_response"]
+
+    with patch(
+        "src.infrastructure.context.llm_chunk_context_service.call_llm",
+        side_effect=mock_call_llm,
+    ):
+        _run(service.generate_contexts(
+            document_content=context["doc_text"],
+            chunks=context["chunks"],
+            model="anthropic:claude-haiku-4-5",
+        ))
+    context["service"] = service
+
+
+@then(parsers.parse("service 累計 last_cache_creation_tokens 應為 {expected:d}"))
+def verify_service_cache_creation(context, expected):
+    assert context["service"].last_cache_creation_tokens == expected
+
+
+@then(parsers.parse("service 累計 last_cache_read_tokens 應為 {expected:d}"))
+def verify_service_cache_read(context, expected):
+    assert context["service"].last_cache_read_tokens == expected
