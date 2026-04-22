@@ -1376,14 +1376,14 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | Infrastructure | ✅ | `SQLAlchemyModelPricingRepository` + `SQLAlchemyPricingRecalcAuditRepository` + `SQLAlchemyUsageRecalcAdapter`（雙 model 格式 `provider:model_id` / 裸 id）+ `InMemoryPricingCache`（啟動 load + `refresh()` on change） |
 | DI wiring + RecordUsage 整合 | ✅ | container.py 註冊 5 新 providers；`RecordUsageUseCase` 新增 `_estimate_cost` 優先查 cache miss fallback `DEFAULT_MODELS`；main.py lifespan 啟動 hook `pricing_cache.refresh()` |
 | Interfaces `admin_pricing_router` | ✅ | 6 endpoints（GET list / POST create / POST {id}/deactivate / POST recalculate:dry-run / POST recalculate:execute / GET recalculate-history），全部 `Depends(require_role("system_admin"))` |
-| Seed script | ✅ | `seeds/seed_model_pricing.py` 冪等，23 個現有 `DEFAULT_MODELS` 項目 seed 成功（local-docker）；dev-vm 待 Larry 授權 |
+| Seed script | ✅ | `scripts/seed_model_pricing.py` 冪等，23 個現有 `DEFAULT_MODELS` 項目 seed 成功（local-docker + dev-vm）。註：原先誤放 `seeds/`（.gitignore 忽略此目錄 — 測試資料保密），已移至 `scripts/` 才能 push 到 VM |
 | Frontend | ✅ | `types/pricing.ts` + `hooks/queries/use-pricing.ts`（6 hooks）+ `pages/admin-pricing.tsx` 主頁 + `pricing-create-dialog` / `pricing-recalc-wizard`（2 步驟）/ `pricing-history-table`；sidebar 加「定價管理」；`ADMIN_PRICING` route |
 | Pricing audit structlog event | ✅ | 4 event：`pricing.create`、`pricing.deactivate`、`pricing.recalculate.dry_run`、`pricing.recalculate.execute`（欄位對齊未來 `audit_log` 表） |
 | BDD features (5) | ✅ | `pricing_crud` / `pricing_cache` / `pricing_recalculate` (unit/pricing) + `admin_pricing_api` (integration/admin) + `record_usage_with_db_pricing` (unit/usage)；共 27 scenarios |
 | 全量單元測試 | ✅ | 781 passed (baseline 754 + 27 new) |
 | 整合測試 | ✅ | `admin_pricing_api` 6 scenarios 全通過 |
 | Ruff lint | ✅ | src/domain/pricing/, src/application/pricing/, src/infrastructure/pricing/, admin_pricing_router, record_usage_use_case 無 errors |
-| **dev-vm seed** | ⏳ Pending | Larry 授權後執行 `uv run python -m seeds.seed_model_pricing`（data migration 需五步流程） |
+| **dev-vm seed** | ✅ | 2026-04-22 Larry 授權後執行 `uv run python -m scripts.seed_model_pricing` on VM，23 筆 pricing 版本入庫 |
 | **Multi-pod cache invalidation** | ⏭️ Future | 本 sprint POC 單 pod；正式收費前加 Redis pub/sub `pricing_cache_invalidate` event |
 
 ### S-Gov.1 Sub-agent 驗證與追蹤穩定化
