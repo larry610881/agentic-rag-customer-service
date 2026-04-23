@@ -49,6 +49,8 @@ class OpenAILLMService(LLMService):
         """Return a LangChain ChatModel using the same API key and base_url."""
         from langchain_openai import ChatOpenAI
 
+        from src.config import settings
+
         kwargs: dict = {
             "model": self._model,
             "temperature": temperature,
@@ -58,6 +60,11 @@ class OpenAILLMService(LLMService):
             # langchain_openai 會自動加 stream_options={"include_usage": True}，
             # 最後一個 chunk 的 AIMessageChunk 會帶 usage_metadata。
             "stream_usage": True,
+            # S-KB-Followup.2: LiteLLM proxy 偶發 connection flake 對 user 很痛（
+            # 一次 APIConnectionError 就看到「處理訊息時發生錯誤」）。
+            # 對齊 _create_chat_model fallback 的 3 次重試 + HTTP timeout。
+            "max_retries": 3,
+            "request_timeout": settings.agent_llm_request_timeout,
         }
         if self._base_url and self._base_url != "https://api.openai.com/v1":
             kwargs["base_url"] = self._base_url
