@@ -6,7 +6,6 @@ import {
   BookOpen,
   BarChart3,
   ScrollText,
-  Activity,
   Coins,
   Puzzle,
   Users,
@@ -32,7 +31,6 @@ import {
   MessagesSquare,
   Wallet,
   TrendingUp,
-  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -54,7 +52,6 @@ const systemAdminItems = [
   { href: "/admin/plans", label: "方案管理", icon: Package },
   { href: "/admin/pricing", label: "定價管理", icon: DollarSign },
   { href: "/admin/milvus", label: "Milvus 管理", icon: Database },
-  { href: "/admin/conversation-summary", label: "對話摘要", icon: MessagesSquare },
   { href: "/admin/knowledge-bases", label: "所有知識庫", icon: BookOpen },
   { href: "/admin/bots", label: "所有機器人", icon: Bot },
   { href: "/admin/users", label: "帳號管理", icon: Users },
@@ -65,12 +62,12 @@ const systemAdminItems = [
   { href: "/admin/rate-limits", label: "速率限制", icon: Gauge },
   { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
   { href: "/admin/log-retention", label: "日誌清理", icon: Trash2 },
-  { href: "/admin/observability", label: "可觀測性", icon: Activity },
+  // S-ConvInsights.1: 合併「對話摘要 + 可觀測性 + 對話搜尋」3 頁
+  { href: "/admin/conversations", label: "對話與追蹤", icon: MessagesSquare },
   { href: "/admin/token-usage", label: "Token 用量", icon: Coins },
   { href: "/admin/quota-overview", label: "額度總覽", icon: Wallet },
   { href: "/admin/quota-events", label: "額度事件", icon: Bell },
   { href: "/admin/billing", label: "收益儀表板", icon: TrendingUp },
-  { href: "/admin/conversations", label: "對話搜尋", icon: Search },
   { href: "/admin/mcp-registry", label: "MCP 工具庫", icon: Puzzle },
   { href: "/admin/tools", label: "工具權限", icon: Wrench },
   { href: "/admin/error-events", label: "錯誤追蹤", icon: AlertTriangle },

@@ -46,7 +46,7 @@ const AdminKnowledgeBasesPage = lazy(
 const AdminBotsPage = lazyWithRetry(() => import("@/pages/admin-bots"));
 const AdminBotDetailPage = lazyWithRetry(() => import("@/pages/admin-bot-detail"));
 const AdminUsersPage = lazyWithRetry(() => import("@/pages/admin-users"));
-const AdminObservabilityPage = lazyWithRetry(() => import("@/pages/admin-observability"));
+// S-ConvInsights.1: AdminObservabilityPage 已廢棄，路由改 Navigate 到 /admin/conversations
 const AdminTokenUsagePage = lazyWithRetry(() => import("@/pages/admin-token-usage"));
 const AdminQuotaOverviewPage = lazyWithRetry(() => import("@/pages/admin-quota-overview"));
 const AdminQuotaEventsPage = lazyWithRetry(() => import("@/pages/admin-quota-events"));
@@ -59,9 +59,7 @@ const AdminPlansPage = lazyWithRetry(() => import("@/pages/admin-plans"));
 const AdminPricingPage = lazyWithRetry(() => import("@/pages/admin-pricing"));
 const AdminKbStudioPage = lazyWithRetry(() => import("@/pages/admin-kb-studio"));
 const AdminMilvusPage = lazyWithRetry(() => import("@/pages/admin-milvus"));
-const AdminConvSummaryPage = lazyWithRetry(
-  () => import("@/pages/admin-conversation-summary"),
-);
+// S-ConvInsights.1: AdminConvSummaryPage 已廢棄，路由改 Navigate 到 /admin/conversations
 const AdminPromptsPage = lazyWithRetry(() => import("@/pages/admin-prompts"));
 const AdminGuardRulesPage = lazyWithRetry(() => import("@/pages/admin-guard-rules"));
 const AdminDiagnosticRulesPage = lazyWithRetry(() => import("@/pages/admin-diagnostic-rules"));
@@ -162,9 +160,10 @@ export function App() {
               element={<AdminBotDetailPage />}
             />
             <Route path={ROUTES.ADMIN_USERS} element={<AdminUsersPage />} />
+            {/* S-ConvInsights.1: /admin/observability 合併至 /admin/conversations */}
             <Route
               path={ROUTES.ADMIN_OBSERVABILITY}
-              element={<AdminObservabilityPage />}
+              element={<Navigate to={ROUTES.ADMIN_CONVERSATIONS} replace />}
             />
             <Route
               path={ROUTES.ADMIN_TOKEN_USAGE}
@@ -214,9 +213,10 @@ export function App() {
               path={ROUTES.ADMIN_MILVUS}
               element={<AdminMilvusPage />}
             />
+            {/* S-ConvInsights.1: /admin/conversation-summary 合併至 /admin/conversations */}
             <Route
               path={ROUTES.ADMIN_CONV_SUMMARY}
-              element={<AdminConvSummaryPage />}
+              element={<Navigate to={ROUTES.ADMIN_CONVERSATIONS} replace />}
             />
             <Route
               path={ROUTES.ADMIN_PROMPTS}

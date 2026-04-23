@@ -246,6 +246,11 @@ export const API_ENDPOINTS = {
       if (params.limit) qs.set("limit", String(params.limit));
       return `/api/v1/admin/conversations/search?${qs.toString()}`;
     },
+    // S-ConvInsights.1: 對話與追蹤頁右側 tabs 專用
+    messages: (conversationId: string) =>
+      `/api/v1/admin/conversations/${conversationId}/messages`,
+    tokenUsage: (conversationId: string) =>
+      `/api/v1/admin/conversations/${conversationId}/token-usage`,
   },
   systemPrompts: {
     get: "/api/v1/system/prompts",

@@ -111,6 +111,11 @@ export const queryKeys = {
       botId: string,
     ) =>
       ["admin", "conversations", "search", mode, query, tenantId, botId] as const,
+    // S-ConvInsights.1
+    conversationMessages: (conversationId: string) =>
+      ["admin", "conversations", conversationId, "messages"] as const,
+    conversationTokenUsage: (conversationId: string) =>
+      ["admin", "conversations", conversationId, "token-usage"] as const,
   },
   systemPrompts: {
     all: ["system-prompts"] as const,
