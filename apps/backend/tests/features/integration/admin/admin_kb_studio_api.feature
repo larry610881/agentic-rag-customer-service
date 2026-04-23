@@ -55,6 +55,16 @@ Feature: KB Studio Admin API 整合測試
     Then 回應狀態碼為 201
     And 回應 name 為 "重要 FAQ"
 
+  # Regression: BUG-A 衍生 (S-KB-Followup.1)
+  # 兩個重複定義的 CategoryResponse 導致 response_model 與 constructor 不一致
+  # → 6 validation errors → 500。驗證 list endpoint 回 200。
+  Scenario: list_categories 回 200 含 created_at / updated_at
+    Given 系統已 seed 分類 "cat-A" 於 KB "kb-1" 含 2 chunks
+    And 系統管理員已登入
+    When 我送出 GET /api/v1/knowledge-bases/kb-1/categories
+    Then 回應狀態碼為 200
+    And 回應應為 list 至少含 1 筆 含 created_at 與 updated_at 欄位
+
   Scenario: 系統管理員刪除分類（級聯）
     Given 系統已 seed 分類 "cat-A" 於 KB "kb-1" 含 3 chunks
     And 系統管理員已登入

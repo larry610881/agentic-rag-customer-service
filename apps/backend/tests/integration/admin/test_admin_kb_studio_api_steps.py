@@ -645,3 +645,16 @@ def then_audit_event(ctx, ev):
     # audit 目前透過 structlog event name 記錄，無 DB 表可查。
     # 此處單純驗 router 回 2xx，實際 event 名在 use case structlog.info 內。
     assert 200 <= ctx["resp"].status_code < 300
+
+
+@then("回應應為 list 至少含 1 筆 含 created_at 與 updated_at 欄位")
+def then_list_categories_shape(ctx):
+    body = ctx["resp"].json()
+    assert isinstance(body, list), f"expected list, got {type(body).__name__}"
+    assert len(body) >= 1, f"expected at least 1 item, got {len(body)}"
+    first = body[0]
+    assert "created_at" in first, f"missing created_at: {first}"
+    assert "updated_at" in first, f"missing updated_at: {first}"
+    assert "chunk_count" in first
+    assert "id" in first
+    assert "name" in first

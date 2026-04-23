@@ -190,10 +190,10 @@ class CategoryResponse(BaseModel):
     id: str
     kb_id: str
     name: str
-    description: str = ""
+    description: str | None = None
     chunk_count: int = 0
-    created_at: str
-    updated_at: str
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class UpdateCategoryRequest(BaseModel):
@@ -317,14 +317,6 @@ class CreateCategoryRequest(BaseModel):
     description: str | None = None
 
 
-class CategoryResponse(BaseModel):
-    id: str
-    kb_id: str
-    name: str
-    description: str | None = None
-    chunk_count: int = 0
-
-
 class AssignChunksRequest(BaseModel):
     chunk_ids: list[str]
 
@@ -365,6 +357,8 @@ async def create_category(
         name=cat.name,
         description=cat.description,
         chunk_count=cat.chunk_count,
+        created_at=cat.created_at.isoformat() if cat.created_at else None,
+        updated_at=cat.updated_at.isoformat() if cat.updated_at else None,
     )
 
 
