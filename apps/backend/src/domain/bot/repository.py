@@ -41,3 +41,11 @@ class BotRepository(ABC):
 
     @abstractmethod
     async def delete(self, bot_id: str) -> None: ...
+
+    async def exists_for_tenant(
+        self, bot_id: str, tenant_id: str
+    ) -> bool:
+        """Return True 若 bot 屬於指定 tenant。預設以 find_by_id fallback，
+        SQLAlchemy 實作會覆寫成輕量 SELECT 1 查詢。"""
+        bot = await self.find_by_id(bot_id)
+        return bot is not None and bot.tenant_id == tenant_id

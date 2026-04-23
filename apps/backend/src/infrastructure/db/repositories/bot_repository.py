@@ -444,3 +444,17 @@ class SQLAlchemyBotRepository(BotRepository):
             await self._session.execute(
                 delete(BotModel).where(BotModel.id == bot_id)
             )
+
+    async def exists_for_tenant(
+        self, bot_id: str, tenant_id: str
+    ) -> bool:
+        stmt = (
+            select(BotModel.id)
+            .where(
+                BotModel.id == bot_id,
+                BotModel.tenant_id == tenant_id,
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none() is not None

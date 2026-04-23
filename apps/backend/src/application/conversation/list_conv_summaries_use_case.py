@@ -1,10 +1,15 @@
-"""List Conversation Summaries Use Case — S-KB-Studio.1"""
+"""List Conversation Summaries Use Case — S-KB-Studio.1
+
+S-KB-Followup.1 (2026-04-23) 加上 bot_id ownership check 堵 IDOR。
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.domain.bot.repository import BotRepository
 from src.domain.conversation.repository import ConversationRepository
+from src.domain.shared.exceptions import EntityNotFoundError
 
 
 @dataclass(frozen=True)
@@ -20,17 +25,23 @@ class ListConvSummariesUseCase:
     def __init__(
         self,
         conv_repo: ConversationRepository,
+        bot_repo: BotRepository,
     ) -> None:
         self._repo = conv_repo
+        self._bot_repo = bot_repo
 
     async def execute(self, query: ListConvSummariesQuery) -> list:
         if query.tenant_id is None:
             # platform admin 也必填 tenant_id（安全紅線）
             raise ValueError("tenant_id required (no cross-tenant listing)")
 
-        # bot_id 若指定，caller 層須先驗屬 tenant（router 或 wrapper 驗）；此處
-        # 只負責 repo 呼叫。EntityNotFoundError 用於 tenant/bot mismatch 的情況
-        # 由 router 在呼叫前先做 verification 拋出。
+        # IDOR 防護：bot_id 必須屬於該 tenant，否則 404 防枚舉
+        if query.bot_id:
+            owned = await self._bot_repo.exists_for_tenant(
+                query.bot_id, query.tenant_id
+            )
+            if not owned:
+                raise EntityNotFoundError("bot", query.bot_id)
 
         # 依 ConversationRepository 既有 method 實際命名呼叫。若暫無對應
         # list method，Day 2 補；此處先回空 list 以通過 import。

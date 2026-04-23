@@ -1150,6 +1150,7 @@ class Container(containers.DeclarativeContainer):
     list_conv_summaries_use_case = providers.Factory(
         ListConvSummariesUseCase,
         conv_repo=conversation_repository,
+        bot_repo=bot_repository,
     )
 
     register_user_use_case = providers.Factory(

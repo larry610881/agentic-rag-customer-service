@@ -1,4 +1,7 @@
-"""BDD: unit/conversation/list_conv_summaries.feature"""
+"""BDD: unit/conversation/list_conv_summaries.feature
+
+S-KB-Followup.1: UseCase 加了 bot_repo 做 IDOR 防護，step_def 同步更新。
+"""
 
 from __future__ import annotations
 
@@ -22,7 +25,7 @@ def ctx():
     return {}
 
 
-def _build_repo(summaries_by_tenant):
+def _build_conv_repo(summaries_by_tenant):
     """summaries_by_tenant: {tenant_id: [{"bot_id":..., ...}, ...]}"""
     repo = AsyncMock()
 
@@ -35,6 +38,26 @@ def _build_repo(summaries_by_tenant):
         return items
 
     repo.find_conv_summaries = find
+    return repo
+
+
+def _build_bot_repo(ctx):
+    """模擬 BotRepository.exists_for_tenant：依 ctx['bot_owner'] 驗證。
+    預設：任何 bot_id 都視為屬該 tenant（happy path）。
+    若 ctx['bot_owner'] 存在：只有 (owner_tenant, owner_bot) 對才回 True。
+    """
+    repo = AsyncMock()
+    bot_owner = ctx.get("bot_owner")
+
+    async def exists_for_tenant(bot_id: str, tenant_id: str) -> bool:
+        if bot_owner is None:
+            return True
+        owner_tenant, owner_bot = bot_owner
+        if owner_bot == bot_id:
+            return owner_tenant == tenant_id
+        return True
+
+    repo.exists_for_tenant = exists_for_tenant
     return repo
 
 
@@ -73,15 +96,15 @@ def seed_cross_bot_short(ctx, tenant_id, a, b):
 
 @given(parsers.parse('租戶 "{tenant_id}" 擁有 bot "{bot_id}"'))
 def seed_bot_owner(ctx, tenant_id, bot_id):
-    # 本 use case 暫不驗 bot_id 歸屬（router 層做），但仍預載資料
     ctx["bot_owner"] = (tenant_id, bot_id)
     ctx.setdefault("by_tenant", {})
     ctx["by_tenant"].setdefault(tenant_id, [])
 
 
 def _run_list(ctx, *, tenant_id=None, bot_id=None, role="system_admin"):
-    repo = _build_repo(ctx.get("by_tenant", {}))
-    uc = ListConvSummariesUseCase(repo)
+    conv_repo = _build_conv_repo(ctx.get("by_tenant", {}))
+    bot_repo = _build_bot_repo(ctx)
+    uc = ListConvSummariesUseCase(conv_repo, bot_repo)
     try:
         ctx["result"] = run(
             uc.execute(
@@ -120,13 +143,7 @@ def when_bot_filter(ctx, tenant_id, bot_id):
     )
 )
 def when_cross_tenant_bot(ctx, tenant, tenant_id, bot_id):
-    # Router 層 bot 驗證邏輯由 unit 驗證器擋，use case 本身先執行
-    # 若 bot_id 不屬 tenant（跨租戶情境），此處先用 raise 模擬
-    owner_tenant, owner_bot = ctx.get("bot_owner", (None, None))
-    if owner_bot == bot_id and owner_tenant != tenant_id:
-        ctx["error"] = EntityNotFoundError("bot", bot_id)
-        ctx["result"] = None
-        return
+    # 讓 use case 內部的 exists_for_tenant 擋（IDOR 修補後的行為）
     _run_list(ctx, tenant_id=tenant_id, bot_id=bot_id, role="tenant_admin")
 
 
