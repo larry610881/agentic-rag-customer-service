@@ -25,6 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.infrastructure.db.models.agent_trace_model import (
     AgentExecutionTraceModel,
 )
+from src.infrastructure.db.models.conversation_model import ConversationModel
+from src.infrastructure.db.models.message_model import MessageModel
 
 
 @dataclass(frozen=True)
@@ -111,6 +113,10 @@ class ConversationTraceGroup:
     first_at: datetime
     last_at: datetime
     traces: list[dict[str, Any]]
+    # S-KB-Followup.1 Lv1: UUID prefix 認不出對話 → 補 message preview + summary
+    first_user_message: str | None = None  # 使用者第一句（截 200 字）
+    last_assistant_answer: str | None = None  # Bot 最後回覆（截 200 字）
+    summary: str | None = None  # conversations.summary（若 LLM 已生）
 
 
 def trace_to_dict(r: AgentExecutionTraceModel) -> dict[str, Any]:
@@ -187,15 +193,25 @@ async def list_traces_grouped_by_conversation(
     for trace in trace_rows:
         by_conv[trace.conversation_id].append(trace)
 
+    # Step 4 (Lv1): 為這 N 個 conversation 一次撈 preview
+    # - first_user_message: 最早的 role='user' 訊息（截 200 字）
+    # - last_assistant_answer: 最晚的 role='assistant' 訊息（截 200 字）
+    # - summary: conversations.summary（若 conv summary job 已跑）
+    preview_by_conv = await _load_conversation_previews(session, conv_ids)
+
     groups: list[ConversationTraceGroup] = []
     for cid in conv_ids:
         traces = by_conv.get(cid, [])
         if not traces:
             continue
+        prev = preview_by_conv.get(cid, {})
         groups.append(
             ConversationTraceGroup(
                 conversation_id=cid,
                 trace_count=len(traces),
+                first_user_message=prev.get("first_user_message"),
+                last_assistant_answer=prev.get("last_assistant_answer"),
+                summary=prev.get("summary"),
                 first_at=traces[0].created_at,
                 last_at=traces[-1].created_at,
                 traces=[trace_to_dict(t) for t in traces],
@@ -203,3 +219,91 @@ async def list_traces_grouped_by_conversation(
         )
 
     return groups, int(total)
+
+
+_PREVIEW_LEN = 200
+
+
+def _truncate(text: str | None) -> str | None:
+    if text is None:
+        return None
+    return text[:_PREVIEW_LEN]
+
+
+async def _load_conversation_previews(
+    session: AsyncSession,
+    conv_ids: list[str],
+) -> dict[str, dict[str, str | None]]:
+    """為指定 conversation_ids 撈 preview 欄位（one-shot query）。
+
+    Returns:
+        {cid: {"first_user_message": str|None,
+               "last_assistant_answer": str|None,
+               "summary": str|None}}
+    """
+    if not conv_ids:
+        return {}
+
+    result: dict[str, dict[str, str | None]] = {
+        cid: {
+            "first_user_message": None,
+            "last_assistant_answer": None,
+            "summary": None,
+        }
+        for cid in conv_ids
+    }
+
+    # 1. conversations.summary — 1 query
+    summary_rows = (
+        await session.execute(
+            select(ConversationModel.id, ConversationModel.summary).where(
+                ConversationModel.id.in_(conv_ids)
+            )
+        )
+    ).all()
+    for row in summary_rows:
+        result[row.id]["summary"] = _truncate(row.summary)
+
+    # 2. first user message per conversation — DISTINCT ON (efficient in PG)
+    first_user = (
+        await session.execute(
+            select(
+                MessageModel.conversation_id,
+                MessageModel.content,
+            )
+            .where(
+                MessageModel.conversation_id.in_(conv_ids),
+                MessageModel.role == "user",
+            )
+            .order_by(
+                MessageModel.conversation_id,
+                MessageModel.created_at.asc(),
+            )
+            .distinct(MessageModel.conversation_id)
+        )
+    ).all()
+    for row in first_user:
+        result[row.conversation_id]["first_user_message"] = _truncate(row.content)
+
+    # 3. last assistant answer per conversation
+    last_asst = (
+        await session.execute(
+            select(
+                MessageModel.conversation_id,
+                MessageModel.content,
+            )
+            .where(
+                MessageModel.conversation_id.in_(conv_ids),
+                MessageModel.role == "assistant",
+            )
+            .order_by(
+                MessageModel.conversation_id,
+                MessageModel.created_at.desc(),
+            )
+            .distinct(MessageModel.conversation_id)
+        )
+    ).all()
+    for row in last_asst:
+        result[row.conversation_id]["last_assistant_answer"] = _truncate(row.content)
+
+    return result

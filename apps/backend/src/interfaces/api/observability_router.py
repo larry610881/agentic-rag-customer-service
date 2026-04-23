@@ -178,6 +178,9 @@ async def list_agent_traces(
                     {
                         "conversation_id": g.conversation_id,
                         "trace_count": g.trace_count,
+                        "first_user_message": g.first_user_message,
+                        "last_assistant_answer": g.last_assistant_answer,
+                        "summary": g.summary,
                         "first_at": g.first_at.isoformat()
                         if g.first_at else None,
                         "last_at": g.last_at.isoformat()

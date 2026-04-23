@@ -73,7 +73,7 @@ export function AgentTracesGroupedTable({
         <TableHeader>
           <TableRow>
             <TableHead className="w-8" />
-            <TableHead>Conversation</TableHead>
+            <TableHead className="min-w-[320px]">對話內容</TableHead>
             <TableHead className="w-20">Trace 數</TableHead>
             <TableHead>Outcome 分布</TableHead>
             <TableHead>時間範圍</TableHead>
@@ -128,11 +128,31 @@ export function AgentTracesGroupedTable({
                         <ChevronRight className="h-4 w-4" />
                       )}
                     </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      <div className="flex flex-col">
-                        <span>{g.conversation_id.substring(0, 8)}…</span>
-                        <span className="text-muted-foreground">
-                          {tenantName}
+                    <TableCell className="text-sm">
+                      <div className="flex flex-col gap-0.5">
+                        {g.first_user_message ? (
+                          <span className="line-clamp-1 font-medium">
+                            <span className="text-muted-foreground mr-1">👤</span>
+                            {g.first_user_message}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground italic">
+                            （無使用者訊息）
+                          </span>
+                        )}
+                        {g.last_assistant_answer && (
+                          <span className="line-clamp-1 text-xs text-muted-foreground">
+                            <span className="mr-1">🤖</span>
+                            {g.last_assistant_answer}
+                          </span>
+                        )}
+                        {g.summary && (
+                          <span className="line-clamp-1 text-xs text-primary/80">
+                            📝 {g.summary}
+                          </span>
+                        )}
+                        <span className="font-mono text-[10px] text-muted-foreground/70">
+                          {g.conversation_id.substring(0, 8)}… · {tenantName}
                         </span>
                       </div>
                     </TableCell>

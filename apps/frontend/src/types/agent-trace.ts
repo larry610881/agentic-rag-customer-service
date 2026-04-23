@@ -64,13 +64,21 @@ export type PaginatedAgentTraces = {
   items: AgentExecutionTrace[];
 };
 
-/** S-Gov.6a: grouped 模式下每個 group 結構 */
+/** S-Gov.6a: grouped 模式下每個 group 結構
+ *  S-KB-Followup.1 Lv1: 加 message preview + summary 欄位（Optional — 舊對話可能無）
+ */
 export type ConversationTraceGroup = {
   conversation_id: string;
   trace_count: number;
   first_at: string;
   last_at: string;
   traces: AgentExecutionTrace[];
+  /** 使用者第一句訊息（截 200 字）*/
+  first_user_message?: string | null;
+  /** Bot 最後一次回覆（截 200 字）*/
+  last_assistant_answer?: string | null;
+  /** LLM-generated conversation summary（若已跑）*/
+  summary?: string | null;
 };
 
 export type GroupedAgentTraces = {
