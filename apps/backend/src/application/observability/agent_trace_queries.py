@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import Integer, Text, distinct, func, select
@@ -46,6 +46,15 @@ class TraceFilters:
     keyword: str | None = None  # ILIKE on nodes::text
 
 
+def _parse_iso(value: str) -> datetime:
+    """ISO8601 string → tz-aware datetime（'Z' 結尾視為 UTC）。"""
+    s = value.replace("Z", "+00:00") if value.endswith("Z") else value
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def build_where(filters: TraceFilters) -> list[Any]:
     """從 TraceFilters 組 SQLAlchemy where 條件 list。"""
     T = AgentExecutionTraceModel  # noqa: N806
@@ -57,10 +66,12 @@ def build_where(filters: TraceFilters) -> list[Any]:
         conditions.append(T.agent_mode == filters.agent_mode)
     if filters.conversation_id:
         conditions.append(T.conversation_id == filters.conversation_id)
+    # PostgreSQL 不接受 `timestamptz >= str` 直接比較
+    # → parse ISO8601 (含 'Z' 結尾的 UTC) 為 datetime
     if filters.date_from:
-        conditions.append(T.created_at >= filters.date_from)
+        conditions.append(T.created_at >= _parse_iso(filters.date_from))
     if filters.date_to:
-        conditions.append(T.created_at <= filters.date_to)
+        conditions.append(T.created_at <= _parse_iso(filters.date_to))
     if filters.source:
         conditions.append(T.source == filters.source)
     if filters.bot_id:
