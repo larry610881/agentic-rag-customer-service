@@ -7,6 +7,53 @@
 
 ---
 
+## S-KB-Studio.1 — 自建 KB Studio（chunk 編輯 + retrieval playground + Milvus dashboard）
+
+**日期**：2026-04-23
+**Sprint**：S-KB-Studio.1（Issue #39）
+**涉及層級**：Migration（既有 chunk_category schema 可重用，零 schema 變動）+ Domain（5 chunk 方法 + 2 category 方法 + 5 VectorStore 方法 + Chunk entity 加 category_id/quality_flag）+ Application（12 use cases 跨 knowledge/chunk_category/milvus/conversation 4 contexts）+ Infrastructure（MilvusVectorStore 5 方法真實作 + 2 chunk_category 方法）+ Worker（reembed_chunk arq job）+ Interfaces（3 新 router + knowledge_base_router 加 3 endpoints）+ Frontend（3 pages + KB Studio 7 tabs + Milvus dashboard + Conv Summary 頁 + ChunkCard / ChunkEditor / ConfirmDangerDialog 共用元件 + 新依賴 @tanstack/react-virtual）+ 9 BDD features (44 scenarios) + 9 step_defs
+
+**Sprint 來源**：S-LLM-Cache + S-Pricing 完成後，使用者問「現在能做 KB 調整嗎」。盤點後發現 RAG 品質除錯沒工具：admin 只能 upload/delete 整份文件，chunk 分類不對 / context_text 不準 / retrieval 結果差時無法 inline 修正，只能重傳整文（成本 = chunk 數 × embedding 費）。再加上 Auto-Classification 已跑但結果是黑盒、Milvus 基礎設施全要 SSH 進 VM 才看得到。
+
+**主題**：用 RAGFlow 的 UX 哲學自刻一套 admin 工具，但資料模型/租戶隔離/既有業務邏輯全部沿用我們自己的，**不引入 RAGFlow 也不 fork 它**。
+
+### 做得好的地方
+
+- **「不引入 RAGFlow」決策推理可重用**：路線 A（整套用 RAGFlow）/ B（自建）/ C（混合 iframe）的 tradeoff 拆得很清楚 — 拒絕 RAGFlow 的關鍵不是 UI 寫不出來，而是 (1) 資料模型不相容（PostgreSQL schema vs 我們 MySQL + DDD aggregate）(2) 租戶模型不相容（個人空間 vs 多租戶 row-level filter）(3) 既有業務邏輯（Auto-Classification / Contextual Retrieval / Conv Summary）要廢重接。**這個決策 framework 之後遇到「要不要引入開源 X」可以照抄套用**：先盤點對方的資料模型 + 多租戶 + 既有邏輯依賴，三項任一不相容就別引入。
+- **Day 0 hotfix 跟 sprint 主體拆開先 ship**：O14 Milvus tenant_id INVERTED index 拆出當 Day 0 commit `660008a` 先送 + 寫一次性 rebuild script（commit `1c773d9`）跑 local + dev-vm 8 個 collection。這樣 sprint 期間隨時新建 collection 都自動 INVERTED，不用擔心新加的 KB 又留個雪崩坑。
+- **Phase 1 探索後修正 plan 假設**：原 plan 寫「DocumentRepository 沒有 chunk 方法」，實際 Explore 後發現已有 8 個 document-level 方法，缺的只是 5 個 KB-level / single-chunk 方法。Plan 範圍從「全部新增」縮成「補齊缺口」，工時估從 6d 變實際 ~3d。**「先 Explore 驗證假設再寫定稿 plan」這條工序救了 ~1.5 工作天**。
+- **VectorStore 5 個新方法用 base class default 實作**：`list_collections`/`get_collection_stats`/`upsert_single`/`update_payload`/`count_by_filter` 在 `VectorStore` ABC 給空回傳 / no-op 預設實作，Milvus 子類覆寫真邏輯。**測試/開發環境若用其他 vector store 不會 break**，且未來換 vector store 不需強制全部實作（dashboard endpoint 對該 backend 自然回空陣列）。這是「ABC 加方法」的一個少痛模式 — 比強制 abstract 寬鬆，比完全不加 type-safe。
+- **單 chunk re-embed 走獨立 arq job**：`reembed_chunk` 接收一個 `chunk_id`，worker 端 use case 重新驗 tenant chain + embed + Milvus upsert_single + RecordUsage。**保 chunk-level 編輯成本是整文 reprocess 的 N 分之一**（N = 文件 chunk 數，文件大 N=100+）。整文 reprocess 等於「7 步 pipeline 全跑」，包含 OCR / chunking / quality / dedup 等通通重來，浪費 95%+。
+- **Tenant chain 驗證強制紅線**：每個 chunk/category use case 第一行 `chunk → doc → kb → tenant_id == JWT.tenant_id`，跨租戶 → `EntityNotFoundError` → router 層 404 防枚舉。**這是 Phase 1 探索發現「現有 use case 多數沒做 explicit chain check」之後加上的紅線**。比「相信 router filter」更安全 — IDOR 攻擊面在 use case 層被堵住，即使未來 router 改寫也擋得住。
+- **HTML5 native drag 拒絕 dnd-kit 的 ~20KB**：Categories tab 的 drag-to-reassign 用 `onDragStart` / `onDrop` 寫，零依賴。確實沒 dnd-kit 的 a11y / keyboard 支援，但 chunk 量小（每 KB 通常 < 1000 chunks）+ tenant admin 場景單純，dnd-kit 是過度工程。**「該 reach for 套件 vs 該手刻」的判斷點**：(1) data 量 (2) 互動複雜度 (3) a11y 需求嚴格度 — 三項都「中等以下」就手刻。
+- **Audit hook 預埋對齊未來 audit_log 表**：`kb_studio.chunk.update` / `.delete` / `.reembed` / `.category.create` 等 5 個 structlog event 名稱欄位對齊 `memory/audit-trail-pre-production.md` 規劃的 `audit_log` 表 schema。**等正式上線補真 audit 表時，把 event handler 從 structlog 改寫 DB 即可，不用回頭加 hook**。
+- **Frontend 用 @tanstack/react-virtual 而非 react-virtuoso**：跟既有 @tanstack/react-query 同生態（少一個維護者），~10KB vs ~15KB，header API 簡單但 grouped list 沒 virtuoso 強。**選型理由是「生態一致性 > 邊際功能」** — 之後升級 React 19 / 換 server 渲染策略，TanStack 全家桶會跟著動，不會出現「此項升級影響 vector store 未跟上」的破窗。
+
+### 潛在隱憂
+
+- **chunk re-embed 沒有「完成通知」**：Frontend `useUpdateChunk` mutation 只等 PATCH 200，re-embed arq job 的完成是非同步。User 改 chunk 後 1 秒內 toast 顯示「✓ 已儲存 + re-embedding」，但實際 re-embed 可能跑 2-3 秒（embedding API call 視 backend latency）。**Retrieval Playground 立即查可能還是查到舊向量**。優先級：中。改善方向：(a) 加 SSE 通知 chunk re-embed 完成 (b) UI 顯示「處理中」spinner 直到 chunk 的 metadata.embedding_updated_at > UI 記住的時間。
+- **單 chunk 編輯重複 enqueue 浪費**：debounce 1s 內如果 user 連按 5 個字，仍只 enqueue 1 次（debounce 的功效）。但若 1 秒後再連改，會 enqueue 第 2 次。多次 enqueue 的 chunk 會被多次 re-embed，浪費 token。優先級：低。改善方向：worker 端去重（同 chunk_id 的 pending job 合併）— 用 arq 的 `defer_until` + 自訂 dedup key。
+- **Conv Summary `bot_id` filter 沒驗 ownership**：`list_conv_summaries_use_case` 只擋 `tenant_id`，bot_id 是否屬於該 tenant 沒驗。**可能的洩漏路徑**：tenant_admin 拿到別租戶的 bot_id，list 時若 conv_summaries 表的 `bot_id` 沒擋 tenant_id 一致性 → 可能撈到別租戶資料。**現況防護**：use case 內查 `find_conv_summaries(tenant_id=X, bot_id=Y)`，repo 層只用 tenant_id filter（bot_id 是 secondary filter）→ 跨租戶 bot_id 查不到資料（empty list）但**不會主動回 404**，attacker 沒得到資料但能確認該 bot_id 是否在系統存在。優先級：高（上線前修）。改善方向：use case 內加 `if bot_id and not bot_repo.exists_for_tenant(bot_id, tenant_id): raise 404`。
+- **Chunks tab virtual scroll 大 KB 仍 page=1 預設**：頁面進入時拉 page=1（前 50 chunks），user 切到 page 5 時重新拉 50 個。**沒做 infinite scroll prefetch**，scroll 到底會看到 loading spinner 而非自動載入下一頁。優先級：低。RAGFlow 風格其實也是分頁，UX 可接受。
+- **`chunk-editor.tsx` 的 textarea 沒做 max length**：theoretically user 可貼進 1MB 文字 → DB 寫入慢 + Milvus payload 過大。優先級：低。改善方向：前端加 `maxLength` (例：32k) + 後端 use case 加 validation。
+- **沒寫 integration test step_defs**：`admin_kb_studio_api.feature` 14 scenarios 還在紅燈狀態（feature 寫了但 step_defs 沒寫）。優先級：中。本 sprint Stage 5 留下次 sprint 補（可能跟 audit_log 整合一起做）。
+- **AdminKbStudioPage 容器 7 tabs 全 lazy load 但 useDocuments 在 Overview tab 即觸發**：page=1 預設，每次切到 Overview 都會 fetch。改成 `staleTime` 久一點（30s）會更省。優先級：低。
+
+### 延伸學習
+
+- **Append-only 事件 vs 可變 model 在不同 context 的取捨**：S-Pricing.1 用 append-only（保 snapshot 不破），S-KB-Studio.1 用可變 model（chunk content 編輯就是覆蓋）。差別是「**這個 entity 的歷史值有沒有外部依賴**」。Pricing 的 estimated_cost 被 token_usage_records snapshot → 必須 immutable；Chunk 的 content 沒人 snapshot（vector 是 derived） → 可以 mutable。**判準：「有人 reference 這個 entity 的舊版本嗎？」**
+- **「ABC default 實作」vs「強制 abstract」的選型**：Python ABC 不要求每個方法都 `@abstractmethod`。給空 default 實作的好處是 (1) 子類選擇性覆寫 (2) 測試 fake 不需實作所有方法 (3) 未來 backend swap 不會 break。壞處是 type 不再強制覆寫 → 開發者忘記覆寫不會編譯期 catch。**準則：(a) 純讀類方法給 default、(b) 寫類方法強制 abstract**。
+- **Frontend「該裝 lib vs 該手刻」的判準**：(1) 資料規模（chunk 量 < 1000 → 手刻 OK）(2) 互動複雜度（單向 drag → 手刻 OK；多選 + 跨容器 + sortable → 裝 lib）(3) a11y / i18n 需求（admin 工具放低；對外給 end user 放高）(4) 套件大小 vs 邊際功能。本 sprint Categories drag 三項都符合手刻條件。
+- **Plan agent 提案後再次 explore 驗證的價值**：本 sprint 的 plan 是 4/22 凌晨 2 個 Plan agent 寫的，實作前再用 Explore agent 驗 6 個假設，發現 1 個假設要修正（DocumentRepository 已有部分方法）。**這個「Plan → Explore 二次驗證」工序成本約 10 分鐘但可救 ~1.5 工作天**。
+
+### 思考題
+
+- **Re-embed 完成通知該用 SSE 還是 polling？** SSE 即時但前端 connection 多。Polling 簡單但 latency 不可控（5s 區間）。考量 KB Studio 是 admin tool（單 user 同時開幾個 page，不是 100k user），SSE 應該過度。可能比較合適的：mutation 完成後 invalidate `kb-studio.chunks` query，由 staleTime + refetchOnMount 自動拉最新。但 re-embed 完成是「DB row 沒變只有 vector 變」 → invalidate 拿到的還是同樣的 chunk metadata。要怎麼做才對？
+- **Chunk content 上限該設多少？** 太短 (1k) 限制 admin inline 補大段 context；太長 (100k) 浪費 embedding token + Milvus payload size 上限約 16MB。RAGFlow 預設 chunk size ~500-1500 字元，但允許 admin 編輯後變大。怎麼平衡 UX 自由度 vs 系統健康度？
+- **Worker 端 reembed_chunk job dedup 該在哪一層做？** arq queue 層（重複 enqueue 同 chunk_id 直接 skip）vs use case 層（短時間內同 chunk_id 第二次 reembed 直接 return）vs DB 層（chunk 加 `embedding_pending_at` 欄位，pending 中的不重入隊）。考量「user 連續編輯 5 個字」這個常見情境，哪一層做最划算？
+
+---
+
 ## S-Pricing.1 — 系統層 Pricing Admin UI + 回溯重算（Append-only 版本 + Snapshot 保證）
 
 **日期**：2026-04-22

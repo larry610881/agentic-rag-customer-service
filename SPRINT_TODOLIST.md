@@ -1386,6 +1386,71 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | **dev-vm seed** | ✅ | 2026-04-22 Larry 授權後執行 `uv run python -m scripts.seed_model_pricing` on VM，23 筆 pricing 版本入庫 |
 | **Multi-pod cache invalidation** | ⏭️ Future | 本 sprint POC 單 pod；正式收費前加 Redis pub/sub `pricing_cache_invalidate` event |
 
+### S-KB-Studio.1 自建 KB Studio（chunk 編輯 + retrieval playground + Milvus dashboard）（2026-04-23 ship，Issue #39）
+
+> Plan: `.claude/plans/b-bug-delightful-starlight.md` · 取代 RAGFlow 引入提案，自建以保多租戶隔離 + DDD aggregate 完整性
+
+#### Stage 0 — Day 0 Hotfix（已 ship）
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Milvus tenant_id / document_id INVERTED scalar index | ✅ | commit `660008a` 改 `MilvusVectorStore.ensure_collection`；新建 collection 自動 INVERTED（避免 full-scan 雪崩）|
+| 一次性 rebuild script + 跑 8 個 collection | ✅ | `scripts/rebuild_milvus_scalar_index.py` (commit `1c773d9`)；local 2 + dev-vm 6（含 conv_summaries）全部升級 |
+| Plan 同步 | ✅ | commit `54d3016` |
+
+#### Stage 1-3 — DDD 設計 + BDD + TDD
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Plan 落地 + Phase 1 探索修正假設 | ✅ | commit `606b997`；修正 3 個假設（DocumentRepository 已有部分 chunk 方法 / `retrieve()` 已存在 / Tenant chain check 未貫徹需補強紅線）|
+| BDD features (9 個 / 44 scenarios) | ✅ | commit `7eae76b` — `update_chunk` / `delete_chunk` / `list_kb_chunks` / `test_retrieval` / `reembed_chunk` / `category_crud` / `list_collections` / `list_conv_summaries` + integration `admin_kb_studio_api` |
+| Domain + 12 use case 骨架 | ✅ | commit `d6006f8` — DocumentRepository 加 5 方法、ChunkCategoryRepository 加 2 方法、VectorStore 加 5 方法（base class default 實作）、Chunk entity 加 category_id/quality_flag |
+| TDD step_defs (9 個) | ✅ | commit `c9f2e7f` — 全部 AsyncMock + FakeRepo pattern；29 new scenarios |
+
+#### Stage 4 — 實作
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Day 1-2 Domain + Application | ✅ | (commit `d6006f8`) 12 use cases 全部 use case 第一行強制 `kb.tenant_id == tenant.tenant_id` chain check |
+| Day 3 Backend Router + Container + Milvus infra | ✅ | commit `3e9cad2` — 3 新 router (admin_chunk / admin_milvus / admin_conv_summary) + knowledge_base_router 補 3 category endpoints + MilvusVectorStore 5 方法真實作 (asyncio.to_thread) + arq `reembed_chunk` job + container.py 註冊 13 use cases |
+| Day 4-7 Frontend KB Studio | ✅ | commit `2c08601` — 3 pages + KB Studio 7 tabs (overview/documents/chunks/categories/playground/quality/settings) + 4 hooks + ChunkCard / ChunkEditor / ConfirmDangerDialog + @tanstack/react-virtual virtual scroll + HTML5 native drag |
+| admin-kb-detail 棄用 redirect | ✅ | App.tsx 路由改 `<AdminKbDetailRedirect />`，舊頁 import 留 3 sprint 後刪 |
+
+#### Stage 5 — 驗證交付
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| 全量 unit test 綠 | ✅ | 811 passed（baseline 781 + 30 new；包含修好的 1 個 intentional red — `FakeCategoryRepo.assign_chunks` 改寫 + 用 parsers.re 鎖死 single-chunk pattern 防 greedy）|
+| 後端 integration test | ⏳ 留下次 sprint | `admin_kb_studio_api.feature` step_defs 未寫；unit 已覆蓋核心邏輯，integration 留下次 sprint 跟 audit_log 整合一起做 |
+| Frontend tsc | ✅ | 新增檔案零新錯誤；pre-existing 13 vitest failures（pagination-controls / bot-detail-form / document-list / provider-list / tenant-config-dialog）非本 sprint 造成 |
+| 架構筆記 | ✅ | `docs/architecture-journal.md` 加 S-KB-Studio.1 段落（決策 framework + Day 0 拆分價值 + Phase 1 探索 ROI + ABC default 取捨 + HTML5 drag 取代 dnd-kit + 6 隱憂 + 3 思考題）|
+| 13 endpoints registered + boot OK | ✅ | `create_app` 驗證所有 endpoint 正確註冊 |
+
+#### 8 條多租戶安全紅線實作對照
+
+| # | 紅線 | 實作 |
+|---|------|------|
+| 1 | 每個 chunk/category use case 第一行驗 chain | ✅ 12 use cases 全有 `EntityNotFoundError("entity_type", id)` |
+| 2 | platform_admin vs tenant_admin 路由分流 | ✅ admin_milvus_router 用 `require_role("system_admin", "tenant_admin")` |
+| 3 | URL 不屬 caller → 回 404 防枚舉 | ✅ admin_chunk_router._map_error → 404 |
+| 4 | Retrieval Playground Milvus search 帶 tenant_id filter | ✅ `TestRetrievalUseCase` 強制 `filters={"tenant_id": ...}` |
+| 5 | Milvus collection list tenant 過濾 | ✅ `ListCollectionsUseCase` 依 role + tenant_id 過濾 `kb_*` |
+| 6 | Chunk re-embed 必須寫 Milvus payload tenant_id | ✅ `MilvusVectorStore.upsert_single` 強制 `if "tenant_id" not in payload: raise` |
+| 7 | Playground 不開放 filter expression 文字輸入 | ✅ Frontend 用 dropdown 選 KB / category，無自由輸入 |
+| 8 | Conv Summary `bot_id` 必驗屬 caller tenant | ⚠️ 隱憂留 architecture-journal — bot_id 沒做 ownership check（上線前須補 `bot_repo.exists_for_tenant`）|
+
+#### 不在本 sprint 範圍（記錄供未來）
+
+| 項目 | 為何不做 |
+|------|---------|
+| O3 DocumentQualityStats 前端完整串接 | 只做 summary card，留下次 |
+| O4 Chunk referenced-by-conversations endpoint | P3，需求驅動 |
+| O5 三 KB 詳細頁資料層統一 | 下個 sprint |
+| O11 Toast 標準化攔截器 | P2 |
+| 實體 audit_log 表 | 上線前才補（structlog hook 已預埋）|
+| 單 chunk delete Milvus retry queue | 看實測頻率再決定 |
+| Conv Summary bot_id ownership check | 上線前必修（紅線 #8）|
+
 ### S-Gov.1 Sub-agent 驗證與追蹤穩定化
 | 項目 | 狀態 | 說明 |
 |------|------|------|

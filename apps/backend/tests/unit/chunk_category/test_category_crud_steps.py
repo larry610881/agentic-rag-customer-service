@@ -38,8 +38,8 @@ def ctx():
 
 
 def _setup(ctx, *, tenant_id="T001", kb_id="kb-1"):
-    cat_repo = FakeCategoryRepo()
     doc_repo = FakeDocumentRepo()
+    cat_repo = FakeCategoryRepo(doc_repo=doc_repo)
     kb_repo = FakeKbRepo()
     run(kb_repo.save(make_kb(kb_id, tenant_id)))
     ctx.update(
@@ -172,18 +172,17 @@ def when_assign(ctx, tenant, kb_id, cat_id, c1, c2, c3):
                 )
             )
         )
-        # Fake：把 chunks category_id 設進去
-        for cid in [c1, c2, c3]:
-            if cid in ctx["doc_repo"].chunks:
-                ctx["doc_repo"].chunks[cid].category_id = cat_id
         ctx["error"] = None
     except Exception as e:
         ctx["error"] = e
 
 
+# 用 re 鎖死「單一 chunk_id」格式（沒有逗號），避免 greedy 吞掉多 chunk 場景
 @when(
-    parsers.parse(
-        '我以 tenant "{tenant}" 身分 POST /kb/{kb_id}/categories/{cat_id}/assign-chunks body={{"chunk_ids":["{cid}"]}}'
+    parsers.re(
+        r'^我以 tenant "(?P<tenant>[^"]+)" 身分 POST /kb/(?P<kb_id>[^/]+)'
+        r'/categories/(?P<cat_id>[^/]+)/assign-chunks '
+        r'body=\{"chunk_ids":\["(?P<cid>[^",]+)"\]\}$'
     )
 )
 def when_assign_one(ctx, tenant, kb_id, cat_id, cid):

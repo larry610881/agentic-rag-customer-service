@@ -87,6 +87,14 @@ function PageFallback() {
   );
 }
 
+function AdminKbDetailRedirect() {
+  // S-KB-Studio.1: 舊 /admin/knowledge-bases/:id 路由 redirect 到 KB Studio
+  // useParams 拿 :id（既有 ROUTES.ADMIN_KB_DETAIL pattern）
+  const params = window.location.pathname.match(/\/admin\/knowledge-bases\/([^/]+)/);
+  const id = params?.[1] ?? "";
+  return <Navigate to={`/admin/kb-studio/${id}?tab=overview`} replace />;
+}
+
 export function App() {
   return (
     <Routes>
@@ -143,9 +151,12 @@ export function App() {
               path={ROUTES.ADMIN_KNOWLEDGE_BASES}
               element={<AdminKnowledgeBasesPage />}
             />
+            {/* S-KB-Studio.1: 舊 /admin/knowledge-bases/:id 唯讀頁 deprecated；
+                redirect 到 KB Studio。AdminKbDetailPage import 保留 3 sprint
+                後再刪。 */}
             <Route
               path={ROUTES.ADMIN_KB_DETAIL}
-              element={<AdminKbDetailPage />}
+              element={<AdminKbDetailRedirect />}
             />
             <Route path={ROUTES.ADMIN_BOTS} element={<AdminBotsPage />} />
             <Route

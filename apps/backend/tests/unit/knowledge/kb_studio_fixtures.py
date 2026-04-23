@@ -195,8 +195,11 @@ class FakeDocumentRepo(DocumentRepository):
 
 
 class FakeCategoryRepo(ChunkCategoryRepository):
-    def __init__(self) -> None:
+    def __init__(self, doc_repo: "FakeDocumentRepo | None" = None) -> None:
         self.items: dict[str, ChunkCategory] = {}
+        # 注入 doc_repo 讓 assign_chunks 能真正寫回 chunk.category_id
+        # （真 SQLAlchemyChunkCategoryRepository.assign_chunks 內部會更新 chunks 表）
+        self._doc_repo = doc_repo
 
     async def save(self, category: ChunkCategory) -> None:
         self.items[category.id] = category
@@ -227,8 +230,14 @@ class FakeCategoryRepo(ChunkCategoryRepository):
         self.items.pop(category_id, None)
 
     async def assign_chunks(self, category_id, chunk_ids):
-        # 記錄呼叫，真的寫 chunk.category_id 由 FakeDocRepo 另一 fixture 處理
+        # 鏡像 SQLAlchemy 實作：直接更新 chunks.category_id
         self.last_assigned = (category_id, list(chunk_ids))
+        if self._doc_repo is None:
+            return
+        for cid in chunk_ids:
+            chunk = self._doc_repo.chunks.get(cid)
+            if chunk is not None:
+                chunk.category_id = category_id
 
 
 class FakeArqPool:
