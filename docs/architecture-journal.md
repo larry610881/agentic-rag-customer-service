@@ -7,6 +7,51 @@
 
 ---
 
+## Token 用量頁來源合併 + kb_id 全鏈路（S-Token-Gov follow-up）
+
+**日期**：2026-04-23
+**Commit**：`15e6f16`
+**涉及層級**：Migration（`add_kb_id_to_token_usage.sql` + `backfill_carrefour_kb_token_usage.sql`）+ Domain（`UsageRecord` entity 加 `kb_id`）+ Application（`RecordUsageUseCase` 加 kb_id kwarg + 3 KB callers: `process_document`/`classify_kb`/`reembed_chunk` 共 6 個 call site）+ Infrastructure（`UsageRecordModel` 加欄位 + index / `SQLAlchemyUsageRepository` save & load 讀寫 kb_id）+ Interfaces（`observability_router /token-usage` LEFT JOIN `knowledge_bases` 回傳 `kb_name`）+ Frontend（`usage-categories.ts` 6 個 enum 中文化 / `token-usage.ts` 加 `inferUsageSource()` 與 UsageSourceKind / `token-usage-detail-table.tsx` 合併「機器人」→「來源」欄 icon tag 可點連結 / `admin-token-usage.tsx` 頂部加來源類型 filter）
+
+**Sprint 來源**：Token 用量頁 UI 觀察 — 同一列表同時出現 `chat_web`（bot 來源）和 `ocr/contextual_retrieval/auto_classification`（KB 來源），但「機器人」欄對 KB 類永遠顯示「—」，使用者看不出 KB 類任務屬於哪個 KB。原因是 `token_usage_records` 只有 `bot_id` 沒有 `kb_id`。同時使用者反映「Contextual Retrieval / Auto Classification 這種 English enum 顯示在中文 UI 很突兀」。
+
+**主題**：用戶體驗驅動的 backend schema 擴充 — 從 UI 合理性（「來源」視覺統一）倒推出 DB 需要新欄位；Phase 1 前端純 UI 改造 + Phase 3 schema + caller 全鏈路升級，分兩個 commit 心智但一次 PR 送出。
+
+### 做得好的地方
+
+- **UI 需求驅動 DB schema**：不是先想「DB 要加欄位」，是先想「Token 用量頁要分辨 bot 來源 vs KB 來源」，再倒推「DB 沒這個資訊，所以要加 `kb_id`」。這個順序的好處是 schema 變更的 scope 自然縮到最小 — 只需 `kb_id nullable` 一欄，不用動 `bot_id` 或其他欄位。**下次遇到「加欄位」需求先問「UI 要顯示什麼」，避免加了欄位但 UI 不用的浪費**。
+- **Phase 1 前端純 UI 先做完能部署**：`inferUsageSource()` 對 `bot_id` 存在 + `request_type` 做雙軸推論 — `bot_id` 存在 → 🤖 bot；否則 `request_type ∈ {ocr, contextual_retrieval, auto_classification, pdf_rename, embedding}` → 📚 kb（顯示「知識庫處理」通用標）；其他 → ⚙️ 系統。**這讓 Phase 1 不需等 DB 改就能 ship**，使用者立刻看到分類（雖然 kb 名稱還是通用標）。Phase 3 再補 `kb_name` 讓通用標變具體 KB 名。
+- **Migration 走足五步流程 + 雙環境套用紀錄**：local-docker `ALTER TABLE` → `_applied_migrations` 寫入 → dev-vm `ALTER TABLE` → dev-vm `UPDATE 2 rows backfill` → dev-vm `_applied_migrations` 寫 2 筆。每一步對話都有 SQL output（`UPDATE 2`）與驗證查詢結果，**commit message 也列出每環境套用紀錄**。這個對 `migration-workflow.md` 規則的執行度在 Stop hook 檢查下一次就過關。
+- **Caller 傳 `kb_id` 不走 Domain Service，直接在 call site 傳**：`process_document_use_case.py` 4 個 call site（OCR / Contextual / Embedding / PDF Rename）、`classify_kb_use_case.py` 1 個、`reembed_chunk_use_case.py` 1 個都是直接 `kb_id=document.kb_id` 或 `kb_id=kb.id` 或 `kb_id=getattr(kb, "id", None)`。**沒額外抽象「KbContextAware use case」之類的 wrapper**，一個 kwarg 傳到底，改動線性且易讀。
+- **Backfill 分離成獨立 SQL 檔**：`backfill_carrefour_kb_token_usage.sql` 跟 schema migration 分檔 + 獨立 `_applied_migrations` 紀錄。這讓「schema 變更」與「一次性資料修正」在 git history 清楚分開，未來要知道「什麼時候補的 2 筆 carrefour row」直接查 backfill commit。**規則應該固化：一次性 data migration 都獨立檔，不跟 schema 檔混**。
+- **ORM field order 跟 domain entity 一致**：`bot_id` 之後才是 `kb_id`，兩邊都一樣 — 讀 code 時可以直覺對應。**小事但對未來 review 新 caller 很有幫助**。
+- **6 個 enum 中文化是低成本高收益**：`OCR` / `Embedding` / `Prompt Guard` / `LLM Reranker` / `Contextual Retrieval` / `Auto Classification` 全部翻成「文件 OCR 解析 / 向量嵌入 / 提示詞防護 / LLM 重排 / 上下文增強檢索 / 自動分類」。改 `constants/usage-categories.ts` 單一 source of truth，全站 table/chart/filter 同步更新。**i18n 集中 constant 的好處在這裡 payoff 最明顯**。
+
+### 潛在隱憂
+
+- **Stage 3 沒寫 BDD 測試**：此 sprint 沒增 `.feature` 或 `test_*_steps.py`，違反 CLAUDE.md 的 Stage 2→3→4 紅線。辯解：沒有新的**行為**（只是 schema 加欄位 + UI 改顯示），既有 `test_token_usage_steps.py` 的 scenario 仍 pass 覆蓋核心寫入邏輯。但新加的 `kb_id` kwarg 沒 unit test 驗「傳了 kb_id 會寫進 DB」— 真有 bug 要等 integration / E2E 才抓得到。**優先級：中**。改善方向：補 1 個 `RecordUsageUseCase` unit scenario「傳入 kb_id → saved.kb_id 等於該值」。
+- **Frontend `inferUsageSource()` 無單測**：`token-usage.ts` 加的推論函式純邏輯 + 8 個分支（bot/kb/system × href 有無），但 `apps/frontend` 下沒 `.test.tsx` 覆蓋。改 `request_type` 白名單時可能 break 靜默（例：未來加新 KB 類型沒更新 `KB_REQUEST_TYPES` set）。**優先級：中**。改善方向：加 `token-usage.test.ts` 覆蓋四個典型 row shape。
+- **`KB_REQUEST_TYPES` set hardcoded 在 frontend**：這個清單跟後端 `UsageCategory` enum 手動對應。未來加新 KB 類型時（例：`kb_rerank`）兩邊要同步改 — 容易漏。**優先級：中**。改善方向：(a) 後端 `UsageCategory` 加 `kind: Literal["bot", "kb", "system"]` 屬性 → API 回傳 → frontend 直接讀；或 (b) 後端開 `/api/v1/usage/categories` endpoint 回完整 meta。(a) 更乾淨但要動 enum 設計。
+- **Admin API JOIN 4 表成本**：`/token-usage` 現在 LEFT JOIN `bots` + `knowledge_bases` + `tenants`，外加 `GROUP BY` 8 個欄位。row 少時無感，但 1M+ usage records 會慢。**優先級：低（POC 資料量不到這級）**。改善方向：（未來）每日批次寫入 materialized view，admin UI 查 view 不查原表。
+- **Caller 沒測「exception → fallback no kb_id」**：如果未來 `document.kb_id` 是 None（例如 orphan row），`await record_usage.execute(..., kb_id=None)` 會正常寫 NULL 不 error — 但沒 log warning 讓人知道有 orphan。**優先級：低**。改善方向：use case 可以 `if kb_id is None and request_type in KB_CATEGORIES: log.warning("kb_id missing for kb-type usage")`。
+- **FE 「來源」欄可點連結缺 tenant_admin 權限過濾**：`/bots/{bot_id}` 和 `/knowledge/{kb_id}` 這些 link 給 tenant_admin 點沒問題；但 system_admin 看到跨租戶 row 點下去，會進到「不屬於自己 tenant 的 bot 詳情頁」— 目前 system_admin 有權看，未來若改為「system_admin 不能進租戶內頁」規則，這 link 會 404。**優先級：低（POC 階段 system_admin 權限寬鬆）**。
+- **Backfill SQL 只處理 2 筆**：未來如果又有新的 orphan（例：某 sprint 加新 KB 類 request_type 但沒改 caller），backfill 得重新手寫 SQL。**優先級：低（屬「腳本化運維」範疇，POC 不急）**。
+
+### 延伸學習
+
+- **Append-only 資料表加欄位的 migration 風險**：token_usage_records 是唯寫表（不 update），加欄位 + backfill 2 筆屬「最安全」的 DDL 操作 — 沒 index rebuild、沒 row size 激增、沒 lock 寫入。比起修 bot_id 欄位型別或拆表安全數個等級。**「唯寫表加 nullable column」幾乎是最低風險的 schema 變更，可作為「安全 DDL 樣本」對照 riskier 變更**。
+- **`getattr(obj, "attr", None)` 的防禦性寫法 trade-off**：`kb_id=getattr(kb, "id", None)` 在 `process_document_use_case.py` PDF rename 路徑用得很合理（`kb` 參數可能是 None；歷史 code path 兼容）。但其他地方（`reembed_chunk_use_case` / `classify_kb_use_case`）直接 `kb_id=kb.id`，因為前面有 not-None guard。**「什麼時候該 `getattr` vs 直接 attr」的判準：上下文是否有 guard、是否是 adapter layer（兼容多型）、是否是新寫 code（加 guard 做 future-proof 通常是過度）**。
+- **`inferUsageSource()` 用 Set + Switch 的 complexity trade-off**：如果未來 KB 類 `request_type` 超過 10+，目前的 `Set.has()` 就不夠 — 應該改成 `request_type → SourceKind` 的 Map lookup。但 5 個值以下 Set 更直觀。**「Map vs Set vs switch」的切換臨界點大約在 5-8 個值 — 超過就該 Map**。
+- **「Phase 1 UI 先 ship / Phase 3 補 schema」這種逆向 scope 順序**：傳統先改 DB 再寫 API 再寫 UI，這次倒反過來 — 先 UI + 類型推論 + Phase 1 ship，再補 DB + caller。**倒序的好處是使用者最早能用 (Phase 1 幾十分鐘)；倒序的代價是「中間狀態」（Phase 1 ship 後 kb_name 顯示通用標）持續到 Phase 3 結束**。看 feature 能否容忍「中間狀態」來決定要不要這樣做。本次能容忍因為通用標「知識庫處理」本身是合理 fallback。
+
+### 思考題
+
+- **Backend 的 `UsageCategory` enum 要不要加 `kind` 欄位讓 frontend 不用 hardcode `KB_REQUEST_TYPES`？** 加了好處是前後端同步，壞處是 enum 變複雜、既有 callers 都要調整 serialization。考量到 `UsageCategory` 已經穩定且只有 admin UI 消費這個 `kind`，不加 enum 欄位、改用 API `/usage/categories` 回 meta 是不是更好？
+- **`backfill_carrefour_kb_token_usage.sql` 這種「特定租戶的一次性修正」該不該進 git？** 進了 → 好處是 audit trail 完整；壞處是未來其他租戶有類似問題得另寫新檔（file count 爆增）。不進（只跑 SQL 不存檔）→ 違反 migration-workflow.md「每個 DDL/DML 都要留檔」。目前兩難。可能比較好的：一次性修正檔放 `migrations/one-off/` 子目錄，git 追蹤但不納入主 migration sequence？
+- **Phase 3 的 caller 改動 scope 該不該分兩個 commit？** 一個 commit `15e6f16` 同時改 6 個 call site + schema + UI — diff review 時要同時看很多檔。但分開會有「中間狀態」（Phase 3 schema applied 但 caller 還沒傳 kb_id → 新 row kb_id=NULL 是 bug 還是 feature？）。作法的選擇偏好「原子性」還是「reviewability」？
+
+---
+
 ## S-KB-Studio.1 — 自建 KB Studio（chunk 編輯 + retrieval playground + Milvus dashboard）
 
 **日期**：2026-04-23
