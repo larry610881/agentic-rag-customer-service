@@ -12,13 +12,10 @@ Feature: 知識庫 RAG ReAct Agent 完整旅程
     And 回答應非空
     And tool_calls 應包含 "rag_query"
 
-  Scenario: ReAct Agent audit_mode off 不記錄工具呼叫
-    Given 已建立租戶 "Audit Corp" 並取得 token 並啟用 react
-    And 已建立知識庫 "商品FAQ"
-    And 已建立 Bot "ReAct客服" 綁定知識庫 agent_mode 為 "react" audit_mode 為 "off"
-    When 我透過 Bot 發送對話 "退貨流程是什麼？"
-    Then 回應狀態碼為 200
-    And tool_calls 應為 direct
+  # Scenario: ReAct Agent audit_mode off 不記錄工具呼叫
+  # 已刪除（S-KB-Followup.1）：audit_mode 欄位從未在 Bot entity 實作，
+  # 此 scenario 對應的 setup_bot_audit step 也沒 pass audit_mode 給 create_bot，
+  # 整個 scenario 在測從未實作的功能。若未來實作 Bot.audit_mode 再補回。
 
   Scenario: ReAct Agent max_tool_calls 限制
     Given 已建立租戶 "MaxCall Corp" 並取得 token 並啟用 react

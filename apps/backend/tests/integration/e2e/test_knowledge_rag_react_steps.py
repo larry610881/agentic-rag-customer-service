@@ -61,20 +61,6 @@ def setup_bot(ctx, name, mode):
 
 @given(
     parsers.parse(
-        '已建立 Bot "{name}" 綁定知識庫 agent_mode 為 "{mode}" audit_mode 為 "{audit}"'
-    )
-)
-def setup_bot_audit(ctx, name, mode, audit):
-    ctx["bot_id"] = create_bot(
-        ctx["client"],
-        ctx["headers"],
-        name,
-        [ctx["kb_id"]],
-    )
-
-
-@given(
-    parsers.parse(
         '已建立 Bot "{name}" 綁定知識庫 agent_mode 為 "{mode}" max_tool_calls 為 {max_calls:d}'
     )
 )
@@ -117,15 +103,6 @@ def check_tool_calls_contain(ctx, tool_name):
     assert tool_name in tool_names, (
         f"Expected tool_calls to contain '{tool_name}', "
         f"got {tool_names}"
-    )
-
-
-@then("tool_calls 應為 direct")
-def check_tool_calls_direct(ctx):
-    tool_calls = ctx["response"].get("tool_calls", [])
-    assert len(tool_calls) == 1, f"Expected 1 tool_call, got {len(tool_calls)}"
-    assert tool_calls[0]["tool_name"] == "direct", (
-        f"Expected 'direct', got '{tool_calls[0]['tool_name']}'"
     )
 
 
