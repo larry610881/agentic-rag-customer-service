@@ -28,6 +28,54 @@ export const API_ENDPOINTS = {
     recalculateExecute: "/api/v1/admin/pricing/recalculate:execute",
     recalcHistory: "/api/v1/admin/pricing/recalculate-history",
   },
+  adminChunks: {
+    list: (kbId: string, page = 1, pageSize = 50, categoryId?: string) => {
+      const qs = new URLSearchParams({
+        page: String(page),
+        page_size: String(pageSize),
+      });
+      if (categoryId) qs.set("category_id", categoryId);
+      return `/api/v1/admin/knowledge-bases/${kbId}/chunks?${qs.toString()}`;
+    },
+    update: (docId: string, chunkId: string) =>
+      `/api/v1/admin/documents/${docId}/chunks/${chunkId}`,
+    reembed: (chunkId: string) => `/api/v1/admin/chunks/${chunkId}/re-embed`,
+    delete: (chunkId: string) => `/api/v1/admin/chunks/${chunkId}`,
+    retrievalTest: (kbId: string) =>
+      `/api/v1/admin/knowledge-bases/${kbId}/retrieval-test`,
+    qualitySummary: (kbId: string) =>
+      `/api/v1/admin/knowledge-bases/${kbId}/quality-summary`,
+  },
+  categories: {
+    list: (kbId: string) => `/api/v1/knowledge-bases/${kbId}/categories`,
+    create: (kbId: string) => `/api/v1/knowledge-bases/${kbId}/categories`,
+    delete: (kbId: string, catId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/categories/${catId}`,
+    rename: (kbId: string, catId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/categories/${catId}`,
+    chunks: (kbId: string, catId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/categories/${catId}/chunks`,
+    assignChunks: (kbId: string, catId: string) =>
+      `/api/v1/knowledge-bases/${kbId}/categories/${catId}/assign-chunks`,
+  },
+  adminMilvus: {
+    collections: "/api/v1/admin/milvus/collections",
+    stats: (name: string) => `/api/v1/admin/milvus/collections/${name}/stats`,
+    rebuildIndex: (name: string) =>
+      `/api/v1/admin/milvus/collections/${name}/rebuild-index`,
+  },
+  adminConvSummary: {
+    list: (tenantId: string, botId?: string | null, page = 1, pageSize = 50) => {
+      const qs = new URLSearchParams({
+        tenant_id: tenantId,
+        page: String(page),
+        page_size: String(pageSize),
+      });
+      if (botId) qs.set("bot_id", botId);
+      return `/api/v1/admin/conv-summaries?${qs.toString()}`;
+    },
+    search: "/api/v1/admin/conv-summaries/search",
+  },
   knowledgeBases: {
     list: "/api/v1/knowledge-bases",
     create: "/api/v1/knowledge-bases",

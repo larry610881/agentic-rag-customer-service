@@ -13,6 +13,23 @@ export const queryKeys = {
       ["pricing", "list", filters ?? {}] as const,
     recalcHistory: ["pricing", "recalc-history"] as const,
   },
+  kbStudio: {
+    chunks: (kbId: string, page: number, pageSize: number, categoryId?: string) =>
+      ["kb-studio", "chunks", kbId, page, pageSize, categoryId ?? ""] as const,
+    qualitySummary: (kbId: string) =>
+      ["kb-studio", "quality-summary", kbId] as const,
+  },
+  categories: {
+    list: (kbId: string) => ["categories", kbId] as const,
+  },
+  milvusAdmin: {
+    collections: ["milvus", "collections"] as const,
+    stats: (name: string) => ["milvus", "stats", name] as const,
+  },
+  convSummaryAdmin: {
+    list: (tenantId: string, botId?: string | null) =>
+      ["conv-summaries", tenantId, botId ?? "all"] as const,
+  },
   knowledgeBases: {
     all: (tenantId: string) => ["knowledge-bases", tenantId] as const,
   },

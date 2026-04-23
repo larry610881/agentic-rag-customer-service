@@ -65,11 +65,14 @@ export default function AdminKnowledgeBasesPage() {
                 <TableRow key={kb.id}>
                   <TableCell className="font-medium">
                     <Link
-                      to={`/admin/knowledge-bases/${kb.id}`}
-                      className="hover:underline underline-offset-4"
+                      to={`/admin/kb-studio/${kb.id}`}
+                      className="hover:underline underline-offset-4 text-primary"
                     >
                       {kb.name}
                     </Link>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      → KB Studio
+                    </span>
                   </TableCell>
                   <TableCell className="max-w-xs truncate text-muted-foreground">
                     {kb.description || "-"}

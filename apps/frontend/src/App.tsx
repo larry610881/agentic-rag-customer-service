@@ -58,6 +58,11 @@ const AdminToolsPage = lazyWithRetry(() => import("@/pages/admin-tools"));
 const AdminTenantsPage = lazyWithRetry(() => import("@/pages/admin-tenants"));
 const AdminPlansPage = lazyWithRetry(() => import("@/pages/admin-plans"));
 const AdminPricingPage = lazyWithRetry(() => import("@/pages/admin-pricing"));
+const AdminKbStudioPage = lazyWithRetry(() => import("@/pages/admin-kb-studio"));
+const AdminMilvusPage = lazyWithRetry(() => import("@/pages/admin-milvus"));
+const AdminConvSummaryPage = lazyWithRetry(
+  () => import("@/pages/admin-conversation-summary"),
+);
 const AdminPromptsPage = lazyWithRetry(() => import("@/pages/admin-prompts"));
 const AdminGuardRulesPage = lazyWithRetry(() => import("@/pages/admin-guard-rules"));
 const AdminDiagnosticRulesPage = lazyWithRetry(() => import("@/pages/admin-diagnostic-rules"));
@@ -191,6 +196,18 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_PRICING}
               element={<AdminPricingPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_KB_STUDIO}
+              element={<AdminKbStudioPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_MILVUS}
+              element={<AdminMilvusPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_CONV_SUMMARY}
+              element={<AdminConvSummaryPage />}
             />
             <Route
               path={ROUTES.ADMIN_PROMPTS}
