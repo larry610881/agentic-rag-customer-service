@@ -274,7 +274,14 @@ async def get_token_usage(
                 UsageRecordModel.request_type,
                 func.sum(UsageRecordModel.input_tokens).label("input_tokens"),
                 func.sum(UsageRecordModel.output_tokens).label("output_tokens"),
-                func.sum(UsageRecordModel.total_tokens).label("total_tokens"),
+                # S-Token-Gov.6: total_tokens 已從 DB column 改為 @property。
+                # SUM 改由其他欄位合成。
+                (
+                    func.sum(UsageRecordModel.input_tokens)
+                    + func.sum(UsageRecordModel.output_tokens)
+                    + func.sum(UsageRecordModel.cache_read_tokens)
+                    + func.sum(UsageRecordModel.cache_creation_tokens)
+                ).label("total_tokens"),
                 func.sum(UsageRecordModel.estimated_cost).label("estimated_cost"),
                 func.sum(UsageRecordModel.cache_read_tokens).label("cache_read_tokens"),
                 func.sum(UsageRecordModel.cache_creation_tokens).label("cache_creation_tokens"),
