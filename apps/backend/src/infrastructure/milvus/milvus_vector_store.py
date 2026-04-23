@@ -337,3 +337,181 @@ class MilvusVectorStore(VectorStore):
             score_threshold=score_threshold,
             filters=filters or None,
         )
+
+    # --- S-KB-Studio.1 新增：Admin Dashboard / 單 chunk re-embed ---
+
+    async def list_collections(self) -> list[dict[str, Any]]:
+        """列出所有 collection + row count。"""
+        names = await asyncio.to_thread(self._client.list_collections)
+        out: list[dict[str, Any]] = []
+        for name in names:
+            try:
+                stats = await asyncio.to_thread(
+                    self._client.get_collection_stats, collection_name=name
+                )
+                row_count = int(stats.get("row_count", 0))
+            except Exception:
+                row_count = 0
+            out.append({"name": name, "row_count": row_count})
+        return out
+
+    async def get_collection_stats(
+        self, collection: str
+    ) -> dict[str, Any]:
+        """回傳 collection 詳細：row_count, loaded, indexes, vector_dim。"""
+        collection = _safe_collection_name(collection)
+        try:
+            stats = await asyncio.to_thread(
+                self._client.get_collection_stats, collection_name=collection
+            )
+            row_count = int(stats.get("row_count", 0))
+        except Exception as e:
+            logger.warning(
+                "milvus.stats.failed", collection=collection, error=str(e)
+            )
+            row_count = 0
+
+        # loaded 判斷：嘗試 describe collection load state
+        try:
+            load_state = await asyncio.to_thread(
+                self._client.get_load_state, collection_name=collection
+            )
+            loaded = bool(load_state) and str(load_state).lower().find("loaded") != -1
+        except Exception:
+            loaded = True  # 無法判斷，預設 True
+
+        # indexes：掃描三個已知 scalar field + vector
+        indexes: list[dict[str, Any]] = []
+        for field in ("tenant_id", "document_id", "vector"):
+            try:
+                info = await asyncio.to_thread(
+                    self._client.describe_index,
+                    collection_name=collection,
+                    index_name=field,
+                )
+                if isinstance(info, list) and info:
+                    info = info[0]
+                idx_type = (
+                    info.get("index_type") if isinstance(info, dict) else None
+                )
+                indexes.append(
+                    {
+                        "field": field,
+                        "index_type": idx_type or "(empty)",
+                    }
+                )
+            except Exception:
+                indexes.append({"field": field, "index_type": "none"})
+
+        return {
+            "row_count": row_count,
+            "loaded": loaded,
+            "indexes": indexes,
+        }
+
+    async def upsert_single(
+        self,
+        collection: str,
+        id: str,
+        vector: list[float],
+        payload: dict[str, Any],
+    ) -> None:
+        """單筆 upsert；payload 必含 tenant_id（caller 層保證）。"""
+        if "tenant_id" not in payload:
+            raise ValueError(
+                "upsert_single payload must include tenant_id "
+                "(safety boundary for multi-tenant isolation)"
+            )
+        collection = _safe_collection_name(collection)
+        data = [{"id": id, "vector": vector, **payload}]
+        await asyncio.to_thread(
+            self._client.upsert, collection_name=collection, data=data
+        )
+
+    async def update_payload(
+        self,
+        collection: str,
+        id: str,
+        payload_diff: dict[str, Any],
+    ) -> None:
+        """改 payload 不改向量。Milvus 需先 fetch 再 upsert。"""
+        collection = _safe_collection_name(collection)
+        existing = await self.fetch_vectors(collection, [id])
+        if not existing:
+            logger.warning(
+                "milvus.update_payload.not_found",
+                collection=collection, id=id,
+            )
+            return
+        _, vector, old_payload = existing[0]
+        new_payload = {**old_payload, **payload_diff}
+        await self.upsert_single(
+            collection=collection, id=id, vector=vector, payload=new_payload
+        )
+
+    async def count_by_filter(
+        self,
+        collection: str,
+        filters: dict[str, Any],
+    ) -> int:
+        """回傳符合 filter 的 row 數。"""
+        collection = _safe_collection_name(collection)
+        expr = _build_filter_expr(filters)
+        try:
+            res = await asyncio.to_thread(
+                self._client.query,
+                collection_name=collection,
+                filter=expr,
+                output_fields=["id"],
+                limit=16384,
+            )
+            return len(res) if res else 0
+        except Exception as e:
+            logger.warning(
+                "milvus.count.failed",
+                collection=collection, filter=expr, error=str(e),
+            )
+            return 0
+
+    async def rebuild_scalar_indexes(
+        self, collection: str
+    ) -> dict[str, Any]:
+        """對舊 collection 重建 tenant_id / document_id 的 INVERTED index。"""
+        collection = _safe_collection_name(collection)
+        result: dict[str, Any] = {"fields": {}}
+        try:
+            await asyncio.to_thread(
+                self._client.release_collection, collection_name=collection
+            )
+        except Exception:
+            pass
+
+        for field in ("tenant_id", "document_id"):
+            try:
+                await asyncio.to_thread(
+                    self._client.drop_index,
+                    collection_name=collection,
+                    index_name=field,
+                )
+            except Exception:
+                pass
+            params = self._client.prepare_index_params()
+            params.add_index(field_name=field, index_type="INVERTED")
+            try:
+                await asyncio.to_thread(
+                    self._client.create_index,
+                    collection_name=collection,
+                    index_params=params,
+                )
+                result["fields"][field] = "rebuilt"
+            except Exception as e:
+                result["fields"][field] = f"failed: {e}"
+
+        try:
+            await asyncio.to_thread(
+                self._client.load_collection, collection_name=collection
+            )
+            result["loaded"] = True
+        except Exception as e:
+            result["loaded"] = f"failed: {e}"
+        return result

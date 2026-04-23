@@ -227,6 +227,35 @@ from src.application.pricing.execute_recalculate_use_case import (
     ExecuteRecalculateUseCase,
 )
 from src.application.pricing.list_pricing_use_case import ListPricingUseCase
+
+# S-KB-Studio.1 use cases
+from src.application.knowledge.update_chunk_use_case import UpdateChunkUseCase
+from src.application.knowledge.delete_chunk_use_case import DeleteChunkUseCase
+from src.application.knowledge.list_kb_chunks_use_case import ListKbChunksUseCase
+from src.application.knowledge.test_retrieval_use_case import TestRetrievalUseCase
+from src.application.knowledge.reembed_chunk_use_case import ReEmbedChunkUseCase
+from src.application.knowledge.get_kb_quality_summary_use_case import (
+    GetKbQualitySummaryUseCase,
+)
+from src.application.chunk_category.create_category_use_case import (
+    CreateCategoryUseCase,
+)
+from src.application.chunk_category.delete_category_use_case import (
+    DeleteCategoryUseCase,
+)
+from src.application.chunk_category.assign_chunks_use_case import (
+    AssignChunksUseCase,
+)
+from src.application.milvus.list_collections_use_case import (
+    ListCollectionsUseCase as ListMilvusCollectionsUseCase,
+)
+from src.application.milvus.get_collection_stats_use_case import (
+    GetCollectionStatsUseCase,
+)
+from src.application.milvus.rebuild_index_use_case import RebuildIndexUseCase
+from src.application.conversation.list_conv_summaries_use_case import (
+    ListConvSummariesUseCase,
+)
 from src.application.pricing.list_recalc_history_use_case import (
     ListRecalcHistoryUseCase,
 )
@@ -532,7 +561,11 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.admin_bot_router",
             "src.interfaces.api.admin_knowledge_base_router",
             "src.interfaces.api.admin_pricing_router",
+            "src.interfaces.api.admin_chunk_router",
+            "src.interfaces.api.admin_milvus_router",
+            "src.interfaces.api.admin_conv_summary_router",
             "src.interfaces.api.plan_router",
+            "src.interfaces.api.knowledge_base_router",
             "src.interfaces.api.mcp_router",
             "src.interfaces.api.mcp_server_router",
             "src.interfaces.api.observability_router",
@@ -1045,6 +1078,80 @@ class Container(containers.DeclarativeContainer):
         repo=pricing_recalc_audit_repository,
     )
 
+    # --- S-KB-Studio.1 Use Cases ---
+
+    update_chunk_use_case = providers.Factory(
+        UpdateChunkUseCase,
+        document_repo=document_repository,
+        kb_repo=kb_repository,
+    )
+
+    delete_chunk_use_case = providers.Factory(
+        DeleteChunkUseCase,
+        document_repo=document_repository,
+        kb_repo=kb_repository,
+        vector_store=vector_store,
+    )
+
+    list_kb_chunks_use_case = providers.Factory(
+        ListKbChunksUseCase,
+        document_repo=document_repository,
+        kb_repo=kb_repository,
+    )
+
+    test_retrieval_use_case = providers.Factory(
+        TestRetrievalUseCase,
+        kb_repo=kb_repository,
+        embedding_service=embedding_service,
+        vector_store=vector_store,
+    )
+
+    get_kb_quality_summary_use_case = providers.Factory(
+        GetKbQualitySummaryUseCase,
+        document_repo=document_repository,
+        kb_repo=kb_repository,
+    )
+
+    create_category_use_case = providers.Factory(
+        CreateCategoryUseCase,
+        category_repo=chunk_category_repository,
+        kb_repo=kb_repository,
+    )
+
+    delete_category_use_case = providers.Factory(
+        DeleteCategoryUseCase,
+        category_repo=chunk_category_repository,
+        kb_repo=kb_repository,
+    )
+
+    assign_chunks_use_case = providers.Factory(
+        AssignChunksUseCase,
+        category_repo=chunk_category_repository,
+        document_repo=document_repository,
+        kb_repo=kb_repository,
+    )
+
+    list_milvus_collections_use_case = providers.Factory(
+        ListMilvusCollectionsUseCase,
+        vector_store=vector_store,
+        kb_repo=kb_repository,
+    )
+
+    get_collection_stats_use_case = providers.Factory(
+        GetCollectionStatsUseCase,
+        vector_store=vector_store,
+    )
+
+    rebuild_index_use_case = providers.Factory(
+        RebuildIndexUseCase,
+        vector_store=vector_store,
+    )
+
+    list_conv_summaries_use_case = providers.Factory(
+        ListConvSummariesUseCase,
+        conv_repo=conversation_repository,
+    )
+
     register_user_use_case = providers.Factory(
         RegisterUserUseCase,
         user_repository=user_repository,
@@ -1251,6 +1358,16 @@ class Container(containers.DeclarativeContainer):
         tenant_repository=tenant_repository,
         # S-Pricing.1: cache miss 時才 fallback 到 DEFAULT_MODELS
         pricing_cache=pricing_cache,
+    )
+
+    # S-KB-Studio.1: re-embed 需要 record_usage 注入，故必須在 record_usage_use_case 之後
+    reembed_chunk_use_case = providers.Factory(
+        ReEmbedChunkUseCase,
+        document_repo=document_repository,
+        kb_repo=kb_repository,
+        embedding_service=embedding_service,
+        vector_store=vector_store,
+        record_usage=record_usage_use_case,
     )
 
     chunk_context_service = providers.Factory(

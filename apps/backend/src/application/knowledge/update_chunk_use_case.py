@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Awaitable, Callable
 
 import structlog
 
@@ -16,8 +16,8 @@ from src.domain.knowledge.repository import (
 )
 from src.domain.shared.exceptions import EntityNotFoundError
 
-if TYPE_CHECKING:
-    from arq import ArqRedis
+# 簽名: enqueue(job_name, chunk_id) -> awaitable[str | None]
+EnqueueFunc = Callable[..., Awaitable[str | None]]
 
 logger = structlog.get_logger(__name__)
 
@@ -36,11 +36,13 @@ class UpdateChunkUseCase:
         self,
         document_repo: DocumentRepository,
         kb_repo: KnowledgeBaseRepository,
-        arq_pool: "ArqRedis | None" = None,
+        arq_pool: object | None = None,  # arq.ArqRedis or fake with enqueue_job
+        enqueue_fn: EnqueueFunc | None = None,
     ) -> None:
         self._doc_repo = document_repo
         self._kb_repo = kb_repo
         self._arq = arq_pool
+        self._enqueue_fn = enqueue_fn
 
     async def execute(self, command: UpdateChunkCommand) -> None:
         # 紅線：tenant chain 驗證 (chunk -> doc -> kb -> tenant)
@@ -72,9 +74,13 @@ class UpdateChunkUseCase:
             context_text=command.context_text,
         )
 
-        # enqueue re-embed job (若 arq pool 可用)
+        # enqueue re-embed job — 兩條路徑都支援
+        # 1. arq_pool（測試用 FakeArqPool 注入）
+        # 2. enqueue_fn（生產用 infrastructure.queue.arq_pool.enqueue 注入）
         if self._arq is not None:
             await self._arq.enqueue_job("reembed_chunk", command.chunk_id)
+        elif self._enqueue_fn is not None:
+            await self._enqueue_fn("reembed_chunk", command.chunk_id)
 
         logger.info(
             "kb_studio.chunk.update",

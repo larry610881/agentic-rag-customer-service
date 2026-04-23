@@ -317,6 +317,20 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         )
         application.include_router(admin_pricing_router)
 
+        # S-KB-Studio.1
+        from src.interfaces.api.admin_chunk_router import (
+            router as admin_chunk_router,
+        )
+        from src.interfaces.api.admin_milvus_router import (
+            router as admin_milvus_router,
+        )
+        from src.interfaces.api.admin_conv_summary_router import (
+            router as admin_conv_summary_router,
+        )
+        application.include_router(admin_chunk_router)
+        application.include_router(admin_milvus_router)
+        application.include_router(admin_conv_summary_router)
+
         from src.interfaces.api.plan_router import router as plan_router
         application.include_router(plan_router)
 

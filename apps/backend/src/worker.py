@@ -195,6 +195,18 @@ async def quota_email_dispatch_task(ctx: dict) -> None:
 
 # --- Cron + Job: conversation_summary (S-Gov.6b) ---
 
+async def reembed_chunk_task(ctx: dict, chunk_id: str) -> None:
+    """S-KB-Studio.1: 單 chunk 重新向量化（chunk content 改動後觸發）。"""
+    logger.info(f"[reembed_chunk] start chunk={chunk_id}")
+    from src.application.knowledge.reembed_chunk_use_case import (
+        ReEmbedChunkCommand,
+    )
+    container = _new_container()
+    use_case = container.reembed_chunk_use_case()
+    await use_case.execute(ReEmbedChunkCommand(chunk_id=chunk_id))
+    logger.info(f"[reembed_chunk] done chunk={chunk_id}")
+
+
 async def conversation_summary_scan_task(ctx: dict) -> None:
     """每分鐘掃 conversations 找需要生 summary 的，個別 enqueue arq job。
 
@@ -236,6 +248,8 @@ class WorkerSettings:
             process_conversation_summary_task,
             name="process_conversation_summary",
         ),
+        # S-KB-Studio.1: 單 chunk re-embed
+        func(reembed_chunk_task, name="reembed_chunk"),
     ]
     # S-Token-Gov.2: 月度重置（每月 1 日 00:05 UTC = 08:05 Asia/Taipei）
     # S-Token-Gov.3: 額度警示（每天 01:00 UTC = 09:00 Asia/Taipei）

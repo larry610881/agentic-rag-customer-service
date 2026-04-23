@@ -17,7 +17,10 @@ from src.application.knowledge.update_knowledge_base_use_case import (
     UpdateKnowledgeBaseUseCase,
 )
 from src.container import Container
-from src.domain.knowledge.repository import ChunkCategoryRepository, KnowledgeBaseRepository
+from src.domain.knowledge.repository import (
+    ChunkCategoryRepository,
+    KnowledgeBaseRepository,
+)
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
@@ -286,9 +289,6 @@ async def get_category_chunks(
         Provide[Container.get_category_chunks_use_case]
     ),
 ) -> CategoryChunksResponse:
-    from src.application.knowledge.get_category_chunks_use_case import (
-        GetCategoryChunksUseCase,
-    )
     result = await use_case.execute(kb_id, cat_id)
     if result is None:
         raise HTTPException(status_code=404, detail="分類不存在")
@@ -307,3 +307,117 @@ async def get_category_chunks(
             for c in result.chunks
         ],
     )
+
+
+# ---------- S-KB-Studio.1: Category CRUD + 批次指派 ----------
+
+
+class CreateCategoryRequest(BaseModel):
+    name: str
+    description: str | None = None
+
+
+class CategoryResponse(BaseModel):
+    id: str
+    kb_id: str
+    name: str
+    description: str | None = None
+    chunk_count: int = 0
+
+
+class AssignChunksRequest(BaseModel):
+    chunk_ids: list[str]
+
+
+@router.post(
+    "/{kb_id}/categories",
+    response_model=CategoryResponse,
+    status_code=201,
+)
+@inject
+async def create_category(
+    kb_id: str,
+    body: CreateCategoryRequest,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case=Depends(Provide[Container.create_category_use_case]),
+) -> CategoryResponse:
+    from src.application.chunk_category.create_category_use_case import (
+        CreateCategoryCommand,
+    )
+    from src.domain.shared.exceptions import EntityNotFoundError
+    try:
+        cat = await use_case.execute(
+            CreateCategoryCommand(
+                kb_id=kb_id,
+                tenant_id=tenant.tenant_id,
+                name=body.name,
+                description=body.description,
+                actor=tenant.user_id or tenant.tenant_id or "",
+            )
+        )
+    except EntityNotFoundError:
+        raise HTTPException(status_code=404, detail="kb not found")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return CategoryResponse(
+        id=cat.id,
+        kb_id=cat.kb_id,
+        name=cat.name,
+        description=cat.description,
+        chunk_count=cat.chunk_count,
+    )
+
+
+@router.delete(
+    "/{kb_id}/categories/{cat_id}", status_code=204
+)
+@inject
+async def delete_category(
+    kb_id: str,
+    cat_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case=Depends(Provide[Container.delete_category_use_case]),
+) -> None:
+    from src.application.chunk_category.delete_category_use_case import (
+        DeleteCategoryCommand,
+    )
+    from src.domain.shared.exceptions import EntityNotFoundError
+    try:
+        await use_case.execute(
+            DeleteCategoryCommand(
+                kb_id=kb_id,
+                category_id=cat_id,
+                tenant_id=tenant.tenant_id,
+                actor=tenant.user_id or tenant.tenant_id or "",
+            )
+        )
+    except EntityNotFoundError:
+        raise HTTPException(status_code=404, detail="not found")
+
+
+@router.post("/{kb_id}/categories/{cat_id}/assign-chunks")
+@inject
+async def assign_chunks(
+    kb_id: str,
+    cat_id: str,
+    body: AssignChunksRequest,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case=Depends(Provide[Container.assign_chunks_use_case]),
+) -> dict:
+    from src.application.chunk_category.assign_chunks_use_case import (
+        AssignChunksCommand,
+    )
+    from src.domain.shared.exceptions import EntityNotFoundError
+    try:
+        count = await use_case.execute(
+            AssignChunksCommand(
+                kb_id=kb_id,
+                category_id=cat_id,
+                tenant_id=tenant.tenant_id,
+                chunk_ids=body.chunk_ids,
+                actor=tenant.user_id or tenant.tenant_id or "",
+            )
+        )
+    except EntityNotFoundError:
+        raise HTTPException(status_code=404, detail="not found")
+    return {"status": "ok", "assigned_count": count}
