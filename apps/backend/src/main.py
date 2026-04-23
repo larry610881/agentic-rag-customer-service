@@ -329,6 +329,12 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         application.include_router(admin_milvus_router)
         application.include_router(admin_conv_summary_router)
 
+        # S-ConvInsights.1: 合併「對話搜尋 + 可觀測性 + 對話摘要」的 admin 單頁 API
+        from src.interfaces.api.admin_conversation_insights_router import (
+            router as admin_conversation_insights_router,
+        )
+        application.include_router(admin_conversation_insights_router)
+
         from src.interfaces.api.plan_router import router as plan_router
         application.include_router(plan_router)
 

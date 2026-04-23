@@ -253,6 +253,12 @@ from src.application.milvus.get_collection_stats_use_case import (
     GetCollectionStatsUseCase,
 )
 from src.application.milvus.rebuild_index_use_case import RebuildIndexUseCase
+from src.application.conversation.get_conversation_messages_use_case import (
+    GetConversationMessagesUseCase,
+)
+from src.application.conversation.get_conversation_token_usage_use_case import (
+    GetConversationTokenUsageUseCase,
+)
 from src.application.conversation.list_conv_summaries_use_case import (
     ListConvSummariesUseCase,
 )
@@ -563,6 +569,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.admin_chunk_router",
             "src.interfaces.api.admin_milvus_router",
             "src.interfaces.api.admin_conv_summary_router",
+            "src.interfaces.api.admin_conversation_insights_router",
             "src.interfaces.api.plan_router",
             "src.interfaces.api.knowledge_base_router",
             "src.interfaces.api.mcp_router",
@@ -1150,6 +1157,18 @@ class Container(containers.DeclarativeContainer):
         ListConvSummariesUseCase,
         conv_repo=conversation_repository,
         bot_repo=bot_repository,
+    )
+
+    # S-ConvInsights.1: 對話與追蹤頁右側 tabs 用
+    get_conversation_messages_use_case = providers.Factory(
+        GetConversationMessagesUseCase,
+        conversation_repo=conversation_repository,
+    )
+
+    get_conversation_token_usage_use_case = providers.Factory(
+        GetConversationTokenUsageUseCase,
+        conversation_repo=conversation_repository,
+        session_factory=trace_session_factory,
     )
 
     register_user_use_case = providers.Factory(
