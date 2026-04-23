@@ -44,7 +44,6 @@ const AdminKnowledgeBasesPage = lazy(
   () => import("@/pages/admin-knowledge-bases"),
 );
 const AdminBotsPage = lazyWithRetry(() => import("@/pages/admin-bots"));
-const AdminKbDetailPage = lazyWithRetry(() => import("@/pages/admin-kb-detail"));
 const AdminBotDetailPage = lazyWithRetry(() => import("@/pages/admin-bot-detail"));
 const AdminUsersPage = lazyWithRetry(() => import("@/pages/admin-users"));
 const AdminObservabilityPage = lazyWithRetry(() => import("@/pages/admin-observability"));
@@ -151,9 +150,8 @@ export function App() {
               path={ROUTES.ADMIN_KNOWLEDGE_BASES}
               element={<AdminKnowledgeBasesPage />}
             />
-            {/* S-KB-Studio.1: 舊 /admin/knowledge-bases/:id 唯讀頁 deprecated；
-                redirect 到 KB Studio。AdminKbDetailPage import 保留 3 sprint
-                後再刪。 */}
+            {/* S-KB-Studio.1: 舊 /admin/knowledge-bases/:id 唯讀頁已完全移除，
+                redirect 到 KB Studio。 */}
             <Route
               path={ROUTES.ADMIN_KB_DETAIL}
               element={<AdminKbDetailRedirect />}
