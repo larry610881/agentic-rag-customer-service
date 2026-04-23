@@ -369,6 +369,11 @@ class ReActAgentService(AgentService):
             "request_timeout": settings.agent_llm_request_timeout,
             # 對 LiteLLM connection / DNS flake 做重試，避免 webhook timeout
             "max_retries": 3,
+            # Bug 3: streaming 時 OpenAI-compat provider 預設不回 usage →
+            # AIMessage.usage_metadata 為 None → token_usage_records 永遠不寫
+            # chat_web。開啟後最後一個 chunk 會帶 usage (需 provider 支援，
+            # LiteLLM proxy + Anthropic / Azure / OpenAI 都支援)。
+            "stream_usage": True,
         }
 
         # Support custom base_url for OpenAI-compatible providers

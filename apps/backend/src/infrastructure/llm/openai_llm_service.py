@@ -54,6 +54,10 @@ class OpenAILLMService(LLMService):
             "temperature": temperature,
             "max_tokens": max_tokens,
             "api_key": self._api_key,
+            # Bug 3 fix: streaming 時預設不回 usage，需要 stream_usage=True
+            # langchain_openai 會自動加 stream_options={"include_usage": True}，
+            # 最後一個 chunk 的 AIMessageChunk 會帶 usage_metadata。
+            "stream_usage": True,
         }
         if self._base_url and self._base_url != "https://api.openai.com/v1":
             kwargs["base_url"] = self._base_url
