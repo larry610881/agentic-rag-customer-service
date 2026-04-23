@@ -152,6 +152,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 for r in (model.intent_routes or [])
             ],
             router_model=model.router_model or "",
+            summary_model=model.summary_model or "",
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
             line_show_sources=model.line_show_sources if model.line_show_sources is not None else False,
@@ -252,6 +253,7 @@ class SQLAlchemyBotRepository(BotRepository):
                     for r in bot.intent_routes
                 ]
                 existing.router_model = bot.router_model
+                existing.summary_model = bot.summary_model
                 existing.line_channel_secret = bot.line_channel_secret
                 existing.line_channel_access_token = bot.line_channel_access_token
                 existing.line_show_sources = bot.line_show_sources
@@ -326,6 +328,7 @@ class SQLAlchemyBotRepository(BotRepository):
                         for r in bot.intent_routes
                     ],
                     router_model=bot.router_model,
+                    summary_model=bot.summary_model,
                     line_channel_secret=bot.line_channel_secret,
                     line_channel_access_token=bot.line_channel_access_token,
                     line_show_sources=bot.line_show_sources,

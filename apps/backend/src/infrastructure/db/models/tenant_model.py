@@ -31,6 +31,13 @@ class TenantModel(Base):
     default_classification_model: Mapped[str] = mapped_column(
         String(100), nullable=False, default="", server_default=""
     )
+    # S-KB-Followup.2: intent_classify / conversation_summary 的 tenant default
+    default_summary_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
+    default_intent_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

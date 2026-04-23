@@ -110,7 +110,9 @@ class Bot:
     # 未設定時走 Bot 全域 rag_top_k / rag_score_threshold / rerank_*
     tool_configs: dict[str, ToolRagConfig] = field(default_factory=dict)
     intent_routes: list[IntentRoute] = field(default_factory=list)  # deprecated → bot_workers
-    router_model: str = ""  # LLM router 分類用 model（空 = bot default）
+    router_model: str = ""  # LLM router 分類用 model（空 = tenant default → 系統 default）
+    # S-KB-Followup.2: bot-level override for conversation summary
+    summary_model: str = ""  # 空 = tenant default → 系統 default
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"
     line_channel_secret: str | None = None
     line_channel_access_token: str | None = None

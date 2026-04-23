@@ -12,6 +12,21 @@ from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
 
+
+def _split_model_spec(model_spec: str) -> tuple[str, str]:
+    """Parse 'provider:model' → (provider, model).
+
+    - "litellm:azure_ai/claude-haiku-4-5" → ("litellm", "azure_ai/claude-haiku-4-5")
+    - "gpt-4o" → ("", "gpt-4o")  (no prefix → let factory pick default provider)
+    - "" → ("", "")
+    """
+    if not model_spec:
+        return "", ""
+    if ":" in model_spec:
+        provider, model = model_spec.split(":", 1)
+        return provider, model
+    return "", model_spec
+
 # Default base URLs per provider
 _DEFAULT_BASE_URLS: dict[str, str] = {
     ProviderName.OPENAI.value: "https://api.openai.com/v1",
@@ -277,8 +292,15 @@ class DynamicLLMServiceProxy(LLMService):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
+        model: str = "",
     ) -> LLMResult:
-        service = await self._factory.get_service()
+        # S-KB-Followup.2: 接 "provider:model" 或 bare "model"。有 prefix 就走
+        # provider override，避免 caller 透過 generate() 打意圖分類 / summary
+        # 時永遠用系統 default provider (Carrefour gpt-5.2 漏網事件)。
+        provider, resolved_model = _split_model_spec(model)
+        service = await self._factory.get_service(
+            provider_name=provider, model=resolved_model,
+        )
         return await service.generate(
             system_prompt,
             user_message,
@@ -298,8 +320,12 @@ class DynamicLLMServiceProxy(LLMService):
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
         usage_collector: dict | None = None,
+        model: str = "",
     ) -> AsyncIterator[str]:
-        service = await self._factory.get_service()
+        provider, resolved_model = _split_model_spec(model)
+        service = await self._factory.get_service(
+            provider_name=provider, model=resolved_model,
+        )
         async for token in service.generate_stream(
             system_prompt,
             user_message,

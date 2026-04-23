@@ -38,6 +38,9 @@ class UpdateTenantCommand:
     default_ocr_model: Any = field(default=_UNSET)
     default_context_model: Any = field(default=_UNSET)
     default_classification_model: Any = field(default=_UNSET)
+    # S-KB-Followup.2: intent_classify / conversation_summary 的 tenant default
+    default_summary_model: Any = field(default=_UNSET)
+    default_intent_model: Any = field(default=_UNSET)
 
 
 class UpdateTenantUseCase:
@@ -78,6 +81,10 @@ class UpdateTenantUseCase:
             tenant.default_classification_model = (
                 command.default_classification_model
             )
+        if command.default_summary_model is not _UNSET:
+            tenant.default_summary_model = command.default_summary_model
+        if command.default_intent_model is not _UNSET:
+            tenant.default_intent_model = command.default_intent_model
 
         await self._tenant_repo.save(tenant)
         return tenant

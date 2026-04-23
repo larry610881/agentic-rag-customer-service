@@ -14,6 +14,9 @@ const MODEL_FIELDS = [
   { key: "default_ocr_model", label: "OCR 解析" },
   { key: "default_context_model", label: "上下文生成（Contextual Retrieval）" },
   { key: "default_classification_model", label: "自動分類" },
+  // S-KB-Followup.2
+  { key: "default_intent_model", label: "意圖分類（Intent Classifier）" },
+  { key: "default_summary_model", label: "對話摘要（Conversation Summary）" },
 ] as const;
 
 type ModelKey = (typeof MODEL_FIELDS)[number]["key"];
@@ -27,6 +30,8 @@ export function DefaultModelSettings() {
     default_ocr_model: "",
     default_context_model: "",
     default_classification_model: "",
+    default_intent_model: "",
+    default_summary_model: "",
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -45,6 +50,8 @@ export function DefaultModelSettings() {
           default_ocr_model: tenant.default_ocr_model || "",
           default_context_model: tenant.default_context_model || "",
           default_classification_model: tenant.default_classification_model || "",
+          default_intent_model: tenant.default_intent_model || "",
+          default_summary_model: tenant.default_summary_model || "",
         });
       })
       .catch(() => {})

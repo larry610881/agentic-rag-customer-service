@@ -16,6 +16,9 @@ class Tenant:
     default_ocr_model: str = ""
     default_context_model: str = ""
     default_classification_model: str = ""
+    # S-KB-Followup.2: intent_classify / conversation_summary 的 tenant default
+    default_summary_model: str = ""
+    default_intent_model: str = ""
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

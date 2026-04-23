@@ -119,6 +119,11 @@ class BotModel(Base):
     router_model: Mapped[str] = mapped_column(
         String(100), nullable=False, default="", server_default=""
     )
+    # S-KB-Followup.2: bot-level override for conversation summary
+    # (router_model 已存在對應 intent_classify)
+    summary_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
     busy_reply_message: Mapped[str] = mapped_column(
         String(500), nullable=False,
         default="小編正在努力回覆中，請稍等一下喔～",

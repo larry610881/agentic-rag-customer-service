@@ -22,6 +22,8 @@ class SQLAlchemyTenantRepository(TenantRepository):
             default_ocr_model=model.default_ocr_model,
             default_context_model=model.default_context_model,
             default_classification_model=model.default_classification_model,
+            default_summary_model=model.default_summary_model,
+            default_intent_model=model.default_intent_model,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -37,6 +39,8 @@ class SQLAlchemyTenantRepository(TenantRepository):
                 default_ocr_model=tenant.default_ocr_model,
                 default_context_model=tenant.default_context_model,
                 default_classification_model=tenant.default_classification_model,
+                default_summary_model=tenant.default_summary_model,
+                default_intent_model=tenant.default_intent_model,
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
             )

@@ -76,6 +76,7 @@ if TYPE_CHECKING:
     from src.application.observability.rag_evaluation_use_case import (
         RAGEvaluationUseCase,
     )
+    from src.domain.tenant.repository import TenantRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -148,6 +149,7 @@ class SendMessageUseCase:
         intent_classifier: IntentClassifier | None = None,
         worker_config_repo: WorkerConfigRepository | None = None,
         prompt_guard: Any | None = None,
+        tenant_repository: "TenantRepository | None" = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -167,6 +169,7 @@ class SendMessageUseCase:
         self._get_diagnostic_rules_uc = get_diagnostic_rules_uc
         self._conversation_lock = conversation_lock
         self._prompt_guard = prompt_guard
+        self._tenant_repo = tenant_repository
 
     def _build_lock_key(self, command: SendMessageCommand) -> str:
         """Build a lock key for the conversation."""
@@ -318,7 +321,21 @@ class SendMessageUseCase:
         cfg["eval_provider"] = getattr(bot, "eval_provider", "")
         cfg["eval_model"] = getattr(bot, "eval_model", "")
         cfg["intent_routes"] = list(getattr(bot, "intent_routes", []))
-        cfg["router_model"] = getattr(bot, "router_model", "")
+        # S-KB-Followup.2: bot-level model 空 → fallback tenant default → 空 → 系統 default
+        _bot_router_model = getattr(bot, "router_model", "")
+        _bot_summary_model = getattr(bot, "summary_model", "")
+        _tenant_default_intent = ""
+        _tenant_default_summary = ""
+        if (not _bot_router_model or not _bot_summary_model) and self._tenant_repo:
+            try:
+                _tenant = await self._tenant_repo.find_by_id(command.tenant_id)
+                if _tenant is not None:
+                    _tenant_default_intent = getattr(_tenant, "default_intent_model", "")
+                    _tenant_default_summary = getattr(_tenant, "default_summary_model", "")
+            except Exception:
+                pass
+        cfg["router_model"] = _bot_router_model or _tenant_default_intent
+        cfg["summary_model"] = _bot_summary_model or _tenant_default_summary
 
         # Resolve prompt overrides: Bot → SystemPromptConfig → Seed
         resolved_system_prompt = ""

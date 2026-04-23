@@ -14,6 +14,9 @@ export interface Tenant {
   default_ocr_model: string;
   default_context_model: string;
   default_classification_model: string;
+  // S-KB-Followup.2
+  default_summary_model?: string;
+  default_intent_model?: string;
   created_at: string;
   updated_at: string;
 }

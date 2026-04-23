@@ -42,6 +42,8 @@ class UpdateTenantConfigRequest(BaseModel):
     default_ocr_model: str | None = None
     default_context_model: str | None = None
     default_classification_model: str | None = None
+    default_summary_model: str | None = None
+    default_intent_model: str | None = None
 
 
 class TenantQuotaResponse(BaseModel):
@@ -64,6 +66,8 @@ class TenantResponse(BaseModel):
     default_ocr_model: str = ""
     default_context_model: str = ""
     default_classification_model: str = ""
+    default_summary_model: str = ""
+    default_intent_model: str = ""
     created_at: str
     updated_at: str
 
@@ -78,6 +82,8 @@ def _to_response(t: Tenant) -> TenantResponse:
         default_ocr_model=t.default_ocr_model,
         default_context_model=t.default_context_model,
         default_classification_model=t.default_classification_model,
+        default_summary_model=t.default_summary_model,
+        default_intent_model=t.default_intent_model,
         created_at=t.created_at.isoformat(),
         updated_at=t.updated_at.isoformat(),
     )
@@ -179,6 +185,10 @@ async def update_tenant_config(
         cmd_kwargs["default_context_model"] = body.default_context_model
     if "default_classification_model" in fields_set:
         cmd_kwargs["default_classification_model"] = body.default_classification_model
+    if "default_summary_model" in fields_set:
+        cmd_kwargs["default_summary_model"] = body.default_summary_model
+    if "default_intent_model" in fields_set:
+        cmd_kwargs["default_intent_model"] = body.default_intent_model
 
     try:
         tenant = await use_case.execute(UpdateTenantCommand(**cmd_kwargs))

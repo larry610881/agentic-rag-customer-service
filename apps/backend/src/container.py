@@ -1994,6 +1994,7 @@ class Container(containers.DeclarativeContainer):
         intent_classifier=intent_classifier,
         worker_config_repo=worker_config_repository,
         prompt_guard=prompt_guard_service,
+        tenant_repository=tenant_repository,
     )
 
     # --- Platform: Provider Settings ---
