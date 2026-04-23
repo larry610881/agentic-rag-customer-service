@@ -53,7 +53,12 @@ export default function AdminKbStudioPage() {
           {activeTab === "playground" && (
             <RetrievalPlaygroundTab kbId={kbId} />
           )}
-          {activeTab === "quality" && <QualityTab kbId={kbId} />}
+          {activeTab === "quality" && (
+            <QualityTab
+              kbId={kbId}
+              onEditChunk={() => setActiveTab("chunks")}
+            />
+          )}
           {activeTab === "settings" && <SettingsTab kbId={kbId} />}
         </Suspense>
       </div>
