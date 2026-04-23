@@ -30,6 +30,7 @@ class AgentService(ABC):
         customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
+        bot_id: str = "",
     ) -> AgentResponse: ...
 
     @abstractmethod
@@ -53,4 +54,5 @@ class AgentService(ABC):
         customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
+        bot_id: str = "",
     ) -> AsyncIterator[dict[str, Any]]: ...  # pragma: no cover

@@ -177,8 +177,20 @@ def test_engine(_test_db):
 
 
 @pytest.fixture
-def app(test_engine):
-    """Fresh FastAPI app per test with Container overridden for test DB."""
+def app(test_engine, monkeypatch):
+    """Fresh FastAPI app per test with Container overridden for test DB.
+
+    強制 E2E_MODE=true：integration 測試禁止打真 LLM/embedding API。
+    這會讓 container.agent_service 走 MetaSupervisorService（mock），
+    container.llm_service 換成 FakeLLMService。避免 ReActAgentService 內部
+    直接 new ChatOpenAI() 因 OPENAI_API_KEY 空字串炸掉。
+    """
+    import os
+
+    monkeypatch.setenv("E2E_MODE", "true")
+    # 提供 dummy key 給任何繞過 DI 直接 import langchain_openai 的 code path
+    monkeypatch.setenv("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-test-fake"))
+
     from src.main import create_app
 
     application = create_app(skip_rate_limit=True)

@@ -48,13 +48,14 @@ class MetaSupervisorService(AgentService):
         customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
+        bot_id: str = "",
     ) -> AgentResponse:
         _llm_params = llm_params or {}
         AgentTraceCollector.start(
             tenant_id, "meta_supervisor",
             llm_model=_llm_params.get("model", ""),
             llm_provider=_llm_params.get("provider_name", ""),
-            bot_id=_llm_params.get("bot_id") or None,
+            bot_id=bot_id or _llm_params.get("bot_id") or None,
         )
         AgentTraceCollector.add_node(
             "user_input", "使用者輸入", None, 0.0, 0.0,
@@ -136,10 +137,12 @@ class MetaSupervisorService(AgentService):
         customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
+        bot_id: str = "",
     ) -> AsyncIterator[dict[str, Any]]:
         response = await self.process_message(
             tenant_id, kb_id, user_message, history,
             metadata=metadata,
+            bot_id=bot_id,
         )
         # Yield tool_calls so execute_stream can persist them
         if response.tool_calls:
