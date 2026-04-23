@@ -7,6 +7,44 @@
 
 ---
 
+## S-ConvInsights.1 follow-up — Token 用量 tab 全 0 bug（RecordUsage 補 message_id）
+
+**日期**：2026-04-23
+**Commit**：`15643b1`
+**範疇**：Backend Application (RecordUsageUseCase) + Domain (AgentResponse) + Interfaces (agent_router stream + non-stream + LINE webhook) + data cleanup (dev-vm DELETE 15 rows)
+
+**Bug 症狀**：S-ConvInsights.1 ship 後使用者實測「對話追蹤」頁 Token 用量 tab 全部顯示 0（含 message_count）。
+
+**Root cause**：`RecordUsageUseCase.execute()` 自始至終沒接受 `message_id` kwarg — 先前幾個 sprint 加 `bot_id`、`kb_id` 都是 piecemeal，`message_id` 被遺漏。導致 `token_usage_records.message_id` 全 NULL，新頁 Token tab 的 `JOIN messages ON usage.message_id = messages.id` 永遠空集合。**這是一個 schema 設計 vs caller 實作不一致的經典案例** — `UsageRecord` entity 一直有 `message_id` 欄位（以前是為了 audit），但 use case 層從未 plumbed 進來。
+
+**修復**：
+1. `RecordUsageUseCase.execute()` 加 `message_id: str | None = None`，forward 到 `UsageRecord.message_id`
+2. `AgentResponse` domain entity 新增 `message_id` 欄位
+3. `SendMessageUseCase` 捕獲 `conversation.add_message("assistant", ...)` 回傳值，設 `response.message_id`
+4. `agent_router.py` non-stream path 傳 `result.message_id`
+5. `agent_router.py` stream path 從 SSE event stream 捕獲 `type=message_id` event（既有事件，只是以前沒人 consume）
+6. `line/handle_webhook_use_case.py` chat_line path 傳 `result.message_id`
+7. 一次性資料清除 `migrations/cleanup_carrefour_orphan_chat_usage.sql`：dev-vm DELETE 15 rows carrefour 歷史 chat-side orphan（無法事後 backfill：chat_web 對 5 個 assistant msg 時間戳誤配 30-50%）
+
+### 做得好的地方
+
+- **User-observed bug → root-cause diagnosis in 10 min**：使用者一說「Token tab 全 0」，直接查 `SELECT COUNT(*) FILTER (WHERE message_id IS NULL)` 確認 17 筆全 NULL，快速定位 caller 漏傳。**「看現象 → SQL 驗假設」比「看 code 想原因」快**。
+- **選擇清資料而非 backfill**：時間戳匹配誤差太大，乾脆清 13 筆 chat-side，留 2 筆 KB-side（本就不該有 message_id，走 kb_id 路）。**「fresh data 比 garbage-matched data 好」** — POC 資料量小時清得起。
+- **Stream path 的 `type=message_id` event 既有存在，沒人 consume**：`send_message_use_case.py` 在 stream 最後 yield `{"type": "message_id", "message_id": ...}`，但 `agent_router.py` 的 stream handler 原本沒撈這個 event。**這是「feature 半成」的典型案例** — event 發了沒人接，plumbing 不完整。修法是 2 行 capture。
+
+### 潛在隱憂
+
+- **4 個 request_type 仍沒 message_id**：`intent_classify`、`conversation_summary`、`prompt_guard`、`rerank` 都是在 assistant_msg 建立前就 record_usage，要補得重構 callback 機制。Token tab 這 4 類 row 繼續 orphan。**優先級：中**。改善方向：改為「defer record_usage」模式，在 assistant_msg 建立後統一 flush。
+- **沒加 regression test**：本次修的是跨 3 層（domain/application/interfaces）的 plumbing bug，應該有 integration test 防回歸。本次沒寫。**優先級：中**。改善方向：下 sprint 補 E2E scenario「送訊息 → 查 token_usage_records 有該 message_id」。
+- **清資料只做 dev-vm，local-docker 沒 carrefour 資料不需清**：但未來若 local 也 seed 過，`cleanup_carrefour_orphan_chat_usage.sql` 是 tenant 硬編 — **此檔不屬通用 schema migration，應遷到 `migrations/one-off/`**（如果引入該分目錄的話）。
+
+### 延伸學習
+
+- **Entity 層欄位 vs Use Case 層 plumbing 不一致的 detection 時機**：這個 bug 潛伏多久？`UsageRecord.message_id` 欄位自 Token-Gov sprint 就存在，但 `RecordUsageUseCase.execute()` 從來沒接這個參數 — 只是直到「Token tab 需要 JOIN by message_id」之前沒人用。**「未使用的 domain 欄位會掩蓋 plumbing gap，直到某天有人 query 它」**。Detection 策略：(a) 每次新 use case 跟 entity field 對照；(b) 資料庫定期掃「N 週內 INSERT 的 row 中此欄位 100% NULL」→ 告警。
+- **「Fresh data > Garbage-matched data」的判準**：用時間戳匹配歷史資料時，誤差 >30% 就不該 backfill。本案 chat_web 4 筆 vs 5 assistant msg，時間重疊度高 → 誤配風險極大。**若誤配率 <10% 可以 backfill + log 警告；>30% 乾脆清**。
+
+---
+
 ## S-ConvInsights.1 — 對話與追蹤 master-detail 頁（合併 3 頁）
 
 **日期**：2026-04-23（延續本日 sprint session）

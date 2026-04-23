@@ -47,32 +47,79 @@ const generalNavItems = [
   { href: "/quota", label: "本月額度", icon: Wallet },
 ];
 
-const systemAdminItems = [
-  { href: "/admin/tenants", label: "租戶管理", icon: Building },
-  { href: "/admin/plans", label: "方案管理", icon: Package },
-  { href: "/admin/pricing", label: "定價管理", icon: DollarSign },
-  { href: "/admin/milvus", label: "Milvus 管理", icon: Database },
-  { href: "/admin/knowledge-bases", label: "所有知識庫", icon: BookOpen },
-  { href: "/admin/bots", label: "所有機器人", icon: Bot },
-  { href: "/admin/users", label: "帳號管理", icon: Users },
-  { href: "/settings/providers", label: "供應商設定", icon: Plug },
-  { href: "/admin/prompts", label: "系統提示詞", icon: FileText },
-  { href: "/admin/guard-rules", label: "安全規則", icon: Shield },
-  { href: "/admin/diagnostic-rules", label: "診斷規則", icon: Stethoscope },
-  { href: "/admin/rate-limits", label: "速率限制", icon: Gauge },
-  { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
-  { href: "/admin/log-retention", label: "日誌清理", icon: Trash2 },
-  // S-ConvInsights.1: 合併「對話摘要 + 可觀測性 + 對話搜尋」3 頁
-  { href: "/admin/conversations", label: "對話與追蹤", icon: MessagesSquare },
-  { href: "/admin/token-usage", label: "Token 用量", icon: Coins },
-  { href: "/admin/quota-overview", label: "額度總覽", icon: Wallet },
-  { href: "/admin/quota-events", label: "額度事件", icon: Bell },
-  { href: "/admin/billing", label: "收益儀表板", icon: TrendingUp },
-  { href: "/admin/mcp-registry", label: "MCP 工具庫", icon: Puzzle },
-  { href: "/admin/tools", label: "工具權限", icon: Wrench },
-  { href: "/admin/error-events", label: "錯誤追蹤", icon: AlertTriangle },
-  { href: "/admin/notification-channels", label: "通知渠道", icon: Bell },
-  { href: "/admin/prompt-optimizer", label: "Prompt 自動優化", icon: Wand2 },
+// S-ConvInsights.1 follow-up: 25 項 flat list → 5 大類 collapsible
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+interface NavGroup {
+  key: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  items: NavItem[];
+}
+
+const systemAdminGroups: NavGroup[] = [
+  {
+    key: "billing",
+    label: "租戶與計費",
+    icon: Building,
+    items: [
+      { href: "/admin/tenants", label: "租戶管理", icon: Building },
+      { href: "/admin/plans", label: "方案管理", icon: Package },
+      { href: "/admin/pricing", label: "定價管理", icon: DollarSign },
+      { href: "/admin/quota-overview", label: "額度總覽", icon: Wallet },
+      { href: "/admin/quota-events", label: "額度事件", icon: Bell },
+      { href: "/admin/billing", label: "收益儀表板", icon: TrendingUp },
+      { href: "/admin/token-usage", label: "Token 用量", icon: Coins },
+    ],
+  },
+  {
+    key: "content",
+    label: "內容資產",
+    icon: BookOpen,
+    items: [
+      { href: "/admin/knowledge-bases", label: "所有知識庫", icon: BookOpen },
+      { href: "/admin/bots", label: "所有機器人", icon: Bot },
+      { href: "/admin/milvus", label: "Milvus 管理", icon: Database },
+      { href: "/admin/conversations", label: "對話與追蹤", icon: MessagesSquare },
+    ],
+  },
+  {
+    key: "ai-config",
+    label: "AI 設定",
+    icon: Plug,
+    items: [
+      { href: "/settings/providers", label: "供應商設定", icon: Plug },
+      { href: "/admin/prompts", label: "系統提示詞", icon: FileText },
+      { href: "/admin/mcp-registry", label: "MCP 工具庫", icon: Puzzle },
+      { href: "/admin/tools", label: "工具權限", icon: Wrench },
+      { href: "/admin/prompt-optimizer", label: "Prompt 自動優化", icon: Wand2 },
+    ],
+  },
+  {
+    key: "security",
+    label: "安全與治理",
+    icon: Shield,
+    items: [
+      { href: "/admin/guard-rules", label: "安全規則", icon: Shield },
+      { href: "/admin/diagnostic-rules", label: "診斷規則", icon: Stethoscope },
+      { href: "/admin/rate-limits", label: "速率限制", icon: Gauge },
+      { href: "/admin/error-events", label: "錯誤追蹤", icon: AlertTriangle },
+    ],
+  },
+  {
+    key: "ops",
+    label: "平台運維",
+    icon: Wrench,
+    items: [
+      { href: "/admin/users", label: "帳號管理", icon: Users },
+      { href: "/admin/logs", label: "系統日誌", icon: ScrollText },
+      { href: "/admin/log-retention", label: "日誌清理", icon: Trash2 },
+      { href: "/admin/notification-channels", label: "通知渠道", icon: Bell },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -82,8 +129,12 @@ export function Sidebar() {
   const role = useAuthStore((s) => s.role);
   const tenants = useAuthStore((s) => s.tenants);
   const tenantId = useAuthStore((s) => s.tenantId);
-  const [adminOpen, setAdminOpen] = useState(true);
   const [generalOpen, setGeneralOpen] = useState(true);
+
+  // 預設全部展開；依 pathname 找到當前 group 即使使用者手動折疊也保持展開
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(systemAdminGroups.map((g) => [g.key, true])),
+  );
 
   const isSystemAdmin = role === "system_admin";
   const sidebarTitle = isSystemAdmin
@@ -119,14 +170,33 @@ export function Sidebar() {
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto scrollbar-none p-2">
         {isSystemAdmin ? (
           <>
-            <NavSection
-              label="系統管理"
-              icon={Shield}
-              open={adminOpen}
-              onToggle={() => setAdminOpen(!adminOpen)}
-              isCollapsed={isCollapsed}
-            />
-            {adminOpen && systemAdminItems.map((item) => renderNavItem(item, pathname, isCollapsed))}
+            {systemAdminGroups.map((group) => {
+              const isGroupActive = group.items.some((i) =>
+                pathname?.startsWith(i.href),
+              );
+              // 若當前頁在此 group 內，強制展開（覆寫使用者手動折疊）
+              const isOpen = isGroupActive || openGroups[group.key];
+              return (
+                <div key={group.key}>
+                  <NavSection
+                    label={group.label}
+                    icon={group.icon}
+                    open={isOpen}
+                    onToggle={() =>
+                      setOpenGroups((prev) => ({
+                        ...prev,
+                        [group.key]: !isOpen,
+                      }))
+                    }
+                    isCollapsed={isCollapsed}
+                  />
+                  {isOpen &&
+                    group.items.map((item) =>
+                      renderNavItem(item, pathname, isCollapsed),
+                    )}
+                </div>
+              );
+            })}
             <div className="my-1 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
             <NavSection
               label="一般功能"
