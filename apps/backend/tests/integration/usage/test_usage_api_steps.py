@@ -52,14 +52,17 @@ def insert_usage_record(ctx):
     async def _insert():
         eng = create_async_engine(TEST_DB_URL, poolclass=NullPool)
         async with eng.begin() as conn:
+            # S-Token-Gov.6: total_tokens 已改為 @property 動態算，不再存 DB
+            # cache_read_tokens / cache_creation_tokens 必填（S-LLM-Cache.1 新增）
             await conn.execute(
                 text(
                     "INSERT INTO token_usage_records "
                     "(id, tenant_id, request_type, model, "
-                    "input_tokens, output_tokens, total_tokens, "
+                    "input_tokens, output_tokens, "
+                    "cache_read_tokens, cache_creation_tokens, "
                     "estimated_cost, created_at) "
                     "VALUES (:id, :tid, 'rag', 'gpt-4o', "
-                    "100, 200, 300, 0.05, now())"
+                    "100, 200, 0, 0, 0.05, now())"
                 ),
                 {"id": str(uuid.uuid4()), "tid": tenant_id},
             )

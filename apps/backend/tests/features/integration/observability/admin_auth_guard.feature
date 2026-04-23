@@ -2,7 +2,7 @@ Feature: Observability API 權限守衛（S-Gov.3）
   作為系統
   我要求所有 observability GET 端點都必須認證
   非 admin 只能看自己租戶的資料
-  admin 可指定 tenant_id 跨租戶查詢，未指定則看 SYSTEM 租戶
+  admin 可指定 tenant_id 跨租戶查詢，未指定則看全部租戶（觀測場景需要全域視野）
 
   Scenario: 未帶 token 呼叫 observability 端點回 401
     When 我不帶 token 呼叫 GET /api/v1/observability/agent-traces
@@ -21,9 +21,9 @@ Feature: Observability API 權限守衛（S-Gov.3）
     When admin 呼叫 GET /api/v1/observability/agent-traces 帶 tenant_id "tenant-a"
     Then 回應中包含 tenant-a 的 trace
 
-  Scenario: admin 不帶 tenant_id 時預設看 SYSTEM 租戶
+  Scenario: admin 不帶 tenant_id 時看全部租戶 traces
     Given admin 已登入
     And SYSTEM 租戶有 0 筆 agent trace
     And 租戶 "tenant-a" 有 1 筆 agent trace
     When admin 呼叫 GET /api/v1/observability/agent-traces 不帶 tenant_id
-    Then 回應為空
+    Then 回應中包含 tenant-a 的 trace

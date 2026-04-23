@@ -86,10 +86,9 @@ def seed_tool_global(ctx, client, admin_headers, name, scope):
     )
 )
 def put_update_scope(ctx, client, create_tenant_login, name, scope, tenant_name):
-    tenant_headers = (
-        ctx.get("tenant_headers_by_name", {}).get(tenant_name)
-        or create_tenant_login(tenant_name)
-    )
+    by_name = ctx.setdefault("tenant_headers_by_name", {})
+    tenant_headers = by_name.get(tenant_name) or create_tenant_login(tenant_name)
+    by_name[tenant_name] = tenant_headers
     tenant_id = tenant_headers["_tenant_id"]
     ctx["response"] = client.put(
         f"/api/v1/admin/tools/{name}",

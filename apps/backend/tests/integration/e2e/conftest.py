@@ -20,9 +20,61 @@ from src.infrastructure.embedding.fake_embedding_service import FakeEmbeddingSer
 
 
 @pytest.fixture
-def e2e_app(test_engine):
-    """E2E app: real DB + real chunking + mock Milvus + mock LLM."""
+def e2e_app(test_engine, monkeypatch):
+    """E2E app: real DB + real chunking + mock Milvus + mock LLM.
+
+    Integration 測試禁止打付費 OpenAI API：
+    - 設 dummy OPENAI_API_KEY 讓 ChatOpenAI init 不炸
+    - monkeypatch ReActAgentService._create_chat_model 回 FakeMessagesListChatModel
+      （ReAct 會呼叫此 static method 建立 chat model；fake 輸出預先安排的訊息序列）
+    """
+    import os as _os
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    monkeypatch.setenv(
+        "OPENAI_API_KEY", _os.getenv("OPENAI_API_KEY", "sk-test-fake")
+    )
+
+    # 替換 ReActAgentService._create_chat_model 為 fake chat model。
+    # ReAct 內部會呼叫 `.bind_tools(tools)`，FakeMessagesListChatModel 沒實作
+    # 這個 method → subclass 補上（直接回 self，tools 資訊對於預排好的回應無用）
+    from langchain_core.language_models.fake_chat_models import (
+        FakeMessagesListChatModel,
+    )
+    from langchain_core.messages import AIMessage
+
+    class _FakeChatModelWithTools(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):  # type: ignore[override]
+            return self
+
+    def _fake_create_chat_model(**kwargs):
+        # 預先安排：先要求呼叫 rag_query，再給最終答覆。
+        return _FakeChatModelWithTools(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "rag_query",
+                            "args": {"query": "退貨流程"},
+                            "id": "call_fake_1",
+                        }
+                    ],
+                ),
+                AIMessage(
+                    content="退貨流程：30 天內無條件退貨，請保留原始包裝。",
+                ),
+                AIMessage(content="已回答完畢。"),
+            ]
+        )
+
+    from src.infrastructure.langgraph import react_agent_service as _react_mod
+
+    monkeypatch.setattr(
+        _react_mod.ReActAgentService,
+        "_create_chat_model",
+        staticmethod(_fake_create_chat_model),
+    )
 
     from src.main import create_app
 
@@ -37,6 +89,22 @@ def e2e_app(test_engine):
     container.trace_session_factory.override(
         providers.Object(test_session_factory)
     )
+
+    # 同步 patch 全域 async_session_factory（同 integration/conftest.py 的做法）
+    import sys
+    import src.infrastructure.db.engine as _engine_mod
+
+    _orig_factory = _engine_mod.async_session_factory
+    monkeypatch.setattr(
+        _engine_mod, "async_session_factory", test_session_factory
+    )
+    for _mod_name, _mod in list(sys.modules.items()):
+        if _mod is None or not _mod_name.startswith("src."):
+            continue
+        if getattr(_mod, "async_session_factory", None) is _orig_factory:
+            monkeypatch.setattr(
+                _mod, "async_session_factory", test_session_factory
+            )
 
     # Milvus vector_store → mock returning SearchResult objects
     mock_vector = AsyncMock()

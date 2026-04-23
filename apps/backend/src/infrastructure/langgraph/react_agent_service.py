@@ -26,6 +26,7 @@ from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.conversation.entity import Message
 from src.domain.rag.services import LLMService
+from src.domain.rag.value_objects import Source
 from src.infrastructure.langgraph.tools import RAGQueryTool
 from src.infrastructure.langgraph.dm_image_query_tool import (
     DmImageQueryTool,
@@ -1135,7 +1136,17 @@ class ReActAgentService(AgentService):
                             else msg.content
                         )
                         if isinstance(parsed, dict) and parsed.get("sources"):
-                            sources.extend(parsed["sources"])
+                            for s in parsed["sources"]:
+                                if isinstance(s, Source):
+                                    sources.append(s)
+                                elif isinstance(s, dict):
+                                    sources.append(Source(
+                                        document_name=s.get("document_name", "rag_query"),
+                                        content_snippet=s.get("content_snippet", ""),
+                                        score=float(s.get("score", 0.0) or 0.0),
+                                        chunk_id=s.get("chunk_id", ""),
+                                        document_id=s.get("document_id", ""),
+                                    ))
                             _found = True
                         # transfer_to_human_agent tool → capture contact
                         if isinstance(parsed, dict) and parsed.get("contact"):
@@ -1157,10 +1168,12 @@ class ReActAgentService(AgentService):
                         if ctx.strip() and _no_result not in ctx:
                             for c in ctx.split("\n---\n"):
                                 if c.strip():
-                                    sources.append({
-                                        "content_snippet": c.strip(),
-                                        "source": "rag_query",
-                                    })
+                                    sources.append(Source(
+                                        document_name="rag_query",
+                                        content_snippet=c.strip(),
+                                        score=0.0,
+                                        chunk_id="",
+                                    ))
 
         if not tool_calls:
             tool_calls = [{"tool_name": "direct", "reasoning": ""}]

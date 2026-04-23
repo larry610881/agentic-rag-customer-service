@@ -56,15 +56,17 @@ def _insert_trace(test_engine, tenant_id: str):
             await conn.execute(
                 _sql(
                     "INSERT INTO agent_execution_traces "
-                    "(id, tenant_id, conversation_id, agent_mode, nodes, created_at) "
-                    "VALUES (:id, :tid, :cid, :mode, :nodes, :ts)"
+                    "(id, trace_id, tenant_id, conversation_id, agent_mode, nodes, total_ms, created_at) "
+                    "VALUES (:id, :trace_id, :tid, :cid, :mode, :nodes, :total_ms, :ts)"
                 ),
                 {
                     "id": str(uuid.uuid4()),
+                    "trace_id": str(uuid.uuid4()),
                     "tid": tenant_id,
                     "cid": str(uuid.uuid4()),
                     "mode": "react",
                     "nodes": "[]",
+                    "total_ms": 0.0,
                     "ts": datetime.now(timezone.utc),
                 },
             )

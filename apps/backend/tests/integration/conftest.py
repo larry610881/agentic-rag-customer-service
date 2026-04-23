@@ -201,6 +201,46 @@ def app(test_engine, monkeypatch):
         test_engine, class_=AsyncSession, expire_on_commit=False
     )
     container.db_session.override(providers.Factory(test_session_factory))
+    container.trace_session_factory.override(
+        providers.Object(test_session_factory)
+    )
+
+    # httpx ASGITransport 不觸發 lifespan — 手動跑必要的啟動 seed（built-in tools）
+    # 否則依賴 startup seed 的測試會拿到空 list。
+    from copy import deepcopy
+
+    from src.domain.agent.built_in_tool import BUILT_IN_TOOL_DEFAULTS
+    from src.infrastructure.db.repositories.built_in_tool_repository import (
+        SQLAlchemyBuiltInToolRepository,
+    )
+
+    async def _seed_builtin_tools():
+        async with test_session_factory() as session:
+            repo = SQLAlchemyBuiltInToolRepository(session=session)
+            await repo.seed_defaults(deepcopy(BUILT_IN_TOOL_DEFAULTS))
+
+    _run(_seed_builtin_tools())
+
+    # 修補：document_router / agent_router / observability_router 等繞過 DI 直接
+    # `from src.infrastructure.db.engine import async_session_factory` 的 code path
+    # 會打到 production DB (agentic_rag)，不是 test DB (agentic_rag_test)。
+    # `from X import Y` 在每個 caller module 建立 local binding，所以光改 engine
+    # module 不夠 — 要把所有已 import 的 caller module 的 async_session_factory
+    # attribute 一起 patch 到 test_session_factory。
+    import sys
+    import src.infrastructure.db.engine as _engine_mod
+
+    _orig_factory = _engine_mod.async_session_factory
+    monkeypatch.setattr(
+        _engine_mod, "async_session_factory", test_session_factory
+    )
+    for _mod_name, _mod in list(sys.modules.items()):
+        if _mod is None or not _mod_name.startswith("src."):
+            continue
+        if getattr(_mod, "async_session_factory", None) is _orig_factory:
+            monkeypatch.setattr(
+                _mod, "async_session_factory", test_session_factory
+            )
 
     # Skip embedding / Milvus / document processing
     mock_process = AsyncMock()
@@ -214,6 +254,7 @@ def app(test_engine, monkeypatch):
     yield application
 
     container.db_session.reset_override()
+    container.trace_session_factory.reset_override()
     container.process_document_use_case.reset_override()
     container.vector_store.reset_override()
     container.cache_service.reset_override()

@@ -207,9 +207,12 @@ def result_empty(ctx):
 @then("SendMessageCommand 的 tenant_id 應為 SYSTEM_TENANT_ID")
 def verify_chat_scope(ctx):
     """移除 override 後：admin 帶 cross-tenant bot_id → use case 收到
-    tenant_id=SYSTEM + bot_id=他租戶 → 找不到該 bot → 404/422/403。
-    這就是 override 已移除的觀察性證據。"""
+    tenant_id=SYSTEM + bot_id=他租戶 → 找不到該 bot → 4xx 拒絕。
+    Router 對「bot 不屬此 tenant」回 400 (Bad Request, "Bot does not belong to tenant")，
+    其他可能拒絕路徑（IDOR 防枚舉 / EntityNotFound）回 403/404/422。
+    凡 4xx 都是合法防禦結果。"""
     assert ctx["response"].status_code in (
+        400,
         403,
         404,
         422,
