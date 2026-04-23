@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw, Trash2 } from "lucide-react";
+import { RotateCcw, Trash2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { ChunkCard } from "@/features/knowledge/components/chunk-card";
 import {
   useDeleteChunk,
   useReembedChunk,
   useUpdateChunk,
 } from "@/hooks/queries/use-kb-chunks";
-import type { Chunk } from "@/types/chunk";
+import type { Chunk, UpdateChunkRequest } from "@/types/chunk";
 import { ConfirmDangerDialog } from "@/components/ui/confirm-danger-dialog";
 
 interface ChunkEditorProps {
@@ -20,8 +21,10 @@ interface ChunkEditorProps {
 const AUTOSAVE_DEBOUNCE_MS = 1000;
 
 export function ChunkEditor({ chunk, kbId, categoryName }: ChunkEditorProps) {
-  const [draft, setDraft] = useState(chunk.content);
-  const [savedDraft, setSavedDraft] = useState(chunk.content);
+  const [contentDraft, setContentDraft] = useState(chunk.content);
+  const [contextDraft, setContextDraft] = useState(chunk.context_text ?? "");
+  const [savedContent, setSavedContent] = useState(chunk.content);
+  const [savedContext, setSavedContext] = useState(chunk.context_text ?? "");
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
     "idle",
   );
@@ -32,22 +35,34 @@ export function ChunkEditor({ chunk, kbId, categoryName }: ChunkEditorProps) {
   const reembedMutation = useReembedChunk();
   const deleteMutation = useDeleteChunk(kbId);
 
+  // Reset local state when chunk id changes (不同 chunk row)
   useEffect(() => {
-    setDraft(chunk.content);
-    setSavedDraft(chunk.content);
+    setContentDraft(chunk.content);
+    setContextDraft(chunk.context_text ?? "");
+    setSavedContent(chunk.content);
+    setSavedContext(chunk.context_text ?? "");
     setStatus("idle");
-  }, [chunk.id, chunk.content]);
+  }, [chunk.id, chunk.content, chunk.context_text]);
 
+  // Autosave — content or context_text 任一改動 debounce 1s 後送 PATCH
   useEffect(() => {
-    if (draft === savedDraft) return;
+    const contentChanged = contentDraft !== savedContent;
+    const contextChanged = contextDraft !== savedContext;
+    if (!contentChanged && !contextChanged) return;
+
     setStatus("saving");
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
+      const body: UpdateChunkRequest = {};
+      if (contentChanged) body.content = contentDraft;
+      if (contextChanged) body.context_text = contextDraft;
+
       updateMutation.mutate(
-        { docId: chunk.document_id, chunkId: chunk.id, body: { content: draft } },
+        { docId: chunk.document_id, chunkId: chunk.id, body },
         {
           onSuccess: () => {
-            setSavedDraft(draft);
+            setSavedContent(contentDraft);
+            setSavedContext(contextDraft);
             setStatus("saved");
           },
           onError: () => setStatus("error"),
@@ -58,7 +73,7 @@ export function ChunkEditor({ chunk, kbId, categoryName }: ChunkEditorProps) {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft]);
+  }, [contentDraft, contextDraft]);
 
   const handleReembed = () => {
     reembedMutation.mutate(chunk.id);
@@ -79,20 +94,47 @@ export function ChunkEditor({ chunk, kbId, categoryName }: ChunkEditorProps) {
 
   return (
     <ChunkCard chunk={chunk} mode="edit" categoryName={categoryName}>
-      <Textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        rows={Math.min(Math.max(draft.split("\n").length, 3), 8)}
-        className="text-sm font-mono"
-      />
+      <div className="space-y-3">
+        <div>
+          <Label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+            <span>內容（Content）</span>
+          </Label>
+          <Textarea
+            value={contentDraft}
+            onChange={(e) => setContentDraft(e.target.value)}
+            rows={Math.min(Math.max(contentDraft.split("\n").length, 3), 8)}
+            className="text-sm font-mono"
+            placeholder="chunk 原始內容"
+          />
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+            <Sparkles className="h-3 w-3" />
+            <span>AI 上下文摘要（Contextual Retrieval）</span>
+            {!chunk.context_text && (
+              <span className="italic">· 此 KB 未啟用或尚未生成</span>
+            )}
+          </Label>
+          <Textarea
+            value={contextDraft}
+            onChange={(e) => setContextDraft(e.target.value)}
+            rows={Math.min(
+              Math.max(contextDraft.split("\n").length, 2),
+              4,
+            )}
+            className="text-sm"
+            placeholder="AI 自動生成的上下文摘要（embedding 會用 context + content 組合文本）"
+          />
+        </div>
+      </div>
       <div className="mt-2 flex items-center justify-between text-xs">
         <span
           className={
             status === "error"
               ? "text-destructive"
               : status === "saved"
-              ? "text-emerald-600"
-              : "text-muted-foreground"
+                ? "text-emerald-600"
+                : "text-muted-foreground"
           }
         >
           {statusLabel}

@@ -1,6 +1,7 @@
+import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Pencil } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -10,6 +11,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { CollectionInfo } from "@/types/milvus";
+
+// Milvus collection 命名規則：`kb_{uuid}`（per-KB）。parse 回 kb_id 用於 deep link。
+function parseKbIdFromCollection(name: string): string | null {
+  const match = name.match(/^kb_(.+)$/);
+  return match ? match[1] : null;
+}
 
 interface CollectionTableProps {
   collections: CollectionInfo[];
@@ -40,7 +47,7 @@ export function CollectionTable({
             <TableHead>tenant_id index</TableHead>
             <TableHead>document_id index</TableHead>
             <TableHead>vector index</TableHead>
-            <TableHead className="w-[140px]">操作</TableHead>
+            <TableHead className="w-[260px]">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -48,6 +55,7 @@ export function CollectionTable({
             const tidIdx = col.indexes.find((i) => i.field === "tenant_id");
             const didIdx = col.indexes.find((i) => i.field === "document_id");
             const vecIdx = col.indexes.find((i) => i.field === "vector");
+            const kbId = parseKbIdFromCollection(col.name);
             return (
               <TableRow key={col.name}>
                 <TableCell className="font-mono text-sm">{col.name}</TableCell>
@@ -64,17 +72,32 @@ export function CollectionTable({
                   <IndexBadge type={vecIdx?.index_type} />
                 </TableCell>
                 <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={rebuildingName === col.name}
-                    onClick={() => onRebuildIndex(col.name)}
-                  >
-                    <RotateCcw className="h-3 w-3 mr-1" />
-                    {rebuildingName === col.name
-                      ? "重建中..."
-                      : "重建 index"}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {kbId && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        asChild
+                        title="到 KB Studio 編輯 chunks"
+                      >
+                        <Link to={`/admin/kb-studio/${kbId}?tab=chunks`}>
+                          <Pencil className="h-3 w-3 mr-1" />
+                          編輯 chunks
+                        </Link>
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={rebuildingName === col.name}
+                      onClick={() => onRebuildIndex(col.name)}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      {rebuildingName === col.name
+                        ? "重建中..."
+                        : "重建 index"}
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             );
