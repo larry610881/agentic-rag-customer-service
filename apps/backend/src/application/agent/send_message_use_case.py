@@ -744,7 +744,7 @@ class SendMessageUseCase:
                 response.answer = guard_result.blocked_response
 
         conversation.add_message("user", command.message)
-        conversation.add_message(
+        assistant_msg = conversation.add_message(
             "assistant",
             response.answer,
             tool_calls=tool_calls_to_save,
@@ -756,6 +756,8 @@ class SendMessageUseCase:
         await self._conversation_repo.save(conversation)
 
         response.conversation_id = conversation.id.value
+        # S-ConvInsights.1: 暴露 assistant message_id 給 agent_router 用於 RecordUsage
+        response.message_id = assistant_msg.id.value
 
         # Fire-and-forget: persist agent execution trace
         await self._persist_agent_trace(

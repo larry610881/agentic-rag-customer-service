@@ -95,6 +95,7 @@ async def agent_chat(
         request_type="chat_web",
         usage=result.usage,
         bot_id=request.bot_id,
+        message_id=result.message_id,
     )
 
     usage_resp = None
@@ -210,11 +211,15 @@ async def agent_chat_stream(
         # --- END TEST TRIGGER ---
 
         usage_data: dict | None = None
+        assistant_message_id: str | None = None
         try:
             async for event in use_case.execute_stream(command):
                 if event.get("type") == "usage":
                     usage_data = event
                     continue
+                # S-ConvInsights.1: 捕獲 assistant message_id 供 RecordUsage 用
+                if event.get("type") == "message_id":
+                    assistant_message_id = event.get("message_id")
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:
             logger.exception("agent.chat.stream.error")
@@ -262,6 +267,7 @@ async def agent_chat_stream(
                         request_type="chat_web",
                         usage=usage,
                         bot_id=request.bot_id,
+                        message_id=assistant_message_id,
                     )
                 except Exception:
                     logger.exception("agent.chat.stream.record_usage_error")

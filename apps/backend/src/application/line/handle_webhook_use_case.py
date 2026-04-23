@@ -501,6 +501,7 @@ class HandleWebhookUseCase:
                     request_type="chat_line",
                     usage=result.usage,
                     bot_id=bot.id.value,
+                    message_id=result.message_id,
                 )
             except Exception:
                 logger.warning("line.record_usage_error", exc_info=True)

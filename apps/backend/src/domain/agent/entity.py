@@ -23,6 +23,8 @@ class AgentResponse:
     tool_calls: list[dict[str, str]] = field(default_factory=list)
     sources: list[Source] = field(default_factory=list)
     conversation_id: str = ""
+    # Assistant message 寫入 DB 後的 id，供 RecordUsage 建立 message↔usage 對應
+    message_id: str | None = None
     usage: TokenUsage | None = None
     refund_step: str | None = None
     # 由 transfer_to_human_agent tool 產生的 channel-agnostic 聯絡按鈕
