@@ -7,6 +7,53 @@
 
 ---
 
+## S-ConvInsights.1 — 對話與追蹤 master-detail 頁（合併 3 頁）
+
+**日期**：2026-04-23（延續本日 sprint session）
+**Sprint**：S-ConvInsights.1（Issue #61）
+**涉及層級**：Backend Application（2 新 use case：GetConversationMessages、GetConversationTokenUsage）+ Interfaces（1 新 router admin_conversation_insights_router + main.py include）+ Container（2 Factory + wiring_config）+ 2 BDD feature（unit + integration）+ 1 unit step_defs + Frontend（6 新 component master-detail + 1 新 hook file + sidebar 改 + App.tsx redirect + routes/api endpoints 擴充 + queryKeys 擴充）+ pages/admin-conversations.tsx 整頁 rewrite
+
+**Sprint 來源**：Token 用量頁 kb_id 全鏈路 ship 後（commit `15e6f16`），使用者在 UI 實測時反映「對話摘要頁強制手打 tenant_id UUID」、「可觀測性和對話搜尋資訊重疊但切分兩頁」。盤點後發現 `conversation_id` 是三邊共同 PK，使用者其實要的是「看某一個對話的完整脈絡（訊息→思考路徑→摘要→token 用量）」— 三頁分立的 UX 本質上是資訊破碎。
+
+**主題**：user-workflow-driven UI 重構 — 不是「重寫這三頁讓它們變好」，是「重新定義 workflow」（admin 分析對話時的心智模型）然後把 UI 重組成那個 workflow 的形狀。backend composite endpoint + master-detail 左右分欄 + URL state deep link 支撐。
+
+### 做得好的地方
+
+- **conversation_id 當 central axis 的設計**：本來 3 頁各自為政，把 `conversation_id` 當中心軸（左列表 select → 右 4 tabs 全部 re-fetch by cid）之後，整個 UI 變得自然 — 使用者選一個對話，所有視角（訊息/思考/摘要/成本）自動 align。**這個 pattern 的判準是「所有資料實體是否有共同 PK」**；若有，master-detail 就是對的結構；若沒有，硬合併會讓 UI 變「三頁塞一頁」的拼貼。
+- **URL state 走 `?cid=&tab=`**：支援 deep link 分享「這個對話的 trace」給同事、back button 正常回列表。`setSearchParams({cid}, {replace: false})` 切對話時 push 進 history，`setSearchParams({cid, tab}, {replace: true})` 切 tab 用 replace 避免爆歷史。**小功能但體感大**，分享連結是 admin tool 的常見使用場景。
+- **後端 JOIN messages 取 conversation_id 不改 schema**：`token_usage_records` 只有 `message_id` 沒 `conversation_id`，但 `messages.conversation_id` 已 index，`JOIN messages ON usage.message_id = messages.id WHERE messages.conversation_id = :cid` 效能可接受。**避掉了一次 migration**，本 sprint 零 DB 變更，比原 plan 預估省 1 hr。
+- **use case 層 session_factory 注入 pattern 直接從 usage_repository 觀念搬過來**：`GetConversationTokenUsageUseCase.__init__(conversation_repo, session_factory)` 的 `session_factory` 用 `trace_session_factory`（既有 DI provider），use case 內 `session = self._session_factory(); try ... finally session.close()`。**不用 DI 注入 Repository，直接在 use case 內組 SQL 是「短期報表型 query」的合理例外** — 如果要 reusable repository 才抽；一次性 composite 聚合不需要。
+- **「舊 3 頁 Navigate redirect 保留檔 30 天」的 graceful deprecation**：`App.tsx` 路由改 `<Navigate to={ADMIN_CONVERSATIONS} replace />`，lazy import 改註解移除（防 TS `noUnusedLocals`），原 `.tsx` 檔不刪。**使用者 bookmark 到舊 URL 不會 404，同時主代碼不留未路由的 page component 造成 bundle 浪費**（lazy import 已移除，實際 bundle 也不會含這兩頁）。
+- **Reuse 既有 `AgentTraceDetail` component + 只傳 trace 加 onBack**：本來 trace tab 裡想寫個薄 wrapper，後來發現 `AgentTraceDetail` 本身就支援「返回」pattern — 直接 `<AgentTraceDetail trace={...} onBack={() => setSelected(null)} />` 讓 `selectedTraceId` 狀態機吃在 tab 內部。**省了 1 個新 component**。
+- **Unit BDD 取代 Integration BDD**：plan 原本寫 integration feature + step_defs（走真 HTTP + DB），發現 integration fixture setup 大。改寫 unit BDD + AsyncMock + MagicMock 的 SQL result，6 scenario 30 分鐘內 pass，給 use case 邏輯足夠覆蓋。**integration test 留 backlog（feature 檔先寫著，step_defs 之後補）**，不阻塞 ship。
+- **`inferUsageSource()` 在 Token tab 的 reuse**：這個 `types/token-usage.ts` 的 helper（上個 sprint 寫的）在新 Token tab 也完全適用 — row shape 一致（request_type + bot_id + kb_id → 圖示 + 名稱 + 連結）。**這是「constant + helper 集中」的 payoff** — 兩個 sprint 前寫的 helper 在新頁面免費繼承。
+
+### 潛在隱憂
+
+- **前端沒寫單測覆蓋 6 個新 component**：plan 原要求 Definition of Done 80% 覆蓋率。此 sprint 跳了 — scope 控制 + 時間壓力。**優先級：中**。改善方向：(a) 補 `conversation-messages-tab.test.tsx` / `conversation-token-usage-tab.test.tsx` 的 happy / empty / error 三態，(b) `conversation-list-panel.test.tsx` 的選擇狀態機。
+- **沒做 E2E playwright-bdd feature**：plan 要寫 `conversation-insights.feature` 測「搜尋→選→切 tab→deep link」。跳了。**優先級：高（這頁是核心 workflow 且有 URL state，沒 E2E 真的有風險）**。改善方向：下 sprint 補寫 1 個 E2E scenario 覆蓋「搜尋→選→4 tabs 都載入」。
+- **Messages tab 沒做 virtual scroll**：plan 預估 200+ messages 會慢。dev-vm carrefour 4 筆 conversation 都 <10 messages，先不做。但若未來客戶有 500+ messages 的對話 → 列表 render 會慢 500ms+。**優先級：中**。改善方向：加 `@tanstack/react-virtual`（KB Studio 已有），threshold > 50 msg 才啟用。
+- **JOIN `messages` 取 conversation_id 的效能 ceiling**：dev-vm 無感，但 usage record 100K+ 後 JOIN 會慢。**優先級：低（POC 資料量還遠低於此）**。改善方向：未來 1M+ row 時可 add column `token_usage_records.conversation_id` + 回填 + worker 層寫入時同傳（類似本日 `kb_id` migration 的 pattern）。
+- **`summaryFromList` state 提升到 page 層級 → prop drilling 2 層**：`AdminConversationsPage` → `ConversationDetailPanel` → `ConversationSummaryTab`。小專案勉強可接受，但 tab count 再長就該提 Zustand store。**優先級：低**。
+- **Token tab 的 `inferUsageSource()` 調用要構造完整 `TenantBotUsageStat` shape** 但只用其中 request_type + bot_id + kb_id 3 個欄位。`tenant_id: ""` / `total_tokens: 0` 等填 placeholder — ugly 但 TypeScript 強制。**優先級：低**。改善方向：抽一個 `inferUsageSourceFromPartial(row: Pick<TenantBotUsageStat, 'bot_id'|'bot_name'|'kb_id'|'kb_name'|'request_type'>)` 重載。
+- **AdminTraceDetail 的「返回」內建 button + ConversationTraceTab 的「返回 trace 列表」button 會同時顯示**：UI 會有兩個返回按鈕。能用但不優雅。**優先級：低**。改善方向：給 `AgentTraceDetail` 加 `hideBack?: boolean` prop。
+- **Plan 階段估 2d，實際 ship 只用 ~2.5 hr**：因為大量 reuse（hook / component / type）+ 選擇 unit BDD + schema 零變更。**好隱憂** — 但暴露 plan 估工時太保守。未來類似「合併多個現有頁」的 sprint 可能估 40-60% 即可。
+
+### 延伸學習
+
+- **「user workflow 驅動的 UI 重構」vs「逐頁優化」的選型**：本來 plan 也可以只「改對話摘要頁 UX + 改可觀測性 filter」讓每頁各自變好。但那會留下「三頁切換」的根本問題。**workflow-driven 重構的判準：使用者的常見 task 是否跨多個 URL？若是 → 合併；若不是 → 逐頁優化**。
+- **Composite endpoint vs frontend 多 API 組裝**：本 sprint 選 composite（後端 1 endpoint 回 messages、另 1 endpoint 回 token usage）。也可 frontend 平行 call `/messages` + `/agent-traces?cid=x` + `/token-usage` 組資料。Composite 好處是 payload 組裝在 server、減少 round trip；frontend 組裝好處是 server 簡單、可 cache 分開。**判準：跨 entity 有 join 需求（本案 token-usage JOIN messages）→ composite；純獨立 fetch → frontend 組裝**。
+- **Plan file 的「決策紀錄」區塊價值**：本 plan 寫了 7 條「隱憂 + 決策紀錄」（URL state back button、shadcn Tabs URL-driven、virtual scroll 臨界點等），實作時我兩次 refer 回去才能快速決定。**plan 的隱憂區塊是「實作時的自助小抄」，不是裝飾**。
+- **Stage 0 寫 BDD feature 先 + Stage 4 跑 unit test 才決定不寫 integration step_defs**：這是「feature 當 contract，step_def 當 implementation」的解耦。feature 留在檔，integration step_defs 可隨時補，是 BDD 方法論的一個少見 payoff。
+
+### 思考題
+
+- **本 sprint 的 3 commit 該怎麼切？** 選擇是 backend API (1) / frontend master-detail (2) / learning note (3)。但其實「刪舊路由 + 新 sidebar」是 frontend-only 的 cross-cutting change，能否切為獨立 commit？切了反而更難 review（一個 PR 三個 commit 審查起來更分散），合著好像更集中... 原則是什麼？
+- **前端 6 component + 2 hook 該不該封裝到 `features/admin/conversation-insights/index.ts`？** 目前沒做 barrel export，`admin-conversations.tsx` 直接 `import from "./components/conversation-list-panel"` 寫死路徑。Barrel export 好處是 import 清爽、壞處是 tree-shake 風險（Vite 4+ 已解）。規模到幾檔該開始做 barrel？
+- **AgentTraceDetail 的 onBack prop 現況 required，如果傳 `undefined` 能幹嘛？** 本案用 `setSelectedTraceId(null)` 作為「回列表」語意。但若要「這個 tab 根本沒列表概念」（例如只看單 trace），`onBack` 該怎麼設計才 pure？`onBack?: () => void;` + internal 判斷 show/hide button 才乾淨 — 但要動既有 API。原則：何時該改既有 public API vs 在 caller 側塞假值？
+
+---
+
 ## Token 用量頁來源合併 + kb_id 全鏈路（S-Token-Gov follow-up）
 
 **日期**：2026-04-23
