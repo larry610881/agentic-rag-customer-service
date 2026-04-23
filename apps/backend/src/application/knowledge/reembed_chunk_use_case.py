@@ -116,6 +116,7 @@ class ReEmbedChunkUseCase:
                     tenant_id=chunk.tenant_id,
                     request_type=UsageCategory.EMBEDDING.value,
                     usage=usage,
+                    kb_id=kb.id,
                 )
             except Exception:
                 logger.warning(

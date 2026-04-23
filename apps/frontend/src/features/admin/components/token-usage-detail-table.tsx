@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -9,7 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TenantBotUsageStat } from "@/types/token-usage";
-import { getRequestTypeLabel } from "@/types/token-usage";
+import { getRequestTypeLabel, inferUsageSource } from "@/types/token-usage";
 
 interface TokenUsageDetailTableProps {
   data: TenantBotUsageStat[] | undefined;
@@ -46,7 +47,7 @@ export function TokenUsageDetailTable({ data, isLoading }: TokenUsageDetailTable
             <TableRow>
               <TableHead>租戶</TableHead>
               <TableHead>類型</TableHead>
-              <TableHead>機器人</TableHead>
+              <TableHead>來源</TableHead>
               <TableHead>模型</TableHead>
               <TableHead className="text-right">次數</TableHead>
               <TableHead className="text-right">輸入 Tokens</TableHead>
@@ -57,11 +58,28 @@ export function TokenUsageDetailTable({ data, isLoading }: TokenUsageDetailTable
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((row, idx) => (
-              <TableRow key={`${row.tenant_id}-${row.bot_id}-${row.model}-${row.request_type}-${idx}`}>
+            {data.map((row, idx) => {
+              const src = inferUsageSource(row);
+              return (
+              <TableRow key={`${row.tenant_id}-${row.bot_id ?? row.kb_id ?? "sys"}-${row.model}-${row.request_type}-${idx}`}>
                 <TableCell>{row.tenant_name}</TableCell>
                 <TableCell>{getRequestTypeLabel(row.request_type)}</TableCell>
-                <TableCell>{row.bot_name ?? "—"}</TableCell>
+                <TableCell>
+                  {src.href ? (
+                    <Link
+                      to={src.href}
+                      className="inline-flex items-center gap-1 hover:underline underline-offset-4"
+                    >
+                      <span>{src.icon}</span>
+                      <span>{src.name}</span>
+                    </Link>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-muted-foreground">
+                      <span>{src.icon}</span>
+                      <span>{src.name}</span>
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell className="font-medium">{row.model}</TableCell>
                 <TableCell className="text-right">
                   {row.message_count.toLocaleString()}
@@ -82,7 +100,8 @@ export function TokenUsageDetailTable({ data, isLoading }: TokenUsageDetailTable
                   ${row.estimated_cost.toFixed(4)}
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </CardContent>

@@ -59,6 +59,7 @@ class RecordUsageUseCase:
         request_type: str,
         usage: TokenUsage | None,
         bot_id: str | None = None,
+        kb_id: str | None = None,
     ) -> None:
         if usage is None or usage.total_tokens == 0:
             return
@@ -91,6 +92,7 @@ class RecordUsageUseCase:
             cache_read_tokens=usage.cache_read_tokens,
             cache_creation_tokens=usage.cache_creation_tokens,
             bot_id=bot_id,
+            kb_id=kb_id,
         )
         await self._repo.save(record)
 

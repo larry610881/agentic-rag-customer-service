@@ -47,6 +47,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 cache_creation_tokens=record.cache_creation_tokens,
                 message_id=record.message_id,
                 bot_id=record.bot_id,
+                kb_id=record.kb_id,
                 created_at=record.created_at,
             )
             self._session.add(model)
@@ -83,6 +84,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 cache_creation_tokens=r.cache_creation_tokens,
                 message_id=r.message_id,
                 bot_id=r.bot_id,
+                kb_id=r.kb_id,
                 created_at=r.created_at,
             )
             for r in rows

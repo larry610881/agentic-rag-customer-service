@@ -24,6 +24,7 @@ from src.domain.observability.diagnostic import diagnose
 from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.models.agent_trace_model import AgentExecutionTraceModel
 from src.infrastructure.db.models.bot_model import BotModel
+from src.infrastructure.db.models.knowledge_base_model import KnowledgeBaseModel
 from src.infrastructure.db.models.rag_eval_model import RAGEvalModel
 from src.infrastructure.db.models.tenant_model import TenantModel
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
@@ -270,6 +271,8 @@ async def get_token_usage(
                 TenantModel.name.label("tenant_name"),
                 UsageRecordModel.bot_id,
                 BotModel.name.label("bot_name"),
+                UsageRecordModel.kb_id,
+                KnowledgeBaseModel.name.label("kb_name"),
                 UsageRecordModel.model,
                 UsageRecordModel.request_type,
                 func.sum(UsageRecordModel.input_tokens).label("input_tokens"),
@@ -292,6 +295,10 @@ async def get_token_usage(
                 UsageRecordModel.bot_id == BotModel.id,
             )
             .outerjoin(
+                KnowledgeBaseModel,
+                UsageRecordModel.kb_id == KnowledgeBaseModel.id,
+            )
+            .outerjoin(
                 TenantModel,
                 UsageRecordModel.tenant_id == TenantModel.id,
             )
@@ -306,6 +313,8 @@ async def get_token_usage(
             TenantModel.name,
             UsageRecordModel.bot_id,
             BotModel.name,
+            UsageRecordModel.kb_id,
+            KnowledgeBaseModel.name,
             UsageRecordModel.model,
             UsageRecordModel.request_type,
         ).order_by(func.sum(UsageRecordModel.estimated_cost).desc())
@@ -319,6 +328,8 @@ async def get_token_usage(
                 "tenant_name": r.tenant_name or "(未知租戶)",
                 "bot_id": r.bot_id,
                 "bot_name": r.bot_name,
+                "kb_id": r.kb_id,
+                "kb_name": r.kb_name,
                 "model": r.model,
                 "request_type": r.request_type,
                 "input_tokens": r.input_tokens or 0,

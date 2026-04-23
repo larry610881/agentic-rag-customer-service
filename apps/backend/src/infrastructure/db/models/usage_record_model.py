@@ -44,6 +44,10 @@ class UsageRecordModel(Base):
     bot_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True
     )
+    # KB 類任務歸屬 (OCR / Contextual Retrieval / Auto Classification / PDF Rename / Embedding)
+    kb_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,
@@ -58,4 +62,5 @@ class UsageRecordModel(Base):
         Index("ix_token_usage_records_tenant_created", "tenant_id", "created_at"),
         Index("ix_token_usage_records_message_id", "message_id"),
         Index("ix_token_usage_records_tenant_bot_created", "tenant_id", "bot_id", "created_at"),
+        Index("ix_token_usage_records_tenant_kb_created", "tenant_id", "kb_id", "created_at"),
     )

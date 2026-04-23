@@ -147,6 +147,7 @@ class ClassifyKbUseCase:
                     cache_read_tokens=cls_cache_read,
                     cache_creation_tokens=cls_cache_creation,
                 ),
+                kb_id=kb_id,
             )
 
         # 4. Delete old categories

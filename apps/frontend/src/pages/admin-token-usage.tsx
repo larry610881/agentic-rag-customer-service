@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { USAGE_CATEGORIES } from "@/constants/usage-categories";
+import { inferUsageSource, type UsageSourceKind } from "@/types/token-usage";
 
 const containerVariants: Variants = {
   hidden: {},
@@ -31,17 +32,33 @@ const TYPE_FILTER_OPTIONS = [
   ...USAGE_CATEGORIES.map((c) => ({ value: c.value, label: c.label })),
 ];
 
+const SOURCE_FILTER_OPTIONS: { value: "all" | UsageSourceKind; label: string }[] = [
+  { value: "all", label: "全部來源" },
+  { value: "bot", label: "🤖 機器人" },
+  { value: "kb", label: "📚 知識庫" },
+  { value: "system", label: "⚙️ 系統" },
+];
+
 export default function AdminTokenUsagePage() {
   const [days, setDays] = useState(30);
   const [tenantId, setTenantId] = useState<string | undefined>();
   const [typeFilter, setTypeFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] =
+    useState<"all" | UsageSourceKind>("all");
   const { data: rawData, isLoading } = useSystemTokenUsage(days, tenantId);
 
   const data = useMemo(() => {
-    if (!rawData || typeFilter === "all") return rawData;
-    // Token-Gov.5 白名單後 DB 只會有 UsageCategory enum 值，legacy "agent" 字串已不會出現
-    return rawData.filter((row) => row.request_type === typeFilter);
-  }, [rawData, typeFilter]);
+    if (!rawData) return rawData;
+    let rows = rawData;
+    if (typeFilter !== "all") {
+      // Token-Gov.5 白名單後 DB 只會有 UsageCategory enum 值，legacy "agent" 字串已不會出現
+      rows = rows.filter((row) => row.request_type === typeFilter);
+    }
+    if (sourceFilter !== "all") {
+      rows = rows.filter((row) => inferUsageSource(row).kind === sourceFilter);
+    }
+    return rows;
+  }, [rawData, typeFilter, sourceFilter]);
 
   return (
     <motion.div
@@ -57,6 +74,21 @@ export default function AdminTokenUsagePage() {
         </div>
         <div className="flex items-center gap-3">
           <AdminTenantFilter value={tenantId} onChange={setTenantId} />
+          <Select
+            value={sourceFilter}
+            onValueChange={(v) => setSourceFilter(v as "all" | UsageSourceKind)}
+          >
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SOURCE_FILTER_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
             <SelectTrigger className="w-[160px]">
               <SelectValue />

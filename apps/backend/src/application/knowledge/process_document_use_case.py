@@ -209,6 +209,7 @@ class ProcessDocumentUseCase:
                                 input_tokens=in_tok,
                                 output_tokens=out_tok,
                             ),
+                            kb_id=document.kb_id,
                         )
             else:
                 # Fallback for legacy documents without raw_content
@@ -370,6 +371,7 @@ class ProcessDocumentUseCase:
                             cache_read_tokens=ctx_cache_read,
                             cache_creation_tokens=ctx_cache_creation,
                         ),
+                        kb_id=document.kb_id,
                     )
 
                 await _update_progress(task_id, 73)
@@ -409,6 +411,7 @@ class ProcessDocumentUseCase:
                             input_tokens=embed_tokens,
                             output_tokens=0,
                         ),
+                        kb_id=document.kb_id,
                     )
 
             # 90% — upserting vectors
@@ -633,6 +636,7 @@ class ProcessDocumentUseCase:
                         input_tokens=result.input_tokens,
                         output_tokens=result.output_tokens,
                     ),
+                    kb_id=getattr(kb, "id", None),
                 )
 
             if new_filename:

@@ -3,6 +3,8 @@ export interface TenantBotUsageStat {
   tenant_name: string;
   bot_id: string | null;
   bot_name: string | null;
+  kb_id?: string | null;
+  kb_name?: string | null;
   model: string;
   request_type: string;
   input_tokens: number;
@@ -12,6 +14,50 @@ export interface TenantBotUsageStat {
   cache_read_tokens: number;
   cache_creation_tokens: number;
   message_count: number;
+}
+
+export type UsageSourceKind = "bot" | "kb" | "system";
+
+/**
+ * 以 request_type + bot_id/kb_id 推論本筆記錄的「來源類型」。
+ * 用於表格合併「機器人/知識庫」欄、以及頂部來源類型 filter。
+ */
+const KB_REQUEST_TYPES = new Set([
+  "ocr",
+  "contextual_retrieval",
+  "auto_classification",
+  "pdf_rename",
+  "embedding",
+]);
+
+export interface UsageSourceInfo {
+  kind: UsageSourceKind;
+  icon: string;
+  name: string;
+  href?: string;
+}
+
+export function inferUsageSource(row: TenantBotUsageStat): UsageSourceInfo {
+  // 1. 有 bot_id → 機器人來源（chat_web/widget/line、intent_classify、conversation_summary 等）
+  if (row.bot_id) {
+    return {
+      kind: "bot",
+      icon: "🤖",
+      name: row.bot_name ?? "未命名機器人",
+      href: `/bots/${row.bot_id}`,
+    };
+  }
+  // 2. 已知 KB 類型 → 知識庫來源
+  if (KB_REQUEST_TYPES.has(row.request_type)) {
+    return {
+      kind: "kb",
+      icon: "📚",
+      name: row.kb_name ?? "知識庫處理",
+      href: row.kb_id ? `/knowledge/${row.kb_id}` : undefined,
+    };
+  }
+  // 3. 其他 → 系統
+  return { kind: "system", icon: "⚙️", name: "系統" };
 }
 
 export interface BotUsageStat {

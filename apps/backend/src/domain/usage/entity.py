@@ -22,6 +22,8 @@ class UsageRecord:
     cache_creation_tokens: int = 0
     message_id: str | None = None
     bot_id: str | None = None
+    # KB 類任務歸屬 (OCR / Contextual Retrieval / Auto Classification / PDF Rename / Embedding)
+    kb_id: str | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
