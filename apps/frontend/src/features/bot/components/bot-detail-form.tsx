@@ -717,6 +717,67 @@ export function BotDetailForm({
               </p>
             </div>
           </section>
+
+          {/* 進階：子流程模型覆寫（S-KB-Followup.2） */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">進階：子流程模型覆寫</h3>
+            <p className="text-sm text-muted-foreground">
+              主對話用上方「LLM 模型」。下面兩個小任務可另指定 model（未指定則用
+              系統管理 → 供應商設定的預設）。
+            </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-router-model">
+                  意圖分類（Intent Classifier）
+                </Label>
+                <Controller
+                  name="router_model"
+                  control={control}
+                  render={({ field }) => (
+                    <ModelSelect
+                      id="bot-router-model"
+                      value={field.value ?? ""}
+                      onValueChange={(v) =>
+                        field.onChange(v === "__none__" ? "" : v)
+                      }
+                      enabledModels={enabledModels}
+                      placeholder="使用系統預設"
+                      allowEmpty
+                      emptyLabel="使用系統預設"
+                    />
+                  )}
+                />
+                <p className="text-xs text-muted-foreground">
+                  判斷使用者意圖走哪個 worker；模型品質影響路由正確性
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="bot-summary-model">
+                  對話摘要（Conversation Summary）
+                </Label>
+                <Controller
+                  name="summary_model"
+                  control={control}
+                  render={({ field }) => (
+                    <ModelSelect
+                      id="bot-summary-model"
+                      value={field.value ?? ""}
+                      onValueChange={(v) =>
+                        field.onChange(v === "__none__" ? "" : v)
+                      }
+                      enabledModels={enabledModels}
+                      placeholder="使用系統預設"
+                      allowEmpty
+                      emptyLabel="使用系統預設"
+                    />
+                  )}
+                />
+                <p className="text-xs text-muted-foreground">
+                  對話結束時自動產生摘要（用於搜尋與分析）；便宜 model 即可
+                </p>
+              </div>
+            </div>
+          </section>
         </TabsContent>
 
         {/* ================================================================ */}
