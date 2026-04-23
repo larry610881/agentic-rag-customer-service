@@ -38,11 +38,16 @@ const OUTCOME_ICON: Record<string, string> = {
 interface GroupedTableProps {
   filters: Omit<AgentTraceFilters, "limit" | "offset">;
   onSelectTrace: (trace: AgentExecutionTrace) => void;
+  // S-ConvInsights.1: 選中 conversation（點擊 group header 時觸發），用於對話與追蹤 master-detail
+  onSelectConversation?: (conversationId: string) => void;
+  selectedConversationId?: string | null;
 }
 
 export function AgentTracesGroupedTable({
   filters,
   onSelectTrace,
+  onSelectConversation,
+  selectedConversationId,
 }: GroupedTableProps) {
   const [page, setPage] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -118,8 +123,20 @@ export function AgentTracesGroupedTable({
               return (
                 <Fragment key={g.conversation_id}>
                   <TableRow
-                    className="cursor-pointer hover:bg-muted/40"
-                    onClick={() => toggle(g.conversation_id)}
+                    className={
+                      "cursor-pointer hover:bg-muted/40 " +
+                      (selectedConversationId === g.conversation_id
+                        ? "bg-primary/5"
+                        : "")
+                    }
+                    onClick={() => {
+                      if (onSelectConversation) {
+                        onSelectConversation(g.conversation_id);
+                      } else {
+                        toggle(g.conversation_id);
+                      }
+                    }}
+                    onDoubleClick={() => toggle(g.conversation_id)}
                   >
                     <TableCell>
                       {isOpen ? (
