@@ -4,7 +4,6 @@ import { tenantHandlers } from "./handlers/tenants";
 import { knowledgeBaseHandlers } from "./handlers/knowledge-bases";
 import { documentHandlers } from "./handlers/documents";
 import { taskHandlers } from "./handlers/tasks";
-import { ragHandlers } from "./handlers/rag";
 import { agentHandlers } from "./handlers/agent";
 import { botHandlers } from "./handlers/bots";
 import { conversationHandlers } from "./handlers/conversations";
@@ -24,7 +23,6 @@ export const handlers = [
   ...knowledgeBaseHandlers,
   ...documentHandlers,
   ...taskHandlers,
-  ...ragHandlers,
   ...agentHandlers,
   ...botHandlers,
   ...conversationHandlers,

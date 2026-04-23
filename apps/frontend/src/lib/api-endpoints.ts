@@ -115,10 +115,6 @@ export const API_ENDPOINTS = {
   tasks: {
     detail: (id: string) => `/api/v1/tasks/${id}`,
   },
-  rag: {
-    query: "/api/v1/rag/query",
-    queryStream: "/api/v1/rag/query/stream",
-  },
   agent: {
     chat: "/api/v1/agent/chat",
     chatStream: "/api/v1/agent/chat/stream",

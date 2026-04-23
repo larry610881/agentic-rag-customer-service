@@ -3,11 +3,10 @@ Feature: Token Usage 追蹤
   我希望每次 LLM 呼叫都記錄 token 使用量
   以便追蹤成本與使用模式
 
-  Scenario: RAG 查詢結果包含 token 使用量
-    Given 知識庫已設定且有搜尋結果
-    When 執行 RAG 查詢
-    Then RAGResponse 應包含 usage 欄位
-    And usage 的 model 應為 "fake"
+  # Scenario: RAG 查詢結果包含 token 使用量（已刪 — S-KB-Followup.2 清 pure RAG legacy）
+  # 原測試 QueryRAGUseCase.execute() 的 RAGResponse.usage，但 .execute() 已移除
+  # (/rag/query endpoint 與對應 use case method 隨 pure RAG 模式 deprecation 一起刪)。
+  # ReAct 主對話的 token 記錄由 agent_router 的 stream usage_data 流程保證（a5407a8 stream_usage=True fix）。
 
   Scenario: FakeLLM 回傳零 usage
     Given 使用 FakeLLMService

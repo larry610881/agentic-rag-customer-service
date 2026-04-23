@@ -547,7 +547,6 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.knowledge_base_router",
             "src.interfaces.api.document_router",
             "src.interfaces.api.task_router",
-            "src.interfaces.api.rag_router",
             "src.interfaces.api.agent_router",
             "src.interfaces.api.conversation_router",
             "src.interfaces.api.feedback_router",

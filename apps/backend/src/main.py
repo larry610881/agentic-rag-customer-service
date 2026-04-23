@@ -266,7 +266,6 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.conversation_router import router as conversation_router
         from src.interfaces.api.document_router import router as document_router
         from src.interfaces.api.knowledge_base_router import router as kb_router
-        from src.interfaces.api.rag_router import router as rag_router
         from src.interfaces.api.task_router import router as task_router
         from src.interfaces.api.tenant_router import router as tenant_router
         from src.interfaces.api.usage_router import router as usage_router
@@ -277,7 +276,6 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         application.include_router(kb_router)
         application.include_router(document_router)
         application.include_router(task_router)
-        application.include_router(rag_router)
         application.include_router(agent_router)
         application.include_router(conversation_router)
         application.include_router(usage_router)

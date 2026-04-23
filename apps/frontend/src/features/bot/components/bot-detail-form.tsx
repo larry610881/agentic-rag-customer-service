@@ -140,6 +140,7 @@ const botFormSchema = z.object({
     .max(10)
     .default([]),
   router_model: z.string().default(""),
+  summary_model: z.string().default(""),
   rerank_enabled: z.boolean().default(false),
   rerank_model: z.string().default(""),
   rerank_top_n: z.coerce.number().int().min(5).max(50).default(20),
@@ -261,6 +262,8 @@ export function BotDetailForm({
       rerank_model: bot.rerank_model ?? "",
       rerank_top_n: bot.rerank_top_n ?? 20,
       intent_routes: bot.intent_routes ?? [],
+      router_model: bot.router_model ?? "",
+      summary_model: bot.summary_model ?? "",
       busy_reply_message:
         bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
       line_channel_secret: bot.line_channel_secret,
@@ -363,6 +366,8 @@ export function BotDetailForm({
       rerank_model: bot.rerank_model ?? "",
       rerank_top_n: bot.rerank_top_n ?? 20,
       intent_routes: bot.intent_routes ?? [],
+      router_model: bot.router_model ?? "",
+      summary_model: bot.summary_model ?? "",
       busy_reply_message:
         bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
       line_channel_secret: bot.line_channel_secret,

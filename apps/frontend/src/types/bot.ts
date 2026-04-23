@@ -72,6 +72,7 @@ export interface Bot {
   rerank_top_n: number;
   intent_routes: IntentRoute[];
   router_model: string;
+  summary_model?: string;
   busy_reply_message: string;
   line_channel_secret: string | null;
   line_channel_access_token: string | null;
@@ -120,6 +121,7 @@ export interface CreateBotRequest {
   rerank_top_n?: number;
   intent_routes?: IntentRoute[];
   router_model?: string;
+  summary_model?: string;
   busy_reply_message?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;
@@ -163,6 +165,7 @@ export interface UpdateBotRequest {
   rerank_top_n?: number;
   intent_routes?: IntentRoute[];
   router_model?: string;
+  summary_model?: string;
   busy_reply_message?: string;
   line_channel_secret?: string | null;
   line_channel_access_token?: string | null;

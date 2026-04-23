@@ -76,35 +76,8 @@ def setup_rag(context):
         )
     )
 
-    context["use_case"] = QueryRAGUseCase(
-        knowledge_base_repository=mock_kb_repo,
-        embedding_service=mock_embedding,
-        vector_store=mock_vector_store,
-        llm_service=mock_llm,
-    )
-
-
-@when("執行 RAG 查詢")
-def do_rag_query(context):
-    context["result"] = _run(
-        context["use_case"].execute(
-            QueryRAGCommand(
-                tenant_id="tenant-001",
-                kb_id="kb-001",
-                query="退貨政策是什麼",
-            )
-        )
-    )
-
-
-@then("RAGResponse 應包含 usage 欄位")
-def verify_usage_exists(context):
-    assert context["result"].usage is not None
-
-
-@then('usage 的 model 應為 "fake"')
-def verify_usage_model(context):
-    assert context["result"].usage.model == "fake"
+    # S-KB-Followup.2: 原測試 QueryRAGUseCase.execute()，已隨 pure RAG legacy 清除。
+    # context 裡保留 mock_* 但不建 use_case。
 
 
 # --- Scenario: FakeLLM 回傳零 usage ---
