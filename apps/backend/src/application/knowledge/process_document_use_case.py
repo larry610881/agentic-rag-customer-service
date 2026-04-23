@@ -208,7 +208,6 @@ class ProcessDocumentUseCase:
                                 model=model,
                                 input_tokens=in_tok,
                                 output_tokens=out_tok,
-                                total_tokens=in_tok + out_tok,
                             ),
                         )
             else:
@@ -368,7 +367,6 @@ class ProcessDocumentUseCase:
                             model=ctx_model,
                             input_tokens=ctx_in,
                             output_tokens=ctx_out,
-                            total_tokens=ctx_in + ctx_out,
                             cache_read_tokens=ctx_cache_read,
                             cache_creation_tokens=ctx_cache_creation,
                         ),
@@ -410,7 +408,6 @@ class ProcessDocumentUseCase:
                             model=embed_model,
                             input_tokens=embed_tokens,
                             output_tokens=0,
-                            total_tokens=embed_tokens,
                         ),
                     )
 
@@ -635,7 +632,6 @@ class ProcessDocumentUseCase:
                         model=model,
                         input_tokens=result.input_tokens,
                         output_tokens=result.output_tokens,
-                        total_tokens=result.input_tokens + result.output_tokens,
                     ),
                 )
 

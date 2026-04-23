@@ -43,7 +43,6 @@ def calculate_usage(
         model=model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        total_tokens=input_tokens + cache_read_tokens + cache_creation_tokens + output_tokens,
         estimated_cost=estimated_cost,
         cache_read_tokens=cache_read_tokens,
         cache_creation_tokens=cache_creation_tokens,

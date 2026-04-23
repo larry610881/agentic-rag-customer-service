@@ -103,7 +103,6 @@ class SearchConversationsUseCase:
                     model=embedding_model,
                     input_tokens=embedding_tokens,
                     output_tokens=0,
-                    total_tokens=embedding_tokens,
                 ),
                 bot_id=None,
             )

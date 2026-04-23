@@ -109,7 +109,6 @@ class ReEmbedChunkUseCase:
                 model=getattr(self._embed, "model_name", "embedding"),
                 input_tokens=len(embed_text),  # 簡估；實際由 service 回傳 tokens 更準
                 output_tokens=0,
-                total_tokens=len(embed_text),
                 estimated_cost=0.0,
             )
             try:

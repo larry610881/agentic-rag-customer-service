@@ -61,7 +61,6 @@ def extract_usage_from_langchain_messages(
         model=model_name,
         input_tokens=total_input,
         output_tokens=total_output,
-        total_tokens=total,
         cache_read_tokens=total_cache_read,
         cache_creation_tokens=total_cache_creation,
     )
@@ -75,7 +74,6 @@ def extract_usage_from_accumulated(acc: dict[str, Any]) -> TokenUsage | None:
         model=acc.get("model", "unknown"),
         input_tokens=acc.get("input_tokens", 0),
         output_tokens=acc.get("output_tokens", 0),
-        total_tokens=acc.get("total_tokens", 0),
         estimated_cost=acc.get("estimated_cost", 0.0),
         cache_read_tokens=acc.get("cache_read_tokens", 0),
         cache_creation_tokens=acc.get("cache_creation_tokens", 0),

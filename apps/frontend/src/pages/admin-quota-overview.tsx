@@ -27,6 +27,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
 import { getCategoryShortLabel } from "@/constants/usage-categories";
 
 const containerVariants: Variants = {
@@ -231,9 +237,46 @@ export default function AdminQuotaOverviewPage() {
                   <TableRow>
                     <TableHead>租戶</TableHead>
                     <TableHead>方案</TableHead>
-                    <TableHead className="min-w-[220px]">Base 進度</TableHead>
+                    <TableHead className="min-w-[220px]">
+                      <span className="inline-flex items-center gap-1">
+                        Base 進度
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p className="text-xs">
+                              <b>Base 進度</b> = ledger.base_total - base_remaining
+                            </p>
+                            <p className="text-xs mt-1">
+                              累積扣 quota 的 tokens（含 input/output/cache_read/cache_creation）。
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </TableHead>
                     <TableHead>Addon 餘額</TableHead>
-                    <TableHead>本月已用</TableHead>
+                    <TableHead>
+                      <span className="inline-flex items-center gap-1">
+                        本月已用
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p className="text-xs">
+                              <b>本月已用</b> = SUM(token_usage_records) (含 cache)。
+                            </p>
+                            <p className="text-xs mt-1">
+                              理論上應與 Base 進度差距 = Addon 已使用量。差距異常時可能是
+                              ledger.deduct 失敗（看 backend warning log{" "}
+                              <code>ledger.deduct_failed</code>）或計費類別排除某些
+                              category。
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </TableHead>
                     <TableHead>計費類別</TableHead>
                   </TableRow>
                 </TableHeader>

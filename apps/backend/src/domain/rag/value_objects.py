@@ -37,15 +37,29 @@ class Source:
 
 @dataclass(frozen=True)
 class TokenUsage:
-    """LLM Token 使用量"""
+    """LLM Token 使用量
+
+    total_tokens 為 @property（= input + output + cache_read + cache_creation），
+    不再是 field — 避免 caller 手動組 total 時忘記加 cache 的 bug（Carrefour
+    5.14M cache tokens 沒扣 quota 事件）。DB 寫入的 total_tokens 欄位一律透過
+    此 property 讀，保證 ledger.deduct 與 token_usage_records 對齊。
+    """
 
     model: str
     input_tokens: int
     output_tokens: int
-    total_tokens: int
     estimated_cost: float = 0.0
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return (
+            self.input_tokens
+            + self.output_tokens
+            + self.cache_read_tokens
+            + self.cache_creation_tokens
+        )
 
     @staticmethod
     def zero(model: str = "unknown") -> TokenUsage:
@@ -53,7 +67,6 @@ class TokenUsage:
             model=model,
             input_tokens=0,
             output_tokens=0,
-            total_tokens=0,
             estimated_cost=0.0,
         )
 
@@ -62,7 +75,6 @@ class TokenUsage:
             model=self.model,
             input_tokens=self.input_tokens + other.input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,
-            total_tokens=self.total_tokens + other.total_tokens,
             estimated_cost=self.estimated_cost + other.estimated_cost,
             cache_read_tokens=self.cache_read_tokens + other.cache_read_tokens,
             cache_creation_tokens=self.cache_creation_tokens + other.cache_creation_tokens,

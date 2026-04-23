@@ -293,7 +293,6 @@ class PromptGuardService:
                         model=result.model,
                         input_tokens=result.input_tokens,
                         output_tokens=result.output_tokens,
-                        total_tokens=result.input_tokens + result.output_tokens,
                         cache_read_tokens=result.cache_read_tokens,
                         cache_creation_tokens=result.cache_creation_tokens,
                     ),

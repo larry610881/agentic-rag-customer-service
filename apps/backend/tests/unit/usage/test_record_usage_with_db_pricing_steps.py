@@ -128,7 +128,6 @@ def record(context, model, cost, it, ot):
         model=model,
         input_tokens=it,
         output_tokens=ot,
-        total_tokens=it + ot,
         estimated_cost=cost,
     )
     run(

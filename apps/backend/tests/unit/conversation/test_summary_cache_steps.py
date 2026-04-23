@@ -52,7 +52,7 @@ def setup_messages(context):
         return_value=LLMResult(
             text="這是對話摘要",
             usage=TokenUsage(
-                model="test", input_tokens=0, output_tokens=0, total_tokens=0
+                model="test", input_tokens=0, output_tokens=0
             ),
         )
     )

@@ -72,8 +72,6 @@ class GenerateConversationSummaryUseCase:
                 model=result.summary_model,
                 input_tokens=result.summary_input_tokens,
                 output_tokens=result.summary_output_tokens,
-                total_tokens=result.summary_input_tokens
-                + result.summary_output_tokens,
             ),
             bot_id=conv.bot_id,
         )
@@ -86,7 +84,6 @@ class GenerateConversationSummaryUseCase:
                     model=result.embedding_model,
                     input_tokens=result.embedding_tokens,
                     output_tokens=0,
-                    total_tokens=result.embedding_tokens,
                 ),
                 bot_id=conv.bot_id,
             )

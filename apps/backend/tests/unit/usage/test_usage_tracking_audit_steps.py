@@ -282,7 +282,6 @@ def setup_intent_classifier(context, inp, out):
             model="test-model",
             input_tokens=inp,
             output_tokens=out,
-            total_tokens=inp + out,
         ),
     ))
     context["mock_llm"] = mock_llm

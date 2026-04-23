@@ -144,7 +144,6 @@ class ClassifyKbUseCase:
                     model=self._classification.last_model,
                     input_tokens=cls_in,
                     output_tokens=cls_out,
-                    total_tokens=cls_in + cls_out,
                     cache_read_tokens=cls_cache_read,
                     cache_creation_tokens=cls_cache_creation,
                 ),

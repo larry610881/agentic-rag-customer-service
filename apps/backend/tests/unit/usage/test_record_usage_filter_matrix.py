@@ -65,7 +65,6 @@ def _make_usage(model: str = "gpt-4o") -> TokenUsage:
         model=model,
         input_tokens=half,
         output_tokens=FIXED_TOKENS - half,
-        total_tokens=FIXED_TOKENS,
     )
 
 
@@ -216,6 +215,39 @@ def test_deduct_failure_does_not_break_audit(category, monkeypatch):
     first_args = warning_calls[0][0]
     event = first_args[0] if first_args else ""
     assert "deduct_failed" in event
+
+
+# ---------------------------------------------------------------------------
+# Case H — Regression (S-KB-Followup.1): deduct 必須含 cache_read + cache_creation
+# Carrefour 實例：contextual_retrieval 4.65M cache_read + 490K cache_creation
+# 漏進 ledger，造成 base_remaining 顯示 7.39M / 10M 但實際本月用了 12.53M。
+# ---------------------------------------------------------------------------
+def test_deduct_includes_cache_tokens():
+    """TokenUsage.total_tokens 改 @property 後，含 cache 的 usage 應該完整扣 ledger。"""
+    tenant = _make_tenant(included=None)  # 全部計入
+    uc, _usage_repo, deduct, _ = _make_use_case(tenant)
+
+    usage = TokenUsage(
+        model="anthropic:claude-haiku-4-5",
+        input_tokens=1_000_000,
+        output_tokens=20_000,
+        cache_read_tokens=4_650_000,
+        cache_creation_tokens=490_000,
+    )
+    expected_total = 1_000_000 + 20_000 + 4_650_000 + 490_000  # 6,160,000
+
+    _run(uc.execute(
+        tenant_id="test-tenant",
+        request_type="contextual_retrieval",
+        usage=usage,
+    ))
+
+    deduct.execute.assert_awaited_once()
+    actual = deduct.execute.await_args.kwargs["tokens"]
+    assert actual == expected_total, (
+        f"deduct 必須傳 input+output+cache_read+cache_creation = {expected_total}, "
+        f"實際 {actual}（差 {expected_total - actual}）"
+    )
 
 
 # ---------------------------------------------------------------------------

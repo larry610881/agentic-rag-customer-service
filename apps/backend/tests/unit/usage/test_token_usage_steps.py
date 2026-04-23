@@ -151,7 +151,6 @@ def setup_zero_cost_usage(context):
         model="gpt-5.1-2025-11-13",
         input_tokens=55764,
         output_tokens=479,
-        total_tokens=56243,
         estimated_cost=0.0,
     )
 
@@ -187,7 +186,6 @@ def setup_existing_cost_usage(context):
         model="gpt-5.1",
         input_tokens=1000,
         output_tokens=500,
-        total_tokens=1500,
         estimated_cost=0.00625,
     )
     context["original_cost"] = 0.00625
@@ -208,14 +206,12 @@ def setup_two_usages(context):
         model="test-model",
         input_tokens=100,
         output_tokens=50,
-        total_tokens=150,
         estimated_cost=0.001,
     )
     context["usage_b"] = TokenUsage(
         model="test-model",
         input_tokens=200,
         output_tokens=100,
-        total_tokens=300,
         estimated_cost=0.002,
     )
 
@@ -366,7 +362,6 @@ def setup_cache_usage_zero_cost(context):
         model="claude-sonnet-4-6",
         input_tokens=500,
         output_tokens=200,
-        total_tokens=1100,
         estimated_cost=0.0,
         cache_read_tokens=300,
         cache_creation_tokens=100,
