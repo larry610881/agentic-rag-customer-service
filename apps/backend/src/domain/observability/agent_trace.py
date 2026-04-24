@@ -90,7 +90,29 @@ class AgentExecutionTrace:
         return node.node_id
 
     def finish(self, total_ms: float) -> None:
+        """完成 trace：記錄 total_ms + 聚合各 node 的 token_usage 為 total_tokens。
+
+        Sprint A+ Bug 2 修復：原本 total_tokens 永遠 None → 前端顯示「0 tokens」。
+        改為從 nodes[].token_usage 加總 input/output/cost。
+        """
         self.total_ms = round(total_ms, 1)
+
+        input_sum = 0
+        output_sum = 0
+        cost_sum = 0.0
+        for node in self.nodes:
+            usage = node.token_usage or {}
+            input_sum += int(usage.get("input_tokens") or 0)
+            output_sum += int(usage.get("output_tokens") or 0)
+            cost_sum += float(usage.get("estimated_cost") or 0.0)
+
+        if input_sum > 0 or output_sum > 0 or cost_sum > 0.0:
+            self.total_tokens = {
+                "input_tokens": input_sum,
+                "output_tokens": output_sum,
+                "total": input_sum + output_sum,
+                "estimated_cost": round(cost_sum, 6),
+            }
 
     def to_dict(self) -> dict[str, Any]:
         return {

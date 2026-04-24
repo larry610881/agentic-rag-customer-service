@@ -31,6 +31,11 @@ export interface ConversationTokenUsageRow {
   kb_id?: string | null;
   kb_name?: string | null;
   bot_id?: string | null;
+  /** Sprint A+ Bug 1: 從 bots.name JOIN 來 */
+  bot_name?: string | null;
+  /** Sprint A+ Bug 1: 從 agent_execution_traces.source JOIN 來
+   *  可能值："web" | "widget" | "line" | "studio" | "" */
+  channel_source?: string | null;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;

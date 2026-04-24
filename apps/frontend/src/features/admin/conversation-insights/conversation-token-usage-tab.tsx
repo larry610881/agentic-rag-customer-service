@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useConversationTokenUsage } from "@/hooks/queries/use-conversation-insights";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -10,6 +11,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getRequestTypeLabel, inferUsageSource } from "@/types/token-usage";
+
+const CHANNEL_LABELS: Record<string, string> = {
+  web: "Web",
+  widget: "Widget",
+  line: "LINE",
+  studio: "Studio",
+};
 
 interface Props {
   conversationId: string;
@@ -70,7 +78,7 @@ export function ConversationTokenUsageTab({ conversationId }: Props) {
                   tenant_id: "",
                   tenant_name: "",
                   bot_id: r.bot_id ?? null,
-                  bot_name: null,
+                  bot_name: r.bot_name ?? null,
                   kb_id: r.kb_id ?? null,
                   kb_name: r.kb_name ?? null,
                   model: r.model,
@@ -83,24 +91,38 @@ export function ConversationTokenUsageTab({ conversationId }: Props) {
                   cache_creation_tokens: r.cache_creation_tokens,
                   message_count: r.message_count,
                 });
+                const channelLabel =
+                  r.channel_source && CHANNEL_LABELS[r.channel_source]
+                    ? CHANNEL_LABELS[r.channel_source]
+                    : null;
                 return (
                   <TableRow key={`${r.request_type}-${r.model}-${idx}`}>
                     <TableCell>{getRequestTypeLabel(r.request_type)}</TableCell>
                     <TableCell>
-                      {src.href ? (
-                        <Link
-                          to={src.href}
-                          className="inline-flex items-center gap-1 hover:underline underline-offset-4"
-                        >
-                          <span>{src.icon}</span>
-                          <span>{src.name}</span>
-                        </Link>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-muted-foreground">
-                          <span>{src.icon}</span>
-                          <span>{src.name}</span>
-                        </span>
-                      )}
+                      <div className="flex flex-col gap-0.5">
+                        {src.href ? (
+                          <Link
+                            to={src.href}
+                            className="inline-flex items-center gap-1 hover:underline underline-offset-4"
+                          >
+                            <span>{src.icon}</span>
+                            <span>{src.name}</span>
+                          </Link>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground">
+                            <span>{src.icon}</span>
+                            <span>{src.name}</span>
+                          </span>
+                        )}
+                        {channelLabel && (
+                          <Badge
+                            variant="outline"
+                            className="w-fit px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+                          >
+                            📡 {channelLabel}
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="font-medium">{r.model}</TableCell>
                     <TableCell className="text-right">

@@ -61,11 +61,15 @@ class ConversationMessagesResponse(BaseModel):
 
 
 class TokenUsageRow(BaseModel):
+    """Sprint A+ Bug 1: 加 bot_name + channel_source 讓前端顯示兩階來源。"""
+
     model: str
     request_type: str
     kb_id: str | None = None
     kb_name: str | None = None
     bot_id: str | None = None
+    bot_name: str | None = None
+    channel_source: str | None = None  # "web" | "widget" | "line" | "studio" | ""
     input_tokens: int
     output_tokens: int
     cache_read_tokens: int
