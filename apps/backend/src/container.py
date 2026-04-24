@@ -158,7 +158,6 @@ from src.application.knowledge.upload_document_use_case import (
 from src.application.knowledge.view_document_use_case import (
     ViewDocumentUseCase,
 )
-from src.application.ledger.deduct_tokens_use_case import DeductTokensUseCase
 from src.application.ledger.ensure_ledger_use_case import EnsureLedgerUseCase
 from src.application.ledger.get_tenant_quota_use_case import (
     GetTenantQuotaUseCase,
@@ -168,6 +167,9 @@ from src.application.ledger.list_all_tenants_quotas_use_case import (
 )
 from src.application.ledger.process_monthly_reset_use_case import (
     ProcessMonthlyResetUseCase,
+)
+from src.application.quota.compute_tenant_quota_use_case import (
+    ComputeTenantQuotaUseCase,
 )
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
 from src.application.memory.extract_memory_use_case import ExtractMemoryUseCase
@@ -434,6 +436,9 @@ from src.infrastructure.db.repositories.tenant_repository import (
 )
 from src.infrastructure.db.repositories.token_ledger_repository import (
     SQLAlchemyTokenLedgerRepository,
+)
+from src.infrastructure.db.repositories.token_ledger_topup_repository import (
+    SQLAlchemyTokenLedgerTopupRepository,
 )
 from src.infrastructure.db.repositories.usage_repository import (
     SQLAlchemyUsageRepository,
@@ -744,6 +749,12 @@ class Container(containers.DeclarativeContainer):
 
     token_ledger_repository = providers.Factory(
         SQLAlchemyTokenLedgerRepository,
+        session=db_session,
+    )
+
+    # S-Ledger-Unification P1: append-only topups
+    token_ledger_topup_repository = providers.Factory(
+        SQLAlchemyTokenLedgerTopupRepository,
         session=db_session,
     )
 
@@ -1285,10 +1296,19 @@ class Container(containers.DeclarativeContainer):
         plan_repository=plan_repository,
     )
 
-    # S-Token-Gov.3: Billing 3 個 use case（必須先於 deduct_tokens 註冊）
+    # S-Ledger-Unification P3: 唯一 quota 讀取入口 — 需先於其他依賴它的 use case 定義
+    compute_tenant_quota_use_case = providers.Factory(
+        ComputeTenantQuotaUseCase,
+        tenant_repository=tenant_repository,
+        ensure_ledger=ensure_ledger_use_case,
+        usage_repository=usage_repository,
+        topup_repository=token_ledger_topup_repository,
+    )
+
+    # S-Ledger-Unification P4: topup_addon 改為寫 token_ledger_topups append-only
     topup_addon_use_case = providers.Factory(
         TopupAddonUseCase,
-        ledger_repository=token_ledger_repository,
+        topup_repository=token_ledger_topup_repository,
         billing_transaction_repository=billing_transaction_repository,
     )
 
@@ -1296,6 +1316,7 @@ class Container(containers.DeclarativeContainer):
         ProcessQuotaAlertsUseCase,
         ledger_repository=token_ledger_repository,
         alert_repository=quota_alert_log_repository,
+        compute_quota=compute_tenant_quota_use_case,
     )
 
     list_quota_events_use_case = providers.Factory(
@@ -1337,14 +1358,8 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
-    deduct_tokens_use_case = providers.Factory(
-        DeductTokensUseCase,
-        ledger_repository=token_ledger_repository,
-        ensure_ledger=ensure_ledger_use_case,
-        # S-Token-Gov.3: 注入 auto-topup hook
-        topup_addon=topup_addon_use_case,
-        plan_repository=plan_repository,
-    )
+    # S-Ledger-Unification P4: DeductTokensUseCase 已廢棄，將於 P7 刪除
+    # 所有 quota 扣除改由 ComputeTenantQuotaUseCase 即時計算
 
     process_monthly_reset_use_case = providers.Factory(
         ProcessMonthlyResetUseCase,
@@ -1360,21 +1375,22 @@ class Container(containers.DeclarativeContainer):
         usage_repository=usage_repository,
     )
 
-    # S-Token-Gov.2.5: 系統層額度總覽 use case
+    # S-Ledger-Unification P5: 切換底層到 ComputeTenantQuotaUseCase
     list_all_tenants_quotas_use_case = providers.Factory(
         ListAllTenantsQuotasUseCase,
         tenant_repository=tenant_repository,
         ledger_repository=token_ledger_repository,
-        plan_repository=plan_repository,
-        usage_repository=usage_repository,
+        compute_quota=compute_tenant_quota_use_case,
     )
 
     record_usage_use_case = providers.Factory(
         RecordUsageUseCase,
         usage_repository=usage_repository,
-        # S-Token-Gov.2: 注入後每筆 usage 寫入會 hook ledger.deduct
-        deduct_tokens=deduct_tokens_use_case,
+        # S-Ledger-Unification P4: 不再 hook ledger.deduct，改為 auto-topup check
+        compute_quota=compute_tenant_quota_use_case,
+        topup_addon=topup_addon_use_case,
         tenant_repository=tenant_repository,
+        plan_repository=plan_repository,
         # S-Pricing.1: cache miss 時才 fallback 到 DEFAULT_MODELS
         pricing_cache=pricing_cache,
     )

@@ -1,14 +1,21 @@
-"""錢相關精確 filter matrix — 驗證每個 UsageCategory 的 in/out list 行為。
+"""RecordUsageUseCase 行為 matrix — S-Ledger-Unification P5 rewrite
 
-任何 silent deduction drop = 錢算錯；任何 over-deduction = 客戶被多扣。
-本測試不容忍模糊：每個 category 的 enabled / disabled 路徑各一條斷言。
+舊版本測試「category filter 決定 deduct 是否觸發」— 但 P4 後 deduct 不復存在：
+- Record 無條件寫 usage_records（審計永遠不變）
+- billable filter 改由 ComputeTenantQuotaUseCase 讀取時套用（retroactive）
+- auto-topup 由 RecordUsageUseCase 寫入後檢查 compute_quota 觸發
 
-Plan: .claude/plans/b-bug-delightful-starlight.md
-Issue: #35
+本檔聚焦驗證 RecordUsageUseCase 的新職責：
+- Case A: 永遠寫 usage_records（不分 category）
+- Case B: 非 enum category 拒絕
+- Case C: compute_quota 說 base+addon 耗盡 → 呼叫 topup_addon
+- Case D: compute_quota 有餘額 → 不呼叫 topup_addon
+- Case E: compute_quota / topup_addon 例外不污染 audit（warn log 保留）
 """
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,8 +28,6 @@ from src.domain.usage.category import UsageCategory
 
 ALL_CATEGORIES = sorted(c.value for c in UsageCategory)
 
-# Stage 4.1 刪除 OTHER 後 → 12 個。
-# S-Gov.6b 加 conversation_summary → 13 個。
 EXPECTED_CATEGORIES: set[str] = {
     "rag",
     "chat_web",
@@ -36,10 +41,10 @@ EXPECTED_CATEGORIES: set[str] = {
     "pdf_rename",
     "auto_classification",
     "intent_classify",
-    "conversation_summary",  # S-Gov.6b
+    "conversation_summary",
 }
 
-FIXED_TOKENS = 12345  # 明確 odd 數，避免意外等於預設 0 導致假陽性
+FIXED_TOKENS = 12345
 
 
 def _run(coro):
@@ -68,122 +73,149 @@ def _make_usage(model: str = "gpt-4o") -> TokenUsage:
     )
 
 
-def _make_use_case(tenant: Tenant | None, deduct: AsyncMock | None = None):
+def _make_use_case(
+    tenant: Tenant | None,
+    *,
+    base_remaining: int = 10_000_000,
+    addon_remaining: int = 0,
+    topup_mock: AsyncMock | None = None,
+    compute_mock: AsyncMock | None = None,
+):
     usage_repo = AsyncMock()
     tenant_repo = AsyncMock()
     tenant_repo.find_by_id = AsyncMock(return_value=tenant)
-    deduct = deduct or AsyncMock()
+
+    snapshot = SimpleNamespace(
+        cycle_year_month="2026-04",
+        base_remaining=base_remaining,
+        addon_remaining=addon_remaining,
+    )
+    compute = compute_mock or AsyncMock()
+    if compute_mock is None:
+        compute.execute = AsyncMock(return_value=snapshot)
+
+    topup = topup_mock or AsyncMock()
+    plan_repo = AsyncMock()
+    plan = SimpleNamespace(
+        name="starter", addon_pack_tokens=5_000_000, currency="TWD"
+    )
+    plan_repo.find_by_name = AsyncMock(return_value=plan)
+
     uc = RecordUsageUseCase(
         usage_repository=usage_repo,
-        deduct_tokens=deduct,
+        compute_quota=compute,
+        topup_addon=topup,
         tenant_repository=tenant_repo,
+        plan_repository=plan_repo,
     )
-    return uc, usage_repo, deduct, tenant_repo
+    return uc, usage_repo, compute, topup
 
 
-# ---------------------------------------------------------------------------
-# Case A — category 在 included_categories 內 → 必須扣，且 tokens 精確
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Case A — audit 永遠寫（不分 category, 不分 filter）
+# --------------------------------------------------------------------------
 @pytest.mark.parametrize("category", ALL_CATEGORIES)
-def test_deducts_when_category_explicitly_included(category):
-    tenant = _make_tenant(included=[category])
-    uc, usage_repo, deduct, _ = _make_use_case(tenant)
-
+def test_usage_record_saved_regardless_of_category(category):
+    tenant = _make_tenant(included=[category])  # 有 filter
+    uc, usage_repo, _, _ = _make_use_case(tenant)
     _run(uc.execute(
         tenant_id="test-tenant",
         request_type=category,
         usage=_make_usage(),
     ))
-
     usage_repo.save.assert_awaited_once()
-    deduct.execute.assert_awaited_once()
-    call_kwargs = deduct.execute.await_args.kwargs
-    assert call_kwargs["tokens"] == FIXED_TOKENS
-    assert call_kwargs["tenant_id"] == "test-tenant"
-    assert call_kwargs["plan_name"] == "starter"
 
 
-# ---------------------------------------------------------------------------
-# Case B — category 不在 included_categories 內 → 絕不扣，但 audit 永遠寫
-# ---------------------------------------------------------------------------
 @pytest.mark.parametrize("category", ALL_CATEGORIES)
-def test_skips_deduct_when_category_not_in_list(category):
-    others = [c for c in ALL_CATEGORIES if c != category]
-    tenant = _make_tenant(included=others)
-    uc, usage_repo, deduct, _ = _make_use_case(tenant)
-
+def test_usage_record_saved_when_category_excluded(category):
+    """即使 category 被 include list 排除，usage_records 仍寫（審計不漏）。"""
+    tenant = _make_tenant(included=[])  # 全部不計入
+    uc, usage_repo, _, _ = _make_use_case(tenant)
     _run(uc.execute(
         tenant_id="test-tenant",
         request_type=category,
         usage=_make_usage(),
     ))
-
-    usage_repo.save.assert_awaited_once()      # audit 永遠寫
-    deduct.execute.assert_not_awaited()        # 絕不扣
-
-
-# ---------------------------------------------------------------------------
-# Case C — included_categories = None → 每個 category 都扣（safe default）
-# ---------------------------------------------------------------------------
-@pytest.mark.parametrize("category", ALL_CATEGORIES)
-def test_deducts_all_when_included_is_none(category):
-    tenant = _make_tenant(included=None)
-    uc, _usage_repo, deduct, _ = _make_use_case(tenant)
-
-    _run(uc.execute(
-        tenant_id="test-tenant",
-        request_type=category,
-        usage=_make_usage(),
-    ))
-
-    deduct.execute.assert_awaited_once()
-    assert deduct.execute.await_args.kwargs["tokens"] == FIXED_TOKENS
-
-
-# ---------------------------------------------------------------------------
-# Case D — included_categories = [] → 每個 category 都不扣（POC 免計費）
-# ---------------------------------------------------------------------------
-@pytest.mark.parametrize("category", ALL_CATEGORIES)
-def test_skips_all_when_included_is_empty(category):
-    tenant = _make_tenant(included=[])
-    uc, usage_repo, deduct, _ = _make_use_case(tenant)
-
-    _run(uc.execute(
-        tenant_id="test-tenant",
-        request_type=category,
-        usage=_make_usage(),
-    ))
-
     usage_repo.save.assert_awaited_once()
-    deduct.execute.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
-# Case E — enum fence：UsageCategory 必須剛好是 EXPECTED_CATEGORIES
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Case B — enum fence + 非 enum 拒絕
+# --------------------------------------------------------------------------
 def test_enum_coverage_fence():
-    """若有人新增 / 刪除 UsageCategory 成員，CI 黃燈提醒同步更新。
-
-    Stage 4.1 刪除 OTHER 後 actual == EXPECTED_CATEGORIES。
-    在 OTHER 還在時（Stage 4 之前），此測試應 FAIL（紅燈）。
-    """
     actual = {c.value for c in UsageCategory}
     assert actual == EXPECTED_CATEGORIES, (
-        f"UsageCategory 不符預期 12 個；"
-        f"差異={actual.symmetric_difference(EXPECTED_CATEGORIES)}"
+        f"UsageCategory 不符預期；差異="
+        f"{actual.symmetric_difference(EXPECTED_CATEGORIES)}"
     )
 
 
-# ---------------------------------------------------------------------------
-# Case F — deduction 丟例外不可污染 usage_record（既有 try/except 安全網驗證）
-# ---------------------------------------------------------------------------
-@pytest.mark.parametrize("category", ALL_CATEGORIES)
-def test_deduct_failure_does_not_break_audit(category, monkeypatch):
-    """錢丟了要至少留下 warning log，但絕不該 raise 污染 audit。
+@pytest.mark.parametrize("bad_value", ["other", "agent", "unknown", "", "CHAT_WEB"])
+def test_rejects_non_enum_request_type(bad_value):
+    tenant = _make_tenant(included=None)
+    uc, usage_repo, _, topup = _make_use_case(tenant)
+    with pytest.raises(ValueError):
+        _run(uc.execute(
+            tenant_id="test-tenant",
+            request_type=bad_value,
+            usage=_make_usage(),
+        ))
+    usage_repo.save.assert_not_called()
+    topup.execute.assert_not_called()
 
-    Patch src.application.usage.record_usage_use_case.logger 作 spy，
-    比 caplog 可靠（structlog 經 stdlib bridge 後的行為不一致）。
-    """
+
+# --------------------------------------------------------------------------
+# Case C — base+addon 都耗盡 → 觸發 auto-topup
+# --------------------------------------------------------------------------
+def test_triggers_topup_when_base_and_addon_exhausted():
+    tenant = _make_tenant(included=None)
+    uc, _, _, topup = _make_use_case(
+        tenant, base_remaining=0, addon_remaining=-100
+    )
+    _run(uc.execute(
+        tenant_id="test-tenant",
+        request_type="rag",
+        usage=_make_usage(),
+    ))
+    topup.execute.assert_awaited_once()
+    kwargs = topup.execute.await_args.kwargs
+    assert kwargs["tenant_id"] == "test-tenant"
+    assert kwargs["cycle_year_month"] == "2026-04"
+
+
+# --------------------------------------------------------------------------
+# Case D — base 還有餘額 → 不觸發
+# --------------------------------------------------------------------------
+def test_does_not_trigger_topup_when_base_has_balance():
+    tenant = _make_tenant(included=None)
+    uc, _, _, topup = _make_use_case(
+        tenant, base_remaining=5_000_000, addon_remaining=0
+    )
+    _run(uc.execute(
+        tenant_id="test-tenant",
+        request_type="rag",
+        usage=_make_usage(),
+    ))
+    topup.execute.assert_not_called()
+
+
+def test_does_not_trigger_topup_when_addon_still_positive():
+    tenant = _make_tenant(included=None)
+    uc, _, _, topup = _make_use_case(
+        tenant, base_remaining=0, addon_remaining=1_000_000
+    )
+    _run(uc.execute(
+        tenant_id="test-tenant",
+        request_type="rag",
+        usage=_make_usage(),
+    ))
+    topup.execute.assert_not_called()
+
+
+# --------------------------------------------------------------------------
+# Case E — compute_quota / topup 例外不污染 audit
+# --------------------------------------------------------------------------
+def test_topup_hook_failure_does_not_break_audit(monkeypatch):
     from src.application.usage import record_usage_use_case as ruu
 
     warning_calls = []
@@ -195,74 +227,20 @@ def test_deduct_failure_does_not_break_audit(category, monkeypatch):
     })()
     monkeypatch.setattr(ruu, "logger", fake_logger)
 
-    tenant = _make_tenant(included=[category])
-    deduct = AsyncMock()
-    deduct.execute = AsyncMock(side_effect=RuntimeError("simulated ledger outage"))
-    uc, usage_repo, _, _ = _make_use_case(tenant, deduct=deduct)
+    tenant = _make_tenant(included=None)
+    topup = AsyncMock()
+    topup.execute = AsyncMock(side_effect=RuntimeError("topup outage"))
+    uc, usage_repo, _, _ = _make_use_case(
+        tenant, base_remaining=0, addon_remaining=0, topup_mock=topup
+    )
 
-    # 不應 raise（audit 優先於計費）
     _run(uc.execute(
         tenant_id="test-tenant",
-        request_type=category,
+        request_type="rag",
         usage=_make_usage(),
     ))
 
-    # audit 仍然完整
     usage_repo.save.assert_awaited_once()
-    # 至少一次 warning 呼叫 — 錢丟了不能靜默
-    assert len(warning_calls) >= 1, "deduction 失敗應至少留一筆 warning log"
-    # warning event 名稱應含 deduct_failed（方便 alerting grep）
-    first_args = warning_calls[0][0]
-    event = first_args[0] if first_args else ""
-    assert "deduct_failed" in event
-
-
-# ---------------------------------------------------------------------------
-# Case H — Regression (S-KB-Followup.1): deduct 必須含 cache_read + cache_creation
-# Carrefour 實例：contextual_retrieval 4.65M cache_read + 490K cache_creation
-# 漏進 ledger，造成 base_remaining 顯示 7.39M / 10M 但實際本月用了 12.53M。
-# ---------------------------------------------------------------------------
-def test_deduct_includes_cache_tokens():
-    """TokenUsage.total_tokens 改 @property 後，含 cache 的 usage 應該完整扣 ledger。"""
-    tenant = _make_tenant(included=None)  # 全部計入
-    uc, _usage_repo, deduct, _ = _make_use_case(tenant)
-
-    usage = TokenUsage(
-        model="anthropic:claude-haiku-4-5",
-        input_tokens=1_000_000,
-        output_tokens=20_000,
-        cache_read_tokens=4_650_000,
-        cache_creation_tokens=490_000,
-    )
-    expected_total = 1_000_000 + 20_000 + 4_650_000 + 490_000  # 6,160,000
-
-    _run(uc.execute(
-        tenant_id="test-tenant",
-        request_type="contextual_retrieval",
-        usage=usage,
-    ))
-
-    deduct.execute.assert_awaited_once()
-    actual = deduct.execute.await_args.kwargs["tokens"]
-    assert actual == expected_total, (
-        f"deduct 必須傳 input+output+cache_read+cache_creation = {expected_total}, "
-        f"實際 {actual}（差 {expected_total - actual}）"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Case G — 白名單：非 enum 字串必須拒絕（防 legacy / typo）
-# ---------------------------------------------------------------------------
-@pytest.mark.parametrize("bad_value", ["other", "agent", "unknown", "", "CHAT_WEB"])
-def test_rejects_non_enum_request_type(bad_value):
-    tenant = _make_tenant(included=None)
-    uc, usage_repo, deduct, _ = _make_use_case(tenant)
-
-    with pytest.raises(ValueError):
-        _run(uc.execute(
-            tenant_id="test-tenant",
-            request_type=bad_value,
-            usage=_make_usage(),
-        ))
-    usage_repo.save.assert_not_called()
-    deduct.execute.assert_not_called()
+    assert len(warning_calls) >= 1
+    event = warning_calls[0][0][0] if warning_calls[0][0] else ""
+    assert "auto_topup" in event

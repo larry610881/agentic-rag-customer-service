@@ -90,9 +90,11 @@ export default function QuotaPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">
-                  {formatTokens(data.total_used_in_cycle)}
+                  {formatTokens(data.total_billable_in_cycle)}
                 </div>
-                <p className="text-xs text-muted-foreground">tokens</p>
+                <p className="text-xs text-muted-foreground">
+                  計費 tokens（= Base 已扣量）
+                </p>
               </CardContent>
             </Card>
 

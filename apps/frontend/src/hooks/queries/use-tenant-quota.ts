@@ -11,7 +11,8 @@ export interface TenantQuota {
   base_remaining: number;
   addon_remaining: number; // 可為負（軟上限）
   total_remaining: number;
-  total_used_in_cycle: number;
+  // S-Ledger-Unification: 租戶視角只看 billable（= 影響帳單的 tokens）
+  total_billable_in_cycle: number;
   included_categories: string[] | null;
 }
 

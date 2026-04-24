@@ -71,6 +71,11 @@ def test_sum_tokens_in_cycle_delegates_to_sum_tokens_in_range():
         ):
             return []
 
+        async def sum_billable_tokens_in_cycle(  # type: ignore[override]
+            self, tenant_id, cycle_year_month, included_categories
+        ):
+            return 0
+
     repo = FakeRepo()
     result = _run(repo.sum_tokens_in_cycle("t-1", "2026-04"))
 
@@ -111,6 +116,11 @@ def test_sum_tokens_in_cycle_year_boundary():
             self, tenant_id, start_date=None, end_date=None
         ):
             return []
+
+        async def sum_billable_tokens_in_cycle(  # type: ignore[override]
+            self, tenant_id, cycle_year_month, included_categories
+        ):
+            return 0
 
     repo = FakeRepo()
     _run(repo.sum_tokens_in_cycle("t-1", "2026-12"))

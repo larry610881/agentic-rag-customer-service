@@ -383,6 +383,12 @@ async def reset_password(
 
 
 class TenantQuotaOverviewResponse(BaseModel):
+    """系統層配額概覽 — S-Ledger-Unification P5
+
+    同時暴露 audit（含不計費）與 billable（影響帳單）兩個總量，
+    並計算 platform_absorbed = audit - billable（平台吸收的免費 tokens）。
+    """
+
     tenant_id: str
     tenant_name: str
     plan_name: str
@@ -391,7 +397,9 @@ class TenantQuotaOverviewResponse(BaseModel):
     base_remaining: int
     addon_remaining: int
     total_remaining: int
-    total_used_in_cycle: int
+    total_audit_in_cycle: int  # 審計總量
+    total_billable_in_cycle: int  # 計費總量（= 租戶視角的本月已用）
+    platform_absorbed_tokens: int  # = audit - billable
     included_categories: list[str] | None = None
     has_ledger: bool
 
@@ -413,7 +421,14 @@ async def list_all_tenants_quotas(
     """List all tenants' quota for a given cycle (system_admin only)."""
     target_cycle = cycle or current_year_month()
     items = await use_case.execute(target_cycle)
-    return [TenantQuotaOverviewResponse(**asdict(i)) for i in items]
+    return [
+        TenantQuotaOverviewResponse(
+            **asdict(i),
+            platform_absorbed_tokens=i.total_audit_in_cycle
+            - i.total_billable_in_cycle,
+        )
+        for i in items
+    ]
 
 
 # --- Quota Events (S-Token-Gov.3) ---

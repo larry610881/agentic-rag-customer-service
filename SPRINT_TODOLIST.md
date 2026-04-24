@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-14 (Sub-agent Worker 架構 + MCP 租戶權限 + Sentiment 移除)
+> 最後更新：2026-04-24 (S-Ledger-Unification — 統一配額來源 / zero-drift)
 
 ---
 
@@ -1934,3 +1934,4 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | **Sidebar 系統管理分類（IA reorg）** | **✅ 完成** | **100%** | **Commit `23607f1`: 25 項 flat list → 5 大類 collapsible（租戶與計費/內容資產/AI 設定/安全與治理/平台運維）+ 每類獨立 state + 當前頁所在 group 自動強制展開** |
 | **Milvus-KB-Studio 橋接 + context_text 可編輯** | **✅ 完成** | **100%** | **Commit `f9088be`: 對齊官方 Attu 定位研究（Attu 為 DB admin，不做業務編輯/re-embed）。chunk-editor 既有只編 content，補 AI 上下文摘要 Textarea + 任一改動 autosave trigger re-embed。Milvus collection-table 加「編輯 chunks」deep link 跳 KB Studio，admin-milvus 頁頂部加定位說明** |
 | **S-QualityEdit.1「AI 主力 + 人工精修」工作流** | **✅ 完成** | **100%** | **Commit `572c66d`, 10 files: P0 L1 低分 chunk → KB Studio 跳轉（Source VO 加 kb_id + evaluate_combined 加 chunk_ids/kb_ids kwargs + ChunkScoreItem 擴充 + eval table「修正」link）/ P1 Feedback 引用 chunks 結構化 + admin/conversation-insights messages-tab 展開 retrieved_chunks + 兩處同 deep link / P2 chunks-tab 支援 ?highlight= 自動 scroll + 低品質 filter。backend 188 tests pass, frontend tsc 零新錯誤** |
+| **S-Ledger-Unification — 統一配額來源（Zero-Drift 架構）** | **✅ 完成** | **100%** | **Issue [#41](https://github.com/larry610881/agentic-rag-customer-service/issues/41): token_usage_records 為唯一 truth + 新 token_ledger_topups append-only log。ComputeTenantQuotaUseCase 即時算出 base_remaining/addon_remaining/audit/billable，保證 `base_total - base_remaining ≡ min(billable, base_total)`（結構上零 drift）。API rename breaking：total_used_in_cycle → total_audit_in_cycle + total_billable_in_cycle。Admin /quota-overview 並列顯示兩視角 + 平台吸收量。租戶 /quota 顯示 billable。included_categories 變動追溯生效。移除 DeductTokensUseCase + ledger.deduct() hook。Migration 套 local-docker + TRUNCATE 測試資料，dev-vm 尚未套（commit 前提醒）。6 BDD scenarios + rewrite test_record_usage_filter_matrix, 799 backend unit tests pass** |

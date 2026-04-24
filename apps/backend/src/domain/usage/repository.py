@@ -83,6 +83,7 @@ class UsageRepository(ABC):
     ) -> int:
         """SUM total_tokens for (tenant, YYYY-MM cycle). Return 0 if no records.
 
+        審計總量 (audit) — 不過 category filter，代表平台實際成本。
         Route B: Token 本月額度 total_used_in_cycle 由此 method 供值。
         Token-Gov.6: 改為薄 wrapper，內部 delegate 給 sum_tokens_in_range。
         """
@@ -93,3 +94,20 @@ class UsageRepository(ABC):
         else:
             end = datetime(int(year), int(month) + 1, 1, tzinfo=timezone.utc)
         return await self.sum_tokens_in_range(tenant_id, start, end)
+
+    @abstractmethod
+    async def sum_billable_tokens_in_cycle(
+        self,
+        tenant_id: str,
+        cycle_year_month: str,
+        included_categories: list[str] | None,
+    ) -> int:
+        """計費總量 (billable) — 依 tenant.included_categories filter。
+
+        S-Ledger-Unification P2: ComputeTenantQuotaUseCase 用來計算
+        base_remaining 的唯一來源。三態語意：
+        - None → 全部計入（= sum_tokens_in_cycle）
+        - []   → 全部不計入，回 0
+        - list → WHERE request_type IN (...)
+        """
+        ...

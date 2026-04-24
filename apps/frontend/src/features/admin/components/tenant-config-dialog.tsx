@@ -193,9 +193,9 @@ export function TenantConfigDialog({
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span>本月累計用量</span>
+                  <span>本月計費用量</span>
                   <span className="font-mono">
-                    {formatTokens(quota.total_used_in_cycle)}
+                    {formatTokens(quota.total_billable_in_cycle)}
                   </span>
                 </div>
               </div>

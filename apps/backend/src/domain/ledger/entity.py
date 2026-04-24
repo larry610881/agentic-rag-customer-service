@@ -45,23 +45,6 @@ class TokenLedger:
         """總剩餘額度（base + addon，可為負）"""
         return self.base_remaining + self.addon_remaining
 
-    def deduct(self, tokens: int) -> None:
-        """扣用順序：先 base 後 addon。允許 addon 為負（軟上限 — 不阻擋）。
-
-        Args:
-            tokens: 要扣的 token 數，<= 0 時 noop
-        """
-        if tokens <= 0:
-            return
-        self.total_used_in_cycle += tokens
-        if self.base_remaining >= tokens:
-            self.base_remaining -= tokens
-        elif self.base_remaining > 0:
-            # base 部分用完，剩下吃 addon
-            remaining = tokens - self.base_remaining
-            self.base_remaining = 0
-            self.addon_remaining -= remaining
-        else:
-            # base 已用完，全吃 addon（addon 可變負）
-            self.addon_remaining -= tokens
-        self.updated_at = datetime.now(timezone.utc)
+    # S-Ledger-Unification P7: deduct() 方法已移除
+    # base/addon 餘額改由 ComputeTenantQuotaUseCase 從
+    # token_usage_records + token_ledger_topups 即時算出，不再 mutate ledger。

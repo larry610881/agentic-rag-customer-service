@@ -122,7 +122,7 @@ export default function AdminQuotaOverviewPage() {
   const sorted = useMemo(() => {
     if (!data) return [];
     return [...data].sort(
-      (a, b) => b.total_used_in_cycle - a.total_used_in_cycle,
+      (a, b) => b.total_audit_in_cycle - a.total_audit_in_cycle,
     );
   }, [data]);
 
@@ -133,17 +133,23 @@ export default function AdminQuotaOverviewPage() {
         activeLedgers: 0,
         baseUsedPct: 0,
         addonTotal: 0,
+        auditTotal: 0,
+        absorbedTotal: 0,
       };
     }
     let activeLedgers = 0;
     let baseUsedSum = 0;
     let baseTotalSum = 0;
     let addonTotal = 0;
+    let auditTotal = 0;
+    let absorbedTotal = 0;
     for (const item of data) {
       if (item.has_ledger) activeLedgers += 1;
       baseUsedSum += item.base_total - item.base_remaining;
       baseTotalSum += item.base_total;
       addonTotal += item.addon_remaining;
+      auditTotal += item.total_audit_in_cycle;
+      absorbedTotal += item.platform_absorbed_tokens;
     }
     const baseUsedPct =
       baseTotalSum > 0 ? Math.round((baseUsedSum / baseTotalSum) * 100) : 0;
@@ -152,6 +158,8 @@ export default function AdminQuotaOverviewPage() {
       activeLedgers,
       baseUsedPct,
       addonTotal,
+      auditTotal,
+      absorbedTotal,
     };
   }, [data]);
 
@@ -193,7 +201,7 @@ export default function AdminQuotaOverviewPage() {
 
       <motion.div
         variants={itemVariants}
-        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
       >
         <SummaryCard label="租戶總數" value={summary.tenantCount.toString()} />
         <SummaryCard
@@ -208,6 +216,15 @@ export default function AdminQuotaOverviewPage() {
           label="全租戶 Addon 餘額"
           value={formatTokens(summary.addonTotal)}
           highlight={summary.addonTotal < 0 ? "destructive" : undefined}
+        />
+        <SummaryCard
+          label="全平台審計總量"
+          value={formatTokens(summary.auditTotal)}
+        />
+        <SummaryCard
+          label="全平台吸收量"
+          value={formatTokens(summary.absorbedTotal)}
+          highlight={summary.absorbedTotal > 0 ? "destructive" : undefined}
         />
       </motion.div>
 
@@ -237,7 +254,7 @@ export default function AdminQuotaOverviewPage() {
                   <TableRow>
                     <TableHead>租戶</TableHead>
                     <TableHead>方案</TableHead>
-                    <TableHead className="min-w-[220px]">
+                    <TableHead className="min-w-[200px]">
                       <span className="inline-flex items-center gap-1">
                         Base 進度
                         <Tooltip>
@@ -246,10 +263,11 @@ export default function AdminQuotaOverviewPage() {
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs">
                             <p className="text-xs">
-                              <b>Base 進度</b> = ledger.base_total - base_remaining
+                              <b>Base 進度</b> = base_total - base_remaining
                             </p>
                             <p className="text-xs mt-1">
-                              累積扣 quota 的 tokens（含 input/output/cache_read/cache_creation）。
+                              從 token_usage_records 即時算出，結構上永遠 ≡ 計費總量
+                              min(billable, base_total)，不會 drift。
                             </p>
                           </TooltipContent>
                         </Tooltip>
@@ -258,20 +276,36 @@ export default function AdminQuotaOverviewPage() {
                     <TableHead>Addon 餘額</TableHead>
                     <TableHead>
                       <span className="inline-flex items-center gap-1">
-                        本月已用
+                        計費 / 審計
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs">
                             <p className="text-xs">
-                              <b>本月已用</b> = SUM(token_usage_records) (含 cache)。
+                              <b>計費總量</b> = SUM(usage) WHERE category IN filter
+                              （= 租戶看到的「本月已用」）
                             </p>
                             <p className="text-xs mt-1">
-                              理論上應與 Base 進度差距 = Addon 已使用量。差距異常時可能是
-                              ledger.deduct 失敗（看 backend warning log{" "}
-                              <code>ledger.deduct_failed</code>）或計費類別排除某些
-                              category。
+                              <b>審計總量</b> = SUM(usage) 全部（含 platform 吸收）
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </TableHead>
+                    <TableHead>
+                      <span className="inline-flex items-center gap-1">
+                        平台吸收
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p className="text-xs">
+                              <b>平台吸收</b> = 審計 - 計費 = 不計入租戶額度的用量
+                            </p>
+                            <p className="text-xs mt-1">
+                              代表平台吸收的成本（免費送給租戶的 tokens）
                             </p>
                           </TooltipContent>
                         </Tooltip>
@@ -321,12 +355,28 @@ export default function AdminQuotaOverviewPage() {
                           {addonBadge(row.addon_remaining, row.has_ledger)}
                         </TableCell>
                         <TableCell>
-                          <span className="font-mono">
-                            {row.total_used_in_cycle.toLocaleString()}
-                          </span>
-                          <span className="ml-1 text-xs text-muted-foreground">
-                            tokens
-                          </span>
+                          <div className="flex flex-col font-mono text-xs leading-tight">
+                            <span className="font-semibold text-sm">
+                              {row.total_billable_in_cycle.toLocaleString()}
+                            </span>
+                            <span className="text-muted-foreground">
+                              /
+                              {" "}
+                              {row.total_audit_in_cycle.toLocaleString()}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {row.platform_absorbed_tokens > 0 ? (
+                            <Badge
+                              variant="outline"
+                              className="border-orange-500 text-orange-600"
+                            >
+                              {formatTokens(row.platform_absorbed_tokens)}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {categoryBadge(row.included_categories)}

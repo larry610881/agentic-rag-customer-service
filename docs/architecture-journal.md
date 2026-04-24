@@ -7,6 +7,52 @@
 
 ---
 
+## S-Ledger-Unification — 統一配額來源（Zero-Drift 架構）
+
+**日期**：2026-04-24
+**Issue**：[#41](https://github.com/larry610881/agentic-rag-customer-service/issues/41)
+**涉及層級**：Domain（新 `TokenLedgerTopup` entity + repo ABC、刪 `TokenLedger.deduct()` method）+ Application（新 `ComputeTenantQuotaUseCase`、refactor `TopupAddonUseCase` / `RecordUsageUseCase` / `ProcessQuotaAlertsUseCase`、刪 `DeductTokensUseCase`）+ Infrastructure（新 `TokenLedgerTopupModel` + `SQLAlchemyTokenLedgerTopupRepository`、`UsageRepository.sum_billable_tokens_in_cycle` with category filter）+ Interfaces（`tenant_router /quota` + `admin_router /tenants/quotas` rename 欄位 breaking）+ Frontend（`useTenantQuota` / `useAdminTenantsQuotas` 型別、`/quota` 顯示 billable、`/admin/quota-overview` 雙視角並列 + 平台吸收量卡）
+
+**Sprint 來源**：使用者發現 `/quota` 頁「3.29M / 10M」頂部與「本月已用 3,245,795」中間差 47,497 tokens。起點是 UI drift 的單點 bug，深挖變成架構性問題 — `ledger.base_remaining`（hook 累計的 mutable state）與 `SUM(token_usage_records)`（append-only truth）本質上是兩條獨立 write path，任何失敗/未注入/try-except swallow 都會產生 drift。使用者明確拒絕「容忍 drift 用監控補救」策略，要求「連 1 token 都不允許」，結構上消除 drift 可能性 → 走方案 A（事件來源最小可用形式）。
+
+**主題**：**mutable state + append-only log 並存 = 必定 drift**，把 mutable 那側降級為 computed projection，讓 source of truth 只剩一個，drift 結構上不可能發生。配額系統最終變成：token_usage_records + token_ledger_topups 兩個 append-only log，所有 `base_remaining / addon_remaining / audit / billable` 由 `ComputeTenantQuotaUseCase` 即時 SUM 算出。
+
+### 做得好的地方
+
+- **資料結構辨認 = 架構直覺**：兩張表一眼分清誰是「truth」（append-only，可重算）誰是「derived」（mutable state，狀態機結果）。當發現 derived 被當 source 用，修法就清晰了。**能從資料特性（append-only vs mutable、可重算 vs 路徑依賴）推導該放哪裡寫、哪裡讀，是架構能力的核心。**
+- **不變性的數學表述**：`base_total - base_remaining ≡ min(billable, base_total)` — 把「不會 drift」變成可驗證的等式，Domain entity + BDD scenario 都圍繞此不變性構造。**把直覺轉成數學等式是 Domain-Driven Design 的核心技能**。
+- **方案評比六選一**：提給 user 方案 A (truth + computed) / B (atomic write) / C (materialized view) / D (full event sourcing) / E (revert Route B) / 監控補救，各自列 Pros/Cons，讓 user 選。**架構決策要讓 stakeholder 看到 tradeoff space，而不是只推一個答案**。User 選 A 因為「不能容忍 drift」這條約束直接淘汰 B/監控補救。
+- **retroactive vs snapshot filter 的二選一**：`included_categories` 改規則時，選 retroactive（歷史 chunks 追溯套新 filter）而非 snapshot（was_billable_at_write 寫入時固化）— 零新欄位、規則一致、舊資料無歷史包袱。User 授權可以 wipe 測試資料後，選 retroactive 成為最省代價的乾淨路徑。
+- **breaking rename 一次做完**：`total_used_in_cycle` 拆成 `total_audit_in_cycle` + `total_billable_in_cycle`，admin 暴露兩個，tenant 只暴露 billable。欄位名語意乾淨（「for who」），不再曖昧。前端 2 個 hook 型別 + 1 個 tsx + admin overview 並列顯示，一次改完零過渡期。
+- **DI container 重排順序發現 forward reference**：`compute_tenant_quota_use_case` 定義需先於依賴它的 `process_quota_alerts`/`record_usage`/`list_all_tenants_quotas` 等 — 跑 unit test 時 `NameError` 即時捕獲，提前修復。**DI container 不是 lazy 的神話破解**：providers.Factory 確實 lazy，但 Python 類別體掃描時 attribute 必須已定義。
+- **unit test rewrite 符合 test-integrity 紅線**：舊 `test_record_usage_filter_matrix` 測「category filter 決定 deduct 是否觸發」是實作細節。新 API 不再 deduct → 測試必須改，但改法是「換測試對象」（驗 auto-topup trigger 條件），而不是 skip / 放寬斷言。**把「implementation test」升級為「business rule test」**。
+- **6 BDD scenarios 涵蓋所有 drift 邊界**：全計入 / 只計入 llm / 全不計入 / overage / addon negative / retroactive rule change — 跑過一輪 42 個單元測試全綠確認不變性。
+
+### 潛在隱憂
+
+- **dev-vm migration 尚未套**：本 session 只在 local-docker 套 `token_ledger_topups` migration + TRUNCATE 清測試資料，dev-vm（Cloud Run 連的 DB）還沒套。Push 後 Cloud Run auto-deploy 會 runtime `UndefinedTable` 500。**優先級：高**。改善方向：commit 前 Larry 授權後一併套 dev-vm，或暫不推 prod、local 先測。
+- **ensure_ledger addon_carryover 機制失效但未 bug fix**：`EnsureLedgerUseCase` 原本從上月 `ledger.addon_remaining` 結轉，新架構下該欄位不再維護 → carryover 永遠讀到 0（或舊 drift 值）。實際效果：月初新 cycle 的 `addon_remaining` 不繼承上月剩餘，變相「月底清零」。**優先級：中**（測試資料已清，不立即影響）。正確修法：EnsureLedger 建新 cycle 時，用 ComputeTenantQuotaUseCase 算上月最終 addon_remaining，寫成本月首筆 `carryover` topup 紀錄。
+- **token_ledgers 表仍保留 base_remaining / addon_remaining / total_used_in_cycle 欄位**：這次只移除 `ledger.deduct()` method，ORM model 和 DB schema 的 mutable 欄位沒動（預設值 base_remaining=base_total, addon_remaining=0 寫入但永不被讀）。**優先級：低**（不影響正確性，只是 dead weight）。未來 cleanup migration 可 DROP COLUMN。
+- **Auto-topup 時機改變 — 從「扣費時檢查」變成「寫 usage 後檢查」**：舊模型 deduct 同一 transaction 判斷是否 topup；新模型 record_usage 寫完 → compute_quota → 判斷 → topup（非同交易）。**race condition 風險**：兩個並發 usage write 可能都算出 `addon_remaining <= 0` 都 trigger topup → 雙倍 topup。**優先級：中**。改善方向：topup 側用 Redis Lock 或 DB advisory lock，每 (tenant, cycle) 一鎖。
+- **`ComputeTenantQuotaUseCase` 每次 3 個 SUM query（audit + billable + topup）**：熱路徑（rate limit middleware, record_usage hook）如果頻繁呼叫會變 N+1 + 多倍 query。**優先級：中**（當前 usage 量還小）。改善方向：加 Redis hash cache（quota:{tenant}:{cycle}），INCR 於 record_usage，失效於 tenant.included_categories 變動或週期跨越。
+- **`billing_transaction.ledger_id` 改填空字串**：歷史 schema 有 FK 到 token_ledgers.id，但新 TopupAddonUseCase 不再持有 ledger row 就直接寫 topup。寫空字串會讓 FK 違反（若 NOT NULL + FK 有設）。**優先級：待驗證**。實際跑 integration test 可能觸發 FK constraint error。改善方向：billing_transactions.ledger_id 改 nullable，或移除 FK。
+- **Integration test step definitions 還沒更新**：`auto_topup.feature` / `two_page_consistency.feature` 等 step 檔案直接寫 `ledger.base_remaining = X` setup，會在跑 integration 時 fail（欄位仍存在但不再有意義）。**優先級：中**。改善方向：下一輪把 integration test step 改為「寫 usage_records + topups」primitives。
+
+### 延伸學習
+
+- **Event Sourcing 最小可用形式**：不需要完整 event store + projection infra，只要識別「哪張表是 append-only truth」「哪些欄位是 computed projection」就能獲得 ES 核心收益。本 sprint 就是 ES-lite。深入搜尋關鍵字：`Event-Driven Architecture`, `CQRS lite`, `Immutable Data Structures in database design`。
+- **Lakehouse / Delta Table 的 DELETE/UPDATE 為何是 append-only**：Delta Lake 的 UPDATE 內部是「寫新 parquet + 標記舊 parquet 失效」，概念上和本次「ledger 變 computed, topups 變 append-only」同源 — 用**不可變**作為 consistency 的底座。
+- **DDD 裡 Aggregate 邊界的「資料分類」判準**：Append-only event log ≠ Snapshot state，兩者該放不同 Aggregate。本 sprint 開始 ledger 是一個混合體（snapshot `base_total` + computed projections），拆成 `TokenLedger` (snapshot) + `TokenLedgerTopup` (append-only log) 後邊界清晰。
+- **`single source of truth` 不等於「只有一張表」**：Truth 可以跨多張 append-only 表（usage_records + topups），關鍵是沒有任何 mutable state 可以獨立寫入並與 truth 不一致。**SSOT 的真正定義是「不可能 drift」，不是「資料只存一份」**。
+- **user 追問「為什麼不一致」→ 架構改造的正確觸發時機**：drift 是症狀，不是 bug。修復 drift 不能修單點（那是止血），要修「結構上為何允許 drift 發生」。這次 user 拒絕 band-aid、逼出結構修復，是開發者和 AI 之間「問出架構問題」的典範對話。
+
+### 思考題
+
+- 如果未來需要「不 wipe 歷史資料，但改 tenant 計費規則時歷史帳不變」的需求，retroactive 架構怎麼退回 snapshot？提示：加 `was_billable_at_write` 欄位 + ComputeTenantQuotaUseCase 取 snapshot path（filter by boolean, not current rule）。但這會引入「新舊規則切換時間戳」的複雜度。業務願意付這個代價嗎？
+- 如果 auto-topup race condition 真的發生（罕見），雙倍 topup 會導致 `billing_transactions` 有兩筆相同分鐘的紀錄。是用「幂等 key（tenant+cycle+round）」去重，還是接受 race 由 billing team 手動核對？兩種策略成本對比？
+
+---
+
 ## S-QualityEdit.1 — 「AI 主力 + 人工精修」高 ROI 工作流
 
 **日期**：2026-04-24

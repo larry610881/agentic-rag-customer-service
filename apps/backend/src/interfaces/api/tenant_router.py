@@ -4,8 +4,8 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from src.application.ledger.get_tenant_quota_use_case import (
-    GetTenantQuotaUseCase,
+from src.application.quota.compute_tenant_quota_use_case import (
+    ComputeTenantQuotaUseCase,
 )
 from src.application.tenant.create_tenant_use_case import (
     CreateTenantCommand,
@@ -47,13 +47,19 @@ class UpdateTenantConfigRequest(BaseModel):
 
 
 class TenantQuotaResponse(BaseModel):
+    """租戶視角配額 — S-Ledger-Unification P5
+
+    租戶頁只顯示 billable（= 影響自身帳單的量）。
+    total_audit_in_cycle 僅供系統管理員 API 使用，不暴露於此端點。
+    """
+
     cycle_year_month: str
     plan_name: str
     base_total: int
     base_remaining: int
     addon_remaining: int
     total_remaining: int
-    total_used_in_cycle: int
+    total_billable_in_cycle: int  # 取代 total_used_in_cycle（breaking rename）
     included_categories: list[str] | None = None
 
 
@@ -208,15 +214,16 @@ async def update_tenant_config(
 async def get_tenant_quota(
     tenant_id: str,
     tenant: CurrentTenant = Depends(get_current_tenant),
-    use_case: GetTenantQuotaUseCase = Depends(
-        Provide[Container.get_tenant_quota_use_case]
+    use_case: ComputeTenantQuotaUseCase = Depends(
+        Provide[Container.compute_tenant_quota_use_case]
     ),
 ) -> TenantQuotaResponse:
-    """回傳租戶本月額度狀態。系統 admin 可查任何租戶；非 admin 只能查自己。
+    """回傳租戶本月額度狀態 — S-Ledger-Unification P5。
 
+    所有數字從 token_usage_records + token_ledger_topups 即時算出，
+    保證 base_total - base_remaining ≡ min(billable, base_total)（零 drift）。
     若本月 ledger 不存在會自動建立（從 plan + 上月 addon carryover）。
     """
-    # Permission: 非 admin 只能看自己
     if tenant.role != "system_admin" and tenant.tenant_id != tenant_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -235,6 +242,6 @@ async def get_tenant_quota(
         base_remaining=result.base_remaining,
         addon_remaining=result.addon_remaining,
         total_remaining=result.total_remaining,
-        total_used_in_cycle=result.total_used_in_cycle,
+        total_billable_in_cycle=result.total_billable_in_cycle,
         included_categories=result.included_categories,
     )

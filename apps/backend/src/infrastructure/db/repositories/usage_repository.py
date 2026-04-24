@@ -311,3 +311,46 @@ class SQLAlchemyUsageRepository(UsageRepository):
         result = await self._session.execute(stmt)
         value = result.scalar_one()
         return int(value) if value is not None else 0
+
+    async def sum_billable_tokens_in_cycle(
+        self,
+        tenant_id: str,
+        cycle_year_month: str,
+        included_categories: list[str] | None,
+    ) -> int:
+        """S-Ledger-Unification P2: 計費總量 SUM (tenant+cycle) with category filter.
+
+        filter 三態（對齊 tenant.included_categories 語意）：
+        - None → 全部計入 = sum_tokens_in_cycle
+        - []   → 全部不計入，return 0
+        - list → WHERE request_type IN (...)
+
+        Retroactive：filter 用「當前 tenant.included_categories」套在歷史 records 上，
+        改規則會追溯生效。
+        """
+        if included_categories == []:
+            return 0
+
+        from datetime import timezone
+
+        year, month = cycle_year_month.split("-")
+        start = datetime(int(year), int(month), 1, tzinfo=timezone.utc)
+        if int(month) == 12:
+            end = datetime(int(year) + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            end = datetime(int(year), int(month) + 1, 1, tzinfo=timezone.utc)
+
+        stmt = select(
+            func.coalesce(func.sum(_TOTAL_TOKENS_EXPR), 0)
+        ).where(
+            UsageRecordModel.tenant_id == tenant_id,
+            UsageRecordModel.created_at >= start,
+            UsageRecordModel.created_at < end,
+        )
+        if included_categories is not None:
+            stmt = stmt.where(
+                UsageRecordModel.request_type.in_(included_categories)
+            )
+        result = await self._session.execute(stmt)
+        value = result.scalar_one()
+        return int(value) if value is not None else 0

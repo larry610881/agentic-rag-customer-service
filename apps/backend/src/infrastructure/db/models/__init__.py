@@ -51,6 +51,9 @@ from src.infrastructure.db.models.guard_rules_config_model import (
 from src.infrastructure.db.models.plan_model import PlanModel
 from src.infrastructure.db.models.prompt_opt_run_model import PromptOptRunModel
 from src.infrastructure.db.models.token_ledger_model import TokenLedgerModel
+from src.infrastructure.db.models.token_ledger_topup_model import (
+    TokenLedgerTopupModel,
+)
 from src.infrastructure.db.models.billing_transaction_model import (
     BillingTransactionModel,
 )
@@ -99,6 +102,7 @@ __all__ = [
     "PlanModel",
     "PromptOptRunModel",
     "TokenLedgerModel",
+    "TokenLedgerTopupModel",
     "BillingTransactionModel",
     "QuotaAlertLogModel",
     "ModelPricingModel",

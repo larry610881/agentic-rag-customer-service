@@ -13,7 +13,10 @@ export interface AdminTenantQuotaItem {
   base_remaining: number;
   addon_remaining: number;
   total_remaining: number;
-  total_used_in_cycle: number;
+  // S-Ledger-Unification: audit(真實消耗) + billable(影響計費) 並列
+  total_audit_in_cycle: number;
+  total_billable_in_cycle: number;
+  platform_absorbed_tokens: number; // = audit - billable
   included_categories: string[] | null;
   has_ledger: boolean;
 }
