@@ -167,6 +167,28 @@ class PromptGuardService:
                     tenant_id=tenant_id,
                     bot_id=bot_id,
                 )
+                # Sprint A++: 加 trace node 讓 agent DAG 顯示攔截
+                try:
+                    from src.infrastructure.observability.agent_trace_collector import (
+                        AgentTraceCollector,
+                    )
+
+                    now_ms = AgentTraceCollector.offset_ms()
+                    AgentTraceCollector.add_node(
+                        node_type="guard_input_blocked",
+                        label=f"🛡️ input blocked: {pattern[:60]}",
+                        parent_id=None,
+                        start_ms=now_ms,
+                        end_ms=now_ms,
+                        token_usage=None,
+                        outcome="failed",
+                        rule_matched=pattern,
+                        error_message="Prompt injection rule matched",
+                    )
+                except Exception:
+                    logger.debug("guard.trace_add_failed", exc_info=True)
+
+                # Sprint A++ 修 silent swallow — 錯誤要浮現才抓得到 bug
                 try:
                     await self._log_repo.save_log(
                         tenant_id=tenant_id,
@@ -178,7 +200,14 @@ class PromptGuardService:
                         ai_response=None,
                     )
                 except Exception:
-                    pass
+                    logger.warning(
+                        "guard.log_save_failed",
+                        tenant_id=tenant_id,
+                        bot_id=bot_id,
+                        log_type="input_blocked",
+                        exc_info=True,
+                    )
+
                 return GuardResult(
                     passed=False,
                     blocked_response=config.blocked_response,
@@ -224,6 +253,27 @@ class PromptGuardService:
             tenant_id=tenant_id,
             bot_id=bot_id,
         )
+        # Sprint A++: trace node for output block
+        try:
+            from src.infrastructure.observability.agent_trace_collector import (
+                AgentTraceCollector,
+            )
+
+            now_ms = AgentTraceCollector.offset_ms()
+            AgentTraceCollector.add_node(
+                node_type="guard_output_blocked",
+                label=f"🛡️ output blocked: {matched_keywords[:60]}",
+                parent_id=None,
+                start_ms=now_ms,
+                end_ms=now_ms,
+                token_usage=None,
+                outcome="failed",
+                rule_matched=matched_keywords,
+                error_message="Output contains sensitive keywords",
+            )
+        except Exception:
+            logger.debug("guard.trace_add_failed", exc_info=True)
+
         try:
             await self._log_repo.save_log(
                 tenant_id=tenant_id,
@@ -235,7 +285,14 @@ class PromptGuardService:
                 ai_response=response[:2000],
             )
         except Exception:
-            pass
+            logger.warning(
+                "guard.log_save_failed",
+                tenant_id=tenant_id,
+                bot_id=bot_id,
+                log_type="output_blocked",
+                exc_info=True,
+            )
+
         return GuardResult(
             passed=False,
             blocked_response=config.blocked_response,

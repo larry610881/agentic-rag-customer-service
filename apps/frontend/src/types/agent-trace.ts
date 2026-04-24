@@ -8,7 +8,10 @@ export type ExecutionNodeType =
   | "tool_call"
   | "tool_result"
   | "final_response"
-  | "worker_execution";
+  | "worker_execution"
+  // Sprint A++: Prompt guard 攔截節點（outcome=failed 會走紅色 variant）
+  | "guard_input_blocked"
+  | "guard_output_blocked";
 
 export type ExecutionNode = {
   node_id: string;

@@ -30,6 +30,12 @@ class AgentResponse:
     # 由 transfer_to_human_agent tool 產生的 channel-agnostic 聯絡按鈕
     # {"label": str, "url": str, "type": "url" | "phone"}
     contact: dict[str, Any] | None = None
+    # Sprint A++ Guard UX: 該次回應是否由 prompt guard 攔截。
+    #   None = 未攔截 / "input" = input rule 命中 / "output" = output keyword 命中
+    # 只 Studio 端會暴露此 flag 供 UX 顯示；widget / LINE 路由會強制清成 None
+    # 避免洩露防禦邏輯（見 agent_router.py 的 sanitize 邏輯）
+    guard_blocked: str | None = None
+    guard_rule_matched: str | None = None
 
 
 @dataclass

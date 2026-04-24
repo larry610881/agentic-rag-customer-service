@@ -24,6 +24,11 @@ interface ChatState {
   setKnowledgeBaseId: (id: string | null) => void;
   setToolHint: (hint: string | null) => void;
   setAssistantMessageId: (id: string) => void;
+  /** Sprint A++ Guard UX: Studio 收到 guard_blocked event 時調用 */
+  setAssistantGuardBlocked: (
+    blockType: "input" | "output",
+    ruleMatched: string | null,
+  ) => void;
   setMessageFeedback: (messageId: string, rating: "thumbs_up" | "thumbs_down" | undefined) => void;
   selectBot: (id: string, name: string) => void;
   clearBot: () => void;
@@ -121,6 +126,19 @@ export const useChatStore = create<ChatState>((set) => ({
       const lastMsg = messages[messages.length - 1];
       if (lastMsg && lastMsg.role === "assistant") {
         messages[messages.length - 1] = { ...lastMsg, id };
+      }
+      return { messages };
+    }),
+  setAssistantGuardBlocked: (blockType, ruleMatched) =>
+    set((state) => {
+      const messages = [...state.messages];
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg && lastMsg.role === "assistant") {
+        messages[messages.length - 1] = {
+          ...lastMsg,
+          guardBlocked: blockType,
+          guardRuleMatched: ruleMatched ?? undefined,
+        };
       }
       return { messages };
     }),

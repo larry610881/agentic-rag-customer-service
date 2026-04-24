@@ -39,6 +39,7 @@ export function useStreaming() {
     setConversationId,
     setToolHint,
     setAssistantMessageId,
+    setAssistantGuardBlocked,
   } = useChatStore();
 
   const sendMessage = useCallback(
@@ -133,6 +134,14 @@ export function useStreaming() {
           case "conversation_id":
             setConversationId(event.conversation_id as string);
             break;
+          case "guard_blocked": {
+            // Sprint A++: Studio-only 事件。Backend router 已依
+            // identity_source 過濾 — 非 studio 不會收到此 event。
+            const blockType = event.block_type as "input" | "output";
+            const ruleMatched = (event.rule_matched as string) || null;
+            setAssistantGuardBlocked(blockType, ruleMatched);
+            break;
+          }
           case "error":
             setHintThrottled(null);
             appendToAssistantMessage(
@@ -193,6 +202,9 @@ export function useStreaming() {
             message,
             conversation_id: conversationId,
             bot_id: botId,
+            // Sprint A++ Guard UX: 告訴 backend 這是 Studio → backend 才送
+            // guard_blocked event 給本端（widget / LINE 會被強制清掉）
+            identity_source: "studio",
           },
           token,
           handleEvent,
@@ -228,6 +240,7 @@ export function useStreaming() {
       setConversationId,
       setToolHint,
       setAssistantMessageId,
+      setAssistantGuardBlocked,
     ],
   );
 

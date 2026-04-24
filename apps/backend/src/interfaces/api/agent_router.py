@@ -63,6 +63,22 @@ class ChatResponse(BaseModel):
     sources: list[SourceResponse]
     structured_content: dict | None = None
     usage: TokenUsageResponse | None = None
+    # Sprint A++ Guard UX: 只暴露給 Studio（identity_source="studio"）
+    # widget / LINE / web 路徑會被 sanitize 成 None 避免洩露防禦邏輯
+    guard_blocked: str | None = None
+    guard_rule_matched: str | None = None
+
+
+# Studio 以外的 identity_source 都視為 end-user 介面，guard_blocked
+# 必須清空避免洩露安全規則的存在。
+_STUDIO_IDENTITY_SOURCES = frozenset({"studio"})
+
+
+def _maybe_expose_guard(result_guard_blocked, result_guard_rule, identity_source):
+    """返回 (guard_blocked, guard_rule) tuple 或 (None, None)。"""
+    if identity_source in _STUDIO_IDENTITY_SOURCES:
+        return result_guard_blocked, result_guard_rule
+    return None, None
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -79,6 +95,7 @@ async def agent_chat(
 ) -> ChatResponse:
     # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
     # 跨租戶測試流程請走系統管理專用端點（尚未實作，另立 issue）。
+    identity_source = request.identity_source or "web"
     result = await use_case.execute(
         SendMessageCommand(
             tenant_id=tenant.tenant_id,
@@ -86,8 +103,13 @@ async def agent_chat(
             message=request.message,
             conversation_id=request.conversation_id,
             bot_id=request.bot_id,
-            identity_source=request.identity_source or "web",
+            identity_source=identity_source,
         )
+    )
+
+    # Sprint A++: Studio 才暴露 guard flag
+    guard_blocked, guard_rule_matched = _maybe_expose_guard(
+        result.guard_blocked, result.guard_rule_matched, identity_source
     )
 
     await record_usage.execute(
@@ -139,6 +161,8 @@ async def agent_chat(
         ],
         structured_content=structured_content,
         usage=usage_resp,
+        guard_blocked=guard_blocked,
+        guard_rule_matched=guard_rule_matched,
     )
 
 
@@ -210,6 +234,10 @@ async def agent_chat_stream(
             return
         # --- END TEST TRIGGER ---
 
+        # Sprint A++: 只有 Studio 才看得到 guard_blocked event，end-user 介面
+        # (widget/LINE/web bot) 不暴露防禦邏輯存在
+        is_studio = (request.identity_source or "web") in _STUDIO_IDENTITY_SOURCES
+
         usage_data: dict | None = None
         assistant_message_id: str | None = None
         try:
@@ -220,6 +248,9 @@ async def agent_chat_stream(
                 # S-ConvInsights.1: 捕獲 assistant message_id 供 RecordUsage 用
                 if event.get("type") == "message_id":
                     assistant_message_id = event.get("message_id")
+                # Sprint A++: strip guard_blocked event for end-user 介面
+                if event.get("type") == "guard_blocked" and not is_studio:
+                    continue
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:
             logger.exception("agent.chat.stream.error")

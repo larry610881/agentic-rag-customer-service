@@ -5,6 +5,7 @@ import {
   Router,
   Users,
   User,
+  ShieldAlert,
 } from "lucide-react";
 import type { ExecutionNodeType } from "@/types/agent-trace";
 
@@ -21,6 +22,9 @@ export const NODE_COLORS: Record<ExecutionNodeType, string> = {
   tool_result: "border-emerald-400 bg-emerald-50 dark:bg-emerald-950",
   final_response: "border-green-400 bg-green-50 dark:bg-green-950",
   worker_execution: "border-indigo-400 bg-indigo-50 dark:bg-indigo-950",
+  // Sprint A++: prompt guard blocks — 預設 orange（失敗時外層自動套 red variant）
+  guard_input_blocked: "border-orange-500 bg-orange-50 dark:bg-orange-950",
+  guard_output_blocked: "border-orange-500 bg-orange-50 dark:bg-orange-950",
 };
 
 export const NODE_ICONS: Record<ExecutionNodeType, React.ElementType> = {
@@ -34,6 +38,8 @@ export const NODE_ICONS: Record<ExecutionNodeType, React.ElementType> = {
   tool_result: Wrench,
   final_response: MessageCircle,
   worker_execution: Users,
+  guard_input_blocked: ShieldAlert,
+  guard_output_blocked: ShieldAlert,
 };
 
 // Phase 1: 失敗節點視覺 (outcome=="failed") — 一致紅色 variant 取代各 type 既有色
