@@ -1289,11 +1289,17 @@ class Container(containers.DeclarativeContainer):
         document_file_storage=document_file_storage_service,
     )
 
-    # S-Token-Gov.2: Ledger 4 個 use case
+    # S-Token-Gov.2 + Tier 1 T1.2: EnsureLedger 注入計算 carryover 需要的 repos。
+    # 改 inline 算（不呼叫 ComputeTenantQuotaUseCase）避免 DI 循環依賴：
+    #   ComputeQuota(cycle=None) → EnsureLedger → [若] ComputeQuota(cycle=last) → ...
+    # 這邊 inline 計算，math 同 ComputeQuota 的 addon_remaining 公式，SSOT 一致。
     ensure_ledger_use_case = providers.Factory(
         EnsureLedgerUseCase,
         ledger_repository=token_ledger_repository,
         plan_repository=plan_repository,
+        usage_repository=usage_repository,
+        topup_repository=token_ledger_topup_repository,
+        tenant_repository=tenant_repository,
     )
 
     # S-Ledger-Unification P3: 唯一 quota 讀取入口 — 需先於其他依賴它的 use case 定義
@@ -1305,11 +1311,13 @@ class Container(containers.DeclarativeContainer):
         topup_repository=token_ledger_topup_repository,
     )
 
-    # S-Ledger-Unification P4: topup_addon 改為寫 token_ledger_topups append-only
+    # S-Ledger-Unification P4 + Tier 1 T1.1: topup_addon 寫 append-only log
+    # + 注入 ledger_repository 以 fetch 真實 ledger.id 進 BillingTransaction（FK 合規）
     topup_addon_use_case = providers.Factory(
         TopupAddonUseCase,
         topup_repository=token_ledger_topup_repository,
         billing_transaction_repository=billing_transaction_repository,
+        ledger_repository=token_ledger_repository,
     )
 
     process_quota_alerts_use_case = providers.Factory(

@@ -18,6 +18,29 @@ def current_year_month() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
 
+def previous_year_month(cycle: str) -> str:
+    """S-Ledger-Unification Tier 1 T1.2: 算上一個 cycle。
+
+    '2026-05' → '2026-04'
+    '2026-01' → '2025-12'（跨年）
+
+    Raises:
+        ValueError: cycle 格式不正確（非 'YYYY-MM' or month not in 1-12）
+    """
+    parts = cycle.split("-")
+    if len(parts) != 2:
+        raise ValueError(f"Invalid cycle format: {cycle!r}, expected 'YYYY-MM'")
+    try:
+        year, month = int(parts[0]), int(parts[1])
+    except ValueError as exc:
+        raise ValueError(f"Invalid cycle {cycle!r}: non-integer year/month") from exc
+    if not (1 <= month <= 12):
+        raise ValueError(f"Invalid cycle {cycle!r}: month must be 1-12")
+    if month == 1:
+        return f"{year - 1:04d}-12"
+    return f"{year:04d}-{month - 1:02d}"
+
+
 @dataclass
 class TokenLedger:
     """月度帳本 — 一個 (tenant_id, cycle) 一筆。

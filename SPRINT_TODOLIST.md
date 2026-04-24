@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-24 (S-Ledger-Unification — 統一配額來源 / zero-drift)
+> 最後更新：2026-04-24 (Sprint A — Ledger Tier 1 FK + carryover 補強)
 
 ---
 
@@ -1935,3 +1935,4 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | **Milvus-KB-Studio 橋接 + context_text 可編輯** | **✅ 完成** | **100%** | **Commit `f9088be`: 對齊官方 Attu 定位研究（Attu 為 DB admin，不做業務編輯/re-embed）。chunk-editor 既有只編 content，補 AI 上下文摘要 Textarea + 任一改動 autosave trigger re-embed。Milvus collection-table 加「編輯 chunks」deep link 跳 KB Studio，admin-milvus 頁頂部加定位說明** |
 | **S-QualityEdit.1「AI 主力 + 人工精修」工作流** | **✅ 完成** | **100%** | **Commit `572c66d`, 10 files: P0 L1 低分 chunk → KB Studio 跳轉（Source VO 加 kb_id + evaluate_combined 加 chunk_ids/kb_ids kwargs + ChunkScoreItem 擴充 + eval table「修正」link）/ P1 Feedback 引用 chunks 結構化 + admin/conversation-insights messages-tab 展開 retrieved_chunks + 兩處同 deep link / P2 chunks-tab 支援 ?highlight= 自動 scroll + 低品質 filter。backend 188 tests pass, frontend tsc 零新錯誤** |
 | **S-Ledger-Unification — 統一配額來源（Zero-Drift 架構）** | **✅ 完成（backlog follow-up 待排）** | **100%（核心）/ Follow-up plan 已寫**| **Issue [#41](https://github.com/larry610881/agentic-rag-customer-service/issues/41): token_usage_records 為唯一 truth + 新 token_ledger_topups append-only log。ComputeTenantQuotaUseCase 即時算出 base_remaining/addon_remaining/audit/billable，保證 `base_total - base_remaining ≡ min(billable, base_total)`（結構上零 drift）。API rename breaking：total_used_in_cycle → total_audit_in_cycle + total_billable_in_cycle。Admin /quota-overview 並列顯示兩視角 + 平台吸收量。租戶 /quota 顯示 billable。included_categories 變動追溯生效。移除 DeductTokensUseCase + ledger.deduct() hook。Migration 套 local-docker + dev-vm。6 BDD scenarios + rewrite test_record_usage_filter_matrix, 799 backend unit tests pass。<br>**📋 Follow-up roadmap（Tier 1 收尾 / Tier 2 收費前 / Tier 3 SRE 99% 頂級）**：[`docs/ledger-unification-followup-and-sre-roadmap.md`](docs/ledger-unification-followup-and-sre-roadmap.md)** |
+| **Sprint A — Ledger Tier 1 補強（FK + carryover）** | **✅ 完成** | **100%** | **Issue [#42](https://github.com/larry610881/agentic-rag-customer-service/issues/42): T1.1 修 `billing_transaction.ledger_id=""` FK violation — TopupAddonUseCase 注入 ledger_repository，fetch 真實 ledger.id → auto_topup 金流審計紀錄正確可追蹤。T1.2 修 `EnsureLedgerUseCase` addon carryover — 改 inline 算上月 SSOT 狀態（usage_records + topups SUM），寫成本月首筆 reason="carryover" topup。新 Domain utility `previous_year_month(cycle)` 含跨年邊界驗證。DI 循環依賴設計決策：EnsureLedger 不依賴 ComputeQuota，inline math 保 SSOT 一致。新 12 tests pass (3 BDD features + 1 unit test file), 811 backend unit tests total pass。零 migration 需求** |

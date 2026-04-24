@@ -7,6 +7,44 @@
 
 ---
 
+## Sprint A — Ledger Tier 1 補強（FK + carryover）
+
+**日期**：2026-04-24
+**Issue**：[#42](https://github.com/larry610881/agentic-rag-customer-service/issues/42)
+**涉及層級**：Domain (`previous_year_month` utility) + Application (`TopupAddonUseCase` + `EnsureLedgerUseCase`) + DI (Container wiring)
+
+**Sprint 來源**：S-Ledger-Unification 核心 refactor 完成後盤出的 6 項 follow-up 中的 Tier 1。兩個都是「refactor 沒做完」的補洞：T1.1 FK violation 是 P4 改寫 TopupAddon 時忘記處理 `ledger_id`；T1.2 carryover 是 ensure_ledger 沒有隨新 topups 表改造一起升級。
+
+**主題**：**「refactor 的邊界爆炸」** — 一個大 refactor（如 S-Ledger-Unification）改動 A 模組，但依賴 A 的 B/C 模組如果沒同步升級，會留下「靜默失敗」或「行為退化」的定時炸彈。本 sprint 的修復策略是把這兩個炸彈堵掉 + 順便解決 DI 循環依賴難題。
+
+### 做得好的地方
+
+- **TDD 紅燈先行**：7 個 BDD scenarios（2 integration + 5 unit）+ 7 個 unit assertions 都是先寫 fail-on-import 測試才實作。Domain utility 先 ImportError→實作→7/7 pass；Application 層也走類似流程。
+- **DI 循環依賴正面解決而非迴避**：最初設計 EnsureLedger 依賴 ComputeQuota 算 carryover，發現會造成 class body 循環 NameError。考慮 `providers.Delegate` / `Dependency override` / 重排順序等 DI 花式解法後，選擇**打破邏輯循環而非語法循環**：EnsureLedger inline 寫 4 行 SUM math（和 ComputeQuota 保持 SSOT 一致但不共享 code）。理由：math 極簡、共享幾行 code 的耦合不如明確註解「同步更新兩處」來得維護友善。
+- **Carryover 涵蓋 overage deficit 負值**：不只正值 addon carryover，也測上月 `overage > topup` 造成的負 carryover（deficit 繼承）— 防止租戶在月底超用後月初「免費重置」的 exploit。BDD scenario 明確覆蓋。
+- **FK 修復的 defensive null check**：`ledger = await self._ledger_repo.find_by_tenant_and_cycle(...); if ledger is None: return None`。即使上游呼叫方（`RecordUsageUseCase` 的 auto-topup hook）理論上確保 ledger 存在，仍加防禦性 early-return，避免 orphan topup 紀錄 in edge case。
+- **跨年邊界 `previous_year_month("2026-01") == "2025-12"` 明確測試**：1 月跨年是典型邊界 bug 熱點，parametrize 加 bad inputs（`"abc"`, `""`, `"2026-13"`）確保 utility 不會沉默受辱。
+
+### 潛在隱憂
+
+- **`EnsureLedger` 的 carryover math 和 `ComputeTenantQuotaUseCase` 同步維護**：兩處都實作 `addon = topup_sum - max(0, billable - base_total)`。若未來 ComputeQuota 改公式（例如新增一個 `manual_adjust` reason 要特殊處理），EnsureLedger 不會自動跟進 → drift。**優先級：中**。改善方向：抽 `AddonCalculator` domain service 共用邏輯，或寫 parity test（隨機資料比對兩處結果）當 CI gate。
+- **Carryover 寫入有 try/except 降級到 0**：若 DB / repo 暫時 unavailable，carryover 會靜默變 0 — 同樣是「金流悄悄溜走」。**優先級：中**。改善方向：失敗時應 raise 而非 swallow（跟 Tier 3 SRE 強度一致），讓 EnsureLedger 主流程失敗、retry 下一次 cron。但目前保留 try/except 是因為 carryover 失敗不該阻擋「本月 ledger 建立」— trade-off。
+- **EnsureLedger 的 `_compute_carryover` 有 3 個 await**（find_ledger + find_tenant + sum_billable + sum_topup）。每次跨月月初都會觸發 N 個 query（全租戶）。N 大時有雷。**優先級：低**（cron 只跑 1 次/月）。改善方向：加 batch 版 EnsureLedgerForAllTenants，用 SUM GROUP BY 一次算全租戶。
+- **DI 循環依賴是「症狀」，真正問題是「Mutual Orchestration」**：EnsureLedger 和 ComputeQuota 在不同情境下互為 primary vs secondary，語義是「視角切換」而非「服務鏈」。下次遇到類似情境，可考慮將 `ensure_cycle` 這個 cross-cutting concern 提到更上層（e.g. Application Service facade），兩個 use case 都依賴 facade 而不互相依賴。**優先級：低**（當前方案夠用）。
+- **BillingTransaction.ledger_id 的 FK 耦合把 billing 和 ledger aggregate 綁死**：P4 refactor 目標是「ledger 變 computed snapshot」，但 billing_transactions 表的 FK 硬把它拉回來。要嘛 ledger_id 改 nullable、要嘛 billing 改用 tenant_id + cycle 當 soft reference。**優先級：低**（當前模型穩定）。改善方向：下次 billing domain 擴充（e.g. 加發票、退款）時一起重新 model。
+
+### 延伸學習
+
+- **Refactor Cascade Problem**：大型 refactor（A → A'）要掃所有 A 的 caller B、C、D，每個 caller 都可能因為 A' 的行為改變而需要對應更新。常見 pitfall 是 refactor 只改了 A 核心 + 直接 caller B，間接 caller D 被遺忘 → 產生「殭屍行為」。修法：把 refactor 當成一個 Sprint 完整跑，結束前 grep 所有引用點 double-check 行為是否符合新 contract。本次 P4 → P7 時我們漏了 billing FK + carryover，所以要 Sprint A 補。
+- **Circular Dependency 三條路**：(1) Resolve via DI container tricks（Delegate, Dependency placeholder, forward ref）— 語法層級；(2) Extract shared abstraction（把共用部分抽成第三個獨立元件）— 結構層級；(3) Duplicate logic with parity test — 工程實用層級。Sprint A 選 (3) 因為 math 極簡，(1) 會讓 container 更複雜，(2) 成本高於收益。經驗上 (3) 最不 elegant 但最 maintainable — 只要有 parity 保護機制。
+- **SSOT vs Code Duplication 的辨證**：「同一份 truth 不同處讀」是對的；「同一段 computation 不同處寫」通常是反模式。但極端情況（如本次兩處只有 4 行 math + 循環依賴 trap）可以接受短期 duplicate，配對 parity test 降低 drift 風險。搜尋關鍵字：`DRY vs WET debate`, `Rule of Three`。
+
+### 思考題
+
+- 如果 Tier 2 的 Redis cache 上線，`EnsureLedger._compute_carryover` 的 3 個 repo SUM 會變成 cache miss 每月月初的雷 — 要不要讓 carryover 也 hit cache？如果 cache 還沒暖，cron 一口氣掃 100 個租戶會 cache miss 100 次 + DB SUM 100 次。你會用哪種策略預熱？（提示：pre-warming job 每月月底最後一天跑過一次所有租戶的 compute_quota 把 cache 灌飽）
+
+---
+
 ## S-Ledger-Unification — 統一配額來源（Zero-Drift 架構）
 
 **日期**：2026-04-24
