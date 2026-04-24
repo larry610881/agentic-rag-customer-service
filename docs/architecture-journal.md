@@ -7,6 +7,50 @@
 
 ---
 
+## S-QualityEdit.1 — 「AI 主力 + 人工精修」高 ROI 工作流
+
+**日期**：2026-04-24
+**Commit**：`572c66d`
+**涉及層級**：Domain (`Source.kb_id`) + Application (query_rag propagates kb_id, evaluate_combined 加 chunk_ids/chunk_kb_ids kwargs, send_message 收集並傳遞) + Infrastructure (ReAct agent service 解析 rag_query sources 補 kb_id) + Frontend（ChunkScore type 擴充、observability-evals-table 跳轉 link、feedback conversation-replay 結構化 render、admin conversation-insights messages-tab 引用 chunks 展開、chunks-tab ?highlight= 自動 scroll + 「只看低品質」filter）
+
+**Sprint 來源**：延續 S-ConvInsights.1 Milvus 頁討論。使用者提出「AI 主力（Auto-Classification / Contextual Retrieval / L1 chunk scoring）+ 人工介入修精修錯 10-20%」的策略，問怎麼設計精修工具。**關鍵判準不是「要不要人工」，是「在哪介入最省力」**——回饋分析 / L1 低分要當進入點，不要從頭掃。
+
+**主題**：不做 chunk 編輯器分離頁（Milvus 頁只做 DB admin 對齊 Attu），而是**在信號源（eval table / feedback replay / messages tab）加一鍵跳轉**到 KB Studio 精修點，讓人類的眼睛直接對準「那一筆該改的 chunk」。
+
+### 做得好的地方
+
+- **deep link 格式統一**：`/admin/kb-studio/{kb_id}?tab=chunks&highlight={chunk_id}` — 一個 URL 格式被 3 個場景共用（eval L1 低分 / feedback 引用 chunks / admin conversation 引用 chunks），零重複實作。URL state design 的 payoff 在這。
+- **Backend 只改 nullable optional**：`ChunkScoreItem.chunk_id / kb_id` 全部 `str | None = None`，舊 eval row 沒這欄位不影響（degrade 到「不顯示修正 link」）。同理 `Source.kb_id` default `""`。**零 breaking change 的 entity 擴充**。
+- **kb_id tagging 發生在 search flattening 之前**：原本 `query_rag_use_case` 對多 KB 平行 search 後 `all_results = [r for batch in search_results for r in batch]` 直接展平 — kb_id 資訊遺失。改成 `zip(effective_kb_ids, search_results)` 先 tag 再展平 + 存 `{chunk_id: kb_id}` map，後續 rerank / trim 都能 query。**在「info 會被資料結構破壞」的變換前，是 tag 的正確時機**。
+- **P2 「?highlight=」同時服務 P0 + P1**：原本只規劃給 P0（eval jump），實作後發現 P1（feedback jump）剛好也需要，零額外工。**URL-driven state 讓 feature 自然組合**。
+- **低分染色 amber + 非低分灰色**：修正 link 用顏色自然分層 — 紅分（<0.4）的 chunk 修正 button 用 amber highlight，正常分數的 chunk 雖也有 link 但不吸引眼球。**引導 reviewer 視線到該修的地方**。
+- **Feedback page 從 raw JSON 轉結構化 card**：原本 `JSON.stringify(chunk, null, 2)` 當 pre debug 顯示，改為 title 行（doc_name + score）+ content_snippet 行 + 修正 button。**同樣的資料換個呈現方式，瀏覽成本從「讀 JSON」降到「掃重點」**。
+- **admin/conversation-insights messages-tab 加 retrieved_chunks 展開**：這本來沒在 P1 scope，但實作 feedback 頁時發現兩邊 data 同源（`messages.retrieved_chunks` JSON），順便做完。**跨頁同構 data 的機會成本要抓**。
+
+### 潛在隱憂
+
+- **舊 eval row 沒 chunk_id / kb_id**：本次前已產生的 eval 記錄只存 `{index, score, reason}`，新設計的 `chunk_id / kb_id` 欄位為 null。UI 的「修正」link 這類 row 不會出現（graceful degrade），但 user 會覺得「為什麼有些 row 能跳有些不能」。**優先級：低**。改善方向：對舊 row backfill —— 從 trace `message_id → retrieved_chunks → [chunk_id, document_id]`（kb_id 還要 JOIN documents）對齊 chunk_scores.index。工程成本中，但只對既有 row 做一次。
+- **MCP tool outputs 沒 chunk_id 概念**：`send_message_use_case` 收集時 MCP tool row 也 append 空字串 `chunk_ids.append("")`。理論上沒問題（index 對齊），但如果 MCP 工具的 output 也納入 L1 context_precision 評分，會看到「index 2-5 是 MCP 結果，無法跳轉」的 edge case。**優先級：低**（MCP 工具結果評分對精修價值低）。
+- **cross-tenant 汙染風險**：`highlight={chunk_id}` 是 URL param，如果 tenant_admin 拿到他租戶的 chunk_id，跳到 KB Studio 該 chunk 會被 backend tenant check 擋（404） — safe by design，但 UI 會顯示「已跳轉至 chunk xxx 但找不到」的怪狀態。**優先級：低**。改善方向：KB Studio chunks-tab 驗 kb_id 歸屬後再 highlight，不匹配時 clear query param。
+- **`_result_kb_map` 跨 rerank 後 ID 若重複會失準**：用 `{chunk_id: kb_id}` dict 記錄，如果同一個 chunk_id 跨 KB 存在（理論上不會，chunk_id 是 UUID），會最後一個 KB 覆蓋前面。**優先級：極低**（UUID 碰撞機率）。
+- **前端 `canJump = !!(chunk_id && kb_id)` 檢查重複 3 處**：observability-evals-table / conversation-replay / conversation-messages-tab 各寫一份。**優先級：低**。改善方向：抽 `<ChunkJumpLink chunk_id? kb_id? />` 共用組件，拒絕重複邏輯。
+- **P3 分類重排故意不做**：embedding 不看 category，對答題正確率幾乎零影響。這決策是對的，但**如果未來 category 有 routing 用途**（特定 category 的 chunk 優先檢索），需要回頭做 bulk 重排工具。**優先級：延後**（目前架構沒做 category routing）。
+
+### 延伸學習
+
+- **Tag-before-flatten 的 pattern**：`zip(keys, list_of_lists)` + `[(k, item) for k, batch in zip... for item in batch]` 是「保留 origin 資訊」的標準做法。每次看到「A 陣列 × B 陣列 → 展平 C 陣列」且 **A 代表 origin context**，都要考慮 tag。
+- **Null-by-default 擴充 entity field 的成本評估**：`ChunkScoreItem.chunk_id: str | None = None` 讓新舊 eval row 並存零問題。這比「migration + 回填 + 全量替換」省 80% 工。**判準：欄位是否 optional from UI's perspective？如果是 → nullable + graceful degrade；如果不是 → migration 硬塞**。
+- **「讓眼睛去到該去的地方」是精修工具的核心**：不是「做個 chunk 編輯器」，是「在 signal source（低分 / 投訴）加 link to editor」。**精修工具的價值 = (找到該改的 chunk 的時間) × (改那個 chunk 的次數)**。分母先降（deep link）比分子（全量掃）先做 ROI 高 10 倍以上。
+- **URL 格式是跨頁 contract**：這個 sprint 三個頁面的跳轉都用 `kb-studio/:id?tab=chunks&highlight=:cid` 一個 URL。URL 設計好就不用寫 service 層同步 state — **URL 是最便宜的 state 共享機制，成本只是「約好格式」**。
+
+### 思考題
+
+- **`Source.kb_id` 該是 Value Object 層級還是 payload 層級？** 現在做成 Domain VO 欄位（`@dataclass(frozen=True) class Source`）。但另一個選擇是「存到 `r.payload["kb_id"]`」— Milvus payload 改寫在 upsert 時固化，根本不需事後 tag。trade-off：VO 改 cheap / payload 改需要 migration + 回填所有 1M+ chunks。選 VO 是對的嗎？（我傾向是，但值得寫下思考）
+- **「graceful degrade」vs「全量 backfill」的判準**：既有 eval row 沒 chunk_id，是放生還是補？本次放生，但這裡有個陷阱 — 如果 user 看到「大部分 row 不能跳」會懷疑整個功能是否正常。何時應該為了 UX consistency 而付 backfill 成本？
+- **精修工具要不要出「reviewer 待辦清單」頁？** 現在是 reactive（user 看到低分才去修），如果做 proactive（系統自動列「所有 < 0.4 的 chunk」），反而可能降低效率 — 因為沒有對應的「為什麼這筆低分」的使用情境。什麼時候 reactive 夠、什麼時候該做 proactive？
+
+---
+
 ## S-ConvInsights.1 follow-up — Token 用量 tab 全 0 bug（RecordUsage 補 message_id）
 
 **日期**：2026-04-23
