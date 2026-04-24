@@ -91,10 +91,16 @@ class QueryRAGUseCase:
             for kid in effective_kb_ids
         ]
         search_results = await asyncio.gather(*search_tasks)
-        all_results = [r for batch in search_results for r in batch]
+        # QualityEdit.1: 保留 kb_id 歸屬（跨 KB 搜尋時每筆 result 源頭 kb）
+        all_results_with_kb: list[tuple[str, Any]] = [
+            (kid, r)
+            for kid, batch in zip(effective_kb_ids, search_results)
+            for r in batch
+        ]
+        all_results_with_kb.sort(key=lambda pair: pair[1].score, reverse=True)
+        all_results = [r for _, r in all_results_with_kb]
+        _result_kb_map = {r.id: kid for kid, r in all_results_with_kb}
         search_ms = int((time.perf_counter() - t0) * 1000)
-
-        all_results.sort(key=lambda r: r.score, reverse=True)
 
         # Trace: vector search results
         # parent_id 用 label-based 反查 — ContextVar tool_parent() 在 LLM parallel
@@ -168,6 +174,7 @@ class QueryRAGUseCase:
                 score=r.score,
                 chunk_id=r.id,
                 document_id=r.payload.get("document_id", ""),
+                kb_id=_result_kb_map.get(r.id, ""),
             )
             for r in results
         ]

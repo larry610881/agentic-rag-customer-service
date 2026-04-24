@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { formatDateTime } from "@/lib/format-date";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -38,11 +39,28 @@ function ChunkScoreList({ scores }: { scores: ChunkScore[] }) {
     <div className="mt-1 ml-16 space-y-0.5 border-l-2 border-muted pl-3">
       {scores.map((cs) => {
         const numScore = Number(cs.score) || 0;
+        const canJump = !!(cs.chunk_id && cs.kb_id);
+        const isLowScore = numScore < 0.4;
         return (
           <div key={cs.index} className="flex items-center gap-2 text-xs">
             <span className="w-6 text-right font-mono text-muted-foreground">[{cs.index}]</span>
             <ChunkScoreBadge score={numScore} />
-            <span className="text-muted-foreground">{cs.reason}</span>
+            <span className="text-muted-foreground flex-1">{cs.reason}</span>
+            {canJump && (
+              <Link
+                to={`/admin/kb-studio/${cs.kb_id}?tab=chunks&highlight=${cs.chunk_id}`}
+                className={
+                  "inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] hover:bg-muted transition-colors " +
+                  (isLowScore
+                    ? "border-amber-500/50 text-amber-700 dark:text-amber-400"
+                    : "border-muted text-muted-foreground")
+                }
+                title="到 KB Studio 編輯此 chunk"
+              >
+                <Pencil className="h-2.5 w-2.5" />
+                修正
+              </Link>
+            )}
           </div>
         );
       })}

@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Link } from "react-router-dom";
+import {
+  ChevronDown,
+  ChevronRight,
+  ThumbsUp,
+  ThumbsDown,
+  Pencil,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,6 +14,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { TagEditor } from "./tag-editor";
 import type { FeedbackResponse } from "@/types/feedback";
+
+// QualityEdit.1 P1: 引用 chunks 解析 — retrieved_chunks JSON 常見欄位
+interface RetrievedChunkDict {
+  chunk_id?: string;
+  kb_id?: string;
+  document_name?: string;
+  content_snippet?: string;
+  score?: number;
+}
 
 interface ConversationMessage {
   id: string;
@@ -132,15 +148,48 @@ export function ConversationReplay({
                     檢索片段 ({msg.retrieved_chunks!.length})
                   </Button>
                   {isExpanded && (
-                    <div className="mt-1 space-y-1">
-                      {msg.retrieved_chunks!.map((chunk, i) => (
-                        <pre
-                          key={i}
-                          className="overflow-x-auto rounded bg-muted p-2 text-xs"
-                        >
-                          {JSON.stringify(chunk, null, 2)}
-                        </pre>
-                      ))}
+                    <div className="mt-1 space-y-2">
+                      {msg.retrieved_chunks!.map((chunk, i) => {
+                        const c = chunk as RetrievedChunkDict;
+                        const canJump = !!(c.chunk_id && c.kb_id);
+                        return (
+                          <div
+                            key={i}
+                            className="rounded border bg-card p-2 text-xs space-y-1"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
+                                <span className="font-mono">[{i + 1}]</span>
+                                {c.document_name && (
+                                  <span className="truncate max-w-[200px]">
+                                    📄 {c.document_name}
+                                  </span>
+                                )}
+                                {typeof c.score === "number" && (
+                                  <span className="font-mono">
+                                    score {c.score.toFixed(3)}
+                                  </span>
+                                )}
+                              </div>
+                              {canJump && (
+                                <Link
+                                  to={`/admin/kb-studio/${c.kb_id}?tab=chunks&highlight=${c.chunk_id}`}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] hover:bg-muted transition-colors"
+                                  title="到 KB Studio 編輯此 chunk"
+                                >
+                                  <Pencil className="h-2.5 w-2.5" />
+                                  修正
+                                </Link>
+                              )}
+                            </div>
+                            {c.content_snippet && (
+                              <p className="text-xs whitespace-pre-wrap line-clamp-3">
+                                {c.content_snippet}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

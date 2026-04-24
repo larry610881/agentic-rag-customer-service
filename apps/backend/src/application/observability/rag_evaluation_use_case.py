@@ -23,6 +23,9 @@ class ChunkScoreItem(BaseModel):
     index: int = 0
     score: float = 0.0
     reason: str = ""
+    # QualityEdit.1 P0: 跳轉到 KB Studio 編輯這個 chunk 用
+    chunk_id: str | None = None
+    kb_id: str | None = None
 
     @field_validator("score", mode="before")
     @classmethod
@@ -259,6 +262,10 @@ class RAGEvaluationUseCase:
         tenant_id: str = "",
         trace_id: str | None = None,
         message_id: str | None = None,
+        # QualityEdit.1 P0: chunk_id / kb_id 對齊 chunks index
+        # （前 N 筆為 RAG sources，後為 MCP tool outputs）
+        chunk_ids: list[str] | None = None,
+        chunk_kb_ids: list[str] | None = None,
     ) -> EvalResult:
         """合併評估 — 動態組裝 prompt，1 次 LLM call 完成所有層級。
 
@@ -309,6 +316,16 @@ class RAGEvaluationUseCase:
                 "你是 RAG 品質評估專家", prompt, ""
             )
             scores = self._parse_scores(result.text)
+            # QualityEdit.1 P0: 把 chunk_id / kb_id 按 index 對齊塞進 chunk_scores
+            _enriched = scores.get("chunk_scores")
+            if _enriched and (chunk_ids or chunk_kb_ids):
+                for item in _enriched:
+                    idx = item.get("index")
+                    if isinstance(idx, int) and idx >= 0:
+                        if chunk_ids and idx < len(chunk_ids):
+                            item["chunk_id"] = chunk_ids[idx]
+                        if chunk_kb_ids and idx < len(chunk_kb_ids):
+                            item["kb_id"] = chunk_kb_ids[idx]
             dimensions = self._extract_dimensions(scores, expected_keys)
         except Exception as exc:
             logger.warning("eval.combined.failed", error=str(exc))
@@ -403,7 +420,11 @@ class RAGEvaluationUseCase:
     def _extract_dimensions(
         scores: dict, expected_keys: list[str],
     ) -> list[EvalDimension]:
-        """Extract EvalDimension list from parsed scores."""
+        """Extract EvalDimension list from parsed scores.
+
+        QualityEdit.1 P0: chunk_id/kb_id 已由 _enrich_chunk_scores() 回填，
+        直接讀出透傳即可。
+        """
         chunk_scores = scores.get("chunk_scores")
         dimensions = []
         for key in expected_keys:

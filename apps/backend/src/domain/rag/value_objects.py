@@ -24,6 +24,8 @@ class Source:
     score: float
     chunk_id: str
     document_id: str = ""
+    # QualityEdit.1 P0/P1: 支援「從 feedback / L1 低分跳到 KB Studio 修正」需要 kb_id
+    kb_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -32,6 +34,7 @@ class Source:
             "score": self.score,
             "chunk_id": self.chunk_id,
             "document_id": self.document_id,
+            "kb_id": self.kb_id,
         }
 
 

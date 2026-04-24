@@ -1,6 +1,16 @@
+import { Link } from "react-router-dom";
+import { Pencil } from "lucide-react";
 import { useConversationMessages } from "@/hooks/queries/use-conversation-insights";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+
+interface RetrievedChunkDict {
+  chunk_id?: string;
+  kb_id?: string;
+  document_name?: string;
+  content_snippet?: string;
+  score?: number;
+}
 
 interface Props {
   conversationId: string;
@@ -73,6 +83,58 @@ export function ConversationMessagesTab({ conversationId }: Props) {
               </pre>
             </details>
           )}
+          {/* QualityEdit.1 P1: 引用 chunks 展開 + 跳轉 */}
+          {m.retrieved_chunks &&
+            Array.isArray(m.retrieved_chunks) &&
+            m.retrieved_chunks.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground">
+                  📚 引用 chunks ({m.retrieved_chunks.length})
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {(m.retrieved_chunks as RetrievedChunkDict[]).map((c, i) => {
+                    const canJump = !!(c.chunk_id && c.kb_id);
+                    return (
+                      <div
+                        key={i}
+                        className="rounded border bg-card p-2 space-y-1"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
+                            <span className="font-mono">[{i + 1}]</span>
+                            {c.document_name && (
+                              <span className="truncate max-w-[200px]">
+                                📄 {c.document_name}
+                              </span>
+                            )}
+                            {typeof c.score === "number" && (
+                              <span className="font-mono">
+                                {c.score.toFixed(3)}
+                              </span>
+                            )}
+                          </div>
+                          {canJump && (
+                            <Link
+                              to={`/admin/kb-studio/${c.kb_id}?tab=chunks&highlight=${c.chunk_id}`}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] hover:bg-muted transition-colors"
+                              title="到 KB Studio 編輯此 chunk"
+                            >
+                              <Pencil className="h-2.5 w-2.5" />
+                              修正
+                            </Link>
+                          )}
+                        </div>
+                        {c.content_snippet && (
+                          <p className="text-xs whitespace-pre-wrap line-clamp-3">
+                            {c.content_snippet}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            )}
           {m.latency_ms != null && (
             <span className="text-xs text-muted-foreground">
               延遲 {m.latency_ms}ms

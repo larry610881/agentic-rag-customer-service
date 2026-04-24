@@ -1105,14 +1105,24 @@ class SendMessageUseCase:
             # Determine if we have RAG sources (vs MCP-only)
             has_rag_sources = False
             chunks: list[str] = []
+            # QualityEdit.1 P0: 收集 chunk_id / kb_id 對齊 chunks index，
+            # 讓 eval chunk_scores 能帶跳轉 metadata
+            chunk_ids: list[str] = []
+            chunk_kb_ids: list[str] = []
             if sources:
                 for s in sources:
                     if isinstance(s, dict):
                         text = s.get("content_snippet") or s.get("content", "")
+                        cid = s.get("chunk_id", "")
+                        kid = s.get("kb_id", "")
                     else:
                         text = getattr(s, "content_snippet", "") or getattr(s, "content", "")
+                        cid = getattr(s, "chunk_id", "")
+                        kid = getattr(s, "kb_id", "")
                     if text:
                         chunks.append(text)
+                        chunk_ids.append(cid or "")
+                        chunk_kb_ids.append(kid or "")
                         has_rag_sources = True
 
             # Include MCP tool outputs (non-RAG tools) as context
@@ -1123,6 +1133,8 @@ class SendMessageUseCase:
                     continue
                 if tool_output:
                     chunks.append(f"[{tool_name}] {tool_output}")
+                    chunk_ids.append("")  # MCP 無 chunk_id
+                    chunk_kb_ids.append("")
 
             all_context = "\n---\n".join(chunks)
 
@@ -1139,6 +1151,8 @@ class SendMessageUseCase:
                 agent_mode="react",
                 tenant_id=tenant_id,
                 trace_id=trace_id,
+                chunk_ids=chunk_ids,
+                chunk_kb_ids=chunk_kb_ids,
             )
             if result.dimensions:
                 await self._persist_eval(result)

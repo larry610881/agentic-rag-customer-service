@@ -2,6 +2,9 @@ export interface ChunkScore {
   index: number;
   score: number;
   reason: string;
+  // QualityEdit.1 P0: 跳轉到 KB Studio 編輯此 chunk（backend eval 新產生的 row 才有）
+  chunk_id?: string | null;
+  kb_id?: string | null;
 }
 
 export interface EvalDimension {

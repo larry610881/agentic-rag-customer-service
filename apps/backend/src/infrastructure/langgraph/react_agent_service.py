@@ -1151,6 +1151,7 @@ class ReActAgentService(AgentService):
                                         score=float(s.get("score", 0.0) or 0.0),
                                         chunk_id=s.get("chunk_id", ""),
                                         document_id=s.get("document_id", ""),
+                                        kb_id=s.get("kb_id", ""),
                                     ))
                             _found = True
                         # transfer_to_human_agent tool → capture contact
