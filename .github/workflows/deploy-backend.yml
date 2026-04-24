@@ -163,7 +163,19 @@ jobs:
             --command='sudo -u p10359945 git -C /home/p10359945/agentic-rag-customer-service rev-parse HEAD')
           echo "Local CI SHA:  ${{ github.sha }}"
           echo "Worker VM SHA: ${REMOTE_SHA}"
-          if [ "${{ github.sha }}" != "${REMOTE_SHA}" ]; then
-            echo "::error::Worker VM SHA mismatch — pull failed silently"
-            exit 1
+          if [ "${{ github.sha }}" = "${REMOTE_SHA}" ]; then
+            echo "==> VM at expected SHA"
+            exit 0
           fi
+          # VM 可能超前 — 若 CI 觸發後有新 commit 落地（docs / follow-up push），
+          # VM pull 時會拿到更新的 HEAD。只要 github.sha 是 REMOTE_SHA 的 ancestor
+          # 即表示 VM 已包含本次變更（而且更新）。
+          echo "==> SHA differs; checking if VM is ahead (ancestor check)"
+          git fetch --quiet --unshallow origin main 2>/dev/null \
+            || git fetch --quiet origin main
+          if git merge-base --is-ancestor "${{ github.sha }}" "${REMOTE_SHA}"; then
+            echo "==> VM is AHEAD of CI SHA (new commit landed during deploy), OK"
+            exit 0
+          fi
+          echo "::error::Worker VM SHA mismatch — VM not at or ahead of expected SHA (pull failed silently or diverged)"
+          exit 1
