@@ -1,10 +1,13 @@
 name: RunPod Pod 排程開關
 
 on:
-  # 台灣時間 08:30 開機 (UTC 00:30)
-  schedule:
-    - cron: "30 0 * * 1-5"   # 週一到週五早上開機
-    - cron: "0 11 * * 1-5"   # 週一到週五傍晚 19:00 關機 (UTC 11:00)
+  # 2026-04-24: cron schedule 暫停 — 改為手動觸發。
+  # 若要恢復自動排程，把下方 schedule 段落 uncomment 並確認
+  # GitHub Secrets 已設 RUNPOD_API_KEY + RUNPOD_POD_ID。
+  #
+  # schedule:
+  #   - cron: "30 0 * * 1-5"   # 台灣 08:30 (UTC 00:30) 開機
+  #   - cron: "0 11 * * 1-5"   # 台灣 19:00 (UTC 11:00) 關機
 
   # 手動觸發
   workflow_dispatch:
