@@ -168,9 +168,7 @@ class DocumentRepository(ABC):
     ) -> datetime | None:
         """Return the latest document.updated_at in a KB for stale detection.
 
-        Used by Wiki status query to determine if knowledge base has been
-        modified since wiki graph was compiled. Returns None if KB has no
-        documents.
+        Returns None if KB has no documents.
         """
         ...
 

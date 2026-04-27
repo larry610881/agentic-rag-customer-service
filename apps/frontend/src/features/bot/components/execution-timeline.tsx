@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Activity,
+  ShieldAlert,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -22,7 +23,7 @@ type TimelineCardSpec = {
   label: string;
   detail: string;
   tsMs: number;
-  tone: "default" | "success" | "warn" | "info";
+  tone: "default" | "success" | "warn" | "info" | "danger";
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -35,6 +36,7 @@ const TYPE_LABELS: Record<string, string> = {
   conversation_id: "對話 ID",
   done: "完成",
   error: "錯誤",
+  guard_blocked: "🛡️ 攔截",
 };
 
 const TYPE_ICONS: Record<string, LucideIcon> = {
@@ -47,6 +49,7 @@ const TYPE_ICONS: Record<string, LucideIcon> = {
   conversation_id: MessageSquare,
   done: CheckCircle2,
   error: AlertTriangle,
+  guard_blocked: ShieldAlert,
 };
 
 function eventToCard(event: SSEEvent): TimelineCardSpec | null {
@@ -87,6 +90,14 @@ function eventToCard(event: SSEEvent): TimelineCardSpec | null {
   } else if (event.type === "error" && typeof event.message === "string") {
     detail = event.message as string;
     tone = "warn";
+  } else if (event.type === "guard_blocked") {
+    // Sprint A++ Guard UX: 攔截事件最顯眼 — danger tone 強紅 + ring
+    const blockType = (event.block_type as string) || "input";
+    const ruleMatched = (event.rule_matched as string) || "";
+    detail = ruleMatched
+      ? `${blockType} • ${ruleMatched.slice(0, 40)}`
+      : `${blockType} blocked`;
+    tone = "danger";
   }
 
   return { type: event.type, icon, label, detail, tsMs, tone };
@@ -97,6 +108,9 @@ const TONE_CLASS_ACTIVE: Record<TimelineCardSpec["tone"], string> = {
   info: "border-emerald-500 bg-emerald-50 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100",
   success: "border-emerald-500 bg-emerald-50 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100",
   warn: "border-red-500 bg-red-50 text-red-900 dark:bg-red-950 dark:text-red-100",
+  // 加 ring + 較深的紅，跟一般 error 區分（攔截事件 = 安全相關，需更醒目）
+  danger:
+    "border-red-600 bg-red-100 text-red-900 ring-2 ring-red-400/60 dark:border-red-500 dark:bg-red-950 dark:text-red-50 dark:ring-red-500/60",
 };
 
 const TONE_CLASS_PAST: Record<TimelineCardSpec["tone"], string> = {
@@ -104,6 +118,9 @@ const TONE_CLASS_PAST: Record<TimelineCardSpec["tone"], string> = {
   info: "border-violet-200 bg-violet-50/40 text-violet-900 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-200",
   success: "border-emerald-200 bg-emerald-50/40 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200",
   warn: "border-red-200 bg-red-50/40 text-red-900 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200",
+  // 過去狀態也保持 ring 但減淡，讓使用者捲到歷史時仍能一眼看到攔截點
+  danger:
+    "border-red-500 bg-red-100/70 text-red-900 ring-1 ring-red-400/40 dark:border-red-600 dark:bg-red-950/60 dark:text-red-100 dark:ring-red-500/40",
 };
 
 export type ExecutionTimelineProps = {
