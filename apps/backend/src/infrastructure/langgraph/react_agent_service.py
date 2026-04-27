@@ -959,22 +959,34 @@ class ReActAgentService(AgentService):
                                                 # Fallback: if messages mode didn't
                                                 # stream tokens (e.g. mock LLM without
                                                 # astream), emit content as one chunk.
+                                                # 對 ChatAnthropic 直連，msg.content
+                                                # 可能是 list[dict] (content blocks)
+                                                # 同 _handle_text_chunk 的處理邏輯，
+                                                # 避免前端看到 [{'text': ...}] 的 repr。
+                                                raw = msg.content
+                                                if isinstance(raw, str):
+                                                    content = raw
+                                                elif isinstance(raw, list):
+                                                    content = "".join(
+                                                        block.get("text", "")
+                                                        for block in raw
+                                                        if isinstance(block, dict)
+                                                        and block.get("type") == "text"
+                                                    )
+                                                else:
+                                                    content = str(raw)
+                                                if not content:
+                                                    llm_generating_emitted = False
+                                                    continue
                                                 if not llm_generating_emitted:
                                                     yield _ev({
                                                         "type": "status",
                                                         "status": "llm_generating",
                                                     })
-                                                    content = (
-                                                        msg.content
-                                                        if isinstance(
-                                                            msg.content, str
-                                                        )
-                                                        else str(msg.content)
-                                                    )
-                                                    yield _ev({
-                                                        "type": "token",
-                                                        "content": content,
-                                                    })
+                                                yield _ev({
+                                                    "type": "token",
+                                                    "content": content,
+                                                })
                                                 llm_generating_emitted = False
 
                                 elif node_name == "tools":
