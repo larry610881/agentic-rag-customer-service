@@ -301,3 +301,57 @@ def test_stream_output_guard_passthrough_when_not_blocked():
     assert len(blocked) == 0
     # check_output 仍應被呼叫一次（驗證 hook 有執行，只是沒命中）
     use_case._prompt_guard.check_output.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Trace lifecycle — guard 阻擋時也要 start trace + persist trace 才能在 DAG 看到
+# ---------------------------------------------------------------------------
+
+def test_blocked_input_starts_trace_and_persists_for_dag_visibility():
+    """input guard 命中時：trace 要被 start (讓 add_node 不被吞)，
+    且 _persist_agent_trace 要被呼叫（讓 DAG / 觀測頁看得到攔截節點）。"""
+    use_case = _make_use_case(guard_passes=False)
+    use_case._persist_agent_trace = AsyncMock()
+
+    _run(use_case._execute_inner(_cmd()))
+
+    use_case._persist_agent_trace.assert_called_once()
+
+
+def test_stream_blocked_input_starts_trace_and_persists_for_dag_visibility():
+    use_case = _make_use_case(guard_passes=False)
+    use_case._persist_agent_trace = AsyncMock()
+
+    async def _consume():
+        async for _ in use_case._execute_stream_inner(_cmd()):
+            pass
+
+    _run(_consume())
+
+    use_case._persist_agent_trace.assert_called_once()
+
+
+def test_trace_collector_start_is_idempotent():
+    """連續呼叫兩次 start 不該 reset 已建立的 trace（保護 guard add_node 路徑）"""
+    from src.infrastructure.observability.agent_trace_collector import (
+        AgentTraceCollector,
+    )
+
+    # 用 contextvars.copy_context 隔離 ContextVar，避免污染其他 test
+    import contextvars
+
+    def _check():
+        t1 = AgentTraceCollector.start(
+            tenant_id="t1", agent_mode="", bot_id="b1"
+        )
+        t2 = AgentTraceCollector.start(
+            tenant_id="t1", agent_mode="supervisor", llm_model="haiku"
+        )
+        # 同一個 trace（trace_id 不變）
+        assert t1.trace_id == t2.trace_id
+        # 後 start 補上空欄位
+        assert t2.agent_mode == "supervisor"
+        assert t2.llm_model == "haiku"
+
+    ctx = contextvars.copy_context()
+    ctx.run(_check)

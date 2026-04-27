@@ -647,6 +647,18 @@ class SendMessageUseCase:
         metadata["rerank_model"] = bot_cfg.get("rerank_model", "")
         metadata["rerank_top_n"] = bot_cfg.get("rerank_top_n", 20)
 
+        # 提早 start AgentTraceCollector — guard 命中時要 add_node，否則
+        # 在 agent_service.start() 之前 add_node 會被 trace=None 吞掉
+        # → DAG 永遠看不到 guard_input_blocked 紅節點。
+        # AgentTraceCollector.start 是 idempotent，agent_service 後面再 call
+        # 不會重置已建立的 trace。
+        AgentTraceCollector.start(
+            tenant_id=command.tenant_id,
+            agent_mode="",  # agent_service 後續會補
+            conversation_id=conversation.id.value,
+            bot_id=command.bot_id,
+        )
+
         # ── Prompt Guard: input check (must be FIRST LLM-affecting gate) ──
         # 之前擺在 _resolve_worker_config 之後，但 worker routing 的 intent
         # classifier 已經把 user_message 餵給 LLM → prompt injection 已經
@@ -660,9 +672,19 @@ class SendMessageUseCase:
             )
             if not guard_result.passed:
                 conversation.add_message("user", command.message)
-                conversation.add_message("assistant", guard_result.blocked_response)
+                assistant_msg = conversation.add_message(
+                    "assistant", guard_result.blocked_response
+                )
                 _bump_conversation_counters(conversation)
                 await self._conversation_repo.save(conversation)
+                # 持久化 trace（含 guard_input_blocked 紅節點），讓 admin
+                # 觀測頁 / Studio canvas 能看到攔截 DAG
+                await self._persist_agent_trace(
+                    conversation_id=conversation.id.value,
+                    message_id=assistant_msg.id.value,
+                    latency_ms=0,
+                    source=command.identity_source or "web",
+                )
                 return AgentResponse(
                     answer=guard_result.blocked_response,
                     conversation_id=conversation.id.value,
@@ -832,6 +854,16 @@ class SendMessageUseCase:
         metadata["rerank_model"] = bot_cfg.get("rerank_model", "")
         metadata["rerank_top_n"] = bot_cfg.get("rerank_top_n", 20)
 
+        # 提早 start AgentTraceCollector — guard 命中時要 add_node，否則
+        # 在 agent_service.start() 之前 add_node 會被 trace=None 吞掉
+        # → DAG 永遠看不到 guard_input_blocked 紅節點。
+        AgentTraceCollector.start(
+            tenant_id=command.tenant_id,
+            agent_mode="",  # agent_service 後續會補
+            conversation_id=conversation.id.value,
+            bot_id=command.bot_id,
+        )
+
         # ── Prompt Guard: input check (must be FIRST LLM-affecting gate) ──
         # 之前擺在 _resolve_worker_config 之後，但 worker routing 的 intent
         # classifier 已經把 user_message 餵給 LLM → prompt injection 已經
@@ -845,7 +877,7 @@ class SendMessageUseCase:
             )
             if not guard_result.passed:
                 conversation.add_message("user", command.message)
-                conversation.add_message(
+                assistant_msg = conversation.add_message(
                     "assistant", guard_result.blocked_response
                 )
                 _bump_conversation_counters(conversation)
@@ -859,6 +891,14 @@ class SendMessageUseCase:
                     "block_type": "input",
                     "rule_matched": guard_result.rule_matched,
                 }
+                # 持久化 trace（含 guard_input_blocked 紅節點），讓 Studio
+                # canvas / admin 觀測頁能看到攔截 DAG
+                await self._persist_agent_trace(
+                    conversation_id=conversation.id.value,
+                    message_id=assistant_msg.id.value,
+                    latency_ms=0,
+                    source=command.identity_source or "web",
+                )
                 yield {"type": "done"}
                 return
 

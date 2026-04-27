@@ -40,6 +40,22 @@ class AgentTraceCollector:
         llm_provider: str = "",
         bot_id: str | None = None,
     ) -> AgentExecutionTrace:
+        # Idempotent：若 caller 已先 start（例如 use case 為了讓 guard
+        # node 有 active trace），agent_service 後來再 start 一次時不該
+        # 重置 trace。Return 現有 trace，但補強空欄位（agent_service 通常
+        # 帶得到較完整的 model/mode 資訊）
+        existing = _agent_trace.get()
+        if existing is not None:
+            if not existing.agent_mode and agent_mode:
+                existing.agent_mode = agent_mode
+            if not existing.llm_model and llm_model:
+                existing.llm_model = llm_model
+            if not existing.llm_provider and llm_provider:
+                existing.llm_provider = llm_provider
+            if not existing.bot_id and bot_id:
+                existing.bot_id = bot_id
+            return existing
+
         trace = AgentExecutionTrace(
             tenant_id=tenant_id,
             agent_mode=agent_mode,
