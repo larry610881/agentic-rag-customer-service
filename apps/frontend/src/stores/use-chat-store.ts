@@ -14,6 +14,8 @@ interface ChatState {
   startAssistantMessage: () => void;
   appendToAssistantMessage: (token: string) => void;
   resetAssistantContent: () => void;
+  /** Output guard 命中時用 — 把當前 assistant 訊息整段內容替換成安全版 */
+  replaceAssistantContent: (content: string) => void;
   finalizeAssistantMessage: (
     sources: Source[],
     toolCalls: ToolCallInfo[],
@@ -97,6 +99,16 @@ export const useChatStore = create<ChatState>((set) => ({
       const lastMsg = messages[messages.length - 1];
       if (lastMsg && lastMsg.role === "assistant") {
         messages[messages.length - 1] = { ...lastMsg, content: "" };
+      }
+      return { messages };
+    }),
+
+  replaceAssistantContent: (content) =>
+    set((state) => {
+      const messages = [...state.messages];
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg && lastMsg.role === "assistant") {
+        messages[messages.length - 1] = { ...lastMsg, content };
       }
       return { messages };
     }),

@@ -200,3 +200,104 @@ def test_stream_passed_input_proceeds_through_helpers():
     use_case._resolve_history.assert_called_once()
     use_case._resolve_worker_config.assert_called_once()
     use_case._agent_service.process_message_stream.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Output guard (stream Option B) — 串流結束後檢查、命中時 emit redact 事件
+# ---------------------------------------------------------------------------
+
+def _make_use_case_with_output_guard_block(*, output_text: str):
+    """Build use case where input guard passes but output guard blocks
+    if output contains specific text."""
+    use_case = _make_use_case(guard_passes=True)
+
+    async def _check_output(response, **_kw):
+        if output_text in response:
+            return _GuardResult(
+                passed=False,
+                blocked_response="此訊息已被替換為安全回應",
+                rule_matched="行為準則,安全規則",
+            )
+        return _GuardResult(passed=True)
+
+    use_case._prompt_guard.check_output = AsyncMock(side_effect=_check_output)
+
+    # Make agent stream emit a "leaked" full_answer
+    async def _stream():
+        yield {"type": "token", "content": "我的"}
+        yield {"type": "token", "content": output_text}
+        yield {"type": "done"}
+
+    use_case._agent_service.process_message_stream = MagicMock(return_value=_stream())
+    return use_case
+
+
+def test_stream_output_guard_emits_redact_event_when_blocked():
+    use_case = _make_use_case_with_output_guard_block(output_text="行為準則和安全規則")
+
+    async def _consume():
+        events = []
+        async for ev in use_case._execute_stream_inner(_cmd()):
+            events.append(ev)
+        return events
+
+    events = _run(_consume())
+    types = [e.get("type") for e in events]
+    assert "guard_blocked" in types
+    blocked_ev = next(e for e in events if e.get("type") == "guard_blocked")
+    assert blocked_ev["block_type"] == "output"
+    assert blocked_ev["rule_matched"] == "行為準則,安全規則"
+    assert blocked_ev["replacement"] == "此訊息已被替換為安全回應"
+
+
+def test_stream_output_guard_persists_replacement_not_original():
+    """命中時 conversation.add_message 收到的 content 必須是 blocked_response
+    （DB 存乾淨版），不是原始洩漏內容。"""
+    use_case = _make_use_case_with_output_guard_block(output_text="行為準則和安全規則")
+
+    captured_assistant: list[str] = []
+
+    def _spy_add(role, content, **_kw):
+        if role == "assistant":
+            captured_assistant.append(content)
+        msg = MagicMock()
+        msg.id = MagicMock(value="m1")
+        return msg
+
+    use_case._load_or_create_conversation.return_value.add_message = MagicMock(
+        side_effect=_spy_add
+    )
+
+    async def _consume():
+        async for _ in use_case._execute_stream_inner(_cmd()):
+            pass
+
+    _run(_consume())
+
+    assert len(captured_assistant) == 1
+    saved = captured_assistant[0]
+    assert "行為準則和安全規則" not in saved  # 原文不可入庫
+    assert saved == "此訊息已被替換為安全回應"
+
+
+def test_stream_output_guard_passthrough_when_not_blocked():
+    """沒命中時不該 emit guard_blocked 事件 — guard 永遠 passed=True"""
+    use_case = _make_use_case(guard_passes=True)
+
+    async def _stream():
+        yield {"type": "token", "content": "今天天氣很好"}
+        yield {"type": "done"}
+
+    use_case._agent_service.process_message_stream = MagicMock(return_value=_stream())
+
+    async def _consume():
+        events = []
+        async for ev in use_case._execute_stream_inner(_cmd()):
+            events.append(ev)
+        return events
+
+    events = _run(_consume())
+    blocked = [e for e in events if e.get("type") == "guard_blocked"]
+    assert len(blocked) == 0
+    # check_output 仍應被呼叫一次（驗證 hook 有執行，只是沒命中）
+    use_case._prompt_guard.check_output.assert_called_once()

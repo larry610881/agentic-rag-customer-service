@@ -26,6 +26,11 @@ class Source:
     document_id: str = ""
     # QualityEdit.1 P0/P1: 支援「從 feedback / L1 低分跳到 KB Studio 修正」需要 kb_id
     kb_id: str = ""
+    # query_dm_with_image 工具用：DM 子頁的 PNG signed URL + 頁碼。
+    # 一般 rag_query 來源這兩欄會是空字串 / 0；前端 SourceImageGallery
+    # 用 image_url 是否為空來判斷要不要渲染圖卡。
+    image_url: str = ""
+    page_number: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -35,6 +40,8 @@ class Source:
             "chunk_id": self.chunk_id,
             "document_id": self.document_id,
             "kb_id": self.kb_id,
+            "image_url": self.image_url,
+            "page_number": self.page_number,
         }
 
 

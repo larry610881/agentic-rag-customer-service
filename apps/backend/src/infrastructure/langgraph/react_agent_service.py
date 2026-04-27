@@ -1164,6 +1164,10 @@ class ReActAgentService(AgentService):
                                         chunk_id=s.get("chunk_id", ""),
                                         document_id=s.get("document_id", ""),
                                         kb_id=s.get("kb_id", ""),
+                                        # 保留 dm_image_query_tool 的圖卡資訊；rag_query
+                                        # 來源沒有這兩欄會是空字串 / 0
+                                        image_url=s.get("image_url", ""),
+                                        page_number=int(s.get("page_number", 0) or 0),
                                     ))
                             _found = True
                         # transfer_to_human_agent tool → capture contact

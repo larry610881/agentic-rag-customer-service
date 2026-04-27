@@ -34,6 +34,7 @@ export function useStreaming() {
     startAssistantMessage,
     appendToAssistantMessage,
     resetAssistantContent,
+    replaceAssistantContent,
     finalizeAssistantMessage,
     setIsStreaming,
     setConversationId,
@@ -140,6 +141,11 @@ export function useStreaming() {
             const blockType = event.block_type as "input" | "output";
             const ruleMatched = (event.rule_matched as string) || null;
             setAssistantGuardBlocked(blockType, ruleMatched);
+            // Output 路徑會帶 replacement — 串流時已 yield 出原文，需把
+            // 對話泡泡換成安全版（DB 也是存安全版，前端要對齊）
+            if (blockType === "output" && typeof event.replacement === "string") {
+              replaceAssistantContent(event.replacement as string);
+            }
             break;
           }
           case "error":

@@ -950,6 +950,29 @@ class SendMessageUseCase:
             yield event
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
+        # ── Prompt Guard: output check on accumulated answer (Option B) ──
+        # 串流結束後檢查整段 full_answer，命中時：
+        # - DB 存乾淨版（blocked_response 取代原文）
+        # - emit guard_blocked 事件給 Studio 前端，前端覆寫對話泡泡
+        # - 端使用者(widget/LINE)透過 router sanitize 拿不到此事件，
+        #   即時看到原文無法擋（keyword-based guard 的天花板，已記在 docs）
+        if self._prompt_guard and full_answer:
+            output_guard = await self._prompt_guard.check_output(
+                full_answer,
+                tenant_id=command.tenant_id,
+                bot_id=command.bot_id,
+                user_id=command.visitor_id,
+                user_message=command.message,
+            )
+            if not output_guard.passed:
+                full_answer = output_guard.blocked_response
+                yield {
+                    "type": "guard_blocked",
+                    "block_type": "output",
+                    "rule_matched": output_guard.rule_matched,
+                    "replacement": full_answer,
+                }
+
         retrieved_chunks = sources_list if sources_list else None
         structured_content = _build_structured_content(
             contact=contact_payload,
