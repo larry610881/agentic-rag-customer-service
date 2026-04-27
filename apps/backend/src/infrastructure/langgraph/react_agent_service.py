@@ -736,14 +736,26 @@ class ReActAgentService(AgentService):
         if not isinstance(msg_chunk, AIMessageChunk):
             return events, llm_generating_emitted
         if msg_chunk.content:
+            # OpenAI/LiteLLM-compat 路徑: content 為 str
+            # Anthropic 直連路徑: content 為 list[dict]，每塊形如
+            #   {"type": "text", "text": "...", "index": 0}
+            # 之前 str(list_of_dicts) 直接吃 Python repr → 前端看到 [{'text':...}]
+            raw = msg_chunk.content
+            if isinstance(raw, str):
+                content = raw
+            elif isinstance(raw, list):
+                content = "".join(
+                    block.get("text", "")
+                    for block in raw
+                    if isinstance(block, dict) and block.get("type") == "text"
+                )
+            else:
+                content = str(raw)
+            if not content:
+                return events, llm_generating_emitted
             if not llm_generating_emitted:
                 events.append({"type": "status", "status": "llm_generating"})
                 llm_generating_emitted = True
-            content = (
-                msg_chunk.content
-                if isinstance(msg_chunk.content, str)
-                else str(msg_chunk.content)
-            )
             events.append({"type": "token", "content": content})
         return events, llm_generating_emitted
 
