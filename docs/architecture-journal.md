@@ -7,6 +7,42 @@
 
 ---
 
+## Provider 切換 + Prompt Guard ordering + Output guard stream + DM 圖卡修復
+
+**日期**：2026-04-27
+**涉及層級**：Domain (`Source` value_object 加欄位) + Application (`send_message_use_case` 重排 + `handle_webhook_use_case` 修兩處) + Infrastructure (`react_agent_service` Source 重建 + chunk content 處理) + Frontend (`use-streaming` + `use-chat-store` redact 邏輯)
+**Commits**：`759c1f1` data migration / `3978daa` chunk list content / `8868ddb` guard ordering / `635442f` output guard + Source 欄位 / `ed0ee1e` LINE handler
+
+**Sprint 來源**：LiteLLM proxy 額度耗盡，緊急切到 Anthropic 直連。切換後接連浮現 4 個被「LiteLLM proxy OpenAI-compat 假象」掩蓋住的 bug：(1) ChatAnthropic 直連的 streaming chunk content 是 `list[dict]`（`[{"type":"text","text":"...","index":0}]`），舊程式 `str(list)` 直接吃 Python repr 前端看到 `[{'text':...}]`。(2) Prompt guard 順序錯擺在 worker routing 之後，但 worker routing 內 intent classifier 已先把 user input 餵 LLM。(3) Stream path 完全沒接 output guard。(4) Source dataclass 缺 image_url 欄位 + LINE handler 兩處硬編碼把欄位砍光 → DM 圖卡完全消失。
+
+**主題**：**「abstraction 換邊踩坑」** — LiteLLM proxy 把所有後端統一成 OpenAI-compat 字串格式，掩蓋了下游程式對「content 形態」、「dict vs dataclass 型別」、「tool result 結構」等假設的脆弱性。一旦繞過 proxy 直連 Anthropic，所有「我以為 content 永遠是 str」「我以為 sources 永遠是 dict」的硬編碼假設都被掀出來。同時暴露了 Sprint A++ Prompt Guard 的設計漏洞：guard 真的要 short-circuit 必須擺在第一個 LLM 呼叫之前，不是「貼近主 LLM」之前。
+
+### 做得好的地方
+
+- **Cloud Run revision 驗證 deploy 真假**：用 `gcloud run services describe ... --format="value(...image)"` 直接讀 image tag = commit SHA，確認 Cloud Run live 版本是否 match 最新 commit。避免「我修了但沒生效」的猜謎遊戲。
+- **Logs 倒推測試環境**：user 說「Studio 測」但實際從 Cloud Run logs 看到 `POST /api/v1/webhook/line/...` 才確認是 LINE 路徑。沒有先信使用者描述就動手，先看 ground truth (logs)，避免修錯地方。
+- **Prompt Guard 順序的「LLM-touching helpers」抽象**：Guard 必須在「**任何**會把 user_message 餵給 LLM 的 helper」之前。本次 fix 不只移動 guard 位置，還寫了 4 個 regression test 用 mock 驗證「guard 阻擋時 `_resolve_history` / `_resolve_worker_config` / `agent_service.process_message_stream` 都 `assert_not_called()`」— 這個契約測試比單純「guard 命中時回應 blocked」強很多，能擋未來新增 LLM-touching helper 卻忘記放在 guard 後面的 regression。
+- **Output Guard Stream Option B 的權衡誠實寫進 commit message**：保留 streaming UX 的代價是「端使用者一次性視覺暴露原文」。沒有粉飾這點，commit + journal 都明寫「keyword-based guard 的天花板，DB / Studio / 攔截紀錄都乾淨即可，real-time UI 暴露無解」。如果未來換 LLM-based 串流分類器才能消除此暴露，已記在 trade-off 中。
+- **Source dataclass 補欄位是 backward-compatible 加法**：`image_url: str = ""` + `page_number: int = 0` 都有 default，所有舊呼叫端不用改。
+- **Data migration 用 `DO $$ IF EXISTS column` 包欄位差異**：local-docker 跟 dev-vm schema 不一致（local 缺 default_ocr_model 等欄位），同一份 SQL 跑兩邊都不會炸。
+
+### 潛在隱憂
+
+- **`_handle_text_chunk` 的 list-of-dict 抽取邏輯只認 `type=="text"`** — Anthropic 未來可能新增 `tool_use` / `thinking` / `image` 等 content_block，目前會被 silently 忽略。若 Anthropic 推出新的 streaming 格式（如 thinking blocks），現有測試會 pass 但新 block 不會被使用者看到。**優先級：中**。改善方向：對未知 type emit warning log + 暴露在 trace 給觀測。
+- **Output guard `replacement` 事件的端使用者一次性原文暴露**：本次接受此 trade-off，但若未來公司簽 SLA / 合規要求「絕不可外洩」，必須換 Buffer-first（Option A）— 整段先收齊再 yield，犧牲 streaming UX。建議寫成 bot config flag `output_buffer_mode: "stream" | "buffer"`，高安全 tenant 可逐 bot 開啟，避免一刀切影響所有用戶。**優先級：低（取決於商業需求）**。
+- **LINE handler 還有第二個未檢查的 source 處理位置**：`source_lines.append(f"{i}. {s.document_name}（{score_pct}%）")` (line 515) 假設 `s.document_name` / `s.score` 是 attribute（Source dataclass）。若未來某條 worker 路徑回傳 raw dict，這行會 AttributeError。**優先級：中**。改善方向：類似 image_sources 處理，加 `_to_dict_or_keep` helper 函式。
+- **Frontend `replaceAssistantContent` 是 last-message-only**：前端假設「output guard 來時 last message 一定是 assistant」，但若同時有 system message 插入或 race condition 下 user 又送了一則，會替換到錯的訊息。目前測試覆蓋 happy path，未測 race。**優先級：低**（streaming 期間使用者通常不會插話）。改善方向：用 message_id 精準對應而非 last。
+- **LINE handler conversation-replay 視覺斷層**：admin 重看 LINE 對話的 `conversation-replay.tsx` component 只 render 文字 chunks 不 render 圖卡。即使 DB 現在有 image_url 也看不到。**優先級：中**。User 已知道此限制（本回合明確問過要不要做）。
+
+### 延伸學習
+
+- **「Adapter pattern 邊界錯位」**：LiteLLM proxy 是 multi-backend → single-protocol adapter。它在 `Provider → OpenAI compat` 這層做轉換。但下游程式（react_agent_service）對 `AIMessageChunk.content` 的型別假設是「永遠 str」，這已經是 LangChain 層的事了。adapter 邊界錯位導致：proxy 的 OpenAI-compat 假象掩蓋了 LangChain 內部的型別差異。**教訓**：當 abstraction 之間有兩個 adapter（LiteLLM proxy + LangChain ChatXxx）時，下游不能假設 adapter 的「上層型別」永遠統一。延伸關鍵字：「Hyrum's Law（觀察可見行為一定有人依賴）」、「Adapter Boundary Erosion」。
+- **「Cross-cutting concern 的擺位順序」**：Prompt Guard 是 cross-cutting（橫切多個 use case）。本次 bug 在於把它擺在「主 LLM 之前」但忽略了「intent classifier 也是 LLM」。教訓是 cross-cutting concern 必須有明確的「最早守門人」位置，並用 contract test（assert_not_called）守住它的位置不退化。延伸主題：Aspect-Oriented Programming、Pipeline Pattern with Pre/Post hooks。
+- **「DDD Value Object 的演化策略」**：Source 加 image_url + page_number 是用 default value 做 backward-compatible 加法。比起改成多型（`ImageSource < Source`）更輕量，但代價是 Source 有「rag_query 不會用到」的欄位。當欄位數成長到 10+ 應重構成多型或 ADT（algebraic data type）。延伸：Pet Shop Pattern、Tagged Union in Python via Literal types。
+- **思考題**：如果未來新增第 3 個 channel（例如 Slack / Discord webhook），sources 處理會在第 3 處出現相同的 dict / dataclass 不一致 bug 嗎？怎麼結構化避免每次都要踩一次？（Hint: 可考慮把 `result.sources` 在 use case 層強制 normalize 成單一型別 — 永遠是 list[Source] 或永遠是 list[dict] — 然後 channel handler 寫一個 helper 處理）。
+
+---
+
 ## Sprint A — Ledger Tier 1 補強（FK + carryover）
 
 **日期**：2026-04-24
