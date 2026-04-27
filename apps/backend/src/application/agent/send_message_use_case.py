@@ -646,6 +646,30 @@ class SendMessageUseCase:
         metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
         metadata["rerank_model"] = bot_cfg.get("rerank_model", "")
         metadata["rerank_top_n"] = bot_cfg.get("rerank_top_n", 20)
+
+        # ── Prompt Guard: input check (must be FIRST LLM-affecting gate) ──
+        # 之前擺在 _resolve_worker_config 之後，但 worker routing 的 intent
+        # classifier 已經把 user_message 餵給 LLM → prompt injection 已經
+        # compromise 那層 LLM。提前到任何 LLM-touching helper 之前。
+        if self._prompt_guard:
+            guard_result = await self._prompt_guard.check_input(
+                command.message,
+                tenant_id=command.tenant_id,
+                bot_id=command.bot_id,
+                user_id=command.visitor_id,
+            )
+            if not guard_result.passed:
+                conversation.add_message("user", command.message)
+                conversation.add_message("assistant", guard_result.blocked_response)
+                _bump_conversation_counters(conversation)
+                await self._conversation_repo.save(conversation)
+                return AgentResponse(
+                    answer=guard_result.blocked_response,
+                    conversation_id=conversation.id.value,
+                    guard_blocked="input",
+                    guard_rule_matched=guard_result.rule_matched,
+                )
+
         history, history_context, router_context = (
             await self._resolve_history(
                 history, bot_cfg["history_limit"]
@@ -670,28 +694,6 @@ class SendMessageUseCase:
         # Propagate worker routing info to agent service (for trace visualization)
         if bot_cfg.get("_worker_matched_info"):
             metadata["_worker_routing"] = bot_cfg["_worker_matched_info"]
-
-        # ── Prompt Guard: input check ──
-        if self._prompt_guard:
-            guard_result = await self._prompt_guard.check_input(
-                command.message,
-                tenant_id=command.tenant_id,
-                bot_id=command.bot_id,
-                user_id=command.visitor_id,
-            )
-            if not guard_result.passed:
-                conversation.add_message("user", command.message)
-                conversation.add_message("assistant", guard_result.blocked_response)
-                _bump_conversation_counters(conversation)
-                await self._conversation_repo.save(conversation)
-                return AgentResponse(
-                    answer=guard_result.blocked_response,
-                    conversation_id=conversation.id.value,
-                    # Sprint A++ Guard UX: Studio 端顯示用；router 會依
-                    # identity_source sanitize（widget/LINE 強制清空）
-                    guard_blocked="input",
-                    guard_rule_matched=guard_result.rule_matched,
-                )
 
         t0 = time.perf_counter()
         response = await self._agent_service.process_message(
@@ -830,6 +832,36 @@ class SendMessageUseCase:
         metadata["rerank_model"] = bot_cfg.get("rerank_model", "")
         metadata["rerank_top_n"] = bot_cfg.get("rerank_top_n", 20)
 
+        # ── Prompt Guard: input check (must be FIRST LLM-affecting gate) ──
+        # 之前擺在 _resolve_worker_config 之後，但 worker routing 的 intent
+        # classifier 已經把 user_message 餵給 LLM → prompt injection 已經
+        # compromise 那層 LLM。提前到任何 LLM-touching helper 之前。
+        if self._prompt_guard:
+            guard_result = await self._prompt_guard.check_input(
+                command.message,
+                tenant_id=command.tenant_id,
+                bot_id=command.bot_id,
+                user_id=command.visitor_id,
+            )
+            if not guard_result.passed:
+                conversation.add_message("user", command.message)
+                conversation.add_message(
+                    "assistant", guard_result.blocked_response
+                )
+                _bump_conversation_counters(conversation)
+                await self._conversation_repo.save(conversation)
+                yield {
+                    "type": "token",
+                    "content": guard_result.blocked_response,
+                }
+                yield {
+                    "type": "guard_blocked",
+                    "block_type": "input",
+                    "rule_matched": guard_result.rule_matched,
+                }
+                yield {"type": "done"}
+                return
+
         history, history_context, router_context = (
             await self._resolve_history(
                 history, bot_cfg["history_limit"]
@@ -854,38 +886,6 @@ class SendMessageUseCase:
         # Propagate worker routing info to agent service (for trace visualization)
         if bot_cfg.get("_worker_matched_info"):
             metadata["_worker_routing"] = bot_cfg["_worker_matched_info"]
-
-        # Sprint A++: Stream path prompt guard (input check)
-        # 原本 streaming 完全繞過 guard — 是 Studio 測試時 prompt injection 沒被
-        # 攔截、guard_logs=0 的真正根因。
-        if self._prompt_guard:
-            guard_result = await self._prompt_guard.check_input(
-                command.message,
-                tenant_id=command.tenant_id,
-                bot_id=command.bot_id,
-                user_id=command.visitor_id,
-            )
-            if not guard_result.passed:
-                conversation.add_message("user", command.message)
-                conversation.add_message(
-                    "assistant", guard_result.blocked_response
-                )
-                _bump_conversation_counters(conversation)
-                await self._conversation_repo.save(conversation)
-                # 先 stream 出 blocked_response（當作正常 token），讓
-                # widget/LINE 端不察覺特殊事件
-                yield {
-                    "type": "token",
-                    "content": guard_result.blocked_response,
-                }
-                # Studio 端才會看到此 event（router 會為非 studio sanitize 掉）
-                yield {
-                    "type": "guard_blocked",
-                    "block_type": "input",
-                    "rule_matched": guard_result.rule_matched,
-                }
-                yield {"type": "done"}
-                return
 
         # Stream from agent service
         full_answer = ""
