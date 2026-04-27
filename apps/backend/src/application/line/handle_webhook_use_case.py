@@ -450,9 +450,10 @@ class HandleWebhookUseCase:
             ],
             latency_ms=round((t1 - t0) * 1000),
             retrieved_chunks=[
-                {"document_name": s.get("document_name", "") if isinstance(s, dict) else s.document_name,
-                 "content_snippet": s.get("content_snippet", "") if isinstance(s, dict) else s.content_snippet,
-                 "score": s.get("score", 0) if isinstance(s, dict) else s.score}
+                # 保留完整欄位（包含 dm tool 的 image_url / page_number）
+                # 之前手動只挑 3 欄會把 DM 圖卡資訊砍掉 → web/Studio 跨 channel
+                # 重看 LINE 對話時看不到 PNG 卡片
+                s if isinstance(s, dict) else s.to_dict()
                 for s in result.sources
             ] if result.sources else None,
         )
@@ -525,11 +526,19 @@ class HandleWebhookUseCase:
         ]
 
         # Build DM image carousel from query_dm_with_image tool's sources
-        # (sources 是 list[dict]，每筆若有 image_url 即為 DM 子頁圖卡)
-        image_sources = [
-            s for s in (result.sources or [])
-            if isinstance(s, dict) and s.get("image_url")
-        ]
+        # result.sources 可能是 list[Source dataclass]（react_agent_service 重建後）
+        # 或 list[dict]（直接從 tool result 透傳）。兩種都要支援。
+        # 之前只檢查 isinstance(s, dict) 導致 Source dataclass 路徑下圖卡完全消失。
+        image_sources: list[dict[str, Any]] = []
+        for s in (result.sources or []):
+            if isinstance(s, dict):
+                url = s.get("image_url", "")
+                payload = s
+            else:
+                url = getattr(s, "image_url", "") or ""
+                payload = s.to_dict() if hasattr(s, "to_dict") else None
+            if url and payload is not None:
+                image_sources.append(payload)
         if image_sources:
             extra_messages.append({
                 "type": "flex",
