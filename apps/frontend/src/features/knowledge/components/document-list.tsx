@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye, FileText, FileSpreadsheet, FileJson, FileType, FileImage, ChevronRight, ChevronDown } from "lucide-react";
+import { LoaderCircle, CircleCheck, CircleX, ShieldCheck, ShieldAlert, ShieldX, Eye, FileText, FileSpreadsheet, FileJson, FileType, FileImage, ChevronRight, ChevronDown, RotateCcw } from "lucide-react";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { API_BASE } from "@/lib/api-config";
 import { useAuthStore } from "@/stores/use-auth-store";
@@ -297,6 +297,7 @@ function ChildrenRows({
   onViewChunks,
   setTextPreviewDoc,
   setTextPreviewContent,
+  onReprocess,
 }: {
   kbId: string;
   parentId: string;
@@ -304,6 +305,7 @@ function ChildrenRows({
   onViewChunks: (doc: DocumentResponse) => void;
   setTextPreviewDoc: (d: DocumentResponse) => void;
   setTextPreviewContent: (t: string) => void;
+  onReprocess?: (doc: DocumentResponse) => void;
 }) {
   const { data: children, isLoading } = useQuery({
     queryKey: ["document-children", kbId, parentId],
@@ -371,17 +373,32 @@ function ChildrenRows({
               {formatDate(child.created_at)}
             </td>
             <td className="border-b px-4 py-1">
-              {child.status === "processed" && child.chunk_count > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => onViewChunks(child)}
-                >
-                  <Eye className="mr-1 h-3.5 w-3.5" />
-                  查看分塊
-                </Button>
-              )}
+              <div className="flex items-center gap-1">
+                {child.status === "processed" && child.chunk_count > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => onViewChunks(child)}
+                  >
+                    <Eye className="mr-1 h-3.5 w-3.5" />
+                    查看分塊
+                  </Button>
+                )}
+                {onReprocess &&
+                  (child.status === "processed" || child.status === "failed") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => onReprocess(child)}
+                      title="只重新處理這一頁，不影響其他頁"
+                    >
+                      <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                      重新處理
+                    </Button>
+                  )}
+              </div>
             </td>
           </tr>
         );
@@ -668,6 +685,7 @@ export function DocumentList({
                   onViewChunks={(child) => setChunkDoc(child)}
                   setTextPreviewDoc={setTextPreviewDoc}
                   setTextPreviewContent={setTextPreviewContent}
+                  onReprocess={(child) => setReprocessTarget(child)}
                 />
               )}
               </Fragment>
