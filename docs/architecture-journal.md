@@ -7,6 +7,39 @@
 
 ---
 
+## OCR auth race + 子頁 reprocess 漏接 — 「升級後副作用」與「UI 漏線」
+
+**日期**：2026-04-28（OCR Sonnet 升級後續）
+**涉及層級**：Infrastructure (`claude_vision_ocr.py` retry-on-auth-error) + Frontend (`document-list.tsx` child row reprocess button wiring)
+**Commits**：`abf06ec` 子頁可獨立 reprocess / `f982138` OCR engine auth retry
+
+**Sprint 來源**：升級 OCR 到 Sonnet 後，user 在 KB Studio reprocess 整份家樂福 DM，觀察到第 5 頁失敗 (`Illegal header value b'Bearer '`) + 第 35 頁 silent fail。同時提出「500 頁 DM 只有 1-2 頁錯，全部 reprocess 太貴」的需求。兩個問題剛好揭露兩種「過去藏好的」軟弱點：(1) 壞 client 被 cache 導致連鎖失敗（startup race），(2) UI 子頁 row 設計時漏接 reprocess（功能存在但沒露出）。
+
+**主題**：**「Singleton stale state 的連鎖崩潰」+「Backend ready / Frontend 漏線」**。第一個是經典 cold start race — DI Singleton 在 `__init__` 時嘗試解析 API key，若解析時資料源尚未 ready（DB 慢一拍 / config 還沒注入完），會 cache 一個壞 client，**之後同 worker 內所有 request 都用這個壞 client 直到重啟**。第二個是 frontend / backend 演進不對稱的副作用 — backend 一開始就支援 child id reprocess，但 child row UI 從第一版設計就只露了「查看分塊」，後來幾次 commit 都沒人補回 reprocess 按鈕。
+
+### 做得好的地方
+
+- **發現第 5 頁 fail 不是隨機而是系統性**：用 DB 查 `processing_tasks.error_message` 拿到「Illegal header value b'Bearer '」這個關鍵字串，立刻定位是 httpx auth header 問題（不是 Anthropic API 拒絕、不是 timeout、不是 OOM）。教訓：**錯誤訊息要寫好寫滿**，下次 5 分鐘搞定的 bug 不要花 1 小時挖 log。
+- **修法選 retry-on-auth-error 而非全 worker 重啟**：原本 quick fix 路線是「pod 重啟即修」但會打斷其他 OCR job。改成自我修復 retry — 第一次 auth fail → invalidate `_client` → force re-resolve key → 試一次。對 user 看不見、對 worker 不需要重啟、對 race condition 自動容錯。
+- **同時防禦兩種 error 類型**：`anthropic.AuthenticationError`（API 端拒絕）+ `httpx ValueError("Illegal header value")`（client 端 header 構造失敗）。後者很容易漏掉 — 大多數人寫 retry 只看 `AuthenticationError`，不知道空 key 在 httpx 端就先炸了。
+- **Empty key validation 升級成 `not api_key.strip()`**：純空白 / 全空白字串都擋掉。之前邏輯漏的就是「字串非空但 strip 後是空」這種邊界。
+- **Frontend 子頁 reprocess 按鈕用透傳 callback 而非新建 hook**：parent row 已有 `setReprocessTarget(doc)` 邏輯 + dialog，child 直接複用 — 實作 30 行而非新增 100+ 行 + 新 dialog。維護單一信任源。
+
+### 潛在隱憂
+
+- **Retry 只試 1 次，固定 race scenario 沒問題；但若 API key resolver 本身連續壞**（例如 DB 整個掛），會炸成「Claude header error」而非更明確的 root cause。**優先級：低**（發生機率小）。改善：retry 失敗時 emit 更詳細的 log（resolver 回什麼 / 連 DB 了嗎），或加 circuit breaker 連續失敗 N 次後 fail-fast。
+- **Frontend 的 onReprocess 是 optional prop**：ChildrenRows 在不同 caller 場景可能不傳。目前只有 `DocumentList` 一個 caller，但未來如果有「文件詳情頁」「Admin browse 頁」也用 ChildrenRows，可能漏接導致不一致 UX（一個地方有 reprocess、另一個沒有）。**優先級：低**（current scale）。改善：如果 ChildrenRows reuse 多處再考慮統一。
+- **OCR engine 仍然是 Singleton — 整個 worker 共用一個 client**：如果未來支援 per-KB 不同 API key（高敏感 KB 用獨立 key），這個 Singleton 設計要改成 Factory provider。**優先級：中**。改善：對應之前已 flag 的「per-KB ocr_model 動態 wiring」一起做。
+- **第 35 頁 silent fail 仍未完全 root cause**：error_message 是空字串。可能是 worker 中斷沒寫 fail 訊息，或者「`raise` 之後 background_task error tracking 寫不到」。**優先級：中**。改善：在 `safe_background_task` wrapper 確保即使 raise 之後仍能 catch + persist error。
+
+### 延伸學習
+
+- **「Cold Start Race in DI Singletons」**：本次踩的是經典模式 — `__init__` 時資料源 not ready，cache 壞值，之後永遠不重試。這在 Spring Boot / Java 社群很出名（叫 **"Premature Optimization Cache"** 或 **"Initialization Race"**）。Python 的 dependency-injector 沒有 Spring 那種「lazy init + retry」內建保護，要自己寫。延伸關鍵字：**Lazy Initialization Holder**、**Singleton with Re-initialization**、**Bean Lifecycle Phases**。
+- **「UI Feature Discoverability vs Backend Capability Surface」**：backend 提供能力 != UI 開放給 user。這是 product engineering 永恆的 gap — backend 工程師覺得「我寫好了」、UI 工程師覺得「我沒被告知有這 API」。這次 child reprocess 就是這種漏。延伸概念：**Capability Mapping** — 維護一份「backend API endpoint × frontend UI 入口」對應表，每次 backend 新加 API 必須同步檢查 frontend 是否需要新 UI。延伸關鍵字：**API/UI Coverage Matrix**、**Feature Discoverability Audit**。
+- **思考題**：你會怎麼自動化「dead config / 漏接 UI」的偵測？(Hint: lint rule 掃所有 `KB.*_model` / `tenant.default_*` 欄位，檢查是否有任何 `*_use_case.py` 真的讀到該欄位；frontend 掃所有 backend API endpoint，比對是否有 UI 觸發 — 但要小心 false positive 因為有些 API 是給其他 service 不是 UI 用。這是一個 **靜態分析 + 整合測試覆蓋率** 結合的設計題。)
+
+---
+
 ## OCR 引擎升級 + 沉默欄位（dead config）發現
 
 **日期**：2026-04-28（同日後續）

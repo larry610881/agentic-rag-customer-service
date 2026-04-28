@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-28 (Bot prompt fallback + 對話追蹤頁可摺 + OCR Haiku→Sonnet 升級)
+> 最後更新：2026-04-28 (PDF 子頁可獨立 reprocess + OCR auth retry 修)
 
 ---
 
@@ -1945,3 +1945,5 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | **Bot prompt 加 fallback rule（不查就拒答 bug）** | **✅ 完成** | **100%** | **直接 SQL UPDATE bot_prompt — Studio 試運轉「請問哪裡可以換輪胎」時 LLM 直接拒答（trace `deb98414` 顯示 intent_classify → user_input → agent_llm → final_response，無 tool_call）。root cause: bot prompt 的「工具組合策略」4 條規則沒覆蓋「門市服務 / 設施」情境，LLM 嚴格按 prompt 走 → 不在分類 → 直接拒答。修法：append「⚠️ 預設 fallback（最重要）」段落 — 嚴禁未呼叫工具就答「沒查到」、任何具體問題先 rag_query 再判斷、唯有 0 chunks 時才能拒答。dev-vm SQL UPDATE 1 已套用** |
 | **對話追蹤頁左側 trace 列表可摺疊** | **✅ 完成（待 CF Pages 部署）** | **100% 程式碼** | **Commit `9791f92`: admin-conversations 頁原本固定 380-480px 左欄擠右側 detail。改成可摺：選 trace 從「無 cid」進「有 cid」自動摺左欄 / 已摺狀態下換 trace 不重設 / 左欄頂加 PanelLeftClose 按鈕手動摺 / 摺疊後變 44px 垂直 strip + PanelLeftOpen 展開 / localStorage 記偏好 / 300ms 平滑 transition** |
 | **OCR 引擎升級 Haiku → Sonnet 4.6** | **✅ 完成** | **100%** | **Commit `44fc21e`: User 觀察 DM「紫檀筷」OCR 成「茶槽杯」(形似字誤判)。Root cause: ClaudeVisionOcrEngine Singleton 寫死 `claude-haiku-4-5-20251001`，KB.ocr_model 欄位完全沒被讀（admin UI 設定無效）。修：container.py `_ocr_engine` provider 加 `model="claude-sonnet-4-6"`。每頁 OCR 成本 ~$0.001 → ~$0.005（5x），準確度 95% → 98%。<br>⚠️ TODO: 應讓 ProcessDocumentUseCase 讀 KB.ocr_model 做 per-KB 動態切換，admin UI 才有真控制權。<br>⚠️ Hybrid OCR pipeline（PaddleOCR + Sonnet + Haiku 仲裁 + 不一致紀錄供 admin recheck）— 設計階段，user 已要求記錄不一致供 audit** |
+| **PDF 子頁支援獨立重新處理** | **✅ 完成（待 CF Pages 部署）** | **100% 程式碼** | **Commit `abf06ec`: backend ReprocessDocumentUseCase 一直支援 child id reprocess，但前端 ChildrenRows row 只有「查看分塊」沒有「重新處理」按鈕 → 500 頁 DM 只 1-2 頁錯也得全 reprocess（NT$50 + 1.5hr）。改：ChildrenRows 加 onReprocess prop + RotateCcw button，parent 透傳 setReprocessTarget callback。修後單頁 reprocess 約 NT$0.15 + 10 秒** |
+| **OCR engine auth retry — stale empty key client 修復** | **✅ 完成** | **100%** | **Commit `f982138`: User 重新 OCR 觀察第 5 頁 fail (`Illegal header value b'Bearer '`) 第 35 頁同源連鎖。Root cause: ClaudeVisionOcrEngine Singleton 第一次 _ensure_client 若 _api_key_resolver 回空（worker 啟動初期 DB 慢），建出空 key client 並 cache → 後續 OCR call 都拿這個壞 client → stale auth fail 連鎖。修法：(1) _ensure_client 加 force 參數 + 強化 empty key 判斷（whitespace 也擋）(2) ocr_page 加 1 次 retry-on-auth-error 抓 anthropic.AuthenticationError + httpx ValueError(Illegal header value)，invalidate _client + force 重 resolve key 再試** |
