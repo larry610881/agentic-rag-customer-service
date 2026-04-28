@@ -959,6 +959,14 @@ class ReActAgentService(AgentService):
                                                 # Fallback: if messages mode didn't
                                                 # stream tokens (e.g. mock LLM without
                                                 # astream), emit content as one chunk.
+                                                #
+                                                # 重要：messages mode 已 stream 過時
+                                                # （llm_generating_emitted=True）必須直接
+                                                # skip，否則 updates mode 會把同樣內容再
+                                                # 吐一次 → 前端看到回答重複兩遍。
+                                                if llm_generating_emitted:
+                                                    llm_generating_emitted = False
+                                                    continue
                                                 # 對 ChatAnthropic 直連，msg.content
                                                 # 可能是 list[dict] (content blocks)
                                                 # 同 _handle_text_chunk 的處理邏輯，
@@ -976,18 +984,15 @@ class ReActAgentService(AgentService):
                                                 else:
                                                     content = str(raw)
                                                 if not content:
-                                                    llm_generating_emitted = False
                                                     continue
-                                                if not llm_generating_emitted:
-                                                    yield _ev({
-                                                        "type": "status",
-                                                        "status": "llm_generating",
-                                                    })
+                                                yield _ev({
+                                                    "type": "status",
+                                                    "status": "llm_generating",
+                                                })
                                                 yield _ev({
                                                     "type": "token",
                                                     "content": content,
                                                 })
-                                                llm_generating_emitted = False
 
                                 elif node_name == "tools":
                                     messages = node_output.get("messages", [])
