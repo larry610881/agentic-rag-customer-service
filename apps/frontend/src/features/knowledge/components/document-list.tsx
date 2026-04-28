@@ -386,13 +386,19 @@ function ChildrenRows({
                   </Button>
                 )}
                 {onReprocess &&
-                  (child.status === "processed" || child.status === "failed") && (
+                  (child.status === "processed" ||
+                    child.status === "failed" ||
+                    child.status === "pending") && (
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-7 text-xs"
                       onClick={() => onReprocess(child)}
-                      title="只重新處理這一頁，不影響其他頁"
+                      title={
+                        child.status === "pending"
+                          ? "卡在等待中（worker 重啟孤兒？）— 點此重新觸發"
+                          : "只重新處理這一頁，不影響其他頁"
+                      }
                     >
                       <RotateCcw className="mr-1 h-3.5 w-3.5" />
                       重新處理
@@ -651,19 +657,27 @@ export function DocumentList({
                       </Button>
                     )}
                     {(doc.status === "processed" ||
-                      doc.status === "failed") && (
+                      doc.status === "failed" ||
+                      doc.status === "pending") && (
                       <Button
                         variant={
-                          doc.status === "failed"
+                          doc.status === "failed" || doc.status === "pending"
                             ? "secondary"
                             : "outline"
                         }
                         size="sm"
                         onClick={() => setReprocessTarget(doc)}
+                        title={
+                          doc.status === "pending"
+                            ? "卡在等待中（worker 孤兒？）— 點此重新觸發"
+                            : undefined
+                        }
                       >
                         {doc.status === "failed"
                           ? "重試"
-                          : "重新處理"}
+                          : doc.status === "pending"
+                            ? "強制重新處理"
+                            : "重新處理"}
                       </Button>
                     )}
                     <Button

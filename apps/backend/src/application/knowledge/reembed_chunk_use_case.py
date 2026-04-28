@@ -116,7 +116,7 @@ class ReEmbedChunkUseCase:
                     tenant_id=chunk.tenant_id,
                     request_type=UsageCategory.EMBEDDING.value,
                     usage=usage,
-                    kb_id=kb.id,
+                    kb_id=kb.id.value,
                 )
             except Exception:
                 logger.warning(
@@ -128,7 +128,7 @@ class ReEmbedChunkUseCase:
         logger.info(
             "kb_studio.chunk.reembed",
             chunk_id=command.chunk_id,
-            kb_id=kb.id,
+            kb_id=kb.id.value,
             tenant_id=chunk.tenant_id,
             actor=command.actor,
         )

@@ -628,6 +628,10 @@ class ProcessDocumentUseCase:
                 self._record_usage
                 and (result.input_tokens + result.output_tokens) > 0
             ):
+                kb_id_value = getattr(kb, "id", None)
+                # KnowledgeBase.id 是 KnowledgeBaseId VO，DB 欄位是 VARCHAR — 必須 unwrap
+                if kb_id_value is not None and hasattr(kb_id_value, "value"):
+                    kb_id_value = kb_id_value.value
                 await self._record_usage.execute(
                     tenant_id=tenant_id,
                     request_type=UsageCategory.PDF_RENAME.value,
@@ -636,7 +640,7 @@ class ProcessDocumentUseCase:
                         input_tokens=result.input_tokens,
                         output_tokens=result.output_tokens,
                     ),
-                    kb_id=getattr(kb, "id", None),
+                    kb_id=kb_id_value,
                 )
 
             if new_filename:

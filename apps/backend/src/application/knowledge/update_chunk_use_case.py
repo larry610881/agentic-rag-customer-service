@@ -85,7 +85,7 @@ class UpdateChunkUseCase:
         logger.info(
             "kb_studio.chunk.update",
             chunk_id=command.chunk_id,
-            kb_id=kb.id,
+            kb_id=kb.id.value,
             tenant_id=command.tenant_id,
             actor=command.actor,
             content_diff_len=content_diff_len,
