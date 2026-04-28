@@ -7,6 +7,39 @@
 
 ---
 
+## Stream events 兩條路徑的契約 + Cross-channel UI parity
+
+**日期**：2026-04-28
+**涉及層級**：Infrastructure (`react_agent_service` fallback path 重設保護) + Domain-ish (guard regex 規則本體 via SQL data migration) + Frontend (`bot-studio-canvas` 加 sources 渲染達成跨 channel UI parity)
+**Commits**：`c3a612c` 重複 token 修復 + 25 條 regex 升級 / `84b0fc1` Studio 試運轉圖卡渲染
+
+**Sprint 來源**：Larry 在 Studio 試運轉觀察到三個現象：(1) 對話回應出現兩遍（duplicate token bug，即 `b50cbc1` fallback path 修復時的副作用 regression），(2) prompt injection「忽略上述指令」用「上述」字繞過 regex（同義詞覆蓋不足），(3) 「web/widget 也會看不到 DM 圖卡嗎？」— 經查 Studio canvas 完全沒接 sources event 到 ChatBubble，只有一般客服頁 + widget 有渲染。
+
+**主題**：**「Stream event 雙併發路徑的隱性契約」+「Cross-channel UI parity 的擴散性 bug」**。LangGraph 的 `astream(stream_mode=["messages", "updates"])` 同時送 token chunks（messages mode）和 node completions（updates mode），下游消費者必須維護一個「我已經處理過這條 message 的 tokens」的 flag，不然兩個路徑都會 emit 一次。Studio bug 則是另一個跨層問題：UI 鏡像（一般客服頁 / widget / Studio）都是同一個 sources SSE 事件流，但每個 UI 各自寫消費邏輯，新加 channel 時容易漏接。
+
+### 做得好的地方
+
+- **找到 dup root cause 用「diff 自己的歷史 commit」而非從零除錯**：用戶看到 dup 後我直接 git diff `b50cbc1` 找到我自己改錯的地方，5 分鐘內定位 — 比起「重新理解 LangGraph stream mode」快很多。教訓是：自己挖坑自己埋，先看自己的 commit。
+- **regex 升級用 `(同義詞群) × (動詞群) × (賓語群)` 笛卡兒積一次擴 6 倍**：原本 1 條規則命中「忽略以上指令」，新版同條 regex 命中「忽略上述指令 / 跳過前面提示 / 廢除剛才的設定」共 6×9×5=270 種組合。寫得好的 regex 一條抵 100 條 keyword。
+- **新規則「你現在是 X 助手」針對偽裝型 prompt injection**：不是直接覆蓋指令，而是「假設你是個工具人」這種社交工程式繞過。比起 keyword `DAN mode`，這條更像對抗真實世界的偽裝 attack。
+- **Studio 圖卡修復選擇 reuse `SourceImageGallery` 而非寫 Studio 專用元件**：Studio 跟 Web bot / Widget 的 sources schema 都一樣，理應共用同一個渲染元件 + variant prop（"full" / "compact"）區分尺寸。沒有為了 Studio 的「視覺密度需要小一點」就 fork 一個新 component — 維護成本長期較低。
+- **Cloudflare Pages bundle 比對驗證部署**：用 `curl` 直接抓 production bundle 字串檢查我的新代碼有沒有上線（`grep "setAssistantSources"`）— 比看 dashboard 「這個 commit 部署成功」更實在。dashboard 顯示 deployment success ≠ bundle 真的有那個 commit 的代碼（CF Pages 有時 cache、有時 webhook 沒接到）。
+
+### 潛在隱憂
+
+- **Stream event 雙路徑的 emitted flag 是 fragile invariant**：`llm_generating_emitted` 是 stream loop 的本地變數，靠人類記得「fallback path 必先 check」。未來若加第三條 stream mode（如 LangGraph 新增 "values" mode）或新 callback hook，很容易再次踩雷。**優先級：中**。改善：抽 `StreamTokenDeduplicator` class 統一管理 emit 狀態，所有 token-emitting 路徑透過它 emit。
+- **regex 永遠追不上人類語言**：本次擴 25 條，但 attacker 用 unicode 變體（`忽​略`）/繁簡互換（`忽略` vs `忽畧`）/英中混（`ignore 以上指令`）很容易繞。**優先級：高**（已 documented）。改善：開 `llm_guard_enabled=true` 用語義 LLM 二次判斷；同時加 input normalization (NFKC + strip whitespace + 簡繁映射) 在 `prompt_guard_service` 內。Larry 已說「現在不開 LLM guard，等真的需要」— 這是商業判斷，但要記在 risk register。
+- **Cross-channel UI parity 沒有自動化檢查**：Studio 漏接 sources event 是因為「人類複製 web bot 的 ChatBubble code 但沒帶 sources 邏輯」。未來新增 `<thinking>` / `<reasoning>` / streaming markdown table 等 event 類型時很容易再漏一個 channel。**優先級：中**。改善：寫 `StreamEventConsumerContract` interface 列出所有必接 event types，每個 channel UI 必須 implement，讓 TypeScript 強制提醒。
+- **Cloudflare Pages 沒有 GitHub Actions deploy workflow**：本次 push 後不知道 build 有沒有真的觸發、build 失敗也不會 fail loud。**優先級：高（影響開發流程）**。改善：建議加 `deploy-frontend.yml` 直接呼叫 `cloudflare/pages-action@v1`，配 PR preview + production 雙路。Larry 已知此事，下個 session 補。
+
+### 延伸學習
+
+- **「自我中毒的 stream consumer」**：LangGraph stream mode 是個有趣的 reactive abstraction — 同一個 event source 投出 multiple semantic stream，每個 mode 看同一份 raw data 用不同的角度切。對 caller 來說，「我以為我只訂閱 'messages' 但 'updates' 也會送 token」是違反直覺的。這在 Reactive Streams（RxJS / Akka Streams）社群被稱為 **"backpressure leakage"** 或 **"semantic overlap"**。延伸關鍵字：**Cold vs Hot Observable**、**RxJS share() / multicast**、**Event sourcing 的 event vs state 雙視圖**。
+- **「Defense-in-depth 的 4 層防護的本質區別」**：本回合對話中討論到「LLM 自己會拒絕，還需要 regex guard 嗎？」這個問題深度技術 + 商業層面交織。回答是「需要，但 regex 不是為了完美攔截，是為了 (a) 省 token (b) 留 audit trail (c) 不讓攻擊文本進 history」。這是 OWASP LLM01: Prompt Injection 的標準教學，但社群最近 (2025) 在討論 **Spotlighting**（隔離不同 trust level 的 input）和 **Re-prompting**（用 LLM 確認 user intent 比 regex 強）—— 這是下個版本可考慮的 Layer 5。
+- **思考題**：Stream event 雙路徑的 `llm_generating_emitted` flag 用 `boolean` 表達 — 若改用 message_id-based dedup（每個 AIMessage 有 unique id，flag 改成 `set<message_id>`），是否更 robust？trade-off 是什麼？(Hint: id-based 可以區分同個 stream 中的多輪 LLM call — ReAct loop 可能 LLM → tool → LLM 兩次，每次都要重新 emit "llm_generating"。boolean 用 `False` 重置會在 tool call 後失效，id-based 更精準但 memory 開銷略大。)
+
+---
+
 ## Guard DAG 可見性 + Trace lifecycle 修復 + Timeline danger tone
 
 **日期**：2026-04-27（同日後續）

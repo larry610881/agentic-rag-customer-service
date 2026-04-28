@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-27 (LiteLLM→Anthropic 切換 + Prompt Guard ordering + Output guard stream + DM 圖卡修復)
+> 最後更新：2026-04-28 (重複 token + guard regex 同義詞群升級 + Studio DM 圖卡渲染)
 
 ---
 
@@ -1940,3 +1940,5 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | **Prompt Guard 提前到所有 LLM 呼叫之前** | **✅ 完成** | **100%** | **Commit `8868ddb`: 之前 guard 擺在 `_resolve_worker_config` 之後，但 worker routing 內 intent classifier 已餵 user_message 給 LLM → prompt injection 已 compromise。改順序：load conv → load bot_cfg → ★ guard input check → resolve_history → memory → worker_config → main agent。Stream + non-stream 兩個 path 都修。加 4 個 regression test 守住「guard 阻擋時 _resolve_history / _resolve_worker_config / agent_service 絕不被呼叫」契約** |
 | **Output Guard Stream Path (Option B)** | **✅ 完成** | **100%** | **Commit `635442f`: stream path 之前完全沒接 output guard（Sprint A++ 只補了 input）。串流結束後跑 check_output(full_answer)，命中時：DB 存 blocked_response（乾淨版）+ emit `guard_blocked` event 含 `replacement` field。前端 `use-streaming` + 新 store action `replaceAssistantContent` 收到後覆寫對話泡泡。Studio 才能看（router 既有 sanitize 對 widget/LINE strip 此 event）。設計權衡：保留 streaming UX，端使用者一次性視覺暴露原文無解（keyword guard 天花板），但 DB / Studio canvas / 攔截紀錄都是乾淨版** |
 | **DM 圖卡跨 Source dataclass / LINE 路徑修復** | **✅ 完成** | **100%** | **Commits `635442f` Source 加欄位 + `ed0ee1e` LINE handler。三層問題：(1) Source dataclass 缺 image_url + page_number 欄位 → react_agent_service.process_message 重建 Source 時 dm tool 的 image_url 被丟。修：加欄位 + to_dict + 重建處透傳。(2) LINE handler `retrieved_chunks` 寫入時手動只挑 3 欄（document_name/content_snippet/score）→ DB 永遠拿不到 image_url，跨 channel 重看 LINE 對話沒圖卡。改 `s if isinstance(s, dict) else s.to_dict()` 全欄位保留。(3) LINE `image_sources` filter 只接受 `isinstance(s, dict)`，但 process_message 已重建為 Source dataclass → carousel 永遠不送。改成同時支援 dict + Source。加 6 regression tests（3 Source 欄位 + 3 LINE handler）** |
+| **ReAct streaming 不重複吐 + guard regex 同義詞群升級** | **✅ 完成** | **100%** | **Commit `c3a612c`: (1) `b50cbc1` 修 fallback list-content 處理時意外把「messages mode 已 stream 就 skip fallback」保護拿掉 → updates mode 補吐一次 → 對話泡泡看到回答出現兩遍。修：fallback 進入時先檢查 `llm_generating_emitted=True` 直接 skip。3 個 regression test。(2) Guard regex 19→25 條同義詞群升級：忽略 → (忽略\|忽視\|跳過\|略過\|取消\|廢除) × (以上\|上述\|上面\|前面\|前述\|之前\|先前\|剛才\|方才) × (指令\|提示\|規則\|設定\|prompt)；新增「你現在是 X 助手」型偽裝 / forget/override/bypass / 假裝你是 / 越獄模式 / `<system>` tag / DB 探測。dev-vm 已套用 verify rule_count=25** |
+| **Studio 試運轉對話泡泡渲染 DM 圖卡** | **✅ 完成（待 CF Pages 部署）** | **100% 程式碼** | **Commit `84b0fc1`: Studio ChatTurn 之前沒 sources 欄位 → SSE sources event 只用來畫 DAG chunk 子節點，沒掛到 ChatBubble → dm tool 回 image_url 也看不到 PNG 圖卡。Web bot 一般客服頁 + Widget 都正常，只 Studio 漏。修：ChatTurn 加 sources?: Source[] / onEvent 收到 type='sources' 時 setAssistantSources / ChatBubble 加渲染 `<SourceImageGallery variant='compact'>`（與 web/widget 共用同一個 component）。Frontend Cloudflare Pages 自動 build 卡住（live bundle 仍是 `37ee649` 之前的版本），待 dashboard 觸發 rebuild 才會生效** |
