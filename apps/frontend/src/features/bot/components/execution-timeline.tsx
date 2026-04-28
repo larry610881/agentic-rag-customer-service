@@ -92,10 +92,11 @@ function eventToCard(event: SSEEvent): TimelineCardSpec | null {
     tone = "warn";
   } else if (event.type === "guard_blocked") {
     // Sprint A++ Guard UX: 攔截事件最顯眼 — danger tone 強紅 + ring
+    // 卡片本身會 line-clamp-3 顯示完整規則，hover 看 title 拿全文
     const blockType = (event.block_type as string) || "input";
     const ruleMatched = (event.rule_matched as string) || "";
     detail = ruleMatched
-      ? `${blockType} • ${ruleMatched.slice(0, 40)}`
+      ? `${blockType} • ${ruleMatched}`
       : `${blockType} blocked`;
     tone = "danger";
   }
@@ -166,12 +167,19 @@ export function ExecutionTimeline({ events }: ExecutionTimelineProps) {
           {cards.map((card, idx) => {
             const isActive = idx === cards.length - 1;
             const Icon = card.icon;
+            // 攔截卡片放寬寬度 + 多行顯示，讓長 regex 規則看得清；
+            // 其他卡保持原 220px 緊湊度
+            const isDanger = card.tone === "danger";
             return (
               <div
                 key={`${card.type}-${idx}-${card.tsMs}`}
                 ref={isActive ? activeRef : undefined}
+                title={card.detail || card.label}
                 className={cn(
-                  "flex min-w-[140px] max-w-[220px] shrink-0 snap-center flex-col gap-1 rounded-md border p-2 transition-all duration-200",
+                  "flex shrink-0 snap-center flex-col gap-1 rounded-md border p-2 transition-all duration-200",
+                  isDanger
+                    ? "min-w-[260px] max-w-[380px]"
+                    : "min-w-[140px] max-w-[220px]",
                   isActive
                     ? `${TONE_CLASS_ACTIVE[card.tone]} shadow scale-[1.04]`
                     : `${TONE_CLASS_PAST[card.tone]} opacity-80`,
@@ -187,7 +195,14 @@ export function ExecutionTimeline({ events }: ExecutionTimelineProps) {
                   )}
                 </div>
                 {card.detail && (
-                  <div className="truncate text-[11px]">{card.detail}</div>
+                  <div
+                    className={cn(
+                      "text-[11px] break-all",
+                      isDanger ? "line-clamp-3 font-mono" : "truncate",
+                    )}
+                  >
+                    {card.detail}
+                  </div>
                 )}
               </div>
             );

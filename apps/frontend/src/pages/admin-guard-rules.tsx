@@ -1,5 +1,14 @@
-import { useEffect, useState } from "react";
-import { Plus, Trash2, RotateCcw, Loader2, Shield, ShieldAlert } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import {
+  Plus,
+  Trash2,
+  RotateCcw,
+  Loader2,
+  Shield,
+  ShieldAlert,
+  ChevronRight,
+  ChevronDown,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +35,19 @@ import {
 
 export default function AdminGuardRulesPage() {
   const [activeTab, setActiveTab] = useState<"rules" | "logs">("rules");
+  const [expandedLogIds, setExpandedLogIds] = useState<Set<string>>(new Set());
+
+  const toggleLogExpanded = (id: string) => {
+    setExpandedLogIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-6 p-6">
@@ -335,6 +357,7 @@ function GuardLogsTable() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
+                <th className="px-3 py-2 text-left w-[40px]"></th>
                 <th className="px-3 py-2 text-left">時間</th>
                 <th className="px-3 py-2 text-left">類型</th>
                 <th className="px-3 py-2 text-left">命中規則</th>
@@ -342,31 +365,100 @@ function GuardLogsTable() {
               </tr>
             </thead>
             <tbody>
-              {data.items.map((log) => (
-                <tr key={log.id} className="border-b hover:bg-muted/30">
-                  <td className="px-3 py-2 whitespace-nowrap text-xs text-muted-foreground">
-                    {new Date(log.created_at).toLocaleString("zh-TW")}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Badge
-                      variant={
-                        log.log_type === "input_blocked"
-                          ? "destructive"
-                          : "secondary"
-                      }
-                      className="text-xs"
+              {data.items.map((log) => {
+                const isExpanded = expandedLogIds.has(log.id);
+                return (
+                  <Fragment key={log.id}>
+                    <tr
+                      className="border-b hover:bg-muted/30 cursor-pointer"
+                      onClick={() => toggleLogExpanded(log.id)}
                     >
-                      {log.log_type === "input_blocked" ? "輸入攔截" : "輸出攔截"}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2 text-xs font-mono max-w-[200px] truncate">
-                    {log.rule_matched}
-                  </td>
-                  <td className="px-3 py-2 text-xs max-w-[400px] truncate">
-                    {log.user_message}
-                  </td>
-                </tr>
-              ))}
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {isExpanded ? (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        )}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-muted-foreground">
+                        {new Date(log.created_at).toLocaleString("zh-TW")}
+                      </td>
+                      <td className="px-3 py-2">
+                        <Badge
+                          variant={
+                            log.log_type === "input_blocked"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                          className="text-xs"
+                        >
+                          {log.log_type === "input_blocked" ? "輸入攔截" : "輸出攔截"}
+                        </Badge>
+                      </td>
+                      <td
+                        className="px-3 py-2 text-xs font-mono max-w-[200px] truncate"
+                        title={log.rule_matched}
+                      >
+                        {log.rule_matched}
+                      </td>
+                      <td
+                        className="px-3 py-2 text-xs max-w-[400px] truncate"
+                        title={log.user_message ?? ""}
+                      >
+                        {log.user_message}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="border-b bg-muted/10">
+                        <td></td>
+                        <td colSpan={4} className="px-3 py-3 space-y-2 text-xs">
+                          <div>
+                            <div className="font-medium text-muted-foreground mb-1">
+                              命中規則
+                            </div>
+                            <div className="font-mono break-all rounded bg-background border px-2 py-1.5">
+                              {log.rule_matched}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="font-medium text-muted-foreground mb-1">
+                              用戶訊息（完整）
+                            </div>
+                            <div className="whitespace-pre-wrap break-all rounded bg-background border px-2 py-1.5 max-h-[200px] overflow-y-auto">
+                              {log.user_message || (
+                                <span className="text-muted-foreground italic">（無）</span>
+                              )}
+                            </div>
+                          </div>
+                          {log.ai_response && (
+                            <div>
+                              <div className="font-medium text-muted-foreground mb-1">
+                                AI 回應（完整）
+                              </div>
+                              <div className="whitespace-pre-wrap break-all rounded bg-background border px-2 py-1.5 max-h-[200px] overflow-y-auto">
+                                {log.ai_response}
+                              </div>
+                            </div>
+                          )}
+                          {(log.tenant_id || log.bot_id || log.user_id) && (
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground pt-1">
+                              {log.tenant_id && (
+                                <span>tenant: <code className="font-mono">{log.tenant_id}</code></span>
+                              )}
+                              {log.bot_id && (
+                                <span>bot: <code className="font-mono">{log.bot_id}</code></span>
+                              )}
+                              {log.user_id && (
+                                <span>user: <code className="font-mono">{log.user_id}</code></span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
