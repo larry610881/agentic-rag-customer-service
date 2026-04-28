@@ -33,7 +33,9 @@ import {
 import { ExecutionTimeline } from "./execution-timeline";
 import { LiveTraceGraph } from "./live-trace-graph";
 import { ContactCardButton } from "@/features/chat/components/contact-card-button";
+import { SourceImageGallery } from "@/features/chat/components/source-image-gallery";
 import type { Bot } from "@/types/bot";
+import type { Source } from "@/types/chat";
 import type { ContactCard } from "@/types/chat";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +68,8 @@ type ChatTurn = {
   llm_provider?: string;
   /** transfer_to_human_agent tool 產生的聯絡按鈕（電話 / URL）— 與 web bot / widget 共用同一份視覺 */
   contact?: ContactCard;
+  /** query_dm_with_image 等含 image_url 的 sources — 與 web bot / widget 共用 SourceImageGallery 渲染 */
+  sources?: Source[];
 };
 
 /**
@@ -205,6 +209,14 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
     });
   }, []);
 
+  const setAssistantSources = useCallback((sources: Source[]) => {
+    setTurns((prev) => {
+      const id = assistantTurnIdRef.current;
+      if (!id) return prev;
+      return prev.map((t) => (t.id === id ? { ...t, sources } : t));
+    });
+  }, []);
+
   const { sendMessage, isStreaming } = useStudioStreaming({
     onEvent: (event) => {
       setEventLog((prev) =>
@@ -248,6 +260,11 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
         typeof event.contact === "object"
       ) {
         setAssistantContact(event.contact as ContactCard);
+      }
+      // query_dm_with_image 等帶 image_url 的 sources → 掛到當前 assistant turn，
+      // ChatBubble 渲染 SourceImageGallery 顯示 PNG 圖卡（與 web bot / widget 一致）
+      if (event.type === "sources" && Array.isArray(event.sources)) {
+        setAssistantSources(event.sources as Source[]);
       }
     },
     onWorkerRouting: ({ worker_name }) => {
@@ -613,6 +630,12 @@ function ChatBubble({ turn }: { turn: ChatTurn }) {
       {!isUser && turn.contact && (
         <div className="ml-9">
           <ContactCardButton contact={turn.contact} />
+        </div>
+      )}
+      {/* query_dm_with_image 等回的 PNG 圖卡，與 web bot / widget 共用 SourceImageGallery */}
+      {!isUser && turn.sources && turn.sources.length > 0 && (
+        <div className="ml-9">
+          <SourceImageGallery sources={turn.sources} variant="compact" />
         </div>
       )}
       {/* Trace meta bar — 顯示模型 / 耗時等資訊（回覆完成後才顯示） */}
