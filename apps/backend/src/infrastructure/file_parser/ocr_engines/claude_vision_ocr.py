@@ -114,14 +114,19 @@ class ClaudeVisionOcrEngine(OcrEngine):
         self.last_input_tokens: int = 0
         self.last_output_tokens: int = 0
 
-    async def _ensure_client(self) -> anthropic.AsyncAnthropic:
-        if self._client is not None:
+    async def _ensure_client(self, force: bool = False) -> anthropic.AsyncAnthropic:
+        # force=True 強制重新解析 key + 重建 client，用於 auth error retry
+        if self._client is not None and not force:
             return self._client
         api_key = self._api_key
         if not api_key and self._api_key_resolver:
             api_key = await self._api_key_resolver("anthropic")
-        if not api_key:
-            raise RuntimeError("Anthropic API key not configured for OCR")
+        if not api_key or not api_key.strip():
+            # 防禦性：空字串 / 純空白都不能建 client
+            # 之前空字串會被當成 truthy（httpx 拒 header）導致整個 worker 後續 OCR 全爆
+            raise RuntimeError(
+                "Anthropic API key not configured for OCR (empty or whitespace)"
+            )
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         return self._client
 
@@ -130,30 +135,34 @@ class ClaudeVisionOcrEngine(OcrEngine):
         image_bytes, media_type = _compress_image(image_bytes)
         b64 = base64.standard_b64encode(image_bytes).decode()
         img_kb = len(image_bytes) / 1024
-        try:
-            client = await self._ensure_client()
-            async with self._semaphore:
-                t0 = time.perf_counter()
-                message = await client.messages.create(
-                    model=self._model,
-                    max_tokens=8192,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "image",
-                                    "source": {
-                                        "type": "base64",
-                                        "media_type": media_type,
-                                        "data": b64,
+        # 一次 retry：第一次拿到 auth error 時假設 client 帶壞 key，
+        # invalidate 後重新解析 key 再試。常見於 worker 啟動時 DB
+        # 慢一拍導致首頁 OCR 拿到空 key 緩存的情境。
+        for attempt in (0, 1):
+            try:
+                client = await self._ensure_client(force=attempt == 1)
+                async with self._semaphore:
+                    t0 = time.perf_counter()
+                    message = await client.messages.create(
+                        model=self._model,
+                        max_tokens=8192,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": media_type,
+                                            "data": b64,
+                                        },
                                     },
-                                },
-                                {"type": "text", "text": prompt},
-                            ],
-                        }
-                    ],
-                )
+                                    {"type": "text", "text": prompt},
+                                ],
+                            }
+                        ],
+                    )
                 elapsed_ms = round((time.perf_counter() - t0) * 1000)
                 usage = message.usage
                 self.last_input_tokens += usage.input_tokens
@@ -166,9 +175,33 @@ class ClaudeVisionOcrEngine(OcrEngine):
                     input_tokens=usage.input_tokens,
                     output_tokens=usage.output_tokens,
                     elapsed_ms=elapsed_ms,
+                    attempt=attempt,
                 )
                 return message.content[0].text
-        except anthropic.APIError as e:
-            raise OcrProcessingError(f"Claude API error: {e}") from e
-        except (KeyError, IndexError) as e:
-            raise OcrProcessingError(str(e)) from e
+            except anthropic.AuthenticationError as e:
+                if attempt == 0:
+                    logger.warning(
+                        "ocr.auth_error.retry",
+                        error=str(e),
+                        action="invalidate_client_and_resolve_again",
+                    )
+                    self._client = None  # 強制下次 _ensure_client 重新解析
+                    continue
+                raise OcrProcessingError(f"Claude auth error: {e}") from e
+            except ValueError as e:
+                # httpx 對空 Bearer header 會丟 ValueError("Illegal header value")
+                if "Illegal header value" in str(e) and attempt == 0:
+                    logger.warning(
+                        "ocr.illegal_header.retry",
+                        error=str(e),
+                        action="invalidate_client_and_resolve_again",
+                    )
+                    self._client = None
+                    continue
+                raise OcrProcessingError(f"Claude header error: {e}") from e
+            except anthropic.APIError as e:
+                raise OcrProcessingError(f"Claude API error: {e}") from e
+            except (KeyError, IndexError) as e:
+                raise OcrProcessingError(str(e)) from e
+        # Unreachable — both attempts must either return or raise
+        raise OcrProcessingError("OCR exhausted retries")
