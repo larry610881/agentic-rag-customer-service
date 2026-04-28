@@ -7,6 +7,36 @@
 
 ---
 
+## OCR 引擎升級 + 沉默欄位（dead config）發現
+
+**日期**：2026-04-28（同日後續）
+**涉及層級**：Infrastructure (`container.py` OCR engine provider 升級 + 識別出 `KB.ocr_model` 是 dead config)
+**Commits**：`44fc21e` Sonnet 4.6 升級
+
+**Sprint 來源**：User 觀察家樂福 DM 把「紫檀筷」OCR 成「茶槽杯」— 典型形似字誤判。我去查程式碼時意外發現一個更嚴重的問題：`KB.ocr_model` 這個欄位在 admin UI 可以設定、會寫進 DB、ProcessDocumentUseCase 也接收 ocr_mode 參數，**但 ClaudeVisionOcrEngine 是 DI Singleton，model 寫死在 init 時**，整條 OCR pipeline 從不讀 `KB.ocr_model`。
+
+**主題**：**「Dead Config — 看起來能用但其實沒接的設定欄位」**。系統表面上提供 admin 可調整的選項（per-KB OCR model），但底層 wiring 沒做完，呈現給 user 的是「我設了但好像沒效果」的錯覺。這比「找不到設定」更糟，因為它消耗信任 — user 會覺得「設定改了但沒生效，是不是 bug？」而我們之前甚至沒發現自己埋了這顆坑。
+
+### 做得好的地方
+
+- **修復選 minimal blast radius**：直接改 Singleton 的 default model 而不是大規模重構。先解決 90% user pain，per-KB 動態 wiring 留 TODO。
+- **commit message 把 dead config 揭露 + flag TODO**：`⚠️ TODO: 應讓 ProcessDocumentUseCase 讀 KB.ocr_model 做 per-KB 動態切換，admin UI 才有真正控制權`。讓未來看到的人立刻 awareness — 有 dead config 在那。
+- **沒急著做 Hybrid OCR**：user 提案 PaddleOCR + Sonnet + Haiku 三引擎投票，我先指出 Sonnet + Haiku 是兄弟模型 errors 高度相關，會讓 majority voting 失效。引導到「2 引擎 + 不一致仲裁」更務實設計。延伸：**Ensemble independence assumption** 是統計設計的基本前提，被忽略時投票 reduce 成 single-engine 表現。
+
+### 潛在隱憂
+
+- **其他 dead config 可能還在**：本次發現 `KB.ocr_model` 沒接，但 `KB.context_model` / `KB.classification_model` / `tenant.default_*_model` 都是類似的 per-KB / per-tenant 設定 — 是不是也有沒接到的？**優先級：高**。改善：寫一個 audit script 掃描「DB column 有 model 字樣 + 用了在哪 use case + 實際 service 構造時讀沒讀」自動產出 dead config report。
+- **Hybrid OCR pipeline 沒做但已存在 user expectation**：user 提到「記錄不一致結果讓 user recheck」是 audit / governance 需求，但目前架構沒有「OCR 過程紀錄」這個概念，要新建表 `ocr_disagreement_log` + admin UI。**優先級：中**（先驗 Sonnet 是否已修好「紫檀筷」案例，若已修好則 Hybrid 可延後）。
+- **Singleton model 全域共用**：所有 KB 都共用同一個 OCR engine instance — 高敏感 KB 想用 Opus、一般 KB 想用 Haiku 省成本，目前不支援。**優先級：中**。改善：改用 `Factory` provider 而非 `Singleton`，每次 ProcessDocumentUseCase 拿到帶 KB 設定的 engine。
+
+### 延伸學習
+
+- **「Configuration Surface vs Configuration Reality」**：admin UI 顯示的設定 = configuration surface（用戶看得到的開關）；實際被讀進系統的 = configuration reality。兩者落差就是 dead config。這個概念在大型 SaaS 系統很常見，特別是 multi-tenant 場景下「per-tenant 設定」的接線複雜。延伸關鍵字：**Configuration Drift**、**Feature Flag 死碼**、**SaaS 設定治理**。
+- **「Ensemble Diversity Principle」**：Majority voting 要有效，前提是 **error 模式要 statistically independent**。Sonnet + Haiku 是同家族，error correlation > 0.6（粗略估），三選二投票會 collapse 到「LLM family 兩票 vs 異質一票」。真正多樣化的 ensemble：傳統 OCR (CRNN) + 一個 LLM family + 另一個 LLM family（差越大越好）。延伸關鍵字：**Bagging vs Boosting**、**Diverse Ensemble Selection**、**Random Forest 為何用 random subspace**。
+- **思考題**：如果未來要做「OCR 結果信心分數」自動標識（哪些 chunk 大概率錯了讓 admin 優先 review），技術上你會用什麼方法？(Hint: 多引擎 disagreement rate、LLM 自評、字元級 confidence、商品名稱與 master DB 比對的 fuzzy match score…多種訊號加權。這是一個從 ensemble disagreement → quality scoring 的延伸主題。)
+
+---
+
 ## Stream events 兩條路徑的契約 + Cross-channel UI parity
 
 **日期**：2026-04-28
