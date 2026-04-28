@@ -857,6 +857,11 @@ class Container(containers.DeclarativeContainer):
     _ocr_engine = providers.Singleton(
         ClaudeVisionOcrEngine,
         api_key=config.provided.anthropic_api_key,
+        # Sonnet 4.6 OCR 準確度遠勝 Haiku（DM 裝飾字體 / 緊密小字差異明顯）
+        # 成本：DM 每頁約 $0.005（vs Haiku $0.001），accuracy 換成本是值得的
+        # 之前 Haiku 把「紫檀筷」OCR 成「茶槽杯」typical 形似字誤判
+        # ⚠️ 待後續：應讓 ProcessDocumentUseCase 讀 KB.ocr_model 動態決定
+        model="claude-sonnet-4-6",
     )
 
     file_parser_service = providers.Singleton(
