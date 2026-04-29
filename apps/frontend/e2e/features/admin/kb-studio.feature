@@ -27,7 +27,17 @@ Feature: KB Studio 管理員介面 (Admin KB Studio)
     When 使用者開啟 KB Studio 並使用舊參數 "?tab=overview"
     Then 預設選中的 tab 應為 "文件管理"
 
-  # 完整的 chunk drill-down 編輯流程留 TODO（需 seed 文件 + chunks 資料）：
-  # - Scenario: 點開文件查看分塊並編輯成功 → 改後內容持久
-  # - Scenario: drill-down dialog 內 chunk delete + re-embed
-  # 待 admin login + KB seeding 改善後補
+  Scenario: 文件 tab 顯示 dropzone + page header 統計卡片
+    Given 使用者導航至該知識庫的 KB Studio
+    Then 應顯示上傳區域
+    And 應顯示文件統計卡片 "文件數"
+    And 應顯示文件統計卡片 "處理中"
+    And 應顯示文件統計卡片 "失敗"
+
+  # 完整 chunk-edit round-trip（修改 → 持久 → 還原）需 seed 真實文件 + chunks
+  # 這個 scenario 驗證 drill-down dialog UI surface：dialog 標題含「編輯」(chunkEditable=true)
+  Scenario: 點開有 chunks 的文件 dialog 顯示「分塊編輯」標題
+    Given 使用者導航至該知識庫的 KB Studio
+    When 使用者點擊任一已處理文件的「查看分塊」按鈕
+    Then 應顯示分塊編輯對話框
+    And 對話框標題應包含 "分塊編輯"

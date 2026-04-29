@@ -83,3 +83,37 @@ When(
     ).toBeVisible({ timeout: 10000 });
   },
 );
+
+Then(
+  "應顯示文件統計卡片 {string}",
+  async ({ page }, label: string) => {
+    // page header HeaderStats 渲染：StatCard label 文字 + 數字
+    const card = page.getByText(label, { exact: true }).first();
+    await expect(card).toBeVisible({ timeout: 5000 });
+  },
+);
+
+When(
+  "使用者點擊任一已處理文件的「查看分塊」按鈕",
+  async ({ page }) => {
+    // 等文件列表載入；找第一個「查看分塊」button（已處理 + 有 chunks 的才會顯示）
+    const viewChunksBtn = page
+      .getByRole("button", { name: /查看分塊/ })
+      .first();
+    await expect(viewChunksBtn).toBeVisible({ timeout: 15000 });
+    await viewChunksBtn.click();
+  },
+);
+
+Then("應顯示分塊編輯對話框", async ({ page }) => {
+  await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5000 });
+});
+
+Then(
+  "對話框標題應包含 {string}",
+  async ({ page }, expected: string) => {
+    // chunkEditable=true 時 DialogTitle 是「{filename} — 分塊編輯」
+    const title = page.getByRole("dialog").locator("h2,h3").first();
+    await expect(title).toContainText(expected);
+  },
+);
