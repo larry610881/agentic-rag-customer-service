@@ -7,6 +7,40 @@
 
 ---
 
+## process vs reprocess pipeline drift — 2 小時內同 pattern 連爆 2 次
+
+**日期**：2026-04-29
+**涉及層級**：Application × 2 use case + Frontend hook + 新增 shared helper module
+**Commits**：`9349651`（image/png OCR drift）+ `475da74`（父 PDF 聚合 drift + UI 不刷新）
+
+**Sprint 來源**：User 在 KB Studio 上傳 64 頁家樂福 DM PDF → page 10 失敗 → 點「重新處理」永遠失敗 → 第一發 hotfix 修完發現第二發：所有子頁都 OK 了**但父 PDF 還是「失敗」**。挖出兩個 bug 都源自同一個結構性問題：**`ProcessDocumentUseCase`（上傳 pipeline）跟 `ReprocessDocumentUseCase`（重新處理 pipeline）做幾乎一樣的事，但兩條 pipeline 的程式各自實作沒有共用，慢慢 drift 出兩個地方不一致**。
+
+**主題**：**「Pipeline Drift 反模式」**。兩條 pipeline 在剛建立時是 process_document copy → 改一改變 reprocess_document。隨後新功能（image/png OCR 分支、父 PDF 聚合）只加在 process_document，reprocess 沒同步。一年後發現兩處 drift，hotfix 兩次。**這是經典的「複製粘貼 + 演進不對稱」**。
+
+### 做得好的地方
+
+- **第二次踩坑沒再 copy-paste**：第一次 hotfix `9349651` 圖個快，把 image/png 分支從 process_document 抄到 reprocess_document（drift 修補但仍是 drift）。第二個 hotfix 立刻警覺，**把父聚合邏輯抽成 `_parent_aggregation.py` 共用 helper**，兩條 pipeline 都呼叫同一支，未來新功能只加一次。
+- **抽 helper 的時間成本 = 5 分鐘**：跟「copy-paste 等以後再說」比，多花 5 分鐘換掉這輩子的 drift 風險，明顯划算。教訓：**第二次發現重複時就抽走，不要等第三次**。
+- **共用 helper 的位置選對**：放 `application/knowledge/_parent_aggregation.py` 而不是 `domain/`，因為它涉及 repository call（不是純 domain 邏輯）。命名加底線前綴 `_parent_aggregation` 表示「同 package 內的私有實作 detail」。
+- **Frontend invalidate 用 prefix match 而非精確 key**：`['document-children', kbId]` 而非 `['document-children', kbId, parentId]`。因為 reprocess 子頁時不知道 parentId（也可能是 reprocess 父，要 invalidate 所有子）。TanStack Query 的 prefix invalidate 設計剛好支援這個場景。
+- **回頭 reset DB 而不是上線測**：把 page 10 status 改回 failed 等 user 重測，比直接「等下次 user 上傳 64 頁 DM」快 100 倍。
+
+### 潛在隱憂
+
+- **還有第三條 pipeline 隱憂**：`split_pdf_task` (arq job) 把 PDF 拆頁時會 enqueue 一堆 `process_document` jobs。但**整份 reprocess（不是子頁 reprocess）會走哪條？** 若 user 點父 PDF「重試」，目前看是走 `ReprocessDocumentUseCase` 但 raw_content 是整份 PDF — 不會重新拆頁，只 re-parse。這條路徑可能還有其他 drift。**優先級：中**。改善：寫整合測試覆蓋三種 reprocess 場景（單檔重 / 父 PDF 重 / 子頁重）。
+- **`_parent_aggregation` helper 沒寫單元測試**：抽完 helper 直接給兩個 use case 用。若未來 helper 內部邏輯變動（例如多支援一種 status），沒測試會直接破兩條 pipeline。**優先級：高**。改善：加 `tests/unit/knowledge/test_parent_aggregation.py`，覆蓋 4 種 case：全 processed → parent processed / 有 failed → parent failed / 還在跑 → 不動 / repo 拋例外 → silent log。
+- **Frontend invalidate 後 polling 還是 3 秒**：`refetchInterval` 寫 `if (some pending/processing) return 3000`。reprocess 觸發後 status 變 processing → polling 才開始 — 但**第一次 invalidate 拿到的 snapshot 可能還是 failed**（後端尚未 update）。會出現「點下去 → 立刻看到還是 failed → 3 秒後看到 processing → 10 秒後看到 processed」的 race。**優先級：低**。改善：mutation 觸發後**樂觀更新** — 立刻把 child status 改成 processing 直到下次 refetch 拿真值。
+- **共用 helper 用 `try/except` 吞所有錯**：「父聚合失敗不該炸 caller pipeline」是合理設計，但若 production 真的炸，只有一行 `parent.aggregate_failed` log，沒 alert。**優先級：中**。改善：log 改成 metrics（counter `parent_aggregation_errors_total`）+ 設 SLO threshold（>10 次/min 觸警）。
+
+### 延伸學習
+
+- **「Pipeline Drift 反模式」**：當兩條 codepath 做 80% 一樣的事，且都會持續演進，**抽走共用部分是不可妥協的設計選擇**。延伸關鍵字：**Single Source of Truth**、**DRY (Don't Repeat Yourself)**、**Strategy Pattern**（兩 pipeline 各自註冊 strategy 共用 base class）。**反例警惕**：「reprocess 是 process 的子集，先複製比較快」這種想法是 drift 的種子。
+- **「TanStack Query prefix invalidate」**：`invalidateQueries({ queryKey: ['a', 'b'] })` 會 invalidate 所有 prefix match 的（包含 `['a', 'b', 'c']`）。這個設計讓「我不知道精確 key 但知道前綴」場景變很順手。延伸關鍵字：**Hierarchical Cache Keys**、**Cache Invalidation Strategies**、**Optimistic UI Updates**。
+- **「terminal status hook pattern」**：reprocess 有 4 條 terminal 路徑（success / empty after split / empty after dedup / exception），每條都要 trigger 父聚合。寫 4 次容易漏，可以用 Python `try / finally` + flag 變數，或更激進的 decorator pattern：`@on_terminal_status(['processed', 'failed'])` 自動 trigger。延伸關鍵字：**Around Advice (AOP)**、**Sentinel Pattern**、**Cleanup Block (Go defer)**。
+- **思考題**：你會怎麼自動偵測 codebase 的 pipeline drift？(Hint: AST 比對兩個 method 的 call graph，計算重疊比例 > 70% 就告警；或更簡單 — 規定 codebase 任意兩個檔案的 cosine similarity > 0.85 必須有 lint exemption + 文件說明為何不抽 helper。)
+
+---
+
 ## 孤兒 pending 救援 + KnowledgeBaseId VO 沒拆 → DataError $12
 
 **日期**：2026-04-28（user 回報 64 頁 PDF 1 頁卡死）
