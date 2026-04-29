@@ -492,51 +492,14 @@ class ProcessDocumentUseCase:
             )
 
             # If child document, check if all siblings done → update parent
+            # 共用邏輯抽到 _parent_aggregation.py，process + reprocess 都呼叫這支
             if document.parent_id:
-                try:
-                    status_counts = await self._doc_repo.count_children_by_status(document.parent_id)
-                    total = sum(status_counts.values())
-                    done = status_counts.get("processed", 0)
-                    failed = status_counts.get("failed", 0)
-                    if done + failed == total:
-                        parent_status = "processed" if failed == 0 else "failed"
-                        # Aggregate chunk counts + quality from all children
-                        children = await self._doc_repo.find_children(document.parent_id)
-                        total_chunks = sum(c.chunk_count for c in children)
-                        # Average quality across children with chunks
-                        children_with_chunks = [c for c in children if c.chunk_count > 0]
-                        if children_with_chunks:
-                            avg_quality = sum(c.quality_score for c in children_with_chunks) / len(children_with_chunks)
-                            avg_chunk_len = sum(c.avg_chunk_length for c in children_with_chunks) // len(children_with_chunks)
-                            min_chunk_len = min(c.min_chunk_length for c in children_with_chunks if c.min_chunk_length > 0) if any(c.min_chunk_length > 0 for c in children_with_chunks) else 0
-                            max_chunk_len = max(c.max_chunk_length for c in children_with_chunks)
-                            # Union of quality issues
-                            all_issues = set()
-                            for c in children_with_chunks:
-                                all_issues.update(c.quality_issues)
-                            try:
-                                await self._doc_repo.update_quality(
-                                    document.parent_id,
-                                    quality_score=round(avg_quality, 3),
-                                    avg_chunk_length=avg_chunk_len,
-                                    min_chunk_length=min_chunk_len,
-                                    max_chunk_length=max_chunk_len,
-                                    quality_issues=list(all_issues),
-                                )
-                            except Exception:
-                                log.warning("parent.quality_update_failed", exc_info=True)
-                        await self._doc_repo.update_status(
-                            document.parent_id, parent_status, chunk_count=total_chunks
-                        )
-                        log.info(
-                            "document.parent.aggregated",
-                            parent_id=document.parent_id,
-                            status=parent_status,
-                            total_chunks=total_chunks,
-                            children=total,
-                        )
-                except Exception:
-                    log.warning("document.parent.aggregate_failed", exc_info=True)
+                from src.application.knowledge._parent_aggregation import (
+                    aggregate_parent_status_if_complete,
+                )
+                await aggregate_parent_status_if_complete(
+                    self._doc_repo, document.parent_id, log
+                )
 
             # Auto-classify: if no more pending/processing docs in KB
             await self._maybe_trigger_classification(document.kb_id, document.tenant_id, log)

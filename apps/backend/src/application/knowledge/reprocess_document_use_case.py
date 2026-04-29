@@ -174,6 +174,13 @@ class ReprocessDocumentUseCase:
                 await self._task_repo.update_status(
                     task_id, "completed", progress=100
                 )
+                if document.parent_id:
+                    from src.application.knowledge._parent_aggregation import (
+                        aggregate_parent_status_if_complete,
+                    )
+                    await aggregate_parent_status_if_complete(
+                        self._doc_repo, document.parent_id, log
+                    )
                 return
 
             # Calculate quality (before filtering)
@@ -214,6 +221,13 @@ class ReprocessDocumentUseCase:
                 await self._task_repo.update_status(
                     task_id, "completed", progress=100
                 )
+                if document.parent_id:
+                    from src.application.knowledge._parent_aggregation import (
+                        aggregate_parent_status_if_complete,
+                    )
+                    await aggregate_parent_status_if_complete(
+                        self._doc_repo, document.parent_id, log
+                    )
                 return
 
             # Save new chunks
@@ -255,11 +269,28 @@ class ReprocessDocumentUseCase:
                 chunk_count=len(chunks),
             )
 
+            # 子頁完成 → 檢查父 doc 是否該重新聚合 status / quality
+            if document.parent_id:
+                from src.application.knowledge._parent_aggregation import (
+                    aggregate_parent_status_if_complete,
+                )
+                await aggregate_parent_status_if_complete(
+                    self._doc_repo, document.parent_id, log
+                )
+
         except Exception as e:
             log.exception("document.reprocess.failed", error=str(e))
             await self._doc_repo.update_status(document_id, "failed")
             await self._task_repo.update_status(
                 task_id, "failed", error_message=str(e)
             )
+            # 子頁失敗也要 trigger 父 doc 聚合（其他兄弟全 OK 時父應 processed）
+            if document.parent_id:
+                from src.application.knowledge._parent_aggregation import (
+                    aggregate_parent_status_if_complete,
+                )
+                await aggregate_parent_status_if_complete(
+                    self._doc_repo, document.parent_id, log
+                )
             # Re-raise so safe_background_task can write to Error Tracking
             raise

@@ -260,8 +260,14 @@ export function useReprocessDocument() {
       );
     },
     onSuccess: (_data, variables) => {
+      // 父文件列表
       queryClient.invalidateQueries({
         queryKey: queryKeys.documents.all(variables.knowledgeBaseId),
+      });
+      // 子頁列表（PDF 子頁 reprocess 時 UI 才會立即從 failed → processing）
+      // ChildrenRows 用 ["document-children", kbId, parentId] 當 key — prefix invalidate 全部
+      queryClient.invalidateQueries({
+        queryKey: ["document-children", variables.knowledgeBaseId],
       });
     },
   });
