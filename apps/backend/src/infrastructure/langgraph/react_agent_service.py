@@ -642,10 +642,24 @@ class ReActAgentService(AgentService):
             bot_id=bot_id or None,
         )
         history_len = len(history) if history else 0
+        # 明確記錄「載入狀態」讓 DAG 一眼看出對齊或失誤
+        # - history_loaded_status:
+        #   "loaded"      → history_turns > 0 且 history_context 非空（正常）
+        #   "empty"       → history_turns == 0（首輪對話，正常）
+        #   "lost"        → history_turns > 0 但 history_context 空（regression 警示）
+        if history_len == 0:
+            history_loaded_status = "empty"
+        elif history_context:
+            history_loaded_status = "loaded"
+        else:
+            history_loaded_status = "lost"
+        history_chars = len(history_context or "")
         AgentTraceCollector.add_node(
             "user_input", "使用者輸入", None, 0.0, 0.0,
             message_preview=user_message[:200],
             history_turns=history_len,
+            history_loaded_status=history_loaded_status,
+            history_context_chars=history_chars,
             has_history_context=bool(history_context),
             history_context=history_context or "",
         )
@@ -865,10 +879,20 @@ class ReActAgentService(AgentService):
                 llm_provider=_llm_params_s.get("provider_name", ""),
                 bot_id=bot_id or None,
             )
+            # 載入狀態 — 同 non-stream 版本：lost 表 turns>0 但 context 空
+            if history_len == 0:
+                history_loaded_status = "empty"
+            elif history_context:
+                history_loaded_status = "loaded"
+            else:
+                history_loaded_status = "lost"
+            history_chars = len(history_context or "")
             AgentTraceCollector.add_node(
                 "user_input", "使用者輸入", None, 0.0, 0.0,
                 message_preview=user_message[:200],
                 history_turns=history_len,
+                history_loaded_status=history_loaded_status,
+                history_context_chars=history_chars,
                 has_history_context=bool(history_context),
                 history_context=history_context or "",
             )

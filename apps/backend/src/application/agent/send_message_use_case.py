@@ -451,7 +451,12 @@ class SendMessageUseCase:
         history: list | None,
         history_limit: int | None,
     ) -> tuple[list | None, str, str]:
-        """Process history via strategy, return (history, ctx, router)."""
+        """Process history via strategy, return (history, ctx, router).
+
+        Defensive：若 strategy 對非空 history 仍輸出空 context，或 strategy
+        未注入，都用 _format_messages 直接 fallback。確保「歷史輪數 > 0
+        但歷史上下文 = 空」的詭異案例不再發生。
+        """
         history_context = ""
         router_context = ""
         if self._history_strategy and history:
@@ -464,8 +469,31 @@ class SendMessageUseCase:
             )
             history_context = ctx.respond_context
             router_context = ctx.router_context
+            # Defensive：策略對非空 history 卻吐空字串（regression 警示）
+            if history and not history_context:
+                from src.infrastructure.conversation.sliding_window_strategy import (
+                    _format_messages,
+                )
+                history_context = _format_messages(
+                    history[-(history_limit or 10) :]
+                )
+                logger.warning(
+                    "history.strategy_empty_fallback",
+                    strategy=self._history_strategy.name,
+                    history_len=len(history),
+                    fallback_chars=len(history_context),
+                )
         elif history and history_limit is not None:
+            # 沒注入 strategy（理論不應發生，但要 graceful）
             history = history[-history_limit:]
+            from src.infrastructure.conversation.sliding_window_strategy import (
+                _format_messages,
+            )
+            history_context = _format_messages(history)
+            logger.warning(
+                "history.no_strategy_fallback",
+                history_len=len(history),
+            )
         return history, history_context, router_context
 
     async def _get_busy_reply_message(self, command: SendMessageCommand) -> str:

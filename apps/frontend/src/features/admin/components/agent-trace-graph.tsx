@@ -93,6 +93,104 @@ function SmartPre({ value, className }: { value: unknown; className?: string }) 
   );
 }
 
+/**
+ * 對話歷史載入區塊 — 明確區分 3 種狀態避免 user 看「歷史輪數: 8」就誤以為已載入。
+ * - loaded：正常（綠色）
+ * - empty：首輪對話沒有歷史（灰色）
+ * - lost：歷史輪數 > 0 但 context 空 → backend regression 警示（紅色）
+ */
+function HistoryLoadBlock({
+  turns,
+  status,
+  context,
+  chars,
+}: {
+  turns: number;
+  status?: "loaded" | "empty" | "lost";
+  context: string;
+  chars?: number;
+}) {
+  // status 沒帶（舊 trace 版本 backward compat）→ 從 turns + context 推導
+  const effective: "loaded" | "empty" | "lost" =
+    status ??
+    (turns === 0 ? "empty" : context ? "loaded" : "lost");
+
+  const badge =
+    effective === "loaded" ? (
+      <span className="rounded bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+        ✓ 已載入 {chars != null ? `(${chars} 字)` : ""}
+      </span>
+    ) : effective === "empty" ? (
+      <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+        首輪對話
+      </span>
+    ) : (
+      <span
+        className="rounded bg-destructive/15 px-1.5 py-0.5 text-[11px] font-semibold text-destructive"
+        title="歷史輪數 > 0 但載入給 LLM 的 context 為空 — backend 處理鏈可能斷掉"
+      >
+        ⚠ 上下文遺失
+      </span>
+    );
+
+  const turnsList =
+    context && context.trim()
+      ? context.split(/(?=\[用戶\]|\[助手\])/).filter(Boolean)
+      : [];
+
+  return (
+    <div className="rounded border-l-2 border-muted-foreground/30 pl-2 pb-1">
+      <div className="flex items-center gap-2">
+        <span className="font-medium">歷史輪數：</span>
+        <span>{turns}</span>
+        {badge}
+      </div>
+      {effective === "lost" && (
+        <p className="mt-1 text-[11px] text-destructive">
+          ⚠ 偵測到 history 有 {turns} 條 messages，但載入給 LLM 的 context
+          字串為空。可能原因：history strategy 未注入 / 策略 process 失敗 /
+          messages 內容空。LLM 此次回覆可能未參考歷史對話。
+        </p>
+      )}
+      {turnsList.length > 0 && (
+        <div className="mt-1 space-y-1.5 max-h-[400px] overflow-y-auto">
+          <span className="font-medium text-[11px]">
+            上下文（{turnsList.length} 段）：
+          </span>
+          {turnsList.map((turn, ti) => {
+            const isUser = turn.startsWith("[用戶]");
+            return (
+              <div
+                key={ti}
+                className={`rounded p-1.5 text-[11px] ${
+                  isUser
+                    ? "bg-blue-50 dark:bg-blue-950 border-l-2 border-blue-400"
+                    : "bg-green-50 dark:bg-green-950 border-l-2 border-green-400"
+                }`}
+              >
+                <span
+                  className={`font-semibold ${
+                    isUser
+                      ? "text-blue-600 dark:text-blue-400"
+                      : "text-green-600 dark:text-green-400"
+                  }`}
+                >
+                  {isUser ? "用戶" : "助手"}
+                </span>
+                <pre className="mt-0.5 whitespace-pre-wrap break-words text-[11px]">
+                  {turn
+                    .replace(/^\[用戶\]\s*/, "")
+                    .replace(/^\[助手\]\s*/, "")}
+                </pre>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
   const fields: { key: string; label: string; wrap?: boolean }[] = [
     { key: "message_preview", label: "訊息", wrap: true },
@@ -106,6 +204,7 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
     { key: "worker_kb_count", label: "Sub-agent KB 數" },
     { key: "selected_team", label: "Team" },
     { key: "user_role", label: "角色" },
+    // history_* 三欄一起顯示用，下方 history block 會合併渲染後 skip 自身
     { key: "history_turns", label: "歷史輪數" },
     { key: "history_context", label: "歷史上下文", wrap: true },
     { key: "input_chunks", label: "輸入筆數" },
@@ -116,38 +215,34 @@ function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
 
   const chunkScores = meta.chunk_scores as { rank: number; score: number; preview: string }[] | undefined;
 
+  // 整合的歷史載入區塊：明確標示「正常載入 / 首輪 / regression 警示」
+  const historyTurns = meta.history_turns as number | undefined;
+  const historyStatus = meta.history_loaded_status as
+    | "loaded"
+    | "empty"
+    | "lost"
+    | undefined;
+  const historyContext = (meta.history_context as string | undefined) ?? "";
+  const historyChars = meta.history_context_chars as number | undefined;
+  const showHistoryBlock = historyTurns != null;
+
   return (
     <div className="nopan nodrag mt-2 space-y-1 text-xs text-muted-foreground max-h-[300px] overflow-y-auto">
+      {showHistoryBlock && (
+        <HistoryLoadBlock
+          turns={historyTurns ?? 0}
+          status={historyStatus}
+          context={historyContext}
+          chars={historyChars}
+        />
+      )}
       {fields.map((f) => {
+        // history block 已整合成 HistoryLoadBlock 渲染，跳過原始 fields
+        if (f.key === "history_turns" || f.key === "history_context") {
+          return null;
+        }
         if (meta[f.key] == null) return null;
         const value = str(meta[f.key]);
-        // History context: split by [用戶]/[助手] turns with visual separation
-        if (f.key === "history_context" && value) {
-          const turns = value.split(/(?=\[用戶\]|\[助手\])/).filter(Boolean);
-          return (
-            <div key={f.key}>
-              <span className="font-medium">{f.label}（{turns.length} 段）：</span>
-              <div className="mt-1 space-y-1.5 max-h-[400px] overflow-y-auto">
-                {turns.map((turn, ti) => {
-                  const isUser = turn.startsWith("[用戶]");
-                  return (
-                    <div
-                      key={ti}
-                      className={`rounded p-1.5 text-xs ${isUser ? "bg-blue-50 dark:bg-blue-950 border-l-2 border-blue-400" : "bg-green-50 dark:bg-green-950 border-l-2 border-green-400"}`}
-                    >
-                      <span className={`font-semibold ${isUser ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
-                        {isUser ? "用戶" : "助手"}
-                      </span>
-                      <pre className="mt-0.5 whitespace-pre-wrap break-words text-xs">
-                        {turn.replace(/^\[用戶\]\s*/, "").replace(/^\[助手\]\s*/, "")}
-                      </pre>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        }
         if (f.wrap && value.includes("\n")) {
           return (
             <div key={f.key}>
