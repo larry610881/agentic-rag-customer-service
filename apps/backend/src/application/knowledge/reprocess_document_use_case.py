@@ -35,6 +35,9 @@ class ReprocessDocumentUseCase:
         language_detection_service: LanguageDetectionService,
         file_parser_service: FileParserService,
         document_file_storage: DocumentFileStorageService,
+        # Optional — 與 process_document feature parity（child rename 用）
+        record_usage_use_case=None,
+        tenant_repository=None,
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
@@ -45,6 +48,8 @@ class ReprocessDocumentUseCase:
         self._language_detector = language_detection_service
         self._file_parser = file_parser_service
         self._file_storage = document_file_storage
+        self._record_usage = record_usage_use_case
+        self._tenant_repo = tenant_repository
 
     async def begin_reprocess(
         self, document_id: str, tenant_id: str
@@ -56,6 +61,20 @@ class ReprocessDocumentUseCase:
             status="pending",
         )
         await self._task_repo.save(task)
+
+        # 若 reprocess 子頁，立刻把父 PDF status 改 processing
+        # → frontend 父查詢 polling 才會啟動，UI 才看得到「失敗 → 處理中 → 完成」流程
+        # 否則 user 體驗：點重新處理 → 父 UI 仍是「失敗」直到下次 F5 才看到「完成」
+        try:
+            doc = await self._doc_repo.find_by_id(document_id)
+            if doc and doc.parent_id:
+                await self._doc_repo.update_status(doc.parent_id, "processing")
+        except Exception:
+            logger.warning(
+                "begin_reprocess.parent_status_update_failed",
+                document_id=document_id,
+                exc_info=True,
+            )
         return task
 
     async def execute(  # noqa: C901
@@ -255,6 +274,25 @@ class ReprocessDocumentUseCase:
             await self._vector_store.upsert(
                 collection, chunk_ids, vectors, payloads
             )
+
+            # PDF 子頁 LLM rename — 與 process_document 對齊（共用 helper）
+            # 之前 reprocess 沒呼叫 → 子頁 reprocess 完仍顯示「第 N 頁」沒主題
+            if document.parent_id and document.page_number:
+                from src.application.knowledge._child_rename import (
+                    rename_child_page_if_pdf,
+                )
+                await rename_child_page_if_pdf(
+                    document_id=document_id,
+                    page_number=document.page_number,
+                    content=content,
+                    kb=kb,
+                    tenant_id=document.tenant_id,
+                    doc_repo=self._doc_repo,
+                    tenant_repo=self._tenant_repo,
+                    record_usage=self._record_usage,
+                    context_service=None,
+                    log=log,
+                )
 
             # Mark as processed
             await self._doc_repo.update_status(

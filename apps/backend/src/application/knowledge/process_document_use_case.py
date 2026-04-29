@@ -455,18 +455,23 @@ class ProcessDocumentUseCase:
             )
 
             # If child document (PDF page), generate semantic filename
+            # 共用 helper — process + reprocess 都呼叫，避免 pipeline drift
             if document.parent_id and document.page_number:
-                try:
-                    await self._rename_child_page(
-                        document_id,
-                        document.page_number,
-                        content,
-                        kb,
-                        log,
-                        tenant_id=document.tenant_id,
-                    )
-                except Exception:
-                    log.warning("child.rename_failed", exc_info=True)
+                from src.application.knowledge._child_rename import (
+                    rename_child_page_if_pdf,
+                )
+                await rename_child_page_if_pdf(
+                    document_id=document_id,
+                    page_number=document.page_number,
+                    content=content,
+                    kb=kb,
+                    tenant_id=document.tenant_id,
+                    doc_repo=self._doc_repo,
+                    tenant_repo=self._tenant_repo,
+                    record_usage=self._record_usage,
+                    context_service=self._context_service,
+                    log=log,
+                )
 
             # Update doc → processed
             await self._doc_repo.update_status(
@@ -527,101 +532,7 @@ class ProcessDocumentUseCase:
             # Re-raise so safe_background_task can write to Error Tracking
             raise
 
-    async def _rename_child_page(
-        self,
-        document_id: str,
-        page_number: int,
-        content: str,
-        kb,
-        log,
-        tenant_id: str = "",
-    ) -> None:
-        """Use LLM to generate a semantic filename for a PDF page."""
-        if not content or not content.strip():
-            return
-
-        # Resolve context_model (reuse the same one for rename)
-        model = getattr(kb, "context_model", "") if kb else ""
-        if not model and self._tenant_repo:
-            try:
-                from sqlalchemy import select
-
-                from src.infrastructure.db.engine import async_session_factory
-                from src.infrastructure.db.models.tenant_model import TenantModel
-                async with async_session_factory() as session:
-                    doc = await self._doc_repo.find_by_id(document_id)
-                    if doc:
-                        stmt = select(TenantModel.default_context_model).where(
-                            TenantModel.id == doc.tenant_id
-                        )
-                        result = await session.execute(stmt)
-                        model = result.scalar_one_or_none() or ""
-            except Exception:
-                pass
-
-        if not model:
-            return
-
-        from src.infrastructure.llm.llm_caller import call_llm
-
-        prompt = f"""\
-以下是 PDF 第 {page_number} 頁的 OCR 內容（截取前 2000 字）：
-
-{content[:2000]}
-
-請用 5-15 個繁體中文字總結這頁的主題，作為頁面標題。
-格式：「第 N 頁 — 主題」，例如「第 3 頁 — 肉品促銷」。
-只輸出標題，不要其他內容。"""
-
-        try:
-            result = await call_llm(
-                model_spec=model,
-                prompt=prompt,
-                max_tokens=50,
-                api_key_resolver=(
-                    self._context_service._api_key_resolver
-                    if self._context_service and hasattr(self._context_service, '_api_key_resolver')
-                    else None
-                ),
-            )
-            new_filename = result.text.strip()[:100]
-
-            # Token-Gov.0: 記錄 PDF 子頁 rename 的 token 用量
-            if (
-                self._record_usage
-                and (result.input_tokens + result.output_tokens) > 0
-            ):
-                kb_id_value = getattr(kb, "id", None)
-                # KnowledgeBase.id 是 KnowledgeBaseId VO，DB 欄位是 VARCHAR — 必須 unwrap
-                if kb_id_value is not None and hasattr(kb_id_value, "value"):
-                    kb_id_value = kb_id_value.value
-                await self._record_usage.execute(
-                    tenant_id=tenant_id,
-                    request_type=UsageCategory.PDF_RENAME.value,
-                    usage=TokenUsage(
-                        model=model,
-                        input_tokens=result.input_tokens,
-                        output_tokens=result.output_tokens,
-                    ),
-                    kb_id=kb_id_value,
-                )
-
-            if new_filename:
-                # Use independent session to avoid conflicts
-                from sqlalchemy import update
-
-                from src.infrastructure.db.engine import async_session_factory
-                from src.infrastructure.db.models.document_model import DocumentModel
-                async with async_session_factory() as session:
-                    await session.execute(
-                        update(DocumentModel)
-                        .where(DocumentModel.id == document_id)
-                        .values(filename=new_filename)
-                    )
-                    await session.commit()
-                log.info("child.renamed", document_id=document_id, new_name=new_filename)
-        except Exception:
-            log.warning("child.rename_llm_failed", exc_info=True)
+    # _rename_child_page 已抽到 _child_rename.py 共用（process + reprocess 都呼叫）
 
     async def _maybe_trigger_classification(
         self, kb_id: str, tenant_id: str, log
