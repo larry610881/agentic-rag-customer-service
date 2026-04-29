@@ -7,6 +7,40 @@
 
 ---
 
+## 孤兒 pending 救援 + KnowledgeBaseId VO 沒拆 → DataError $12
+
+**日期**：2026-04-28（user 回報 64 頁 PDF 1 頁卡死）
+**涉及層級**：Application (4 個 use case 拆 KnowledgeBaseId VO) + Frontend (`document-list.tsx` reprocess 條件加 pending) + 一次性 SQL 救援
+**Commit**：`632d6e2`
+
+**Sprint 來源**：User 在 KB Studio 看到「64 頁卡在等待中」+「錯誤的頁面不能重新整理」。debug 拆出兩個重疊 prod bug：(1) worker 在 09:39 UTC 重啟把 in-flight job 弄丟，DB 留下 `status=pending`，UI reprocess 條件只覆蓋 `processed | failed` → 永遠按不到、卡 1 小時無法救；(2) worker log 同時噴 `asyncpg DataError $12: KnowledgeBaseId(value='...') (expected str, got KnowledgeBaseId)`，定位到 `process_document_use_case._rename_child_page` 把 DDD VO 直接送進 SQLAlchemy bind。
+
+**主題**：**「DDD VO 必須在 Application/Infrastructure 邊界 unwrap」+「Worker 重啟孤兒 job 的 UI fallback」**。第一個是 DDD 經典踩坑 — value object 用來保護 domain 內 type safety，但跨層送 DB 時 SQLAlchemy 不認識 VO，必須拆 `.value`。第二個是 distributed system 經典踩坑 — at-most-once job queue 在 worker crash/restart 時會漏（arq 預設沒 task ack rollback），DB status 永遠停留在 `pending`，必須有「人工強制重 trigger」的 UI 出口。
+
+### 做得好的地方
+
+- **DB 直接 SQL 看 row 級狀態而不是看 UI**：UI 顯示「64 頁等待中」但 DB 真實是 61 processed + 2 failed + 1 pending。如果只信 UI 會以為整批掛，多花 30 分鐘重 trace pipeline。教訓：**status 不一致時，DB 才是 ground truth**。
+- **抓 DataError 直接看 SQL bind 列**：worker log 噴 `DBAPIError ... query argument $12` → 立刻去看「這個 SQL INSERT 哪張表 / $12 對應哪個欄位 / parameter list 真實值」。直接看到 `KnowledgeBaseId(value='...')` 字面就明白是 VO 沒 unwrap。
+- **修同一個錯誤的 5 個位點**：grep `kb_id=kb.id` 全 src 找出 5 處同 pattern，分類成「DB 寫入」(2 處 — 真會炸) + 「structlog log」(3 處 — 不會炸但 log 醜)。一次 commit 全修，避免之後同 bug 再發生在另一條路徑。
+- **UI 加 `pending` 同時更新 tooltip 文案**：不只放開按鈕，還在 tooltip 解釋「卡在等待中（worker 孤兒？）— 點此重新觸發」，讓 user 看到時知道為什麼能按、按下去會發生什麼。降低未來 user 困惑成本。
+- **One-shot SQL 救 page 64 留下「why」紀錄**：`UPDATE ... SET quality_issues='orphan: worker restart on 2026-04-28 09:39 UTC dropped in-flight job'`，把根因寫進這筆 row 的 quality_issues，未來查 row 歷史就知道為什麼當時改 status。
+
+### 潛在隱憂
+
+- **沒寫 regression test**：CLAUDE.md 明確要求每個 bug fix 留 regression test，這次因為 firefighting + `_rename_child_page` 是 private method 需要 mock 整條 pipeline，跳過了。**優先級：高**。改善：在 `tests/unit/knowledge/` 加 `test_rename_child_page_kb_id_unwrap.py`，mock `call_llm` + `record_usage`，斷言 `kb_id` 收到的是 str 不是 VO。
+- **5 個位點同 pattern 沒被早期發現**：`kb.id` 直接用沒拆 `.value`，5 個位點散落在 process_document / reembed_chunk / delete_chunk / update_chunk。這代表 codebase 缺乏「VO 邊界拆解」的 lint / type check。**優先級：中**。改善：寫 mypy plugin 或 ruff custom rule 掃「VO 物件 → str-typed 函式參數」的隱式 cast；或更激進 — `KnowledgeBaseId` 加 `__str__` raise NotImplementedError，強制每個使用點顯式寫 `.value`。
+- **arq worker 重啟丟 in-flight job**：根因是 arq 的 ack 機制 — job 從 queue 出來後就 ack 給 Redis，worker process 中間 crash，job 就丟了。本次靠手動 SQL + UI fallback，但 production 跑久了會持續累積這種孤兒。**優先級：高**。改善：(1) 對每個 enqueued job 在 DB 留 `arq_job_id`，worker 重啟時掃 `pending > 5min && arq_job_id NOT IN active_queue` 自動 re-enqueue；(2) 啟用 arq 的 `keep_result_forever` + 定期掃 dead jobs。
+- **UI 加 `pending` 後 user 可能誤按**：正在 processing 中的 job 如果 user 等不及按了「強制重新處理」，會雙重 enqueue 同 doc 走兩次 pipeline。**優先級：中**。改善：reprocess endpoint 後端加冪等檢查（同 doc + 30s 內 ignore 重複 reprocess），或 UI 按下後 disable 按鈕 + spinner 直到 status 變 processing。
+- **structlog log 把 VO 當 dict 序列化**：3 個 logger.info 裡的 `kb_id=kb.id` 雖不炸 SQL，但 log 字串會出現 `KnowledgeBaseId(value='...')` 而非乾淨 UUID — 後續用 `grep kb_id=559538a4` 撈不到。**優先級：低（已修）**。
+
+### 延伸學習
+
+- **「DDD Value Object Boundary Unwrap」**：VO 是 domain 內 type safety 工具（避免 string typing），但**離開 domain 進 infrastructure 時必須 unwrap 成 primitive**。這個邊界在 DDD 圈名字叫 **Anti-Corruption Layer (ACL)** — 但實際 codebase 很少有人寫顯式 ACL，都是 ad-hoc 在 use case 裡 `vo.value`。當 codebase 增長到 100+ use cases，漏拆機率指數上升。延伸關鍵字：**Anti-Corruption Layer**、**DTO Mapping at Boundary**、**Hexagonal Architecture Port-Adapter**、**Pydantic V2 SerializationContext**。
+- **「At-Most-Once Job Queue 的孤兒處理」**：所有 queue based system 都會踩。Celery 用 `acks_late=True`（worker crash 後 redeliver）+ visibility_timeout；arq 預設 acks_early，重啟必丟。改 `acks_late` 又有 at-least-once 副作用（同 job 跑兩次）。本質是 **CAP 定理在 queue 上的演化**。延伸關鍵字：**At-Least-Once vs At-Most-Once**、**Idempotency Token**、**Visibility Timeout**、**Outbox Pattern**（最強解 — 用 DB transaction 保證 enqueue 跟 status update atomic）。
+- **思考題**：你會怎麼設計「孤兒 pending 自動偵測 + 救援」cron？(Hint: 每 5min 跑 background task 掃 `documents WHERE status='pending' AND created_at < now() - INTERVAL '10 minutes'`，且 doc_id 不在 arq active job set 內 → 自動標 failed 或自動 re-enqueue。注意冪等性 + race — cron 跟 worker 不能同時動同 doc。延伸：怎麼判斷「應該 retry」vs「應該標 fail 等人工」？建議用 retry counter 欄位，3 次失敗才標永久 fail。)
+
+---
+
 ## OCR auth race + 子頁 reprocess 漏接 — 「升級後副作用」與「UI 漏線」
 
 **日期**：2026-04-28（OCR Sonnet 升級後續）

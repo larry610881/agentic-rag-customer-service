@@ -4,7 +4,13 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-28 (PDF 子頁可獨立 reprocess + OCR auth retry 修)
+> 最後更新：2026-04-28 (孤兒 pending 救援 + KnowledgeBaseId VO unwrap hotfix)
+>
+> Hotfix `632d6e2`：兩個 prod bug 同時修
+> - Backend：PDF 子頁 rename 寫 `token_usage_records` 漏拆 `KnowledgeBaseId` VO → asyncpg DataError $12（5 個 use case 同步修，2 個 DB 寫入 + 3 個 structlog log）
+> - Frontend：worker 重啟孤兒 pending 永遠按不到 reprocess（4/28 09:39 UTC 重啟丟一頁卡 1 hr）→ 子頁/父頁按鈕條件加 `pending`
+> - One-shot SQL 救出 page 64（`UPDATE documents SET status='failed' WHERE id='9eb0396e-...'`）
+> - 待補：`_rename_child_page` 對 KnowledgeBaseId VO 的 regression unit test
 
 ---
 
