@@ -173,6 +173,7 @@ async def update_knowledge_base(
         await update_use_case.execute(
             UpdateKnowledgeBaseCommand(
                 kb_id=kb_id,
+                requester_tenant_id=tenant.tenant_id,
                 name=body.name,
                 description=body.description,
                 ocr_mode=body.ocr_mode,
@@ -200,7 +201,7 @@ async def delete_knowledge_base(
     ),
 ) -> None:
     try:
-        await use_case.execute(kb_id)
+        await use_case.execute(kb_id, requester_tenant_id=tenant.tenant_id)
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -1,8 +1,8 @@
 """刪除知識庫用例"""
 
+from src.application.knowledge._admin_kb_check import ensure_kb_accessible
 from src.domain.knowledge.repository import DocumentRepository, KnowledgeBaseRepository
 from src.domain.rag.services import VectorStore
-from src.domain.shared.exceptions import EntityNotFoundError
 
 
 class DeleteKnowledgeBaseUseCase:
@@ -16,10 +16,9 @@ class DeleteKnowledgeBaseUseCase:
         self._doc_repo = document_repository
         self._vector_store = vector_store
 
-    async def execute(self, kb_id: str) -> None:
-        kb = await self._kb_repo.find_by_id(kb_id)
-        if kb is None:
-            raise EntityNotFoundError("KnowledgeBase", kb_id)
+    async def execute(self, kb_id: str, requester_tenant_id: str = "") -> None:
+        # 之前完全無 tenant 檢查 → 任意 tenant 可刪任意 KB（CRITICAL）
+        await ensure_kb_accessible(self._kb_repo, kb_id, requester_tenant_id)
 
         # 1) 查出所有 document
         documents = await self._doc_repo.find_all_by_kb(kb_id)

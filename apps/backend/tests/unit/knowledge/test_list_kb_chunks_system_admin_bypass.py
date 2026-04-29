@@ -27,7 +27,12 @@ from tests.unit.knowledge.kb_studio_fixtures import (
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # fresh loop 避免測試間 pollution（同 reprocess_image_ocr_regression 修法）
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 def _seed(tenant_id="t-1", kb_id="kb-1", n=3):

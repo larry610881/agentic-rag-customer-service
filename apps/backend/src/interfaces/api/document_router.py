@@ -518,13 +518,17 @@ class ChunkPreviewListResponse(BaseModel):
 async def get_document_chunks(
     kb_id: str,
     doc_id: str,
-    limit: int = 20,
+    # 預設 200（從 20 提升）— KB Studio drill-down 編輯需看完整 chunks
+    # 上限 500 避免一次撈太多炸記憶體（單頁 PNG 一般 < 20，整本 PDF < 500）
+    limit: int = 200,
     offset: int = 0,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetDocumentChunksUseCase = Depends(
         Provide[Container.get_document_chunks_use_case]
     ),
 ) -> ChunkPreviewListResponse:
+    if limit > 500:
+        limit = 500
     result = await use_case.execute(doc_id, limit=limit, offset=offset)
     return ChunkPreviewListResponse(
         chunks=[

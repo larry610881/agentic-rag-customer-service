@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from src.application.knowledge._admin_kb_check import ensure_kb_accessible
 from src.domain.knowledge.entity import Document, ProcessingTask
 from src.domain.knowledge.repository import (
     DocumentRepository,
@@ -77,10 +78,11 @@ class UploadDocumentUseCase:
         if command.content_type not in _SUPPORTED_TYPES:
             raise UnsupportedFileTypeError(command.content_type)
 
-        # Verify knowledge base exists
-        kb = await self._kb_repo.find_by_id(command.kb_id)
-        if kb is None:
-            raise EntityNotFoundError("KnowledgeBase", command.kb_id)
+        # Verify KB exists + tenant 可訪問（防跨租戶上傳）
+        # 之前只 check existence — 任意 tenant 知道 kb_id 可上傳到別人 KB（CRITICAL）
+        await ensure_kb_accessible(
+            self._kb_repo, command.kb_id, command.tenant_id
+        )
 
         # Create document — store raw bytes, defer parsing to ProcessDocumentUseCase
         document = Document(
@@ -120,9 +122,9 @@ class UploadDocumentUseCase:
         if command.content_type not in _SUPPORTED_TYPES:
             raise UnsupportedFileTypeError(command.content_type)
 
-        kb = await self._kb_repo.find_by_id(command.kb_id)
-        if kb is None:
-            raise EntityNotFoundError("KnowledgeBase", command.kb_id)
+        await ensure_kb_accessible(
+            self._kb_repo, command.kb_id, command.tenant_id
+        )
 
         doc_id = DocumentId()
         document = Document(

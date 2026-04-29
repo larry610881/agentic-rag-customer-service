@@ -25,7 +25,13 @@ from src.domain.knowledge.value_objects import DocumentId
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # 用 new_event_loop 而非 get_event_loop 避免測試間 event loop pollution
+    # （previous test left running tasks on shared loop → InvalidStateError 等）
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 def _make_use_case(file_parser_mock):

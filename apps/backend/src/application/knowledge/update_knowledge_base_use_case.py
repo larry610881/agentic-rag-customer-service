@@ -1,12 +1,14 @@
 from dataclasses import dataclass
 
+from src.application.knowledge._admin_kb_check import ensure_kb_accessible
 from src.domain.knowledge.repository import KnowledgeBaseRepository
-from src.domain.shared.exceptions import EntityNotFoundError
 
 
 @dataclass(frozen=True)
 class UpdateKnowledgeBaseCommand:
     kb_id: str
+    # 必填（router 從 token 拿）— default 空字串保舊 caller backward compat
+    requester_tenant_id: str = ""
     name: str | None = None
     description: str | None = None
     ocr_mode: str | None = None
@@ -22,9 +24,11 @@ class UpdateKnowledgeBaseUseCase:
         self._repo = knowledge_base_repository
 
     async def execute(self, command: UpdateKnowledgeBaseCommand) -> None:
-        kb = await self._repo.find_by_id(command.kb_id)
-        if kb is None:
-            raise EntityNotFoundError("KnowledgeBase", command.kb_id)
+        # 之前完全無 tenant 檢查 → 任意 tenant 知道 kb_id 就能改任意 KB（CRITICAL）
+        # ensure_kb_accessible: 同租戶 OK / system_admin bypass OK / 跨租戶 → 404
+        await ensure_kb_accessible(
+            self._repo, command.kb_id, command.requester_tenant_id
+        )
         fields = {
             k: v
             for k, v in {

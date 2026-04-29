@@ -109,7 +109,12 @@ def delete_knowledge_base(context, delete_kb_use_case, mock_kb_repo, kb_id):
     if kb_id == "nonexistent":
         mock_kb_repo.find_by_id = AsyncMock(return_value=None)
     try:
-        _run(delete_kb_use_case.execute(kb_id))
+        # 新契約（2026-04-29）：execute 需 requester_tenant_id（防跨租戶刪除）
+        _run(
+            delete_kb_use_case.execute(
+                kb_id, requester_tenant_id="tenant-001"
+            )
+        )
         context["error"] = None
     except EntityNotFoundError as e:
         context["error"] = e
