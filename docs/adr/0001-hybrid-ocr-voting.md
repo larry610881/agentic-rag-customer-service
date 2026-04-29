@@ -172,69 +172,114 @@ def vote(candidates: list[OcrJson], threshold: int) -> VoteResult:
 
 仲裁失敗（也 parse fail）→ fall back 到「投票最高票引擎」+ 標 `arbitration_failed=true`。
 
-### 2.5 Disagreement Log Schema
+### 2.5 Voting & Disagreement Log Schema（**v2 修訂**：2 表分職）
+
+**設計原則**：每頁每次投票都記錄（為了正確的落選率）；只有不一致才存 raw candidates 並進人工 review queue。
+
+#### 2.5.1 `ocr_voting_log`（每頁每次都寫）
+
+每頁 OCR 結束都寫一筆，**不存 raw candidates**（unanimous 時都一樣浪費空間）。用途：落選率分析、漂移偵測、per-engine quality 追蹤。
 
 ```sql
-CREATE TABLE ocr_disagreement_log (
-    id              VARCHAR(36) PRIMARY KEY,
-    document_id     VARCHAR(36) NOT NULL,
-    page_number     INT NOT NULL,
-    tenant_id       VARCHAR(36) NOT NULL,
-    kb_id           VARCHAR(36) NOT NULL,
-    
+CREATE TABLE ocr_voting_log (
+    id                    VARCHAR(36) PRIMARY KEY,
+    document_id           VARCHAR(36) NOT NULL,
+    page_number           INT NOT NULL,
+    tenant_id             VARCHAR(36) NOT NULL,
+    kb_id                 VARCHAR(36) NOT NULL,
+
     -- 投票過程
-    engines_used    JSONB NOT NULL,    -- ["claude-sonnet-4-6", "claude-haiku-4-5"]
-    candidates      JSONB NOT NULL,    -- {"sonnet": <full_json>, "haiku": <full_json>}
-    parse_failures  JSONB,             -- ["paddle"] 哪些 engine JSON parse fail
-    
-    -- 投票結果
-    vote_outcome    VARCHAR(30) NOT NULL,  -- "unanimous" | "majority" | "arbitrated" | "arbitration_failed"
-    final_text      TEXT NOT NULL,
-    final_blocks    JSONB,            -- 投票勝出的 blocks
-    
-    -- 落選引擎（per-block per-key）
-    losers          JSONB,            -- [{"engine": "haiku", "block_idx": 2, "key": "name", "lost_value": "茶槽杯", "winner_value": "紫檀筷"}]
-    
-    -- 仲裁
-    arbiter_model   VARCHAR(100),     -- NULL if no arbitration
-    arbiter_reason  TEXT,             -- 仲裁說明
-    
-    -- 人工 override
-    admin_override  TEXT,             -- NULL until admin manually corrects
-    admin_override_blocks JSONB,
-    admin_override_at     TIMESTAMPTZ,
-    admin_override_by     VARCHAR(36),
-    
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+    engines_used          JSONB NOT NULL,    -- ["claude-sonnet-4-6", "claude-haiku-4-5"]
+    parse_failures        JSONB,             -- ["paddle"] 哪些 engine JSON parse fail（部分 engine 失敗仍可投票）
+    vote_threshold        INT NOT NULL,      -- N（KB.ocr_vote_threshold 當下值，便於追蹤門檻變更）
+    vote_outcome          VARCHAR(30) NOT NULL,
+        -- 'unanimous' | 'majority' | 'arbitrated' | 'arbitration_failed' | 'single_engine'
+
+    -- 落選統計（per-engine 該頁是否落選 — 用 set 簡化）
+    -- 注意：unanimous 時 final_winners = engines_used 全部，losers = []
+    final_winners         JSONB NOT NULL,    -- ["sonnet", "haiku"] 該頁參與最終結果的引擎
+    losers                JSONB,             -- ["paddle"] 該頁有產出但被淘汰的引擎
+
+    -- 仲裁紀錄（NULL if not arbitrated）
+    arbiter_model         VARCHAR(100),
+    arbiter_token_record_id VARCHAR(36),     -- 對應 token_usage_records.id（成本可審計）
+
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
     FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_ocr_disagree_kb_created ON ocr_disagreement_log(kb_id, created_at DESC);
-CREATE INDEX idx_ocr_disagree_doc_page ON ocr_disagreement_log(document_id, page_number);
-CREATE INDEX idx_ocr_disagree_outcome ON ocr_disagreement_log(vote_outcome) WHERE admin_override IS NULL;
+CREATE INDEX idx_voting_log_kb_created ON ocr_voting_log(kb_id, created_at DESC);
+CREATE INDEX idx_voting_log_doc_page ON ocr_voting_log(document_id, page_number);
+CREATE INDEX idx_voting_log_outcome ON ocr_voting_log(vote_outcome);
 ```
 
-**Note**：`unanimous`（全部一致）也寫一筆嗎？**不寫**。只在 `vote_outcome != 'unanimous'` 時 INSERT — 避免 log 表暴漲。`unanimous` 可由 `documents` 推導出（沒 disagreement log = unanimous）。
+**估算大小**：500 頁 DM × 30 byte（壓縮 JSONB）≈ 15 KB；1 萬份文件 × 平均 50 頁 ≈ 7.5 MB —— 可接受。
+
+#### 2.5.2 `ocr_disagreement_log`（只在不一致時寫，含 raw candidates）
+
+只存「需要人工 review」的記錄，含 raw candidates 給 admin 看詳細 diff。**1:N FK 對 voting_log**（一筆 voting_log 最多有一筆 disagreement_log）。
+
+```sql
+CREATE TABLE ocr_disagreement_log (
+    id                    VARCHAR(36) PRIMARY KEY,
+    voting_log_id         VARCHAR(36) NOT NULL UNIQUE,  -- 1:1 對應 voting_log
+
+    -- 不一致時的詳細記錄（給人工看）
+    candidates            JSONB NOT NULL,     -- {"sonnet": <full_json>, "haiku": <full_json>}
+    final_blocks          JSONB,              -- 投票/仲裁勝出的 blocks（給 UI 顯示）
+    block_disagreements   JSONB,              -- [{"block_idx":2,"key":"name","values":{"sonnet":"紫檀筷","haiku":"茶槽杯"}}]
+    arbiter_reason        TEXT,               -- 仲裁說明（為什麼選這個答案）
+
+    -- 人工修正狀態（不存內容！內容走既有 chunk 編輯機制）
+    manually_corrected    BOOLEAN NOT NULL DEFAULT false,
+    manually_corrected_at TIMESTAMPTZ,
+    manually_corrected_by VARCHAR(36),
+    corrected_chunk_ids   JSONB,              -- ["chunk-id-1","chunk-id-2"] 修了哪幾個 chunk
+    correction_note       TEXT,               -- admin 留言（為什麼改）
+
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    FOREIGN KEY (voting_log_id) REFERENCES ocr_voting_log(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_disagree_pending_review ON ocr_disagreement_log(manually_corrected, created_at DESC)
+    WHERE manually_corrected = false;
+```
+
+**為什麼分 2 表（vs 原 ADR 單表）**：
+- voting_log 每頁都寫但不存 raw → 查 stats 快、表小
+- disagreement_log 只存疑難頁 + raw → 人工 review focus
+- chunk 修正內容**不存於此表** → 走既有 `UpdateChunkUseCase`，避免雙寫資料分裂
 
 ### 2.6 落選率統計（query 級）
 
-不開實體 metrics 表，view + query 即可：
+讀 `ocr_voting_log`（**含 unanimous 才有正確分母**）：
 
 ```sql
 CREATE VIEW v_ocr_engine_loss_stats AS
-SELECT 
+WITH expanded AS (
+    SELECT
+        kb_id,
+        jsonb_array_elements_text(engines_used) AS engine,
+        id AS voting_id,
+        losers
+    FROM ocr_voting_log
+)
+SELECT
     kb_id,
     engine,
-    COUNT(DISTINCT document_id || '-' || page_number) AS total_pages_voted,
-    COUNT(*) FILTER (WHERE engine = ANY(SELECT jsonb_array_elements_text(losers->'engine'))) AS lost_count,
-    ROUND(100.0 * COUNT(*) FILTER (WHERE engine IS lost) / COUNT(*), 2) AS loss_rate_pct
-FROM ocr_disagreement_log,
-     jsonb_array_elements_text(engines_used) AS engine
+    COUNT(*) AS total_voted,                                         -- 該 engine 參與的總次數
+    COUNT(*) FILTER (WHERE losers @> to_jsonb(engine)) AS lost_count, -- 落選次數
+    ROUND(100.0 * COUNT(*) FILTER (WHERE losers @> to_jsonb(engine)) / NULLIF(COUNT(*), 0), 2) AS loss_rate_pct
+FROM expanded
 GROUP BY kb_id, engine;
 ```
+
+**正確語意**：分母是「該 engine 出戰次數」（含 unanimous 贏的場），分子是「落選次數」。
+範例：sonnet 跑 100 頁，95 頁 unanimous 贏、5 頁不一致都輸 → loss_rate = 5%（合理）。
 
 未來若 query 慢再加 materialized view + 定期 refresh。
 
@@ -242,13 +287,24 @@ GROUP BY kb_id, engine;
 
 頁面元素：
 
-1. **概覽 cards**：總頁數、走仲裁頁數、仲裁占比、admin 已 override 數
-2. **引擎落選率表格**（讀 v_ocr_engine_loss_stats）
-3. **仲裁紀錄列表**（分頁）：page_number / engines / vote_outcome / arbiter_model / 預覽 final_text / 是否 override
-4. **詳情 dialog**：
-   - 左欄：原圖（可放大）
-   - 右欄：M 個候選 JSON（diff highlight）+ arbiter 結果 + arbiter_reason
-   - 底部：「手動修正」按鈕 → 開編輯器讓 admin 改 final_blocks → 寫 admin_override_blocks + 觸發該 page chunk 重新 embedding（chunk 內容改成 admin 版本）
+1. **概覽 cards**：總投票頁數、不一致頁數、仲裁占比、admin 已修正數、仲裁失敗數（紅色 badge）
+2. **引擎落選率表格**（讀 `v_ocr_engine_loss_stats`）— 排序預設 loss_rate desc
+3. **仲裁紀錄列表**（分頁，僅顯示 `disagreement_log` 中 `manually_corrected=false` 的）：
+   - 欄位：page_number / engines / vote_outcome / arbiter_model / final_text 預覽 / 「✅ 已修」flag
+   - filter：`vote_outcome` (unanimous/majority/arbitrated/arbitration_failed) / 已修/未修
+4. **詳情 dialog**（核心 — **整合既有 chunk 編輯機制**）：
+   - **左欄**：原圖（可放大）
+   - **右欄上半**：M 個候選 JSON（diff highlight，紅色標出衝突 key）+ arbiter 結果 + arbiter_reason
+   - **右欄下半（新增）**：該頁所有 chunks 列表（透過 `WHERE document_id=X AND chunk.page_number=N` 找）
+     - 每個 chunk 顯示：chunk_id / content preview / 「編輯」按鈕
+     - 點「編輯」→ **直接呼叫既有的 chunk-edit-dialog**（重用 `ChunkPreviewPanel` + `UpdateChunkUseCase`）
+     - 編輯完送出後：
+       - 後端 `UpdateChunkUseCase` 走既有流程（content 改 + 自動 reembed）
+       - 同時 PATCH `disagreement_log.corrected_chunk_ids += chunk_id`
+       - 第一次修正時 PATCH `manually_corrected=true` + `manually_corrected_at/by`
+   - **「人工修正完成」按鈕**：admin 確認本頁修完，點下後：
+     - PATCH `disagreement_log.manually_corrected=true`（即使沒改 chunk 也標起來，代表已 review）
+     - 列表頁該行變綠色「✅ 已修」
 
 ### 2.8 仲裁系統 default
 
@@ -257,6 +313,23 @@ GROUP BY kb_id, engine;
 
 **為何 default 用 Opus 不是 Sonnet**：仲裁次數低（< 5% 預估），單次成本高沒關係；用最強模型才有「爭議仲裁」的價值。
 
+**仲裁也計成本**：每次仲裁都寫一筆 `token_usage_records`，`request_type='ocr_arbitration'`、`kb_id` 帶入、token 數從 arbiter response 拿；voting_log 的 `arbiter_token_record_id` 指向該筆 — 月報表可分析「仲裁成本占 OCR 總成本比例」。
+
+### 2.9 三層防禦完整圖（人工是 last line）
+
+```mermaid
+graph LR
+    A["Layer 1<br>M-engine 投票"] -->|"不一致"| B["Layer 2<br>LLM 仲裁"]
+    A -->|"一致"| OK["use winning text"]
+    B -->|"也錯"| C["Layer 3<br>人工 chunk 編輯<br>(既有 UpdateChunkUseCase)"]
+    B -->|"OK"| OK
+    OK --> CHUNK["chunk + embed + qdrant"]
+    CHUNK -.->|"admin 發現錯"| C
+    C --> REEMB["既有 ReembedChunkUseCase<br>自動更新向量"]
+```
+
+**設計原則**：仲裁也可能錯 → 不依賴單一防線；admin 修正內容**不存於 disagreement_log**，全部透過既有 chunk 編輯機制下沉，保持「資料來源單一」。
+
 ---
 
 ## 3. Stage 1–5 實作計畫
@@ -264,22 +337,28 @@ GROUP BY kb_id, engine;
 ### Stage 1：Domain + Migration
 
 **檔案**：
-- `apps/backend/migrations/add_ocr_voting_columns.sql`：alter knowledge_bases + create ocr_disagreement_log + create v_ocr_engine_loss_stats
+- `apps/backend/migrations/add_ocr_voting_columns.sql`：
+  - ALTER `knowledge_bases` 加 3 欄（`ocr_engines`, `ocr_vote_threshold`, `ocr_arbiter_model`）
+  - CREATE `ocr_voting_log`（每頁每次寫）
+  - CREATE `ocr_disagreement_log`（只在不一致時寫，FK 對 voting_log）
+  - CREATE VIEW `v_ocr_engine_loss_stats`
+  - ALTER `settings` 加 `ocr_arbiter_model_default` （DEFAULT 'claude-opus-4-7'）
 - `apps/backend/src/domain/knowledge/entity.py`：KnowledgeBase 加 3 欄位
 - `apps/backend/src/domain/ocr/`：新 bounded context（package）
-  - `voting_service.py`：純邏輯 vote(candidates, threshold) → VoteResult
-  - `value_objects.py`：OcrCandidate, VoteResult, OcrBlock
-  - `exceptions.py`：ArbitrationFailedError 等
+  - `voting_service.py`：純邏輯 `vote(candidates, threshold) → VoteResult`
+  - `value_objects.py`：`OcrCandidate`, `VoteResult`, `OcrBlock`, `VoteOutcome` enum
+  - `exceptions.py`：`ArbitrationFailedError`, `JsonParseError` 等
 
 **測試**：
 - `tests/unit/ocr/test_voting_service.py`：純函式單元測試
-  - 2 一致 → unanimous
-  - 3 取 2 多數 → majority
+  - 2 一致 → unanimous（losers=[]）
+  - 3 取 2 多數 → majority（losers=[第三引擎]）
   - 全不同 → NeedsArbitration
-  - JSON parse fail → 過濾後重算
+  - JSON parse fail → 過濾後重算（parse_failures 記錄）
   - block_count ±1 容差
+  - normalize 規則（None / "null" / 全形/半形 等值判定）
 
-**Migration 走五步流程**（dev-vm + local-docker 各跑一次）。
+**Migration 走五步流程**（dev-vm + local-docker 各跑一次，記得寫 `_applied_migrations`）。
 
 ### Stage 2：Application Use Case
 
