@@ -151,6 +151,12 @@ interface DocumentListProps {
   isBatchReprocessing?: boolean;
   /** 當恰好單一父文件展開時觸發（傳入文件），多個或零個展開時傳入 null */
   onSingleExpandedChange?: (doc: DocumentResponse | null) => void;
+  /**
+   * 啟用 chunk drill-down 編輯（admin 端專用）。
+   * true → 「查看分塊」dialog 內每個 chunk 是 ChunkEditor (可編輯/刪除/re-embed)。
+   * 預設 false → 唯讀預覽（租戶端體驗不變）。
+   */
+  chunkEditable?: boolean;
 }
 
 function StatusCell({
@@ -424,6 +430,7 @@ export function DocumentList({
   isBatchDeleting,
   isBatchReprocessing,
   onSingleExpandedChange,
+  chunkEditable = false,
 }: DocumentListProps) {
   const [deleteTarget, setDeleteTarget] = useState<DocumentResponse | null>(null);
   const [chunkDoc, setChunkDoc] = useState<DocumentResponse | null>(null);
@@ -790,15 +797,26 @@ export function DocumentList({
         }}
       />
 
-      {/* Chunk preview dialog */}
+      {/* Chunk preview / edit dialog */}
       <Dialog open={!!chunkDoc} onOpenChange={(open) => { if (!open) setChunkDoc(null); }}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>{chunkDoc?.filename} — 分塊預覽</DialogTitle>
-            <DialogDescription>共 {chunkDoc?.chunk_count} 個分塊</DialogDescription>
+            <DialogTitle>
+              {chunkDoc?.filename} — {chunkEditable ? "分塊編輯" : "分塊預覽"}
+            </DialogTitle>
+            <DialogDescription>
+              共 {chunkDoc?.chunk_count} 個分塊
+              {chunkEditable &&
+                "．直接修改 content / context 自動觸發 re-embedding"}
+            </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="max-h-[60vh] -mx-6 px-6">
-            <ChunkPreviewPanel kbId={kbId} docId={chunkDoc?.id ?? ""} open={!!chunkDoc} />
+          <ScrollArea className="max-h-[70vh] -mx-6 px-6">
+            <ChunkPreviewPanel
+              kbId={kbId}
+              docId={chunkDoc?.id ?? ""}
+              open={!!chunkDoc}
+              editable={chunkEditable}
+            />
           </ScrollArea>
         </DialogContent>
       </Dialog>

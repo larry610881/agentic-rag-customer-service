@@ -7,6 +7,44 @@
 
 ---
 
+## KB Studio UX 重構 — 從工具集合到工作流主軸
+
+**日期**：2026-04-29
+**涉及層級**：Frontend (~9 個前端檔案 + 1 個後端 endpoint) + 多個跨層 hook 整合
+**Commit**：本次提交
+
+**Sprint 來源**：User 反饋 KB Studio「概覽 / 文件 / Chunks / 分類 / Playground / 品質 / 設定」7 tabs 太散，「我本來會以為點開某個文件或某個 PNG 直接改他的 chunk」+「設定 tab 是空 placeholder 排版怪」。本質是「工具集合」與「工作流主軸」的視角差。重構前 admin 必須在 7 個 tab 間反覆跳動完成「找到文件 → 看其 chunks → 編輯」一個任務；重構後變成「進文件 tab → 點查看分塊 → 直接編輯」單一 path。
+
+**主題**：**「Information Architecture (IA) 重構」+「組件 dual-mode prop 取代分叉複製」**。第一個是 UX 設計議題 — 7 tabs 看似資訊豐富但分散注意力，user 找東西要「先選工具再選資料」(verb-first navigation)，重構後改為「先選資料再選操作」(noun-first navigation)。第二個是組件設計策略 — 兩處需要「看 chunks」(tenant 唯讀 / admin 可編輯) 的場景，過去是兩個 component (ChunkPreviewPanel + ChunkEditor)，這次用 `editable` prop 統一在 ChunkPreviewPanel 內 conditionally 渲染 ChunkEditor。
+
+### 做得好的地方
+
+- **不抽象之前先確認 share 程度**：探索階段先用 Explore agent 掃 tenant + admin 兩邊的 component，發現 `DocumentList` 已 share、`ChunkCard` 已有 mode prop、`ChunkPreviewPanel` 跟 `ChunkEditor` 各自有完整功能。**這個發現直接決定了「不要新建組件，擴充既有 prop 就好」**，避免重複實作。
+- **Drill-down dialog cache invalidate 一次處理**：`useUpdateChunk` / `useDeleteChunk` 之前只 invalidate `["kb-studio", "chunks", kbId]`（Chunks tab 平鋪用）。drill-down dialog 用 `useDocumentChunks` 不同 cache key (`["documents", kbId, docId, "chunks"]`)。改 mutation 同時 invalidate 兩個 key，dialog 內編輯後立刻 refresh — 不靠 user 手動關開 dialog。
+- **Tab fallback 機制不破壞 deep link**：用戶可能 bookmark `?tab=overview` / `?tab=chunks` 等舊網址。在 `useKbStudioTab()` 加 `VALID_TABS` set 檢查，舊 key 自動 fallback 到 `documents`，不會破畫面。
+- **設定 tab 用最小可用 form**：沒引 react-hook-form / zod（CreateKbDialog 用了）— 純 useState + dirty check，少寫 50 行依賴。雖然不是 single source of truth，但只有 5 個欄位 dirty 比對成本低，加依賴反而 over-engineering。
+- **後端只加 1 個 endpoint**：原本 plan 標榜「後端零改動」，但 SettingsTab 需要 GET 單 KB（list endpoint 不夠）。加 1 個 endpoint + reuse `ensure_kb_accessible` admin bypass，總 backend diff < 30 行。
+
+### 潛在隱憂
+
+- **`UpdateKnowledgeBaseUseCase` 完全沒 tenant 檢查**：任何 authenticated tenant 知道 kb_id 就能改任意 KB 的設定。這是長期隱藏 bug 不是這次引入的，但本次 SettingsTab 把這個攻擊面 expose 得更明顯（admin UI 直接拿 kb_id call PATCH）。**優先級：高**。改善：UpdateKnowledgeBaseUseCase.execute 接受 `requester_tenant_id` 參數，用 `ensure_kb_accessible` 同樣的邏輯擋。
+- **Drill-down dialog 內 chunk 顯示 limit=20**：後端 GET /documents/{doc_id}/chunks 預設 `limit=20, offset=0`。一個文件超過 20 chunks 的話只看到前 20 個。**優先級：中**。改善：dialog 加分頁 / virtual scroll；或前端傳 `limit=100` 暫時打補丁。
+- **ChunkPreviewItem → Chunk 轉型 lossy**：drill-down dialog 裡用 `toEditableChunk(p, docId)` 把 preview-only item 補成完整 Chunk，但 `tenant_id` 填空、`category_id` 填 null。雖然 ChunkEditor 內部不用這兩個欄位，未來如果加分類 picker 就會壞。**優先級：低**。改善：後端 GET /documents/{doc_id}/chunks 直接回完整 Chunk 欄位，省掉前端轉型。
+- **「概覽」cards 移到 page header 後資訊密度低**：原本 OverviewTab 還有「最近文件 table」(top 20 by created_at)。重構後這部分被砍掉沒搬到 header。**優先級：低**。改善：若 user 反饋需要可加在 documents tab 上方。
+- **沒寫 E2E feature**：plan 寫了 2 個 scenario 但實際沒新增（Vitest 12 passed 已涵蓋大部分）。**優先級：中**。改善：下個 sprint 補 playwright-bdd scenario，覆蓋「點 PDF 子頁 → 編輯 chunk → 改 content → 儲存 → 重整還在」這個 e2e flow。
+
+### 延伸學習
+
+- **「Verb-first vs Noun-first IA」**：7 tabs IA 本質是 verb-first — 每個 tab 是一個「操作工具」(編輯/分類/檢索/品質)。Noun-first IA 反過來 — 進入後先看「資料」(文件)，操作成為次級 affordance。Apple Files、VS Code Explorer 都是 noun-first；Photoshop tool palette、Excel ribbon 是 verb-first。**判斷標準**：操作對象單一 → noun-first；操作多樣且需快速切換 → verb-first。延伸關鍵字：**Information Architecture**、**Mental Model Alignment**、**Progressive Disclosure**、**Affordance Hierarchy**。
+- **「組件 mode prop 取代分叉複製」**：兩處需要相似但不完全相同的功能（view vs edit），三個選擇：
+  1. 兩個獨立 component（ChunkPreviewPanel / ChunkEditor）— 重複代碼 + 視覺不一致風險
+  2. mode prop 切換內部分支 — DRY but 可讀性下降
+  3. 高階 component (HOC) 包裝 — 過度抽象
+  本次選 2，因為 view 模式邏輯簡單（純渲染 ChunkItem），edit 模式直接 reuse 整個 ChunkEditor。延伸關鍵字：**Component Composition**、**Render Props vs HOC vs Hooks**、**Conditional Rendering Patterns**。
+- **思考題**：你會怎麼自動偵測 frontend 有「dual-mode 候選」的組件？(Hint: 兩個 component 用相同 prop interface 80%+ 重疊 + 都從同一個 hook 拉資料 → 高機率是 dual-mode 候選。可以寫 ESLint custom rule 或 JSCodeshift visitor。延伸：mode prop 達到幾種就該升級成 polymorphic 設計？多數共識是 ≥3 個 mode 該重新審視。)
+
+---
+
 ## process vs reprocess pipeline drift — 2 小時內同 pattern 連爆 2 次
 
 **日期**：2026-04-29

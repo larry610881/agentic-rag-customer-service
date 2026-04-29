@@ -131,6 +131,31 @@ async def list_knowledge_bases(
     )
 
 
+@router.get("/{kb_id}", response_model=KnowledgeBaseResponse)
+@inject
+async def get_knowledge_base(
+    kb_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    kb_repo: KnowledgeBaseRepository = Depends(
+        Provide[Container.kb_repository]
+    ),
+) -> KnowledgeBaseResponse:
+    """單一 KB 詳情（KB Studio 設定 tab 用）。
+
+    system_admin (SYSTEM_TENANT_ID) 可看任意租戶 KB；
+    一般 tenant 只能看自己的（找不到 → 404 防枚舉）。
+    """
+    from src.application.knowledge._admin_kb_check import ensure_kb_accessible
+    try:
+        kb, _ = await ensure_kb_accessible(kb_repo, kb_id, tenant.tenant_id)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.message,
+        ) from None
+    return _kb_to_response(kb)
+
+
 @router.patch("/{kb_id}", response_model=KnowledgeBaseResponse)
 @inject
 async def update_knowledge_base(

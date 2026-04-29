@@ -4,13 +4,16 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-28 (孤兒 pending 救援 + KnowledgeBaseId VO unwrap hotfix)
+> 最後更新：2026-04-29 (KB Studio UX 重構 — drill-down 編輯 + tab 7→5 + 設定 inline)
 >
-> Hotfix `632d6e2`：兩個 prod bug 同時修
-> - Backend：PDF 子頁 rename 寫 `token_usage_records` 漏拆 `KnowledgeBaseId` VO → asyncpg DataError $12（5 個 use case 同步修，2 個 DB 寫入 + 3 個 structlog log）
-> - Frontend：worker 重啟孤兒 pending 永遠按不到 reprocess（4/28 09:39 UTC 重啟丟一頁卡 1 hr）→ 子頁/父頁按鈕條件加 `pending`
-> - One-shot SQL 救出 page 64（`UPDATE documents SET status='failed' WHERE id='9eb0396e-...'`）
-> - 待補：`_rename_child_page` 對 KnowledgeBaseId VO 的 regression unit test
+> KB Studio 大幅 UX 改造：
+> - **Stage 1**: chunk-preview-panel 加 `editable` prop，admin 端 ChunkEditor 直接嵌入 → 點 PDF/PNG「查看分塊」就能改 content/context/刪除/re-embed
+> - **Stage 2**: tab 7→5（移除「概覽」+「Chunks」）— 概覽 cards 上提到 page header；跨文件 chunks 平鋪由 drill-down 取代
+> - **Stage 3**: 設定 tab 從 placeholder 變 inline form — 改名 / 描述 / OCR 模式 / OCR/Context/Classification 三個 model picker 直接 PATCH
+> - **Backend**: 新增 GET /api/v1/knowledge-bases/{kb_id}（admin bypass via ensure_kb_accessible，本來不在 plan 但 SettingsTab 必需）
+> - **共用 helper**：DocumentList chunkEditable prop、useKnowledgeBase hook、useUpdateChunk/useDeleteChunk 加 documents query invalidate（drill-down dialog 自動 refresh）
+> - 隱憂：UpdateKnowledgeBaseUseCase 沒 tenant 檢查（任何 tenant_admin 知道 kb_id 就能改）— 待修
+> - 待補（hotfix 合規債）：`_rename_child_page` KnowledgeBaseId VO regression unit test
 
 ---
 

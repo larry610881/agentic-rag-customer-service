@@ -56,9 +56,13 @@ export function useUpdateChunk(kbId: string) {
         { method: "PATCH", body: JSON.stringify(body) },
         token ?? undefined,
       ),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       qc.invalidateQueries({
         queryKey: ["kb-studio", "chunks", kbId] as const,
+      });
+      // drill-down dialog 也要 refresh — useDocumentChunks 用獨立 key
+      qc.invalidateQueries({
+        queryKey: ["documents", kbId, vars.docId, "chunks"] as const,
       });
     },
   });
@@ -77,6 +81,10 @@ export function useDeleteChunk(kbId: string) {
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: ["kb-studio", "chunks", kbId] as const,
+      });
+      // drill-down dialog 也要刷新（不知具體 docId，prefix invalidate）
+      qc.invalidateQueries({
+        queryKey: ["documents", kbId] as const,
       });
     },
   });

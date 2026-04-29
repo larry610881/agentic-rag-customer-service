@@ -23,6 +23,21 @@ export function useKnowledgeBases(page = 1, pageSize = 20) {
   });
 }
 
+/** 單 KB 詳情（KB Studio 設定 tab 用）— admin 可看任意租戶 KB（後端 ensure_kb_accessible bypass）。 */
+export function useKnowledgeBase(kbId: string) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ["knowledge-bases", "detail", kbId] as const,
+    queryFn: () =>
+      apiFetch<KnowledgeBase>(
+        API_ENDPOINTS.knowledgeBases.update(kbId), // GET /knowledge-bases/:id 共用 path
+        {},
+        token ?? undefined,
+      ),
+    enabled: !!token && !!kbId,
+  });
+}
+
 export function useCreateKnowledgeBase() {
   const token = useAuthStore((s) => s.token);
   const tenantId = useAuthStore((s) => s.tenantId);
@@ -68,9 +83,13 @@ export function useUpdateKnowledgeBase() {
         { method: "PATCH", body: JSON.stringify(data) },
         token ?? undefined,
       ),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.knowledgeBases.all(tenantId ?? ""),
+      });
+      // KB Studio 設定 tab 也要 refresh
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-bases", "detail", vars.kbId] as const,
       });
       toast.success("知識庫設定已更新");
     },
