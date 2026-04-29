@@ -1157,6 +1157,7 @@ class Container(containers.DeclarativeContainer):
         ListMilvusCollectionsUseCase,
         vector_store=vector_store,
         kb_repo=kb_repository,
+        tenant_repo=tenant_repository,
     )
 
     get_collection_stats_use_case = providers.Factory(

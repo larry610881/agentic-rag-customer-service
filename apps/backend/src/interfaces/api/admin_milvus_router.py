@@ -41,6 +41,11 @@ class CollectionInfoResponse(BaseModel):
     name: str
     row_count: int
     indexes: list[IndexInfo]
+    # admin UI 顯示用（GUID 看不出歸屬）
+    kb_id: str | None = None
+    kb_name: str | None = None
+    tenant_id: str | None = None
+    tenant_name: str | None = None
 
 
 class CollectionStatsResponse(BaseModel):
@@ -68,6 +73,10 @@ async def list_collections(
             name=c.name,
             row_count=c.row_count,
             indexes=[IndexInfo(**i) for i in c.indexes],
+            kb_id=c.kb_id,
+            kb_name=c.kb_name,
+            tenant_id=c.tenant_id,
+            tenant_name=c.tenant_name,
         )
         for c in result
     ]

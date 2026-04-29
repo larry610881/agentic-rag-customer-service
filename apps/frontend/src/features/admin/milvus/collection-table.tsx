@@ -12,12 +12,6 @@ import {
 } from "@/components/ui/table";
 import type { CollectionInfo } from "@/types/milvus";
 
-// Milvus collection 命名規則：`kb_{uuid}`（per-KB）。parse 回 kb_id 用於 deep link。
-function parseKbIdFromCollection(name: string): string | null {
-  const match = name.match(/^kb_(.+)$/);
-  return match ? match[1] : null;
-}
-
 interface CollectionTableProps {
   collections: CollectionInfo[];
   onRebuildIndex: (name: string) => void;
@@ -42,7 +36,7 @@ export function CollectionTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Collection 名稱</TableHead>
+            <TableHead>歸屬 / Collection</TableHead>
             <TableHead className="text-right">rows</TableHead>
             <TableHead>tenant_id index</TableHead>
             <TableHead>document_id index</TableHead>
@@ -55,10 +49,34 @@ export function CollectionTable({
             const tidIdx = col.indexes.find((i) => i.field === "tenant_id");
             const didIdx = col.indexes.find((i) => i.field === "document_id");
             const vecIdx = col.indexes.find((i) => i.field === "vector");
-            const kbId = parseKbIdFromCollection(col.name);
             return (
               <TableRow key={col.name}>
-                <TableCell className="font-mono text-sm">{col.name}</TableCell>
+                <TableCell className="text-sm">
+                  {col.kb_name ? (
+                    <div className="space-y-0.5">
+                      <div className="font-medium flex items-center gap-2">
+                        <span>{col.kb_name}</span>
+                        {col.tenant_name && (
+                          <Badge variant="outline" className="text-xs">
+                            {col.tenant_name}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="font-mono text-xs text-muted-foreground">
+                        {col.name}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5">
+                      <div className="text-muted-foreground italic">
+                        {col.name.startsWith("kb_") ? "(KB 已刪除)" : "系統"}
+                      </div>
+                      <div className="font-mono text-xs text-muted-foreground">
+                        {col.name}
+                      </div>
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell className="text-right">
                   {col.row_count.toLocaleString()}
                 </TableCell>
@@ -73,14 +91,16 @@ export function CollectionTable({
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
-                    {kbId && (
+                    {col.kb_id && (
                       <Button
                         variant="ghost"
                         size="sm"
                         asChild
                         title="到 KB Studio 編輯 chunks"
                       >
-                        <Link to={`/admin/kb-studio/${kbId}?tab=chunks`}>
+                        <Link
+                          to={`/admin/kb-studio/${col.kb_id}?tab=chunks`}
+                        >
                           <Pencil className="h-3 w-3 mr-1" />
                           編輯 chunks
                         </Link>
