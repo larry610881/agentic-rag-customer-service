@@ -1472,9 +1472,10 @@ class Container(containers.DeclarativeContainer):
         language_detection_service=language_detection_service,
         file_parser_service=file_parser_service,
         document_file_storage=document_file_storage_service,
-        # 與 process_document 對齊：reprocess 也記 PDF rename token
+        # 與 process_document 對齊：reprocess 也記 PDF rename token + 用 context_service 拿 api_key
         record_usage_use_case=record_usage_use_case,
         tenant_repository=tenant_repository,
+        chunk_context_service=chunk_context_service,
     )
 
     classification_service = providers.Factory(

@@ -38,6 +38,7 @@ class ReprocessDocumentUseCase:
         # Optional — 與 process_document feature parity（child rename 用）
         record_usage_use_case=None,
         tenant_repository=None,
+        chunk_context_service=None,  # for api_key_resolver in child rename
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
@@ -50,6 +51,7 @@ class ReprocessDocumentUseCase:
         self._file_storage = document_file_storage
         self._record_usage = record_usage_use_case
         self._tenant_repo = tenant_repository
+        self._context_service = chunk_context_service
 
     async def begin_reprocess(
         self, document_id: str, tenant_id: str
@@ -62,16 +64,17 @@ class ReprocessDocumentUseCase:
         )
         await self._task_repo.save(task)
 
-        # 若 reprocess 子頁，立刻把父 PDF status 改 processing
-        # → frontend 父查詢 polling 才會啟動，UI 才看得到「失敗 → 處理中 → 完成」流程
-        # 否則 user 體驗：點重新處理 → 父 UI 仍是「失敗」直到下次 F5 才看到「完成」
+        # 同步把 child + parent 都標 processing（在 200/202 返回前）
+        # → frontend 拿到的 snapshot 立刻就是 processing → polling 啟動 → 看得到進度條
+        # 否則 background task 還沒跑 frontend invalidate 拿到的是 failed → 不 polling
         try:
+            await self._doc_repo.update_status(document_id, "processing")
             doc = await self._doc_repo.find_by_id(document_id)
             if doc and doc.parent_id:
                 await self._doc_repo.update_status(doc.parent_id, "processing")
         except Exception:
             logger.warning(
-                "begin_reprocess.parent_status_update_failed",
+                "begin_reprocess.status_update_failed",
                 document_id=document_id,
                 exc_info=True,
             )
@@ -290,7 +293,7 @@ class ReprocessDocumentUseCase:
                     doc_repo=self._doc_repo,
                     tenant_repo=self._tenant_repo,
                     record_usage=self._record_usage,
-                    context_service=None,
+                    context_service=self._context_service,
                     log=log,
                 )
 
