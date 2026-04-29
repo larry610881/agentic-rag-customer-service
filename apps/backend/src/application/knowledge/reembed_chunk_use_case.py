@@ -87,6 +87,9 @@ class ReEmbedChunkUseCase:
 
         vector = vectors[0]
         # Milvus payload 必含 tenant_id（安全紅線）
+        # KnowledgeBaseId VO unwrap — 防禦 prod (VO) / test (str) 雙路徑
+        kb_id_str = kb.id.value if hasattr(kb.id, "value") else str(kb.id)
+
         payload = {
             "tenant_id": chunk.tenant_id,
             "document_id": chunk.document_id,
@@ -96,7 +99,7 @@ class ReEmbedChunkUseCase:
             "category_id": chunk.category_id,
         }
         await self._vs.upsert_single(
-            collection=f"kb_{kb.id}",
+            collection=f"kb_{kb_id_str}",
             id=command.chunk_id,
             vector=vector,
             payload=payload,
@@ -116,7 +119,7 @@ class ReEmbedChunkUseCase:
                     tenant_id=chunk.tenant_id,
                     request_type=UsageCategory.EMBEDDING.value,
                     usage=usage,
-                    kb_id=kb.id.value,
+                    kb_id=kb_id_str,
                 )
             except Exception:
                 logger.warning(
@@ -128,7 +131,7 @@ class ReEmbedChunkUseCase:
         logger.info(
             "kb_studio.chunk.reembed",
             chunk_id=command.chunk_id,
-            kb_id=kb.id.value,
+            kb_id=kb_id_str,
             tenant_id=chunk.tenant_id,
             actor=command.actor,
         )

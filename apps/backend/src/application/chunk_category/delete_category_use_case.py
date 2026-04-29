@@ -34,9 +34,10 @@ class DeleteCategoryUseCase:
 
     async def execute(self, command: DeleteCategoryCommand) -> int:
         """回傳受影響的 chunk 數。"""
-        kb = await self._kb_repo.find_by_id(command.kb_id)
-        if kb is None or kb.tenant_id != command.tenant_id:
-            raise EntityNotFoundError("kb", command.kb_id)
+        from src.application.knowledge._admin_kb_check import ensure_kb_accessible
+        await ensure_kb_accessible(
+            self._kb_repo, command.kb_id, command.tenant_id
+        )
 
         category = await self._repo.find_by_id(command.category_id)
         if category is None or category.kb_id != command.kb_id:

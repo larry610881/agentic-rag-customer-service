@@ -11,7 +11,6 @@ from src.domain.knowledge.repository import (
     DocumentRepository,
     KnowledgeBaseRepository,
 )
-from src.domain.shared.exceptions import EntityNotFoundError
 
 
 @dataclass(frozen=True)
@@ -39,9 +38,8 @@ class GetKbQualitySummaryUseCase:
     async def execute(
         self, query: GetKbQualitySummaryQuery
     ) -> KbQualitySummary:
-        kb = await self._kb_repo.find_by_id(query.kb_id)
-        if kb is None or kb.tenant_id != query.tenant_id:
-            raise EntityNotFoundError("kb", query.kb_id)
+        from src.application.knowledge._admin_kb_check import ensure_kb_accessible
+        await ensure_kb_accessible(self._kb_repo, query.kb_id, query.tenant_id)
 
         total = await self._doc_repo.count_chunks_by_kb(query.kb_id)
         # 先用粗估：掃第一頁 chunks 計 quality_flag（完整統計等 Day 2 加專用 SQL）

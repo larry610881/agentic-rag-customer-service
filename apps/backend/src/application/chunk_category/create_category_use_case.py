@@ -12,7 +12,6 @@ from src.domain.knowledge.repository import (
     ChunkCategoryRepository,
     KnowledgeBaseRepository,
 )
-from src.domain.shared.exceptions import EntityNotFoundError
 
 logger = structlog.get_logger(__name__)
 
@@ -36,9 +35,10 @@ class CreateCategoryUseCase:
         self._kb_repo = kb_repo
 
     async def execute(self, command: CreateCategoryCommand) -> ChunkCategory:
-        kb = await self._kb_repo.find_by_id(command.kb_id)
-        if kb is None or kb.tenant_id != command.tenant_id:
-            raise EntityNotFoundError("kb", command.kb_id)
+        from src.application.knowledge._admin_kb_check import ensure_kb_accessible
+        kb, _ = await ensure_kb_accessible(
+            self._kb_repo, command.kb_id, command.tenant_id
+        )
         if not command.name.strip():
             raise ValueError("name must not be empty")
 

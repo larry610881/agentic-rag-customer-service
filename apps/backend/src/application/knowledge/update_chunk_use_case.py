@@ -47,16 +47,24 @@ class UpdateChunkUseCase:
     async def execute(self, command: UpdateChunkCommand) -> None:
         # 紅線：tenant chain 驗證 (chunk -> doc -> kb -> tenant)
         chunk = await self._doc_repo.find_chunk_by_id(command.chunk_id)
+        from src.application.knowledge._admin_kb_check import (
+            tenant_match_or_admin,
+        )
         if chunk is None:
             raise EntityNotFoundError("chunk", command.chunk_id)
         # chunk 自帶 tenant_id，先擋；再驗 kb 層以防 entity mutation
-        if chunk.tenant_id != command.tenant_id:
+        # system_admin (SYSTEM_TENANT_ID) bypass — 用 tenant_match_or_admin
+        if not tenant_match_or_admin(chunk.tenant_id, command.tenant_id):
             raise EntityNotFoundError("chunk", command.chunk_id)
         doc = await self._doc_repo.find_by_id(chunk.document_id)
-        if doc is None or doc.tenant_id != command.tenant_id:
+        if doc is None or not tenant_match_or_admin(
+            doc.tenant_id, command.tenant_id
+        ):
             raise EntityNotFoundError("chunk", command.chunk_id)
         kb = await self._kb_repo.find_by_id(doc.kb_id)
-        if kb is None or kb.tenant_id != command.tenant_id:
+        if kb is None or not tenant_match_or_admin(
+            kb.tenant_id, command.tenant_id
+        ):
             raise EntityNotFoundError("chunk", command.chunk_id)
 
         if command.content is not None and not command.content.strip():
@@ -82,10 +90,12 @@ class UpdateChunkUseCase:
         elif self._enqueue_fn is not None:
             await self._enqueue_fn("reembed_chunk", command.chunk_id)
 
+        # KnowledgeBaseId VO unwrap — 防禦 prod (VO) / test (str) 雙路徑
+        kb_id_str = kb.id.value if hasattr(kb.id, "value") else str(kb.id)
         logger.info(
             "kb_studio.chunk.update",
             chunk_id=command.chunk_id,
-            kb_id=kb.id.value,
+            kb_id=kb_id_str,
             tenant_id=command.tenant_id,
             actor=command.actor,
             content_diff_len=content_diff_len,

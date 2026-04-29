@@ -9,9 +9,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.application.knowledge._admin_kb_check import ensure_kb_accessible
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.rag.services import EmbeddingService, VectorStore
-from src.domain.shared.exceptions import EntityNotFoundError
+from src.domain.shared.exceptions import (
+    EntityNotFoundError,  # noqa: F401  # 保留供 caller import 兼容
+)
 
 
 @dataclass(frozen=True)
@@ -54,15 +57,18 @@ class TestRetrievalUseCase:
     async def execute(
         self, command: TestRetrievalCommand
     ) -> TestRetrievalResult:
-        kb = await self._kb_repo.find_by_id(command.kb_id)
-        if kb is None or kb.tenant_id != command.tenant_id:
-            raise EntityNotFoundError("kb", command.kb_id)
+        # 統一 KB 存取檢查（含 system_admin bypass）
+        # 重要：admin 訪問跨租戶 KB 時，effective_tenant_id = kb.tenant_id (真實 owner)
+        # → Milvus filter 用此值，admin 才看得到該租戶的真實 chunks
+        kb, effective_tenant_id = await ensure_kb_accessible(
+            self._kb_repo, command.kb_id, command.tenant_id
+        )
         if not command.query.strip():
             raise ValueError("query must not be empty")
 
         query_vector = await self._embed.embed_query(command.query)
-        filters = {"tenant_id": command.tenant_id}
-        filter_expr = f'tenant_id == "{command.tenant_id}"'
+        filters = {"tenant_id": effective_tenant_id}
+        filter_expr = f'tenant_id == "{effective_tenant_id}"'
 
         collection = f"kb_{kb.id}"
         chunk_results = await self._vs.search(

@@ -7,13 +7,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.application.knowledge._admin_kb_check import ensure_kb_accessible
 from src.domain.knowledge.entity import Chunk
 from src.domain.knowledge.repository import (
     DocumentRepository,
     KnowledgeBaseRepository,
 )
-from src.domain.shared.constants import SYSTEM_TENANT_ID
-from src.domain.shared.exceptions import EntityNotFoundError
+from src.domain.shared.exceptions import (
+    EntityNotFoundError,  # noqa: F401  # 保留供下游 import
+)
 
 
 @dataclass(frozen=True)
@@ -43,16 +45,9 @@ class ListKbChunksUseCase:
         self._kb_repo = kb_repo
 
     async def execute(self, query: ListKbChunksQuery) -> ListKbChunksResult:
-        kb = await self._kb_repo.find_by_id(query.kb_id)
-        if kb is None:
-            raise EntityNotFoundError("kb", query.kb_id)
-        # system_admin (bound to SYSTEM_TENANT_ID) 可看所有租戶 KB → bypass tenant check
-        # 之前缺這個 bypass → admin 進 KB Studio chunks tab 看到「載入失敗：not found」
-        if (
-            query.tenant_id != SYSTEM_TENANT_ID
-            and kb.tenant_id != query.tenant_id
-        ):
-            raise EntityNotFoundError("kb", query.kb_id)
+        await ensure_kb_accessible(
+            self._kb_repo, query.kb_id, query.tenant_id
+        )
 
         items = await self._doc_repo.find_chunks_by_kb_paginated(
             query.kb_id,

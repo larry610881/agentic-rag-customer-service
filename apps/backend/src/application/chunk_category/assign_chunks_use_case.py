@@ -38,9 +38,10 @@ class AssignChunksUseCase:
 
     async def execute(self, command: AssignChunksCommand) -> int:
         """回傳實際 assign 的 chunk 數（全部 chunks 必須屬於該租戶的該 KB）。"""
-        kb = await self._kb_repo.find_by_id(command.kb_id)
-        if kb is None or kb.tenant_id != command.tenant_id:
-            raise EntityNotFoundError("kb", command.kb_id)
+        from src.application.knowledge._admin_kb_check import ensure_kb_accessible
+        kb, _ = await ensure_kb_accessible(
+            self._kb_repo, command.kb_id, command.tenant_id
+        )
 
         category = await self._cat_repo.find_by_id(command.category_id)
         if category is None or category.kb_id != command.kb_id:
