@@ -58,7 +58,7 @@ class ReprocessDocumentUseCase:
         await self._task_repo.save(task)
         return task
 
-    async def execute(
+    async def execute(  # noqa: C901
         self,
         document_id: str,
         task_id: str,
@@ -106,14 +106,43 @@ class ReprocessDocumentUseCase:
 
             # Re-parse from raw_content if available, else fallback to existing content
             if raw_content:
-                content = await asyncio.to_thread(
-                    self._file_parser.parse,
-                    raw_content,
-                    document.content_type,
-                    ocr_mode,
-                )
+                # PNG/image (PDF child pages): file_parser.parse 不支援 image/*
+                if document.content_type.startswith("image/") and hasattr(
+                    self._file_parser, "_ocr"
+                ):
+                    ocr_engine = self._file_parser._ocr
+                    from src.infrastructure.file_parser.ocr_engines import (
+                        claude_vision_ocr,
+                    )
+                    prompts = claude_vision_ocr.OCR_PROMPTS
+                    prompt = prompts.get(ocr_mode, prompts.get("general", ""))
+                    content = await ocr_engine.ocr_page(
+                        raw_content, prompt=prompt
+                    )
+                    log.info(
+                        "document.reparse.ocr_done",
+                        content_type=document.content_type,
+                    )
+                # PDF：用 async 路徑（避免阻塞 + 支援大檔逐頁進度）
+                elif (
+                    document.content_type == "application/pdf"
+                    and hasattr(self._file_parser, "parse_pdf_async")
+                ):
+                    content = await self._file_parser.parse_pdf_async(
+                        raw_content,
+                        ocr_mode=ocr_mode,
+                    )
+                    log.info("document.reparse.pdf_done")
+                # 其他（txt/csv/json/xml/html/docx/xlsx 等）走 sync parser
+                else:
+                    content = await asyncio.to_thread(
+                        self._file_parser.parse,
+                        raw_content,
+                        document.content_type,
+                        ocr_mode,
+                    )
+                    log.info("document.reparse.done")
                 await self._doc_repo.update_content(document_id, content)
-                log.info("document.reparse.done")
             else:
                 content = document.content
 
