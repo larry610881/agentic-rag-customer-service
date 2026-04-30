@@ -25,6 +25,14 @@ export interface RetrievalTestRequest {
   query: string;
   top_k?: number;
   include_conv_summaries?: boolean;
+  // Real-RAG 對齊（Playground 跟真實對話只差 LLM ReAct 決策層）
+  score_threshold?: number;
+  rerank_enabled?: boolean;
+  rerank_model?: string;
+  rerank_top_n?: number;
+  query_rewrite_enabled?: boolean;
+  query_rewrite_model?: string;
+  bot_id?: string;
 }
 
 export interface RetrievalHit {
@@ -39,6 +47,7 @@ export interface RetrievalTestResult {
   results: RetrievalHit[];
   filter_expr: string;
   query_vector_dim: number;
+  rewritten_query?: string;
 }
 
 export interface KbQualitySummary {

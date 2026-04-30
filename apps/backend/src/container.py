@@ -1121,12 +1121,8 @@ class Container(containers.DeclarativeContainer):
         kb_repo=kb_repository,
     )
 
-    test_retrieval_use_case = providers.Factory(
-        TestRetrievalUseCase,
-        kb_repo=kb_repository,
-        embedding_service=embedding_service,
-        vector_store=vector_store,
-    )
+    # test_retrieval_use_case 移到 chunk_context_service / record_usage_use_case
+    # 定義之後（見下方）— 因 Python 模組載入時 forward reference 會 NameError
 
     get_kb_quality_summary_use_case = providers.Factory(
         GetKbQualitySummaryUseCase,
@@ -1425,6 +1421,19 @@ class Container(containers.DeclarativeContainer):
             lambda factory: factory.resolve_api_key,
             _llm_factory,
         ),
+    )
+
+    # 定義在 chunk_context_service / record_usage_use_case / bot_repository 之後
+    # （Python 模組載入時 forward reference 會 NameError）
+    test_retrieval_use_case = providers.Factory(
+        TestRetrievalUseCase,
+        kb_repo=kb_repository,
+        embedding_service=embedding_service,
+        vector_store=vector_store,
+        # rewrite + rerank 對齊 real RAG 用：api_key_resolver / 記 token / 載 bot prompt
+        chunk_context_service=chunk_context_service,
+        record_usage_use_case=record_usage_use_case,
+        bot_repository=bot_repository,
     )
 
     process_document_use_case = providers.Factory(

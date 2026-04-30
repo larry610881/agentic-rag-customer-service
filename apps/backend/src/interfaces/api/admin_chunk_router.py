@@ -71,6 +71,14 @@ class RetrievalTestRequest(BaseModel):
     query: str = Field(..., min_length=1)
     top_k: int = Field(default=5, ge=1, le=50)
     include_conv_summaries: bool = False
+    # Real-RAG 對齊參數（Playground 對齊真實對話流程，差只剩 ReAct 決策層）
+    score_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
+    rerank_enabled: bool = False
+    rerank_model: str = ""
+    rerank_top_n: int = Field(default=20, ge=1, le=100)
+    query_rewrite_enabled: bool = False
+    query_rewrite_model: str = ""
+    bot_id: str = ""  # 提供時 rewrite 會帶該 bot.system_prompt 作 context
 
 
 class RetrievalHitResponse(BaseModel):
@@ -85,6 +93,7 @@ class RetrievalTestResponse(BaseModel):
     results: list[RetrievalHitResponse]
     filter_expr: str
     query_vector_dim: int
+    rewritten_query: str = ""  # 若 query_rewrite_enabled 顯示改寫後字串
 
 
 class KbQualitySummaryResponse(BaseModel):
@@ -249,6 +258,13 @@ async def retrieval_test(
                 top_k=body.top_k,
                 include_conv_summaries=body.include_conv_summaries,
                 actor=tenant.user_id or tenant.tenant_id or "",
+                score_threshold=body.score_threshold,
+                rerank_enabled=body.rerank_enabled,
+                rerank_model=body.rerank_model,
+                rerank_top_n=body.rerank_top_n,
+                query_rewrite_enabled=body.query_rewrite_enabled,
+                query_rewrite_model=body.query_rewrite_model,
+                bot_id=body.bot_id,
             )
         )
     except Exception as e:
@@ -266,6 +282,7 @@ async def retrieval_test(
         ],
         filter_expr=result.filter_expr,
         query_vector_dim=result.query_vector_dim,
+        rewritten_query=result.rewritten_query,
     )
 
 

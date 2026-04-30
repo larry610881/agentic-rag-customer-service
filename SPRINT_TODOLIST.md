@@ -4,7 +4,16 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-29 (KB Studio UX 重構 — drill-down 編輯 + tab 7→5 + 設定 inline)
+> 最後更新：2026-04-30 (Retrieval Playground 對齊真實 RAG — query rewrite + rerank + threshold)
+>
+> 今日延伸：
+> - DAG 歷史上下文 — 防遺失 fallback + ✓/⚠/empty 載入狀態徽章 (`c56e7fb`)
+> - Retrieval Playground KnowledgeBaseId VO bug 修 + Categories 拖拉 UX (`7b10bd5`)
+> - 文件 tab 底部 scroll buffer (`bf181c7`)
+> - Playground 加 score_threshold / rerank toggle / query rewrite (with bot system_prompt context)，跟真實對話只差 ReAct 決策層
+> - 待補：Multi-query retrieval（user 提的「rewrite 後 miss 的問題」mitigation）
+>
+> 2026-04-29 KB Studio UX 重構 — drill-down 編輯 + tab 7→5 + 設定 inline
 >
 > KB Studio 大幅 UX 改造：
 > - **Stage 1**: chunk-preview-panel 加 `editable` prop，admin 端 ChunkEditor 直接嵌入 → 點 PDF/PNG「查看分塊」就能改 content/context/刪除/re-embed
