@@ -70,7 +70,10 @@ class TestRetrievalUseCase:
         filters = {"tenant_id": effective_tenant_id}
         filter_expr = f'tenant_id == "{effective_tenant_id}"'
 
-        collection = f"kb_{kb.id}"
+        # 用 command.kb_id (str) 而非 kb.id (KnowledgeBaseId VO)
+        # f-string with VO 會得到 "kb_KnowledgeBaseId(value='...')" 不是 "kb_<uuid>"
+        # → Milvus collection 名稱含括號炸掉「查詢錯誤」
+        collection = f"kb_{command.kb_id}"
         chunk_results = await self._vs.search(
             collection=collection,
             query_vector=query_vector,

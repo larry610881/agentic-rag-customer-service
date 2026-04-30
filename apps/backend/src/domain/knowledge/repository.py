@@ -271,9 +271,9 @@ class ChunkCategoryRepository(ABC):
 
     @abstractmethod
     async def assign_chunks(
-        self, category_id: str, chunk_ids: list[str]
+        self, category_id: str | None, chunk_ids: list[str]
     ) -> None:
-        """批次把多個 chunks 指派到某 category。
+        """批次把多個 chunks 指派到某 category；None = 撤銷分類。
 
         對映至既有 DocumentRepository.update_chunks_category()，但入口在 category
         layer 以便 audit log 維度對齊 category-centric 操作。

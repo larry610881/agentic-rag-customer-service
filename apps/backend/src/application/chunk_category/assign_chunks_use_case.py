@@ -37,15 +37,21 @@ class AssignChunksUseCase:
         self._kb_repo = kb_repo
 
     async def execute(self, command: AssignChunksCommand) -> int:
-        """回傳實際 assign 的 chunk 數（全部 chunks 必須屬於該租戶的該 KB）。"""
+        """回傳實際 assign 的 chunk 數（全部 chunks 必須屬於該租戶的該 KB）。
+
+        category_id 為空字串時 = 撤銷分類（設 chunks.category_id = NULL），
+        讓使用者拖到「(未分類)」row 就能回收，不必另開 endpoint。
+        """
         from src.application.knowledge._admin_kb_check import ensure_kb_accessible
         kb, _ = await ensure_kb_accessible(
             self._kb_repo, command.kb_id, command.tenant_id
         )
 
-        category = await self._cat_repo.find_by_id(command.category_id)
-        if category is None or category.kb_id != command.kb_id:
-            raise EntityNotFoundError("category", command.category_id)
+        unassign = command.category_id == ""
+        if not unassign:
+            category = await self._cat_repo.find_by_id(command.category_id)
+            if category is None or category.kb_id != command.kb_id:
+                raise EntityNotFoundError("category", command.category_id)
         if not command.chunk_ids:
             return 0
 
@@ -61,13 +67,15 @@ class AssignChunksUseCase:
             verified_ids.append(cid)
 
         if verified_ids:
+            # category_id="" → repo 接收 None → DB SET category_id = NULL
             await self._cat_repo.assign_chunks(
-                command.category_id, verified_ids
+                None if unassign else command.category_id,
+                verified_ids,
             )
 
         logger.info(
             "kb_studio.category.assign",
-            cat_id=command.category_id,
+            cat_id=command.category_id or "(unassign)",
             kb_id=command.kb_id,
             chunk_count=len(verified_ids),
             actor=command.actor,

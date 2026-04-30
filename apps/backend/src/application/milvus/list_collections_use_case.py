@@ -110,5 +110,11 @@ class ListCollectionsUseCase:
         if query.tenant_id is None:
             return []
         kbs = await self._kb_repo.find_all_by_tenant(query.tenant_id)
-        allowed = {f"kb_{kb.id}" for kb in kbs}
+        # kb.id 是 KnowledgeBaseId VO → 必須 unwrap .value 才能 match
+        # 之前 f"kb_{kb.id}" 會輸出 "kb_KnowledgeBaseId(value='...')" → 永遠 mismatch
+        # 結果：tenant_admin 看 Milvus 管理頁是空清單
+        allowed = {
+            f"kb_{kb.id.value if hasattr(kb.id, 'value') else kb.id}"
+            for kb in kbs
+        }
         return [c for c in all_cols if c.name in allowed]

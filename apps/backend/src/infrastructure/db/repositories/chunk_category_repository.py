@@ -133,10 +133,9 @@ class SQLAlchemyChunkCategoryRepository(ChunkCategoryRepository):
             )
 
     async def assign_chunks(
-        self, category_id: str, chunk_ids: list[str]
+        self, category_id: str | None, chunk_ids: list[str]
     ) -> None:
-        """批次指派：實作等同 DocumentRepository.update_chunks_category()
-        但從 category-centric 視角入口。"""
+        """批次指派；category_id=None → 撤銷分類（chunks.category_id = NULL）。"""
         if not chunk_ids:
             return
         async with atomic(self._session):
