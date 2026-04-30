@@ -48,6 +48,13 @@ class RAGQueryTool:
         rerank_enabled: bool | None = None,
         rerank_model: str | None = None,
         rerank_top_n: int | None = None,
+        # Issue #43 — Bot-level RAG retrieval modes
+        retrieval_modes: list[str] | None = None,
+        query_rewrite_model: str | None = None,
+        query_rewrite_extra_hint: str | None = None,
+        hyde_model: str | None = None,
+        hyde_extra_hint: str | None = None,
+        bot_system_prompt: str | None = None,
     ) -> dict[str, Any]:
         t0 = time.perf_counter()
         trace = None
@@ -81,6 +88,12 @@ class RAGQueryTool:
                         if rerank_top_n is not None
                         else self._rerank_top_n
                     ),
+                    retrieval_modes=list(retrieval_modes or ["raw"]),
+                    query_rewrite_model=query_rewrite_model or "",
+                    query_rewrite_extra_hint=query_rewrite_extra_hint or "",
+                    hyde_model=hyde_model or "",
+                    hyde_extra_hint=hyde_extra_hint or "",
+                    bot_system_prompt=bot_system_prompt or "",
                 )
             )
 

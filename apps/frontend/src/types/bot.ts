@@ -4,6 +4,11 @@ export interface IntentRoute {
   system_prompt: string;
 }
 
+/** Issue #43 — Bot-level RAG retrieval mode */
+export type RetrievalMode = "raw" | "rewrite" | "hyde";
+
+export const RETRIEVAL_MODES: RetrievalMode[] = ["raw", "rewrite", "hyde"];
+
 /**
  * Per-tool RAG 參數覆蓋。
  * 欄位省略 / undefined 代表繼承上層（Bot per-tool → Bot 全域 default）。
@@ -70,6 +75,14 @@ export interface Bot {
   rerank_enabled: boolean;
   rerank_model: string;
   rerank_top_n: number;
+  /** Issue #43 — Bot-level RAG retrieval modes */
+  rag_retrieval_modes: RetrievalMode[];
+  query_rewrite_enabled: boolean;
+  query_rewrite_model: string;
+  query_rewrite_extra_hint: string;
+  hyde_enabled: boolean;
+  hyde_model: string;
+  hyde_extra_hint: string;
   intent_routes: IntentRoute[];
   router_model: string;
   summary_model?: string;
@@ -119,6 +132,14 @@ export interface CreateBotRequest {
   rerank_enabled?: boolean;
   rerank_model?: string;
   rerank_top_n?: number;
+  /** Issue #43 — Bot-level RAG retrieval modes */
+  rag_retrieval_modes?: RetrievalMode[];
+  query_rewrite_enabled?: boolean;
+  query_rewrite_model?: string;
+  query_rewrite_extra_hint?: string;
+  hyde_enabled?: boolean;
+  hyde_model?: string;
+  hyde_extra_hint?: string;
   intent_routes?: IntentRoute[];
   router_model?: string;
   summary_model?: string;
@@ -163,6 +184,14 @@ export interface UpdateBotRequest {
   rerank_enabled?: boolean;
   rerank_model?: string;
   rerank_top_n?: number;
+  /** Issue #43 — Bot-level RAG retrieval modes */
+  rag_retrieval_modes?: RetrievalMode[];
+  query_rewrite_enabled?: boolean;
+  query_rewrite_model?: string;
+  query_rewrite_extra_hint?: string;
+  hyde_enabled?: boolean;
+  hyde_model?: string;
+  hyde_extra_hint?: string;
   intent_routes?: IntentRoute[];
   router_model?: string;
   summary_model?: string;

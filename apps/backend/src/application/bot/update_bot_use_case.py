@@ -15,6 +15,7 @@ from src.domain.bot.entity import (
 )
 from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
+from src.domain.rag.retrieval_mode import normalize_modes, validate_modes
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.infrastructure.llm.ollama_bot_config import get_ollama_model_for_bot
@@ -67,6 +68,14 @@ class UpdateBotCommand:
     rerank_enabled: object = _UNSET
     rerank_model: object = _UNSET
     rerank_top_n: object = _UNSET
+    # Issue #43 — Bot-level RAG retrieval modes
+    rag_retrieval_modes: object = _UNSET
+    query_rewrite_enabled: object = _UNSET
+    query_rewrite_model: object = _UNSET
+    query_rewrite_extra_hint: object = _UNSET
+    hyde_enabled: object = _UNSET
+    hyde_model: object = _UNSET
+    hyde_extra_hint: object = _UNSET
     tool_configs: object = _UNSET
     customer_service_url: object = _UNSET
     intent_routes: object = _UNSET
@@ -128,6 +137,26 @@ class UpdateBotUseCase:
             bot.rerank_model = command.rerank_model  # type: ignore[assignment]
         if command.rerank_top_n is not _UNSET:
             bot.rerank_top_n = command.rerank_top_n  # type: ignore[assignment]
+        # Issue #43 — Bot-level RAG retrieval modes
+        if command.rag_retrieval_modes is not _UNSET:
+            modes = list(command.rag_retrieval_modes)  # type: ignore[arg-type]
+            try:
+                validate_modes(modes)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+            bot.rag_retrieval_modes = normalize_modes(modes)
+        if command.query_rewrite_enabled is not _UNSET:
+            bot.query_rewrite_enabled = command.query_rewrite_enabled  # type: ignore[assignment]
+        if command.query_rewrite_model is not _UNSET:
+            bot.query_rewrite_model = command.query_rewrite_model  # type: ignore[assignment]
+        if command.query_rewrite_extra_hint is not _UNSET:
+            bot.query_rewrite_extra_hint = command.query_rewrite_extra_hint  # type: ignore[assignment]
+        if command.hyde_enabled is not _UNSET:
+            bot.hyde_enabled = command.hyde_enabled  # type: ignore[assignment]
+        if command.hyde_model is not _UNSET:
+            bot.hyde_model = command.hyde_model  # type: ignore[assignment]
+        if command.hyde_extra_hint is not _UNSET:
+            bot.hyde_extra_hint = command.hyde_extra_hint  # type: ignore[assignment]
         if command.tool_configs is not _UNSET:
             bot.tool_configs = {
                 name: ToolRagConfig(

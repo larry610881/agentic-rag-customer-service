@@ -104,6 +104,31 @@ class BotModel(Base):
     rerank_final_top_k: Mapped[int] = mapped_column(
         Integer, nullable=False, default=5, server_default="5"
     )
+    # Issue #43 — Bot-level RAG retrieval modes
+    rag_retrieval_modes: Mapped[list] = mapped_column(
+        JSON,
+        nullable=False,
+        default=lambda: ["raw"],
+        server_default='["raw"]',
+    )
+    query_rewrite_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    query_rewrite_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
+    query_rewrite_extra_hint: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    hyde_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    hyde_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
+    hyde_extra_hint: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
     # Per-tool RAG 參數覆蓋：{tool_name: {rag_top_k, rag_score_threshold, rerank_*}}
     # 任何欄位為 None / missing 代表繼承 Bot 全域預設
     tool_configs: Mapped[dict] = mapped_column(

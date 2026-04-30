@@ -1,7 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 // HARDCODE - 地端模型 A/B 測試，正式上線前移除此 import
 import { useOllamaAbPresets, useOllamaModelStatus } from "@/hooks/queries/use-ollama";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import {
+  useForm,
+  useFieldArray,
+  Controller,
+  type Control,
+  type FieldErrors,
+  type UseFormRegister,
+  type UseFormSetValue,
+  type UseFormWatch,
+} from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -52,7 +61,13 @@ import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
 import { useBuiltInTools } from "@/hooks/queries/use-built-in-tools";
 import { ModelSelect } from "@/components/shared/model-select";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
-import type { Bot, ToolRagConfig, UpdateBotRequest } from "@/types/bot";
+import type {
+  Bot,
+  RetrievalMode,
+  ToolRagConfig,
+  UpdateBotRequest,
+} from "@/types/bot";
+import { RETRIEVAL_MODES } from "@/types/bot";
 import type { McpToolInfo } from "@/types/mcp";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { McpBindingsSection } from "./mcp-bindings-section";
@@ -144,6 +159,17 @@ const botFormSchema = z.object({
   rerank_enabled: z.boolean().default(false),
   rerank_model: z.string().default(""),
   rerank_top_n: z.coerce.number().int().min(5).max(50).default(20),
+  // Issue #43 — Bot-level RAG retrieval modes
+  rag_retrieval_modes: z
+    .array(z.enum(["raw", "rewrite", "hyde"]))
+    .min(1, "至少選 1 個 retrieval mode")
+    .default(["raw"]),
+  query_rewrite_enabled: z.boolean().default(false),
+  query_rewrite_model: z.string().default(""),
+  query_rewrite_extra_hint: z.string().max(2000).default(""),
+  hyde_enabled: z.boolean().default(false),
+  hyde_model: z.string().default(""),
+  hyde_extra_hint: z.string().max(2000).default(""),
   tool_configs: z.record(z.string(), toolRagConfigSchema).default({}),
   customer_service_url: z.string().default(""),
 });
@@ -166,6 +192,245 @@ const TAB_KEYS = {
   WIDGET: "widget",
   LINE: "line",
 } as const;
+
+/**
+ * Issue #43 — Bot-level RAG retrieval modes panel.
+ *
+ * 3 個 checkbox (raw / rewrite / hyde) — 至少 1 個（zod schema 已強制）
+ * - rewrite checked → 顯示 model picker + extra_hint textarea
+ * - hyde checked → 顯示 model picker + extra_hint textarea
+ *
+ * checkbox 變動同步寫 query_rewrite_enabled / hyde_enabled
+ * （DB 留 boolean 給其他地方判斷；source of truth 是 rag_retrieval_modes）
+ */
+type RetrievalModesSectionProps = {
+  control: Control<BotFormValues>;
+  register: UseFormRegister<BotFormValues>;
+  watch: UseFormWatch<BotFormValues>;
+  setValue: UseFormSetValue<BotFormValues>;
+  errors: FieldErrors<BotFormValues>;
+};
+
+const RETRIEVAL_MODE_LABELS: Record<RetrievalMode, { label: string; hint: string }> = {
+  raw: {
+    label: "Raw（原始 query）",
+    hint: "直接用使用者問題做向量檢索",
+  },
+  rewrite: {
+    label: "LLM Rewrite（改寫 query）",
+    hint: "LLM 改寫成更適合向量檢索的字串",
+  },
+  hyde: {
+    label: "HyDE（假設答案檢索）",
+    hint: "LLM 先生成假答案，再用假答案做檢索",
+  },
+};
+
+function RetrievalModesSection({
+  control,
+  register,
+  watch,
+  setValue,
+  errors,
+}: RetrievalModesSectionProps) {
+  const modes = (watch("rag_retrieval_modes") ?? ["raw"]) as RetrievalMode[];
+  const hasRewrite = modes.includes("rewrite");
+  const hasHyde = modes.includes("hyde");
+  const modeError = (
+    errors as { rag_retrieval_modes?: { message?: string } }
+  ).rag_retrieval_modes?.message;
+
+  return (
+    <Collapsible defaultOpen={hasRewrite || hasHyde}>
+      <CollapsibleTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 justify-start gap-2 px-2 text-sm"
+        >
+          <ChevronDown className="h-4 w-4 transition-transform data-[state=open]:rotate-180" />
+          <span>
+            檢索模式：
+            <span className="font-medium">
+              {modes.map((m) => m).join(" + ") || "無"}
+            </span>
+            <span className="text-xs text-muted-foreground ml-2">
+              （{modes.length} 條 query）
+            </span>
+          </span>
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-3 pt-2">
+        <p className="text-xs text-muted-foreground">
+          可多選 — 每多 1 個 mode，就多 1 條 query 並行檢索並 union
+          結果。多選增加 LLM 呼叫成本（rewrite/hyde 各會多 1 次 LLM call）。
+        </p>
+        <Controller
+          name="rag_retrieval_modes"
+          control={control}
+          render={({ field }) => (
+            <div className="flex flex-col gap-2">
+              {RETRIEVAL_MODES.map((mode) => {
+                const checked = field.value?.includes(mode) ?? false;
+                const meta = RETRIEVAL_MODE_LABELS[mode];
+                return (
+                  <label
+                    key={mode}
+                    className="flex items-start gap-2 rounded-md border px-3 py-2 hover:bg-muted/30 transition-colors cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const current = field.value ?? [];
+                        const next = e.target.checked
+                          ? [...current, mode]
+                          : current.filter((m) => m !== mode);
+                        field.onChange(next);
+                        // 同步 enabled flag（UI 顯示用，DB 留 boolean 欄位）
+                        if (mode === "rewrite") {
+                          setValue("query_rewrite_enabled", e.target.checked, {
+                            shouldDirty: true,
+                          });
+                        } else if (mode === "hyde") {
+                          setValue("hyde_enabled", e.target.checked, {
+                            shouldDirty: true,
+                          });
+                        }
+                      }}
+                      className="mt-0.5 rounded border-input"
+                    />
+                    <span className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium">{meta.label}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {meta.hint}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        />
+        {modeError && (
+          <p className="text-sm text-destructive">{modeError}</p>
+        )}
+
+        {/* LLM Rewrite settings — rewrite checked 才顯示 */}
+        {hasRewrite && (
+          <div className="rounded-md border bg-muted/20 px-3 py-3 flex flex-col gap-3">
+            <div>
+              <Label className="text-sm font-medium">LLM Rewrite 設定</Label>
+              <p className="text-xs text-muted-foreground">
+                改寫 LLM 用什麼模型、要不要加額外提示詞
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-rewrite-model" className="text-xs">
+                Rewrite 模型（空 = 預設 Claude Haiku 4.5）
+              </Label>
+              <Controller
+                name="query_rewrite_model"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={field.value || ""}
+                    onValueChange={(v) => field.onChange(v)}
+                  >
+                    <SelectTrigger id="bot-rewrite-model">
+                      <SelectValue placeholder="（預設）Claude Haiku 4.5" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value=" ">
+                        （預設）Claude Haiku 4.5
+                      </SelectItem>
+                      {RERANK_MODEL_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-rewrite-extra-hint" className="text-xs">
+                額外提示詞（optional）
+              </Label>
+              <Textarea
+                id="bot-rewrite-extra-hint"
+                rows={2}
+                placeholder="例：永遠保留「家樂福」前綴、查詢字串中加上品牌名"
+                {...register("query_rewrite_extra_hint")}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                在 rewrite prompt 後追加；用來 fine-tune 改寫風格
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* HyDE settings — hyde checked 才顯示 */}
+        {hasHyde && (
+          <div className="rounded-md border bg-muted/20 px-3 py-3 flex flex-col gap-3">
+            <div>
+              <Label className="text-sm font-medium">HyDE 設定</Label>
+              <p className="text-xs text-muted-foreground">
+                HyDE 假答案 LLM 用什麼模型、要不要加額外提示詞
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-hyde-model" className="text-xs">
+                HyDE 模型（空 = 預設 Claude Haiku 4.5）
+              </Label>
+              <Controller
+                name="hyde_model"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={field.value || ""}
+                    onValueChange={(v) => field.onChange(v)}
+                  >
+                    <SelectTrigger id="bot-hyde-model">
+                      <SelectValue placeholder="（預設）Claude Haiku 4.5" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value=" ">
+                        （預設）Claude Haiku 4.5
+                      </SelectItem>
+                      {RERANK_MODEL_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-hyde-extra-hint" className="text-xs">
+                額外提示詞（optional）
+              </Label>
+              <Textarea
+                id="bot-hyde-extra-hint"
+                rows={2}
+                placeholder="例：答案應提到具體分店名稱、答案要包含時間與價格"
+                {...register("hyde_extra_hint")}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                在 hyde prompt 後追加；用來 fine-tune 假答案內容
+              </p>
+            </div>
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 
 function WebhookCopyButton({
   url,
@@ -261,6 +526,13 @@ export function BotDetailForm({
       rerank_enabled: bot.rerank_enabled ?? false,
       rerank_model: bot.rerank_model ?? "",
       rerank_top_n: bot.rerank_top_n ?? 20,
+      rag_retrieval_modes: bot.rag_retrieval_modes ?? ["raw"],
+      query_rewrite_enabled: bot.query_rewrite_enabled ?? false,
+      query_rewrite_model: bot.query_rewrite_model ?? "",
+      query_rewrite_extra_hint: bot.query_rewrite_extra_hint ?? "",
+      hyde_enabled: bot.hyde_enabled ?? false,
+      hyde_model: bot.hyde_model ?? "",
+      hyde_extra_hint: bot.hyde_extra_hint ?? "",
       intent_routes: bot.intent_routes ?? [],
       router_model: bot.router_model ?? "",
       summary_model: bot.summary_model ?? "",
@@ -365,6 +637,13 @@ export function BotDetailForm({
       rerank_enabled: bot.rerank_enabled ?? false,
       rerank_model: bot.rerank_model ?? "",
       rerank_top_n: bot.rerank_top_n ?? 20,
+      rag_retrieval_modes: bot.rag_retrieval_modes ?? ["raw"],
+      query_rewrite_enabled: bot.query_rewrite_enabled ?? false,
+      query_rewrite_model: bot.query_rewrite_model ?? "",
+      query_rewrite_extra_hint: bot.query_rewrite_extra_hint ?? "",
+      hyde_enabled: bot.hyde_enabled ?? false,
+      hyde_model: bot.hyde_model ?? "",
+      hyde_extra_hint: bot.hyde_extra_hint ?? "",
       intent_routes: bot.intent_routes ?? [],
       router_model: bot.router_model ?? "",
       summary_model: bot.summary_model ?? "",
@@ -400,6 +679,15 @@ export function BotDetailForm({
     }
     if (data.knowledge_base_ids.length === 0) {
       toast.error("請至少綁定一個知識庫");
+      setActiveTab(TAB_KEYS.CAPABILITIES);
+      return;
+    }
+    // Issue #43 — at least 1 retrieval mode（zod 也擋；雙保險 + tab focus）
+    if (
+      !data.rag_retrieval_modes ||
+      data.rag_retrieval_modes.length === 0
+    ) {
+      toast.error("請至少選 1 個 retrieval mode");
       setActiveTab(TAB_KEYS.CAPABILITIES);
       return;
     }
@@ -978,6 +1266,15 @@ export function BotDetailForm({
                   )}
                 </CollapsibleContent>
               </Collapsible>
+
+              {/* Issue #43 — Bot-level RAG retrieval modes */}
+              <RetrievalModesSection
+                control={control}
+                register={register}
+                watch={watch}
+                setValue={setValue}
+                errors={errors}
+              />
             </div>
           </section>
 

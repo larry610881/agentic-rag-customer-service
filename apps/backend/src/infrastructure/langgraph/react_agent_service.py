@@ -102,10 +102,12 @@ class ReActAgentService(AgentService):
         rag_top_k: int | None,
         rag_score_threshold: float | None,
         rerank_cfg: dict[str, Any] | None = None,
+        modes_cfg: dict[str, Any] | None = None,
     ) -> BaseTool:
         """Build a LangChain BaseTool wrapping the RAG query."""
         rag_tool = self._rag_tool
         _rerank = rerank_cfg or {}
+        _modes = modes_cfg or {}
 
         @tool
         async def rag_query(query: str) -> str:
@@ -124,6 +126,14 @@ class ReActAgentService(AgentService):
                 rerank_enabled=_rerank.get("rerank_enabled"),
                 rerank_model=_rerank.get("rerank_model"),
                 rerank_top_n=_rerank.get("rerank_top_n"),
+                retrieval_modes=_modes.get("retrieval_modes"),
+                query_rewrite_model=_modes.get("query_rewrite_model"),
+                query_rewrite_extra_hint=_modes.get(
+                    "query_rewrite_extra_hint"
+                ),
+                hyde_model=_modes.get("hyde_model"),
+                hyde_extra_hint=_modes.get("hyde_extra_hint"),
+                bot_system_prompt=_modes.get("bot_system_prompt"),
             )
             import json as _json
             return _json.dumps(result, ensure_ascii=False)
@@ -277,6 +287,17 @@ class ReActAgentService(AgentService):
 
         if "rag_query" in effective and (kb_id or kb_ids):
             params = _params_for("rag_query")
+            # Issue #43 — Bot-level RAG retrieval modes
+            modes_cfg = {
+                "retrieval_modes": _metadata.get("rag_retrieval_modes"),
+                "query_rewrite_model": _metadata.get("query_rewrite_model"),
+                "query_rewrite_extra_hint": _metadata.get(
+                    "query_rewrite_extra_hint"
+                ),
+                "hyde_model": _metadata.get("hyde_model"),
+                "hyde_extra_hint": _metadata.get("hyde_extra_hint"),
+                "bot_system_prompt": _metadata.get("bot_prompt"),
+            }
             tools.append(
                 self._build_rag_lc_tool(
                     tenant_id, kb_ids, kb_id,
@@ -286,6 +307,7 @@ class ReActAgentService(AgentService):
                         "rerank_model": params["rerank_model"],
                         "rerank_top_n": params["rerank_top_n"],
                     },
+                    modes_cfg=modes_cfg,
                 )
             )
         if (

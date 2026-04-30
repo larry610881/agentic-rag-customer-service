@@ -9,6 +9,7 @@ from src.application.knowledge.test_retrieval_use_case import (
     TestRetrievalCommand,
     TestRetrievalUseCase,
 )
+from src.application.rag.query_rag_use_case import QueryRAGUseCase
 from src.domain.rag.value_objects import SearchResult
 from src.domain.shared.exceptions import EntityNotFoundError
 from tests.unit.knowledge.kb_studio_fixtures import (
@@ -18,6 +19,16 @@ from tests.unit.knowledge.kb_studio_fixtures import (
     make_kb,
     run,
 )
+
+
+def _make_query_rag(kb_repo, embed, vs):
+    """建一個共用 QueryRAGUseCase（Stage 2.6 之後 TestRetrievalUseCase 需注入）。"""
+    return QueryRAGUseCase(
+        knowledge_base_repository=kb_repo,
+        embedding_service=embed,
+        vector_store=vs,
+        llm_service=None,  # 此 unit test 不會走到 LLM 生成路徑
+    )
 
 scenarios("unit/knowledge/test_retrieval.feature")
 
@@ -72,6 +83,9 @@ def _run_test(ctx, *, tenant, kb_id, query, top_k=5, include_conv=False):
         kb_repo=ctx["kb_repo"],
         embedding_service=ctx["embed"],
         vector_store=ctx["vs"],
+        query_rag_use_case=_make_query_rag(
+            ctx["kb_repo"], ctx["embed"], ctx["vs"]
+        ),
     )
     try:
         ctx["result"] = run(

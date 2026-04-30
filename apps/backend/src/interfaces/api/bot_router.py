@@ -139,6 +139,14 @@ class CreateBotRequest(BaseModel):
     rerank_enabled: bool = False
     rerank_model: str = ""
     rerank_top_n: int = 20
+    # Issue #43 — Bot-level RAG retrieval modes
+    rag_retrieval_modes: list[str] = Field(default_factory=lambda: ["raw"])
+    query_rewrite_enabled: bool = False
+    query_rewrite_model: str = ""
+    query_rewrite_extra_hint: str = ""
+    hyde_enabled: bool = False
+    hyde_model: str = ""
+    hyde_extra_hint: str = ""
     tool_configs: dict[str, ToolRagConfigSchema] = Field(default_factory=dict)
     customer_service_url: str = ""
     intent_routes: list[IntentRouteSchema] = []
@@ -186,6 +194,14 @@ class UpdateBotRequest(BaseModel):
     rerank_enabled: bool | None = None
     rerank_model: str | None = None
     rerank_top_n: int | None = None
+    # Issue #43 — Bot-level RAG retrieval modes
+    rag_retrieval_modes: list[str] | None = None
+    query_rewrite_enabled: bool | None = None
+    query_rewrite_model: str | None = None
+    query_rewrite_extra_hint: str | None = None
+    hyde_enabled: bool | None = None
+    hyde_model: str | None = None
+    hyde_extra_hint: str | None = None
     tool_configs: dict[str, ToolRagConfigSchema] | None = None
     customer_service_url: str | None = None
     intent_routes: list[IntentRouteSchema] | None = None
@@ -237,6 +253,14 @@ class BotResponse(BaseModel):
     rerank_enabled: bool
     rerank_model: str
     rerank_top_n: int
+    # Issue #43 — Bot-level RAG retrieval modes
+    rag_retrieval_modes: list[str]
+    query_rewrite_enabled: bool
+    query_rewrite_model: str
+    query_rewrite_extra_hint: str
+    hyde_enabled: bool
+    hyde_model: str
+    hyde_extra_hint: str
     tool_configs: dict[str, dict[str, Any]]
     customer_service_url: str
     intent_routes: list[dict[str, Any]]
@@ -310,6 +334,13 @@ def _to_response(bot, warm_up_status: str | None = None) -> BotResponse:
         rerank_enabled=bot.rerank_enabled,
         rerank_model=bot.rerank_model,
         rerank_top_n=bot.rerank_top_n,
+        rag_retrieval_modes=list(bot.rag_retrieval_modes),
+        query_rewrite_enabled=bot.query_rewrite_enabled,
+        query_rewrite_model=bot.query_rewrite_model,
+        query_rewrite_extra_hint=bot.query_rewrite_extra_hint,
+        hyde_enabled=bot.hyde_enabled,
+        hyde_model=bot.hyde_model,
+        hyde_extra_hint=bot.hyde_extra_hint,
         tool_configs={
             name: {
                 k: v
@@ -415,6 +446,13 @@ async def create_bot(
             rerank_enabled=body.rerank_enabled,
             rerank_model=body.rerank_model,
             rerank_top_n=body.rerank_top_n,
+            rag_retrieval_modes=list(body.rag_retrieval_modes),
+            query_rewrite_enabled=body.query_rewrite_enabled,
+            query_rewrite_model=body.query_rewrite_model,
+            query_rewrite_extra_hint=body.query_rewrite_extra_hint,
+            hyde_enabled=body.hyde_enabled,
+            hyde_model=body.hyde_model,
+            hyde_extra_hint=body.hyde_extra_hint,
             tool_configs={
                 name: cfg.model_dump(exclude_none=True)
                 for name, cfg in body.tool_configs.items()

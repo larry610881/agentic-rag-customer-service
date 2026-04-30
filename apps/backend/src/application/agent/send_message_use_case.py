@@ -317,6 +317,21 @@ class SendMessageUseCase:
         cfg["rerank_enabled"] = getattr(bot, "rerank_enabled", False)
         cfg["rerank_model"] = getattr(bot, "rerank_model", "")
         cfg["rerank_top_n"] = getattr(bot, "rerank_top_n", 20)
+        # Issue #43 — Bot-level RAG retrieval modes
+        cfg["rag_retrieval_modes"] = list(
+            getattr(bot, "rag_retrieval_modes", ["raw"]) or ["raw"]
+        )
+        cfg["query_rewrite_enabled"] = getattr(
+            bot, "query_rewrite_enabled", False
+        )
+        cfg["query_rewrite_model"] = getattr(bot, "query_rewrite_model", "")
+        cfg["query_rewrite_extra_hint"] = getattr(
+            bot, "query_rewrite_extra_hint", ""
+        )
+        cfg["hyde_enabled"] = getattr(bot, "hyde_enabled", False)
+        cfg["hyde_model"] = getattr(bot, "hyde_model", "")
+        cfg["hyde_extra_hint"] = getattr(bot, "hyde_extra_hint", "")
+        cfg["bot_prompt"] = bot.bot_prompt or ""
         cfg["eval_depth"] = getattr(bot, "eval_depth", "off")
         cfg["eval_provider"] = getattr(bot, "eval_provider", "")
         cfg["eval_model"] = getattr(bot, "eval_model", "")
@@ -674,6 +689,17 @@ class SendMessageUseCase:
         metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
         metadata["rerank_model"] = bot_cfg.get("rerank_model", "")
         metadata["rerank_top_n"] = bot_cfg.get("rerank_top_n", 20)
+        # Issue #43 — Bot-level RAG retrieval modes
+        metadata["rag_retrieval_modes"] = list(
+            bot_cfg.get("rag_retrieval_modes", ["raw"]) or ["raw"]
+        )
+        metadata["query_rewrite_model"] = bot_cfg.get("query_rewrite_model", "")
+        metadata["query_rewrite_extra_hint"] = bot_cfg.get(
+            "query_rewrite_extra_hint", ""
+        )
+        metadata["hyde_model"] = bot_cfg.get("hyde_model", "")
+        metadata["hyde_extra_hint"] = bot_cfg.get("hyde_extra_hint", "")
+        metadata["bot_prompt"] = bot_cfg.get("bot_prompt", "")
 
         # 提早 start AgentTraceCollector — guard 命中時要 add_node，否則
         # 在 agent_service.start() 之前 add_node 會被 trace=None 吞掉
@@ -881,6 +907,17 @@ class SendMessageUseCase:
         metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
         metadata["rerank_model"] = bot_cfg.get("rerank_model", "")
         metadata["rerank_top_n"] = bot_cfg.get("rerank_top_n", 20)
+        # Issue #43 — Bot-level RAG retrieval modes
+        metadata["rag_retrieval_modes"] = list(
+            bot_cfg.get("rag_retrieval_modes", ["raw"]) or ["raw"]
+        )
+        metadata["query_rewrite_model"] = bot_cfg.get("query_rewrite_model", "")
+        metadata["query_rewrite_extra_hint"] = bot_cfg.get(
+            "query_rewrite_extra_hint", ""
+        )
+        metadata["hyde_model"] = bot_cfg.get("hyde_model", "")
+        metadata["hyde_extra_hint"] = bot_cfg.get("hyde_extra_hint", "")
+        metadata["bot_prompt"] = bot_cfg.get("bot_prompt", "")
 
         # 提早 start AgentTraceCollector — guard 命中時要 add_node，否則
         # 在 agent_service.start() 之前 add_node 會被 trace=None 吞掉

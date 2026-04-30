@@ -106,6 +106,17 @@ class Bot:
     rerank_enabled: bool = False
     rerank_model: str = ""          # 空 = 用系統預設 (haiku)
     rerank_top_n: int = 20          # Stage 1: embedding 召回數量
+    # Issue #43 — Bot-level RAG retrieval modes
+    # 多選 raw / rewrite / hyde；至少 1 個（application layer validate）
+    rag_retrieval_modes: list[str] = field(
+        default_factory=lambda: ["raw"]
+    )
+    query_rewrite_enabled: bool = False
+    query_rewrite_model: str = ""           # 空 = 用 haiku
+    query_rewrite_extra_hint: str = ""      # 額外提示詞（例：保留品牌名前綴）
+    hyde_enabled: bool = False
+    hyde_model: str = ""                    # 空 = 用 haiku
+    hyde_extra_hint: str = ""               # 額外提示詞（例：答案應提到分店）
     # Per-tool RAG 參數覆蓋（key = tool name，例如 "rag_query" / "query_dm_with_image"）
     # 未設定時走 Bot 全域 rag_top_k / rag_score_threshold / rerank_*
     tool_configs: dict[str, ToolRagConfig] = field(default_factory=dict)

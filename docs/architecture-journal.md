@@ -7,6 +7,66 @@
 
 ---
 
+## Bot-level RAG Retrieval Modes — Multi-Mode Retrieval + Playground 合流（Issue #43）
+
+**日期**：2026-04-30
+**涉及層級**：Backend Domain + Application + Infrastructure + Interfaces + Frontend Types + UI（跨 5 層 + 跨前後端） + DB migration
+**Commits**：本次提交（Stage 2.1 → 2.7）
+**Issue**：#43
+
+**Sprint 來源**：User 訴求「我還需要對每個 bot 可以設定：1) 不 rewrite 直接 RAG，2) LLM rewrite（可以額外加提示詞），3) HyDE，讓每個 bot 在每個呼叫 RAG 的地方都可以多選，至少要設定一個」。延續 commit `e78674d`（抽 `_query_rewriter.py` 共用 helper）的 Stage 1，本次完成 Stage 2 — 真正把 retrieval 行為下沉到 bot config，並把 Retrieval Playground 合流到 `query_rag_use_case` 確保 100% 同程式路徑。
+
+**主題**：**「Multi-query Retrieval + Union by Chunk ID」+「Use Case 合流避免 drift」+「Bot Config 跨 5 層流動」**。第一個是檢索策略議題 — 多 mode 並行展開 N 條 query → 對每個 KB 並行 search → 結果 union by chunk_id 保留最高分 → rerank → top_k。第二個是 DDD 議題 — 之前 Playground 跟 real RAG 各自實作 query rewrite，本次把 `test_retrieval_use_case` 改成 `query_rag_use_case` 的 thin wrapper，徹底消除 drift 風險。第三個是設定流動議題 — bot 7 個新欄位（`rag_retrieval_modes`/`query_rewrite_*`/`hyde_*`）必須從 DB → ORM → Domain Entity → bot CRUD use case → Interfaces schema → metadata → ReAct tool builder → RAGQueryTool → QueryRAGCommand 一路流到底。
+
+```mermaid
+graph TD
+    UQ["User Query"] --> M{"retrieval_modes<br>多選"}
+    M -->|"raw"| Q1["raw query"]
+    M -->|"rewrite"| Q2["LLM rewrite<br>(model + extra_hint)"]
+    M -->|"hyde"| Q3["LLM hypothetical<br>answer"]
+    Q1 --> E1["embed"]
+    Q2 --> E2["embed"]
+    Q3 --> E3["embed"]
+    E1 --> S["並行 search<br>(mode × kb_id)"]
+    E2 --> S
+    E3 --> S
+    S --> U["Union by chunk_id<br>(max score)"]
+    U --> R["LLM Rerank<br>(用 raw query)"]
+    R --> TK["Top K"]
+```
+
+### 做得好的地方
+
+- **Helper 在 Stage 1 預先抽出**：`_query_rewriter.py`（commit `e78674d`）抽出共用 helper 後，Stage 2 新增 `_hyde_generator.py` 直接套同樣的 PromptBlock 結構（bot context 走 SYSTEM block，最小化指令污染 persona）— 兩個 helper 模式對齊，未來新增 retrieval mode（如 multi-query expansion）的成本就是再加一個 generator。
+- **Playground 合流選擇 thin wrapper 而非搬 logic**：`test_retrieval_use_case` 改為注入 `QueryRAGUseCase`，內部直接 `await query_rag.retrieve(...)` + 額外 admin-bypass + conv_summaries。Playground 跟 real RAG 走 100% 同 retrieve 路徑，**未來改 real RAG 邏輯（如改 union 策略）Playground 自動跟上**，不會再 drift。同時保留 admin 跨租戶 bypass + conv_summaries — 這些是 Playground 獨有需求，不污染 real RAG。
+- **Domain enum + 兩個工具函式劃清意圖**：`RetrievalMode` enum + `normalize_modes()`（容錯：去重、過濾無效、空 fallback）+ `validate_modes()`（嚴格：空 raise）— 讓不同 caller 選擇要嚴格還是寬容。`QueryRAGUseCase.retrieve()` 採嚴格（empty list 直接 raise，避免 silent fallback 隱藏 caller bug）；`test_retrieval_use_case._resolve_modes()` 採寬容（legacy `query_rewrite_enabled` toggle 自動轉 modes）。
+- **Bot config 7 欄位用 5-step migration 流程**：`add_bot_rag_modes.sql` → preview → docker exec psql → 驗欄位 → 寫 `_applied_migrations`。每個 NULL 預設都用 `IF NOT EXISTS` 保持冪等。（dev-vm migration 會在 push 前另外做一次。）
+- **Frontend 用 controlled checkbox 同步 source of truth**：`rag_retrieval_modes` 是 source of truth；checkbox 變動同步寫 `query_rewrite_enabled`/`hyde_enabled` boolean（未來其他地方判斷可用），但 application layer 一律以 modes 為準。zod schema `min(1, "至少選 1 個...")` + 雙保險 `onSubmit` 預檢 — UI 直接擋。
+- **「✓ 套用到 Bot」按鈕在 Playground 結果頁面**：admin 在 Playground 調好 modes/model/extra_hint/rerank/threshold 後，下拉選 bot 一鍵寫入 `useUpdateBot` mutation。徹底支撐「Playground 是真實對話的 dry run」這個產品定位。
+- **Trace 同時帶 modes + mode_queries**：`AgentTraceCollector.add_node` 多帶 `modes=[...]` 跟 `mode_queries={mode: query}`，DAG 上看得到 multi-query 是哪幾條 query 命中，方便事後 audit。
+
+### 潛在隱憂
+
+- **Multi-query 成本成長線性**：每多 1 個 mode = 多 1 次 LLM call (rewrite/hyde) + 多 1 次 embedding + N 次 vector search（N = kb_count）。3 modes × 3 kbs = 9 次 search。Bot 配 hyde + rewrite + 連 5 個 KB → 每次對話多 ~$0.001 LLM 成本 + 增加 embedding API quota 壓力 — **優先級：中**。改善：UI 加「預估每次對話額外成本 X tokens」字串（Issue body 已標記，但本次未做，留下 TODO）；伺服器面加 per-bot daily multi-query call quota。
+- **Mode_queries 的 LLM 失敗 silent fallback**：rewrite/hyde 失敗 → fallback raw query。會出現「user 設定 hyde 但實際根本沒做 hyde」的偽運行情況，DAG 也不會明顯標示 — **優先級：中**。改善：在 trace metadata 加 `mode_failures: {hyde: "timeout"}`，UI 顯示「此次 hyde 失敗已 fallback raw」徽章。
+- **`bot_system_prompt` 大幅膨脹 prompt**：bot 自己 prompt 動輒 3-5K tokens，加 rewrite/hyde 並行各帶一份 → 每次對話 +6-10K input tokens。**優先級：中**。改善：考慮用 Anthropic prompt caching（已記錄在 memory `llm-cache-token-reference.md`），或對 bot prompt 做 truncate（保留 persona + skills，移除 examples）。
+- **Union by chunk_id 沒考慮 mode 偏好**：兩 mode 都命中同 chunk → 取最高分。但 hyde 命中分通常比 raw 高（語義匹配），可能讓 hyde 主導排序。**優先級：低**。改善：可選擇用「平均分」或「加權分（hyde × 0.8 + raw × 0.2）」策略。
+- **DB 7 欄位有 4 個其實是 derived state**：`query_rewrite_enabled` ≡ `"rewrite" in rag_retrieval_modes`（hyde 同理）。當前同時存兩份是為 UI clarity，但容易出現「兩邊不同步」的 bug — **優先級：低**。改善：未來把 boolean 改為 generated column（PostgreSQL 12+ 支援），單一 source of truth。
+- **Test integrity：4 個既有 bot integration test 我沒重跑驗證**：本次只跑 unit + 部分 integration，需要在 push 前確認所有 integration tests 也過。
+
+### 延伸學習
+
+- **HyDE (Hypothetical Document Embeddings)**：Gao et al. 2022 的 retrieval 技巧，理論基礎是「問題向量跟答案向量在 embedding 空間距離較遠（Q vs A）」。HyDE 用 LLM 生成假答案，假答案跟真答案的內容更接近 → 檢索召回率常高 ~10-20%。但小心：當 LLM 完全幻想時，假答案可能誤導檢索方向。為什麼跟本次相關：HyDE 是 mode 之一，但 user 應該理解這不是萬靈丹，HyDE 適合「user 問題太短/太模糊」場景，不適合「user 問題已經很具體含關鍵詞」場景。
+- **Reciprocal Rank Fusion (RRF)**：multi-query union 時「不同 query 命中的 chunks 怎麼合併排序」是經典問題。本次用「保留最高分」是 max-pool 策略；RRF 用 `score_i = sum(1/(k + rank_i))` 把多個 ranked lists 合併，對「在多個 list 都排前面」的 chunks 加權。比 max-pool 更 robust。若想深入：搜尋 「Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods」(Cormack 2009)。
+- **Self-Query Retriever (LangChain)**：LangChain 有 `SelfQueryRetriever` 把 user query 同時轉成 metadata filter + semantic query。比 pure rewrite 更進階 — 「2024 年新出的紅色商品」會被拆成 `(filter: year=2024 AND color=red, semantic: 商品)`。延伸方向：當 KB chunk 有結構化 metadata（價格、日期、分類）時，self-query 比 HyDE 更精準。
+- **Domain Event 設計**：本次每改一個 bot 就直接 update DB + cache invalidate，沒走 event。當未來 bot config 變動需要通知多個 worker（如重 warm-up Ollama、清 LangGraph cache、通知 metric collector），就會需要 `BotConfigChanged` domain event。延伸方向：搜尋 outbox pattern + Postgres LISTEN/NOTIFY。
+
+#### 思考題
+
+multi-query retrieval 增加成本，何時值得？以本次設計為例，給出一個「值得開 hyde」跟一個「不值得開 hyde」的具體 use case，並解釋為什麼。（提示：考慮 user query 的語義具體度、KB chunks 的長度與風格、bot 的對話量級。）
+
+---
+
 ## KB Studio UX 重構 — 從工具集合到工作流主軸
 
 **日期**：2026-04-29

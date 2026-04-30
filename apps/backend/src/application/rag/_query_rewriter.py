@@ -35,6 +35,7 @@ _GENERIC_REWRITE_PROMPT = (
     "- 必要時擴展常見同義詞\n"
     "- 保持中文，不要翻譯\n"
     "- 直接輸出改寫後字串，不要解釋、不要引號\n"
+    "{extra_hint}"
     "\n"
     "使用者問題：{query}\n"
     "\n"
@@ -48,15 +49,23 @@ _BOT_REWRITE_INSTRUCTION = (
     "\n"
     "假設你決定要呼叫 RAG 知識庫檢索工具來找答案，"
     "你會用什麼查詢字串去搜尋？以你的身分與領域知識決定查詢用詞。\n"
+    "{extra_hint}"
     "\n"
     "只輸出查詢字串本身，不要解釋、不要引號、不要前綴。"
 )
+
+
+def _format_extra_hint(extra_hint: str) -> str:
+    if not extra_hint or not extra_hint.strip():
+        return ""
+    return f"- 額外提示：{extra_hint.strip()}\n"
 
 
 async def rewrite_query(
     raw_query: str,
     model: str = "",
     bot_system_prompt: str = "",
+    extra_hint: str = "",
     api_key_resolver=None,
 ) -> str:
     """Use LLM to rewrite query for better vector retrieval.
@@ -74,6 +83,7 @@ async def rewrite_query(
     from src.infrastructure.llm.llm_caller import call_llm
 
     spec = model or "anthropic:claude-haiku-4-5"
+    extra_hint_text = _format_extra_hint(extra_hint)
     try:
         if bot_system_prompt:
             blocks = [
@@ -82,7 +92,10 @@ async def rewrite_query(
                     role=BlockRole.SYSTEM,
                 ),
                 PromptBlock(
-                    text=_BOT_REWRITE_INSTRUCTION.format(query=raw_query),
+                    text=_BOT_REWRITE_INSTRUCTION.format(
+                        query=raw_query,
+                        extra_hint=extra_hint_text,
+                    ),
                     role=BlockRole.USER,
                 ),
             ]
@@ -93,7 +106,10 @@ async def rewrite_query(
                 api_key_resolver=api_key_resolver,
             )
         else:
-            prompt = _GENERIC_REWRITE_PROMPT.format(query=raw_query)
+            prompt = _GENERIC_REWRITE_PROMPT.format(
+                query=raw_query,
+                extra_hint=extra_hint_text,
+            )
             result = await call_llm(
                 model_spec=spec,
                 prompt=prompt,

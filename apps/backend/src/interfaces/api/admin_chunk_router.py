@@ -76,9 +76,16 @@ class RetrievalTestRequest(BaseModel):
     rerank_enabled: bool = False
     rerank_model: str = ""
     rerank_top_n: int = Field(default=20, ge=1, le=100)
+    # Issue #43 — multi-mode retrieval
+    # retrieval_modes 為主；舊欄位 query_rewrite_enabled / hyde_enabled 仍兼容
+    retrieval_modes: list[str] = Field(default_factory=list)
     query_rewrite_enabled: bool = False
     query_rewrite_model: str = ""
-    bot_id: str = ""  # 提供時 rewrite 會帶該 bot.system_prompt 作 context
+    query_rewrite_extra_hint: str = ""
+    hyde_enabled: bool = False
+    hyde_model: str = ""
+    hyde_extra_hint: str = ""
+    bot_id: str = ""  # 提供時 rewrite/hyde 會帶該 bot.bot_prompt 作 context
 
 
 class RetrievalHitResponse(BaseModel):
@@ -93,7 +100,9 @@ class RetrievalTestResponse(BaseModel):
     results: list[RetrievalHitResponse]
     filter_expr: str
     query_vector_dim: int
-    rewritten_query: str = ""  # 若 query_rewrite_enabled 顯示改寫後字串
+    rewritten_query: str = ""  # Legacy: rewrite mode 改寫後字串
+    # Issue #43 — 每個 retrieval mode 實際送 embed 的 query 字串
+    mode_queries: dict[str, str] = Field(default_factory=dict)
 
 
 class KbQualitySummaryResponse(BaseModel):
@@ -262,8 +271,13 @@ async def retrieval_test(
                 rerank_enabled=body.rerank_enabled,
                 rerank_model=body.rerank_model,
                 rerank_top_n=body.rerank_top_n,
+                retrieval_modes=list(body.retrieval_modes),
                 query_rewrite_enabled=body.query_rewrite_enabled,
                 query_rewrite_model=body.query_rewrite_model,
+                query_rewrite_extra_hint=body.query_rewrite_extra_hint,
+                hyde_enabled=body.hyde_enabled,
+                hyde_model=body.hyde_model,
+                hyde_extra_hint=body.hyde_extra_hint,
                 bot_id=body.bot_id,
             )
         )
@@ -283,6 +297,7 @@ async def retrieval_test(
         filter_expr=result.filter_expr,
         query_vector_dim=result.query_vector_dim,
         rewritten_query=result.rewritten_query,
+        mode_queries=result.mode_queries,
     )
 
 

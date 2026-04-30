@@ -141,6 +141,25 @@ class SQLAlchemyBotRepository(BotRepository):
             rerank_enabled=model.rerank_enabled if model.rerank_enabled is not None else False,
             rerank_model=model.rerank_model or "",
             rerank_top_n=model.rerank_top_n or 20,
+            rag_retrieval_modes=(
+                list(model.rag_retrieval_modes)
+                if model.rag_retrieval_modes
+                else ["raw"]
+            ),
+            query_rewrite_enabled=(
+                model.query_rewrite_enabled
+                if model.query_rewrite_enabled is not None
+                else False
+            ),
+            query_rewrite_model=model.query_rewrite_model or "",
+            query_rewrite_extra_hint=model.query_rewrite_extra_hint or "",
+            hyde_enabled=(
+                model.hyde_enabled
+                if model.hyde_enabled is not None
+                else False
+            ),
+            hyde_model=model.hyde_model or "",
+            hyde_extra_hint=model.hyde_extra_hint or "",
             tool_configs=_dict_to_tool_configs(model.tool_configs),
             customer_service_url=model.customer_service_url or "",
             intent_routes=[
@@ -246,6 +265,13 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.rerank_enabled = bot.rerank_enabled
                 existing.rerank_model = bot.rerank_model
                 existing.rerank_top_n = bot.rerank_top_n
+                existing.rag_retrieval_modes = list(bot.rag_retrieval_modes)
+                existing.query_rewrite_enabled = bot.query_rewrite_enabled
+                existing.query_rewrite_model = bot.query_rewrite_model
+                existing.query_rewrite_extra_hint = bot.query_rewrite_extra_hint
+                existing.hyde_enabled = bot.hyde_enabled
+                existing.hyde_model = bot.hyde_model
+                existing.hyde_extra_hint = bot.hyde_extra_hint
                 existing.tool_configs = _tool_configs_to_dict(bot.tool_configs)
                 existing.customer_service_url = bot.customer_service_url
                 existing.intent_routes = [
@@ -321,6 +347,13 @@ class SQLAlchemyBotRepository(BotRepository):
                     rerank_enabled=bot.rerank_enabled,
                     rerank_model=bot.rerank_model,
                     rerank_top_n=bot.rerank_top_n,
+                    rag_retrieval_modes=list(bot.rag_retrieval_modes),
+                    query_rewrite_enabled=bot.query_rewrite_enabled,
+                    query_rewrite_model=bot.query_rewrite_model,
+                    query_rewrite_extra_hint=bot.query_rewrite_extra_hint,
+                    hyde_enabled=bot.hyde_enabled,
+                    hyde_model=bot.hyde_model,
+                    hyde_extra_hint=bot.hyde_extra_hint,
                     tool_configs=_tool_configs_to_dict(bot.tool_configs),
                     customer_service_url=bot.customer_service_url,
                     intent_routes=[

@@ -13,6 +13,7 @@ from src.domain.bot.entity import (
 )
 from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
+from src.domain.rag.retrieval_mode import normalize_modes, validate_modes
 from src.domain.shared.exceptions import ValidationError
 
 
@@ -55,6 +56,16 @@ class CreateBotCommand:
     rerank_enabled: bool = False
     rerank_model: str = ""
     rerank_top_n: int = 20
+    # Issue #43 — Bot-level RAG retrieval modes
+    rag_retrieval_modes: list[str] = field(
+        default_factory=lambda: ["raw"]
+    )
+    query_rewrite_enabled: bool = False
+    query_rewrite_model: str = ""
+    query_rewrite_extra_hint: str = ""
+    hyde_enabled: bool = False
+    hyde_model: str = ""
+    hyde_extra_hint: str = ""
     # Per-tool RAG 參數覆蓋：{tool_name: {rag_top_k, rag_score_threshold, rerank_*}}
     tool_configs: dict = field(default_factory=dict)
     customer_service_url: str = ""
@@ -76,6 +87,13 @@ class CreateBotUseCase:
         self._encryption = encryption_service
 
     async def execute(self, command: CreateBotCommand) -> Bot:
+        # Issue #43 — validate retrieval modes (at least 1)
+        try:
+            validate_modes(list(command.rag_retrieval_modes))
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+        retrieval_modes = normalize_modes(list(command.rag_retrieval_modes))
+
         # Build MCP bindings with encrypted env_values
         mcp_bindings = []
         for b in command.mcp_bindings:
@@ -147,6 +165,13 @@ class CreateBotUseCase:
             rerank_enabled=command.rerank_enabled,
             rerank_model=command.rerank_model,
             rerank_top_n=command.rerank_top_n,
+            rag_retrieval_modes=retrieval_modes,
+            query_rewrite_enabled=command.query_rewrite_enabled,
+            query_rewrite_model=command.query_rewrite_model,
+            query_rewrite_extra_hint=command.query_rewrite_extra_hint,
+            hyde_enabled=command.hyde_enabled,
+            hyde_model=command.hyde_model,
+            hyde_extra_hint=command.hyde_extra_hint,
             tool_configs={
                 name: ToolRagConfig(
                     rag_top_k=cfg.get("rag_top_k"),

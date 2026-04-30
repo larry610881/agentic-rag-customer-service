@@ -30,8 +30,14 @@ export interface RetrievalTestRequest {
   rerank_enabled?: boolean;
   rerank_model?: string;
   rerank_top_n?: number;
+  // Issue #43 — multi-mode retrieval
+  retrieval_modes?: ("raw" | "rewrite" | "hyde")[];
   query_rewrite_enabled?: boolean;
   query_rewrite_model?: string;
+  query_rewrite_extra_hint?: string;
+  hyde_enabled?: boolean;
+  hyde_model?: string;
+  hyde_extra_hint?: string;
   bot_id?: string;
 }
 
@@ -48,6 +54,8 @@ export interface RetrievalTestResult {
   filter_expr: string;
   query_vector_dim: number;
   rewritten_query?: string;
+  /** Issue #43 — 每個 retrieval mode 實際送 embed 的 query 字串 */
+  mode_queries?: Record<string, string>;
 }
 
 export interface KbQualitySummary {

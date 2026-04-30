@@ -1423,19 +1423,7 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
-    # 定義在 chunk_context_service / record_usage_use_case / bot_repository 之後
-    # （Python 模組載入時 forward reference 會 NameError）
-    test_retrieval_use_case = providers.Factory(
-        TestRetrievalUseCase,
-        kb_repo=kb_repository,
-        embedding_service=embedding_service,
-        vector_store=vector_store,
-        # rewrite + rerank 對齊 real RAG 用：api_key_resolver / 記 token / 載 bot prompt
-        chunk_context_service=chunk_context_service,
-        record_usage_use_case=record_usage_use_case,
-        bot_repository=bot_repository,
-    )
-
+    # test_retrieval_use_case 移到 query_rag_use_case 之後（forward reference）
     process_document_use_case = providers.Factory(
         ProcessDocumentUseCase,
         document_repository=document_repository,
@@ -1535,6 +1523,20 @@ class Container(containers.DeclarativeContainer):
             _llm_factory,
         ),
         record_usage=record_usage_use_case,
+    )
+
+    # test_retrieval_use_case：thin wrapper of query_rag_use_case
+    # （定義在 query_rag_use_case 之後 — Python 模組載入時 forward reference）
+    test_retrieval_use_case = providers.Factory(
+        TestRetrievalUseCase,
+        kb_repo=kb_repository,
+        embedding_service=embedding_service,
+        vector_store=vector_store,
+        # rewrite + rerank 對齊 real RAG 用：api_key_resolver / 記 token / 載 bot prompt
+        chunk_context_service=chunk_context_service,
+        record_usage_use_case=record_usage_use_case,
+        bot_repository=bot_repository,
+        query_rag_use_case=query_rag_use_case,
     )
 
     get_conversation_use_case = providers.Factory(
