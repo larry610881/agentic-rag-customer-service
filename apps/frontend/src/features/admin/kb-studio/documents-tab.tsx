@@ -11,7 +11,8 @@ export function DocumentsTab({ kbId }: DocumentsTabProps) {
   const documents = pagedData?.items ?? [];
 
   return (
-    <div className="space-y-4">
+    // pb-24：scroll 到底時保留底部空白緩衝，避免 last row 卡在 viewport 邊緣
+    <div className="space-y-4 pb-24">
       <UploadDropzone knowledgeBaseId={kbId} />
       {isLoading ? (
         <p className="text-muted-foreground">載入中...</p>
