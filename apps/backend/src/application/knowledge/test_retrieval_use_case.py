@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.application.knowledge._admin_kb_check import ensure_kb_accessible
+from src.application.rag._query_rewriter import rewrite_query
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.rag.services import EmbeddingService, VectorStore
 from src.domain.shared.exceptions import (
@@ -61,83 +62,8 @@ class TestRetrievalResult:
     rewritten_query: str = ""  # 若 query_rewrite_enabled，記錄改寫後內容
 
 
-# 通用 rewrite（沒指定 bot 時用）— 跟真實 bot 沒對齊，純 RAG 改寫示範
-_GENERIC_REWRITE_PROMPT = (
-    "你是 RAG 檢索查詢改寫助手。把使用者的問題改寫成適合向量檢索的查詢字串。\n"
-    "\n"
-    "規則：\n"
-    "- 保留所有關鍵詞和專有名詞\n"
-    "- 移除語氣詞（請、麻煩、想知道、可以告訴我等）\n"
-    "- 必要時擴展常見同義詞\n"
-    "- 保持中文，不要翻譯\n"
-    "- 直接輸出改寫後字串，不要解釋、不要引號\n"
-    "\n"
-    "使用者問題：{query}\n"
-    "\n"
-    "改寫後："
-)
-
-# Bot-aware rewrite — 用 bot 自己的 system_prompt 作主，最小化 rewrite 指令
-# 跟真實對話對齊：bot LLM 思考「我要呼叫 rag_query 用什麼 query」的決策過程
-_BOT_REWRITE_INSTRUCTION = (
-    "使用者問你：「{query}」\n"
-    "\n"
-    "假設你決定要呼叫 RAG 知識庫檢索工具來找答案，"
-    "你會用什麼查詢字串去搜尋？以你的身分與領域知識決定查詢用詞。\n"
-    "\n"
-    "只輸出查詢字串本身，不要解釋、不要引號、不要前綴。"
-)
-
-
-async def _rewrite_query(
-    raw_query: str,
-    model: str,
-    bot_system_prompt: str = "",
-    api_key_resolver=None,
-) -> str:
-    """Use LLM to rewrite query for better vector retrieval.
-
-    - 有 bot_system_prompt：用 bot 自己的 system prompt 作 SYSTEM block，
-      最小化 rewrite 指令 → 真實對齊「bot 在那個角色下會怎麼搜尋」
-    - 沒 bot：用通用 rewrite prompt，純 RAG 改寫
-    """
-    from src.domain.llm.prompt_block import BlockRole, PromptBlock
-    from src.infrastructure.llm.llm_caller import call_llm
-
-    spec = model or "anthropic:claude-haiku-4-5"
-    try:
-        if bot_system_prompt:
-            # Bot-aware：bot prompt 作 system，user message 是極簡 rewrite 指令
-            blocks = [
-                PromptBlock(
-                    text=bot_system_prompt,
-                    role=BlockRole.SYSTEM,
-                ),
-                PromptBlock(
-                    text=_BOT_REWRITE_INSTRUCTION.format(query=raw_query),
-                    role=BlockRole.USER,
-                ),
-            ]
-            result = await call_llm(
-                model_spec=spec,
-                prompt=blocks,
-                max_tokens=200,
-                api_key_resolver=api_key_resolver,
-            )
-        else:
-            # 通用 rewrite — 沒 bot context 時的 baseline
-            prompt = _GENERIC_REWRITE_PROMPT.format(query=raw_query)
-            result = await call_llm(
-                model_spec=spec,
-                prompt=prompt,
-                max_tokens=200,
-                api_key_resolver=api_key_resolver,
-            )
-        rewritten = result.text.strip().strip('"').strip("「").strip("」")
-        return rewritten or raw_query  # 改寫空字串 → fallback 原 query
-    except Exception:
-        logger.warning("playground.rewrite_failed", exc_info=True)
-        return raw_query  # rewrite 失敗 → 沿用原 query 不擋 search
+# Query rewrite 邏輯抽到 _query_rewriter.py 共用 helper
+# 之前重複寫死在這裡，未來 query_rag_use_case 也會用 → 集中避免 drift
 
 
 class TestRetrievalUseCase:
@@ -190,9 +116,9 @@ class TestRetrievalUseCase:
                         bot_id=command.bot_id,
                         exc_info=True,
                     )
-            search_query = await _rewrite_query(
+            search_query = await rewrite_query(
                 command.query,
-                command.query_rewrite_model,
+                model=command.query_rewrite_model,
                 bot_system_prompt=bot_system_prompt,
                 api_key_resolver=api_key_resolver,
             )
