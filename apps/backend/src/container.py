@@ -115,10 +115,10 @@ from src.application.knowledge.classify_kb_use_case import ClassifyKbUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
 )
-from src.application.knowledge.bulk_ingest_use_case import BulkIngestUseCase
 from src.application.knowledge.delete_document_use_case import (
     DeleteDocumentUseCase,
 )
+from src.application.knowledge.bulk_ingest_use_case import BulkIngestUseCase
 from src.application.knowledge.delete_documents_by_source_use_case import (
     DeleteDocumentsBySourceUseCase,
 )
@@ -309,6 +309,7 @@ from src.application.platform.update_provider_setting_use_case import (
     UpdateProviderSettingUseCase,
 )
 from src.application.rag.query_rag_use_case import QueryRAGUseCase
+from src.application.rag.unified_search_use_case import UnifiedSearchUseCase
 from src.application.ratelimit.get_rate_limits_use_case import GetRateLimitsUseCase
 from src.application.ratelimit.seed_defaults_use_case import SeedDefaultsUseCase
 from src.application.ratelimit.update_rate_limit_use_case import (
@@ -561,6 +562,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.tenant_router",
             "src.interfaces.api.knowledge_base_router",
             "src.interfaces.api.document_router",
+            "src.interfaces.api.rag_router",
             "src.interfaces.api.task_router",
             "src.interfaces.api.agent_router",
             "src.interfaces.api.conversation_router",
@@ -1555,6 +1557,15 @@ class Container(containers.DeclarativeContainer):
         chunk_context_service=chunk_context_service,
         record_usage_use_case=record_usage_use_case,
         bot_repository=bot_repository,
+        query_rag_use_case=query_rag_use_case,
+    )
+
+    # Issue #44 Phase 3: External producer search API — unified cross-KB +
+    # multi-mode + metadata filter. Thin wrapper over query_rag_use_case so
+    # behavior stays in lockstep with bot RAG.
+    unified_search_use_case = providers.Factory(
+        UnifiedSearchUseCase,
+        kb_repo=kb_repository,
         query_rag_use_case=query_rag_use_case,
     )
 

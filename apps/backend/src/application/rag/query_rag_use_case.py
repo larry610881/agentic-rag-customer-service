@@ -49,6 +49,12 @@ class QueryRAGCommand:
     hyde_model: str = ""
     hyde_extra_hint: str = ""
     bot_system_prompt: str = ""  # rewrite/hyde 用 bot 視角
+    # Issue #44 Phase 3 — Unified Search: caller-supplied metadata filter
+    # merged into Milvus filter expression alongside tenant_id. Use first-class
+    # field names (source, source_id, document_id, content_type, language).
+    # Producer-specific keys (e.g. actor_role) live in `extra` JSON and are
+    # not yet supported here — Phase 4 work.
+    extra_filters: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -180,13 +186,24 @@ class QueryRAGUseCase:
             for mode in ordered_modes
             for kid in effective_kb_ids
         ]
+        # Issue #44 Phase 3: tenant_id is mandatory; caller may supply
+        # additional first-class metadata filters via extra_filters. We
+        # explicitly drop any incoming tenant_id key so a misbehaving
+        # caller cannot widen the tenant scope.
+        base_filters: dict[str, Any] = {"tenant_id": command.tenant_id}
+        if command.extra_filters:
+            for k, v in command.extra_filters.items():
+                if k == "tenant_id":
+                    continue
+                base_filters[k] = v
+
         search_tasks = [
             self._vector_store.search(
                 collection=f"kb_{kid}",
                 query_vector=mode_vectors[mode],
                 limit=search_limit,
                 score_threshold=command.score_threshold,
-                filters={"tenant_id": command.tenant_id},
+                filters=base_filters,
             )
             for mode, kid in plan
         ]
