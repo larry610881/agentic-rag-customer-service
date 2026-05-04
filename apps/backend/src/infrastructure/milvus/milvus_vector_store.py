@@ -106,7 +106,40 @@ class MilvusVectorStore(VectorStore):
         db_name: str = "default",
     ) -> None:
         self._client = MilvusClient(uri=uri, token=token or None, db_name=db_name)
+        # Cache: collection_name -> set of field names actually present.
+        # Filled lazily on first upsert/search per collection. Lets us strip
+        # entity keys that the (possibly older / pre-Issue#44) collection
+        # schema does not have, instead of crashing the whole upsert batch.
+        self._schema_field_cache: dict[str, set[str]] = {}
         logger.info("milvus.init", uri=uri, db_name=db_name)
+
+    async def _collection_field_names(self, collection: str) -> set[str]:
+        """Return the set of field names defined on the given collection.
+
+        Cached per-process. On error returns empty set so callers fall back
+        to passing every entity key (worst case: same crash as today).
+        """
+        cached = self._schema_field_cache.get(collection)
+        if cached is not None:
+            return cached
+        try:
+            desc = await asyncio.to_thread(
+                self._client.describe_collection, collection_name=collection
+            )
+            fields = desc.get("fields", []) if isinstance(desc, dict) else []
+            names = {
+                f.get("name") for f in fields if isinstance(f, dict)
+            }
+            names.discard(None)
+            self._schema_field_cache[collection] = names  # type: ignore[assignment]
+            return names  # type: ignore[return-value]
+        except Exception:
+            logger.warning(
+                "milvus.describe_collection.failed",
+                collection=collection,
+                exc_info=True,
+            )
+            return set()
 
     async def ensure_collection(
         self, collection: str, vector_size: int
@@ -164,6 +197,11 @@ class MilvusVectorStore(VectorStore):
         payloads: list[dict[str, Any]],
     ) -> None:
         collection = _safe_collection_name(collection)
+        # Strip keys the collection schema does not declare. Pre-Issue#44
+        # collections (Milvus 2.5 servers without AddCollectionField RPC)
+        # do not have source / source_id columns, so writing them would
+        # 422 the whole batch.
+        schema_fields = await self._collection_field_names(collection)
         entities: list[dict[str, Any]] = []
         for uid, vec, pay in zip(ids, vectors, payloads, strict=True):
             entity: dict[str, Any] = {
@@ -181,6 +219,10 @@ class MilvusVectorStore(VectorStore):
                     k: v for k, v in pay.items() if k not in _KNOWN_FIELDS
                 },
             }
+            if schema_fields:
+                entity = {
+                    k: v for k, v in entity.items() if k in schema_fields
+                }
             entities.append(entity)
 
         await asyncio.to_thread(
@@ -250,14 +292,23 @@ class MilvusVectorStore(VectorStore):
         filter_expr = _build_filter_expr(filters) if filters else ""
 
         t0 = time.perf_counter()
+        # Restrict output_fields to those the collection actually has —
+        # otherwise pre-Issue#44 collections raise on missing source / source_id.
+        all_output = ["tenant_id", "document_id", "content",
+                      "chunk_index", "content_type", "language",
+                      "source", "source_id", "extra"]
+        schema_fields = await self._collection_field_names(collection)
+        if schema_fields:
+            output_fields = [f for f in all_output if f in schema_fields]
+        else:
+            output_fields = all_output
+
         results = await asyncio.to_thread(
             self._client.search,
             collection_name=collection,
             data=[query_vector],
             limit=limit,
-            output_fields=["tenant_id", "document_id", "content",
-                           "chunk_index", "content_type", "language",
-                           "source", "source_id", "extra"],
+            output_fields=output_fields,
             filter=filter_expr or None,
         )
         elapsed_ms = int((time.perf_counter() - t0) * 1000)

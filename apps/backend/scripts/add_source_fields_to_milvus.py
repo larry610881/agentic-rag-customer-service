@@ -77,15 +77,25 @@ def _add_one_field(
         return "already exists, skip"
 
     try:
-        client.add_field(
+        # pymilvus 2.4+: add_collection_field (formerly add_field on the
+        # legacy Collection class). nullable=True + default_value lets
+        # existing rows backfill cleanly to the marker value.
+        client.add_collection_field(
             collection_name=collection,
             field_name=name,
             data_type=field_spec["data_type"],
             max_length=field_spec["max_length"],
+            nullable=True,
             default_value=field_spec["default_value"],
         )
     except Exception as e:
-        return f"add_field FAILED: {e}"
+        msg = str(e)
+        if "unknown method AddCollectionField" in msg or "UNIMPLEMENTED" in msg:
+            # Milvus server < 2.6 — server-side RPC missing. Pre-existing
+            # collections stay on the old schema; MilvusVectorStore.upsert
+            # tolerates the missing fields by stripping unknown keys.
+            return "server <2.6 (skip — runtime tolerated)"
+        return f"add_collection_field FAILED: {e}"
 
     # Index the new field — high-frequency filter target for dedup / DELETE
     # by-source / search filter.
