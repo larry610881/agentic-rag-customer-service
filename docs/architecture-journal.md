@@ -7,6 +7,64 @@
 
 ---
 
+## External Producer Integration — Source Tracking First-Class Field（Issue #44 Phase 1）
+
+**日期**：2026-05-04
+**涉及層級**：Backend Infrastructure + Application + Interfaces + Tests（跨 3 層 + Milvus schema migration script）
+**Commits**：本次提交（Phase 1 of 3）
+**Issue**：#44
+
+**Sprint 來源**：agentic-rag 走 multi-tenant SaaS 產品方向，第一個 external consumer 是公司內部 PMO 平台（project-platform repo）。Consumer 推 audit_log / meeting / decision 等紀錄進 RAG 後，原始資料一旦更新或刪除，需要連動清理 RAG 索引。本次 Phase 1 做基礎欄位 + DELETE /by-source 端點；後續 Phase 2 (Bulk Ingest with auto-dedup) 與 Phase 3 (Unified Search with metadata filter) 依賴此基礎。
+
+**主題**：**「強型別 schema 升級首類欄位」+「Filter DSL 從 == 擴充到 IN」+「INVERTED 索引選擇」**。Milvus 不像 PostgreSQL JSONB 可以隨手新增欄位 — `enable_dynamic_field=False` 是 strong-typed，加新 first-class field 必須 `release → add_field → create_index → load`。本次選擇升 first-class（而非塞 `extra` JSON）的關鍵 trade-off：source / source_id 是高頻 filter target（dedup, DELETE by-source, search filter），JSON path filter 比 INVERTED scalar index 慢約 10x；以「3 種高頻操作 × N collections × N 年壽命」估算，schema migration 一次性成本明顯划算。
+
+```mermaid
+graph TD
+    P["External Producer<br>(audit_log / meeting / decision)"] --> I["POST /documents<br>metadata: source + source_id"]
+    I --> C["MilvusVectorStore.upsert"]
+    C --> S["Milvus chunk row<br>(source, source_id, ...)"]
+    S --> F["INVERTED index<br>O(log n) filter"]
+    P --> D["Source record DELETE / UPDATE"]
+    D --> X["DELETE /by-source<br>{source, source_ids: [...]}"]
+    X --> U["DeleteDocumentsBySourceUseCase<br>+ ensure_kb_accessible"]
+    U --> V["VectorStore.delete<br>filters={tenant_id, source, source_id: list}"]
+    V --> W["_build_filter_expr<br>支援 IN operator"]
+    W --> R["tenant_id == X<br>and source == Y<br>and source_id in [...]"]
+```
+
+### 做得好
+
+1. **Schema migration script 完全冪等**：`add_field` 前先 `describe_collection` 檢查欄位是否已存在；若兩個欄位都已 present 直接 skip 整個 release/load 週期，避免不必要的 collection downtime。
+2. **填值策略區分新舊資料**：新 schema `default_value=""` 讓未帶 source 的內部上傳走預設；migration backfill `default_value="legacy"` 讓既有 chunks 標記可區分，未來想清舊資料時用 `source == "legacy"` 一條 filter 就能做到。
+3. **Filter DSL `IN` operator 與 sanitize 同步擴充**：`_build_filter_expr` 在分支 `isinstance(v, list)` 時對每個 element 仍走 `_sanitize_filter_value`，沒有出現「list 路徑漏 sanitize」的安全洞。10 個 unit test 把這個 contract 鎖住。
+4. **DELETE 路由順序顯式設計**：`/by-source` 必須宣告在 `/{doc_id}` 之前 — 否則 FastAPI 會把它當成 `doc_id="by-source"` 走錯路由。在程式註解中明確說明，避免未來重構時意外打破。
+5. **Tenant isolation 雙重防線**：use case 一進來先 `ensure_kb_accessible` 檢查 KB 歸屬（404 防枚舉），即使通過後仍把 `tenant_id` 加進 Milvus delete filter — KB 與 vector 兩道網都查，才不會因 admin 操作偏差跨租戶刪掉資料。
+
+### 潛在隱憂
+
+1. **Milvus `add_field` 在生產 collection 上的隱式 downtime**：`release → add_field → load` 約 3 秒，期間該 collection 不可查詢。對小型 KB OK，但若 collection 已有百萬 chunks，load 可能拉長到分鐘級。**建議**：dev 環境先實測 row_count 大的 collection 看 load 時間，再決定 prod 是否要避開尖峰。
+2. **`source` field max_length=64 可能不夠**：當前外部 producer 最長是 `"change_request"`（14 char）綽綽有餘，但若未來 producer 命名 hierarchical（`"audit/role/architect"`）會在某天炸 schema。**建議**：上線前再 review 一次，必要時改 128 — 反正 INVERTED index 對長度不敏感。
+3. **`source_id` 沒有跨 collection unique 約束**：兩個 KB 各自用相同 (source, source_id) 上傳同一筆內容 → DELETE /by-source 只刪指定 KB，另一個 KB 的副本留下來。**這是設計取捨**（tenant 自主管理 KB 邊界），但 producer 整合文件需明確標示「source_id 在 KB 範圍內 unique」。
+4. **Empty `source_ids` 拒絕用 `min_length=1`，但沒禁用 wildcard**：`source_ids=["*"]` 會被 sanitize 拒（`*` 不在 SAFE_VALUE_RE）— 沒有「整批 source 全清」的快捷路徑。如果 consumer 真的需要「清掉某個 source 全部」，要走 list_all_source_ids 再 batch delete。可接受，但要文件化。
+5. **`upsert` 內 `source / source_id` 預設空字串**：既有 ingestion pipeline (`process_document_use_case`) 完全不知道這兩個欄位，新文件全部以 `""` 填入。直到 Phase 2 `BulkIngest` 從 metadata 抽取，才會真正寫入 producer 值。**Phase 1 commit 是基礎，並非完整功能**，務必在 PR 描述中標明。
+
+### 延伸學習
+
+| 主題 | 一句話 |
+|------|-------|
+| **Milvus dynamic field vs strong-typed schema** | 為什麼 production multi-tenant 用 strong-typed？ — 因為 dynamic field 沒辦法建 INVERTED index，filter 永遠走 full scan。可深讀 Milvus 2.4 schema design 文件。 |
+| **Tombstone vs hard delete in vector DBs** | Milvus 的 delete 是 soft delete（標 tombstone），compaction 才會真正回收磁碟；多次 dedup 重 push 會累積 tombstone → 影響搜尋 latency。長期需要 compaction job 或 collection rebuild。 |
+| **Idempotent migration scripts** | DDL migration 與 application migration 哲學不同 — DDL 一致追求「可重複套用同結果」（IF NOT EXISTS、describe_collection guard），不要相信「我只跑一次」。 |
+| **Filter expression injection** | Milvus 的 filter expression 是字串 DSL，不像 SQL 有 parameterized query。本次 `_sanitize_filter_value` + `_SAFE_VALUE_RE` 是最後一道網，新增 filter 入口（不只是 source/source_id）必須走同一個過濾器。 |
+
+### 思考題
+
+> 如果 consumer 數量從 1 個（PMO）長到 10 個，每個 consumer 都會推自己的 source 類型（10 個不同字串），未來 metadata 欄位也會跟著膨脹（每個 consumer 各自關心 actor / ts / sensitivity / region / cost_center / ...）。**首類欄位 vs `extra` JSON 的決策邊界該擺哪？**
+>
+> 提示：思考「跨 consumer 共用 vs producer-specific」。共用的（source, source_id, tenant_id, document_id, content_type, language）值得首類；producer-specific（actor_role, region, cost_center）放 `extra` 即可，反正只有那個 consumer 自己會用 filter，跑慢一點還能忍。再進一步：如果某個 producer-specific 欄位變得跨 consumer 都用（例如 `sensitivity` 變所有人都關心），就升首類 — 但這是漸進的，不要一開始全升。
+
+---
+
 ## Bot-level RAG Retrieval Modes — Multi-Mode Retrieval + Playground 合流（Issue #43）
 
 **日期**：2026-04-30

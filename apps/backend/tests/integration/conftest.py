@@ -294,6 +294,16 @@ class APIHelper:
     def delete(self, url, **kwargs):
         return self._request("delete", url, **kwargs)
 
+    def request(self, method: str, url: str, **kwargs):
+        """Generic request — needed for DELETE-with-body (httpx's
+        ``client.delete`` does not accept a ``json`` kwarg)."""
+        async def _do():
+            transport = ASGITransport(app=self._app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                return await c.request(method, url, **kwargs)
+
+        return _run(_do())
+
 
 @pytest.fixture
 def client(app) -> APIHelper:

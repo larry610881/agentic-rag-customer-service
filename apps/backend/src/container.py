@@ -118,6 +118,9 @@ from src.application.knowledge.create_knowledge_base_use_case import (
 from src.application.knowledge.delete_document_use_case import (
     DeleteDocumentUseCase,
 )
+from src.application.knowledge.delete_documents_by_source_use_case import (
+    DeleteDocumentsBySourceUseCase,
+)
 from src.application.knowledge.delete_knowledge_base_use_case import (
     DeleteKnowledgeBaseUseCase,
 )
@@ -1281,6 +1284,14 @@ class Container(containers.DeclarativeContainer):
         document_repository=document_repository,
         vector_store=vector_store,
         document_file_storage=document_file_storage_service,
+    )
+
+    # Issue #44 Phase 1: External producer integration — delete RAG chunks
+    # cascaded from upstream source record deletion.
+    delete_documents_by_source_use_case = providers.Factory(
+        DeleteDocumentsBySourceUseCase,
+        kb_repo=kb_repository,
+        vector_store=vector_store,
     )
 
     upload_document_use_case = providers.Factory(

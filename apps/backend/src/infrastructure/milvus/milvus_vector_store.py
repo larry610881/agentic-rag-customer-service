@@ -24,6 +24,10 @@ logger = get_logger(__name__)
 _KNOWN_FIELDS = frozenset({
     "tenant_id", "document_id", "content", "chunk_index",
     "content_type", "language",
+    # External producer integration: track which source produced the chunk so
+    # we can dedup on re-ingest and cascade-delete when the source record is
+    # removed.
+    "source", "source_id",
 })
 
 _SAFE_VALUE_RE = re.compile(r'^[a-zA-Z0-9\-_.:/ ]+$')
@@ -38,10 +42,21 @@ def _sanitize_filter_value(value: Any) -> str:
 
 
 def _build_filter_expr(filters: dict[str, Any]) -> str:
-    """Convert {"key": "value", ...} dict to Milvus filter expression."""
+    """Convert filter dict to Milvus filter expression.
+
+    - Scalar value → ``field == "value"``
+    - List value   → ``field in ["v1", "v2", ...]``  (Milvus IN operator)
+
+    Used for tenant_id / document_id / source / source_id and any future
+    first-class fields. Values are sanitized to prevent expression injection.
+    """
     parts = []
     for k, v in filters.items():
-        parts.append(f'{k} == {_sanitize_filter_value(v)}')
+        if isinstance(v, list):
+            sanitized = [_sanitize_filter_value(x) for x in v]
+            parts.append(f'{k} in [{", ".join(sanitized)}]')
+        else:
+            parts.append(f'{k} == {_sanitize_filter_value(v)}')
     return " and ".join(parts)
 
 
@@ -56,6 +71,21 @@ def _build_schema(vector_size: int) -> CollectionSchema:
         FieldSchema(name="chunk_index", dtype=DataType.INT64),
         FieldSchema(name="content_type", dtype=DataType.VARCHAR, max_length=64),
         FieldSchema(name="language", dtype=DataType.VARCHAR, max_length=16),
+        # External producer integration (default "" so legacy rows backfilled
+        # via add_field stay queryable but don't accidentally match real
+        # producer source filters).
+        FieldSchema(
+            name="source",
+            dtype=DataType.VARCHAR,
+            max_length=64,
+            default_value="",
+        ),
+        FieldSchema(
+            name="source_id",
+            dtype=DataType.VARCHAR,
+            max_length=128,
+            default_value="",
+        ),
         FieldSchema(name="extra", dtype=DataType.JSON),
     ]
     return CollectionSchema(fields=fields, enable_dynamic_field=False)
@@ -100,6 +130,15 @@ class MilvusVectorStore(VectorStore):
             index_params.add_index(
                 field_name="document_id", index_type="INVERTED"
             )
+            # External producer integration: source / source_id are high-frequency
+            # filter targets (dedup on re-ingest, DELETE /by-source, search
+            # filter). INVERTED index keeps them O(log n) instead of full scan.
+            index_params.add_index(
+                field_name="source", index_type="INVERTED"
+            )
+            index_params.add_index(
+                field_name="source_id", index_type="INVERTED"
+            )
 
             await asyncio.to_thread(
                 self._client.create_collection,
@@ -136,6 +175,8 @@ class MilvusVectorStore(VectorStore):
                 "chunk_index": pay.get("chunk_index", 0),
                 "content_type": pay.get("content_type", ""),
                 "language": pay.get("language", ""),
+                "source": pay.get("source", ""),
+                "source_id": pay.get("source_id", ""),
                 "extra": {
                     k: v for k, v in pay.items() if k not in _KNOWN_FIELDS
                 },
@@ -215,7 +256,8 @@ class MilvusVectorStore(VectorStore):
             data=[query_vector],
             limit=limit,
             output_fields=["tenant_id", "document_id", "content",
-                           "chunk_index", "content_type", "language", "extra"],
+                           "chunk_index", "content_type", "language",
+                           "source", "source_id", "extra"],
             filter=filter_expr or None,
         )
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
@@ -241,6 +283,8 @@ class MilvusVectorStore(VectorStore):
                 "chunk_index": entity.get("chunk_index", 0),
                 "content_type": entity.get("content_type", ""),
                 "language": entity.get("language", ""),
+                "source": entity.get("source", ""),
+                "source_id": entity.get("source_id", ""),
             }
             extra = entity.get("extra", {})
             if extra:

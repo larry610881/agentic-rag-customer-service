@@ -1,4 +1,4 @@
-import asyncio
+import asyncio  # noqa: F401  # tests patch document_router.asyncio.create_task
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
@@ -11,10 +11,14 @@ from fastapi import (
     status,
 )
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from src.application.knowledge.delete_document_use_case import (
     DeleteDocumentUseCase,
+)
+from src.application.knowledge.delete_documents_by_source_use_case import (
+    DeleteDocumentsBySourceCommand,
+    DeleteDocumentsBySourceUseCase,
 )
 from src.application.knowledge.get_document_chunks_use_case import (
     GetDocumentChunksUseCase,
@@ -147,7 +151,8 @@ async def list_documents(
 ) -> PaginatedResponse[DocumentResponse]:
     from math import ceil
 
-    from sqlalchemy import func as sa_func, select
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select
 
     from src.infrastructure.db.engine import async_session_factory
     from src.infrastructure.db.models.document_model import DocumentModel
@@ -234,10 +239,11 @@ async def list_children(
     tenant: CurrentTenant = Depends(get_current_tenant),
 ) -> list[DocumentResponse]:
     """List child documents (pages) of a parent document."""
+    from sqlalchemy import select
+
     from src.infrastructure.db.engine import async_session_factory
     from src.infrastructure.db.models.document_model import DocumentModel
     from src.infrastructure.db.models.processing_task_model import ProcessingTaskModel
-    from sqlalchemy import select
 
     async with async_session_factory() as session:
         stmt = (
@@ -258,8 +264,8 @@ async def list_children(
             for row in (await session.execute(p_stmt)).all():
                 progress_map[row[0]] = row[1]
 
-    from src.domain.knowledge.value_objects import DocumentId
     from src.domain.knowledge.entity import Document
+    from src.domain.knowledge.value_objects import DocumentId
 
     result = []
     for r in rows:
@@ -314,6 +320,47 @@ async def get_quality_stats(
         )
         for s in stats
     ]
+
+
+class DeleteBySourceRequest(BaseModel):
+    """Issue #44: cascade-delete RAG chunks linked to upstream producer records."""
+    source: str = Field(..., min_length=1, max_length=64)
+    source_ids: list[str] = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("source_ids")
+    @classmethod
+    def _ids_nonempty_each(cls, v: list[str]) -> list[str]:
+        if any(not s for s in v):
+            raise ValueError("source_ids entries must be non-empty")
+        return v
+
+
+# IMPORTANT: this route must be declared BEFORE the catch-all DELETE
+# /{doc_id} route — otherwise FastAPI routes "by-source" to delete_document
+# with doc_id="by-source".
+@router.delete("/by-source", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def delete_documents_by_source(
+    kb_id: str,
+    body: DeleteBySourceRequest,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: DeleteDocumentsBySourceUseCase = Depends(
+        Provide[Container.delete_documents_by_source_use_case]
+    ),
+) -> None:
+    try:
+        await use_case.execute(
+            DeleteDocumentsBySourceCommand(
+                kb_id=kb_id,
+                tenant_id=tenant.tenant_id,
+                source=body.source,
+                source_ids=body.source_ids,
+            )
+        )
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
