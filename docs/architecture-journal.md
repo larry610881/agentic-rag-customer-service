@@ -7,6 +7,72 @@
 
 ---
 
+## External Producer Integration — Bulk Ingest + Unified Search + Milvus 2.5/2.6 Tolerance（Issue #44 Phase 2 + 3）
+
+**日期**：2026-05-04
+**涉及層級**：Backend Domain + Application + Infrastructure + Interfaces + DB migration + Tests（跨 4 層 + DB schema + 兩個新 endpoint）
+**Commits**：`c44f9f5`（Phase 2+3）、`909f405`（Milvus tolerance）
+**Issue**：#44
+
+**Sprint 來源**：Phase 1 已交付 Milvus first-class source/source_id + DELETE /by-source 端點。Phase 2 把它接到「批次 ingest」入口，Phase 3 把它接到「跨 KB 統一 search」入口。完成後 agentic-rag 對外有完整三段式 producer 整合 surface（push / search / cascade-delete）可賣。
+
+**主題**：**「跨 4 層欄位流動 + 第三方 producer 整合 surface 設計 + Milvus server/client 版本不對齊的 graceful degrade」**。第一個是 DDD 議題 — `source` / `source_id` 從 HTTP request body → UploadDocumentCommand → Document entity → DocumentModel ORM → DB 持久化 → process_document_use_case 讀回 → Milvus chunk payload，整條鏈路必須一致。第二個是 SaaS 設計議題 — bulk ingest 必須支援 partial failure（一筆爛資料不能整批掛），unified search 必須跨多 KB 一次回傳（producer round-trip 太貴）。第三個是基建議題 — 寫 schema migration 才發現 server/client 版本不對齊，與其卡住凍版時程不如把 runtime 做成「對未知欄位寬容」的策略。
+
+```mermaid
+graph TD
+    subgraph "Phase 2: Bulk Ingest"
+        P["External Producer<br>(PMO 平台)"] --> B["POST /documents/bulk<br>≤100 items"]
+        B --> BU["BulkIngestUseCase<br>per-item dedup + upload"]
+        BU --> D{"metadata 帶<br>source+source_id?"}
+        D -->|"yes"| DEL["DELETE /by-source<br>(Phase 1 endpoint)"]
+        D -->|"no"| SKIP["skip dedup"]
+        DEL --> UPL["UploadDocumentUseCase<br>+ source/source_id"]
+        SKIP --> UPL
+        UPL --> ENQ["arq enqueue<br>process_document"]
+        ENQ --> CHUNK["chunk Milvus payload<br>(source, source_id, ...)"]
+    end
+    subgraph "Phase 3: Unified Search"
+        Q["External Consumer"] --> S["POST /rag/search"]
+        S --> U["UnifiedSearchUseCase<br>+ ensure_kb_accessible"]
+        U --> QR["QueryRAGUseCase<br>multi-mode + multi-KB"]
+        QR --> SF["filters: tenant_id<br>+ extra_filters (source...)"]
+        SF --> RES["per-result kb_id<br>+ chunk metadata"]
+    end
+```
+
+### 做得好
+
+1. **重用既有 `QueryRAGUseCase` 而非重寫**：Phase 3 是 thin wrapper，加了 `extra_filters` 欄位後 80 行的 `UnifiedSearchUseCase` 就完成。multi-mode / multi-KB / rerank 邏輯在 Issue #43 已成熟 — 一旦 bot 端的 retrieve 有 bug 修了，unified search 自動跟著修，零 drift 風險。
+2. **Per-item failure 不擋 batch**：`BulkIngestUseCase._ingest_one` 每一筆獨立 try/except，回傳 `{indexed, failed, results: [...]}` 結構。1000 筆 backfill 中有 3 筆 empty content → 997 indexed + 3 failed，consumer 可以單獨重推那 3 筆。
+3. **Tenant scope 不可被 caller 加寬**：`extra_filters` 在 `retrieve()` 內 explicit 把 `tenant_id` key 拔掉再 merge。即使 caller 傳 `extra_filters={"tenant_id": "T999"}` 也不會生效 — 雙重防線，符合「signature 越白名單越好」的 SaaS 安全原則。
+4. **Migration 走 5 步流程，兩環境都套**：DB 改動先寫 SQL → 預覽 → 執行 → 驗證 → INSERT INTO _applied_migrations，local-docker + dev-vm 都跑完。Cloud Run 部署後 ORM 對 `documents.source` 不會炸 NULL（NOT NULL DEFAULT '' backfill 既有 21+12 rows）。
+5. **Milvus 2.5/2.6 落差用 runtime 寬容化解，而非硬升 server**：偵測到 `AddCollectionField` UNIMPLEMENTED 後不急著升 Milvus container（升級需要 release notes 比對 + 跑 e2e 驗 + 預備 rollback），改在 `MilvusVectorStore.upsert` lazy describe collection schema 並過濾未宣告 entity keys。新 collection 拿完整 schema，舊 collection 不影響 ingest。「對未知欄位寬容、對已知欄位嚴格」正是 strong-typed schema 在多版本共存時的求生策略。
+
+### 潛在隱憂
+
+1. **Milvus 2.5.6 上的 2 個既有 KB 永遠拿不到 source 標記**：runtime tolerance 只是讓 ingest 不噴錯，舊 collection 內所有 chunks 的 source/source_id 永遠空白。如果 producer 之後想「找回所有以前 push 進去的 audit_log」就找不到。**緩解**：升 Milvus 2.6 + 跑 backfill script + 對既有 collection 補上 default_value="legacy"。但即使 backfill 完，舊 row 也只能標 "legacy" 不能還原真實 source 值（資訊根本沒記）。
+2. **Bulk dedup 走 N 次獨立 DELETE /by-source（單元 RPC）**：100 筆 batch + 100 個 source_ids = 100 次 Milvus filter delete。Milvus 對 IN clause 支援得很好，理論上可以一次 batch（`source_id IN [a,b,c,...]`）打掉所有同 source 的 chunks。當前實作為了 use case 對齊（reuse Phase 1 endpoint）犧牲了批次優化。**未來**：BulkIngestUseCase 可以先收集所有 (source, source_id) pairs，按 source 分組，每組打一次 DELETE /by-source IN list — N 次 → S 次（S = source 種類數，通常 ≪ N）。
+3. **`extra_filters` 沒過 Pydantic 嚴格驗證**：UnifiedSearchRequest 接受 `dict[str, Any]`，passes through 到 Milvus filter expression。雖然 `_sanitize_filter_value` 是最後一道網（`_SAFE_VALUE_RE`），但若 caller 傳 `{"non_existent_field": "x"}`，Milvus 直接 422 整個 search 而非回 0 results。**緩解**：在 router 層白名單一次（只接受 source / source_id / document_id 等已知 first-class 欄位）。
+4. **Source VO 沒有 source / source_id 欄位**：Phase 3 response 的 `source: ""` / `source_id: ""` 是空字串占位 — 因為 `Source` VO 沒收這兩個欄位。consumer 從 unified search 拿到 chunk_id + document_id 還要另外 query DB 才知道 source 是什麼。**緩解**：下一輪 PR 把 Source VO 加 source / source_id（default ""），Phase 3 response 自然填上。屬於 nice-to-have，不擋上線。
+5. **Cloud Run 部署後 worker 的 process_document_use_case 仍在跑舊版**：commit pushed 後 Cloud Run rebuild API 約 5 分鐘；worker 走獨立 image 部署（GCP VM + systemd），需要手動 `git pull && systemctl restart agentic-rag-worker` 才會 pick up 新 source/source_id propagation 邏輯。新 ingest 經 worker 執行才會把 source 寫進 Milvus payload。**緩解**：部署 checklist 加 worker restart 步驟。
+
+### 延伸學習
+
+| 主題 | 一句話 |
+|------|-------|
+| **Strong-typed schema vs dynamic field 在多版本世界的取捨** | strong-typed 在版本對齊時是 winner（INVERTED index、filter 效能），但對齊不上時只能 graceful degrade — 學會「lazy describe + 寬容 strip」這套 pattern 對所有 schema-pinned 系統都適用。 |
+| **Wrapper use case 的價值** | UnifiedSearchUseCase 是教科書級「reuse 既有 use case + 加 thin adapter」的範例 — 對比 Phase 1 重新寫 DeleteDocumentsBySourceUseCase（沒 retrieve 邏輯可重用），Phase 3 全 80 行就完成。回頭看 Phase 1 的 use case 寫了 70 行 — 證明「能 wrap 不要重寫」是值得堅持的紀律。 |
+| **Partial response 設計** | `{indexed, failed, results: [...]}` 的 response shape 來自 ElasticSearch bulk API。為什麼是 `indexed` 不是 `success`？因為 ingest 跟 query 不一樣 — 「accepted 但 process 失敗」算什麼？這個 response 結構讓 consumer 可以分階段重試（accepted 的不用重 push，failed 的需要）。 |
+| **Migration phase gate 的設計** | `migration-workflow.md` 的「local-docker + dev-vm 都套，且 _applied_migrations 紀錄」是強制機制 — Stop hook 抓到沒套就 ok: false。今天就被 hook 攔下來才完成 dev-vm，否則 push 後 Cloud Run 會 runtime 500（BUG-01 重演）。「自動化 governance > 文件化承諾」。 |
+
+### 思考題
+
+> 假設下個月真的接了 5 個外部 producer，每個 producer 一週推 1 萬筆 records，總計每月 200 萬筆。當前 BulkIngestUseCase 為了重用 Phase 1 endpoint，**每筆 dedup 走 1 次 Milvus DELETE filter expression**。Milvus IN operator 一次可以接 1000 個 source_ids — **怎樣重構 BulkIngestUseCase 才能在不犧牲冪等性的前提下，把 dedup RPC 從 200 萬次/月 壓到 < 10 萬次/月？**
+>
+> 提示：思考「同 batch 內 source 種類數通常很少」。如果 100 筆 audit_log 都是 `source="audit_log"` 但 source_id 不同，就可以一次 `source == "audit_log" and source_id IN [100 個值]` 解決，從 100 次降到 1 次。如果 100 筆混合 3 個 source（audit_log / meeting / decision），則 3 次。再進一步：跨 batch 的 dedup batching 需要短暫 buffer（10 秒？）— consistency vs latency 的取捨怎麼選？
+
+---
+
 ## External Producer Integration — Source Tracking First-Class Field（Issue #44 Phase 1）
 
 **日期**：2026-05-04
