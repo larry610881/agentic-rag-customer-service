@@ -115,6 +115,7 @@ from src.application.knowledge.classify_kb_use_case import ClassifyKbUseCase
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
 )
+from src.application.knowledge.bulk_ingest_use_case import BulkIngestUseCase
 from src.application.knowledge.delete_document_use_case import (
     DeleteDocumentUseCase,
 )
@@ -1300,6 +1301,13 @@ class Container(containers.DeclarativeContainer):
         document_repository=document_repository,
         processing_task_repository=processing_task_repository,
         document_file_storage=document_file_storage_service,
+    )
+
+    # Issue #44 Phase 2: External producer batch upload (≤100 items per call).
+    bulk_ingest_use_case = providers.Factory(
+        BulkIngestUseCase,
+        upload_use_case=upload_document_use_case,
+        delete_by_source_use_case=delete_documents_by_source_use_case,
     )
 
     # S-Token-Gov.2 + Tier 1 T1.2: EnsureLedger 注入計算 carryover 需要的 repos。

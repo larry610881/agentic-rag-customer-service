@@ -427,6 +427,10 @@ class ProcessDocumentUseCase:
             # Upsert vectors with tenant_id in payload
             t0 = time.perf_counter()
             chunk_ids = [c.id.value for c in chunks]
+            # Issue #44: propagate document.source / source_id to every chunk
+            # payload so DELETE /by-source filter expressions can find them.
+            doc_source = getattr(document, "source", "") or ""
+            doc_source_id = getattr(document, "source_id", "") or ""
             payloads = [
                 {
                     "tenant_id": document.tenant_id,
@@ -435,10 +439,12 @@ class ProcessDocumentUseCase:
                     "chunk_index": c.chunk_index,
                     "content_type": document.content_type,
                     "language": language,
+                    "source": doc_source,
+                    "source_id": doc_source_id,
                     **{
                         k: v
                         for k, v in c.metadata.items()
-                        if k not in ("document_id", "tenant_id")
+                        if k not in ("document_id", "tenant_id", "source", "source_id")
                     },
                 }
                 for c in chunks

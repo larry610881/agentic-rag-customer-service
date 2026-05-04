@@ -13,6 +13,12 @@ from fastapi import (
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 
+from src.application.knowledge.bulk_ingest_use_case import (
+    MAX_BULK_DOCUMENTS,
+    BulkIngestCommand,
+    BulkIngestItem,
+    BulkIngestUseCase,
+)
 from src.application.knowledge.delete_document_use_case import (
     DeleteDocumentUseCase,
 )
@@ -335,6 +341,34 @@ class DeleteBySourceRequest(BaseModel):
         return v
 
 
+# Issue #44 Phase 2 — bulk text ingest from external producers.
+
+class BulkIngestDocumentBody(BaseModel):
+    content: str
+    filename: str = Field(..., min_length=1, max_length=500)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class BulkIngestRequest(BaseModel):
+    documents: list[BulkIngestDocumentBody] = Field(
+        ..., min_length=1, max_length=MAX_BULK_DOCUMENTS
+    )
+
+
+class BulkIngestResultBody(BaseModel):
+    filename: str
+    status: str  # "accepted" | "failed"
+    document_id: str | None = None
+    task_id: str | None = None
+    error: str | None = None
+
+
+class BulkIngestResponse(BaseModel):
+    indexed: int
+    failed: int
+    results: list[BulkIngestResultBody]
+
+
 # IMPORTANT: this route must be declared BEFORE the catch-all DELETE
 # /{doc_id} route — otherwise FastAPI routes "by-source" to delete_document
 # with doc_id="by-source".
@@ -361,6 +395,51 @@ async def delete_documents_by_source(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from None
+
+
+@router.post(
+    "/bulk",
+    response_model=BulkIngestResponse,
+    status_code=status.HTTP_200_OK,
+)
+@inject
+async def bulk_ingest_documents(
+    kb_id: str,
+    body: BulkIngestRequest,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: BulkIngestUseCase = Depends(
+        Provide[Container.bulk_ingest_use_case]
+    ),
+) -> BulkIngestResponse:
+    items = [
+        BulkIngestItem(
+            content=d.content,
+            filename=d.filename,
+            metadata=d.metadata,
+        )
+        for d in body.documents
+    ]
+    result = await use_case.execute(
+        BulkIngestCommand(
+            kb_id=kb_id,
+            tenant_id=tenant.tenant_id,
+            documents=items,
+        )
+    )
+    return BulkIngestResponse(
+        indexed=result.indexed,
+        failed=result.failed,
+        results=[
+            BulkIngestResultBody(
+                filename=r.filename,
+                status=r.status,
+                document_id=r.document_id,
+                task_id=r.task_id,
+                error=r.error,
+            )
+            for r in result.results
+        ],
+    )
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -50,6 +50,15 @@ class DocumentModel(Base):
     quality_issues: Mapped[str] = mapped_column(
         Text, nullable=False, default=""
     )
+    # Issue #44: External producer reference. Populated by bulk ingest from
+    # incoming metadata; empty string for documents uploaded via the
+    # interactive single-file UI.
+    source: Mapped[str] = mapped_column(
+        String(64), nullable=False, default=""
+    )
+    source_id: Mapped[str] = mapped_column(
+        String(128), nullable=False, default=""
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,
@@ -66,4 +75,7 @@ class DocumentModel(Base):
         Index("ix_documents_kb_id", "kb_id"),
         Index("ix_documents_tenant_id", "tenant_id"),
         Index("ix_documents_parent_id", "parent_id"),
+        # Issue #44: bulk ingest dedup walks (kb_id, source, source_id) when
+        # the upstream producer re-pushes the same source record.
+        Index("ix_documents_kb_source", "kb_id", "source", "source_id"),
     )

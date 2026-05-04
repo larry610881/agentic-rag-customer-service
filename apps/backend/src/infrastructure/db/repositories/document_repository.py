@@ -39,6 +39,8 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             quality_issues=(
                 model.quality_issues.split(",") if model.quality_issues else []
             ),
+            source=model.source or "",
+            source_id=model.source_id or "",
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -73,6 +75,8 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
                 parent_id=document.parent_id,
                 page_number=document.page_number,
                 chunk_count=document.chunk_count,
+                source=document.source or "",
+                source_id=document.source_id or "",
                 created_at=document.created_at,
                 updated_at=document.updated_at,
             )

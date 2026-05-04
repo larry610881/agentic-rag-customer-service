@@ -36,6 +36,10 @@ class UploadDocumentCommand:
     filename: str
     content_type: str
     raw_content: bytes
+    # Issue #44: optional external producer reference. Bulk ingest sets
+    # these from incoming metadata; UI single-file uploads leave them empty.
+    source: str = ""
+    source_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -94,6 +98,8 @@ class UploadDocumentUseCase:
             content="",
             raw_content=command.raw_content,
             status="pending",
+            source=command.source,
+            source_id=command.source_id,
         )
         await self._doc_repo.save(document)
 

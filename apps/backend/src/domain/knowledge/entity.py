@@ -48,6 +48,12 @@ class Document:
     max_chunk_length: int = 0
     quality_score: float = 0.0
     quality_issues: list[str] = field(default_factory=list)
+    # Issue #44: External producer reference. Empty string for documents
+    # uploaded via the single-file UI; populated by bulk ingest from the
+    # incoming metadata so process_document_use_case can stamp Milvus
+    # chunks with these values for later DELETE /by-source dedup.
+    source: str = ""
+    source_id: str = ""
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
