@@ -270,10 +270,9 @@ class BotResponse(BaseModel):
     line_show_sources: bool
     created_at: str
     updated_at: str
-    warm_up_status: str | None = None  # "ready" | "skipped" | None
 
 
-def _to_response(bot, warm_up_status: str | None = None) -> BotResponse:
+def _to_response(bot) -> BotResponse:
     return BotResponse(
         id=bot.id.value,
         short_code=bot.short_code.value,
@@ -366,7 +365,6 @@ def _to_response(bot, warm_up_status: str | None = None) -> BotResponse:
         line_show_sources=bot.line_show_sources,
         created_at=bot.created_at.isoformat(),
         updated_at=bot.updated_at.isoformat(),
-        warm_up_status=warm_up_status,
     )
 
 
@@ -574,13 +572,13 @@ async def update_bot(
             ) from exc
     command = _build_update_command(bot_id, body)
     try:
-        bot, warm_up_status = await use_case.execute(command)
+        bot = await use_case.execute(command)
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=e.message,
         ) from None
-    return _to_response(bot, warm_up_status)
+    return _to_response(bot)
 
 
 @router.delete("/{bot_id}", status_code=status.HTTP_204_NO_CONTENT)

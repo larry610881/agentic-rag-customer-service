@@ -501,7 +501,6 @@ from src.infrastructure.llm.dynamic_llm_factory import (
     DynamicLLMServiceProxy,
 )
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
-from src.infrastructure.llm.ollama_warm_up import OllamaWarmUpService
 from src.infrastructure.logging.db_error_reporter import DBErrorReporter
 from src.infrastructure.mcp.cached_tool_loader import CachedMCPToolLoader
 from src.infrastructure.memory.llm_memory_extraction_service import (
@@ -598,11 +597,6 @@ class Container(containers.DeclarativeContainer):
     )
 
     config = providers.Singleton(Settings)
-
-    ollama_warm_up = providers.Singleton(
-        OllamaWarmUpService,
-        base_url=providers.Callable(lambda cfg: cfg.ollama_base_url, config),
-    )
 
     # --- Infrastructure ---
 
@@ -1763,7 +1757,6 @@ class Container(containers.DeclarativeContainer):
         bot_repository=bot_repository,
         cache_service=cache_service,
         encryption_service=encryption_service,
-        ollama_warm_up=ollama_warm_up,
     )
 
     delete_bot_use_case = providers.Factory(

@@ -94,8 +94,7 @@ def existing_bot(mock_bot_repo):
 )
 def update_model(context):
     uc = UpdateBotUseCase(bot_repository=context["repo"])
-    # UpdateBotUseCase.execute() 回傳 (Bot, warm_up_status)；本測試只驗 Bot 欄位
-    bot, _warm_up_status = _run(
+    bot = _run(
         uc.execute(
             UpdateBotCommand(
                 bot_id="bot-1",
