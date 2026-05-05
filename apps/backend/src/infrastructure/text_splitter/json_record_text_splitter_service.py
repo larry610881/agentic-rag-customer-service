@@ -47,12 +47,24 @@ def _flatten_nested_records(records: list[dict]) -> list[dict] | None:
 
 
 class JsonRecordTextSplitterService(TextSplitterService):
-    """Record-based JSON splitter that preserves object integrity.
+    """Record-based JSON splitter — 1 record = 1 chunk (no merging).
 
-    Splits JSON arrays of objects by record boundaries, keeping each
-    record intact. Multiple small records are grouped into one chunk
-    up to ``chunk_size``. Falls back to a recursive splitter for
-    non-array JSON.
+    JSON 結構天然有 record 邊界，每筆 record 通常本身就是語意單位
+    （Q&A 一對 / Order 一筆 / Product 一個）。直接以 record 邊界切，
+    不看 chunk_size 合併小記錄 — 因為合併會稀釋 embedding 信號（多
+    個語意主題擠在一個 chunk，搜尋相似度被無關 record 的詞稀釋）。
+
+    Trade-off：產出的 chunks 可能比較碎（小 record 一個 chunk 才幾十
+    字），但 embedding 精準度顯著提升。對 FAQ / Q&A / 商品目錄等場景
+    這是正確的 semantic boundary。
+
+    超長 record（例如單筆 5K+ chars）目前仍當作一個 chunk —
+    text-embedding-3-large 上限 8K tokens，實際 FAQ / Q&A 場景幾乎
+    不會超過。若未來真的有過長 record，再加 fallback sub-split。
+
+    ``chunk_size`` 參數保留是為了 backward-compat container wiring，
+    但不再用於 record merging 決策（記為僅作 future use 例如 sub-split
+    超長 record 的閾值，目前未啟用）。
     """
 
     def __init__(
@@ -80,63 +92,19 @@ class JsonRecordTextSplitterService(TextSplitterService):
             return self._do_fallback(text, document_id, tenant_id, content_type)
 
         chunks: list[Chunk] = []
-        buffer: list[str] = []
-        buffer_size = 0
-        record_start = 0
-
         for i, record in enumerate(records):
             record_text = self._format_record(record)
-            record_len = len(record_text)
-
-            # Single record exceeds chunk_size → emit as standalone chunk
-            if not buffer and record_len > self._chunk_size:
-                chunks.append(
-                    self._make_chunk(
-                        record_text,
-                        document_id,
-                        tenant_id,
-                        content_type,
-                        chunk_index=len(chunks),
-                        record_start=i,
-                        record_end=i,
-                    )
-                )
-                record_start = i + 1
-                continue
-
-            # Adding this record would exceed chunk_size → flush
-            if buffer and buffer_size + len("\n\n") + record_len > self._chunk_size:
-                chunks.append(
-                    self._make_chunk(
-                        "\n\n".join(buffer),
-                        document_id,
-                        tenant_id,
-                        content_type,
-                        chunk_index=len(chunks),
-                        record_start=record_start,
-                        record_end=i - 1,
-                    )
-                )
-                buffer = []
-                buffer_size = 0
-                record_start = i
-
-            buffer.append(record_text)
-            buffer_size += (len("\n\n") if buffer_size > 0 else 0) + record_len
-
-        if buffer:
             chunks.append(
                 self._make_chunk(
-                    "\n\n".join(buffer),
+                    record_text,
                     document_id,
                     tenant_id,
                     content_type,
-                    chunk_index=len(chunks),
-                    record_start=record_start,
-                    record_end=len(records) - 1,
+                    chunk_index=i,
+                    record_start=i,
+                    record_end=i,
                 )
             )
-
         return chunks
 
     @staticmethod
