@@ -7,6 +7,84 @@
 
 ---
 
+## Outbox Pattern Phase A — Bounded Context + Lease-based Drain Worker
+
+**日期**：2026-05-05
+**涉及層級**：Backend Domain（新 bounded context outbox/）+ Application + Infrastructure（Milvus + DB + handler registry）+ Worker cron + DB migration（5 層 + DDL）
+**Commits**：`1352a8c`
+**Plan**：`~/.claude/plans/snuggly-jingling-aho.md` 附錄整合 6 phase plan
+
+**Sprint 來源**：carrefour 觀察到「刪除的 DM 還會被搜出來」根因是 PG ↔ Milvus 雙寫不原子（DeleteDocumentUseCase 已修 cascade，但 Milvus delete swallow exception；DeleteKnowledgeBaseUseCase 順序倒：Milvus 先刪 → PG 後刪，PG 失敗時資料已不一致）。Phase A 先把基礎建設與 drain worker 接好但**不接任何業務 use case**，可獨立 ship 不影響現有功能；Phase B-D 才逐步把 4 個 DELETE use case 切過來。
+
+**主題**：**「Eventual Consistency via Outbox + Lease-based Queue + Idempotency 設計」**。三個正交議題：
+1. **跨系統一致性**：PG transaction 內 INSERT outbox row + 業務 SQL 同 commit → atomic 保證業務操作與「待對外部系統套用」狀態同步落地。Drain worker 失敗只是延後，不會讓業務 SQL 與外部系統永遠不一致。
+2. **Lease-based queue**：用 PostgreSQL `SELECT FOR UPDATE SKIP LOCKED` 做 worker-side 撈取，多 worker 同時跑各撈不同 row 不互相阻塞；同一 row 不會被兩個 worker 同時撈；crash 的 worker 留下 lease 由下一輪 batch 透過 `locked_at < NOW() - 5min` 回收。比 arq retry / Redis lock 簡單且原生交給 PG 鎖管。
+3. **Handler idempotency**：drain 重試時不能 double-effect。Milvus filter delete + drop_collection 天然冪等（重複呼叫 = no-op），不需額外 dedup 邏輯。Phase C 加 doc-id reuse guard（`doc_watermark_ts` 對比 doc.created_at）只是補強，不是 idempotency 替代品。
+
+```mermaid
+graph TD
+    subgraph "Publish (PG transaction)"
+        UC["DeleteKB / DeleteDoc<br>UseCase"] --> ATOMIC["async with atomic(session):"]
+        ATOMIC --> OUT["INSERT outbox_events<br>(status=pending)"]
+        ATOMIC --> SQL["業務 DELETE SQL<br>(cascade chunks/docs)"]
+        ATOMIC --> COMMIT["commit"]
+    end
+
+    subgraph "Drain (cron every minute)"
+        CRON["drain_outbox_task"] --> CLAIM["claim_batch<br>FOR UPDATE SKIP LOCKED<br>+ lease 過期回收"]
+        CLAIM --> DISP{"event_type"}
+        DISP -->|"vector.delete"| H1["MilvusVectorStore.delete<br>raise_on_error=True"]
+        DISP -->|"vector.drop_collection"| H2["MilvusVectorStore.drop_collection"]
+        DISP -->|"unknown"| DEAD1["status=dead<br>(避免無限重試)"]
+        H1 --> OK{"success?"}
+        H2 --> OK
+        OK -->|"yes"| DONE["mark_done"]
+        OK -->|"no"| RETRY["mark_failed<br>backoff min(2^attempts*30s, 1h)"]
+        RETRY --> ATTEMPTS{"attempts >= max?"}
+        ATTEMPTS -->|"yes"| DEAD2["status=dead → DLQ"]
+        ATTEMPTS -->|"no"| PEND["status=pending<br>next_attempt_at = NOW + backoff"]
+    end
+
+    COMMIT -.等下一輪 cron.-> CRON
+```
+
+#### 做得好的地方
+- **範圍縮減決策有量化依據**：UPSERT 不納入因為 payload 含 3072 floats × N chunks 太肥（單 event 1.2 MB vs DELETE event < 1 KB），且 chunks 表沒 embedding column 改造成本高、UPSERT 失敗有 doc.status=failed 可 reprocess fallback。閾值寫在 memory/outbox-upsert-trigger-thresholds.md 等真實證據出現再升級。避免一次做大失敗。
+- **新 bounded context (`domain/outbox/`) 自成 aggregate**：被 Knowledge / Conversation context 重用，state transition 邏輯（mark_done/failed/requeue）封裝在 entity 內而非散落 use case，符合 DDD「行為跟資料同位」。
+- **Handler 走 callable registry 而非 import**：drain use case 不直接 import infrastructure，handlers 由 container 在 wire 時透過 `build_vector_handlers(vector_store)` 工廠注入。避免 application → infrastructure 的循環依賴 + 新增事件類型只需動 handlers.py 一處。
+- **MilvusVectorStore.delete() 加 `raise_on_error` 參數而非改既有行為**：既有 in-band caller（DeleteDocument / DeleteChunk）保持 swallow + log warning（向後相容，避免 ripple effect 一次改太多）；outbox handler 用 `raise_on_error=True` 走 retry/DLQ。新舊路徑同一段程式碼，沒兩套實作。
+- **Phase A 可獨立 ship**：drain 永遠空轉、不接業務 use case 也能 commit + push + 上線，最小化「Phase B 改寫業務時又改 Phase A 基建」的混合 risk。
+
+#### 潛在隱憂
+
+- **Drain 撈批次的 transaction 邊界**：`claim_batch` 在 atomic 內做 SELECT FOR UPDATE + UPDATE 一次完成，但回傳給 use case 後每筆事件單獨 dispatch handler。若 worker 在 dispatch 中 crash，事件還是 in_progress 狀態（lease 5min 後才被回收）。Lease 5min 是**犧牲響應延遲換 crash 安全**的明確 trade-off。**改善方向**：DLQ 監控 + 加 metric `outbox.lease.expired_recoveries.total`，若數字飆高代表 worker 不穩，要回頭看 OOM / preemption（Phase D 觀測時加）。**優先級：中**。
+
+- **Cron 每分鐘 vs self-rescheduling**：選 cron 簡單可預測，但代價是 user 觸發 DELETE 後最壞要等 60s 才看到 Milvus 同步。對 admin 操作可接受（admin 知道是 async），對 user-facing「刪了立刻搜不到」期望就會破。**改善方向**：DELETE 完成後同步 enqueue 一個 immediate drain（`redis.enqueue_job("drain_outbox")`）短路 cron 等待。Phase B-D 觀察 user 反應後決定是否上。**優先級：低（POC 階段）/ 中（pre-prod 階段）**。
+
+- **doc-id reuse guard 沒在 Phase A 完整實作**：`doc_watermark_ts` 欄位有了但 handler 沒檢查。Phase A 沒寫入事件不會踩到，但 Phase C `DeleteDocument` 進來時必須加。**改善方向**：寫進 Phase C 的 BDD scenario「事件發布後 user 重上傳同 source_id 的新 doc」→ drain 應跳過該事件而非把新 doc 也清掉。**優先級：高（Phase C 必補）**。
+
+- **無 admin DLQ UI（Phase E 才做）**：Phase A 上線後若 drain 真的開始失敗（Milvus 真的不可用），DLQ row 只能用 SQL 看。**緩解**：Phase A-D 期間沒人寫入 outbox，DLQ 永遠空；Phase E 同 sprint 補 UI。**優先級：低**（時序對齊）。
+
+- **VectorStore.drop_collection() interface 預設 no-op + Milvus 覆寫**：FakeVectorStore（測試用）沿用 no-op，正確；但若未來加 QdrantVectorStore 或別的實作，drop_collection 不寫覆寫會 silent 跳過 → DLQ 看不到，bug 難 debug。**改善方向**：Phase F 加 ADR 條款「新 VectorStore 實作必須覆寫 drop_collection 並通過共用 contract test」。**優先級：低（目前只 Milvus）**。
+
+#### 延伸學習
+
+- **Outbox Pattern**（Microservices.io）：Chris Richardson 的經典 pattern，原本用在 message queue（DB + queue 雙寫）。本實作把「外部系統」從 message queue 換成 vector store，pattern 結構不變。延伸：Debezium / Maxwell 的 CDC（Change Data Capture）把 outbox table 改成 read DB binlog，不需業務程式 INSERT outbox row — 但 PostgreSQL CDC 設定門檻較高，POC 階段不值得。
+- **Lease-based queue with PostgreSQL `SKIP LOCKED`**：PostgreSQL 9.5+ 加的功能，是「用關聯式 DB 做 work queue」的關鍵。比 SQS / Kafka 簡單但吞吐量上限低（每 worker 大致 100-1000 events/sec）。本案 outbox event 量級在百/天，PG SKIP LOCKED 完全夠用。延伸閱讀：[What's the difference between a queue and a stream?](https://www.brandur.org/two-phase-render)、[Postgres job queue 模式比較](https://leontrolski.github.io/postgres-as-queue.html)。
+- **Idempotency keys**：本案 `OutboxEvent.id` 是 idempotency key（uuid4），但 Milvus filter delete 已天然冪等所以沒實際用到該機制。等到 Phase 3 真要做 UPSERT 時，需要 Milvus 端用 `chunk_id` 為 PK upsert（已是現況）+ outbox event id 做 dedup（避免重 embed 浪費 token）兩層保護。
+- **Watermark / Tombstone for id reuse**：Phase C `doc_watermark_ts` 概念來自 Kafka 的 tombstone — 「事件代表的是某個時間點的事實」。新事件比 tombstone 新就跳過。本案沒 timestamp 順序問題（單 worker drain，Phase A），但放在 schema 等 Phase C 用，避免之後加欄位要 ALTER 線上表。
+
+#### 思考題（給 Larry）
+
+如果未來真的要把 UPSERT 也 outbox 化，最大的設計選擇是 **payload 該存什麼**：
+- 選 A：完整 chunks + embeddings 進 outbox payload（payload ~1 MB）
+- 選 B：只存 chunk_id list，drain 時從 chunks 表 JOIN 撈 embedding（需要 chunks 表先有 embedding column）
+- 選 C：outbox 只記「請 reprocess document X」，drain 撈到後從頭跑 process_document（重 embed 全部 chunks，貴）
+
+A 最簡單但 PG 會被 1 MB JSONB row 壓垮；B 最對稱但 chunks 表 migration 風險高；C 最便宜但浪費 embedding $$$。memory 裡的 trigger thresholds 文件選了 B 為「正確路徑」，主要看點是 chunks 表 migration 不再被「為了 outbox 才做」綁架——它本身對 re-embed without re-OCR 等其他需求也值得做。**你會怎麼選？**
+
+---
+
 ## External Producer Integration — Bulk Ingest + Unified Search + Milvus 2.5/2.6 Tolerance（Issue #44 Phase 2 + 3）
 
 **日期**：2026-05-04
