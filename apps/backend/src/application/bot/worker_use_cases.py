@@ -21,6 +21,7 @@ def _build_tool_configs(
             rerank_enabled=cfg.get("rerank_enabled"),
             rerank_model=cfg.get("rerank_model"),
             rerank_top_n=cfg.get("rerank_top_n"),
+            kb_ids=cfg.get("kb_ids"),
         )
         for name, cfg in raw.items()
         if isinstance(cfg, dict)

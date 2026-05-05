@@ -50,6 +50,9 @@ class ToolRagConfig:
 
     所有欄位皆為 Optional — None 代表繼承上一層（Worker per-tool →
     Bot per-tool → Bot 全域預設）。由 ``tool_rag_resolver`` 合併。
+
+    ``kb_ids`` 例外：Bot 全域 fallback 為 ``Bot.knowledge_base_ids``，
+    但 resolver 本身回傳 None 代表「沿用 Bot 全域」，由呼叫端決定 fallback。
     """
 
     rag_top_k: int | None = None
@@ -57,6 +60,9 @@ class ToolRagConfig:
     rerank_enabled: bool | None = None
     rerank_model: str | None = None
     rerank_top_n: int | None = None
+    # Per-tool KB binding — 覆寫 Bot 全域 knowledge_base_ids。
+    # None = 繼承上一層；空 list 也視為「未設定」（resolver 把 [] 當 None 處理）
+    kb_ids: list[str] | None = None
 
 
 @dataclass

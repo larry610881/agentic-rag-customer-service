@@ -34,6 +34,8 @@ class WorkerToolRagConfigSchema(BaseModel):
     rerank_enabled: bool | None = None
     rerank_model: str | None = None
     rerank_top_n: int | None = Field(default=None, ge=5, le=50)
+    # Per-tool KB binding — Worker 層級覆寫；空 list 視為未覆寫。
+    kb_ids: list[str] | None = None
 
 
 class CreateWorkerRequest(BaseModel):
@@ -115,6 +117,7 @@ def _to_response(w: Any) -> WorkerResponse:
                     "rerank_enabled": cfg.rerank_enabled,
                     "rerank_model": cfg.rerank_model,
                     "rerank_top_n": cfg.rerank_top_n,
+                    "kb_ids": cfg.kb_ids,
                 }.items()
                 if v is not None
             }

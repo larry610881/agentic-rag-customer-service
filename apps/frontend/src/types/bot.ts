@@ -20,6 +20,8 @@ export interface ToolRagConfig {
   rerank_enabled?: boolean;
   rerank_model?: string;
   rerank_top_n?: number;
+  /** Per-tool KB binding — 覆寫 Bot 全域 knowledge_base_ids；空 list 視為未覆寫 */
+  kb_ids?: string[];
 }
 
 export interface McpToolMeta {

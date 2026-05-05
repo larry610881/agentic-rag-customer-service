@@ -283,6 +283,8 @@ class ReActAgentService(AgentService):
                 "rerank_top_n": per.get(
                     "rerank_top_n", _metadata.get("rerank_top_n")
                 ),
+                # Per-tool KB binding 覆寫；None / 空 list = 沿用 Bot 全域 kb_ids
+                "kb_ids": per.get("kb_ids") or None,
             }
 
         if "rag_query" in effective and (kb_id or kb_ids):
@@ -298,9 +300,19 @@ class ReActAgentService(AgentService):
                 "hyde_extra_hint": _metadata.get("hyde_extra_hint"),
                 "bot_system_prompt": _metadata.get("bot_prompt"),
             }
+            # Per-tool kb_ids 優先；fallback 到 Bot 全域 kb_ids
+            # 只有當 per-tool 顯式覆寫時才一併改寫單一 kb_id（讓 RAG 工具
+            # 的 single-KB code path 也指向 per-tool 的第一個 KB）
+            per_tool_kb_ids = params["kb_ids"]
+            if per_tool_kb_ids:
+                rag_kb_ids = per_tool_kb_ids
+                rag_kb_id = per_tool_kb_ids[0]
+            else:
+                rag_kb_ids = kb_ids
+                rag_kb_id = kb_id
             tools.append(
                 self._build_rag_lc_tool(
-                    tenant_id, kb_ids, kb_id,
+                    tenant_id, rag_kb_ids, rag_kb_id,
                     params["rag_top_k"], params["rag_score_threshold"],
                     rerank_cfg={
                         "rerank_enabled": params["rerank_enabled"],
@@ -312,15 +324,22 @@ class ReActAgentService(AgentService):
             )
         if (
             "query_dm_with_image" in effective
-            and kb_id
+            and (kb_id or kb_ids)
             and self._dm_image_query_tool is not None
         ):
             params = _params_for("query_dm_with_image")
+            per_tool_kb_ids = params["kb_ids"]
+            if per_tool_kb_ids:
+                dm_kb_ids = per_tool_kb_ids
+                dm_kb_id = per_tool_kb_ids[0]
+            else:
+                dm_kb_ids = kb_ids
+                dm_kb_id = kb_id
             tools.append(
                 self._build_dm_image_lc_tool(
-                    tenant_id, kb_id,
+                    tenant_id, dm_kb_id,
                     params["rag_top_k"], params["rag_score_threshold"],
-                    kb_ids=kb_ids,
+                    kb_ids=dm_kb_ids,
                 )
             )
         if (

@@ -30,12 +30,14 @@ def _dict_to_tool_configs(raw: dict | None) -> dict[str, ToolRagConfig]:
     for tool_name, params in raw.items():
         if not isinstance(params, dict):
             continue
+        kb_ids_raw = params.get("kb_ids")
         result[tool_name] = ToolRagConfig(
             rag_top_k=params.get("rag_top_k"),
             rag_score_threshold=params.get("rag_score_threshold"),
             rerank_enabled=params.get("rerank_enabled"),
             rerank_model=params.get("rerank_model"),
             rerank_top_n=params.get("rerank_top_n"),
+            kb_ids=list(kb_ids_raw) if isinstance(kb_ids_raw, list) else None,
         )
     return result
 
@@ -54,6 +56,7 @@ def _tool_configs_to_dict(
                 "rerank_enabled": cfg.rerank_enabled,
                 "rerank_model": cfg.rerank_model,
                 "rerank_top_n": cfg.rerank_top_n,
+                "kb_ids": cfg.kb_ids,
             }.items()
             if v is not None
         }

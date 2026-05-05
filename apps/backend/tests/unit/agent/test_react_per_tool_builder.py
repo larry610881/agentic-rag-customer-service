@@ -92,6 +92,50 @@ def test_per_tool_params_isolated_per_tool(service: ReActAgentService):
     assert dm_kwargs["top_k"] == 10
 
 
+def test_per_tool_kb_ids_overrides_bot_global(service: ReActAgentService):
+    """rag_query 的 per-tool kb_ids 應覆寫 Bot 全域 kb_ids，
+    底層 invoke 拿到的是 per-tool 的 kb_ids。"""
+    tools = service._build_builtin_tools(
+        tenant_id="t1", kb_id="kb-global", kb_ids=["kb-faq", "kb-dm"],
+        enabled_tools=["rag_query", "query_dm_with_image"],
+        rag_top_k=5,
+        rag_score_threshold=0.3,
+        metadata={},
+        tool_rag_params={
+            "rag_query": {"kb_ids": ["kb-faq"]},
+            "query_dm_with_image": {"kb_ids": ["kb-dm"]},
+        },
+    )
+    assert {t.name for t in tools} == {"rag_query", "query_dm_with_image"}
+    for t in tools:
+        _run(t.ainvoke({"query": "test"}))
+
+    rag_kwargs = service._rag_tool.invoke.call_args.kwargs
+    dm_kwargs = service._dm_image_query_tool.invoke.call_args.kwargs
+    assert rag_kwargs["kb_ids"] == ["kb-faq"]
+    assert rag_kwargs["kb_id"] == "kb-faq"  # 第一個 kb_id 是 single fallback
+    assert dm_kwargs["kb_ids"] == ["kb-dm"]
+    assert dm_kwargs["kb_id"] == "kb-dm"
+
+
+def test_missing_per_tool_kb_ids_falls_back_to_bot_global(
+    service: ReActAgentService,
+):
+    """per-tool 沒設 kb_ids → fallback 到 Bot 全域 kb_ids。"""
+    tools = service._build_builtin_tools(
+        tenant_id="t1", kb_id="kb-global", kb_ids=["kb-faq", "kb-dm"],
+        enabled_tools=["rag_query"],
+        rag_top_k=5,
+        rag_score_threshold=0.3,
+        metadata={},
+        tool_rag_params={"rag_query": {"rag_top_k": 3}},  # no kb_ids
+    )
+    _run(tools[0].ainvoke({"query": "test"}))
+    rag_kwargs = service._rag_tool.invoke.call_args.kwargs
+    assert rag_kwargs["kb_ids"] == ["kb-faq", "kb-dm"]
+    assert rag_kwargs["kb_id"] == "kb-global"
+
+
 def test_missing_tool_rag_params_falls_back_to_flat_args(
     service: ReActAgentService,
 ):

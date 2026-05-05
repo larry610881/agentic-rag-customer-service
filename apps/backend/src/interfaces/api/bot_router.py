@@ -100,6 +100,9 @@ class ToolRagConfigSchema(BaseModel):
     rerank_enabled: bool | None = None
     rerank_model: str | None = None
     rerank_top_n: int | None = Field(default=None, ge=5, le=50)
+    # Per-tool KB binding — 覆寫 Bot 全域 knowledge_base_ids；
+    # None 或空 list = 沿用 Bot 全域
+    kb_ids: list[str] | None = None
 
 
 class CreateBotRequest(BaseModel):
@@ -349,6 +352,7 @@ def _to_response(bot) -> BotResponse:
                     "rerank_enabled": cfg.rerank_enabled,
                     "rerank_model": cfg.rerank_model,
                     "rerank_top_n": cfg.rerank_top_n,
+                    "kb_ids": cfg.kb_ids,
                 }.items()
                 if v is not None
             }

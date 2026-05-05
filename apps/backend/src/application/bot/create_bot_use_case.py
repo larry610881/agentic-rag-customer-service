@@ -179,6 +179,7 @@ class CreateBotUseCase:
                     rerank_enabled=cfg.get("rerank_enabled"),
                     rerank_model=cfg.get("rerank_model"),
                     rerank_top_n=cfg.get("rerank_top_n"),
+                    kb_ids=cfg.get("kb_ids"),
                 )
                 for name, cfg in (command.tool_configs or {}).items()
                 if isinstance(cfg, dict)

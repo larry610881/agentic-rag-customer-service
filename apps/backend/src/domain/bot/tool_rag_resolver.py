@@ -17,6 +17,7 @@ _FIELDS = (
     "rerank_enabled",
     "rerank_model",
     "rerank_top_n",
+    "kb_ids",
 )
 
 
@@ -28,8 +29,11 @@ def resolve_tool_rag_params(
 ) -> dict[str, Any]:
     """回傳該工具最終應使用的 RAG 參數。
 
-    結果永遠包含 ``_FIELDS`` 全部 5 個 key，值從 Bot 全域預設為基底，
+    結果永遠包含 ``_FIELDS`` 全部 key，值從 Bot 全域預設為基底，
     依序被 Bot per-tool → Worker per-tool 的非 None 值覆蓋。
+
+    ``kb_ids`` 特殊：Bot 全域基底為 None（代表「沿用 Bot.knowledge_base_ids
+    全域綁定」），由呼叫端 fallback；空 list 也視為未覆寫。
     """
     resolved: dict[str, Any] = {
         "rag_top_k": bot.llm_params.rag_top_k,
@@ -37,6 +41,7 @@ def resolve_tool_rag_params(
         "rerank_enabled": bot.rerank_enabled,
         "rerank_model": bot.rerank_model,
         "rerank_top_n": bot.rerank_top_n,
+        "kb_ids": None,  # None = 沿用 Bot.knowledge_base_ids
     }
 
     overrides = []
@@ -51,7 +56,11 @@ def resolve_tool_rag_params(
     for cfg in overrides:
         for key in _FIELDS:
             value = getattr(cfg, key)
-            if value is not None:
-                resolved[key] = value
+            if value is None:
+                continue
+            # kb_ids 空 list 視為「未覆寫」，繼續沿用上一層
+            if key == "kb_ids" and not value:
+                continue
+            resolved[key] = value
 
     return resolved

@@ -24,6 +24,13 @@ export interface ToolRagInherited {
   rerank_enabled: boolean;
   rerank_model: string;
   rerank_top_n: number;
+  /** Bot 全域綁定的 KB id list（kb_ids 未覆寫時的 fallback） */
+  kb_ids?: string[];
+}
+
+export interface KbOption {
+  id: string;
+  name: string;
 }
 
 export interface ToolRagConfigSectionProps {
@@ -40,6 +47,8 @@ export interface ToolRagConfigSectionProps {
   onChange: (v: ToolRagConfig | undefined) => void;
   /** rerank_model 下拉選項 */
   rerankModelOptions?: ModelOption[];
+  /** 可選的 KB 列表（per-tool KB binding 用）；未傳則不顯示 KB selector */
+  availableKbs?: KbOption[];
   /** 外部控制展開狀態；未傳則 uncontrolled */
   defaultExpanded?: boolean;
   className?: string;
@@ -62,6 +71,8 @@ function normalize(override: ToolRagConfig): ToolRagConfig | undefined {
     out.rerank_model = override.rerank_model;
   if (override.rerank_top_n !== undefined)
     out.rerank_top_n = override.rerank_top_n;
+  if (override.kb_ids !== undefined && override.kb_ids.length > 0)
+    out.kb_ids = override.kb_ids;
   return Object.keys(out).length === 0 ? undefined : out;
 }
 
@@ -73,6 +84,7 @@ export function ToolRagConfigSection({
   inheritedLabel = "繼承預設",
   onChange,
   rerankModelOptions = [],
+  availableKbs,
   defaultExpanded = false,
   className,
 }: ToolRagConfigSectionProps) {
@@ -92,10 +104,16 @@ export function ToolRagConfigSection({
 
   const patchField = (
     field: keyof ToolRagConfig,
-    next: number | boolean | string | undefined,
+    next: number | boolean | string | string[] | undefined,
   ) => {
     const merged: ToolRagConfig = { ...(value ?? {}) };
-    if (next === undefined || next === "" || (typeof next === "number" && Number.isNaN(next))) {
+    const isEmptyArray = Array.isArray(next) && next.length === 0;
+    if (
+      next === undefined ||
+      next === "" ||
+      (typeof next === "number" && Number.isNaN(next)) ||
+      isEmptyArray
+    ) {
       delete merged[field];
     } else {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -106,6 +124,24 @@ export function ToolRagConfigSection({
 
   const handleReset = () => {
     onChange(undefined);
+  };
+
+  const selectedKbIds = value?.kb_ids ?? [];
+  const inheritedKbIds = inherited.kb_ids ?? [];
+  const inheritedKbNames = (availableKbs ?? [])
+    .filter((kb) => inheritedKbIds.includes(kb.id))
+    .map((kb) => kb.name);
+  const kbInheritedSummary =
+    inheritedKbNames.length > 0
+      ? inheritedKbNames.join("、")
+      : "未綁定（請至上方綁定知識庫）";
+
+  const toggleKb = (kbId: string, checked: boolean) => {
+    const current = value?.kb_ids ?? [];
+    const next = checked
+      ? Array.from(new Set([...current, kbId]))
+      : current.filter((id) => id !== kbId);
+    patchField("kb_ids", next.length === 0 ? undefined : next);
   };
 
   const rerankEnabledValue: string =
@@ -163,6 +199,41 @@ export function ToolRagConfigSection({
 
       {expanded && (
         <div className="flex flex-col gap-3 pt-1">
+          {availableKbs && availableKbs.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">
+                此工具專屬知識庫（不選則使用 Bot 全域 KB）
+              </Label>
+              <div
+                className="flex flex-col gap-1 rounded-md border bg-background px-3 py-2"
+                data-testid={`${idPrefix}-kb-selector`}
+              >
+                {availableKbs.map((kb) => {
+                  const inputId = `${idPrefix}-kb-${kb.id}`;
+                  return (
+                    <label
+                      key={kb.id}
+                      htmlFor={inputId}
+                      className="flex items-center gap-2 text-sm cursor-pointer"
+                    >
+                      <input
+                        id={inputId}
+                        type="checkbox"
+                        checked={selectedKbIds.includes(kb.id)}
+                        onChange={(e) => toggleKb(kb.id, e.target.checked)}
+                        className="rounded border-input"
+                      />
+                      <span>{kb.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                未勾選 = 沿用 Bot 全域：{kbInheritedSummary}
+              </p>
+            </div>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`${idPrefix}-top-k`} className="text-xs">
