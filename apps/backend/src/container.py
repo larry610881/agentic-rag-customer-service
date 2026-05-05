@@ -2222,4 +2222,5 @@ class Container(containers.DeclarativeContainer):
         trace_session_factory=trace_session_factory,
         intent_classifier=intent_classifier,
         worker_config_repo=worker_config_repository,
+        history_strategy=history_strategy,
     )

@@ -20,6 +20,10 @@ from src.domain.conversation.feedback_value_objects import (
     FeedbackId,
     Rating,
 )
+from src.domain.conversation.history_strategy import (
+    ConversationHistoryStrategy,
+    HistoryStrategyConfig,
+)
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
@@ -89,6 +93,7 @@ class HandleWebhookUseCase:
         trace_session_factory: Any | None = None,
         intent_classifier: Any | None = None,
         worker_config_repo: Any | None = None,
+        history_strategy: ConversationHistoryStrategy | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -106,6 +111,11 @@ class HandleWebhookUseCase:
         self._conversation_lock = conversation_lock
         self._conversation_timeout = timedelta(minutes=conversation_timeout_minutes)
         self._trace_session_factory = trace_session_factory
+        # Issue: dev-vm 5/4 trace 顯示 LINE 多輪對話 history_loaded_status="lost"
+        # — 因為原本沒過 history_strategy 直接傳 raw history list，
+        # process_message(history_context="") 讓 react_agent 沒 inject 對話歷史。
+        # 加 strategy 後與 send_message_use_case 行為對齊。
+        self._history_strategy = history_strategy
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
         """Redis 快取查 Bot（by ID），預設 120 秒 TTL。"""
@@ -303,6 +313,34 @@ class HandleWebhookUseCase:
         # Extract history from existing conversation
         history = conversation.messages if conversation.messages else None
 
+        # 將 raw history list 過 history_strategy 轉成 LLM 可用的字串。
+        # 行為對齊 send_message_use_case._resolve_history (L464-512)，
+        # inline 而非抽 service — 避免 refactor 動到 working API path。
+        # Defensive：策略對非空 history 仍吐空字串時 fallback _format_messages。
+        history_context = ""
+        router_context = ""
+        if self._history_strategy and history:
+            cfg = HistoryStrategyConfig(
+                history_limit=bot.llm_params.history_limit,
+                recent_turns=3,
+            )
+            ctx = await self._history_strategy.process(history, cfg)
+            history_context = ctx.respond_context
+            router_context = ctx.router_context
+            if history and not history_context:
+                from src.infrastructure.conversation.sliding_window_strategy import (
+                    _format_messages,
+                )
+                history_context = _format_messages(
+                    history[-bot.llm_params.history_limit :]
+                )
+                logger.warning(
+                    "line.history.strategy_empty_fallback",
+                    strategy=self._history_strategy.name,
+                    history_len=len(history),
+                    fallback_chars=len(history_context),
+                )
+
         llm_params: dict = {
             "temperature": bot.llm_params.temperature,
             "max_tokens": bot.llm_params.max_tokens,
@@ -355,7 +393,7 @@ class HandleWebhookUseCase:
                 t_start = AgentTraceCollector.offset_ms()
                 matched = await self._intent_classifier.classify_workers(
                     user_message=event.message_text,
-                    router_context="",
+                    router_context=router_context,
                     workers=workers,
                     router_model=bot.router_model,
                 )
@@ -420,6 +458,8 @@ class HandleWebhookUseCase:
             llm_params=llm_params,
             metadata=rerank_metadata,
             history=history,
+            history_context=history_context,
+            router_context=router_context,
             rag_top_k=bot.llm_params.rag_top_k,
             rag_score_threshold=bot.llm_params.rag_score_threshold,
             tool_rag_params=tool_rag_params,
