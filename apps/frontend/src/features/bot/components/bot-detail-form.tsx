@@ -678,6 +678,33 @@ export function BotDetailForm({
     }
   };
 
+  const onInvalid = (errs: FieldErrors<BotFormValues>) => {
+    const flat: string[] = [];
+    const walk = (obj: unknown, path: string) => {
+      if (!obj || typeof obj !== "object") return;
+      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+        const next = path ? `${path}.${k}` : k;
+        if (
+          v &&
+          typeof v === "object" &&
+          "message" in (v as Record<string, unknown>) &&
+          typeof (v as { message?: unknown }).message === "string"
+        ) {
+          flat.push(`${next}: ${(v as { message: string }).message}`);
+        } else {
+          walk(v, next);
+        }
+      }
+    };
+    walk(errs, "");
+    console.error("[bot-form] validation failed:", errs);
+    toast.error(
+      flat.length > 0
+        ? `表單驗證失敗：\n${flat.slice(0, 5).join("\n")}`
+        : "表單驗證失敗（請查 console）",
+    );
+  };
+
   /** Build the combined select value from provider + model */
   const currentModelValue =
     bot.llm_provider && bot.llm_model
@@ -715,7 +742,7 @@ export function BotDetailForm({
   }));
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+    <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="flex flex-col gap-6">
       {/* Top section: basic info (always visible) */}
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
