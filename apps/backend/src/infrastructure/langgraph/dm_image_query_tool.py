@@ -100,21 +100,38 @@ class DmImageQueryTool:
         docs = await self._doc_repo.find_by_ids([s.document_id for s in ordered])
         doc_map = {d.id.value: d for d in docs}
 
-        # 4.5 第二層 dedup：同一張實體 PNG（同 storage_path）只保留分數最高的
-        # 一筆。原因：catalog PDF 被重新處理 / 重新上傳會生出不同
-        # document_id 的子頁，但底下指向同樣的 storage_path。第一層 by_doc
-        # dedup 抓不到。在 source 層處理讓 LINE / Web / Widget 所有通路自動
-        # 一致，不需要每個 channel handler 各自實作。
+        # 4.5 第二層 dedup：同一張實體 PNG（同 storage_path）→ 取分數最高
+        # 4.6 第三層 dedup：同一頁碼（page_number > 0）→ 取分數最高
+        #
+        # 原因：catalog PDF 被重新處理 / 重新上傳會生出不同 document_id 的
+        # 子頁。即使新舊 child 的 storage_path 不同（路徑各自包 document_id），
+        # 它們的 page_number 都是同一頁。第一層 by_doc / 第二層 storage_path
+        # dedup 抓不到，必須在 source 層用 page_number 補一刀，否則 LINE /
+        # Web / Widget carousel 會連續顯示兩張一模一樣的 page 54。
+        #
+        # Trade-off：若使用者把多份 DM（5月 + 6月）放在同一個 KB 且兩份都
+        # 有 page 54，會被誤合併。建議多 DM 分別建 KB，或之後加
+        # parent_filename 鑑別。在 source 層處理讓 LINE / Web / Widget 所
+        # 有通路自動一致，不需要每個 channel handler 各自實作。
         # ordered 已按 score DESC 排序，所以 keep-first = 保留高分。
         seen_paths: set[str] = set()
+        seen_pages: set[int] = set()
         deduped: list[Any] = []
         for src in ordered:
             doc = doc_map.get(src.document_id)
             if doc is None or not doc.storage_path:
                 continue
+            # storage_path dedup
             if doc.storage_path in seen_paths:
                 continue
+            # page_number dedup（page_number > 0 才適用；非分頁文件 page=0
+            # 不能合併以免不同單頁圖被誤併成 1 張）
+            page = doc.page_number or 0
+            if page > 0 and page in seen_pages:
+                continue
             seen_paths.add(doc.storage_path)
+            if page > 0:
+                seen_pages.add(page)
             deduped.append(src)
 
         # 5. 並行生 signed URL（過濾條件：必須是 image/*）

@@ -97,6 +97,17 @@ class DocumentRepository(ABC):
         """只算 top-level documents (parent_id IS NULL)，用於 UI 分頁總數。"""
         ...
 
+    async def find_children(self, parent_id: str) -> list[Document]:
+        """回傳 parent_id 的所有子文件（PDF 拆頁的 child documents）。
+
+        DeleteDocumentUseCase 用來 cascade-delete child docs + 它們的
+        Milvus chunks，避免父文件刪了 child 與向量殘留變孤兒。
+
+        預設 return []（backward compat — 既有 FakeDocumentRepo 測試
+        類別不需實作即可繼續用）。SQLAlchemy 實作會 override 走真實查詢。
+        """
+        return []
+
     @abstractmethod
     async def count_by_kb_status(
         self, kb_id: str, statuses: list[str]

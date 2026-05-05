@@ -194,6 +194,63 @@ def test_dedup_same_storage_path_across_different_documents(common_kwargs):
     assert "best" in page54["content_snippet"]
 
 
+def test_dedup_same_page_number_different_storage_paths(common_kwargs):
+    """Regression（carrefour 真實案例）：同份 DM 重新上傳生出兩棵 child tree，
+    各自 storage_path 不同（路徑各自包 document_id），但 page_number 相同。
+    storage_path dedup 抓不到，必須再用 page_number 補一刀。
+
+    範例：
+    - 父 A 已被刪（orphan），剩 child page_054 storage_path=tenant/A/.../page_054.png
+    - 父 B 還在，child page_054 storage_path=tenant/B/.../page_054.png
+    兩個 child 的 page_number 都是 54 → carousel 會看到兩張一樣的 page 54。
+    """
+    sources = [
+        _make_source("doc-orphan-54", 0.7, "page 54 chunk from orphan tree"),
+        _make_source("doc-current-54", 0.92, "page 54 chunk from current tree (best)"),
+        _make_source("doc-page21", 0.6, "p21"),
+    ]
+    docs = [
+        # 兩個 doc 都是 page 54，但 storage_path 不同（包各自 document_id）
+        _make_doc(
+            "doc-orphan-54", 54,
+            storage_path="tenant/orphan-tree-id/doc-orphan-54/page_054.png",
+        ),
+        _make_doc(
+            "doc-current-54", 54,
+            storage_path="tenant/current-tree-id/doc-current-54/page_054.png",
+        ),
+        _make_doc("doc-page21", 21),
+    ]
+    tool = _build_tool(sources, docs)
+    result = _run(tool.invoke(**common_kwargs))
+
+    # page 54 應只有 1 筆（即使 storage_path 不同），加上 page 21 共 2 筆
+    assert len(result["sources"]) == 2
+    page_numbers = sorted(s["page_number"] for s in result["sources"])
+    assert page_numbers == [21, 54]
+
+    # 留下分數高的那筆（doc-current-54 score=0.92）
+    page54 = next(s for s in result["sources"] if s["page_number"] == 54)
+    assert page54["score"] == 0.92
+    assert "best" in page54["content_snippet"]
+
+
+def test_no_dedup_when_page_number_zero(common_kwargs):
+    """page_number == 0（非分頁文件，例如單張圖片）不該被 page dedup 合併。"""
+    sources = [
+        _make_source("img-a", 0.9, "image A"),
+        _make_source("img-b", 0.8, "image B"),
+    ]
+    docs = [
+        _make_doc("img-a", 0, storage_path="tenant/imgs/a.png"),
+        _make_doc("img-b", 0, storage_path="tenant/imgs/b.png"),
+    ]
+    tool = _build_tool(sources, docs)
+    result = _run(tool.invoke(**common_kwargs))
+    # 兩張不同的單頁圖都應保留
+    assert len(result["sources"]) == 2
+
+
 def test_passes_kb_ids_to_rag_when_provided():
     """multi-KB scenario: invoke 帶 kb_ids → query_rag 收到 kb_ids list。"""
     rag = AsyncMock()
