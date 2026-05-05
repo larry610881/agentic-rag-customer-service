@@ -100,7 +100,24 @@ class DmImageQueryTool:
         docs = await self._doc_repo.find_by_ids([s.document_id for s in ordered])
         doc_map = {d.id.value: d for d in docs}
 
-        # 5. 並行生 signed URL（過濾條件：必須有 storage_path、必須是 image/*）
+        # 4.5 第二層 dedup：同一張實體 PNG（同 storage_path）只保留分數最高的
+        # 一筆。原因：catalog PDF 被重新處理 / 重新上傳會生出不同
+        # document_id 的子頁，但底下指向同樣的 storage_path。第一層 by_doc
+        # dedup 抓不到。在 source 層處理讓 LINE / Web / Widget 所有通路自動
+        # 一致，不需要每個 channel handler 各自實作。
+        # ordered 已按 score DESC 排序，所以 keep-first = 保留高分。
+        seen_paths: set[str] = set()
+        deduped: list[Any] = []
+        for src in ordered:
+            doc = doc_map.get(src.document_id)
+            if doc is None or not doc.storage_path:
+                continue
+            if doc.storage_path in seen_paths:
+                continue
+            seen_paths.add(doc.storage_path)
+            deduped.append(src)
+
+        # 5. 並行生 signed URL（過濾條件：必須是 image/*）
         async def enrich(src: Any) -> dict[str, Any] | None:
             doc = doc_map.get(src.document_id)
             if doc is None or not doc.storage_path:
@@ -124,7 +141,7 @@ class DmImageQueryTool:
                 "image_url": url,
             }
 
-        enriched = await asyncio.gather(*[enrich(s) for s in ordered])
+        enriched = await asyncio.gather(*[enrich(s) for s in deduped])
         sources = [s for s in enriched if s is not None]
 
         # 6. context 給 LLM 用（純文字，不含 URL）

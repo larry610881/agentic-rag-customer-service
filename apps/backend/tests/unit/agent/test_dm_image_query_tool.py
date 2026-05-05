@@ -162,6 +162,38 @@ def test_filter_non_image_content_type(common_kwargs):
     assert result["sources"][0]["document_id"] == "dm-21"
 
 
+def test_dedup_same_storage_path_across_different_documents(common_kwargs):
+    """Regression: 不同 document_id 但同一個 storage_path（同一張 PNG，
+    通常源於同一份 DM 被處理 / 上傳兩次）應該 dedup 成 1 筆，不能在
+    LINE / Web / Widget carousel 連續顯示兩張同頁圖。
+
+    Dedup 在 source 層做 — 所有通路自動一致，不需各自 channel handler 處理。
+    """
+    sources = [
+        _make_source("doc-page54-a", 0.8, "page 54 chunk A"),
+        _make_source("doc-page54-b", 0.95, "page 54 chunk B (best)"),
+        _make_source("doc-page17", 0.7, "p17"),
+    ]
+    docs = [
+        # 兩個 doc 不同 id 但指向同一張實體 PNG
+        _make_doc("doc-page54-a", 54, storage_path="tenant/dm/page_054.png"),
+        _make_doc("doc-page54-b", 54, storage_path="tenant/dm/page_054.png"),
+        _make_doc("doc-page17", 17),
+    ]
+    tool = _build_tool(sources, docs)
+    result = _run(tool.invoke(**common_kwargs))
+
+    # 應只回 2 筆（page 54 + page 17），同 storage_path 已合併
+    assert len(result["sources"]) == 2
+    page_numbers = [s["page_number"] for s in result["sources"]]
+    assert sorted(page_numbers) == [17, 54]
+
+    # 同 storage_path 留下高分那筆（doc-page54-b score=0.95）
+    page54 = next(s for s in result["sources"] if s["page_number"] == 54)
+    assert page54["score"] == 0.95
+    assert "best" in page54["content_snippet"]
+
+
 def test_passes_kb_ids_to_rag_when_provided():
     """multi-KB scenario: invoke 帶 kb_ids → query_rag 收到 kb_ids list。"""
     rag = AsyncMock()
