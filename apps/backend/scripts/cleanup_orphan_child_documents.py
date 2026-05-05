@@ -92,40 +92,106 @@ async def _delete_postgres(doc_ids: list[str]) -> str:
         return f"postgres deleted {result.rowcount} document rows"
 
 
+async def _find_milvus_only_orphans(
+    vs: MilvusVectorStore,
+) -> dict[str, list[str]]:
+    """Find document_ids that exist in Milvus but NOT in DB documents table.
+
+    這比 _find_orphans 抓的範圍更廣 — 那個只找「DB 中 child 但 parent 不
+    存在」，這個找「Milvus 有向量但 DB 完全沒這個 document」。後者通常
+    來自舊版 DeleteDocumentUseCase 沒 cascade（pre-cascade-fix 平台
+    殘留），或手動操作 DB 漏清向量。
+    """
+    out: dict[str, list[str]] = defaultdict(list)
+    async with async_session_factory() as session:
+        rows = await session.execute(
+            text("SELECT id, name FROM knowledge_bases")
+        )
+        kbs = [(r[0], r[1]) for r in rows]
+
+    for kb_id, name in kbs:
+        col = _safe_collection_name(f"kb_{kb_id}")
+        has = await asyncio.to_thread(vs._client.has_collection, col)
+        if not has:
+            continue
+        try:
+            res = await asyncio.to_thread(
+                vs._client.query,
+                collection_name=col,
+                filter="",
+                output_fields=["document_id"],
+                limit=16384,
+            )
+        except Exception as e:
+            print(f"  {name}: query failed: {e}")
+            continue
+        milvus_ids = {r["document_id"] for r in res}
+        async with async_session_factory() as s2:
+            db_rows = await s2.execute(
+                text("SELECT id FROM documents WHERE kb_id = :k"),
+                {"k": kb_id},
+            )
+            db_ids = {r[0] for r in db_rows}
+        orphan_ids = milvus_ids - db_ids
+        if orphan_ids:
+            out[kb_id] = list(orphan_ids)
+    return dict(out)
+
+
 async def run(dry_run: bool) -> None:
-    print("=== Orphan Child Documents Cleanup ===")
+    print("=== Orphan Documents + Milvus Vectors Cleanup ===")
     print(f"Mode: {'DRY-RUN' if dry_run else 'EXECUTE'}")
 
+    # Phase 1: DB-level orphans (children whose parent missing)
     by_kb = await _find_orphans()
-    if not by_kb:
-        print("No orphan child documents found. Nothing to clean.")
-        return
 
-    total_docs = sum(len(ids) for ids in by_kb.values())
-    print(f"\nFound {total_docs} orphan documents across {len(by_kb)} KBs:")
-    for kb_id, ids in by_kb.items():
-        print(f"  - {kb_id}: {len(ids)} orphans")
-
-    if dry_run:
-        print("\n(dry-run — no changes made. Re-run without --dry-run to apply.)")
-        return
-
-    # Execute Milvus deletes first (additive — if PG delete fails, we're not
-    # left with PG-deleted but Milvus-still-has)
+    # Phase 2: Milvus-only orphans (vectors whose doc_id missing in DB)
     uri = os.environ.get("MILVUS_URI", "http://localhost:19530")
     token = os.environ.get("MILVUS_TOKEN") or ""
     db_name = os.environ.get("MILVUS_DB_NAME", "default")
     vs = MilvusVectorStore(uri=uri, token=token, db_name=db_name)
 
-    print("\n--- Milvus deletes ---")
-    for kb_id, doc_ids in by_kb.items():
-        result = await _delete_milvus(vs, kb_id, doc_ids)
-        print(f"  {kb_id}: {result}")
+    print("\n--- Phase 2: scanning Milvus for orphan vectors ---")
+    milvus_orphans = await _find_milvus_only_orphans(vs)
 
-    print("\n--- PostgreSQL deletes ---")
-    all_ids: list[str] = [d for ids in by_kb.values() for d in ids]
-    pg_result = await _delete_postgres(all_ids)
-    print(f"  {pg_result}")
+    if not by_kb and not milvus_orphans:
+        print("No orphans found anywhere. Nothing to clean.")
+        return
+
+    if by_kb:
+        total_db = sum(len(ids) for ids in by_kb.values())
+        print(f"\nDB-orphans (children with missing parent): {total_db} docs across {len(by_kb)} KBs")
+        for kb_id, ids in by_kb.items():
+            print(f"  - {kb_id}: {len(ids)} orphans")
+
+    if milvus_orphans:
+        total_milvus = sum(len(ids) for ids in milvus_orphans.values())
+        print(f"\nMilvus-only orphans (vectors with no DB doc): {total_milvus} doc_ids across {len(milvus_orphans)} KBs")
+        for kb_id, ids in milvus_orphans.items():
+            print(f"  - {kb_id}: {len(ids)} doc_ids -> sample: {ids[:2]}")
+
+    if dry_run:
+        print("\n(dry-run — no changes made. Re-run without --dry-run to apply.)")
+        return
+
+    # Phase 1 deletes: DB-orphan children (Milvus + DB)
+    if by_kb:
+        print("\n--- Phase 1 Milvus deletes (DB-orphans) ---")
+        for kb_id, doc_ids in by_kb.items():
+            result = await _delete_milvus(vs, kb_id, doc_ids)
+            print(f"  {kb_id}: {result}")
+
+        print("\n--- Phase 1 PostgreSQL deletes (DB-orphans) ---")
+        all_ids: list[str] = [d for ids in by_kb.values() for d in ids]
+        pg_result = await _delete_postgres(all_ids)
+        print(f"  {pg_result}")
+
+    # Phase 2 deletes: Milvus-only orphans (no PG row to delete)
+    if milvus_orphans:
+        print("\n--- Phase 2 Milvus deletes (Milvus-only orphans) ---")
+        for kb_id, doc_ids in milvus_orphans.items():
+            result = await _delete_milvus(vs, kb_id, doc_ids)
+            print(f"  {kb_id}: {result}")
 
     print("\n=== Cleanup complete ===")
 
