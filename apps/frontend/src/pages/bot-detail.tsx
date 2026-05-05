@@ -1,18 +1,9 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useState } from "react";
 import { BotDetailForm } from "@/features/bot/components/bot-detail-form";
 import { useBot, useUpdateBot, useDeleteBot } from "@/hooks/queries/use-bots";
 import { PageBreadcrumb } from "@/components/shared/page-breadcrumb";
 import { ROUTES } from "@/routes/paths";
 import type { UpdateBotRequest } from "@/types/bot";
-// HARDCODE - 地端模型切換 loading dialog，正式上線前移除
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 export default function BotDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -21,18 +12,9 @@ export default function BotDetailPage() {
   const { data: bot, isLoading, isError } = useBot(id!);
   const updateBot = useUpdateBot();
   const deleteBot = useDeleteBot();
-  // HARDCODE - 地端模型切換 loading 狀態，正式上線前移除
-  const [isWarmingUp, setIsWarmingUp] = useState(false);
 
   const handleSave = async (data: UpdateBotRequest) => {
-    // HARDCODE - 偵測 Ollama 模型切換，顯示等待 dialog，正式上線前移除
-    const isOllamaSave = data.llm_provider === "ollama";
-    if (isOllamaSave) setIsWarmingUp(true);
-    try {
-      await updateBot.mutateAsync({ botId: id!, data });
-    } finally {
-      if (isOllamaSave) setIsWarmingUp(false);
-    }
+    await updateBot.mutateAsync({ botId: id!, data });
   };
 
   const handleDelete = () => {
@@ -60,27 +42,6 @@ export default function BotDetailPage() {
   }
 
   return (
-    <>
-      {/* HARDCODE - 地端模型切換 loading dialog，正式上線前移除 */}
-      <Dialog open={isWarmingUp} onOpenChange={() => {}}>
-        <DialogContent
-          className="sm:max-w-sm"
-          onInteractOutside={(e) => e.preventDefault()}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span className="animate-spin">⏳</span>
-              切換模型中...
-            </DialogTitle>
-            <DialogDescription>
-              正在將地端模型載入 GPU，請稍候（約 30–90 秒）。
-              <br />
-              完成後頁面將自動更新。
-            </DialogDescription>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
-
     <div className="flex flex-col gap-6 p-6">
       <PageBreadcrumb
         items={[
@@ -97,6 +58,5 @@ export default function BotDetailPage() {
         isDeleting={deleteBot.isPending}
       />
     </div>
-    </>
   );
 }

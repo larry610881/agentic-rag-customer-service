@@ -1,6 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-// HARDCODE - 地端模型 A/B 測試，正式上線前移除此 import
-import { useOllamaAbPresets, useOllamaModelStatus } from "@/hooks/queries/use-ollama";
+import { useState, useEffect, useCallback } from "react";
 import {
   useForm,
   useFieldArray,
@@ -92,6 +90,7 @@ const toolRagConfigSchema = z
     rerank_enabled: z.boolean().optional(),
     rerank_model: z.string().optional(),
     rerank_top_n: z.coerce.number().int().min(5).max(50).optional(),
+    kb_ids: z.array(z.string()).optional(),
   })
   .partial();
 
@@ -474,15 +473,6 @@ export function BotDetailForm({
   const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.LLM_PROMPT);
   const navigate = useNavigate();
 
-  // HARDCODE - 地端模型 A/B 測試狀態，正式上線前移除
-  const { data: abPresets = [] } = useOllamaAbPresets();
-  const [pollModel, setPollModel] = useState<string | null>(null);
-  const { data: ollamaStatus } = useOllamaModelStatus(pollModel, !!pollModel);
-  const savedOllamaModel = useRef<string | null>(null);
-  const [selectedAbModel, setSelectedAbModel] = useState<string | null>(
-    bot.llm_provider === "ollama" ? (bot.llm_model ?? null) : null,
-  );
-
   const {
     register,
     handleSubmit,
@@ -562,13 +552,6 @@ export function BotDetailForm({
     string,
     ToolRagConfig
   >;
-
-  // HARDCODE - 模型就緒後停止 polling
-  useEffect(() => {
-    if (ollamaStatus?.status === "ready") {
-      setPollModel(null);
-    }
-  }, [ollamaStatus?.status]);
 
   // LINE show_sources 連動：主開關關閉時，LINE 也關閉
   useEffect(() => {
@@ -657,20 +640,6 @@ export function BotDetailForm({
     });
   }, [bot, reset]);
 
-  // HARDCODE - Ollama polling 結果 toast，正式上線前移除
-  useEffect(() => {
-    if (!ollamaStatus || !savedOllamaModel.current) return;
-    if (ollamaStatus.status === "ready") {
-      toast.success(`✅ 模型 ${ollamaStatus.model} 已就緒`);
-      setPollModel(null);
-      savedOllamaModel.current = null;
-    } else if (ollamaStatus.status === "unreachable") {
-      toast.error("無法連線至 Ollama，請確認 RunPod Pod 已啟動");
-      setPollModel(null);
-      savedOllamaModel.current = null;
-    }
-  }, [ollamaStatus]);
-
   const onSubmit = async (data: BotFormValues) => {
     if (data.enabled_tools.length === 0) {
       toast.error("請至少啟用一個工具");
@@ -703,14 +672,7 @@ export function BotDetailForm({
     };
     try {
       await onSave(payload);
-      // HARDCODE - Ollama 存檔後啟動 polling 確認模型就緒，正式上線前移除
-      if (payload.llm_provider === "ollama" && payload.llm_model) {
-        savedOllamaModel.current = payload.llm_model as string;
-        setPollModel(payload.llm_model as string);
-        toast.success("機器人設定已儲存，正在確認模型狀態...");
-      } else {
-        toast.success("機器人設定已儲存");
-      }
+      toast.success("機器人設定已儲存");
     } catch {
       toast.error("儲存失敗，請稍後再試");
     }
@@ -744,7 +706,13 @@ export function BotDetailForm({
     rerank_enabled: Boolean(watch("rerank_enabled") ?? false),
     rerank_model: watch("rerank_model") ?? "",
     rerank_top_n: Number(watch("rerank_top_n") ?? 20),
+    kb_ids: (watch("knowledge_base_ids") ?? []) as string[],
   };
+
+  const kbOptions = (kbData?.items ?? []).map((kb) => ({
+    id: kb.id,
+    name: kb.name,
+  }));
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
@@ -828,21 +796,18 @@ export function BotDetailForm({
                 name="llm_model"
                 control={control}
                 render={({ field }) => {
-                  const selectValue = selectedAbModel
-                    ? ""
-                    : watch("llm_provider") && field.value
+                  const selectValue =
+                    watch("llm_provider") && field.value
                       ? `${watch("llm_provider")}:${field.value}`
                       : currentModelValue;
 
                   return (
                     <ModelSelect
-                      key={selectedAbModel ? "ollama" : "cloud"}
                       id="bot-llm-model"
                       value={selectValue}
                       onValueChange={(v) => {
                         const [provider, ...modelParts] = v.split(":");
                         const model = modelParts.join(":");
-                        setSelectedAbModel(null);
                         setValue("llm_provider", provider, { shouldDirty: true });
                         field.onChange(model);
                       }}
@@ -852,48 +817,6 @@ export function BotDetailForm({
                 }}
               />
             </div>
-
-            {/* HARDCODE - 地端模型 A/B 快速切換，正式上線前移除 */}
-            {abPresets.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <Label className="text-xs text-muted-foreground">
-                  地端模型快速切換（測試用）
-                </Label>
-                <div className="flex gap-2">
-                  {abPresets.map((preset) => {
-                    const isActive = selectedAbModel === preset.model;
-                    return (
-                      <Button
-                        key={preset.label}
-                        type="button"
-                        size="sm"
-                        variant={isActive ? "default" : "outline"}
-                        onClick={() => {
-                          setSelectedAbModel(preset.model);
-                          setValue("llm_provider", "ollama", { shouldDirty: true });
-                          setValue("llm_model", preset.model, { shouldDirty: true });
-                        }}
-                      >
-                        {preset.label}：{preset.description}
-                        {selectedAbModel === preset.model && pollModel === preset.model && (
-                          <span className="ml-1 animate-spin">⏳</span>
-                        )}
-                        {selectedAbModel === preset.model &&
-                          ollamaStatus?.status === "ready" &&
-                          !pollModel && (
-                            <span className="ml-1 text-green-500">✓</span>
-                          )}
-                      </Button>
-                    );
-                  })}
-                </div>
-                {pollModel && (
-                  <p className="text-xs text-muted-foreground animate-pulse">
-                    正在確認模型 {pollModel} 是否就緒...
-                  </p>
-                )}
-              </div>
-            )}
           </section>
 
           {/* LLM 參數 */}
@@ -1335,6 +1258,7 @@ export function BotDetailForm({
                               handleToolConfigChange(tool.name, next)
                             }
                             rerankModelOptions={RERANK_MODEL_OPTIONS}
+                            availableKbs={kbOptions}
                           />
                         )}
                         {checked && tool.name === "transfer_to_human_agent" && (
