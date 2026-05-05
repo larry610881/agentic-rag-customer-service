@@ -43,7 +43,22 @@ class VectorStore(ABC):
         self,
         collection: str,
         filters: dict[str, Any],
-    ) -> None: ...
+        *,
+        raise_on_error: bool = False,
+    ) -> None:
+        """Filter-based delete。
+
+        ``raise_on_error=False``（預設）維持既有 in-band caller 行為（吞例外
+        + log warning）；outbox handler 必須傳 ``True`` 讓失敗能進 retry。
+        """
+        ...
+
+    async def drop_collection(self, collection: str) -> None:  # noqa: B027
+        """整個 collection 刪除。Drop 已不存在的 collection 應為 no-op
+        （outbox vector.drop_collection handler 用，需 idempotent）。
+        預設空實作；Milvus 覆寫。FakeVectorStore (測試用) 不覆寫沿用 no-op。
+        """
+        return None
 
     async def fetch_vectors(
         self,

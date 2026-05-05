@@ -64,6 +64,7 @@ from src.infrastructure.db.models.model_pricing_model import (
     ModelPricingModel,
     PricingRecalcAuditModel,
 )
+from src.infrastructure.db.models.outbox_event_model import OutboxEventModel
 __all__ = [
     "TenantModel",
     "KnowledgeBaseModel",
@@ -107,4 +108,5 @@ __all__ = [
     "QuotaAlertLogModel",
     "ModelPricingModel",
     "PricingRecalcAuditModel",
+    "OutboxEventModel",
 ]

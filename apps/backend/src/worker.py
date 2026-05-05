@@ -234,6 +234,23 @@ async def process_conversation_summary_task(
     logger.info(f"[conv_summary] done conv={conversation_id} {result}")
 
 
+async def drain_outbox_task(ctx: dict) -> None:
+    """Outbox Pattern Phase A — 每分鐘 cron tick 撈 batch 對外部系統套用。
+
+    Phase A 期間沒有業務 use case 寫入 outbox，drain 永遠空轉（safe）。
+    Phase B-D 開始有 vector.delete / vector.drop_collection 事件流入。
+    """
+    container = _new_container()
+    use_case = container.drain_outbox_use_case()
+    result = await use_case.execute()
+    if result.claimed > 0:
+        logger.info(
+            f"[drain_outbox] claimed={result.claimed} "
+            f"succeeded={result.succeeded} failed={result.failed} "
+            f"skipped={result.skipped_no_handler}"
+        )
+
+
 class WorkerSettings:
     """arq worker configuration."""
 
@@ -250,16 +267,20 @@ class WorkerSettings:
         ),
         # S-KB-Studio.1: 單 chunk re-embed
         func(reembed_chunk_task, name="reembed_chunk"),
+        # Outbox Pattern Phase A — drain 用 cron 觸發
+        func(drain_outbox_task, name="drain_outbox"),
     ]
     # S-Token-Gov.2: 月度重置（每月 1 日 00:05 UTC = 08:05 Asia/Taipei）
     # S-Token-Gov.3: 額度警示（每天 01:00 UTC = 09:00 Asia/Taipei）
     # S-Token-Gov.3.5: 警示 email 寄送（每天 01:30 UTC = 09:30 Asia/Taipei）
     # S-Gov.6b: 對話摘要掃 pending（每分鐘 — 5min 閒置即生）
+    # Outbox: 每分鐘 drain（events 為 DELETE 類，少量；batch_size=50 撐得起）
     cron_jobs = [
         cron(monthly_reset_task, hour={0}, minute={5}, day={1}),
         cron(quota_alerts_task, hour={1}, minute={0}),
         cron(quota_email_dispatch_task, hour={1}, minute={30}),
         cron(conversation_summary_scan_task, minute=set(range(60))),
+        cron(drain_outbox_task, minute=set(range(60))),
     ]
     on_startup = startup
     on_shutdown = shutdown

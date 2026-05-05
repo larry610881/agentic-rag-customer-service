@@ -236,7 +236,16 @@ class MilvusVectorStore(VectorStore):
         self,
         collection: str,
         filters: dict[str, Any],
+        *,
+        raise_on_error: bool = False,
     ) -> None:
+        """Filter-based delete。
+
+        ``raise_on_error=False``（預設）保持原本 swallow-and-log 行為，避免
+        既有 in-band caller (DeleteDocument / DeleteChunk) 因 Milvus 短暫
+        不可用就讓 PG 也卡住。``raise_on_error=True`` 給 outbox drain
+        handler 用，讓失敗能進 retry/DLQ。
+        """
         collection = _safe_collection_name(collection)
         try:
             expr = _build_filter_expr(filters)
@@ -251,7 +260,40 @@ class MilvusVectorStore(VectorStore):
                 "milvus.delete.skipped",
                 collection=collection,
                 filters=filters,
+                exc_info=True,
             )
+            if raise_on_error:
+                raise
+
+    async def drop_collection(self, collection: str) -> None:
+        """整個 collection 刪除（DeleteKB outbox handler 用）。
+
+        Drop 已不存在的 collection 是 no-op（Milvus client 行為），符合
+        outbox handler 的 idempotent 要求。``raise_on_error`` 永遠隱含
+        True — drop_collection 失敗代表 Milvus 不可用，應進 retry 而非吞掉。
+        """
+        collection = _safe_collection_name(collection)
+        try:
+            has_collection = await asyncio.to_thread(
+                self._client.has_collection, collection_name=collection
+            )
+            if not has_collection:
+                logger.info(
+                    "milvus.drop_collection.noop",
+                    collection=collection,
+                )
+                return
+            await asyncio.to_thread(
+                self._client.drop_collection, collection_name=collection
+            )
+            logger.info("milvus.drop_collection", collection=collection)
+        except Exception:
+            logger.warning(
+                "milvus.drop_collection.failed",
+                collection=collection,
+                exc_info=True,
+            )
+            raise
 
     async def fetch_vectors(
         self,

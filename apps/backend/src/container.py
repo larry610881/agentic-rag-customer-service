@@ -243,6 +243,10 @@ from src.application.knowledge.reembed_chunk_use_case import ReEmbedChunkUseCase
 from src.application.knowledge.get_kb_quality_summary_use_case import (
     GetKbQualitySummaryUseCase,
 )
+from src.application.outbox.publish_outbox_event_use_case import (
+    PublishOutboxEventUseCase,
+)
+from src.application.outbox.drain_outbox_use_case import DrainOutboxUseCase
 from src.application.chunk_category.create_category_use_case import (
     CreateCategoryUseCase,
 )
@@ -410,6 +414,9 @@ from src.infrastructure.db.repositories.notification_channel_repository import (
 from src.infrastructure.db.repositories.optimization_run_repository import (
     SQLAlchemyOptimizationRunRepository,
 )
+from src.infrastructure.db.repositories.outbox_event_repository import (
+    SQLAlchemyOutboxEventRepository,
+)
 from src.infrastructure.db.repositories.plan_repository import (
     SQLAlchemyPlanRepository,
 )
@@ -507,6 +514,7 @@ from src.infrastructure.memory.llm_memory_extraction_service import (
     LLMMemoryExtractionService,
 )
 from src.infrastructure.milvus.milvus_vector_store import MilvusVectorStore
+from src.infrastructure.outbox.handlers import build_vector_handlers
 from src.infrastructure.notification.email_sender import EmailNotificationSender
 from src.infrastructure.notification.redis_throttle import RedisNotificationThrottle
 from src.infrastructure.notification.sendgrid_quota_alert_sender import (
@@ -735,6 +743,19 @@ class Container(containers.DeclarativeContainer):
     pricing_recalc_audit_repository = providers.Factory(
         SQLAlchemyPricingRecalcAuditRepository,
         session=db_session,
+    )
+
+    # ── Outbox Pattern (Phase A) ──────────────────────────────────────
+    # 提供 publish + drain；handler registry 在 vector_store 定義後組裝
+    # （見下方 outbox_handlers / drain_outbox_use_case）
+    outbox_event_repository = providers.Factory(
+        SQLAlchemyOutboxEventRepository,
+        session=db_session,
+    )
+
+    publish_outbox_event_use_case = providers.Factory(
+        PublishOutboxEventUseCase,
+        outbox_repo=outbox_event_repository,
     )
 
     usage_recalc_port = providers.Factory(
@@ -976,6 +997,18 @@ class Container(containers.DeclarativeContainer):
         uri=config.provided.milvus_uri,
         token=config.provided.milvus_token,
         db_name=config.provided.milvus_db_name,
+    )
+
+    # Outbox handler registry — 等 vector_store 定義後組裝
+    outbox_handlers = providers.Singleton(
+        build_vector_handlers,
+        vector_store=vector_store,
+    )
+
+    drain_outbox_use_case = providers.Factory(
+        DrainOutboxUseCase,
+        outbox_repo=outbox_event_repository,
+        handlers=outbox_handlers,
     )
 
     _static_llm_service = providers.Factory(FakeLLMService)
