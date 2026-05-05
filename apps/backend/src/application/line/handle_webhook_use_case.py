@@ -9,7 +9,15 @@ from typing import Any
 from uuid import uuid4
 
 from src.domain.agent.services import AgentService
-from src.domain.bot.entity import Bot, BotLLMParams
+from src.domain.bot.entity import (
+    Bot,
+    BotLLMParams,
+    BotMcpBinding,
+    IntentRoute,
+    McpServerConfig,
+    McpToolMeta,
+    ToolRagConfig,
+)
 from src.domain.bot.repository import BotRepository
 from src.domain.bot.value_objects import BotId, BotShortCode
 from src.domain.conversation.entity import Conversation
@@ -64,13 +72,32 @@ def _bot_to_json(bot: Bot) -> str:
 
 
 def _bot_from_json(raw: str) -> Bot:
-    """JSON str → Bot dataclass"""
+    """JSON str → Bot dataclass
+
+    `dataclasses.asdict` 把 nested dataclass 攤平成 dict，反向時必須逐欄重建，
+    否則 LINE webhook 取 cached bot 後跑 resolver / builder 會踩 ``getattr(dict, ...)``
+    AttributeError（例：tool_configs 漏轉造成 8b9f438 per-tool KB binding 上線後 500）。
+    """
     d = json.loads(raw)
     d["id"] = BotId(value=d["id"])
     d["short_code"] = BotShortCode(value=d["short_code"])
     d["llm_params"] = BotLLMParams(**d["llm_params"])
     d["created_at"] = datetime.fromisoformat(d["created_at"])
     d["updated_at"] = datetime.fromisoformat(d["updated_at"])
+    d["mcp_servers"] = [
+        McpServerConfig(
+            **{
+                **s,
+                "tools": [McpToolMeta(**t) for t in s.get("tools", [])],
+            }
+        )
+        for s in d.get("mcp_servers", [])
+    ]
+    d["mcp_bindings"] = [BotMcpBinding(**b) for b in d.get("mcp_bindings", [])]
+    d["intent_routes"] = [IntentRoute(**r) for r in d.get("intent_routes", [])]
+    d["tool_configs"] = {
+        name: ToolRagConfig(**cfg) for name, cfg in d.get("tool_configs", {}).items()
+    }
     return Bot(**d)
 
 
