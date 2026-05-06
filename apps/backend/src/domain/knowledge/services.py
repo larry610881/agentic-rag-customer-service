@@ -78,6 +78,29 @@ class ChunkContextService(ABC):
         ...
 
 
+class DMMetadataExtractor(ABC):
+    """Port for KB-level DM metadata extraction (Issue #47 L3.3).
+
+    Reads OCR excerpts from cover / index / promotion pages of a DM-style KB
+    and returns a structured ``dm_metadata`` dict containing dm_period /
+    merchant / global_activities / member_conditions / featured_categories /
+    special_activities. Implementation enforces a JSON schema (e.g. via
+    Anthropic tool use) so callers can persist the dict directly into
+    ``KnowledgeBase.dm_metadata``.
+    """
+
+    @abstractmethod
+    async def extract(
+        self,
+        *,
+        ocr_excerpts: list[str],
+        page_types: list[str],
+        model: str = "",
+    ) -> dict:
+        """Return validated DM metadata dict (matches DMMetadata pydantic model)."""
+        ...
+
+
 class TextSplitterService(ABC):
     @abstractmethod
     def split(

@@ -112,6 +112,9 @@ from src.application.eval_dataset.update_eval_dataset_use_case import (
 )
 from src.application.health.health_check_use_case import HealthCheckUseCase
 from src.application.knowledge.classify_kb_use_case import ClassifyKbUseCase
+from src.application.knowledge.extract_kb_dm_metadata_use_case import (
+    ExtractKBDMMetadataUseCase,
+)
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
 )
@@ -350,6 +353,9 @@ from src.infrastructure.classification.cluster_classification_service import (
     ClusterClassificationService,
 )
 from src.infrastructure.concurrency import RedisConversationLock
+from src.infrastructure.llm.llm_dm_metadata_extractor import (
+    LLMDMMetadataExtractor,
+)
 from src.infrastructure.context.llm_chunk_context_service import (
     LLMChunkContextService,
 )
@@ -1605,6 +1611,23 @@ class Container(containers.DeclarativeContainer):
         category_repository=chunk_category_repository,
         vector_store=vector_store,
         classification_service=classification_service,
+        record_usage=record_usage_use_case,
+    )
+
+    # Issue #47 L3.3 + L3.4 — KB-level DM metadata extraction
+    dm_metadata_extractor = providers.Factory(
+        LLMDMMetadataExtractor,
+        api_key_resolver=providers.Callable(
+            lambda factory: factory.resolve_api_key,
+            _llm_factory,
+        ),
+    )
+
+    extract_kb_dm_metadata_use_case = providers.Factory(
+        ExtractKBDMMetadataUseCase,
+        knowledge_base_repository=kb_repository,
+        document_repository=document_repository,
+        extractor=dm_metadata_extractor,
         record_usage=record_usage_use_case,
     )
 

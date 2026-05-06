@@ -571,13 +571,21 @@ class ProcessDocumentUseCase:
     async def _maybe_trigger_classification(
         self, kb_id: str, tenant_id: str, log
     ) -> None:
-        """If no more pending/processing docs in KB, trigger auto-classification."""
+        """If no more pending/processing docs in KB, trigger auto-classification.
+
+        Issue #47 L3.6: 在同一 gateway 也 piggyback enqueue 'extract_dm_metadata'
+        — 條件：KB.dm_metadata_model 已設（user 顯式 opt-in）。兩個 KB-level
+        job 共用「KB 全 done」訊號，無需各自做 polling。
+        """
         try:
             # Use independent session to avoid stale data from refreshed sessions
             from sqlalchemy import func, select
 
             from src.infrastructure.db.engine import async_session_factory
             from src.infrastructure.db.models.document_model import DocumentModel
+            from src.infrastructure.db.models.knowledge_base_model import (
+                KnowledgeBaseModel,
+            )
 
             async with async_session_factory() as session:
                 stmt = (
@@ -592,10 +600,31 @@ class ProcessDocumentUseCase:
                 result = await session.execute(stmt)
                 pending = result.scalar_one()
 
+                # 同 session 一併撈 KB.dm_metadata_model 決定是否 trigger
+                # extract_dm_metadata。避免再開 session。
+                kb_dm_model: str = ""
+                if pending == 0:
+                    kb_stmt = select(
+                        KnowledgeBaseModel.dm_metadata_model
+                    ).where(KnowledgeBaseModel.id == kb_id)
+                    kb_result = await session.execute(kb_stmt)
+                    kb_dm_model = kb_result.scalar_one_or_none() or ""
+
             log.info("classify_kb.check", kb_id=kb_id, pending=pending)
             if pending == 0:
                 from src.infrastructure.queue.arq_pool import enqueue
                 await enqueue("classify_kb", kb_id, tenant_id)
                 log.info("classify_kb.auto_triggered", kb_id=kb_id)
+
+                # L3.6 piggyback — 只在 KB 顯式設 dm_metadata_model 才 trigger
+                if kb_dm_model:
+                    await enqueue(
+                        "extract_dm_metadata", kb_id, tenant_id
+                    )
+                    log.info(
+                        "extract_dm_metadata.auto_triggered",
+                        kb_id=kb_id,
+                        model=kb_dm_model,
+                    )
         except Exception:
             log.warning("classify_kb.auto_trigger_failed", exc_info=True)

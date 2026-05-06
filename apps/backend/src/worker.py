@@ -134,6 +134,31 @@ async def classify_kb_task(ctx: dict, kb_id: str, tenant_id: str) -> None:
     )
 
 
+# --- Task: extract_dm_metadata (Issue #47 L3.5) ---
+
+async def extract_dm_metadata_task(
+    ctx: dict, kb_id: str, tenant_id: str
+) -> None:
+    """KB-level DM metadata 抽取：cover/promotion 頁 OCR → LLM tool use → KB.dm_metadata。
+
+    觸發於 process_document `_maybe_trigger_dm_metadata_extract`（KB 全 child
+    docs done 且 KB.dm_metadata_model 已設）。失敗會走 worker_resilience
+    指數退避重試 3 次（5s → 30s → 2min）。
+    """
+    async def _inner() -> None:
+        container = _new_container()
+        use_case = container.extract_kb_dm_metadata_use_case()
+        await use_case.execute(kb_id, tenant_id)
+
+    await execute_with_resilience(
+        ctx=ctx,
+        task_name="extract_dm_metadata",
+        task_id=kb_id,
+        coro_factory=_inner,
+        extra_log={"kb_id": kb_id, "tenant_id": tenant_id},
+    )
+
+
 # --- Task: run_evaluation ---
 
 async def run_evaluation_task(
@@ -319,6 +344,8 @@ class WorkerSettings:
         func(extract_memory_task, name="extract_memory", max_tries=MAX_TRIES),
         func(run_evaluation_task, name="run_evaluation", max_tries=MAX_TRIES),
         func(classify_kb_task, name="classify_kb", max_tries=MAX_TRIES),
+        # Issue #47 L3.5: KB-level DM metadata 抽取（cover/promotion 頁 → LLM tool use）
+        func(extract_dm_metadata_task, name="extract_dm_metadata", max_tries=MAX_TRIES),
         # S-Gov.6b: 對話 summary 個別 job（cron fan-out）
         func(
             process_conversation_summary_task,
