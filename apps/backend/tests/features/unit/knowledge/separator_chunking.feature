@@ -26,3 +26,17 @@ Feature: Separator-Based Chunking (DM 商品目錄)
     Given OCR 文本只有【商家】markers 但無 === 分隔符
     When 我用 separator splitter 切塊
     Then 應呼叫 fallback splitter 切塊
+
+  Scenario: Promotion 頁含【活動主題】markers 與 === 分隔活動條目應 splitter 切塊（不 fallback）
+    Given OCR 文本含【商家】家樂福與【活動期間】2026/04/08～2026/04/30 與 3 個 === 分隔的活動條目
+    When 我用 separator splitter 切塊
+    Then 應產生 3 個 chunks
+    And 每個 chunk 的 context_text 應包含「家樂福」
+    And 每個 chunk 的 context_text 應包含「2026/04/08」
+
+  Scenario: Mixed 頁混合商品與活動條目都應切塊與 page-level metadata 注入 context_text
+    Given OCR 文本含【商家】家樂福與【活動期間】2026/04/08～2026/04/30 與 2 個商品區塊與 2 個活動條目
+    When 我用 separator splitter 切塊
+    Then 應產生 4 個 chunks
+    And 每個 chunk 的 context_text 應包含「家樂福」
+    And 每個 chunk 的 context_text 應包含「活動期間」

@@ -89,7 +89,7 @@ def test_ocr_prompts_dict_contains_general_and_catalog_only():
 def test_promotion_prompt_targets_credit_card_pages():
     text = _PAGE_TYPE_PROMPTS["promotion"]
     # Critical fields user 在 LINE 問問題時最常用
-    assert "活動主題" in text
+    assert "活動" in text
     assert "活動期間" in text
     assert "優惠條件" in text
     assert "優惠對象" in text
@@ -99,6 +99,56 @@ def test_mixed_prompt_has_both_sections():
     text = _PAGE_TYPE_PROMPTS["mixed"]
     assert "## 商品段" in text
     assert "## 活動段" in text
+
+
+# ── Layer 1 strengthening: page-level markers MUST be extracted ────
+
+
+def test_catalog_prompt_mandates_four_page_level_markers():
+    """L1: _CATALOG_PROMPT 必抽【頁面標題/商家/活動期間/頁面級促銷說明】"""
+    text = _PAGE_TYPE_PROMPTS["catalog"]
+    assert "必抽" in text or "必須" in text, "prompt 應有「必抽」要求"
+    assert "頁面標題" in text
+    assert "商家" in text
+    assert "活動期間" in text
+    assert "頁面級促銷說明" in text
+    assert "不詳" in text, "prompt 應教 LLM 找不到填「不詳」而非省略"
+
+
+def test_promotion_prompt_uses_separator_blocks():
+    """L1+L2: promotion prompt 改用 ===\\n活動：X\\n=== 格式（splitter 能解析）"""
+    text = _PAGE_TYPE_PROMPTS["promotion"]
+    assert "活動：" in text, "block 必須以「活動：」開頭"
+    # 必須教 LLM 用 === 切活動
+    assert "===" in text
+    assert "獨立一組" in text or "1 組" in text
+
+
+def test_promotion_prompt_mandates_page_level_markers():
+    """L1: _PROMOTION_PROMPT 必抽【商家/活動期間/頁面級促銷說明】"""
+    text = _PAGE_TYPE_PROMPTS["promotion"]
+    assert "商家" in text
+    assert "活動期間" in text
+    assert "頁面級促銷說明" in text
+    assert "不詳" in text
+
+
+def test_mixed_prompt_uses_separator_for_both_sections():
+    """L1: mixed 兩段都用 === block，splitter 能切"""
+    text = _PAGE_TYPE_PROMPTS["mixed"]
+    assert "商品：" in text
+    assert "活動：" in text
+    # 兩段都必須輸出
+    assert "都必須輸出" in text or "兩段都" in text
+
+
+def test_cover_prompt_mandates_dm_period():
+    """L1: cover prompt 必抽 DM 期間 — KB-level metadata 擷取的核心 input"""
+    text = _PAGE_TYPE_PROMPTS["cover"]
+    assert "DM 期間" in text
+    assert "DM 名稱" in text
+    assert "商家" in text
+    assert "不詳" in text
 
 
 # ── classify_page_type ─────────────────────────────────────

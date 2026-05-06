@@ -38,7 +38,11 @@ _PAGE_LEVEL_PROMO_RE = re.compile(
 
 # Sniff 條件
 _BARE_SEPARATOR_RE = re.compile(r"^={3,}\s*$", re.MULTILINE)
-_PRODUCT_KEYWORD_RE = re.compile(r"商品[:：]")
+# Promotion / mixed 頁也走 separator splitter — OCR _PROMOTION_PROMPT /
+# _MIXED_PROMPT 強制使用「===\n活動：X\n===」block 格式列每個獨立活動。
+# 認 keyword「商品」OR「活動」就視為 splittable catalog format，
+# 純技術文件 / 散文不會同時出現 ===  + 此類 keyword，誤判機率極低。
+_BLOCK_KEYWORD_RE = re.compile(r"(商品|活動)[:：]")
 
 
 class SeparatorTextSplitterService(TextSplitterService):
@@ -99,10 +103,11 @@ class SeparatorTextSplitterService(TextSplitterService):
 
         要求：
         - ≥ 2 個 === 分隔符（單行）
-        - 文中含「商品：」或「商品:」keyword
+        - 文中含「商品[:：]」或「活動[:：]」keyword（catalog / promotion / mixed
+          三種 OCR prompt 輸出都通過）
         """
         separator_count = len(_BARE_SEPARATOR_RE.findall(text))
-        return separator_count >= 2 and bool(_PRODUCT_KEYWORD_RE.search(text))
+        return separator_count >= 2 and bool(_BLOCK_KEYWORD_RE.search(text))
 
     @staticmethod
     def _extract_product_blocks(text: str) -> list[str]:
