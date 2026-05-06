@@ -1009,6 +1009,8 @@ class Container(containers.DeclarativeContainer):
         DrainOutboxUseCase,
         outbox_repo=outbox_event_repository,
         handlers=outbox_handlers,
+        # Phase C: doc-id reuse guard 用，None 也行（drop_collection 不需要）
+        document_repository=document_repository,
     )
 
     _static_llm_service = providers.Factory(FakeLLMService)
@@ -1312,7 +1314,7 @@ class Container(containers.DeclarativeContainer):
     delete_document_use_case = providers.Factory(
         DeleteDocumentUseCase,
         document_repository=document_repository,
-        vector_store=vector_store,
+        publish_outbox_event_use_case=publish_outbox_event_use_case,
         document_file_storage=document_file_storage_service,
     )
 
@@ -1321,7 +1323,7 @@ class Container(containers.DeclarativeContainer):
     delete_documents_by_source_use_case = providers.Factory(
         DeleteDocumentsBySourceUseCase,
         kb_repo=kb_repository,
-        vector_store=vector_store,
+        publish_outbox_event_use_case=publish_outbox_event_use_case,
     )
 
     upload_document_use_case = providers.Factory(

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
@@ -202,6 +204,7 @@ def run_drain(context) -> None:
     drain = DrainOutboxUseCase(
         outbox_repo=context["repo"],
         handlers=context["handlers"],
+        document_repository=context.get("doc_repo"),
         worker_id="test-worker",
     )
     context["drain_result"] = _run(drain.execute())
@@ -251,3 +254,46 @@ def assert_next_attempt_in_future(context) -> None:
 @then(parsers.parse("handler 應被呼叫 {expected:d} 次"))
 def assert_handler_calls(context, expected: int) -> None:
     assert context["handler_call_count"] == expected
+
+
+# ── Watermark guard scenarios (Phase C) ────────────────────────
+
+
+@given(parsers.parse(
+    'outbox 有 1 筆 vector.delete pending 事件 aggregate_id="{doc_id}" '
+    "doc_watermark_ts 在 {hours_ago:d} 小時前"
+))
+def repo_with_watermarked_event(context, doc_id: str, hours_ago: int) -> None:
+    context["repo"] = _InMemoryOutboxRepo()
+    watermark = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+    event = OutboxEvent(
+        tenant_id="t-1",
+        aggregate_type="document",
+        aggregate_id=doc_id,
+        event_type=OutboxEventType.VECTOR_DELETE.value,
+        payload={
+            "collection": "kb_test",
+            "filters": {"document_id": [doc_id]},
+        },
+        doc_watermark_ts=watermark,
+    )
+    _run(context["repo"].save(event))
+    context["event_id"] = event.id
+
+
+@given(parsers.parse('PG 內 {doc_id} 存在且 created_at 在現在'))
+def pg_has_doc_now(context, doc_id: str) -> None:
+    doc = SimpleNamespace(
+        id=SimpleNamespace(value=doc_id),
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = AsyncMock()
+    repo.find_by_id = AsyncMock(return_value=doc)
+    context["doc_repo"] = repo
+
+
+@given(parsers.parse('PG 內 {doc_id} 不存在'))
+def pg_no_doc(context, doc_id: str) -> None:
+    repo = AsyncMock()
+    repo.find_by_id = AsyncMock(return_value=None)
+    context["doc_repo"] = repo

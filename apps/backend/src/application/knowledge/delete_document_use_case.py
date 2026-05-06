@@ -1,6 +1,25 @@
+"""刪除知識庫文件用例（Phase C — 透過 Outbox Pattern）
+
+修正點（接續 Phase B DeleteKnowledgeBase）：
+- vector_store.delete 直接呼叫 → publish vector.delete outbox 事件
+- filters 帶父 + 所有 children 的 document_id（IN list 一次 cascade）
+- doc_watermark_ts = parent doc.created_at → drain 時 id-reuse guard
+
+保持 in-band（不走 outbox）的副作用：
+- Storage delete（檔案系統，本身就比較可靠 + 不影響 RAG 一致性）
+- chunk_category clear + classify_kb re-enqueue（DB only，failure 不破壞 RAG）
+
+Atomicity：use case 不持有 session（DDD 紅線）。publish session.add 不 commit；
+後續 doc_repo.delete 內 atomic() 帶上 publish 一起 commit。任一 raise
+SAVEPOINT rollback 把 publish 也丟掉。
+"""
+
+from src.application.outbox.publish_outbox_event_use_case import (
+    PublishOutboxEventUseCase,
+)
 from src.domain.knowledge.repository import DocumentRepository
 from src.domain.knowledge.services import DocumentFileStorageService
-from src.domain.rag.services import VectorStore
+from src.domain.outbox.events import vector_delete_event
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.infrastructure.logging import get_logger
 
@@ -11,11 +30,11 @@ class DeleteDocumentUseCase:
     def __init__(
         self,
         document_repository: DocumentRepository,
-        vector_store: VectorStore,
+        publish_outbox_event_use_case: PublishOutboxEventUseCase,
         document_file_storage: DocumentFileStorageService,
     ) -> None:
         self._doc_repo = document_repository
-        self._vector_store = vector_store
+        self._publish_outbox = publish_outbox_event_use_case
         self._file_storage = document_file_storage
 
     async def execute(self, doc_id: str) -> None:
@@ -27,13 +46,11 @@ class DeleteDocumentUseCase:
         tenant_id = doc.tenant_id
 
         # CASCADE: 找出所有 child documents（PDF 拆頁產生的子頁），它們的
-        # 檔案 / Milvus chunks / DB row 必須跟著父一起刪。否則父刪了但 child
-        # 與其向量殘留 → carrefour 觀察到的「刪除的 DM 還會被搜出來」bug
-        # （root cause）。
+        # 檔案 / Milvus chunks / DB row 必須跟著父一起刪。
         children = await self._doc_repo.find_children(doc_id)
         all_doc_ids = [doc_id] + [c.id.value for c in children]
 
-        # 1. 刪所有 children + 父 的檔案 storage
+        # 1. 刪所有 children + 父 的檔案 storage（in-band；失敗 log 不擋）
         for d in [doc, *children]:
             if d.storage_path:
                 try:
@@ -47,22 +64,21 @@ class DeleteDocumentUseCase:
                         storage_path=d.storage_path,
                     )
 
-        # 2. 刪 Milvus 向量 — 一次 IN list 把父 + 所有 children 都清掉
-        # （MilvusVectorStore._build_filter_expr 支援 list value → IN operator）
-        try:
-            await self._vector_store.delete(
-                collection=f"kb_{kb_id}",
-                filters={"document_id": all_doc_ids},
-            )
-        except Exception:  # noqa: BLE001
-            logger.warning(
-                "document.delete.milvus_failed",
-                kb_id=kb_id,
-                doc_ids=all_doc_ids,
-                exc_info=True,
-            )
+        # 2. Publish outbox vector.delete 事件 — drain 後對 Milvus 套用
+        # filters 帶父 + 所有 children 的 document_id list（IN operator）
+        # doc_watermark_ts 給 drain 端的 id-reuse guard 用
+        event = vector_delete_event(
+            tenant_id=tenant_id,
+            aggregate_type="document",
+            aggregate_id=doc_id,
+            collection=f"kb_{kb_id}",
+            filters={"document_id": all_doc_ids},
+            doc_watermark_ts=doc.created_at,
+        )
+        await self._publish_outbox.execute(event)
 
-        # 3. 刪 DB record（先 children 再父，避免 FK 衝突）
+        # 3. PG cascade delete（先 children 再父，避免 FK 衝突）
+        # doc_repo.delete 內 atomic commit 會帶上 publish 的 INSERT 一起持久化
         for child in children:
             await self._doc_repo.delete(child.id.value)
         await self._doc_repo.delete(doc_id)
@@ -75,7 +91,7 @@ class DeleteDocumentUseCase:
             tenant_id=tenant_id,
         )
 
-        # Clear old categories first, then re-classify if KB still has docs
+        # 4. Clear old categories + re-classify（in-band；失敗不影響 RAG）
         try:
             from sqlalchemy import delete
 
@@ -91,7 +107,7 @@ class DeleteDocumentUseCase:
                     )
                 )
                 await session.commit()
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
         # Re-classify if there are remaining documents
@@ -100,5 +116,5 @@ class DeleteDocumentUseCase:
             if remaining > 0:
                 from src.infrastructure.queue.arq_pool import enqueue
                 await enqueue("classify_kb", kb_id, tenant_id)
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass

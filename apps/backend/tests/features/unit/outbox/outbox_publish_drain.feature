@@ -36,3 +36,19 @@ Feature: Outbox Pattern — publish + drain
     And handler registry 不含該 event_type
     When drain worker 跑一次
     Then 該事件 status 應為 "dead"
+
+  Scenario: doc-id reuse guard — 新版重建的 doc 不被舊 delete 事件誤刪
+    Given outbox 有 1 筆 vector.delete pending 事件 aggregate_id="doc-1" doc_watermark_ts 在 1 小時前
+    And PG 內 doc-1 存在且 created_at 在現在
+    And handler 對應 vector.delete 會成功執行
+    When drain worker 跑一次
+    Then 該事件 status 應為 "done"
+    And handler 應被呼叫 0 次
+
+  Scenario: doc-id reuse guard — PG 已無此 doc 時正常刪
+    Given outbox 有 1 筆 vector.delete pending 事件 aggregate_id="doc-1" doc_watermark_ts 在 1 小時前
+    And PG 內 doc-1 不存在
+    And handler 對應 vector.delete 會成功執行
+    When drain worker 跑一次
+    Then 該事件 status 應為 "done"
+    And handler 應被呼叫 1 次

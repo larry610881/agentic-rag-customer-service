@@ -1,4 +1,4 @@
-"""刪除知識庫文件 BDD Step Definitions"""
+"""刪除知識庫文件 BDD Step Definitions（Phase C — Outbox Pattern）"""
 
 import asyncio
 from datetime import datetime, timezone
@@ -7,9 +7,16 @@ from unittest.mock import AsyncMock
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from src.application.knowledge.delete_document_use_case import DeleteDocumentUseCase
+from src.application.knowledge.delete_document_use_case import (
+    DeleteDocumentUseCase,
+)
+from src.application.outbox.publish_outbox_event_use_case import (
+    PublishOutboxEventUseCase,
+)
 from src.domain.knowledge.entity import Document
 from src.domain.knowledge.value_objects import DocumentId
+from src.domain.outbox.entity import OutboxEvent, OutboxEventType
+from src.domain.outbox.repository import OutboxEventRepository
 from src.domain.shared.exceptions import EntityNotFoundError
 
 scenarios("unit/knowledge/delete_document.feature")
@@ -23,6 +30,32 @@ def _run(coro):
         loop.close()
 
 
+# ── In-memory fake outbox repo ────────────────────────────────────
+
+
+class _RecordingOutboxRepo(OutboxEventRepository):
+    def __init__(self) -> None:
+        self.events: list[OutboxEvent] = []
+
+    async def save(self, event: OutboxEvent) -> None:
+        self.events.append(event)
+
+    async def claim_batch(self, *args, **kwargs):  # noqa: ANN001
+        return []
+
+    async def update(self, event: OutboxEvent) -> None:
+        return None
+
+    async def find_by_id(self, event_id: str) -> OutboxEvent | None:
+        return None
+
+    async def list_dead_letter(self, **kwargs) -> list[OutboxEvent]:
+        return []
+
+    async def count_by_status(self, status: str) -> int:
+        return 0
+
+
 @pytest.fixture
 def context():
     return {}
@@ -32,17 +65,25 @@ def context():
 def mock_doc_repo():
     repo = AsyncMock()
     repo.delete = AsyncMock()
-    # Cascade: delete use case 會問 children；預設沒 children
     repo.find_children = AsyncMock(return_value=[])
     repo.count_by_kb = AsyncMock(return_value=0)
     return repo
 
 
 @pytest.fixture
+def outbox_repo():
+    return _RecordingOutboxRepo()
+
+
+@pytest.fixture
+def publish_outbox(outbox_repo):
+    return PublishOutboxEventUseCase(outbox_repo=outbox_repo)
+
+
+@pytest.fixture
 def mock_vector_store():
-    store = AsyncMock()
-    store.delete = AsyncMock()
-    return store
+    """殘留 mock — 用於確認 use case **不會** 直接呼叫 vector store."""
+    return AsyncMock()
 
 
 @pytest.fixture
@@ -53,10 +94,10 @@ def mock_file_storage():
 
 
 @pytest.fixture
-def delete_use_case(mock_doc_repo, mock_vector_store, mock_file_storage):
+def delete_use_case(mock_doc_repo, publish_outbox, mock_file_storage):
     return DeleteDocumentUseCase(
         document_repository=mock_doc_repo,
-        vector_store=mock_vector_store,
+        publish_outbox_event_use_case=publish_outbox,
         document_file_storage=mock_file_storage,
     )
 
@@ -98,31 +139,58 @@ def delete_document(context, delete_use_case, mock_doc_repo, doc_id):
 
 @then("文件應從資料庫移除")
 def doc_deleted(context, mock_doc_repo):
-    # Cascade fix：sed cas 子頁也會被刪，所以 delete 不一定 called_once；
-    # 只驗證父 doc-001 在 call list 中
     deleted_ids = {
         call.args[0] for call in mock_doc_repo.delete.call_args_list
     }
     assert "doc-001" in deleted_ids
 
 
-@then("對應的向量資料應從 Milvus 移除")
-def vectors_deleted(context, mock_vector_store):
-    # Cascade fix：filter 改用 list（IN operator）一次刪父 + children；
-    # 沒 children 時 list 只含父 doc_id
-    mock_vector_store.delete.assert_called_once_with(
-        collection=f"kb_{context['kb_id']}",
-        filters={"document_id": ["doc-001"]},
-    )
+@then(parsers.parse("應發布 {count:d} 筆 vector.delete outbox 事件"))
+def assert_outbox_event_count(outbox_repo, count: int):
+    delete_events = [
+        e for e in outbox_repo.events
+        if e.event_type == OutboxEventType.VECTOR_DELETE.value
+    ]
+    assert len(delete_events) == count
 
 
-@then("對應的文字分塊應從資料庫移除")
-def chunks_deleted(context, mock_doc_repo):
-    # Chunks are now deleted internally by document_repo.delete()
-    deleted_ids = {
-        call.args[0] for call in mock_doc_repo.delete.call_args_list
-    }
-    assert "doc-001" in deleted_ids
+@then(parsers.parse('該事件的 collection 應為 "{expected}"'))
+def assert_event_collection(outbox_repo, expected: str):
+    delete_events = [
+        e for e in outbox_repo.events
+        if e.event_type == OutboxEventType.VECTOR_DELETE.value
+    ]
+    assert delete_events
+    assert delete_events[0].payload.get("collection") == expected
+
+
+@then(parsers.parse('該事件的 filters.document_id 應只含 "{doc_id}"'))
+def assert_filter_single_doc(outbox_repo, doc_id: str):
+    delete_events = [
+        e for e in outbox_repo.events
+        if e.event_type == OutboxEventType.VECTOR_DELETE.value
+    ]
+    assert delete_events
+    filters = delete_events[0].payload.get("filters", {})
+    doc_ids = filters.get("document_id")
+    assert isinstance(doc_ids, list)
+    assert doc_ids == [doc_id]
+
+
+@then("該事件應帶 doc_watermark_ts 等於 parent doc.created_at")
+def assert_watermark(context, outbox_repo):
+    delete_events = [
+        e for e in outbox_repo.events
+        if e.event_type == OutboxEventType.VECTOR_DELETE.value
+    ]
+    assert delete_events
+    assert delete_events[0].doc_watermark_ts == context["doc"].created_at
+
+
+@then("不應直接呼叫 vector store")
+def assert_no_vector_store_call(mock_vector_store):
+    mock_vector_store.delete.assert_not_called()
+    mock_vector_store.drop_collection.assert_not_called()
 
 
 @then("應拋出 EntityNotFoundError")
@@ -130,12 +198,15 @@ def raises_not_found(context):
     assert isinstance(context["error"], EntityNotFoundError)
 
 
-# ---------------------------------------------------------------------------
-# Cascade delete scenario
-# ---------------------------------------------------------------------------
+@then("不應發布任何 outbox 事件")
+def assert_no_outbox(outbox_repo):
+    assert outbox_repo.events == []
 
 
-@given(parsers.parse("文件 \"{doc_id}\" 有 {n:d} 個 child 子頁文件"))
+# ── Cascade scenarios ────────────────────────────────────────────
+
+
+@given(parsers.parse('文件 "{doc_id}" 有 {n:d} 個 child 子頁文件'))
 def doc_has_children(context, mock_doc_repo, doc_id, n):
     now = datetime.now(timezone.utc)
     children = [
@@ -161,15 +232,18 @@ def doc_has_children(context, mock_doc_repo, doc_id, n):
     context["expected_doc_ids"] = [doc_id] + [c.id.value for c in children]
 
 
-@then("Milvus delete filter 應同時帶父與所有 children 的 document_id list")
-def vectors_deleted_with_children(context, mock_vector_store):
-    mock_vector_store.delete.assert_called_once()
-    call_kwargs = mock_vector_store.delete.call_args.kwargs
-    assert call_kwargs["collection"] == f"kb_{context['kb_id']}"
-    doc_ids = call_kwargs["filters"]["document_id"]
-    assert isinstance(doc_ids, list), (
-        f"Expected document_id to be a list (IN operator), got {type(doc_ids)}"
-    )
+@then(
+    "該事件的 filters.document_id 應同時帶父與所有 children 的 document_id"
+)
+def assert_filter_with_children(context, outbox_repo):
+    delete_events = [
+        e for e in outbox_repo.events
+        if e.event_type == OutboxEventType.VECTOR_DELETE.value
+    ]
+    assert delete_events
+    filters = delete_events[0].payload.get("filters", {})
+    doc_ids = filters.get("document_id")
+    assert isinstance(doc_ids, list)
     assert sorted(doc_ids) == sorted(context["expected_doc_ids"])
 
 
@@ -179,6 +253,4 @@ def children_deleted(context, mock_doc_repo):
         call.args[0] for call in mock_doc_repo.delete.call_args_list
     }
     expected = set(context["expected_doc_ids"])
-    assert deleted_ids == expected, (
-        f"Expected to delete {expected}, actually deleted {deleted_ids}"
-    )
+    assert deleted_ids == expected

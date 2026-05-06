@@ -1,12 +1,15 @@
-"""Delete-by-source use case (Issue #44 — External Producer Integration).
+"""Delete-by-source use case (Phase C — 透過 Outbox Pattern)
 
-Deletes Milvus chunks matching ``(source, source_id IN [...])`` within a
-specific knowledge base. Tenant ownership of the KB is validated up front;
-no cross-tenant access without system_admin.
+Issue #44 — External Producer Integration。Producer (e.g. PMO 平台 audit_log)
+刪掉 upstream 紀錄時 cascade 清掉 RAG Milvus 對應的 chunks。
 
-Note: this only purges Milvus vectors. The producer is expected to manage
-its own document/chunk records (e.g. PMO platform's audit_log table) and
-call this endpoint when those records are deleted upstream.
+Phase C 改寫：vector_store.delete 直接呼叫 → publish vector.delete outbox event。
+不設 doc_watermark_ts — source-driven 是「按 source/source_id 過濾刪一批 chunks」，
+不對應單一 doc，watermark guard 不適用（producer 短時間 re-upload 同 source_id
+有理論 race 風險，由 producer side 自行避免；本 sprint 範圍不處理）。
+
+Tenant ownership of the KB is validated up front; no cross-tenant access
+without system_admin.
 """
 
 from __future__ import annotations
@@ -16,8 +19,11 @@ from dataclasses import dataclass
 import structlog
 
 from src.application.knowledge._admin_kb_check import ensure_kb_accessible
+from src.application.outbox.publish_outbox_event_use_case import (
+    PublishOutboxEventUseCase,
+)
 from src.domain.knowledge.repository import KnowledgeBaseRepository
-from src.domain.rag.services import VectorStore
+from src.domain.outbox.events import vector_delete_event
 
 logger = structlog.get_logger(__name__)
 
@@ -34,10 +40,10 @@ class DeleteDocumentsBySourceUseCase:
     def __init__(
         self,
         kb_repo: KnowledgeBaseRepository,
-        vector_store: VectorStore,
+        publish_outbox_event_use_case: PublishOutboxEventUseCase,
     ) -> None:
         self._kb_repo = kb_repo
-        self._vs = vector_store
+        self._publish_outbox = publish_outbox_event_use_case
 
     async def execute(self, command: DeleteDocumentsBySourceCommand) -> None:
         # ensure_kb_accessible raises EntityNotFoundError on missing KB OR
@@ -52,19 +58,26 @@ class DeleteDocumentsBySourceUseCase:
         # tenant_id filter is mandatory — even after KB ownership check we
         # never want to issue a cross-tenant delete in case admin is operating
         # against the wrong collection.
-        await self._vs.delete(
+        event = vector_delete_event(
+            tenant_id=effective_tenant_id,
+            aggregate_type="document_source",
+            aggregate_id=f"{command.source}:{kb_id_str}",
             collection=collection,
             filters={
                 "tenant_id": effective_tenant_id,
                 "source": command.source,
                 "source_id": command.source_ids,
             },
+            # 不帶 watermark — source-driven 無單一 doc.created_at 可比
+            doc_watermark_ts=None,
         )
+        await self._publish_outbox.execute(event)
 
         logger.info(
-            "kb.documents.delete_by_source",
+            "kb.documents.delete_by_source.outbox_published",
             kb_id=kb_id_str,
             tenant_id=effective_tenant_id,
             source=command.source,
             source_id_count=len(command.source_ids),
+            event_id=event.id,
         )
