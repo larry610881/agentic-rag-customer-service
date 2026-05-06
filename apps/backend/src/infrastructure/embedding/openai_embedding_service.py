@@ -81,6 +81,10 @@ class OpenAIEmbeddingService(EmbeddingService):
             try:
                 result = await self._call_api(texts, log)
                 return result, was_rate_limited
+            except ValueError:
+                # API key 空字串等 config error → 不 retry，重試 5 次也救不回
+                # 必須由人介入修 ProviderSetting 才能解
+                raise
             except httpx.HTTPStatusError as e:
                 if attempt == self._max_retries - 1:
                     raise
@@ -91,6 +95,15 @@ class OpenAIEmbeddingService(EmbeddingService):
                         wait = float(retry_after) * self._retry_after_multiplier
                     else:
                         wait = 5 * (attempt + 1)
+                # 401/403：authentication/authorization 失敗 → 不 retry
+                # 通常 = key 過期 / 無權限，重試 = 浪費 quota + 拖慢 fail
+                elif e.response.status_code in (401, 403):
+                    log.error(
+                        "embedding.auth_failed",
+                        status=e.response.status_code,
+                        body=e.response.text[:200],
+                    )
+                    raise
                 else:
                     wait = 2**attempt
                 log.warning(
@@ -109,6 +122,21 @@ class OpenAIEmbeddingService(EmbeddingService):
         raise RuntimeError("unreachable")  # pragma: no cover
 
     async def _call_api(self, texts: list[str], log):  # type: ignore[no-untyped-def]
+        # Fail-fast：API key 為空時直接 raise，避免送出 `Bearer ` 空 token
+        # 觸發 httpx 的 LocalProtocolError("Illegal header value b'Bearer '")
+        # 這個 error message 對 user 完全無意義且會 retry 5 次浪費時間。
+        # 改 ValueError 直接讓上層 catch + retry policy 標記任務 failed，
+        # error_message 帶有具體原因（API key 沒解析到）。
+        # 5/6 carrefour reprocess 踩雷紀錄：worker 在 Milvus 短暫斷線後
+        # 重 resolve API key 拿到空字串，原本含糊的 LocalProtocolError 讓
+        # debug 浪費 30 分鐘才從 traceback 第 N 層找到 root cause。
+        if not self._api_key:
+            raise ValueError(
+                f"Embedding API key is empty (model={self._model}, "
+                f"base_url={self._base_url}). 通常表示 provider key resolver "
+                "拿不到值（DB session 失效 / ProviderSetting 缺 / env 沒設）。"
+                "請檢查 tenant 的 ProviderSetting 是否完整。"
+            )
         key_prefix = self._api_key[:8] if self._api_key else "EMPTY"
         log.info(
             "embedding.request",
