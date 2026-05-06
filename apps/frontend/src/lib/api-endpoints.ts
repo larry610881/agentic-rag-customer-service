@@ -64,6 +64,22 @@ export const API_ENDPOINTS = {
     rebuildIndex: (name: string) =>
       `/api/v1/admin/milvus/collections/${name}/rebuild-index`,
   },
+  adminOutbox: {
+    deadLetter: (params?: { event_type?: string; tenant_id?: string;
+      limit?: number; offset?: number }) => {
+      const qs = new URLSearchParams();
+      if (params?.event_type) qs.set("event_type", params.event_type);
+      if (params?.tenant_id) qs.set("tenant_id", params.tenant_id);
+      if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+      if (params?.offset !== undefined) qs.set("offset", String(params.offset));
+      const q = qs.toString();
+      return `/api/v1/admin/outbox/dead-letter${q ? `?${q}` : ""}`;
+    },
+    stats: "/api/v1/admin/outbox/stats",
+    retry: (id: string) => `/api/v1/admin/outbox/dead-letter/${id}/retry`,
+    bulkRetry: "/api/v1/admin/outbox/dead-letter/bulk-retry",
+    abandon: (id: string) => `/api/v1/admin/outbox/dead-letter/${id}`,
+  },
   adminConvSummary: {
     list: (tenantId: string, botId?: string | null, page = 1, pageSize = 50) => {
       const qs = new URLSearchParams({

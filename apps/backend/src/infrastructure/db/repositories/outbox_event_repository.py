@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.outbox.entity import OutboxEvent, OutboxEventStatus
@@ -149,6 +149,14 @@ class SQLAlchemyOutboxEventRepository(OutboxEventRepository):
         m = result.scalar_one_or_none()
         return self._to_entity(m) if m else None
 
+    async def delete(self, event_id: str) -> None:
+        async with atomic(self._session):
+            await self._session.execute(
+                delete(OutboxEventModel).where(
+                    OutboxEventModel.id == event_id
+                )
+            )
+
     async def list_dead_letter(
         self,
         *,
@@ -183,7 +191,7 @@ class SQLAlchemyOutboxEventRepository(OutboxEventRepository):
         return int(result.scalar_one() or 0)
 
     async def oldest_pending_age_seconds(self) -> float | None:
-        """SELECT EXTRACT(EPOCH FROM NOW() - MIN(created_at)) WHERE status='pending'。"""
+        """NOW() - MIN(created_at) for status=pending — 給 dashboard 算 lag。"""
         from sqlalchemy import func
 
         result = await self._session.execute(

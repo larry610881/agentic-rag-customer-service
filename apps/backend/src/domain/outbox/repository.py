@@ -69,6 +69,11 @@ class OutboxEventRepository(ABC):
         ...
 
     @abstractmethod
+    async def delete(self, event_id: str) -> None:
+        """Hard delete a row（admin abandon DLQ event 用，自帶 commit）。"""
+        ...
+
+    @abstractmethod
     async def oldest_pending_age_seconds(self) -> float | None:
         """回傳最舊 pending 事件的等待秒數（NOW - created_at）。
 

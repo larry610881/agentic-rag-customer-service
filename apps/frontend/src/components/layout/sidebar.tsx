@@ -31,6 +31,7 @@ import {
   MessagesSquare,
   Wallet,
   TrendingUp,
+  Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,7 @@ const systemAdminGroups: NavGroup[] = [
       { href: "/admin/knowledge-bases", label: "所有知識庫", icon: BookOpen },
       { href: "/admin/bots", label: "所有機器人", icon: Bot },
       { href: "/admin/milvus", label: "Milvus 管理", icon: Database },
+      { href: "/admin/outbox", label: "Outbox DLQ", icon: Inbox },
       { href: "/admin/conversations", label: "對話與追蹤", icon: MessagesSquare },
     ],
   },

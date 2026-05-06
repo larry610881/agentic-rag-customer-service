@@ -320,11 +320,15 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.admin_milvus_router import (
             router as admin_milvus_router,
         )
+        from src.interfaces.api.admin_outbox_router import (
+            router as admin_outbox_router,
+        )
         from src.interfaces.api.admin_conv_summary_router import (
             router as admin_conv_summary_router,
         )
         application.include_router(admin_chunk_router)
         application.include_router(admin_milvus_router)
+        application.include_router(admin_outbox_router)
         application.include_router(admin_conv_summary_router)
 
         # S-ConvInsights.1: 合併「對話搜尋 + 可觀測性 + 對話摘要」的 admin 單頁 API

@@ -26,6 +26,11 @@ export const queryKeys = {
     collections: ["milvus", "collections"] as const,
     stats: (name: string) => ["milvus", "stats", name] as const,
   },
+  outboxAdmin: {
+    deadLetter: (eventType?: string, tenantId?: string) =>
+      ["outbox", "dead-letter", eventType ?? "all", tenantId ?? "all"] as const,
+    stats: ["outbox", "stats"] as const,
+  },
   convSummaryAdmin: {
     list: (tenantId: string, botId?: string | null) =>
       ["conv-summaries", tenantId, botId ?? "all"] as const,

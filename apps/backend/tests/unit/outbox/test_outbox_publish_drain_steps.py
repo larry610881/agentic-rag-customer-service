@@ -101,6 +101,9 @@ class _InMemoryOutboxRepo(OutboxEventRepository):
         oldest = min(p.created_at for p in pending)
         return max(0.0, (datetime.now(timezone.utc) - oldest).total_seconds())
 
+    async def delete(self, event_id: str) -> None:
+        self.events.pop(event_id, None)
+
 
 @pytest.fixture
 def context() -> dict:

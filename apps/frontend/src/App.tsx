@@ -59,6 +59,7 @@ const AdminPlansPage = lazyWithRetry(() => import("@/pages/admin-plans"));
 const AdminPricingPage = lazyWithRetry(() => import("@/pages/admin-pricing"));
 const AdminKbStudioPage = lazyWithRetry(() => import("@/pages/admin-kb-studio"));
 const AdminMilvusPage = lazyWithRetry(() => import("@/pages/admin-milvus"));
+const AdminOutboxPage = lazyWithRetry(() => import("@/pages/admin-outbox"));
 // S-ConvInsights.1: AdminConvSummaryPage 已廢棄，路由改 Navigate 到 /admin/conversations
 const AdminPromptsPage = lazyWithRetry(() => import("@/pages/admin-prompts"));
 const AdminGuardRulesPage = lazyWithRetry(() => import("@/pages/admin-guard-rules"));
@@ -212,6 +213,10 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_MILVUS}
               element={<AdminMilvusPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_OUTBOX}
+              element={<AdminOutboxPage />}
             />
             {/* S-ConvInsights.1: /admin/conversation-summary 合併至 /admin/conversations */}
             <Route

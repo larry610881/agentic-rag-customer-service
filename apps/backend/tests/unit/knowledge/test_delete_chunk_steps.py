@@ -56,6 +56,9 @@ class _RecordingOutboxRepo(OutboxEventRepository):
     async def oldest_pending_age_seconds(self) -> float | None:
         return None
 
+    async def delete(self, event_id: str) -> None:
+        return None
+
 
 @pytest.fixture
 def ctx():

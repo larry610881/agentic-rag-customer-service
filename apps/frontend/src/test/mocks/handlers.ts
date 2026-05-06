@@ -9,6 +9,7 @@ import { botHandlers } from "./handlers/bots";
 import { conversationHandlers } from "./handlers/conversations";
 import { feedbackHandlers } from "./handlers/feedback";
 import { providerSettingHandlers } from "./handlers/provider-settings";
+import { outboxHandlers } from "./handlers/outbox";
 
 export const handlers = [
   http.get("http://localhost:8000/api/v1/health", () => {
@@ -28,4 +29,5 @@ export const handlers = [
   ...conversationHandlers,
   ...feedbackHandlers,
   ...providerSettingHandlers,
+  ...outboxHandlers,
 ];

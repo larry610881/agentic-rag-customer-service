@@ -34,6 +34,7 @@ export const ROUTES = {
   ADMIN_PRICING: "/admin/pricing",
   ADMIN_KB_STUDIO: "/admin/kb-studio/:kbId",
   ADMIN_MILVUS: "/admin/milvus",
+  ADMIN_OUTBOX: "/admin/outbox",
   ADMIN_CONV_SUMMARY: "/admin/conversation-summary",
   ADMIN_PROMPTS: "/admin/prompts",
   ADMIN_DIAGNOSTIC_RULES: "/admin/diagnostic-rules",

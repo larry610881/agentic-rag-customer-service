@@ -247,6 +247,13 @@ from src.application.outbox.publish_outbox_event_use_case import (
     PublishOutboxEventUseCase,
 )
 from src.application.outbox.drain_outbox_use_case import DrainOutboxUseCase
+from src.application.outbox.admin_use_cases import (
+    AbandonOutboxEventUseCase,
+    BulkRequeueDeadLetterUseCase,
+    GetOutboxStatsUseCase,
+    ListDeadLetterUseCase,
+    RequeueOutboxEventUseCase,
+)
 from src.application.chunk_category.create_category_use_case import (
     CreateCategoryUseCase,
 )
@@ -589,6 +596,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.admin_pricing_router",
             "src.interfaces.api.admin_chunk_router",
             "src.interfaces.api.admin_milvus_router",
+            "src.interfaces.api.admin_outbox_router",
             "src.interfaces.api.admin_conv_summary_router",
             "src.interfaces.api.admin_conversation_insights_router",
             "src.interfaces.api.plan_router",
@@ -758,6 +766,34 @@ class Container(containers.DeclarativeContainer):
 
     publish_outbox_event_use_case = providers.Factory(
         PublishOutboxEventUseCase,
+        outbox_repo=outbox_event_repository,
+    )
+
+    # Phase E admin use cases
+    list_dead_letter_outbox_use_case = providers.Factory(
+        ListDeadLetterUseCase,
+        outbox_repo=outbox_event_repository,
+    )
+
+    requeue_outbox_event_use_case = providers.Factory(
+        RequeueOutboxEventUseCase,
+        outbox_repo=outbox_event_repository,
+    )
+
+    bulk_requeue_dead_letter_use_case = providers.Factory(
+        BulkRequeueDeadLetterUseCase,
+        outbox_repo=outbox_event_repository,
+        list_dlq_uc=list_dead_letter_outbox_use_case,
+        requeue_uc=requeue_outbox_event_use_case,
+    )
+
+    abandon_outbox_event_use_case = providers.Factory(
+        AbandonOutboxEventUseCase,
+        outbox_repo=outbox_event_repository,
+    )
+
+    get_outbox_stats_use_case = providers.Factory(
+        GetOutboxStatsUseCase,
         outbox_repo=outbox_event_repository,
     )
 
