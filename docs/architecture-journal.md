@@ -7,6 +7,67 @@
 
 ---
 
+## 1+A：Per-KB Chunking Strategy + Deterministic Page Metadata Context
+
+**日期**：2026-05-06
+**涉及層級**：Domain（KB 加 chunk_strategy）+ Application（Process/Reprocess UseCase 路由 + LLM context guard）+ Infrastructure（新 splitter + ORM + Container DI）+ Interfaces（API schema + validator）+ Frontend（KB 編輯 dropdown）+ Migration（DDL）— **6 層皆動**
+**Commits**：`5d87c7d`（main feat）+ `a8236c1`（container.py 改動意外 piggyback 進 Outbox Phase D）
+**Issue**：#45 (closed)
+**Plan**：`~/.claude/plans/1-a-prancy-codd.md`
+
+**Sprint 來源**：carrefour bot trace `13ccc1a8`（5/5 17:25）user 問「潔牙粉有優惠嗎」→ 命中 page 41 chunk #0（含「刷樂寬薄牙刷」），實際蒂克全效潔牙粉在同頁 chunk #1，沒進 top-3。LLM 回「沒特別標出潔牙粉單品優惠」。根因：DM PDF OCR 已輸出 `=== 商品: X ===` 天然語意邊界，但 chunking 走 RecursiveTextSplitterService（chunk_size=500 字數切）把多商品塞同 chunk → embedding 多主題稀釋。
+
+**主題**：**「Splitter Strategy Pattern + Inversion of Control 在 RAG Pipeline 的應用」**。三個正交設計決策：
+
+1. **Per-KB chunk_strategy override**：原 `text_splitter_service` 是全域 Selector（從 `config.chunk_strategy` 讀字串選 splitter，DI container 啟動時 pre-resolve）。為 DM 場景加 per-KB 覆寫，但**不改 splitter signature**（splitter 接 `(text, doc_id, tenant_id, content_type)`，加 `kb` 參數會衝擊 4 個 splitter）。改用 `text_splitter_overrides: dict[str, TextSplitterService]` 注入 ProcessDocumentUseCase，UseCase 內 `_resolve_splitter(kb)` 解析 → kb.chunk_strategy 命中 dict → 用 override；否則用 default。Domain 不知道有「dict 路由」這件事，純 Application 層 IoC。
+2. **Deterministic context_text vs LLM Contextual Retrieval**：本來 Phase 2 用 `LLMChunkContextService` 為每 chunk 產 1-2 句靜態 prompt 的 context（成本 ~$0.10/KB）。本次發現「DM 頁面 metadata 已在 OCR 輸出的 `【...】` markers 裡」，splitter 直接 deterministic 抽出來寫進 `context_text` → 免 LLM 呼叫、零成本、語意比 LLM 概括更精準。**讓 splitter 同時負責 chunk 邊界 AND context 抽取**是關鍵 insight：因為 splitter 對 OCR 輸出的格式最熟悉，最適合做 metadata extraction。
+3. **後者跳過前者的 guard 設計**：避免 splitter 寫好的 context_text 被 LLM 覆蓋，在 Step 4 contextual block 加 `needs_context = [c for c in chunks if not c.context_text]`，只對沒填的 chunk 呼叫 LLM。純加法 guard，不改變既有 KBs 行為。
+
+```mermaid
+graph TD
+    KB["fetch KB"] --> RES["_resolve_splitter(kb)"]
+    RES --> CHECK{"kb.chunk_strategy<br>in overrides?"}
+    CHECK -->|"separator"| SEP["SeparatorTextSplitter<br>(deterministic context)"]
+    CHECK -->|"json_record"| JSON["JsonRecord splitter"]
+    CHECK -->|"否"| DEF["全域 default splitter"]
+    SEP --> CHUNKS["chunks<br>(context_text 已填)"]
+    JSON --> CHUNKS2["chunks<br>(context_text 空)"]
+    DEF --> CHUNKS2
+    CHUNKS --> GUARD["needs_context = filter no context_text"]
+    CHUNKS2 --> GUARD
+    GUARD --> LLM{"needs_context<br>非空?"}
+    LLM -->|"是"| GEN["LLMChunkContextService"]
+    LLM -->|"否"| EMBED["embed = context_text + content"]
+    GEN --> EMBED
+```
+
+**做得好的地方**
+
+- **Pattern 復用**：SeparatorTextSplitterService 完美 mirror 既有 JsonRecordTextSplitterService 結構（同 sniff + fallback 機制），降低 onboarding 成本。Reviewer 看到「跟 JSON splitter 同類」就秒懂。
+- **「不改 signature 的 IoC」**：用 dict 注入 + UseCase 內解析，避免影響其他 3 個 splitter 的呼叫端。Domain interface 純度保持。
+- **Test-first 嚴格遵守**：先寫 4+2 BDD scenarios → 確認紅燈（separator 缺 module → ImportError）→ 才寫 splitter implementation → 變綠燈。pytest-bdd v8 async step 限制（必須 `_run` 同步包裝）踩到一次但即時修正。
+- **Migration 雙環境同步**：local-docker + dev-vm 都套，`_applied_migrations` 雙環境都記錄，避免 BUG-01 重演。
+- **發現 LLM context 跟 splitter 的 race，主動加 guard**：原本 `generate_contexts(chunks, ...)` 會無差別覆寫 context_text。Plan 階段就識別 → guard 純加法、向後兼容。
+
+**潛在隱憂**
+
+- **container.py merge conflict（已實際發生）**：兩個 session 同時動 `container.py`，Outbox session 的 `git add container.py` 把我的 separator splitter import + provider piggyback 進他們的 commit `a8236c1`。雖然功能正確但 git blame 錯誤、commit message 也不提此事 → 未來 grep `SeparatorTextSplitterService` 時會找到一個 commit message 完全不相關的 commit。**緩解**：跨 session 共用 working tree 時，Sprint owner 應分檔 stage（`git add <specific files>`）而非 `git add <directory>` 或 `git add -A`。本次無實質危害但留作教訓。**優先級：低（git 工具用法問題，非架構問題）**
+- **chunk_strategy enum 三邊維護**：DB 預設空字串 + 後端 validator 白名單 + 前端 dropdown options 三邊各寫一份，新增策略時要 grep 三處。**緩解**：寫 e2e test 強制 round-trip（前端送 → 後端存 → 前端讀回）；或未來抽 shared enum types 套件。**優先級：中（feature 上線前可忍）**
+- **OCR 變體未充分測試**：splitter 假設 `={3,}\s*$` 與 `【key】value` 嚴格格式，但 Claude Vision OCR 偶爾可能輸出變體（4 個 = / 半形【】 / value 含換行）。雖加 sniff 失敗 fallback，但實際 reprocess 後可能整 batch fallback 看不出問題。**緩解**：加 metric `splitter.fallback_rate` per KB，>10% 觸發 alert。**優先級：中**
+- **跟 LLM Contextual Retrieval 的 model resolve 互動**：Application 層 guard 是 `if needs_context and (kb.context_model or tenant.default_context_model)` — 沒被 splitter 填過的 chunk 才會走 LLM。如果 separator splitter 失敗 fallback recursive，整批 chunks `context_text=""` 還是會走 LLM（成本意外回來）。**緩解**：fallback 路徑加 trace event 讓 user 知道發生過。**優先級：低**
+
+**延伸學習**
+
+- **「Strategy Pattern + IoC + Configuration-Driven Routing」三件套**：用 dict / map 注入策略、配置（per-KB / per-tenant）決定要用哪個策略、UseCase 內解析。是 Domain-Driven Design 的「Specification Pattern」延伸。延伸關鍵字：**Open-Closed Principle**, **Tagged Union Pattern**, **Plugin Architecture**
+- **「為什麼 Anthropic Contextual Retrieval 不該強制取代 deterministic context」**：Anthropic 推薦的 Contextual Retrieval 適用於「文件無天然 metadata、需 LLM 補語意」場景。對 DM / FAQ / 商品目錄這種**已有結構化 metadata**的場景，deterministic 抽取更精準、零成本。延伸關鍵字：**Structured vs Unstructured Document Retrieval**, **Hybrid Context Generation**
+- **「Splitter 邊界選擇與 embedding 信號純度的權衡」**：JSON splitter（commit 599abc9）跟本次 separator splitter 是同一個 lesson — **天然語意邊界存在時，硬塞 chunk_size 會傷 embedding 信號**。下次遇到 CSV row / Markdown section / SRT 字幕等場景，先問「邊界天然存在嗎？」。延伸關鍵字：**Semantic Chunking**, **Domain-Aware Tokenization**
+
+**思考題**：如果未來要支援「同一個 KB 內不同 document 用不同 chunk_strategy」（例：大部分 PDF 用 recursive，但偶爾上傳的 DM PDF 自動用 separator），現在的 per-KB 設計需要怎麼演化？
+
+可能方向：(a) Document 上加 `chunk_strategy` override；(b) `ContentAwareTextSplitterService` 加 ocr_mode-aware 路由；(c) Splitter 自身更積極 sniff 主動 promote。trade-off：(a) 最靈活但 UI 暴露太多選項；(b) 跟 OCR mode 綁死限制未來組合；(c) silent magic 不好 debug。當前 per-KB 是平衡點。
+
+---
+
 ## Outbox Pattern Phase A — Bounded Context + Lease-based Drain Worker
 
 **日期**：2026-05-05
