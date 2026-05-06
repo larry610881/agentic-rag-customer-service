@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
@@ -41,6 +43,16 @@ class KnowledgeBaseModel(Base):
     # 對應 migration: add_chunk_strategy_to_knowledge_bases.sql
     chunk_strategy: Mapped[str] = mapped_column(
         String(20), nullable=False, default="", server_default=""
+    )
+    # Issue #47 L3：KB-level DM metadata 抽取設定 + 結果儲存
+    # 對應 migration: add_kb_dm_metadata.sql
+    # dm_metadata_model 空 = 不啟用 KB-level extract（trigger 會 skip）
+    # dm_metadata 預設 {} — 由 ExtractKBDMMetadataUseCase 寫入完整 JSON
+    dm_metadata_model: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default=""
+    )
+    dm_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
     )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,

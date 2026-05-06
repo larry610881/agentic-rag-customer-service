@@ -29,6 +29,8 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             context_model=model.context_model,
             classification_model=model.classification_model,
             chunk_strategy=model.chunk_strategy,
+            dm_metadata_model=getattr(model, "dm_metadata_model", "") or "",
+            dm_metadata=getattr(model, "dm_metadata", {}) or {},
             document_count=document_count,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -61,6 +63,8 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
                 context_model=knowledge_base.context_model,
                 classification_model=knowledge_base.classification_model,
                 chunk_strategy=knowledge_base.chunk_strategy,
+                dm_metadata_model=knowledge_base.dm_metadata_model,
+                dm_metadata=knowledge_base.dm_metadata or {},
                 created_at=knowledge_base.created_at,
                 updated_at=knowledge_base.updated_at,
             )
@@ -177,6 +181,7 @@ class SQLAlchemyKnowledgeBaseRepository(KnowledgeBaseRepository):
             "name", "description", "ocr_mode",
             "ocr_model", "context_model", "classification_model",
             "chunk_strategy",
+            "dm_metadata_model", "dm_metadata",
         }
         values = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if not values:

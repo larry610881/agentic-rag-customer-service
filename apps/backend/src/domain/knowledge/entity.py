@@ -16,7 +16,7 @@ class KnowledgeBase:
     name: str = ""
     description: str = ""
     kb_type: str = "user"  # "user" | "system"
-    ocr_mode: str = "general"  # "general" | "catalog"
+    ocr_mode: str = "general"  # "general" | "catalog" | "auto"
     ocr_model: str = ""
     context_model: str = ""
     classification_model: str = ""
@@ -24,6 +24,15 @@ class KnowledgeBase:
     # 白名單由後端 API validator 強制：
     # "" | "auto" | "recursive" | "separator" | "json_record" | "csv_row"
     chunk_strategy: str = ""
+    # Issue #47 L3：KB-level DM metadata 萃取設定 + 結果儲存
+    # dm_metadata_model: 抽 DM metadata 用的 LLM 模型（空 = 不啟用）
+    # dm_metadata: 萃取結果 JSON（dm_period / merchant / global_activities /
+    #   member_conditions / featured_categories / special_activities）
+    # ExtractKBDMMetadataUseCase 在 KB 全 docs done 後自動 trigger 寫入
+    # 此欄位；RAG query path 把 dm_metadata prepend 到 LLM system context
+    # 作 cross-page 背景資訊（不重 embed）。
+    dm_metadata_model: str = ""
+    dm_metadata: dict = field(default_factory=dict)
     document_count: int = 0
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
