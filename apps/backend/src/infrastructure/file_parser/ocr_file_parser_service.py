@@ -10,8 +10,8 @@ from src.infrastructure.file_parser.default_file_parser_service import (
     DefaultFileParserService,
 )
 from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import (
-    ClaudeVisionOcrEngine,
     OCR_PROMPTS,
+    ClaudeVisionOcrEngine,
 )
 from src.infrastructure.file_parser.pdf_page_extractor import (
     extract_pages_as_images,
@@ -69,7 +69,15 @@ class OcrFileParserService(FileParserService):
         on_progress: ProgressCallback | None = None,
         max_pages: int | None = None,
     ) -> str:
-        """Async PDF parsing with per-page progress callback."""
+        """Async PDF parsing with per-page progress callback.
+
+        ``ocr_mode``：
+        - ``"general"``：pypdf 文字抽取（無 LLM）
+        - ``"catalog"``：單一 _CATALOG_PROMPT 走全部頁
+        - ``"auto"``：每頁先用 Haiku 偵測類型（catalog/promotion/mixed/cover），
+          再 dispatch 至對應 prompt — 解決混雜 DM（部分商品 + 部分信用卡 /
+          會員活動 / 服務介紹頁）OCR 失敗的問題
+        """
         self.last_input_tokens = 0
         self.last_output_tokens = 0
 
@@ -82,7 +90,7 @@ class OcrFileParserService(FileParserService):
                 await on_progress(1, 1)
             return content
 
-        # catalog/ocr mode: use Claude Vision OCR
+        # catalog / auto mode: 走 Claude Vision OCR
         page_images = extract_pages_as_images(raw_bytes)
         if not page_images:
             return ""
@@ -91,21 +99,34 @@ class OcrFileParserService(FileParserService):
             page_images = page_images[:max_pages]
 
         total = len(page_images)
-        prompt = OCR_PROMPTS.get(ocr_mode, OCR_PROMPTS["general"])
         self._ocr.last_input_tokens = 0
         self._ocr.last_output_tokens = 0
 
         page_texts: list[str] = []
         # Process in batches of concurrent size (semaphore handles concurrency)
         batch_size = 5
-        for i in range(0, total, batch_size):
-            batch = page_images[i : i + batch_size]
-            texts = await asyncio.gather(
-                *[self._ocr.ocr_page(img, prompt) for img in batch]
-            )
-            page_texts.extend(texts)
-            if on_progress:
-                await on_progress(len(page_texts), total)
+
+        if ocr_mode == "auto":
+            # 每頁 classify → dispatch
+            for i in range(0, total, batch_size):
+                batch = page_images[i : i + batch_size]
+                pairs = await asyncio.gather(
+                    *[self._ocr.ocr_page_auto_dispatch(img) for img in batch]
+                )
+                page_texts.extend(text for _page_type, text in pairs)
+                if on_progress:
+                    await on_progress(len(page_texts), total)
+        else:
+            # 既有 catalog 單一 prompt 路徑
+            prompt = OCR_PROMPTS.get(ocr_mode, OCR_PROMPTS["general"])
+            for i in range(0, total, batch_size):
+                batch = page_images[i : i + batch_size]
+                texts = await asyncio.gather(
+                    *[self._ocr.ocr_page(img, prompt) for img in batch]
+                )
+                page_texts.extend(texts)
+                if on_progress:
+                    await on_progress(len(page_texts), total)
 
         self.last_input_tokens = self._ocr.last_input_tokens
         self.last_output_tokens = self._ocr.last_output_tokens
