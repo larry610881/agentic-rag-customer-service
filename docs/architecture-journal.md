@@ -7,6 +7,64 @@
 
 ---
 
+## Worker Resilience 5-Layer — arq Retry / Milvus Tenacity / API Key Cache / DB Timeouts / Observability
+
+**日期**：2026-05-06
+**涉及層級**：Application（worker 5 jobs + provider CRUD invalidate hook）+ Infrastructure（worker_resilience 新模組 / Milvus client / DB engine / LLM factory）+ Tests（BDD + unit）+ Ops doc — **跨模組基礎設施加固**
+**Commits**：`d31b495`（L1 worker auto-retry）+ `469528a`（L2 Milvus tenacity）+ `737b1d1`（L3 API key TTLCache）+ `717b0e4`（L4 DB asyncpg timeouts）+ 本 commit（L5 + journal）
+**Issue**：#46
+**Plan**：`~/.claude/plans/temporal-roaming-bear.md`
+
+**Sprint 來源**：5/6 carrefour DM (kb_id=`559538a4-d2ac-46e8-8e2c-1d04b599d7e6`) 全量 reprocess 254 頁出現 4 個獨立 fail —
+- page 31：OCR `_CATALOG_PROMPT` 缺欄位（已修 d06f3e0，不在本 sprint）
+- page 50：DB SQLAlchemy TimeoutError 30s+
+- page 54/55：Milvus 短暫斷線 → embed retry → empty Bearer key 雙重失敗
+
+每個 fail user 都得手動 reprocess。本 sprint 5 個 layer 把這類 transient 故障改成「自動恢復」，不增加新 DLQ table（重用 `processing_task.status='failed'`）。
+
+**主題**：**「分層 Resilience：Operation-level Retry + Application-level Routing + Infrastructure-level Timeout + Process-level Cache」**。每層都各自有獨立的 retry / fallback 哲學：
+
+```mermaid
+graph TD
+    JOB["arq job 入口<br>(Layer 1: max_tries=3)"] --> WRAPPER["execute_with_resilience<br>分類 transient/permanent"]
+    WRAPPER -->|"transient"| RETRY["raise Retry(defer=BACKOFFS[job_try])<br>5s → 30s → 2min"]
+    WRAPPER -->|"permanent"| MARK["processing_task.status=failed<br>返回 None (不 retry)"]
+    WRAPPER --> BUSINESS["UseCase / Pipeline"]
+    BUSINESS --> M["Milvus call"]
+    BUSINESS --> D["DB query"]
+    BUSINESS --> K["resolve_api_key"]
+    M --> ML2["Layer 2: tenacity @retry<br>1s → 4s exp_base=4<br>connect/connection error only"]
+    D --> DL4["Layer 4: asyncpg<br>command_timeout=60s<br>idle_in_tx=120s"]
+    K --> KL3["Layer 3: TTLCache 5min<br>provider_name → key<br>空字串不寫"]
+```
+
+**做得好的地方**
+
+- **Layer 1 transient/permanent classifier 抽出共用模組**：`worker_resilience.py` 把 5 個 job 都會用到的「重試 vs 落 DLQ」邏輯集中，未來新 job 加 `execute_with_resilience(...)` 一行就接上。Schema 對齊 GCP log-based metric 需要的 `worker.job.*` event 命名。
+- **Layer 2 Milvus retry 拆 `_impl` + 公開 method**：`delete` / `fetch_vectors` 的「靜默 swallow」legacy 行為要保留（in-band caller 的契約），但 retry 必須在 swallow 之前執行。把 `@_milvus_retry` 加在 `_delete_impl` / `_fetch_vectors_impl`，公開層再 try/except 自然解決。比直接在公開層 retry 後再 swallow 更乾淨（後者第一次失敗 retry，第三次 swallow，對 caller 不可見）。
+- **Layer 3 「空字串不寫 cache」防禦**：`_cache_set_api_key` 明確拒收空值，避免 DB 暫時無資料 → cache 空字串 → 5 分鐘內全部 worker 都拿空 key → 大量 fail-fast。這是 cache pattern 常踩的 anti-pattern，幸好設計時就識別。
+- **Layer 4 連 idle timeout 都解釋為什麼不照全域 rule 縮 30s**：CLAUDE.md 全域 rule 寫 30000ms，但本專案 OCR / Contextual Enrichment 已用 close-session/refresh pattern 主動處理，session 不會卡 idle in transaction。註解寫清楚 why → 未來若 user 看 CLAUDE.md 全域 rule 對不上不會被誤導去縮。
+- **Layer 5 ops doc 不偷自動化**：alert 設定明確說「ops 手動套」，因為 Cloud Monitoring 寫權限不該交給 GitHub Actions auto-deploy。給 step-by-step 指令而非 IaC 草稿，反而更實用。
+- **每 layer 一 commit，便於回滾**：5 個獨立 commit，任一 layer 出問題可以 `git revert <sha>` 不影響其他層。
+
+**潛在隱憂**
+
+- **Layer 1 包了所有 5 個 jobs 後，原本 swallow exception 的 job 變成會 retry**：之前 worker 如果 use_case 偶爾 raise 一個非預期 exception（例如 `RuntimeError`），arq 會視為失敗但無 retry 政策；現在會被 `_classify_unknown_as_transient` 路徑掃進 retry。可能浮出之前藏住的偶發 bug。**緩解**：部署後第一週嚴密看 `worker.job.unknown_exc_treated_as_transient` event count，若多代表有真正 bug 浮上來。**優先級：中**
+- **Layer 3 cache 5min TTL vs API key rotation 速度**：rotate provider key 之後 5 分鐘內 worker 仍可能用舊值（雖然 update use case 會 invalidate，但若 invalidate 失敗或 admin 直接改 DB row 不過 use case 就會漏）。**緩解**：rotation SOP 文件補「改完 key 後手動呼叫 `invalidate_provider_key_cache(provider_name)` 或重啟 worker」，未來考慮 PostgreSQL LISTEN/NOTIFY 主動通知。**優先級：中（rotation 不頻繁）**
+- **Milvus retry 預測模式不夠豐富**：目前只 retry「連線類錯誤」（type or msg keyword），但 Milvus 偶發 `RpcError`（gRPC 層）會以 generic `MilvusException` + 各種訊息出現。如果 keyword 不對會白白 fail 一次。**緩解**：production 跑一段時間後盤點實際 Milvus error pattern，把 production observed 的錯誤訊息加進 `_RETRYABLE_MSG_TOKENS`。**優先級：低**
+- **DB command_timeout=60s 對 large reprocess 的影響**：254 頁 catalog reprocess 結束時的 `chunk_count` aggregate update 是 64K rows 級別的 UPDATE，60s 通常夠但邊界情況可能炸。**緩解**：監看 `db.slow_query` event，>30s 的 query 提早重構（拆 batch / async background）。**優先級：低**
+- **Layer 5 alert 還沒實際在 GCP 設**：commit 進去的 ops doc 是設定 SOP，但 ops 還沒手動套 alert。在實際套之前，failure_rate 真正異常時還是只有 user 自己發現。**緩解**：本 commit 後立刻提醒 user 走 docs/ops/worker-alerts-setup.md 設一次。**優先級：高（功能要落地才有 ROI）**
+
+**延伸學習**
+
+- **Tenacity vs 自寫 retry**：`OpenAIEmbeddingService._embed_batch_with_retry` 是手寫 for loop，本次 Milvus 改用 tenacity decorator。優劣：手寫 retry 對 rate-limit-aware backoff（看 `Retry-After` header）更靈活，tenacity 對「分類 + 重用」更好。現有兩個 pattern 並存可接受，但若未來再加第三個 client 應該統一走 tenacity（建議）。
+- **arq Retry vs 應用層 swallow**：arq 的 `Retry(defer)` 可控 next-attempt 的延遲，但**每次 retry 是 worker 重新從 Redis 撈 job 再執行整個 task function**（不是 in-process loop）。所以 max_tries=3 + defer=5/30/120 實際是「分散到 3 個不同的 worker tick」。對 idempotent job 沒問題，對非 idempotent job（例如把 user 餘額扣兩次）會災難。本專案 5 個 job 都是 idempotent（重 process 文件、重新 classify），安全。
+- **Strategy Pattern + IoC 在 resilience 的延伸應用**：本次 Layer 1 wrapper 接受 `container_factory` 參數方便 unit test 注入 fake — 跟前一個 Sprint 的「Per-KB chunk_strategy」用 dict 注入一脈相承。Domain 純度 + Application IoC 是 Python DDD 比 Java Spring 更有彈性的地方。
+- **Cache invalidation timing**：Layer 3 在 use case 層觸發 cache invalidate，跟既有 `cache_service.delete(llm_config:default)` 並存。兩者一個管 in-process（resolve_api_key），一個管 cross-request（get_service config 整包）。雙層 cache + 雙層 invalidate hook 是「應用層 cache + 平台層 cache」的標準 pattern，可以遷移到其他高 hit-rate read path（例如 tenant feature flags）。
+- **若想深入**：「Circuit Breaker pattern」（Hystrix / py-breaker）— 多次失敗時暫時 short-circuit 不再呼叫，給下游修復時間。本 sprint 沒做但 Token-Gov 系列 follow-up 已規劃（`memory/ledger-unification-followup.md` Tier 3）。可關鍵字搜：`circuit breaker pattern`, `bulkhead isolation`, `Hystrix lite`.
+
+---
+
 ## 1+A：Per-KB Chunking Strategy + Deterministic Page Metadata Context
 
 **日期**：2026-05-06
