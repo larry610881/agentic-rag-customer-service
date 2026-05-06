@@ -1301,7 +1301,7 @@ class Container(containers.DeclarativeContainer):
         DeleteKnowledgeBaseUseCase,
         knowledge_base_repository=kb_repository,
         document_repository=document_repository,
-        vector_store=vector_store,
+        publish_outbox_event_use_case=publish_outbox_event_use_case,
     )
 
     list_documents_use_case = providers.Factory(
