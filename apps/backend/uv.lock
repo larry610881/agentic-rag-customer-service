@@ -59,6 +59,7 @@ dependencies = [
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "striprtf" },
     { name = "structlog" },
+    { name = "tenacity" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -109,6 +110,7 @@ requires-dist = [
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0" },
     { name = "striprtf", specifier = ">=0.0.29" },
     { name = "structlog", specifier = ">=25.5.0" },
+    { name = "tenacity", specifier = ">=8.2" },
     { name = "uvicorn", extras = ["standard"] },
 ]
 

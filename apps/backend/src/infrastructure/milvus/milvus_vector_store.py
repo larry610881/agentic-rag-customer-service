@@ -1,4 +1,12 @@
-"""Milvus implementation of VectorStore."""
+"""Milvus implementation of VectorStore.
+
+Layer 2 resilience: external-facing methods (``ensure_collection`` /
+``upsert`` / ``delete`` / ``drop_collection`` / ``fetch_vectors`` /
+``search``) wrapped with tenacity exponential backoff retry —
+``ConnectError`` / ``MilvusUnavailableException`` / 連線類訊息會自動
+重試 3 次（1s → 4s 間隔）；參數錯誤等業務性 exception 直接 raise。
+解決 5/6 carrefour DM page 54/55 短暫斷線即整個 job 失敗的問題。
+"""
 
 from __future__ import annotations
 
@@ -13,12 +21,106 @@ from pymilvus import (
     FieldSchema,
     MilvusClient,
 )
+from pymilvus.exceptions import (
+    ConnectError,
+    ConnectionNotExistException,
+    MilvusException,
+    MilvusUnavailableException,
+    SchemaMismatchRetryableException,
+)
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from src.domain.rag.services import VectorStore
 from src.domain.rag.value_objects import SearchResult
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
+
+# --- Retry policy（Layer 2） -------------------------------------
+
+_RETRYABLE_MILVUS_TYPES: tuple[type[MilvusException], ...] = (
+    ConnectError,
+    ConnectionNotExistException,
+    MilvusUnavailableException,
+    SchemaMismatchRetryableException,
+)
+
+# Fallback string matching for variants pymilvus does not type-distinguish.
+_RETRYABLE_MSG_TOKENS: tuple[str, ...] = (
+    "connect",
+    "timeout",
+    "deadline",
+    "unavailable",
+    "rate limit",
+)
+
+
+def _is_milvus_retryable_error(exc: BaseException) -> bool:
+    """True iff exception is a transient Milvus failure worth retrying.
+
+    參數錯誤、Schema 違規等業務性 exception 不在此範圍 — retry 沒用。
+    """
+    if isinstance(exc, _RETRYABLE_MILVUS_TYPES):
+        return True
+    if isinstance(exc, MilvusException):
+        msg_parts = [str(exc)]
+        for attr in ("_message", "message"):
+            val = getattr(exc, attr, "")
+            if isinstance(val, str):
+                msg_parts.append(val)
+        joined = " ".join(msg_parts).lower()
+        return any(token in joined for token in _RETRYABLE_MSG_TOKENS)
+    return False
+
+
+def _log_milvus_retry(retry_state: Any) -> None:
+    exc = (
+        retry_state.outcome.exception()
+        if retry_state.outcome and retry_state.outcome.failed
+        else None
+    )
+    sleep_seconds = (
+        retry_state.next_action.sleep
+        if retry_state.next_action is not None
+        else 0
+    )
+    logger.warning(
+        "milvus.connection_retry",
+        attempt=retry_state.attempt_number,
+        next_wait_seconds=sleep_seconds,
+        error_type=type(exc).__name__ if exc else None,
+        error_msg=str(exc)[:300] if exc else None,
+    )
+
+
+def _make_milvus_retry(
+    *,
+    attempts: int = 3,
+    wait_min: float = 1,
+    wait_max: float = 16,
+    exp_base: float = 4,
+):
+    """Build a tenacity retry decorator for Milvus client calls.
+
+    Defaults: 3 attempts with waits 1s → 4s（exp_base=4, multiplier=1）.
+    """
+    return retry(
+        stop=stop_after_attempt(attempts),
+        wait=wait_exponential(
+            multiplier=1, exp_base=exp_base, min=wait_min, max=wait_max,
+        ),
+        retry=retry_if_exception(_is_milvus_retryable_error),
+        before_sleep=_log_milvus_retry,
+        reraise=True,
+    )
+
+
+_milvus_retry = _make_milvus_retry()
 
 # Fields extracted as first-class schema columns (the rest go into `extra` JSON)
 _KNOWN_FIELDS = frozenset({
@@ -141,6 +243,7 @@ class MilvusVectorStore(VectorStore):
             )
             return set()
 
+    @_milvus_retry
     async def ensure_collection(
         self, collection: str, vector_size: int
     ) -> None:
@@ -189,6 +292,7 @@ class MilvusVectorStore(VectorStore):
             await asyncio.to_thread(self._client.load_collection, collection)
             logger.debug("milvus.collection.loaded", collection=collection)
 
+    @_milvus_retry
     async def upsert(
         self,
         collection: str,
@@ -232,6 +336,23 @@ class MilvusVectorStore(VectorStore):
         )
         logger.info("milvus.upsert", collection=collection, count=len(entities))
 
+    @_milvus_retry
+    async def _delete_impl(
+        self, collection: str, filters: dict[str, Any]
+    ) -> None:
+        """Inner delete that always raises on failure (so tenacity sees it).
+
+        Keeping retry on the impl lets the public ``delete`` choose whether to
+        propagate the *post-retry* failure (outbox handler) or swallow it
+        (legacy in-band caller).
+        """
+        expr = _build_filter_expr(filters)
+        await asyncio.to_thread(
+            self._client.delete,
+            collection_name=collection,
+            filter=expr,
+        )
+
     async def delete(
         self,
         collection: str,
@@ -244,16 +365,12 @@ class MilvusVectorStore(VectorStore):
         ``raise_on_error=False``（預設）保持原本 swallow-and-log 行為，避免
         既有 in-band caller (DeleteDocument / DeleteChunk) 因 Milvus 短暫
         不可用就讓 PG 也卡住。``raise_on_error=True`` 給 outbox drain
-        handler 用，讓失敗能進 retry/DLQ。
+        handler 用，讓失敗能進 retry/DLQ。Layer 2: ``_delete_impl`` 內已先
+        retry 3 次，仍失敗才走到此處 swallow / raise。
         """
         collection = _safe_collection_name(collection)
         try:
-            expr = _build_filter_expr(filters)
-            await asyncio.to_thread(
-                self._client.delete,
-                collection_name=collection,
-                filter=expr,
-            )
+            await self._delete_impl(collection, filters)
             logger.info("milvus.delete", collection=collection, filters=filters)
         except Exception:
             logger.warning(
@@ -265,6 +382,7 @@ class MilvusVectorStore(VectorStore):
             if raise_on_error:
                 raise
 
+    @_milvus_retry
     async def drop_collection(self, collection: str) -> None:
         """整個 collection 刪除（DeleteKB outbox handler 用）。
 
@@ -295,6 +413,25 @@ class MilvusVectorStore(VectorStore):
             )
             raise
 
+    @_milvus_retry
+    async def _fetch_vectors_impl(
+        self, collection: str, ids: list[str]
+    ) -> list[tuple[str, list[float], dict[str, Any]]]:
+        """Inner fetch that always raises so tenacity sees transient failures."""
+        results = await asyncio.to_thread(
+            self._client.get,
+            collection_name=collection,
+            ids=ids,
+            output_fields=["vector", "content", "tenant_id", "document_id"],
+        )
+        out: list[tuple[str, list[float], dict[str, Any]]] = []
+        for r in results:
+            rid = r.get("id", "")
+            vec = r.get("vector", [])
+            payload = {k: v for k, v in r.items() if k not in ("id", "vector")}
+            out.append((rid, vec, payload))
+        return out
+
     async def fetch_vectors(
         self,
         collection: str,
@@ -305,23 +442,16 @@ class MilvusVectorStore(VectorStore):
         if not ids:
             return []
         try:
-            results = await asyncio.to_thread(
-                self._client.get,
-                collection_name=collection,
-                ids=ids,
-                output_fields=["vector", "content", "tenant_id", "document_id"],
-            )
-            out: list[tuple[str, list[float], dict[str, Any]]] = []
-            for r in results:
-                rid = r.get("id", "")
-                vec = r.get("vector", [])
-                payload = {k: v for k, v in r.items() if k not in ("id", "vector")}
-                out.append((rid, vec, payload))
-            return out
+            return await self._fetch_vectors_impl(collection, ids)
         except Exception:
-            logger.warning("milvus.fetch_vectors.failed", collection=collection, exc_info=True)
+            logger.warning(
+                "milvus.fetch_vectors.failed",
+                collection=collection,
+                exc_info=True,
+            )
             return []
 
+    @_milvus_retry
     async def search(
         self,
         collection: str,
