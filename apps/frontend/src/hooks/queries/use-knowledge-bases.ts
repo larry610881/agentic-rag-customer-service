@@ -51,6 +51,7 @@ export function useCreateKnowledgeBase() {
       ocr_model?: string;
       context_model?: string;
       classification_model?: string;
+      chunk_strategy?: string;
     }) =>
       apiFetch<KnowledgeBase>(
         API_ENDPOINTS.knowledgeBases.create,

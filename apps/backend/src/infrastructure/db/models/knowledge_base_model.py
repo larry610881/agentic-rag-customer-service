@@ -37,6 +37,11 @@ class KnowledgeBaseModel(Base):
     embedding_model: Mapped[str] = mapped_column(
         String(100), nullable=False, default="", server_default=""
     )
+    # Per-KB chunk_strategy override（"" = 走全域 config.chunk_strategy）。
+    # 對應 migration: add_chunk_strategy_to_knowledge_bases.sql
+    chunk_strategy: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="", server_default=""
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

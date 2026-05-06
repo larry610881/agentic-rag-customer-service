@@ -1,6 +1,11 @@
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+# Issue #45: per-KB chunk_strategy 白名單
+_VALID_CHUNK_STRATEGIES = {
+    "", "auto", "recursive", "separator", "json_record", "csv_row",
+}
 
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseCommand,
@@ -35,6 +40,16 @@ class CreateKnowledgeBaseRequest(BaseModel):
     ocr_model: str = ""
     context_model: str = ""
     classification_model: str = ""
+    chunk_strategy: str = ""
+
+    @field_validator("chunk_strategy")
+    @classmethod
+    def _validate_chunk_strategy(cls, v: str) -> str:
+        if v not in _VALID_CHUNK_STRATEGIES:
+            raise ValueError(
+                f"chunk_strategy must be one of {sorted(_VALID_CHUNK_STRATEGIES)}"
+            )
+        return v
 
 
 class UpdateKnowledgeBaseRequest(BaseModel):
@@ -44,6 +59,16 @@ class UpdateKnowledgeBaseRequest(BaseModel):
     ocr_model: str | None = None
     context_model: str | None = None
     classification_model: str | None = None
+    chunk_strategy: str | None = None
+
+    @field_validator("chunk_strategy")
+    @classmethod
+    def _validate_chunk_strategy(cls, v: str | None) -> str | None:
+        if v is not None and v not in _VALID_CHUNK_STRATEGIES:
+            raise ValueError(
+                f"chunk_strategy must be one of {sorted(_VALID_CHUNK_STRATEGIES)}"
+            )
+        return v
 
 
 class KnowledgeBaseResponse(BaseModel):
@@ -55,6 +80,7 @@ class KnowledgeBaseResponse(BaseModel):
     ocr_model: str = ""
     context_model: str = ""
     classification_model: str = ""
+    chunk_strategy: str = ""
     document_count: int
     created_at: str
     updated_at: str
@@ -70,6 +96,7 @@ def _kb_to_response(kb) -> KnowledgeBaseResponse:
         ocr_model=kb.ocr_model,
         context_model=kb.context_model,
         classification_model=kb.classification_model,
+        chunk_strategy=getattr(kb, "chunk_strategy", ""),
         document_count=kb.document_count,
         created_at=kb.created_at.isoformat(),
         updated_at=kb.updated_at.isoformat(),
@@ -98,6 +125,7 @@ async def create_knowledge_base(
             ocr_model=body.ocr_model,
             context_model=body.context_model,
             classification_model=body.classification_model,
+            chunk_strategy=body.chunk_strategy,
         )
     )
     return _kb_to_response(kb)
@@ -180,6 +208,7 @@ async def update_knowledge_base(
                 ocr_model=body.ocr_model,
                 context_model=body.context_model,
                 classification_model=body.classification_model,
+                chunk_strategy=body.chunk_strategy,
                 )
         )
     except EntityNotFoundError as e:

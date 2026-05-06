@@ -15,6 +15,7 @@ class UpdateKnowledgeBaseCommand:
     ocr_model: str | None = None
     context_model: str | None = None
     classification_model: str | None = None
+    chunk_strategy: str | None = None  # Issue #45: per-KB splitter override
 
 
 class UpdateKnowledgeBaseUseCase:
@@ -38,6 +39,7 @@ class UpdateKnowledgeBaseUseCase:
                 "ocr_model": command.ocr_model,
                 "context_model": command.context_model,
                 "classification_model": command.classification_model,
+                "chunk_strategy": command.chunk_strategy,
             }.items()
             if v is not None
         }

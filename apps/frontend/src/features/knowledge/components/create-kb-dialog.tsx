@@ -38,6 +38,7 @@ const createKbSchema = z.object({
   ocr_model: z.string().default(""),
   context_model: z.string().default(""),
   classification_model: z.string().default(""),
+  chunk_strategy: z.string().default(""),
 });
 
 type CreateKbFormValues = z.infer<typeof createKbSchema>;
@@ -45,6 +46,16 @@ type CreateKbFormValues = z.infer<typeof createKbSchema>;
 const OCR_MODE_OPTIONS = [
   { value: "general", label: "通用文字提取" },
   { value: "catalog", label: "商品目錄 DM" },
+] as const;
+
+// Issue #45: per-KB chunk_strategy 選項（白名單同後端 API validator）
+// 註：後端「""」與「auto」行為相同 — UI 統一用 "auto" 作為預設展示值
+const CHUNK_STRATEGY_OPTIONS = [
+  { value: "auto", label: "auto - 依 content_type 自動選（預設）" },
+  { value: "recursive", label: "recursive - 純文字字數切" },
+  { value: "separator", label: "separator - DM 商品目錄（=== 分隔）" },
+  { value: "json_record", label: "json_record - JSON 一筆一 chunk" },
+  { value: "csv_row", label: "csv_row - CSV 一列一 chunk" },
 ] as const;
 
 const MODEL_FIELDS = [
@@ -73,10 +84,12 @@ export function CreateKbDialog() {
       ocr_model: "",
       context_model: "",
       classification_model: "",
+      chunk_strategy: "auto",
     },
   });
 
   const ocrMode = watch("ocr_mode");
+  const chunkStrategy = watch("chunk_strategy");
 
   const onSubmit = (data: CreateKbFormValues) => {
     const payload = {
@@ -84,6 +97,9 @@ export function CreateKbDialog() {
       ocr_model: data.ocr_model === "__none__" ? "" : data.ocr_model,
       context_model: data.context_model === "__none__" ? "" : data.context_model,
       classification_model: data.classification_model === "__none__" ? "" : data.classification_model,
+      // "auto" 在後端跟空字串行為相同（走 config.chunk_strategy default）
+      // 為保留語意，傳「auto」時轉空字串給後端，避免在 DB 寫死字串
+      chunk_strategy: data.chunk_strategy === "auto" ? "" : data.chunk_strategy,
     };
     createMutation.mutate(payload, {
       onSuccess: () => {
@@ -152,7 +168,7 @@ export function CreateKbDialog() {
           <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" type="button" className="w-full justify-between">
-                AI 模型設定
+                AI 模型 / 進階設定
                 <ChevronDown
                   className={`h-4 w-4 transition-transform duration-200 ${showAdvanced ? "rotate-180" : ""}`}
                 />
@@ -175,6 +191,27 @@ export function CreateKbDialog() {
                   />
                 </div>
               ))}
+              <div className="flex flex-col gap-1">
+                <Label className="text-sm">分塊策略 (chunk_strategy)</Label>
+                <Select
+                  value={chunkStrategy || "auto"}
+                  onValueChange={(v) => setValue("chunk_strategy", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CHUNK_STRATEGY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  DM 商品目錄選 separator；FAQ JSON 選 json_record；其他用預設。
+                </p>
+              </div>
             </CollapsibleContent>
           </Collapsible>
 

@@ -20,6 +20,10 @@ class KnowledgeBase:
     ocr_model: str = ""
     context_model: str = ""
     classification_model: str = ""
+    # Per-KB chunk_strategy override（空 = 走全域 config.chunk_strategy）。
+    # 白名單由後端 API validator 強制：
+    # "" | "auto" | "recursive" | "separator" | "json_record" | "csv_row"
+    chunk_strategy: str = ""
     document_count: int = 0
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)

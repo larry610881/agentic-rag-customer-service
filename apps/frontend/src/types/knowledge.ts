@@ -7,6 +7,10 @@ export interface KnowledgeBase {
   ocr_model: string;
   context_model: string;
   classification_model: string;
+  /** Issue #45: per-KB chunk_strategy override
+   *  "" (預設) | "auto" | "recursive" | "separator" | "json_record" | "csv_row"
+   */
+  chunk_strategy?: string;
   document_count: number;
   created_at: string;
   updated_at: string;

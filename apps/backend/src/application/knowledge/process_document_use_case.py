@@ -63,11 +63,15 @@ class ProcessDocumentUseCase:
         record_usage_use_case: RecordUsageUseCase | None = None,
         chunk_context_service: ChunkContextService | None = None,
         tenant_repository: TenantRepository | None = None,
+        text_splitter_overrides: dict[str, TextSplitterService] | None = None,
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
         self._kb_repo = knowledge_base_repository
         self._splitter = text_splitter_service
+        # Per-KB chunk_strategy 路由表（Issue #45 1+A pattern）。
+        # 當 KB.chunk_strategy 在此 dict 內 → 用 override splitter；否則用 default。
+        self._text_splitter_overrides = text_splitter_overrides or {}
         self._embedding = embedding_service
         self._vector_store = vector_store
         self._language_detector = language_detection_service
@@ -76,6 +80,11 @@ class ProcessDocumentUseCase:
         self._record_usage = record_usage_use_case
         self._context_service = chunk_context_service
         self._tenant_repo = tenant_repository
+
+    def _resolve_splitter(self, kb) -> TextSplitterService:  # type: ignore[no-untyped-def]
+        """Per-KB splitter 解析。kb.chunk_strategy 命中 overrides → 用 override；否則 default。"""
+        strategy = (getattr(kb, "chunk_strategy", "") if kb else "") or ""
+        return self._text_splitter_overrides.get(strategy, self._splitter)
 
     async def execute(
         self, document_id: str, task_id: str
@@ -227,16 +236,22 @@ class ProcessDocumentUseCase:
             preprocess_ms = round((time.perf_counter() - t0) * 1000)
             log.info("document.preprocess.done", language=language, duration_ms=preprocess_ms)
 
-            # Split text into chunks
+            # Split text into chunks（Issue #45: per-KB chunk_strategy 路由）
             t0 = time.perf_counter()
-            chunks = self._splitter.split(
+            splitter = self._resolve_splitter(kb)
+            chunks = splitter.split(
                 preprocessed,
                 document_id,
                 document.tenant_id,
                 content_type=document.content_type,
             )
             split_ms = round((time.perf_counter() - t0) * 1000)
-            log.info("document.split.done", chunk_count=len(chunks), duration_ms=split_ms)
+            log.info(
+                "document.split.done",
+                chunk_count=len(chunks),
+                duration_ms=split_ms,
+                splitter=type(splitter).__name__,
+            )
 
             # Empty chunks early return
             if not chunks:
@@ -301,24 +316,37 @@ class ProcessDocumentUseCase:
                 except Exception:
                     pass
             if self._context_service and context_model:
-                # Close session before LLM calls (same pattern as OCR)
-                if hasattr(self._doc_repo, '_session'):
-                    try:
-                        await self._doc_repo._session.close()
-                    except Exception:
-                        pass
+                # Issue #45: Splitter 已填 context_text 的 chunk 跳過 LLM
+                # （separator splitter deterministic 抽頁面 metadata，無需 LLM 覆寫）
+                needs_context = [c for c in chunks if not c.context_text]
+                preserved_count = len(chunks) - len(needs_context)
 
-                t0 = time.perf_counter()
-                chunks = await self._context_service.generate_contexts(
-                    content, chunks, model=context_model
-                )
-                ctx_ms = round((time.perf_counter() - t0) * 1000)
+                if needs_context:
+                    # Close session before LLM calls (same pattern as OCR)
+                    if hasattr(self._doc_repo, '_session'):
+                        try:
+                            await self._doc_repo._session.close()
+                        except Exception:
+                            pass
+
+                    t0 = time.perf_counter()
+                    enriched = await self._context_service.generate_contexts(
+                        content, needs_context, model=context_model
+                    )
+                    ctx_ms = round((time.perf_counter() - t0) * 1000)
+                    # merge by id（既有 context_text 的 chunk 不被覆蓋）
+                    enriched_by_id = {c.id.value: c for c in enriched}
+                    chunks = [enriched_by_id.get(c.id.value, c) for c in chunks]
+                else:
+                    ctx_ms = 0
+
                 ctx_count = sum(1 for c in chunks if c.context_text)
                 log.info(
                     "document.context.done",
                     enriched=ctx_count,
                     total=len(chunks),
                     duration_ms=ctx_ms,
+                    splitter_preserved=preserved_count,
                 )
 
                 # Refresh session after LLM calls — must be done **before**

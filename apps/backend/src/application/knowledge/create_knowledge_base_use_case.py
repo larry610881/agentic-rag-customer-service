@@ -14,6 +14,7 @@ class CreateKnowledgeBaseCommand:
     ocr_model: str = ""
     context_model: str = ""
     classification_model: str = ""
+    chunk_strategy: str = ""  # Issue #45: per-KB splitter override (空 = 全域 default)
 
 
 class CreateKnowledgeBaseUseCase:
@@ -32,6 +33,7 @@ class CreateKnowledgeBaseUseCase:
             ocr_model=command.ocr_model,
             context_model=command.context_model,
             classification_model=command.classification_model,
+            chunk_strategy=command.chunk_strategy,
         )
         await self._knowledge_base_repository.save(kb)
         return kb

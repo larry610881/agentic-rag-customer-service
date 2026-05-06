@@ -39,11 +39,14 @@ class ReprocessDocumentUseCase:
         record_usage_use_case=None,
         tenant_repository=None,
         chunk_context_service=None,  # for api_key_resolver in child rename
+        text_splitter_overrides: dict[str, TextSplitterService] | None = None,
     ) -> None:
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
         self._kb_repo = knowledge_base_repository
         self._splitter = text_splitter_service
+        # Per-KB chunk_strategy 路由表（Issue #45 1+A pattern；對齊 process_document）
+        self._text_splitter_overrides = text_splitter_overrides or {}
         self._embedding = embedding_service
         self._vector_store = vector_store
         self._language_detector = language_detection_service
@@ -52,6 +55,11 @@ class ReprocessDocumentUseCase:
         self._record_usage = record_usage_use_case
         self._tenant_repo = tenant_repository
         self._context_service = chunk_context_service
+
+    def _resolve_splitter(self, kb) -> TextSplitterService:  # type: ignore[no-untyped-def]
+        """Per-KB splitter 解析（mirror process_document_use_case._resolve_splitter）"""
+        strategy = (getattr(kb, "chunk_strategy", "") if kb else "") or ""
+        return self._text_splitter_overrides.get(strategy, self._splitter)
 
     async def begin_reprocess(
         self, document_id: str, tenant_id: str
@@ -178,13 +186,19 @@ class ReprocessDocumentUseCase:
             log.info("document.language.detected", language=language)
 
             # Re-split with (potentially overridden) parameters
-            chunks = self._splitter.split(
+            # Issue #45: per-KB chunk_strategy 路由
+            splitter = self._resolve_splitter(kb)
+            chunks = splitter.split(
                 preprocessed,
                 document_id,
                 document.tenant_id,
                 content_type=document.content_type,
             )
-            log.info("document.reprocess.split", chunk_count=len(chunks))
+            log.info(
+                "document.reprocess.split",
+                chunk_count=len(chunks),
+                splitter=type(splitter).__name__,
+            )
 
             if not chunks:
                 await self._doc_repo.update_status(
