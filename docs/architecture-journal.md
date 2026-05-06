@@ -68,6 +68,84 @@ graph TD
 
 ---
 
+## Outbox Pattern Phase B-E — 業務化收尾、Watermark Guard、Admin DLQ Tooling
+
+**日期**：2026-05-06
+**涉及層級**：Backend（Application 4 use cases × DDD 4 層改寫 + Infrastructure repo + Interfaces admin router）+ Frontend（types / hooks / page / sidebar / MSW handlers / 5 vitest）+ DDD 跨 bounded context（Knowledge → Outbox 依賴）+ 多個 BDD scenario × 2 features
+**Commits**：`1804202` (B) → `5e80c3f` (C) → `a8236c1` (D) → `ac91121` (E)
+**ADR**：[ADR-0002 Outbox Pattern](adr/0002-outbox-pattern-for-vector-store.md)
+**Plan**：`~/.claude/plans/snuggly-jingling-aho.md` 6 phase 整合 plan
+
+**Sprint 來源**：Phase A 接好 outbox 基礎建設後（drain 永遠空轉），B-E 把 4 個業務 DELETE use case 切過去 + 補 admin tooling。Phase B-E 是「pattern 的工程化收尾」— 設計沒變，重點在落地時的 DDD 嚴謹度、向後相容、測試矩陣、admin UX。
+
+**主題**：**「跨 use case 統一 pattern 的『漸進式遷移』+ Watermark id-reuse mitigation 設計取捨 + Admin tooling 的『破壞性操作 UX』」**。
+
+```mermaid
+graph TD
+    subgraph "Phase B (1d)"
+        B1["DeleteKB 順序倒 bug 修復"] --> B2["改用 vector.drop_collection<br>單事件 (N+1 → 1)"]
+    end
+    subgraph "Phase C (1d) ⭐ 含 watermark guard"
+        C1["DeleteDocument cascade<br>+ doc_watermark_ts"] --> C2["DeleteByBource<br>(無 watermark — source 級)"]
+        C2 --> C3["Drain use case 加<br>id-reuse guard"]
+    end
+    subgraph "Phase D (0.5d)"
+        D1["DeleteChunk<br>(filters.id, no watermark)"] --> D2["oldest_pending_age_seconds<br>+ outbox.drain.tick log"]
+    end
+    subgraph "Phase E (1d)"
+        E1["4 admin use cases<br>(Stats/List/Requeue/Abandon)"] --> E2["5 endpoints<br>(system_admin only)"]
+        E2 --> E3["Frontend page<br>(stats panel + table + dialog)"]
+        E3 --> E4["MSW + 5 vitest tests"]
+        E4 --> E5["BDD chaos: fail→DLQ→requeue→done"]
+    end
+    B2 --> C1
+    C3 --> D1
+    D2 --> E1
+```
+
+#### 做得好的地方
+
+- **「不刪舊路徑」漸進式遷移**：`MilvusVectorStore.delete()` 加 `raise_on_error` 參數而非改既有行為。既有 in-band caller（reembed 等其他 use case 仍直接呼叫的）保持 swallow + log warning，outbox handler 用 `raise_on_error=True` 走 retry。**新舊路徑同一段程式碼，沒兩套實作 + 不破壞向後相容**。Phase B-D 的 4 個 use case 一個個切，每個切完獨立可 ship，不混合 risk。
+- **DDD use case 不持有 session 的紅線堅持到底**：本來 use case 自己包 atomic 是更直觀的做法（顯式控制 transaction 邊界），但會破壞 DDD 紅線（application 層拿 SQLAlchemy session 的 infrastructure-specific 物件）。改成 publish session.add 不 commit + 後續 repo.delete 內 atomic commit 帶飛的設計，需要在每個 use case docstring 強調這個 contract 才不會被誤改。多花 5 行字換零 DDD 紅線違規。
+- **Watermark guard 放對位置**：原 plan 是把 doc-id reuse guard 放在 handler 內，但 handler 是 callable registry 在 container wire 時組裝，要丟 doc_repo 進去會多一層工廠依賴。改放到 drain use case 內（dispatch handler 前先 check），handler 維持單純，doc_repo 依賴只進 application layer，符合 DDD「依賴方向」。同時加 `DrainOutboxResult.skipped_id_reuse` 計數欄位，metrics observability 直接 reuse 不另外 log。
+- **範圍縮減的數據量化決策**：UPSERT 不納入是看數字決定（payload 1.2 MB vs DELETE < 1 KB、月增量 GB vs MB、工時 +7 天 vs 解決孤兒比例僅多 10%），不是憑感覺。trigger thresholds 寫進 [memory file](../../memory/outbox-upsert-trigger-thresholds.md) — 等真實數據打到 P0/P1 閾值再啟動，避免 over-engineering。
+- **Admin DLQ UX 含「破壞性操作」防護**：abandon 是 hard delete row，要求 reason 必填 + danger confirm dialog + 寫 audit log。retry/abandon/bulk-retry 三個動作分明，不混。stats panel pending count > 5min lag → amber、DLQ count > 0 → 紅色，視覺暗示 admin 該採行動。
+- **Chaos BDD 跑完整循環**：`完整失敗→DLQ→admin retry→drain 成功循環` scenario 在 5 步內驗證完，給未來想改 outbox flow 的人有完整 regression net。in-memory fake repo 處理 SELECT FOR UPDATE SKIP LOCKED 的 lease 行為，比真連 PG 整合測試快數十倍。
+
+#### 潛在隱憂
+
+- **Use case session contract 沒在型別系統表達**：「publish 必須在 session 還活著且後續業務 SQL 在同 session 內」這個契約只用 docstring 說，未來如果有 use case 漏寫業務 SQL（只 publish 不 delete），publish 的 row 永遠不會 commit → 看起來像「事件遺失」。**改善方向**：寫 lint rule 或 `arch-test` 偵測「呼叫 publish_outbox_event_use_case.execute 但沒呼叫任何 *_repo.{delete,save}` 的 use case」；或 publish 改為要求 caller 顯式傳 `session` 參數，型別檢查強制。**優先級：中**。
+
+- **Watermark guard 沒覆蓋 source-driven path**：`DeleteDocumentsBySource` 不設 watermark 因為 aggregate_id ≠ 單一 doc.created_at。但 producer（PMO 平台 audit_log）若短時間 re-upload 同 source_id，drain 撈到舊 delete event 會把新版資料的 chunks 一起刪掉。**現況靠「producer side 自行避免」這個外部假設**。**改善方向**：給 chunks 表加 created_at 欄位後，drain handler 對 source-driven event 改用「filters AND chunks.created_at < event.created_at」做雙條件 delete。**優先級：低（POC 階段 PMO 平台 producer 可控）/ 中（多 producer 接入時必補）**。
+
+- **In-memory fake repo 重複實作 lease 邏輯**：4 個 BDD step_def 檔（chunks / kb / document / outbox / chaos）都自己寫一份 fake repo，且 lease + watermark 邏輯複雜。**改善方向**：抽到 `tests/unit/outbox/_fakes.py` 共用，避免 repo interface 加新 method 時要改 5 個地方（已經發生過：加 `oldest_pending_age_seconds` + `delete` 兩次都 ripple 到全部 fake）。**優先級：中**。
+
+- **Admin endpoints 沒 audit log 持久化**：retry / abandon 只寫 structlog event，沒寫進 `audit_events` 表（其他 admin 操作如 plan / pricing 已有）。**改善方向**：等 audit-trail-pre-production memory 觸發時一併補。**優先級：低（POC）/ 高（pre-prod）**。
+
+- **DLQ admin UI 沒分頁**：限 limit ≤ 500 但若實戰 DLQ 真的累積 5000 筆只能看前 500。**改善方向**：加 cursor-based pagination，或先靠 event_type / tenant filter 收斂。**優先級：低（DLQ 維持 0 才是對的，累 500 已該緊急處理）**。
+
+- **Frontend test 跳過 Select 互動**：Radix Select 在 jsdom 因 `hasPointerCapture` 不存在跑不起來，測試改用 tenant_id input filter 替代。原本想驗 event_type select 過濾的 case 沒測到。**改善方向**：等 e2e Playwright 跑一次補；或裝 jsdom polyfill。**優先級：低（功能本身在真瀏覽器 work）**。
+
+#### 延伸學習
+
+- **「不刪舊路徑」漸進式遷移**：Martin Fowler 的 [Strangler Fig Pattern](https://martinfowler.com/bliki/StranglerFigApplication.html) — 新功能與舊功能並存，逐步把流量切到新路徑。本案的 `raise_on_error` 參數是 in-method 級別的 strangler，比 wrapper class 更輕量。延伸：何時可以**真的**刪舊路徑？通常觀察 N 週 + 沒人 raise issue + 沒看到 fallback 觸發 log。
+- **Idempotency at multiple layers**：本案靠 (1) outbox event id 是 uuid (2) Milvus filter delete 天然冪等 (3) drop_collection 對不存在 collection 是 no-op — 三層保護。延伸：若未來 handler 不冪等（例如外送 webhook 通知），則 event id 要當 idempotency key 傳給 receiver，receiver 自己做 dedup（HTTP `Idempotency-Key` header convention）。
+- **Watermark / Tombstone 的 trade-off**：Kafka tombstone 在 compacted topic 用 — null value 標記「此 key 已刪」，後續 consumer 看到 null 就跳過。本案 doc_watermark_ts 是反向應用 — 標記「此 delete 事件對應的快照時間」，新版資料 created_at > watermark 就保護。延伸：若 PG 改用 logical replication，watermark 可以從 doc.created_at 改成 LSN（log sequence number），更精確不受 clock skew 影響。
+- **Admin tooling 的「破壞性操作 UX 標準」**：本案 abandon dialog 要 reason 必填 + danger color + 二次確認 — 跟 GitHub repo settings → delete repo 那種「打字輸入 repo 名字才能刪」是同一脈絡。延伸：Google Cloud Console 的「stop instance」vs「delete instance」差異 — 前者單一按鈕，後者要 confirm + 30 天保留期。outbox abandon 比較像前者（已是 DLQ 終態，不是線上資料），所以 reason input 而非二次輸入夠了。
+
+#### 思考題（給 Larry）
+
+watermark guard 目前只蓋 `aggregate_type='document'`，但 `DeleteChunk` (aggregate_type='chunk') 也有理論 race：admin 從 KB Studio 刪 chunk → outbox event 寫入 → drain 跑之前 chunk 因為某 reembed_chunk_task 重 upsert 到 Milvus → drain 把新 upsert 的 chunk 又刪掉。
+
+選項：
+- A: chunk 級也加 watermark（chunk_id + created_at 比對）— 需要 chunks 表 watermark 欄位
+- B: drain handler 對 chunk 級 event 加 `chunk.created_at < event.created_at` filter — Milvus payload 要存 created_at
+- C: 不處理（admin 從 KB Studio 刪 chunk + 同 chunk 觸發 reembed 的場景罕見）
+
+**你會選 A、B 還是 C？** 我傾向 C（POC 階段機率極低 + admin 知道刪了不要立刻 reembed）。但要在 ADR 補一行「已知限制」。
+
+---
+
 ## Outbox Pattern Phase A — Bounded Context + Lease-based Drain Worker
 
 **日期**：2026-05-05
