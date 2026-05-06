@@ -45,6 +45,7 @@ dependencies = [
     "scikit-learn>=1.8.0",
     "sendgrid>=6.12.5",
     "tenacity>=8.2",
+    "cachetools>=5.3",
 ]
 
 [dependency-groups]

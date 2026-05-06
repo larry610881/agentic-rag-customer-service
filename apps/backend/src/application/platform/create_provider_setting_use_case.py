@@ -101,4 +101,10 @@ class CreateProviderSettingUseCase:
             cache_key = _PROVIDER_TYPE_CACHE_KEYS.get(provider_type)
             if cache_key:
                 await self._cache_service.delete(cache_key)
+        # Layer 3: in-process API key cache 也要 invalidate，否則新建的
+        # provider 5 分鐘內 resolve_api_key 仍可能拿到 fallback env value。
+        from src.infrastructure.llm.dynamic_llm_factory import (
+            invalidate_provider_key_cache,
+        )
+        invalidate_provider_key_cache(command.provider_name)
         return setting

@@ -76,4 +76,10 @@ class UpdateProviderSettingUseCase:
             cache_key = _PROVIDER_TYPE_CACHE_KEYS.get(setting.provider_type)
             if cache_key:
                 await self._cache_service.delete(cache_key)
+        # Layer 3: rotate / disable / 改 key 後，舊的 resolved key 必須失效，
+        # 否則 5 分鐘 cache TTL 內仍會用舊 key。
+        from src.infrastructure.llm.dynamic_llm_factory import (
+            invalidate_provider_key_cache,
+        )
+        invalidate_provider_key_cache(setting.provider_name.value)
         return setting

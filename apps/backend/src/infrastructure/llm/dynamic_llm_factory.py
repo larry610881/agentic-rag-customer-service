@@ -1,5 +1,8 @@
 import json
 from collections.abc import AsyncIterator
+from threading import Lock
+
+from cachetools import TTLCache
 
 from src.config import Settings
 from src.domain.platform.model_registry import DEFAULT_MODELS as _REGISTRY
@@ -11,6 +14,57 @@ from src.domain.shared.cache_service import CacheService
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+# === Layer 3: API key in-process TTL cache ========================
+#
+# 5/6 carrefour DM page 54/55 重 process 時 worker 在 Milvus 短暫斷線後
+# re-resolve API key 拿到空字串（DB session race 條件），httpx 送出
+# `Bearer ` 觸發 LocalProtocolError。Module-level cache 讓近期 resolve
+# 過的值在 5 分鐘內 stable，避免 session 重建瞬間 DB 還沒 ready 拿到
+# 空字串。API key 平台層共用（非租戶 scoped），所以 key=provider_name。
+#
+# 空字串不寫 cache：避免「DB 暫時無資料」狀態被 cache 住，導致即使
+# DB 已有 key 也要等 TTL 才能重 fetch。
+# ProviderSetting CRUD use case 完成後呼叫 invalidate_provider_key_cache()
+# 強制下一次 resolve 重 fetch。
+
+_API_KEY_CACHE_TTL_SECONDS: int = 300  # 5 min
+_API_KEY_CACHE: TTLCache[str, str] = TTLCache(
+    maxsize=64, ttl=_API_KEY_CACHE_TTL_SECONDS,
+)
+_API_KEY_CACHE_LOCK: Lock = Lock()
+
+
+def invalidate_provider_key_cache(provider_name: str | None = None) -> None:
+    """Provider key cache 失效（CRUD hook + admin tooling 用）。
+
+    Args:
+        provider_name: 指定 provider，``None`` = 全清。
+    """
+    with _API_KEY_CACHE_LOCK:
+        if provider_name is None:
+            _API_KEY_CACHE.clear()
+            logger.info("provider_key_cache.invalidate_all")
+        else:
+            removed = _API_KEY_CACHE.pop(provider_name, None)
+            if removed is not None:
+                logger.info(
+                    "provider_key_cache.invalidate", provider=provider_name,
+                )
+
+
+def _cache_get_api_key(provider_name: str) -> str | None:
+    with _API_KEY_CACHE_LOCK:
+        return _API_KEY_CACHE.get(provider_name)
+
+
+def _cache_set_api_key(provider_name: str, key: str) -> None:
+    """空字串不寫 — 避免短暫 DB 失效時把空值快取 5 分鐘。"""
+    if not key:
+        return
+    with _API_KEY_CACHE_LOCK:
+        _API_KEY_CACHE[provider_name] = key
 
 
 def _split_model_spec(model_spec: str) -> tuple[str, str]:
@@ -245,7 +299,15 @@ class DynamicLLMServiceFactory:
         """Resolve API key for a provider: DB-encrypted first, then .env fallback.
 
         Useful for code that calls provider SDKs directly (e.g. reranker).
+
+        Layer 3: in-process TTL cache (key=provider_name, ttl=5min)。Cache
+        miss → DB → env。空字串不寫 cache。CRUD 完成後呼叫
+        ``invalidate_provider_key_cache(provider_name)`` 強制重 fetch。
         """
+        cached = _cache_get_api_key(provider_name)
+        if cached:
+            return cached
+
         try:
             repo = self._repo_factory()
             settings = await repo.find_all_by_type(ProviderType.LLM)
@@ -255,14 +317,18 @@ class DynamicLLMServiceFactory:
                 None,
             )
             if setting and setting.api_key_encrypted:
-                return self._encryption.decrypt(setting.api_key_encrypted)
+                key = self._encryption.decrypt(setting.api_key_encrypted)
+                _cache_set_api_key(provider_name, key)
+                return key
         except Exception:
             logger.warning("resolve_api_key.db_failed", exc_info=True)
 
-        # Fallback to .env
+        # Fallback to .env — 也納入 cache，下次 5 min 內不再 hit DB。
         cfg = Settings()
         attr = _ENV_KEY_MAP.get(provider_name, "")
-        return getattr(cfg, attr, "") if attr else ""
+        key = getattr(cfg, attr, "") if attr else ""
+        _cache_set_api_key(provider_name, key)
+        return key
 
 
 class DynamicLLMServiceProxy(LLMService):

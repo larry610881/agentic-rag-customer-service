@@ -27,3 +27,8 @@ class DeleteProviderSettingUseCase:
             cache_key = _PROVIDER_TYPE_CACHE_KEYS.get(setting.provider_type)
             if cache_key:
                 await self._cache_service.delete(cache_key)
+        # Layer 3: provider 已刪，cache 中的 key 也應立即失效。
+        from src.infrastructure.llm.dynamic_llm_factory import (
+            invalidate_provider_key_cache,
+        )
+        invalidate_provider_key_cache(setting.provider_name.value)
