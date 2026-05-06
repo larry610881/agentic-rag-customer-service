@@ -508,11 +508,12 @@ async def upload_document(
 
     from src.infrastructure.queue.arq_pool import enqueue
 
-    # PDF + catalog KB → split into pages for parallel OCR
+    # PDF + catalog/auto KB → split into pages for parallel per-page OCR
+    # （catalog 走 _CATALOG_PROMPT；auto 每子頁走 page-type dispatcher）
     job_name = "process_document"
     if content_type == "application/pdf":
         kb = await Container.kb_repository().find_by_id(kb_id)
-        if kb and kb.ocr_mode == "catalog":
+        if kb and kb.ocr_mode in ("catalog", "auto"):
             job_name = "split_pdf"
 
     await enqueue(job_name, result.document.id.value, result.task.id.value)
@@ -607,11 +608,11 @@ async def confirm_upload(
 
     from src.infrastructure.queue.arq_pool import enqueue
 
-    # PDF + catalog KB → split into pages for parallel OCR
+    # PDF + catalog/auto KB → split into pages for parallel per-page OCR
     job_name = "process_document"
     if result.document.content_type == "application/pdf":
         kb = await Container.kb_repository().find_by_id(kb_id)
-        if kb and kb.ocr_mode == "catalog":
+        if kb and kb.ocr_mode in ("catalog", "auto"):
             job_name = "split_pdf"
 
     await enqueue(job_name, result.document.id.value, result.task.id.value)

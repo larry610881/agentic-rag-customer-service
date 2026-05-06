@@ -135,11 +135,15 @@ class ProcessDocumentUseCase:
 
             # ── Parse raw content → text ──
             # Determine if this is a long-running OCR path
+            # auto / catalog 都走 OCR（auto 內部走 page-type dispatcher）
             needs_ocr = (
                 raw_content
                 and (
                     document.content_type.startswith("image/")
-                    or (document.content_type == "application/pdf" and ocr_mode == "catalog")
+                    or (
+                        document.content_type == "application/pdf"
+                        and ocr_mode in ("catalog", "auto")
+                    )
                 )
             )
 
@@ -161,8 +165,23 @@ class ProcessDocumentUseCase:
                     from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import (
                         OCR_PROMPTS,
                     )
-                    prompt = OCR_PROMPTS.get(ocr_mode, OCR_PROMPTS.get("general", ""))
-                    content = await ocr_engine.ocr_page(raw_content, prompt=prompt)
+                    if ocr_mode == "auto" and hasattr(
+                        ocr_engine, "ocr_page_auto_dispatch"
+                    ):
+                        # KB.ocr_mode='auto'：走 page-type dispatcher（每頁
+                        # classify→catalog/promotion/mixed/cover prompt）。
+                        # 子 PNG 不走 OCR_PROMPTS['auto'] 因為 auto 模式無
+                        # 對應靜態 prompt。
+                        _page_type, content = await ocr_engine.ocr_page_auto_dispatch(
+                            raw_content
+                        )
+                    else:
+                        prompt = OCR_PROMPTS.get(
+                            ocr_mode, OCR_PROMPTS.get("general", "")
+                        )
+                        content = await ocr_engine.ocr_page(
+                            raw_content, prompt=prompt
+                        )
                     await _update_progress(task_id, 70)
 
                 # PDF: use async path with progress callback (no DB held)

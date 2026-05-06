@@ -246,6 +246,29 @@ def test_parse_pdf_async_auto_mode_calls_auto_dispatch():
     assert fake_engine.ocr_page_auto_dispatch.await_count == 2
 
 
+def test_split_pdf_routing_includes_auto_mode():
+    """Issue #47 bug fix: auto mode 也要 enqueue split_pdf（之前只認 catalog）。
+
+    驗證 document_router 的條件邏輯：kb.ocr_mode in ("catalog", "auto")
+    才走 split_pdf job，否則走 process_document。
+    """
+    # 直接 inspect router source — 條件是 in-line 邏輯，最直接驗證方式
+    import pathlib
+    router_path = (
+        pathlib.Path(__file__).parents[4]
+        / "src" / "interfaces" / "api" / "document_router.py"
+    )
+    source = router_path.read_text(encoding="utf-8")
+    # 應出現 ocr_mode in ("catalog", "auto") 條件
+    assert 'ocr_mode in ("catalog", "auto")' in source, (
+        "split_pdf 觸發條件必須涵蓋 catalog 與 auto 兩種模式"
+    )
+    # 不應再有單獨「ocr_mode == 'catalog'」的判斷（會排除 auto）
+    assert 'ocr_mode == "catalog"' not in source, (
+        "舊條件 ocr_mode == 'catalog' 已被取代，避免 auto 模式漏走 split_pdf"
+    )
+
+
 def test_parse_pdf_async_catalog_mode_keeps_existing_path():
     """既有 catalog 模式行為 0 改變 — 仍走 ocr_page(prompt=...)."""
     from src.infrastructure.file_parser.ocr_file_parser_service import (
