@@ -235,10 +235,12 @@ async def process_conversation_summary_task(
 
 
 async def drain_outbox_task(ctx: dict) -> None:
-    """Outbox Pattern Phase A — 每分鐘 cron tick 撈 batch 對外部系統套用。
+    """Outbox Pattern — 每分鐘 cron tick 撈 batch 對外部系統套用。
 
-    Phase A 期間沒有業務 use case 寫入 outbox，drain 永遠空轉（safe）。
-    Phase B-D 開始有 vector.delete / vector.drop_collection 事件流入。
+    Phase A 起接好基建；Phase B-D 起有業務 use case 寫入 vector.delete /
+    vector.drop_collection 事件。drain use case 內部已透過 structlog
+    ``outbox.drain.tick`` event 寫健康指標（dlq_count / pending_count /
+    oldest_pending_age_seconds）給 GCP log-based metric 抓。
     """
     container = _new_container()
     use_case = container.drain_outbox_use_case()
@@ -247,7 +249,8 @@ async def drain_outbox_task(ctx: dict) -> None:
         logger.info(
             f"[drain_outbox] claimed={result.claimed} "
             f"succeeded={result.succeeded} failed={result.failed} "
-            f"skipped={result.skipped_no_handler}"
+            f"skipped_no_handler={result.skipped_no_handler} "
+            f"skipped_id_reuse={result.skipped_id_reuse}"
         )
 
 

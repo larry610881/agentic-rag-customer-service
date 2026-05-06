@@ -152,6 +152,30 @@ class DrainOutboxUseCase:
                     error=str(exc)[:200],
                 )
 
+        # Phase D observability: 一次 drain tick 摘要 + 健康指標
+        # 給 GCP log-based metric 抓的事件名（穩定不要亂改）
+        try:
+            dlq_count = await self._outbox_repo.count_by_status("dead")
+            pending_count = await self._outbox_repo.count_by_status("pending")
+            lag = await self._outbox_repo.oldest_pending_age_seconds()
+        except Exception:  # noqa: BLE001
+            # metrics 失敗絕不擋 drain（已經處理完事件了）
+            dlq_count = -1
+            pending_count = -1
+            lag = None
+
+        logger.info(
+            "outbox.drain.tick",
+            claimed=len(events),
+            succeeded=succeeded,
+            failed=failed,
+            skipped_no_handler=skipped,
+            skipped_id_reuse=skipped_id_reuse,
+            dlq_count=dlq_count,
+            pending_count=pending_count,
+            oldest_pending_age_seconds=lag,
+        )
+
         return DrainOutboxResult(
             claimed=len(events),
             succeeded=succeeded,

@@ -57,6 +57,9 @@ class _RecordingOutboxRepo(OutboxEventRepository):
     async def count_by_status(self, status: str) -> int:
         return 0
 
+    async def oldest_pending_age_seconds(self) -> float | None:
+        return None
+
 
 @pytest.fixture
 def context():

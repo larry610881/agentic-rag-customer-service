@@ -67,3 +67,13 @@ class OutboxEventRepository(ABC):
     async def count_by_status(self, status: str) -> int:
         """Stats panel + 告警用。"""
         ...
+
+    @abstractmethod
+    async def oldest_pending_age_seconds(self) -> float | None:
+        """回傳最舊 pending 事件的等待秒數（NOW - created_at）。
+
+        回傳 None 表示沒有 pending 事件。給 dashboard / alert 算 lag 指標用：
+        - p95 lag > 5min → warning（worker 跟不上 / Milvus 慢）
+        - p95 lag > 30min → critical（worker 死了 / Milvus 全掛）
+        """
+        ...

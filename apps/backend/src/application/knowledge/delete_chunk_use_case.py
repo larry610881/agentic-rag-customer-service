@@ -1,6 +1,11 @@
-"""Delete Chunk Use Case — S-KB-Studio.1
+"""Delete Chunk Use Case — S-KB-Studio.1（Phase D Outbox 化）
 
-DB delete + Milvus delete（雙階段，Milvus 失敗不擋 DB，只 log warning）。
+DB delete + 發布 vector.delete outbox 事件，drain worker 接手 Milvus delete。
+Chunk 級無 reuse 風險（PK 重用機率 ≈ 0），不設 doc_watermark_ts。
+
+Atomicity 設計：use case 不持有 session（DDD 紅線）。publish session.add 不
+commit；後續 doc_repo.delete_chunk 內 atomic commit 帶上 publish 的 INSERT
+一起持久化。
 """
 
 from __future__ import annotations
@@ -9,11 +14,14 @@ from dataclasses import dataclass
 
 import structlog
 
+from src.application.outbox.publish_outbox_event_use_case import (
+    PublishOutboxEventUseCase,
+)
 from src.domain.knowledge.repository import (
     DocumentRepository,
     KnowledgeBaseRepository,
 )
-from src.domain.rag.services import VectorStore
+from src.domain.outbox.events import vector_delete_event
 from src.domain.shared.exceptions import EntityNotFoundError
 
 logger = structlog.get_logger(__name__)
@@ -31,11 +39,11 @@ class DeleteChunkUseCase:
         self,
         document_repo: DocumentRepository,
         kb_repo: KnowledgeBaseRepository,
-        vector_store: VectorStore,
+        publish_outbox_event_use_case: PublishOutboxEventUseCase,
     ) -> None:
         self._doc_repo = document_repo
         self._kb_repo = kb_repo
-        self._vs = vector_store
+        self._publish_outbox = publish_outbox_event_use_case
 
     async def execute(self, command: DeleteChunkCommand) -> None:
         from src.application.knowledge._admin_kb_check import (
@@ -60,23 +68,20 @@ class DeleteChunkUseCase:
         # KnowledgeBaseId VO unwrap — 防禦 prod (VO) / test (str) 雙路徑
         kb_id_str = kb.id.value if hasattr(kb.id, "value") else str(kb.id)
 
-        # 1. DB delete 優先
-        await self._doc_repo.delete_chunk(command.chunk_id)
-
-        # 2. Milvus delete 容錯
+        # 1. Publish outbox event（session.add 不 commit）
+        # filters={"id": chunk_id} — Milvus chunks 的 PK 是 chunk_id
         collection = f"kb_{kb_id_str}"
-        try:
-            await self._vs.delete(
-                collection=collection,
-                filters={"id": command.chunk_id},
-            )
-        except Exception:
-            logger.warning(
-                "chunk.delete.milvus_failed",
-                chunk_id=command.chunk_id,
-                collection=collection,
-                exc_info=True,
-            )
+        event = vector_delete_event(
+            tenant_id=command.tenant_id,
+            aggregate_type="chunk",
+            aggregate_id=command.chunk_id,
+            collection=collection,
+            filters={"id": command.chunk_id},
+        )
+        await self._publish_outbox.execute(event)
+
+        # 2. PG delete chunk — atomic commit 帶上 publish INSERT 一起持久化
+        await self._doc_repo.delete_chunk(command.chunk_id)
 
         logger.info(
             "kb_studio.chunk.delete",
@@ -84,4 +89,5 @@ class DeleteChunkUseCase:
             kb_id=kb_id_str,
             tenant_id=command.tenant_id,
             actor=command.actor,
+            outbox_event_id=event.id,
         )

@@ -1,25 +1,22 @@
-Feature: 單一 Chunk 刪除（DB + Milvus 雙階段）
+Feature: 單一 Chunk 刪除（透過 Outbox Pattern）
   作為 KB Studio 管理員
   我希望能刪除不需要的 chunk
-  以便精煉 KB 內容品質
+  Phase D 改寫：Milvus DELETE 改走 outbox 事件，drain worker 接手
+  PG delete + outbox publish 同 transaction（atomic 帶 publish 一起 commit）
 
-  Scenario: 成功刪除 chunk（DB + Milvus 都清掉）
+  Scenario: 成功刪除 chunk — DB 清掉 + 發布 outbox vector.delete 事件
     Given 租戶 "T001" 的 chunk "chunk-1" 存在於 DB 與 Milvus collection "kb_kb-1"
     When 我以 tenant "T001" 身分 DELETE chunk "chunk-1"
     Then chunk 應從 DB 刪除
-    And Milvus collection "kb_kb-1" 的 id "chunk-1" 應被刪除
-    And 應記錄 audit event "kb_studio.chunk.delete"
-
-  Scenario: Milvus 刪除失敗不擋 DB 刪除
-    Given 租戶 "T001" 的 chunk "chunk-1" 存在
-    And Milvus 刪除呼叫會失敗
-    When 我以 tenant "T001" 身分 DELETE chunk "chunk-1"
-    Then chunk 應從 DB 刪除
-    And 應記錄 structlog warning "chunk.delete.milvus_failed" 含 chunk_id
-    And use case 應正常回傳（不拋例外）
+    And 應發布 1 筆 vector.delete outbox 事件
+    And 該事件的 collection 應為 "kb_kb-1"
+    And 該事件的 filters.id 應為 "chunk-1"
+    And 該事件不應帶 doc_watermark_ts
+    And 不應直接呼叫 vector store
 
   Scenario: 跨租戶刪除被擋（tenant chain）
     Given 租戶 "T001" 擁有 chunk "chunk-1"
     When 我以 tenant "T002" 身分嘗試 DELETE chunk "chunk-1"
     Then 應拋出 EntityNotFoundError
-    And chunk 應保持存在於 DB 與 Milvus
+    And 不應發布任何 outbox 事件
+    And chunk 應保持存在於 DB

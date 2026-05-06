@@ -52,3 +52,11 @@ Feature: Outbox Pattern — publish + drain
     When drain worker 跑一次
     Then 該事件 status 應為 "done"
     And handler 應被呼叫 1 次
+
+  Scenario: drain 結束回傳健康指標（lag / pending / dlq）
+    Given outbox 有 1 筆 vector.delete pending 事件
+    And handler 對應 vector.delete 會成功執行
+    When drain worker 跑一次
+    Then drain 結果應含 succeeded=1
+    And drain 結果應含 skipped_id_reuse=0
+    And outbox repository 的 oldest_pending_age_seconds 應為 None

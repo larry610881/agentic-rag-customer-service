@@ -91,6 +91,16 @@ class _InMemoryOutboxRepo(OutboxEventRepository):
     async def count_by_status(self, status: str) -> int:
         return sum(1 for e in self.events.values() if e.status == status)
 
+    async def oldest_pending_age_seconds(self) -> float | None:
+        pending = [
+            e for e in self.events.values()
+            if e.status == OutboxEventStatus.PENDING.value
+        ]
+        if not pending:
+            return None
+        oldest = min(p.created_at for p in pending)
+        return max(0.0, (datetime.now(timezone.utc) - oldest).total_seconds())
+
 
 @pytest.fixture
 def context() -> dict:
@@ -297,3 +307,22 @@ def pg_no_doc(context, doc_id: str) -> None:
     repo = AsyncMock()
     repo.find_by_id = AsyncMock(return_value=None)
     context["doc_repo"] = repo
+
+
+# ── Health metrics scenarios (Phase D) ───────────────────────────
+
+
+@then(parsers.parse("drain 結果應含 succeeded={expected:d}"))
+def assert_drain_succeeded(context, expected: int) -> None:
+    assert context["drain_result"].succeeded == expected
+
+
+@then(parsers.parse("drain 結果應含 skipped_id_reuse={expected:d}"))
+def assert_drain_skipped_id_reuse(context, expected: int) -> None:
+    assert context["drain_result"].skipped_id_reuse == expected
+
+
+@then("outbox repository 的 oldest_pending_age_seconds 應為 None")
+def assert_no_pending_lag(context) -> None:
+    age = _run(context["repo"].oldest_pending_age_seconds())
+    assert age is None

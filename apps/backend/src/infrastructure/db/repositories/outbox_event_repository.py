@@ -181,3 +181,18 @@ class SQLAlchemyOutboxEventRepository(OutboxEventRepository):
             )
         )
         return int(result.scalar_one() or 0)
+
+    async def oldest_pending_age_seconds(self) -> float | None:
+        """SELECT EXTRACT(EPOCH FROM NOW() - MIN(created_at)) WHERE status='pending'。"""
+        from sqlalchemy import func
+
+        result = await self._session.execute(
+            select(func.min(OutboxEventModel.created_at)).where(
+                OutboxEventModel.status == OutboxEventStatus.PENDING.value
+            )
+        )
+        oldest = result.scalar_one_or_none()
+        if oldest is None:
+            return None
+        now = datetime.now(timezone.utc)
+        return max(0.0, (now - oldest).total_seconds())

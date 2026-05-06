@@ -540,6 +540,9 @@ from src.infrastructure.text_splitter.json_record_text_splitter_service import (
 from src.infrastructure.text_splitter.recursive_text_splitter_service import (
     RecursiveTextSplitterService,
 )
+from src.infrastructure.text_splitter.separator_text_splitter_service import (
+    SeparatorTextSplitterService,
+)
 
 
 class _AvgChunkSizeProvider:
@@ -912,6 +915,13 @@ class Container(containers.DeclarativeContainer):
         fallback=_recursive_splitter,
     )
 
+    # Separator-based splitter — DM 商品目錄專用，按 === 分隔切，
+    # sniff 失敗 fallback 到 recursive。Issue #45 (1+A pattern)
+    _separator_splitter = providers.Singleton(
+        SeparatorTextSplitterService,
+        fallback=_recursive_splitter,
+    )
+
     text_splitter_service = providers.Selector(
         providers.Callable(lambda cfg: cfg.chunk_strategy, config),
         auto=providers.Singleton(
@@ -928,7 +938,17 @@ class Container(containers.DeclarativeContainer):
         recursive=_recursive_splitter,
         csv_row=_csv_splitter,
         json_record=_json_splitter,
+        separator=_separator_splitter,
     )
+
+    # Per-KB chunk_strategy 路由表（ProcessDocumentUseCase 用）。
+    # 當 KB.chunk_strategy 在此 dict 內，覆寫全域 text_splitter_service。
+    _text_splitter_overrides = providers.Dict({
+        "separator": _separator_splitter,
+        "recursive": _recursive_splitter,
+        "json_record": _json_splitter,
+        "csv_row": _csv_splitter,
+    })
 
     # Static fallback embedding (model/base_url/key all from .env)
     _real_embedding_service = providers.Factory(
@@ -1147,7 +1167,7 @@ class Container(containers.DeclarativeContainer):
         DeleteChunkUseCase,
         document_repo=document_repository,
         kb_repo=kb_repository,
-        vector_store=vector_store,
+        publish_outbox_event_use_case=publish_outbox_event_use_case,
     )
 
     list_kb_chunks_use_case = providers.Factory(
@@ -1480,6 +1500,7 @@ class Container(containers.DeclarativeContainer):
         processing_task_repository=processing_task_repository,
         knowledge_base_repository=kb_repository,
         text_splitter_service=text_splitter_service,
+        text_splitter_overrides=_text_splitter_overrides,
         embedding_service=embedding_service,
         vector_store=vector_store,
         language_detection_service=language_detection_service,
@@ -1514,6 +1535,7 @@ class Container(containers.DeclarativeContainer):
         processing_task_repository=processing_task_repository,
         knowledge_base_repository=kb_repository,
         text_splitter_service=text_splitter_service,
+        text_splitter_overrides=_text_splitter_overrides,
         embedding_service=embedding_service,
         vector_store=vector_store,
         language_detection_service=language_detection_service,
