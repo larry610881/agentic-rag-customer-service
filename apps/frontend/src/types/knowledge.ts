@@ -11,6 +11,8 @@ export interface KnowledgeBase {
    *  "" (預設) | "auto" | "recursive" | "separator" | "json_record" | "csv_row"
    */
   chunk_strategy?: string;
+  /** Issue #47 L3: DM metadata 抽取使用的 LLM 模型（"" = 不啟用） */
+  dm_metadata_model?: string;
   document_count: number;
   created_at: string;
   updated_at: string;

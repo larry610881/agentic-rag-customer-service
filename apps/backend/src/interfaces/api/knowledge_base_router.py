@@ -41,6 +41,9 @@ class CreateKnowledgeBaseRequest(BaseModel):
     context_model: str = ""
     classification_model: str = ""
     chunk_strategy: str = ""
+    # Issue #47 L3：DM-style KB 啟用 KB-level metadata 抽取
+    # 空字串 = 不啟用；非空 = arq trigger 後 LLM tool use 抽結構化 dm_metadata
+    dm_metadata_model: str = ""
 
     @field_validator("chunk_strategy")
     @classmethod
@@ -60,6 +63,7 @@ class UpdateKnowledgeBaseRequest(BaseModel):
     context_model: str | None = None
     classification_model: str | None = None
     chunk_strategy: str | None = None
+    dm_metadata_model: str | None = None
 
     @field_validator("chunk_strategy")
     @classmethod
@@ -81,6 +85,7 @@ class KnowledgeBaseResponse(BaseModel):
     context_model: str = ""
     classification_model: str = ""
     chunk_strategy: str = ""
+    dm_metadata_model: str = ""
     document_count: int
     created_at: str
     updated_at: str
@@ -97,6 +102,7 @@ def _kb_to_response(kb) -> KnowledgeBaseResponse:
         context_model=kb.context_model,
         classification_model=kb.classification_model,
         chunk_strategy=getattr(kb, "chunk_strategy", ""),
+        dm_metadata_model=getattr(kb, "dm_metadata_model", ""),
         document_count=kb.document_count,
         created_at=kb.created_at.isoformat(),
         updated_at=kb.updated_at.isoformat(),
@@ -126,6 +132,7 @@ async def create_knowledge_base(
             context_model=body.context_model,
             classification_model=body.classification_model,
             chunk_strategy=body.chunk_strategy,
+            dm_metadata_model=body.dm_metadata_model,
         )
     )
     return _kb_to_response(kb)
@@ -209,6 +216,7 @@ async def update_knowledge_base(
                 context_model=body.context_model,
                 classification_model=body.classification_model,
                 chunk_strategy=body.chunk_strategy,
+                dm_metadata_model=body.dm_metadata_model,
                 )
         )
     except EntityNotFoundError as e:

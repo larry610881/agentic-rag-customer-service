@@ -23,6 +23,8 @@ interface SettingsTabProps {
 const OCR_MODE_OPTIONS = [
   { value: "general", label: "通用文字提取" },
   { value: "catalog", label: "商品目錄 DM" },
+  // Issue #47：自動分類模式 — 每頁 detect 類型 → catalog/promotion/mixed/cover prompt
+  { value: "auto", label: "自動分類（混合 DM 推薦）" },
 ] as const;
 
 // Issue #45: per-KB chunk_strategy override
@@ -51,6 +53,11 @@ const MODEL_FIELDS = [
     label: "自動分類",
     hint: "KB 文件處理完成後自動聚類分類",
   },
+  {
+    key: "dm_metadata_model" as const,
+    label: "DM metadata 抽取",
+    hint: "KB 全文件處理完成後抽取整本 DM 共通 metadata（DM 期間 / 商家 / 跨頁活動 / 主打商品）。空 = 不啟用",
+  },
 ] as const;
 
 const NONE_VALUE = "__none__";
@@ -68,6 +75,8 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
   const [classificationModel, setClassificationModel] = useState("");
   // Issue #45: per-KB chunk_strategy override（"" 視為 "auto" 顯示）
   const [chunkStrategy, setChunkStrategy] = useState("auto");
+  // Issue #47 L3: DM metadata 抽取 model
+  const [dmMetadataModel, setDmMetadataModel] = useState("");
 
   useEffect(() => {
     if (!kb) return;
@@ -78,6 +87,7 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
     setContextModel(kb.context_model || "");
     setClassificationModel(kb.classification_model || "");
     setChunkStrategy(kb.chunk_strategy || "auto");
+    setDmMetadataModel(kb.dm_metadata_model || "");
   }, [kb]);
 
   if (isLoading) {
@@ -105,6 +115,8 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
           classificationModel === NONE_VALUE ? "" : classificationModel,
         // "auto" → 空字串給後端（語意：用全域 default）
         chunk_strategy: chunkStrategy === "auto" ? "" : chunkStrategy,
+        dm_metadata_model:
+          dmMetadataModel === NONE_VALUE ? "" : dmMetadataModel,
       },
     });
   };
@@ -113,6 +125,7 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
     ocr_model: ocrModel,
     context_model: contextModel,
     classification_model: classificationModel,
+    dm_metadata_model: dmMetadataModel,
   };
   const setters: Record<
     (typeof MODEL_FIELDS)[number]["key"],
@@ -121,6 +134,7 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
     ocr_model: setOcrModel,
     context_model: setContextModel,
     classification_model: setClassificationModel,
+    dm_metadata_model: setDmMetadataModel,
   };
 
   const dirty =
@@ -130,7 +144,8 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
     ocrModel !== (kb.ocr_model || "") ||
     contextModel !== (kb.context_model || "") ||
     classificationModel !== (kb.classification_model || "") ||
-    chunkStrategy !== (kb.chunk_strategy || "auto");
+    chunkStrategy !== (kb.chunk_strategy || "auto") ||
+    dmMetadataModel !== (kb.dm_metadata_model || "");
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -179,8 +194,10 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
           </Select>
           <p className="text-xs text-muted-foreground">
             {ocrMode === "catalog"
-              ? "適用於賣場 DM / 商品型錄 — 結構化提取商品名稱與價格"
-              : "適用於一般文件 — 提取純文字內容"}
+              ? "賣場 DM / 商品型錄 — 全頁用同一個 prompt"
+              : ocrMode === "auto"
+              ? "混合 DM（含信用卡頁 / 服務介紹頁）— 每頁先 detect 類型再用對應 prompt（catalog 的 superset，多 ~$0.0003/頁 classify cost）"
+              : "一般文件 — 提取純文字內容"}
           </p>
         </div>
 

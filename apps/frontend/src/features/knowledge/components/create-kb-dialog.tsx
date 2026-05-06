@@ -39,6 +39,8 @@ const createKbSchema = z.object({
   context_model: z.string().default(""),
   classification_model: z.string().default(""),
   chunk_strategy: z.string().default(""),
+  // Issue #47 L3：DM-style KB 啟用 KB-level metadata 抽取
+  dm_metadata_model: z.string().default(""),
 });
 
 type CreateKbFormValues = z.infer<typeof createKbSchema>;
@@ -46,6 +48,9 @@ type CreateKbFormValues = z.infer<typeof createKbSchema>;
 const OCR_MODE_OPTIONS = [
   { value: "general", label: "通用文字提取" },
   { value: "catalog", label: "商品目錄 DM" },
+  // Issue #47：自動分類 — 每頁先 detect 類型再 dispatch 對應 prompt
+  // catalog 是其 superset（純商品 DM 結果一樣，含信用卡頁的混合 DM 更佳）
+  { value: "auto", label: "自動分類（混合 DM 推薦）" },
 ] as const;
 
 // Issue #45: per-KB chunk_strategy 選項（白名單同後端 API validator）
@@ -62,6 +67,8 @@ const MODEL_FIELDS = [
   { key: "ocr_model" as const, label: "OCR 解析", emptyLabel: "系統預設" },
   { key: "context_model" as const, label: "上下文生成", emptyLabel: "系統預設" },
   { key: "classification_model" as const, label: "自動分類", emptyLabel: "系統預設" },
+  // Issue #47 L3: DM metadata 抽取（KB 全 docs done 後自動 trigger）
+  { key: "dm_metadata_model" as const, label: "DM metadata 抽取", emptyLabel: "未啟用" },
 ] as const;
 
 export function CreateKbDialog() {
@@ -85,6 +92,7 @@ export function CreateKbDialog() {
       context_model: "",
       classification_model: "",
       chunk_strategy: "auto",
+      dm_metadata_model: "",
     },
   });
 
@@ -97,6 +105,7 @@ export function CreateKbDialog() {
       ocr_model: data.ocr_model === "__none__" ? "" : data.ocr_model,
       context_model: data.context_model === "__none__" ? "" : data.context_model,
       classification_model: data.classification_model === "__none__" ? "" : data.classification_model,
+      dm_metadata_model: data.dm_metadata_model === "__none__" ? "" : data.dm_metadata_model,
       // "auto" 在後端跟空字串行為相同（走 config.chunk_strategy default）
       // 為保留語意，傳「auto」時轉空字串給後端，避免在 DB 寫死字串
       chunk_strategy: data.chunk_strategy === "auto" ? "" : data.chunk_strategy,
@@ -160,8 +169,10 @@ export function CreateKbDialog() {
             </Select>
             <p className="text-xs text-muted-foreground">
               {ocrMode === "catalog"
-                ? "適用於賣場 DM、商品型錄，會結構化提取商品名稱與價格"
-                : "適用於一般文件，提取純文字內容"}
+                ? "賣場 DM / 商品型錄，全頁結構化提取商品名稱與價格"
+                : ocrMode === "auto"
+                ? "混合 DM（含信用卡頁 / 服務介紹頁）— 每頁先分類再用對應 prompt"
+                : "一般文件，提取純文字內容"}
             </p>
           </div>
 

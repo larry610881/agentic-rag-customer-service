@@ -52,6 +52,7 @@ export function useCreateKnowledgeBase() {
       context_model?: string;
       classification_model?: string;
       chunk_strategy?: string;
+      dm_metadata_model?: string;
     }) =>
       apiFetch<KnowledgeBase>(
         API_ENDPOINTS.knowledgeBases.create,

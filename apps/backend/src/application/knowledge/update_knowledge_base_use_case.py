@@ -16,6 +16,7 @@ class UpdateKnowledgeBaseCommand:
     context_model: str | None = None
     classification_model: str | None = None
     chunk_strategy: str | None = None  # Issue #45: per-KB splitter override
+    dm_metadata_model: str | None = None  # Issue #47 L3: DM metadata extract model
 
 
 class UpdateKnowledgeBaseUseCase:
@@ -40,6 +41,7 @@ class UpdateKnowledgeBaseUseCase:
                 "context_model": command.context_model,
                 "classification_model": command.classification_model,
                 "chunk_strategy": command.chunk_strategy,
+                "dm_metadata_model": command.dm_metadata_model,
             }.items()
             if v is not None
         }
