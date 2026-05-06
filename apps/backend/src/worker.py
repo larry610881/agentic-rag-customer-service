@@ -7,6 +7,11 @@ Tasks:
     - process_document: PDF OCR + chunking + embedding
     - extract_memory: 記憶萃取
     - run_evaluation: RAG 品質評估
+
+Resilience（Layer 1）：5 個業務 jobs（split_pdf / process_document /
+classify_kb / extract_memory / run_evaluation）以 ``execute_with_resilience``
+包裝。transient 錯誤指數退避重試 3 次（5s → 30s → 2min），permanent 錯誤
+（auth / config）直接落 ``processing_task.status='failed'`` 不浪費 quota。
 """
 
 import logging
@@ -15,6 +20,7 @@ from arq import cron, func
 from arq.connections import RedisSettings
 
 from src.config import Settings
+from src.worker_resilience import MAX_TRIES, execute_with_resilience
 
 logger = logging.getLogger("arq.worker")
 
@@ -38,22 +44,36 @@ async def shutdown(ctx: dict) -> None:
 
 async def split_pdf_task(ctx: dict, document_id: str, task_id: str) -> None:
     """拆 PDF 為每頁 PNG，並行 enqueue OCR jobs。"""
-    logger.info(f"[split_pdf] start doc={document_id} task={task_id}")
-    container = _new_container()
-    use_case = container.split_pdf_use_case()
-    await use_case.execute(document_id, task_id)
-    logger.info(f"[split_pdf] done doc={document_id}")
+    async def _inner() -> None:
+        container = _new_container()
+        use_case = container.split_pdf_use_case()
+        await use_case.execute(document_id, task_id)
+
+    await execute_with_resilience(
+        ctx=ctx,
+        task_name="split_pdf",
+        task_id=task_id,
+        coro_factory=_inner,
+        extra_log={"document_id": document_id},
+    )
 
 
 # --- Task: process_document ---
 
 async def process_document_task(ctx: dict, document_id: str, task_id: str) -> None:
     """處理文件：parse + chunk + embed + store to vector DB."""
-    logger.info(f"[process_document] start doc={document_id} task={task_id}")
-    container = _new_container()
-    use_case = container.process_document_use_case()
-    await use_case.execute(document_id, task_id)
-    logger.info(f"[process_document] done doc={document_id}")
+    async def _inner() -> None:
+        container = _new_container()
+        use_case = container.process_document_use_case()
+        await use_case.execute(document_id, task_id)
+
+    await execute_with_resilience(
+        ctx=ctx,
+        task_name="process_document",
+        task_id=task_id,
+        coro_factory=_inner,
+        extra_log={"document_id": document_id},
+    )
 
 
 # --- Task: extract_memory ---
@@ -67,32 +87,51 @@ async def extract_memory_task(
     extraction_prompt: str,
 ) -> None:
     """記憶萃取：從對話中提取使用者記憶事實。"""
-    logger.info(f"[extract_memory] start profile={profile_id}")
     from src.application.memory.extract_memory_use_case import ExtractMemoryCommand
 
-    container = _new_container()
-    use_case = container.extract_memory_use_case()
-    await use_case.execute(
-        ExtractMemoryCommand(
-            profile_id=profile_id,
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            messages=messages,
-            extraction_prompt=extraction_prompt,
+    async def _inner() -> None:
+        container = _new_container()
+        use_case = container.extract_memory_use_case()
+        await use_case.execute(
+            ExtractMemoryCommand(
+                profile_id=profile_id,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                messages=messages,
+                extraction_prompt=extraction_prompt,
+            )
         )
+
+    # extract_memory 沒有 processing_task row；用 profile_id 當 task_id —
+    # update_status no-match 是 no-op，仍走 retry/log 邏輯。
+    await execute_with_resilience(
+        ctx=ctx,
+        task_name="extract_memory",
+        task_id=profile_id,
+        coro_factory=_inner,
+        extra_log={
+            "tenant_id": tenant_id,
+            "conversation_id": conversation_id,
+        },
     )
-    logger.info(f"[extract_memory] done profile={profile_id}")
 
 
 # --- Task: classify_kb ---
 
 async def classify_kb_task(ctx: dict, kb_id: str, tenant_id: str) -> None:
     """知識庫自動分類：向量聚類 + LLM 命名。"""
-    logger.info(f"[classify_kb] start kb={kb_id}")
-    container = _new_container()
-    use_case = container.classify_kb_use_case()
-    await use_case.execute(kb_id, tenant_id)
-    logger.info(f"[classify_kb] done kb={kb_id}")
+    async def _inner() -> None:
+        container = _new_container()
+        use_case = container.classify_kb_use_case()
+        await use_case.execute(kb_id, tenant_id)
+
+    await execute_with_resilience(
+        ctx=ctx,
+        task_name="classify_kb",
+        task_id=kb_id,  # no processing_task row, used as trace label
+        coro_factory=_inner,
+        extra_log={"kb_id": kb_id, "tenant_id": tenant_id},
+    )
 
 
 # --- Task: run_evaluation ---
@@ -110,31 +149,45 @@ async def run_evaluation_task(
     eval_model: str,
 ) -> None:
     """RAG 品質評估：L1 檢索 + L2 回答 + L3 Agent。"""
-    logger.info(f"[run_evaluation] start trace={trace_id} depth={eval_depth}")
-    container = _new_container()
-    eval_use_case = container.rag_evaluation_use_case()
+    async def _inner() -> None:
+        container = _new_container()
+        eval_use_case = container.rag_evaluation_use_case()
 
-    eval_llm = container.llm_service()
-    if eval_provider or eval_model:
-        if hasattr(eval_llm, "resolve_for_bot"):
-            eval_llm = await eval_llm.resolve_for_bot(
-                provider_name=eval_provider,
-                model=eval_model,
-            )
+        eval_llm = container.llm_service()
+        if eval_provider or eval_model:
+            if hasattr(eval_llm, "resolve_for_bot"):
+                eval_llm = await eval_llm.resolve_for_bot(
+                    provider_name=eval_provider,
+                    model=eval_model,
+                )
 
-    context_texts = [s.get("content_snippet", "") for s in sources if isinstance(s, dict)]
+        context_texts = [
+            s.get("content_snippet", "")
+            for s in sources
+            if isinstance(s, dict)
+        ]
 
-    await eval_use_case.evaluate_combined(
-        query=query,
-        answer=answer,
-        context_texts=context_texts,
-        tool_calls=tool_calls,
-        eval_depth=eval_depth,
-        tenant_id=tenant_id,
-        trace_id=trace_id,
-        llm_service_override=eval_llm,
+        await eval_use_case.evaluate_combined(
+            query=query,
+            answer=answer,
+            context_texts=context_texts,
+            tool_calls=tool_calls,
+            eval_depth=eval_depth,
+            tenant_id=tenant_id,
+            trace_id=trace_id,
+            llm_service_override=eval_llm,
+        )
+
+    await execute_with_resilience(
+        ctx=ctx,
+        task_name="run_evaluation",
+        task_id=trace_id,  # no processing_task row, used as trace label
+        coro_factory=_inner,
+        extra_log={
+            "tenant_id": tenant_id,
+            "eval_depth": eval_depth,
+        },
     )
-    logger.info(f"[run_evaluation] done trace={trace_id}")
 
 
 # --- Cron Task: monthly_reset (S-Token-Gov.2) ---
@@ -258,11 +311,14 @@ class WorkerSettings:
     """arq worker configuration."""
 
     functions = [
-        func(split_pdf_task, name="split_pdf"),
-        func(process_document_task, name="process_document"),
-        func(extract_memory_task, name="extract_memory"),
-        func(run_evaluation_task, name="run_evaluation"),
-        func(classify_kb_task, name="classify_kb"),
+        # Resilience Layer 1: max_tries=3 配合 execute_with_resilience 的
+        # exponential backoff（5s → 30s → 2min）— 第 N 次 raise Retry(defer=N)
+        # 由 arq 排程，超過 max_tries 才認定為永久失敗。
+        func(split_pdf_task, name="split_pdf", max_tries=MAX_TRIES),
+        func(process_document_task, name="process_document", max_tries=MAX_TRIES),
+        func(extract_memory_task, name="extract_memory", max_tries=MAX_TRIES),
+        func(run_evaluation_task, name="run_evaluation", max_tries=MAX_TRIES),
+        func(classify_kb_task, name="classify_kb", max_tries=MAX_TRIES),
         # S-Gov.6b: 對話 summary 個別 job（cron fan-out）
         func(
             process_conversation_summary_task,
