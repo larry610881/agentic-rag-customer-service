@@ -112,10 +112,17 @@ class ReprocessDocumentUseCase:
             # Delete old chunks from DB
             await self._doc_repo.delete_chunks_by_document(document_id)
 
-            # Delete old vectors from Milvus
+            # Delete old vectors from Milvus — raise_on_error=True 讓失敗能進
+            # 下方 except → doc.status="failed" → user 看得到、可手動重試。
+            # 不走 outbox（reprocess 必須同步「刪舊→立刻寫新」，async drain
+            # 會把剛 upsert 的新向量也刪掉）；不 swallow（舊向量殘留 +
+            # 緊接著 upsert 新向量會造成 Milvus 內舊+新 chunks 共存 →
+            # search 可能回 phantom 內容）。
             collection = f"kb_{document.kb_id}"
             await self._vector_store.delete(
-                collection, {"document_id": document_id}
+                collection,
+                {"document_id": document_id},
+                raise_on_error=True,
             )
 
             # Load raw content: prefer file storage, fallback to DB BYTEA
