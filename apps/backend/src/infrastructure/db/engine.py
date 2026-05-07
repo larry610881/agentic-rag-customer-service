@@ -27,15 +27,7 @@ _CONNECT_ARGS: dict = {
     "server_settings": {"idle_in_transaction_session_timeout": "120000"},
     # asyncpg connect 階段上限 — 防 DNS / 網路問題卡住 worker 啟動。
     "timeout": 10,
-    # asyncpg 單 SQL 執行上限 — 60s
-    # 演進史：
-    # 1. 60s（初版）— page 50 SQLAlchemy 30s+ TimeoutError 防護
-    # 2. 300s（commit fc44593）— 防 worker 並行 task 互相拖慢誤殺 split_pdf
-    # 3. 60s（恢復）— commit 335bf80 把 split_pdf 改兩階段順序化後，
-    #    split 階段已不會跟 OCR 並行打 Milvus → 60s 已足夠。
-    #    更關鍵：300s 讓 LINE webhook 內 SQL 卡 30s+ 觸發 Cloud Run LB 504
-    #    Gateway Timeout（user 5/7 06:24/06:38 兩則 LINE 訊息 webhook 回
-    #    504），webhook 必須在 < 30s 回應 LINE Platform。
+    # asyncpg 單 SQL 執行上限 — 防 carrefour DM page 50 那種 30s+ 卡死。
     "command_timeout": 60,
 }
 
