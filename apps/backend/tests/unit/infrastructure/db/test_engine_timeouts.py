@@ -69,8 +69,10 @@ def test_engine_connect_args_include_command_timeout():
         "engine module should expose _CONNECT_ARGS for static verification"
     )
     args = engine_module._CONNECT_ARGS
-    assert args.get("command_timeout") == 60, (
-        f"command_timeout should be 60s, got {args.get('command_timeout')}"
+    # 放寬到 300s 防 worker 內並行 task 拖慢時誤殺 split_pdf
+    # (見 engine.py 註解 + 5/7 carrefour DM 36/64 頁實證)
+    assert args.get("command_timeout") == 300, (
+        f"command_timeout should be 300s, got {args.get('command_timeout')}"
     )
     assert args.get("timeout") == 10, (
         f"asyncpg connect timeout should be 10s, got {args.get('timeout')}"
