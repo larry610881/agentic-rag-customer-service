@@ -27,14 +27,16 @@ _CONNECT_ARGS: dict = {
     "server_settings": {"idle_in_transaction_session_timeout": "120000"},
     # asyncpg connect 階段上限 — 防 DNS / 網路問題卡住 worker 啟動。
     "timeout": 10,
-    # asyncpg 單 SQL 執行上限。Web API 用 60s 已夠（user 不會等更久），但
-    # worker 內 split_pdf / batch process_document 並行多 task 時，event
-    # loop 被其他卡住的 task（如 Milvus reconnect）拖慢，個別 INSERT 排隊
-    # 可能超 60s 被 asyncpg 強制 cancel → TimeoutError → worker_resilience
-    # 視為 transient 觸發 retry → split_pdf 不 idempotent 重跑製造混亂
-    # （實證：5/7 user 重 upload，64 頁只切 36 個 child docs）。
-    # 放寬 300s（5 min）給 worker batch 操作充分餘裕，仍是「太久必砍」防護。
-    "command_timeout": 300,
+    # asyncpg 單 SQL 執行上限 — 60s
+    # 演進史：
+    # 1. 60s（初版）— page 50 SQLAlchemy 30s+ TimeoutError 防護
+    # 2. 300s（commit fc44593）— 防 worker 並行 task 互相拖慢誤殺 split_pdf
+    # 3. 60s（恢復）— commit 335bf80 把 split_pdf 改兩階段順序化後，
+    #    split 階段已不會跟 OCR 並行打 Milvus → 60s 已足夠。
+    #    更關鍵：300s 讓 LINE webhook 內 SQL 卡 30s+ 觸發 Cloud Run LB 504
+    #    Gateway Timeout（user 5/7 06:24/06:38 兩則 LINE 訊息 webhook 回
+    #    504），webhook 必須在 < 30s 回應 LINE Platform。
+    "command_timeout": 60,
 }
 
 engine = create_async_engine(

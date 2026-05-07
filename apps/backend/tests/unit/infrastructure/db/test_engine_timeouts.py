@@ -69,10 +69,11 @@ def test_engine_connect_args_include_command_timeout():
         "engine module should expose _CONNECT_ARGS for static verification"
     )
     args = engine_module._CONNECT_ARGS
-    # 放寬到 300s 防 worker 內並行 task 拖慢時誤殺 split_pdf
-    # (見 engine.py 註解 + 5/7 carrefour DM 36/64 頁實證)
-    assert args.get("command_timeout") == 300, (
-        f"command_timeout should be 300s, got {args.get('command_timeout')}"
+    # 60s — split_pdf 兩階段順序化後（commit 335bf80）並行壓力解除，60s 已夠；
+    # 300s 會讓 LINE webhook 內 SQL 卡 30s+ 觸發 Cloud Run LB 504（webhook
+    # 必須在 < 30s 回應 LINE Platform）。詳見 engine.py 演進註解。
+    assert args.get("command_timeout") == 60, (
+        f"command_timeout should be 60s, got {args.get('command_timeout')}"
     )
     assert args.get("timeout") == 10, (
         f"asyncpg connect timeout should be 10s, got {args.get('timeout')}"
