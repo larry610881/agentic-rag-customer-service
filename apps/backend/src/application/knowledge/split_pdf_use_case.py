@@ -63,7 +63,13 @@ class SplitPdfUseCase:
             await self._task_repo.update_status(task_id, "failed", error_message="PDF has no pages")
             return
 
-        # Process one page at a time to minimize memory usage
+        # Phase 1: 全部頁面拆完 + 寫入 DB（不 enqueue OCR）
+        # 先把 64 頁全部拆完才啟動 OCR — 避免 split + OCR 並行搶 worker
+        # max_jobs=3 slot / DB connection pool / Milvus load。實證 5/7
+        # carrefour DM 並行版本 64 頁只拆出 36 個（互相拖慢觸發 timeout
+        # retry，retry 不 idempotent 又重塞）。順序版本 split 階段資源不
+        # 爭搶，~2 min 拆完；OCR 階段才啟動 64 個 process_document 並發。
+        children_to_enqueue: list[tuple[str, str]] = []  # (child_id, task_id)
         page_num = 0
         for png_bytes in iter_pages_as_images(raw_content):
             page_num += 1
@@ -105,10 +111,10 @@ class SplitPdfUseCase:
             )
             await self._task_repo.save(child_task)
 
-            # Enqueue OCR job
-            await enqueue("process_document", child_id.value, child_task.id.value)
+            # 收集待 enqueue 清單，loop 完成後才批次 enqueue
+            children_to_enqueue.append((child_id.value, child_task.id.value))
 
-            # Update parent task progress
+            # Update parent task progress（split 階段佔 0~30%）
             progress = round((page_num / total_pages) * 30)
             await self._task_repo.update_status(task_id, "processing", progress=progress)
 
@@ -121,10 +127,21 @@ class SplitPdfUseCase:
         gc.collect()
 
         logger.info(
+            "split_pdf.split_done",
+            doc_id=parent_doc_id,
+            pages=total_pages,
+            children_built=page_num,
+        )
+
+        # Phase 2: 全部拆完才批次 enqueue OCR jobs
+        for child_id_value, child_task_id_value in children_to_enqueue:
+            await enqueue("process_document", child_id_value, child_task_id_value)
+
+        logger.info(
             "split_pdf.done",
             doc_id=parent_doc_id,
             pages=total_pages,
-            children_enqueued=page_num,
+            children_enqueued=len(children_to_enqueue),
         )
 
         # Mark parent task as completed (children have their own tasks)
