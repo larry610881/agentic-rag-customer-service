@@ -26,6 +26,7 @@ type ReprocessParams = {
   ocr_mode?: string;
   ocr_model?: string;
   context_model?: string;
+  ocr_slice_grid?: string;
 };
 
 type ReprocessDialogProps = {
@@ -53,9 +54,18 @@ const CHUNK_STRATEGY_OPTIONS = [
   { value: "csv_row", label: "csv_row - CSV 一列一 chunk" },
 ] as const;
 
+// 切片 OCR override（per-reprocess）— 後端「""」= 不切片，UI 用 "none"
+const OCR_SLICE_GRID_OPTIONS = [
+  { value: "none", label: "不切片（標準成本）" },
+  { value: "2x3", label: "2x3 切片（rare char 突破，+3x token）" },
+  { value: "3x2", label: "3x2 切片（橫向文件適用）" },
+] as const;
+
 const defaultOcrMode = (kb?: KnowledgeBase | null) => kb?.ocr_mode || "general";
 const defaultChunkStrategy = (kb?: KnowledgeBase | null) =>
   kb?.chunk_strategy || "auto";
+const defaultOcrSliceGrid = (kb?: KnowledgeBase | null) =>
+  kb?.ocr_slice_grid || "none";
 
 export function ReprocessDialog({
   open,
@@ -75,6 +85,9 @@ export function ReprocessDialog({
   const [contextModel, setContextModel] = useState(
     kbDefaults?.context_model ?? "",
   );
+  const [ocrSliceGrid, setOcrSliceGrid] = useState(
+    defaultOcrSliceGrid(kbDefaults),
+  );
 
   // dialog 打開時重設為 KB 預設值（每次開啟都同步最新 kbDefaults）
   useEffect(() => {
@@ -85,6 +98,7 @@ export function ReprocessDialog({
     setOcrMode(defaultOcrMode(kbDefaults));
     setOcrModel(kbDefaults?.ocr_model ?? "");
     setContextModel(kbDefaults?.context_model ?? "");
+    setOcrSliceGrid(defaultOcrSliceGrid(kbDefaults));
   }, [open, kbDefaults]);
 
   const handleResetDefaults = () => {
@@ -94,6 +108,7 @@ export function ReprocessDialog({
     setOcrMode(defaultOcrMode(kbDefaults));
     setOcrModel(kbDefaults?.ocr_model ?? "");
     setContextModel(kbDefaults?.context_model ?? "");
+    setOcrSliceGrid(defaultOcrSliceGrid(kbDefaults));
   };
 
   const handleSubmit = () => {
@@ -105,6 +120,8 @@ export function ReprocessDialog({
       ocr_mode: ocrMode,
       ocr_model: ocrModel || undefined,
       context_model: contextModel || undefined,
+      // "none" 在後端視為 ""（不切片）
+      ocr_slice_grid: ocrSliceGrid === "none" ? "" : ocrSliceGrid,
     });
   };
 
@@ -152,6 +169,26 @@ export function ReprocessDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="reprocess-ocr-slice-grid">切片 OCR</Label>
+            <Select value={ocrSliceGrid} onValueChange={setOcrSliceGrid}>
+              <SelectTrigger id="reprocess-ocr-slice-grid">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {OCR_SLICE_GRID_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              開啟切片可突破 rare brand char 字形混淆（如「薈」「樟腦」），
+              但 token 成本 +3x。僅對 image/png (PDF 子頁) OCR 生效。
+            </p>
           </div>
 
           <div className="flex flex-col gap-1.5">

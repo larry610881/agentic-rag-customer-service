@@ -27,6 +27,18 @@ def _run(coro):
         loop.close()
 
 
+def _make_real_png_bytes(w: int = 800, h: int = 1200) -> bytes:
+    """For tests that exercise sliced OCR helper which uses PIL.Image.open()."""
+    import io as _io
+
+    from PIL import Image as _Image
+
+    img = _Image.new("RGB", (w, h), color=(255, 255, 255))
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def _make_use_case(
     *,
     kb_ocr_mode: str = "general",
@@ -348,6 +360,138 @@ def test_image_with_catalog_mode_uses_static_prompt_path():
 
     mock_ocr.ocr_page.assert_awaited_once()
     mock_ocr.ocr_page_auto_dispatch.assert_not_awaited()
+
+
+def test_ocr_slice_grid_override_passed_to_image_pipeline():
+    """ocr_slice_grid override 應蓋過 kb.ocr_slice_grid，影響 image/png OCR 路徑。
+
+    驗證方式：image/png + auto mode → 走 slice path（先 classify 再 tile OCR），
+    classify_page_type 應被呼叫，ocr_page 應被呼叫 6 次（2x3 = 6 tiles）。
+    """
+    doc_repo = AsyncMock()
+    doc_repo.find_by_id = AsyncMock(
+        return_value=Document(
+            id=DocumentId(value="img-1"),
+            kb_id="kb-1",
+            tenant_id="t-1",
+            filename="page.png",
+            content_type="image/png",
+            content="",
+            # 用真實 1x1 PNG 而非 fake bytes（slice helper 會用 PIL 打開）
+            raw_content=_make_real_png_bytes(),
+        )
+    )
+    doc_repo.update_status = AsyncMock()
+    doc_repo.update_content = AsyncMock()
+    doc_repo.update_quality = AsyncMock()
+    doc_repo.delete_chunks_by_document = AsyncMock()
+    doc_repo.save_chunks = AsyncMock()
+    task_repo = AsyncMock()
+    kb_repo = AsyncMock()
+    kb_repo.find_by_id = AsyncMock(
+        return_value=KnowledgeBase(
+            ocr_mode="auto",
+            ocr_slice_grid="",  # KB 預設不切片
+        )
+    )
+    splitter = MagicMock()
+    splitter.split.return_value = []
+    embedding = AsyncMock()
+    vector_store = AsyncMock()
+    language_detector = MagicMock()
+    language_detector.detect.return_value = "zh"
+    file_storage = AsyncMock()
+    file_storage.load = AsyncMock(side_effect=FileNotFoundError)
+
+    mock_ocr = AsyncMock()
+    mock_ocr.classify_page_type = AsyncMock(return_value="catalog")
+    mock_ocr.ocr_page = AsyncMock(return_value="text")
+    mock_ocr.ocr_page_auto_dispatch = AsyncMock()
+    file_parser = MagicMock()
+    file_parser._ocr = mock_ocr
+
+    use_case = ReprocessDocumentUseCase(
+        document_repository=doc_repo,
+        processing_task_repository=task_repo,
+        knowledge_base_repository=kb_repo,
+        text_splitter_service=splitter,
+        embedding_service=embedding,
+        vector_store=vector_store,
+        language_detection_service=language_detector,
+        file_parser_service=file_parser,
+        document_file_storage=file_storage,
+    )
+    # caller 傳 ocr_slice_grid="2x3"，應蓋過 KB 的 ""
+    _run(use_case.execute("img-1", "task-1", ocr_slice_grid="2x3"))
+
+    # ✅ 切片啟用 → classify_page_type 被呼叫一次（決定 tile 用哪個 prompt）
+    mock_ocr.classify_page_type.assert_awaited_once()
+    # ✅ ocr_page 被呼叫 6 次（2x3 = 6 tiles）
+    assert mock_ocr.ocr_page.await_count == 6, (
+        f"切片應產生 6 tiles，實際 {mock_ocr.ocr_page.await_count}"
+    )
+    # ❌ 不走原本的 auto_dispatch（已 override 為切片）
+    mock_ocr.ocr_page_auto_dispatch.assert_not_awaited()
+
+
+def test_ocr_slice_grid_none_falls_back_to_kb_setting():
+    """無 override → 走 kb.ocr_slice_grid（不切片）→ 走原 auto_dispatch path。"""
+    doc_repo = AsyncMock()
+    doc_repo.find_by_id = AsyncMock(
+        return_value=Document(
+            id=DocumentId(value="img-1"),
+            kb_id="kb-1",
+            tenant_id="t-1",
+            filename="page.png",
+            content_type="image/png",
+            content="",
+            raw_content=_make_real_png_bytes(),
+        )
+    )
+    doc_repo.update_status = AsyncMock()
+    doc_repo.update_content = AsyncMock()
+    doc_repo.update_quality = AsyncMock()
+    doc_repo.delete_chunks_by_document = AsyncMock()
+    doc_repo.save_chunks = AsyncMock()
+    task_repo = AsyncMock()
+    kb_repo = AsyncMock()
+    kb_repo.find_by_id = AsyncMock(
+        return_value=KnowledgeBase(ocr_mode="auto", ocr_slice_grid="")
+    )
+    splitter = MagicMock()
+    splitter.split.return_value = []
+    embedding = AsyncMock()
+    vector_store = AsyncMock()
+    language_detector = MagicMock()
+    language_detector.detect.return_value = "zh"
+    file_storage = AsyncMock()
+    file_storage.load = AsyncMock(side_effect=FileNotFoundError)
+
+    mock_ocr = AsyncMock()
+    mock_ocr.classify_page_type = AsyncMock()
+    mock_ocr.ocr_page = AsyncMock()
+    mock_ocr.ocr_page_auto_dispatch = AsyncMock(
+        return_value=("catalog", "auto-dispatch result")
+    )
+    file_parser = MagicMock()
+    file_parser._ocr = mock_ocr
+
+    use_case = ReprocessDocumentUseCase(
+        document_repository=doc_repo,
+        processing_task_repository=task_repo,
+        knowledge_base_repository=kb_repo,
+        text_splitter_service=splitter,
+        embedding_service=embedding,
+        vector_store=vector_store,
+        language_detection_service=language_detector,
+        file_parser_service=file_parser,
+        document_file_storage=file_storage,
+    )
+    _run(use_case.execute("img-1", "task-1"))
+
+    # 無 override + KB 也未啟用切片 → 走原 auto_dispatch
+    mock_ocr.ocr_page_auto_dispatch.assert_awaited_once()
+    mock_ocr.ocr_page.assert_not_awaited()
 
 
 def test_context_service_skipped_when_no_model_configured():

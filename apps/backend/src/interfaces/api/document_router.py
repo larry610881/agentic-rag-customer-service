@@ -842,6 +842,8 @@ class ReprocessRequest(BaseModel):
     ocr_mode: str | None = None
     ocr_model: str | None = None
     context_model: str | None = None
+    # Per-reprocess sliced OCR override ("" / "2x3" / "3x2")
+    ocr_slice_grid: str | None = None
 
 
 class ReprocessDocumentResponse(BaseModel):
@@ -877,6 +879,7 @@ async def reprocess_document(
         ocr_mode: str | None,
         ocr_model: str | None,
         context_model: str | None,
+        ocr_slice_grid: str | None,
     ) -> None:
         uc = Container.reprocess_document_use_case()
         await uc.execute(
@@ -887,6 +890,7 @@ async def reprocess_document(
             ocr_mode=ocr_mode,
             ocr_model=ocr_model,
             context_model=context_model,
+            ocr_slice_grid=ocr_slice_grid,
         )
 
     background_tasks.add_task(
@@ -900,6 +904,7 @@ async def reprocess_document(
         body.ocr_mode,
         body.ocr_model,
         body.context_model,
+        body.ocr_slice_grid,
         task_name="reprocess_document",
         tenant_id=tenant.tenant_id,
     )

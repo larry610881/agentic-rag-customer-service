@@ -251,6 +251,7 @@ export function useReprocessDocument() {
         ocr_mode?: string;
         ocr_model?: string;
         context_model?: string;
+        ocr_slice_grid?: string;
       };
     }) => {
       return apiFetch(

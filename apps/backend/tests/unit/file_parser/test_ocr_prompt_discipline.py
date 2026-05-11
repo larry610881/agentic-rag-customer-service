@@ -42,8 +42,12 @@ def test_discipline_mentions_rare_char_protection():
 
 
 def test_discipline_forbids_hallucination():
-    """紀律段必須明示「不要編造」。"""
-    assert "不要編造" in _OCR_DISCIPLINE or "不要硬猜" in _OCR_DISCIPLINE
+    """紀律段必須明示「不要替換 rare char 為常見字」（核心防 hallucinate 規則）。"""
+    # 接受多種防 hallucinate 措辭（避免改 prompt 用字時誤刪此 test）
+    assert any(
+        kw in _OCR_DISCIPLINE
+        for kw in ("不要編造", "不要硬猜", "不要替換", "絕對不要", "禁止")
+    ), "_OCR_DISCIPLINE 必須有明確的禁止 hallucinate 詞彙"
 
 
 def test_discipline_provides_uncertainty_escape():

@@ -74,6 +74,8 @@ describe("ReprocessDialog", () => {
       ocr_mode: "catalog",
       ocr_model: "anthropic:claude-sonnet-4-6",
       context_model: "anthropic:claude-haiku-4-5",
+      // KB.ocr_slice_grid 未設（default ""）→ dialog 預設 "none" → 送 ""
+      ocr_slice_grid: "",
     });
   });
 
@@ -107,6 +109,18 @@ describe("ReprocessDialog", () => {
 
     expect(onConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ chunk_strategy: "" }),
+    );
+  });
+
+  it("KB.ocr_slice_grid='2x3' 應預設帶入並原樣送出", async () => {
+    const user = userEvent.setup();
+    const kb: KnowledgeBase = { ...baseKb, ocr_slice_grid: "2x3" };
+    const { onConfirm } = setup({ kbDefaults: kb });
+
+    await user.click(screen.getByRole("button", { name: "重新處理" }));
+
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ ocr_slice_grid: "2x3" }),
     );
   });
 

@@ -111,6 +111,7 @@ class ReprocessDocumentUseCase:
         ocr_mode: str | None = None,
         ocr_model: str | None = None,
         context_model: str | None = None,
+        ocr_slice_grid: str | None = None,
     ) -> None:
         # ocr_model 目前 reserved — ClaudeVisionOcrEngine 為 Singleton（container
         # 注入時固定 model），不支援 per-call override。要支援需 engine 改造（讓
@@ -157,11 +158,16 @@ class ReprocessDocumentUseCase:
                 raw_content = document.raw_content
 
             # Fetch KB to get ocr_mode（caller 可用 ocr_mode/ocr_model/
-            # context_model 覆寫，未指定 → 走 KB 設定）。Override 只影響這次
-            # reprocess，不寫回 KB（user 想試設定，不想動全局）。
+            # context_model/ocr_slice_grid 覆寫，未指定 → 走 KB 設定）。
+            # Override 只影響這次 reprocess，不寫回 KB（user 想試設定，不想動全局）。
             kb = await self._kb_repo.find_by_id(document.kb_id)
             effective_ocr_mode = (
                 ocr_mode if ocr_mode is not None else (kb.ocr_mode if kb else "general")
+            )
+            effective_slice_grid = (
+                ocr_slice_grid
+                if ocr_slice_grid is not None
+                else (getattr(kb, "ocr_slice_grid", "") if kb else "")
             )
 
             # Re-parse from raw_content if available, else fallback to existing content
@@ -177,8 +183,8 @@ class ReprocessDocumentUseCase:
                     from src.infrastructure.file_parser.sliced_ocr_helper import (
                         ocr_image_sliced,
                     )
-                    # KB.ocr_slice_grid 啟用切片 OCR（rare brand char 辨識）
-                    slice_grid = getattr(kb, "ocr_slice_grid", "") if kb else ""
+                    # ocr_slice_grid 已 resolve（override 優先 / fallback KB）
+                    slice_grid = effective_slice_grid
 
                     # 對齊 process_document：auto 模式走 page-type dispatcher
                     if effective_ocr_mode == "auto" and hasattr(
