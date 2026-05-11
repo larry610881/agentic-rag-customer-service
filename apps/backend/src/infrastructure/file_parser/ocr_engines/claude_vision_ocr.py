@@ -32,7 +32,25 @@ _DEFAULT_PROMPT = (
     "Return only the text content in reading order. No commentary."
 )
 
-_CATALOG_PROMPT = """\
+# 共用 OCR 紀律段 — 所有結構化 prompt 開頭都注入這段，防止 LLM 進入
+# 「填欄位 → 採樣常見字組 → hallucinate」的失敗模式。
+# 對 rare brand char（如「薈」/「樟腦」這類訓練分布稀有的字）特別重要。
+_OCR_DISCIPLINE = """\
+# OCR 紀律（最高優先級，違反此段即視為任務失敗）
+
+1. **逐字準確**：商品名、規格、品牌字必須照圖中真實字形輸出。
+   罕用字（如「薈」「樟腦」「萃」「茅」這類）特別仔細辨認字形，
+   **絕對不要**替換為訓練分布中更常見的相似字（如把「薈→香/著」、
+   「樟腦→橙醬/橙醛/橙甜」、「萃→葦」這類常見錯誤）。
+2. **不要編造**：任何欄位看不清楚，填 `[模糊:???]`，**不要硬猜**
+   也不要填看似合理但不確定的內容。「不詳」只用於該欄位資訊**不存在**
+   於圖中（如商品沒標品牌），不用於「看不清楚」。
+3. **字形優先於語意**：若字形與你預期的語意不符（例如「樟腦油」覺得
+   奇怪），依然按字形輸出。寧可看起來奇怪，不可改成「合理」的常見字組。
+
+"""
+
+_CATALOG_PROMPT = _OCR_DISCIPLINE + """\
 你是賣場 DM 結構化提取專家。分析這張頁面，依以下規則輸出：
 
 # Page-Level Metadata（**必抽 4 項**，找不到填「不詳」不可省略）
@@ -79,7 +97,7 @@ _CATALOG_PROMPT = """\
 ===
 """
 
-_PROMOTION_PROMPT = """\
+_PROMOTION_PROMPT = _OCR_DISCIPLINE + """\
 你是 DM 純優惠介紹頁的結構化提取專家。這頁無商品列表，只有活動/服務介紹
 （信用卡聯名卡、會員活動、折扣券、線上購物導覽、APP 服務、滿額禮等）。
 
@@ -137,7 +155,7 @@ _PROMOTION_PROMPT = """\
 ===
 """
 
-_MIXED_PROMPT = """\
+_MIXED_PROMPT = _OCR_DISCIPLINE + """\
 你是 DM 結構化提取專家。這頁同時包含商品列表 + 活動/促銷條款（例如：
 半頁商品 + 半頁信用卡分期條款，或商品專區 + 滿額活動詳情）。
 
@@ -185,7 +203,7 @@ _MIXED_PROMPT = """\
 - 商品 block 用「商品：」開頭，活動 block 用「活動：」開頭，splitter 依此區分
 """
 
-_COVER_PROMPT = """\
+_COVER_PROMPT = _OCR_DISCIPLINE + """\
 這是 DM 的封面 / 目錄 / 結尾 / 店鋪資訊頁（語意稀薄頁，但常含整本 DM
 共通的核心 metadata，是 KB-level metadata extraction 的關鍵 input）。
 

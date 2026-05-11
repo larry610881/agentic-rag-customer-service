@@ -44,6 +44,13 @@ class KnowledgeBaseModel(Base):
     chunk_strategy: Mapped[str] = mapped_column(
         String(20), nullable=False, default="", server_default=""
     )
+    # Per-KB sliced OCR — "" 不切片（既有行為）；"RxC" 如 "2x3" / "3x2" 啟用。
+    # 對應 migration: add_ocr_slice_grid_to_knowledge_bases.sql
+    # image/png OCR 時包裝 ocr_engine：切成 R 列 C 行 + overlap → 多 tile
+    # OCR → 合併。針對 rare brand char（如「薈」「樟腦」）字形辨識率提升明顯。
+    ocr_slice_grid: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="", server_default=""
+    )
     # Issue #47 L3：KB-level DM metadata 抽取設定 + 結果儲存
     # 對應 migration: add_kb_dm_metadata.sql
     # dm_metadata_model 空 = 不啟用 KB-level extract（trigger 會 skip）

@@ -15,6 +15,7 @@ class CreateKnowledgeBaseCommand:
     context_model: str = ""
     classification_model: str = ""
     chunk_strategy: str = ""  # Issue #45: per-KB splitter override (空 = 全域 default)
+    ocr_slice_grid: str = ""  # Per-KB sliced OCR ("" / "2x3" / "3x2")
     dm_metadata_model: str = ""  # Issue #47 L3：DM-level metadata extraction model
 
 
@@ -35,6 +36,7 @@ class CreateKnowledgeBaseUseCase:
             context_model=command.context_model,
             classification_model=command.classification_model,
             chunk_strategy=command.chunk_strategy,
+            ocr_slice_grid=command.ocr_slice_grid,
             dm_metadata_model=command.dm_metadata_model,
         )
         await self._knowledge_base_repository.save(kb)

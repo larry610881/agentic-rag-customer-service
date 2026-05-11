@@ -11,6 +11,10 @@ export interface KnowledgeBase {
    *  "" (預設) | "auto" | "recursive" | "separator" | "json_record" | "csv_row"
    */
   chunk_strategy?: string;
+  /** Per-KB sliced OCR: "" 不切片 | "2x3" | "3x2"
+   *  針對 rare brand char（薈/樟腦/萃）字形辨識率提升。
+   */
+  ocr_slice_grid?: string;
   /** Issue #47 L3: DM metadata 抽取使用的 LLM 模型（"" = 不啟用） */
   dm_metadata_model?: string;
   document_count: number;

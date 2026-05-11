@@ -7,6 +7,10 @@ _VALID_CHUNK_STRATEGIES = {
     "", "auto", "recursive", "separator", "json_record", "csv_row",
 }
 
+# Per-KB sliced OCR 白名單。"" = 不切片；"RxC" = R 列 C 行切片 + overlap。
+# 2x3 是 page 51 驗證最佳組合（3x3 反而失敗 — 太細缺脈絡）。
+_VALID_OCR_SLICE_GRIDS = {"", "2x3", "3x2"}
+
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseCommand,
     CreateKnowledgeBaseUseCase,
@@ -41,6 +45,7 @@ class CreateKnowledgeBaseRequest(BaseModel):
     context_model: str = ""
     classification_model: str = ""
     chunk_strategy: str = ""
+    ocr_slice_grid: str = ""  # "" / "2x3" / "3x2"
     # Issue #47 L3：DM-style KB 啟用 KB-level metadata 抽取
     # 空字串 = 不啟用；非空 = arq trigger 後 LLM tool use 抽結構化 dm_metadata
     dm_metadata_model: str = ""
@@ -54,6 +59,15 @@ class CreateKnowledgeBaseRequest(BaseModel):
             )
         return v
 
+    @field_validator("ocr_slice_grid")
+    @classmethod
+    def _validate_ocr_slice_grid(cls, v: str) -> str:
+        if v not in _VALID_OCR_SLICE_GRIDS:
+            raise ValueError(
+                f"ocr_slice_grid must be one of {sorted(_VALID_OCR_SLICE_GRIDS)}"
+            )
+        return v
+
 
 class UpdateKnowledgeBaseRequest(BaseModel):
     name: str | None = None
@@ -63,6 +77,7 @@ class UpdateKnowledgeBaseRequest(BaseModel):
     context_model: str | None = None
     classification_model: str | None = None
     chunk_strategy: str | None = None
+    ocr_slice_grid: str | None = None  # "" / "2x3" / "3x2"
     dm_metadata_model: str | None = None
 
     @field_validator("chunk_strategy")
@@ -71,6 +86,15 @@ class UpdateKnowledgeBaseRequest(BaseModel):
         if v is not None and v not in _VALID_CHUNK_STRATEGIES:
             raise ValueError(
                 f"chunk_strategy must be one of {sorted(_VALID_CHUNK_STRATEGIES)}"
+            )
+        return v
+
+    @field_validator("ocr_slice_grid")
+    @classmethod
+    def _validate_ocr_slice_grid(cls, v: str | None) -> str | None:
+        if v is not None and v not in _VALID_OCR_SLICE_GRIDS:
+            raise ValueError(
+                f"ocr_slice_grid must be one of {sorted(_VALID_OCR_SLICE_GRIDS)}"
             )
         return v
 
@@ -85,6 +109,7 @@ class KnowledgeBaseResponse(BaseModel):
     context_model: str = ""
     classification_model: str = ""
     chunk_strategy: str = ""
+    ocr_slice_grid: str = ""
     dm_metadata_model: str = ""
     document_count: int
     created_at: str
@@ -102,6 +127,7 @@ def _kb_to_response(kb) -> KnowledgeBaseResponse:
         context_model=kb.context_model,
         classification_model=kb.classification_model,
         chunk_strategy=getattr(kb, "chunk_strategy", ""),
+        ocr_slice_grid=getattr(kb, "ocr_slice_grid", ""),
         dm_metadata_model=getattr(kb, "dm_metadata_model", ""),
         document_count=kb.document_count,
         created_at=kb.created_at.isoformat(),
@@ -132,6 +158,7 @@ async def create_knowledge_base(
             context_model=body.context_model,
             classification_model=body.classification_model,
             chunk_strategy=body.chunk_strategy,
+            ocr_slice_grid=body.ocr_slice_grid,
             dm_metadata_model=body.dm_metadata_model,
         )
     )
@@ -216,6 +243,7 @@ async def update_knowledge_base(
                 context_model=body.context_model,
                 classification_model=body.classification_model,
                 chunk_strategy=body.chunk_strategy,
+                ocr_slice_grid=body.ocr_slice_grid,
                 dm_metadata_model=body.dm_metadata_model,
                 )
         )

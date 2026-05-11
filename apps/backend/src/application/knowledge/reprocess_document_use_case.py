@@ -174,29 +174,59 @@ class ReprocessDocumentUseCase:
                     from src.infrastructure.file_parser.ocr_engines import (
                         claude_vision_ocr,
                     )
+                    from src.infrastructure.file_parser.sliced_ocr_helper import (
+                        ocr_image_sliced,
+                    )
+                    # KB.ocr_slice_grid 啟用切片 OCR（rare brand char 辨識）
+                    slice_grid = getattr(kb, "ocr_slice_grid", "") if kb else ""
+
                     # 對齊 process_document：auto 模式走 page-type dispatcher
-                    # （每頁 classify → catalog/promotion/mixed/cover prompt）。
-                    # OCR_PROMPTS 無「auto」key，過去這裡 fallback 到 _DEFAULT_PROMPT
-                    # → 輸出無 === 商品 block → SeparatorTextSplitterService sniff 失敗
-                    # → recursive 切 → user 看到「多商品合併成同 chunk」的 drift bug。
                     if effective_ocr_mode == "auto" and hasattr(
                         ocr_engine, "ocr_page_auto_dispatch"
                     ):
-                        _page_type, content = (
-                            await ocr_engine.ocr_page_auto_dispatch(raw_content)
-                        )
+                        if slice_grid:
+                            # auto + slice：先 classify 拿 page_type 再對 tile OCR
+                            page_type = await ocr_engine.classify_page_type(
+                                raw_content
+                            )
+                            prompt = claude_vision_ocr._PAGE_TYPE_PROMPTS.get(
+                                page_type,
+                                claude_vision_ocr.OCR_PROMPTS.get("general", ""),
+                            )
+
+                            async def _ocr_tile(tile_bytes: bytes) -> str:
+                                return await ocr_engine.ocr_page(
+                                    tile_bytes, prompt=prompt
+                                )
+
+                            content = await ocr_image_sliced(
+                                raw_content, slice_grid, _ocr_tile
+                            )
+                        else:
+                            _page_type, content = (
+                                await ocr_engine.ocr_page_auto_dispatch(
+                                    raw_content
+                                )
+                            )
                     else:
                         prompts = claude_vision_ocr.OCR_PROMPTS
                         prompt = prompts.get(
                             effective_ocr_mode, prompts.get("general", "")
                         )
-                        content = await ocr_engine.ocr_page(
-                            raw_content, prompt=prompt
+
+                        async def _ocr_tile(tile_bytes: bytes) -> str:
+                            return await ocr_engine.ocr_page(
+                                tile_bytes, prompt=prompt
+                            )
+
+                        content = await ocr_image_sliced(
+                            raw_content, slice_grid, _ocr_tile
                         )
                     log.info(
                         "document.reparse.ocr_done",
                         content_type=document.content_type,
                         ocr_mode=effective_ocr_mode,
+                        slice_grid=slice_grid or "none",
                     )
                 # PDF：用 async 路徑（避免阻塞 + 支援大檔逐頁進度）
                 elif (

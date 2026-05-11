@@ -37,6 +37,15 @@ const CHUNK_STRATEGY_OPTIONS = [
   { value: "csv_row", label: "csv_row - CSV 一列一 chunk" },
 ] as const;
 
+// Per-KB sliced OCR — "" 不切片，"2x3" / "3x2" 啟用切片 OCR。
+// 對 rare brand char（薈/樟腦/萃）字形辨識率提升，cost +3x token。
+// UI 統一以 "none" 表示「""（不切片）」（Radix Select 不接受空字串 value）。
+const OCR_SLICE_GRID_OPTIONS = [
+  { value: "none", label: "不切片（預設，最便宜）" },
+  { value: "2x3", label: "2x3 切片（推薦，rare char 突破）" },
+  { value: "3x2", label: "3x2 切片（橫向文件適用）" },
+] as const;
+
 const MODEL_FIELDS = [
   {
     key: "ocr_model" as const,
@@ -75,6 +84,8 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
   const [classificationModel, setClassificationModel] = useState("");
   // Issue #45: per-KB chunk_strategy override（"" 視為 "auto" 顯示）
   const [chunkStrategy, setChunkStrategy] = useState("auto");
+  // Per-KB sliced OCR override（"" 視為 "none" 顯示）
+  const [ocrSliceGrid, setOcrSliceGrid] = useState("none");
   // Issue #47 L3: DM metadata 抽取 model
   const [dmMetadataModel, setDmMetadataModel] = useState("");
 
@@ -87,6 +98,7 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
     setContextModel(kb.context_model || "");
     setClassificationModel(kb.classification_model || "");
     setChunkStrategy(kb.chunk_strategy || "auto");
+    setOcrSliceGrid(kb.ocr_slice_grid || "none");
     setDmMetadataModel(kb.dm_metadata_model || "");
   }, [kb]);
 
@@ -115,6 +127,8 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
           classificationModel === NONE_VALUE ? "" : classificationModel,
         // "auto" → 空字串給後端（語意：用全域 default）
         chunk_strategy: chunkStrategy === "auto" ? "" : chunkStrategy,
+        // "none" → 空字串給後端（不切片）
+        ocr_slice_grid: ocrSliceGrid === "none" ? "" : ocrSliceGrid,
         dm_metadata_model:
           dmMetadataModel === NONE_VALUE ? "" : dmMetadataModel,
       },
@@ -145,6 +159,7 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
     contextModel !== (kb.context_model || "") ||
     classificationModel !== (kb.classification_model || "") ||
     chunkStrategy !== (kb.chunk_strategy || "auto") ||
+    ocrSliceGrid !== (kb.ocr_slice_grid || "none") ||
     dmMetadataModel !== (kb.dm_metadata_model || "");
 
   return (
@@ -218,6 +233,26 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
           <p className="text-xs text-muted-foreground">
             DM 商品目錄選 separator；FAQ JSON 選 json_record；其他用預設。
             變更後需 reprocess 既有文件才會套用新策略。
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="kb-ocr-slice-grid">切片 OCR (ocr_slice_grid)</Label>
+          <Select value={ocrSliceGrid} onValueChange={setOcrSliceGrid}>
+            <SelectTrigger id="kb-ocr-slice-grid">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {OCR_SLICE_GRID_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            DM 含罕用品牌字（如「薈」「樟腦」「萃」）建議 2x3 — 突破字形混淆。
+            Cost ~3x token，僅對 PDF 子頁 OCR (image/png) 生效。
           </p>
         </div>
       </section>

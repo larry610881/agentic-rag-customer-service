@@ -165,22 +165,59 @@ class ProcessDocumentUseCase:
                     from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import (
                         OCR_PROMPTS,
                     )
+                    from src.infrastructure.file_parser.sliced_ocr_helper import (
+                        ocr_image_sliced,
+                    )
+                    # KB.ocr_slice_grid 空 = 不切片；"2x3" / "3x2" 啟用切片 OCR
+                    # 提升 rare brand char 辨識率（薈/樟腦/萃這類）
+                    slice_grid = getattr(kb, "ocr_slice_grid", "") if kb else ""
+
                     if ocr_mode == "auto" and hasattr(
                         ocr_engine, "ocr_page_auto_dispatch"
                     ):
                         # KB.ocr_mode='auto'：走 page-type dispatcher（每頁
                         # classify→catalog/promotion/mixed/cover prompt）。
-                        # 子 PNG 不走 OCR_PROMPTS['auto'] 因為 auto 模式無
-                        # 對應靜態 prompt。
-                        _page_type, content = await ocr_engine.ocr_page_auto_dispatch(
-                            raw_content
-                        )
+                        if slice_grid:
+                            # auto + slice：先 classify 整圖拿 page_type，再用
+                            # 對應 prompt 對每個 tile OCR。
+                            page_type = await ocr_engine.classify_page_type(
+                                raw_content
+                            )
+                            from src.infrastructure.file_parser.ocr_engines import (  # noqa: E501
+                                claude_vision_ocr as cv,
+                            )
+                            _PAGE_TYPE_PROMPTS = cv._PAGE_TYPE_PROMPTS
+                            prompt = _PAGE_TYPE_PROMPTS.get(
+                                page_type, OCR_PROMPTS.get("general", "")
+                            )
+
+                            async def _ocr_tile(tile_bytes: bytes) -> str:
+                                return await ocr_engine.ocr_page(
+                                    tile_bytes, prompt=prompt
+                                )
+
+                            content = await ocr_image_sliced(
+                                raw_content, slice_grid, _ocr_tile
+                            )
+                        else:
+                            _page_type, content = (
+                                await ocr_engine.ocr_page_auto_dispatch(
+                                    raw_content
+                                )
+                            )
                     else:
                         prompt = OCR_PROMPTS.get(
                             ocr_mode, OCR_PROMPTS.get("general", "")
                         )
-                        content = await ocr_engine.ocr_page(
-                            raw_content, prompt=prompt
+
+                        async def _ocr_tile(tile_bytes: bytes) -> str:
+                            return await ocr_engine.ocr_page(
+                                tile_bytes, prompt=prompt
+                            )
+
+                        # ocr_image_sliced grid="" 時直接呼叫 callback 整圖
+                        content = await ocr_image_sliced(
+                            raw_content, slice_grid, _ocr_tile
                         )
                     await _update_progress(task_id, 70)
 

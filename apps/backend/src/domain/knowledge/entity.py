@@ -24,6 +24,9 @@ class KnowledgeBase:
     # 白名單由後端 API validator 強制：
     # "" | "auto" | "recursive" | "separator" | "json_record" | "csv_row"
     chunk_strategy: str = ""
+    # Per-KB sliced OCR — "" 不切片；"RxC" 如 "2x3" / "3x2" 啟用切片 OCR。
+    # 用於 rare brand char 提升辨識率（薈/樟腦/萃這類字形混淆 case）。
+    ocr_slice_grid: str = ""
     # Issue #47 L3：KB-level DM metadata 萃取設定 + 結果儲存
     # dm_metadata_model: 抽 DM metadata 用的 LLM 模型（空 = 不啟用）
     # dm_metadata: 萃取結果 JSON（dm_period / merchant / global_activities /
