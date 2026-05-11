@@ -837,6 +837,11 @@ class ReprocessRequest(BaseModel):
     chunk_size: int | None = None
     chunk_overlap: int | None = None
     chunk_strategy: str | None = None
+    # 暫時性 KB 設定覆寫（只影響這次 reprocess，不寫回 KB）。
+    # ocr_model 收下但 reserved（OCR engine 是 Singleton 暫不支援 per-call override）。
+    ocr_mode: str | None = None
+    ocr_model: str | None = None
+    context_model: str | None = None
 
 
 class ReprocessDocumentResponse(BaseModel):
@@ -869,6 +874,9 @@ async def reprocess_document(
         chunk_size: int | None,
         chunk_overlap: int | None,
         chunk_strategy: str | None,
+        ocr_mode: str | None,
+        ocr_model: str | None,
+        context_model: str | None,
     ) -> None:
         uc = Container.reprocess_document_use_case()
         await uc.execute(
@@ -876,6 +884,9 @@ async def reprocess_document(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             chunk_strategy=chunk_strategy,
+            ocr_mode=ocr_mode,
+            ocr_model=ocr_model,
+            context_model=context_model,
         )
 
     background_tasks.add_task(
@@ -886,6 +897,9 @@ async def reprocess_document(
         body.chunk_size,
         body.chunk_overlap,
         body.chunk_strategy,
+        body.ocr_mode,
+        body.ocr_model,
+        body.context_model,
         task_name="reprocess_document",
         tenant_id=tenant.tenant_id,
     )

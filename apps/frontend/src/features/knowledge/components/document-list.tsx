@@ -27,6 +27,7 @@ import { API_BASE } from "@/lib/api-config";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { DocumentResponse, DocumentQualityStat } from "@/types/knowledge";
 import { useReprocessDocument } from "@/hooks/queries/use-documents";
+import { useKnowledgeBase } from "@/hooks/queries/use-knowledge-bases";
 import { ChunkPreviewPanel } from "./chunk-preview-panel";
 import { QualityTooltip } from "./quality-tooltip";
 import { ReprocessDialog } from "./reprocess-dialog";
@@ -442,6 +443,8 @@ export function DocumentList({
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
   const reprocess = useReprocessDocument();
   const token = useAuthStore((s) => s.token);
+  // Reprocess dialog 預設值：抓 KB 當前設定。reprocessTarget 存在時才 fetch。
+  const { data: kbDefaults } = useKnowledgeBase(reprocessTarget ? kbId : "");
 
   const toggleExpand = useCallback((docId: string) => {
     setExpandedParents((prev) => {
@@ -784,6 +787,7 @@ export function DocumentList({
           if (!open) setReprocessTarget(null);
         }}
         filename={reprocessTarget?.filename ?? ""}
+        kbDefaults={kbDefaults}
         isPending={reprocess.isPending}
         onConfirm={(params) => {
           if (reprocessTarget) {

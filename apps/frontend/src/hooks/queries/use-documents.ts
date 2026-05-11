@@ -248,6 +248,9 @@ export function useReprocessDocument() {
         chunk_size?: number;
         chunk_overlap?: number;
         chunk_strategy?: string;
+        ocr_mode?: string;
+        ocr_model?: string;
+        context_model?: string;
       };
     }) => {
       return apiFetch(
