@@ -216,6 +216,140 @@ def test_context_model_none_falls_back_to_kb_setting():
     assert call_kwargs["model"] == "anthropic:claude-haiku-4-5"
 
 
+def test_image_with_auto_mode_uses_page_dispatcher_not_default_prompt():
+    """image/png + ocr_mode=auto 必須走 ocr_page_auto_dispatch，
+    對齊 process_document（過去 reprocess 永遠走 OCR_PROMPTS['auto'] →
+    fallback 到 _DEFAULT_PROMPT → SeparatorTextSplitter sniff 失敗 →
+    user 看到「多商品合併到同 chunk」的 drift bug）。
+    """
+    # 改 document.content_type=image/png + raw_content=BYTEA
+    doc_repo = AsyncMock()
+    from src.domain.knowledge.entity import Chunk
+    from src.domain.knowledge.value_objects import ChunkId
+
+    doc_repo.find_by_id = AsyncMock(
+        return_value=Document(
+            id=DocumentId(value="img-1"),
+            kb_id="kb-1",
+            tenant_id="t-1",
+            filename="page_051.png",
+            content_type="image/png",
+            content="",
+            raw_content=b"FAKE_PNG_BYTES",
+        )
+    )
+    doc_repo.update_status = AsyncMock()
+    doc_repo.update_content = AsyncMock()
+    doc_repo.update_quality = AsyncMock()
+    doc_repo.delete_chunks_by_document = AsyncMock()
+    doc_repo.save_chunks = AsyncMock()
+    task_repo = AsyncMock()
+    kb_repo = AsyncMock()
+    kb_repo.find_by_id = AsyncMock(
+        return_value=KnowledgeBase(ocr_mode="auto", chunk_strategy="separator")
+    )
+    splitter = MagicMock()
+    splitter.split.return_value = [
+        Chunk(
+            id=ChunkId(value="c-1"),
+            document_id="img-1",
+            tenant_id="t-1",
+            content="長到能通過 filter 的內容 sufficient length text body",
+            chunk_index=0,
+        )
+    ]
+    embedding = AsyncMock()
+    embedding.embed_texts = AsyncMock(return_value=[[0.1] * 3072])
+    vector_store = AsyncMock()
+    language_detector = MagicMock()
+    language_detector.detect.return_value = "zh"
+    file_storage = AsyncMock()
+    file_storage.load = AsyncMock(side_effect=FileNotFoundError)
+
+    # file_parser._ocr 有 ocr_page_auto_dispatch
+    mock_ocr = AsyncMock()
+    mock_ocr.ocr_page_auto_dispatch = AsyncMock(
+        return_value=("catalog", "=== \n商品：A\n===")
+    )
+    mock_ocr.ocr_page = AsyncMock()
+    file_parser = MagicMock()
+    file_parser._ocr = mock_ocr
+
+    use_case = ReprocessDocumentUseCase(
+        document_repository=doc_repo,
+        processing_task_repository=task_repo,
+        knowledge_base_repository=kb_repo,
+        text_splitter_service=splitter,
+        embedding_service=embedding,
+        vector_store=vector_store,
+        language_detection_service=language_detector,
+        file_parser_service=file_parser,
+        document_file_storage=file_storage,
+    )
+    _run(use_case.execute("img-1", "task-1"))
+
+    # ✅ auto 模式必須走 dispatcher（不是固定 prompt）
+    mock_ocr.ocr_page_auto_dispatch.assert_awaited_once()
+    # ❌ 絕不應 fallback 到 ocr_page+default prompt
+    mock_ocr.ocr_page.assert_not_awaited()
+
+
+def test_image_with_catalog_mode_uses_static_prompt_path():
+    """image/png + ocr_mode=catalog 走 ocr_page + _CATALOG_PROMPT（既有路徑）。"""
+    doc_repo = AsyncMock()
+    doc_repo.find_by_id = AsyncMock(
+        return_value=Document(
+            id=DocumentId(value="img-1"),
+            kb_id="kb-1",
+            tenant_id="t-1",
+            filename="page.png",
+            content_type="image/png",
+            content="",
+            raw_content=b"FAKE_PNG",
+        )
+    )
+    doc_repo.update_status = AsyncMock()
+    doc_repo.update_content = AsyncMock()
+    doc_repo.update_quality = AsyncMock()
+    doc_repo.delete_chunks_by_document = AsyncMock()
+    doc_repo.save_chunks = AsyncMock()
+    task_repo = AsyncMock()
+    kb_repo = AsyncMock()
+    kb_repo.find_by_id = AsyncMock(
+        return_value=KnowledgeBase(ocr_mode="catalog")
+    )
+    splitter = MagicMock()
+    splitter.split.return_value = []
+    embedding = AsyncMock()
+    vector_store = AsyncMock()
+    language_detector = MagicMock()
+    language_detector.detect.return_value = "zh"
+    file_storage = AsyncMock()
+    file_storage.load = AsyncMock(side_effect=FileNotFoundError)
+
+    mock_ocr = AsyncMock()
+    mock_ocr.ocr_page_auto_dispatch = AsyncMock()
+    mock_ocr.ocr_page = AsyncMock(return_value="text")
+    file_parser = MagicMock()
+    file_parser._ocr = mock_ocr
+
+    use_case = ReprocessDocumentUseCase(
+        document_repository=doc_repo,
+        processing_task_repository=task_repo,
+        knowledge_base_repository=kb_repo,
+        text_splitter_service=splitter,
+        embedding_service=embedding,
+        vector_store=vector_store,
+        language_detection_service=language_detector,
+        file_parser_service=file_parser,
+        document_file_storage=file_storage,
+    )
+    _run(use_case.execute("img-1", "task-1"))
+
+    mock_ocr.ocr_page.assert_awaited_once()
+    mock_ocr.ocr_page_auto_dispatch.assert_not_awaited()
+
+
 def test_context_service_skipped_when_no_model_configured():
     """KB 沒設 context_model 且 caller 也沒 override → 應跳過 contextual block。"""
     context_service = AsyncMock()
