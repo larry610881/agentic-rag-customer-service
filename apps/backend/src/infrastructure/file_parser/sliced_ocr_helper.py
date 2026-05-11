@@ -29,7 +29,11 @@ from typing import Awaitable, Callable
 
 WHITE_THRESHOLD = 235
 SEARCH_WINDOW = 100  # 切點在理想位置 ± 此範圍找最白邊
-OVERLAP_PX = 40  # tile 邊緣外擴像素，防文字被切斷
+# overlap 增加到 80 (原 40)：減少商品 card 跨 tile 邊界 → 降低「半個商品」
+# 觸發 LLM 用 [模糊:???] 填欄位的副作用。
+# 代價：tile 之間重疊更多 → 同商品可能在 2 tile 都出現 → 但有 _SLICE_AWARE_PREFIX
+# 告訴 LLM「半個的省略」，所以 dedup 自動處理。
+OVERLAP_PX = 80
 
 OcrCallback = Callable[[bytes], Awaitable[str]]
 """Callable: (image_bytes) -> Awaitable[ocr_text]."""

@@ -195,9 +195,18 @@ class ReprocessDocumentUseCase:
                             page_type = await ocr_engine.classify_page_type(
                                 raw_content
                             )
-                            prompt = claude_vision_ocr._PAGE_TYPE_PROMPTS.get(
-                                page_type,
-                                claude_vision_ocr.OCR_PROMPTS.get("general", ""),
+                            base_prompt = (
+                                claude_vision_ocr._PAGE_TYPE_PROMPTS.get(
+                                    page_type,
+                                    claude_vision_ocr.OCR_PROMPTS.get(
+                                        "general", ""
+                                    ),
+                                )
+                            )
+                            # 加切片補充規則 prefix（防「半個商品 → [模糊:???]」）
+                            prompt = (
+                                claude_vision_ocr._SLICE_AWARE_PREFIX
+                                + base_prompt
                             )
 
                             async def _ocr_tile(tile_bytes: bytes) -> str:
@@ -216,8 +225,14 @@ class ReprocessDocumentUseCase:
                             )
                     else:
                         prompts = claude_vision_ocr.OCR_PROMPTS
-                        prompt = prompts.get(
+                        base_prompt = prompts.get(
                             effective_ocr_mode, prompts.get("general", "")
+                        )
+                        # 啟用切片時加切片補充規則 prefix
+                        prompt = (
+                            claude_vision_ocr._SLICE_AWARE_PREFIX + base_prompt
+                            if slice_grid
+                            else base_prompt
                         )
 
                         async def _ocr_tile(tile_bytes: bytes) -> str:
