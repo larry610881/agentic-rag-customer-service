@@ -7,6 +7,38 @@
 
 ---
 
+## 輸入端 LLM 防護 — 語意判斷角色切換，靠咽喉點 + 既有欄位達成全域可設定
+
+**日期**：2026-07-01
+**涉及層級**：Domain（`GuardRulesConfig`）+ Infra（model/repo）+ Application（`PromptGuardService`）+ Interfaces（`security_router`）+ Frontend（維護頁）+ DB migration — **全端 + 一支加欄位 migration**
+**Commit**：`459662a` ｜ **Issue**：#48
+**Sprint 來源**：接續 `24170fe`（Decorator 補 LINE guard）。詩人/蠟筆小新是 regex 補不到的語意變體；output LLM guard 只防洩密（且要 ≥2 關鍵字才啟動）→ 對輸入角色切換完全無效。需要輸入端語意判斷。
+
+**主題**：**「橫切控制一旦放對咽喉點，後續增強幾乎零架構成本」**。因為上一步已把 guard 收斂到 `GuardedAgentService.check_input`，這次只要把 `check_input` 從 regex 升級成「regex 快篩 → LLM 語意判斷」，web/LINE/所有 bot 就**自動全域生效**，不需再碰任何 entry-point。維護頁的 `input_guard_prompt` 欄位、API、DB 欄位**早就存在但沒接上**（死碼），這次一併接活 —— 印證「欄位先於功能鋪好」的價值。
+
+**做得好的地方**
+
+- **加欄位而非改語意**：獨立新增 `llm_input_guard_enabled`，不動既有 `llm_guard_enabled`（輸出用）。兩道防護成本模型不同（輸入每則跑、輸出只在 ≥2 關鍵字命中才跑），分開開關是正確的產品切分，不是 gold-plating。
+- **fail-open 方向明確且與 output 相反**：輸入 guard LLM 出錯 → 放行（不擋真客人，明顯攻擊有 regex 兜）；輸出 guard 出錯 → 從嚴（防洩密）。同一 service 內兩種 fail 方向，各自註解 why。
+- **預設 OFF 部署**：flag default false → push 後零行為改變，把「何時啟用 + 承擔每則 LLM 成本」的決定權留給 admin，部署與啟用解耦。
+- **migration 時序 + live DB 紀律**：先套 dev-vm（已有真實流量）再改 ORM，避免 Cloud Run 讀新欄位 500；動 live DB 前 preview SQL 給 Larry 確認。加欄位 `IF NOT EXISTS` + `DEFAULT false` 對現有 row 零影響。
+- **複用既有維護頁鏈路**：`input_guard_prompt` 的 UI→API→DB 早就通，只補後端消費端 + 一個開關 + 版面重構成「輸入/輸出」兩區，改動集中。
+
+**潛在隱憂**
+
+- **每則訊息 +1 LLM 呼叫（開啟後）**：輸入 guard 對所有通過 regex 的訊息都打 Haiku，latency +200~400ms、成本雖低但是每則。**緩解**：Haiku + prompt cache；未來可對「有 worker 的 bot」融合進 intent classifier 那次呼叫、或加啟發式 gate 只在可疑句式才送 LLM。**優先級：中（開啟後才有）**
+- **local-docker 缺 guard 表 → migration N/A**：兩環境 schema drift 既有存在，本次 local 無法驗證 SQL（只在 dev-vm 套）。**緩解**：之後用 ORM `create_all` 重建 local guard 表對齊。**優先級：低**
+- **infra/schema.sql 無 guard 表**：source-of-truth 檔本就缺 guard 系列表定義，新欄位無處可同步。**緩解**：補一次完整 guard schema 進 schema.sql。**優先級：中（HIGH-severity rule 的既有破口）**
+- **前端維護頁無自動部署**：後端 push 自動上線，但維護頁改動需手動部署，開關 UI 才會出現。啟用可先用 API/DB 直接 flip 繞過。**優先級：中**
+- **fail-open 的攻擊面**：刻意讓 guard LLM timeout（灌長輸入逼近上限）→ 放行。**緩解**：對 guard 呼叫設嚴格 max_tokens/timeout + regex 兜底；監看 `guard.llm_input_check_failed` 頻率。**優先級：低**
+
+**延伸學習**
+
+- **黑名單 vs 語意分類的分層**：regex（確定性、免費、零延遲、易繞）當第一道快篩，LLM（語意、有成本、抗變體）當第二道。兩者不是替代而是 defense-in-depth 的互補。搜尋：`defense in depth`、`fail-open vs fail-closed`。
+- **思考題**：若要把「每則都打 LLM」的成本壓到最低又不犧牲覆蓋，該用「啟發式 gate（只在含第二人稱指令句式才送 LLM）」還是「融合進既有 intent classifier 呼叫」？兩者對「沒有 worker 的 bot」覆蓋差異是什麼？（提示：融合只 cover 有 routing 的 bot，gate 是全域但會漏；最穩是 gate + 咽喉點獨立 LLM，融合當有 worker bot 的成本優化。）
+
+---
+
 ## Prompt Guard 掛在 AgentService 共用咽喉點 — Decorator 補齊 LINE 路徑防護
 
 **日期**：2026-07-01
