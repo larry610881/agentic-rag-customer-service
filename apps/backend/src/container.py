@@ -1,6 +1,7 @@
 import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
+from src.application.agent.guarded_agent_service import GuardedAgentService
 from src.application.agent.intent_classifier import IntentClassifier
 from src.application.agent.list_built_in_tools_use_case import (
     ListBuiltInToolsUseCase,
@@ -1806,7 +1807,9 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
-    agent_service = providers.Selector(
+    # 未包裝的原始 agent service（mock/real）。對外一律走下方包過 guard 的
+    # `agent_service`，避免任何 channel 直接拿到裸的、未受 prompt guard 保護的服務。
+    _raw_agent_service = providers.Selector(
         providers.Callable(
             lambda cfg: "mock" if cfg.e2e_mode else "real",
             config,
@@ -1922,6 +1925,15 @@ class Container(containers.DeclarativeContainer):
             lambda factory: factory.resolve_api_key,
             _llm_factory,
         ),
+    )
+
+    # 共用咽喉點：所有 channel 拿到的 agent_service 都是「包過 prompt guard」的版本。
+    # 這樣 web / LINE / 未來 channel 只要呼叫 process_message() 就預設有防護，
+    # 不需各自在 use case 內 opt-in（LINE 曾因未 opt-in 而完全裸奔）。
+    agent_service = providers.Factory(
+        GuardedAgentService,
+        inner=_raw_agent_service,
+        prompt_guard=prompt_guard_service,
     )
 
     get_guard_rules_use_case = providers.Factory(
