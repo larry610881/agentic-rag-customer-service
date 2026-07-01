@@ -13,6 +13,9 @@ class GuardRulesConfig:
     input_rules: list[dict] = field(default_factory=list)
     output_keywords: list[dict] = field(default_factory=list)
     llm_guard_enabled: bool = False
+    # 輸入端 LLM 防護（角色切換 / prompt injection 語意偵測）獨立開關。
+    # 與 llm_guard_enabled（輸出洩密）分開，因輸入防護每則訊息都跑、成本模型不同。
+    llm_input_guard_enabled: bool = False
     llm_guard_model: str = ""
     input_guard_prompt: str = ""
     output_guard_prompt: str = ""

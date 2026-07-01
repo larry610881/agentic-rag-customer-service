@@ -32,6 +32,7 @@ class GuardRulesResponse(BaseModel):
     input_rules: list[dict]
     output_keywords: list[dict]
     llm_guard_enabled: bool
+    llm_input_guard_enabled: bool
     llm_guard_model: str
     input_guard_prompt: str
     output_guard_prompt: str
@@ -43,6 +44,7 @@ class UpdateGuardRulesRequest(BaseModel):
     input_rules: list[GuardRuleItem]
     output_keywords: list[OutputKeywordItem]
     llm_guard_enabled: bool = False
+    llm_input_guard_enabled: bool = False
     llm_guard_model: str = ""
     input_guard_prompt: str = ""
     output_guard_prompt: str = ""
@@ -75,6 +77,7 @@ async def get_guard_rules(
         input_rules=config.input_rules,
         output_keywords=config.output_keywords,
         llm_guard_enabled=config.llm_guard_enabled,
+        llm_input_guard_enabled=config.llm_input_guard_enabled,
         llm_guard_model=config.llm_guard_model,
         input_guard_prompt=config.input_guard_prompt,
         output_guard_prompt=config.output_guard_prompt,
@@ -97,6 +100,7 @@ async def update_guard_rules(
             input_rules=[r.model_dump() for r in body.input_rules],
             output_keywords=[k.model_dump() for k in body.output_keywords],
             llm_guard_enabled=body.llm_guard_enabled,
+            llm_input_guard_enabled=body.llm_input_guard_enabled,
             llm_guard_model=body.llm_guard_model,
             input_guard_prompt=body.input_guard_prompt,
             output_guard_prompt=body.output_guard_prompt,
@@ -108,6 +112,7 @@ async def update_guard_rules(
         input_rules=config.input_rules,
         output_keywords=config.output_keywords,
         llm_guard_enabled=config.llm_guard_enabled,
+        llm_input_guard_enabled=config.llm_input_guard_enabled,
         llm_guard_model=config.llm_guard_model,
         input_guard_prompt=config.input_guard_prompt,
         output_guard_prompt=config.output_guard_prompt,
@@ -130,6 +135,7 @@ async def reset_guard_rules(
         input_rules=config.input_rules,
         output_keywords=config.output_keywords,
         llm_guard_enabled=config.llm_guard_enabled,
+        llm_input_guard_enabled=config.llm_input_guard_enabled,
         llm_guard_model=config.llm_guard_model,
         input_guard_prompt=config.input_guard_prompt,
         output_guard_prompt=config.output_guard_prompt,

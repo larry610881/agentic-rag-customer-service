@@ -30,6 +30,7 @@ class UpdateGuardRulesCommand:
     input_rules: list[dict]
     output_keywords: list[dict]
     llm_guard_enabled: bool = False
+    llm_input_guard_enabled: bool = False
     llm_guard_model: str = ""
     input_guard_prompt: str = ""
     output_guard_prompt: str = ""
@@ -46,6 +47,7 @@ class UpdateGuardRulesUseCase:
             input_rules=command.input_rules,
             output_keywords=command.output_keywords,
             llm_guard_enabled=command.llm_guard_enabled,
+            llm_input_guard_enabled=command.llm_input_guard_enabled,
             llm_guard_model=command.llm_guard_model,
             input_guard_prompt=command.input_guard_prompt,
             output_guard_prompt=command.output_guard_prompt,

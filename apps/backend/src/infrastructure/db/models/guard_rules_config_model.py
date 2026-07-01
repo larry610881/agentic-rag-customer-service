@@ -15,6 +15,9 @@ class GuardRulesConfigModel(Base):
     input_rules: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
     output_keywords: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
     llm_guard_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    llm_input_guard_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     llm_guard_model: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     input_guard_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     output_guard_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")

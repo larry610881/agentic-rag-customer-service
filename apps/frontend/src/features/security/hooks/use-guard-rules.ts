@@ -19,6 +19,7 @@ export interface GuardRulesConfig {
   input_rules: GuardRuleItem[];
   output_keywords: OutputKeywordItem[];
   llm_guard_enabled: boolean;
+  llm_input_guard_enabled: boolean;
   llm_guard_model: string;
   input_guard_prompt: string;
   output_guard_prompt: string;
