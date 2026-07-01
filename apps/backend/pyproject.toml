@@ -88,6 +88,8 @@ ignore = ["B008"]
 "prompt_optimizer/**" = ["E501", "C901"]
 # OCR engine 內含大量 CJK 自然語言 prompt，line-length 對 Chinese 字串不適用
 "src/infrastructure/file_parser/ocr_engines/*.py" = ["E501"]
+# Prompt Guard 內含大量 CJK 安全審查 prompt（input/output guard），同上理由
+"src/application/security/prompt_guard_service.py" = ["E501"]
 # BDD step 描述含 CJK 自然語言字串
 "tests/unit/knowledge/test_separator_chunking_steps.py" = ["E501"]
 
