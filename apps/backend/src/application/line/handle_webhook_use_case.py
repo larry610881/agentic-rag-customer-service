@@ -45,6 +45,8 @@ from src.infrastructure.line.flex_image_carousel_builder import (
     build_image_carousel,
 )
 from src.infrastructure.line.flex_contact_builder import build_contact_flex
+
+from ._text_format import strip_markdown_for_line
 from src.infrastructure.logging.setup import get_logger
 
 logger = get_logger(__name__)
@@ -189,7 +191,7 @@ class HandleWebhookUseCase:
             )
             message_id = str(uuid4())
             await self._default_line_service.reply_with_quick_reply(
-                event.reply_token, result.answer, message_id
+                event.reply_token, strip_markdown_for_line(result.answer), message_id
             )
 
     @staticmethod
@@ -575,7 +577,8 @@ class HandleWebhookUseCase:
                 logger.warning("line.record_usage_error", exc_info=True)
 
         # Build reply text — optionally append sources
-        reply_text = result.answer
+        # LINE 純文字通路：清除 LLM 殘留的 Markdown 符號（prompt 約束的安全網）
+        reply_text = strip_markdown_for_line(result.answer)
         if bot.line_show_sources and result.sources:
             source_lines = []
             for i, s in enumerate(result.sources[:3], 1):

@@ -235,6 +235,46 @@ def test_dedup_same_page_number_different_storage_paths(common_kwargs):
     assert "best" in page54["content_snippet"]
 
 
+def test_context_keeps_all_chunks_despite_image_dedup(common_kwargs):
+    """Regression（POC 問題 7 包大人案例）：同一頁 DM 有兩個相關商品 chunk 時，
+    圖卡（sources）同頁去重只留 1 張是對的，但 LLM 的 context 文字
+    必須保留「去重前」所有命中商品 — 否則同頁次高分商品從 AI 視野消失，
+    AI 會誤答「沒有該商品」。
+
+    真實案例：「包大人尿布有優惠嗎」→ rank1 幫寶適 / rank2 包大人 同屬
+    第 49 頁 → by_doc dedup 把包大人砍掉 → LLM 回「沒有包大人品牌」。
+    """
+    sources = [
+        _make_source("doc-page49", 0.6375, "幫寶適 拉拉褲 二件省更多"),
+        _make_source("doc-page49", 0.6337, "包大人 防漏安心復健褲 買1送1"),
+        _make_source("doc-page50", 0.6179, "寵物物語尿布經濟包"),
+    ]
+    docs = [_make_doc("doc-page49", 49), _make_doc("doc-page50", 50)]
+    tool = _build_tool(sources, docs)
+    result = _run(tool.invoke(**common_kwargs))
+
+    # 圖卡去重不變：page 49 只出 1 張 + page 50 共 2 筆
+    assert len(result["sources"]) == 2
+    assert sorted(s["page_number"] for s in result["sources"]) == [49, 50]
+
+    # context 必須包含去重前的全部商品文字（含被圖卡去重砍掉的包大人）
+    assert "幫寶適" in result["context"]
+    assert "包大人" in result["context"]
+    assert "寵物物語" in result["context"]
+
+
+def test_context_snippets_truncated_to_500(common_kwargs):
+    """context 內每個 snippet 仍維持 500 字截斷。"""
+    long_snippet = "很長的商品說明" * 200  # 1400 字
+    sources = [_make_source("doc-1", 0.9, long_snippet)]
+    docs = [_make_doc("doc-1", 1)]
+    tool = _build_tool(sources, docs)
+    result = _run(tool.invoke(**common_kwargs))
+    # 每段 snippet 截斷在 500 字（含截斷符號些許餘裕）
+    for part in result["context"].split("\n---\n"):
+        assert len(part) <= 510
+
+
 def test_no_dedup_when_page_number_zero(common_kwargs):
     """page_number == 0（非分頁文件，例如單張圖片）不該被 page dedup 合併。"""
     sources = [

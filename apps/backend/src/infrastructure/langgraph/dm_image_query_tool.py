@@ -162,8 +162,14 @@ class DmImageQueryTool:
         sources = [s for s in enriched if s is not None]
 
         # 6. context 給 LLM 用（純文字，不含 URL）
+        # 用「去重前」的完整檢索結果組裝 — dedup 只該作用於圖卡顯示清單。
+        # 同頁 DM 常有多個相關商品 chunk（例：幫寶適 + 包大人同在第 49 頁），
+        # 若 context 也吃 dedup，同頁次高分商品會從 LLM 視野消失，
+        # AI 會誤答「沒有該商品」。
         context = "\n---\n".join(
-            _truncate(s["content_snippet"], 500) for s in sources
+            _truncate(src.content_snippet, 500)
+            for src in retrieve_result.sources
+            if src.content_snippet
         )
 
         return {

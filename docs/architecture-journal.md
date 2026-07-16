@@ -7,6 +7,34 @@
 
 ---
 
+## POC 反饋 P0 三修 — 「顯示層去重」與「推理層上下文」是兩個 concern，共用一份資料就會互相殘殺
+
+**日期**：2026-07-15
+**涉及層級**：Infrastructure（`dm_image_query_tool` / `flex_contact_builder`）+ Application（`line/_text_format` + webhook 出口）+ Domain（`prompt_defaults` seed）— **跨 3 層 + 2 BDD scenario**
+**Sprint 來源**：康達盛通 POC 反饋 8 題（2026-07-09），線上 trace 實證後修 P0 三包（WP-A/H/B2，plan: `.claude/plans/poc-feedback-fix-plan.md`）
+
+**主題**：**同一份資料流上掛了兩個消費者（LINE 圖卡 carousel、LLM context），為前者設計的三層 dedup 靜默閹割了後者**。「包大人」明明檢索命中 rank 2（0.6337），只因與 rank 1 同屬 DM 第 49 頁，被 `by_doc` 去重砍出 context，LLM 誠實地答「沒有此商品」— 檢索完全正常、每一層邏輯都「對」，組合起來卻錯。修法是讓兩個 concern 各自從正確的資料點取材：context 取 dedup 前的完整檢索結果，sources（圖卡）維持 dedup。
+
+**做得好的地方**
+
+- **Trace 先行、假說可廢**：程式碼審查階段的兩個假說（OCR 漏抽、資料不在庫）被線上 `agent_execution_traces.chunk_scores` 直接推翻 — trace 記了每個 chunk 的分數與 80 字預覽，五分鐘定位真兇。可觀測性投資在這裡一次回本。
+- **Regression test 先紅後綠**：用真實案例（幫寶適/包大人/寵物物語）寫紅燈，修完綠燈，未來任何人動 dedup 都會被這條測試攔下。
+- **WebView 相容性用平台原生參數解**：`openExternalBrowser=1` 是 LINE 官方 query param，不需要任何 UA 判斷或 deep link hack；用 `urllib.parse` 組裝避免 `?`/`&` 字串拼接 bug。
+- **雙保險分層**：問題 4 的 markdown 符號同時修 prompt（源頭約束）與 LINE 出口 strip（安全網）— LLM 對格式指令的遵循率不是 100%，出口層兜底成本極低。
+
+**潛在隱憂**
+
+- context 改用 dedup 前結果後，同頁多商品會讓 context 變長（原本同頁只留 1 條）→ token 成本微增。目前 top_k=3~5 上限兜著，暫無風險 → 若未來調大 top_k 需注意 → 優先級：低
+- `strip_markdown_for_line` 只處理已觀察到的模式（**、#、`、清單、md link）；LLM 若吐出表格或巢狀清單仍會原樣顯示 → 若客戶回報再擴充，不預先過度設計 → 優先級：低
+- 三層 dedup 的「多份 DM 同頁碼誤合併」trade-off（工具內註解已載明）依然存在，本次未動 → 多 DM 分 KB 的使用規範要寫進操作文件 → 優先級：中
+
+**延伸學習**
+
+- **Read Model 分離（CQRS lite）**：同一查詢結果餵兩個視圖（人看的 carousel、模型看的 context）時，每個視圖應有自己的投影管線，而不是共用一條再「順便」滿足另一個 — 本次 bug 是教科書案例。
+- **In-app WebView 權限模型**：iOS WKWebView / Android LINE WebView 對 getUserMedia、tel: 的授權行為各不相同；嵌入式瀏覽器做通話/攝影功能，第一件事就是逃出去（external browser / deep link）。
+
+---
+
 ## 輸入端 LLM 防護 — 語意判斷角色切換，靠咽喉點 + 既有欄位達成全域可設定
 
 **日期**：2026-07-01
