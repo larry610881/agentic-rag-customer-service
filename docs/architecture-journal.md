@@ -7,6 +7,28 @@
 
 ---
 
+## POC 反饋 P1 — Guard 去重用「協商標記」而非拆咽喉點；重爬發現官方已整站改版
+
+**日期**：2026-07-16
+**涉及層級**：Domain（`text_normalization`）+ Application（webhook 並行 guard / `_input_guard_checked` 協商）+ Infrastructure（container 接線）— **跨 3 層**
+**Sprint 來源**：POC 修復計畫 WP-D3 / WP-F / WP-E（`.claude/plans/poc-feedback-fix-plan.md`）
+
+**主題**：**修「同一防護跑兩次」時，最誘人的解法（把 guard 從咽喉點拆掉）恰好是最危險的** — 它會拆掉 `24170fe` 建立的「新通路預設受保護」契約。改用協商標記：入口端跑過 input guard 就在 `metadata` 放 `_input_guard_checked`，咽喉點看到標記才跳過。既有 decorator 測試一條都不用改（契約完整），新增行為只用新測試表達。LINE 並行化（guard ∥ intent 分類）靠 `asyncio.create_task` 先發射、worker routing 跑完再收斂，guard 命中時只替換 `result` 讓下游 persist/reply 流程原封不動。
+
+**做得好的地方**
+
+- **安全權衡顯式決策**：並行化讓 injection 文本先進 classifier 一次（輸出僅 worker enum），風險寫在計畫裡由 Larry 核可後才實作，並在程式註解留下決策記錄與日期。
+- **異體字正規化只碰 embedding 輸入**：`normalize_query_variants`（週→周、NFKC）作用在 embed 前一刻，trace 與 rerank 仍看使用者原文 — 可觀測性不受污染。
+- **重爬前先探測**：官方站已從 carrefour.com.tw 301 到 uni-prosperity.com.tw（品牌改為萬家福/樂家康），FAQ 是 WordPress + React block 前端渲染；用 Edge headless `--virtual-time-budget` dump DOM 一次拿到全部 16 分類 121 題（含實名制 14 題、理髮店 81 家新版），不需逐頁爬。
+
+**潛在隱憂**
+
+- `_input_guard_checked` 是約定字串，散在三個檔案 → 抽成共用常數並在 docstring 交叉引用 → 優先級：低
+- 品牌改版（家樂福→萬家福）代表 bot persona prompt、DM 資料與新 FAQ 用語不一致 → 需與客戶對齊品牌呈現 → 優先級：中
+- FAQ 重爬目前是一次性手工流程 → 產品化為排程 job（P2 backlog 已列）→ 優先級：中
+
+---
+
 ## POC 反饋 P0 三修 — 「顯示層去重」與「推理層上下文」是兩個 concern，共用一份資料就會互相殘殺
 
 **日期**：2026-07-15

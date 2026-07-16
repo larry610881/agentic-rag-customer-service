@@ -66,7 +66,12 @@ class GuardedAgentService(AgentService):
         bot_id: str = "",
     ) -> AgentResponse:
         # ── Input guard（LLM 前第一道；命中直接短路，不進 agent）──
-        if self._prompt_guard is not None:
+        # 入口端（web execute / LINE webhook）若已自行跑過 input guard，
+        # 會在 metadata 帶 `_input_guard_checked=True` — 此時跳過重複檢查
+        # （每次都是一發 LLM roundtrip）。未帶標記的呼叫者（未來新通路）
+        # 仍在此兜底，「預設生效」的咽喉點契約不變。
+        already_checked = bool((metadata or {}).get("_input_guard_checked"))
+        if self._prompt_guard is not None and not already_checked:
             guard_result = await self._prompt_guard.check_input(
                 user_message,
                 tenant_id=tenant_id,

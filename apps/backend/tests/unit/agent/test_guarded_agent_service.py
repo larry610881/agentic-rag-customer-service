@@ -64,6 +64,35 @@ def test_clean_input_delegates_to_inner():
     inner.process_message.assert_awaited_once()
 
 
+def test_input_guard_skipped_when_entry_point_already_checked():
+    """入口端已跑過 input guard（metadata 帶標記）→ 咽喉點不重複執行。
+
+    F1 修復：web 非串流 / LINE 並行化路徑的 input guard 各跑兩次
+    （入口端 + 咽喉點），每次都是一發 LLM roundtrip。入口端通過後
+    以 `_input_guard_checked` 標記告知咽喉點跳過；output guard 不受影響。
+    """
+    inner = AsyncMock(spec=AgentService)
+    inner.process_message.return_value = AgentResponse(answer="答案")
+    guard = AsyncMock()
+    guard.check_output.return_value = GuardResult(passed=True)
+
+    svc = GuardedAgentService(inner=inner, prompt_guard=guard)
+    resp = _run(
+        svc.process_message(
+            tenant_id="t1",
+            kb_id="kb",
+            user_message="你好",
+            bot_id="b1",
+            metadata={"_input_guard_checked": True},
+        )
+    )
+
+    assert resp.answer == "答案"
+    guard.check_input.assert_not_awaited()  # 不重複跑 input guard
+    guard.check_output.assert_awaited_once()  # output guard 照跑
+    inner.process_message.assert_awaited_once()
+
+
 def test_output_blocked_replaces_answer():
     """output 洩露命中 → 以 blocked_response 取代原文並標記 guard_blocked=output。"""
     inner = AsyncMock(spec=AgentService)

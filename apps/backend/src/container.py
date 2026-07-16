@@ -2344,4 +2344,5 @@ class Container(containers.DeclarativeContainer):
         intent_classifier=intent_classifier,
         worker_config_repo=worker_config_repository,
         history_strategy=history_strategy,
+        prompt_guard=prompt_guard_service,
     )

@@ -745,6 +745,9 @@ class SendMessageUseCase:
                     guard_blocked="input",
                     guard_rule_matched=guard_result.rule_matched,
                 )
+            # F1（POC 問題 1）：input guard 已在此跑過並通過 — 帶標記讓
+            # GuardedAgentService 咽喉點跳過重複的 input guard LLM roundtrip
+            metadata["_input_guard_checked"] = True
 
         history, history_context, router_context = (
             await self._resolve_history(

@@ -1,5 +1,6 @@
 """LINE Webhook 處理 Use Case"""
 
+import asyncio
 import dataclasses
 import json
 import time
@@ -8,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.bot.entity import (
     Bot,
@@ -123,6 +125,7 @@ class HandleWebhookUseCase:
         intent_classifier: Any | None = None,
         worker_config_repo: Any | None = None,
         history_strategy: ConversationHistoryStrategy | None = None,
+        prompt_guard: Any | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -145,6 +148,9 @@ class HandleWebhookUseCase:
         # process_message(history_context="") 讓 react_agent 沒 inject 對話歷史。
         # 加 strategy 後與 send_message_use_case 行為對齊。
         self._history_strategy = history_strategy
+        # F2（POC 問題 1）：入口端 input guard，與 intent 分類並行執行。
+        # None 時退回 GuardedAgentService 咽喉點串行兜底（行為不變）。
+        self._prompt_guard = prompt_guard
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
         """Redis 快取查 Bot（by ID），預設 120 秒 TTL。"""
@@ -401,6 +407,20 @@ class HandleWebhookUseCase:
             "rerank_top_n": bot.rerank_top_n,
         }
 
+        # ── Input guard 與 intent 分類「並行」執行（F2，POC 問題 1）──
+        # 兩者都是阻塞 LLM 呼叫，串行要付兩段延遲。權衡（Larry 2026-07-16 核可）：
+        # 並行代表 classifier 會在 guard 判定前收到原文一次，但 classifier
+        # 輸出僅為 worker 選擇（enum），且 guard 命中時其結果直接丟棄。
+        guard_task: asyncio.Task[Any] | None = None
+        if self._prompt_guard is not None:
+            guard_task = asyncio.create_task(
+                self._prompt_guard.check_input(
+                    event.message_text,
+                    tenant_id=bot.tenant_id,
+                    bot_id=bot.id.value,
+                )
+            )
+
         # ── Worker Routing（Subagent 分流；與 Web path 一致） ──
         # 預設用 bot 本體設定
         system_prompt = bot.bot_prompt or None
@@ -477,25 +497,39 @@ class HandleWebhookUseCase:
                         llm_model=matched.llm_model,
                     )
 
-        result = await self._agent_service.process_message(
-            tenant_id=bot.tenant_id,
-            kb_id=kb_id,
-            user_message=event.message_text,
-            kb_ids=kb_ids,
-            system_prompt=system_prompt,
-            enabled_tools=enabled_tools,
-            llm_params=llm_params,
-            metadata=rerank_metadata,
-            history=history,
-            history_context=history_context,
-            router_context=router_context,
-            rag_top_k=bot.llm_params.rag_top_k,
-            rag_score_threshold=bot.llm_params.rag_score_threshold,
-            tool_rag_params=tool_rag_params,
-            customer_service_url=bot.customer_service_url,
-            mcp_servers=mcp_servers,
-            max_tool_calls=max_tool_calls,
-        )
+        # ── 收斂並行 guard 結果：命中 → 不進 agent，改用 blocked 回覆，
+        # 其餘下游（persist / reply / trace）與 guard 在咽喉點命中時完全一致
+        guard_result = await guard_task if guard_task is not None else None
+        if guard_result is not None and not guard_result.passed:
+            result = AgentResponse(
+                answer=guard_result.blocked_response,
+                guard_blocked="input",
+                guard_rule_matched=guard_result.rule_matched,
+            )
+        else:
+            if guard_result is not None:
+                # 告知 GuardedAgentService 咽喉點：input guard 已在入口跑過，
+                # 不要再付一次 LLM roundtrip（見 guarded_agent_service.py）
+                rerank_metadata["_input_guard_checked"] = True
+            result = await self._agent_service.process_message(
+                tenant_id=bot.tenant_id,
+                kb_id=kb_id,
+                user_message=event.message_text,
+                kb_ids=kb_ids,
+                system_prompt=system_prompt,
+                enabled_tools=enabled_tools,
+                llm_params=llm_params,
+                metadata=rerank_metadata,
+                history=history,
+                history_context=history_context,
+                router_context=router_context,
+                rag_top_k=bot.llm_params.rag_top_k,
+                rag_score_threshold=bot.llm_params.rag_score_threshold,
+                tool_rag_params=tool_rag_params,
+                customer_service_url=bot.customer_service_url,
+                mcp_servers=mcp_servers,
+                max_tool_calls=max_tool_calls,
+            )
         t1 = time.monotonic()
 
         # Persist agent execution trace

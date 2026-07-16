@@ -15,6 +15,7 @@ from src.domain.rag.retrieval_mode import (
     validate_modes,
 )
 from src.domain.rag.services import EmbeddingService, LLMService, VectorStore
+from src.domain.rag.text_normalization import normalize_query_variants
 from src.domain.rag.value_objects import RAGResponse, Source
 from src.domain.shared.exceptions import EntityNotFoundError, NoRelevantKnowledgeError
 from src.infrastructure.logging import get_logger
@@ -162,9 +163,13 @@ class QueryRAGUseCase:
         # 2. 為每條 query 並行 embed
         t0 = time.perf_counter()
         ordered_modes = [m for m in modes if m in mode_queries]
+        # 異體字/全形正規化只作用於 embedding 輸入（週→周 等），
+        # 不改 mode_queries 本身（trace 與 rerank 仍看使用者原文）
         query_vectors_list = await asyncio.gather(
             *(
-                self._embedding_service.embed_query(mode_queries[m])
+                self._embedding_service.embed_query(
+                    normalize_query_variants(mode_queries[m])
+                )
                 for m in ordered_modes
             )
         )
