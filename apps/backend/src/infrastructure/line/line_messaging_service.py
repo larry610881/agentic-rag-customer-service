@@ -178,8 +178,10 @@ class HttpxLineMessagingService(LineMessagingService):
 
     async def show_loading(self, user_id: str, seconds: int = 20) -> None:
         try:
+            # 官方端點必須含 /start — 少了會 404，動畫靜默失效
+            # （POC 問題 1 UX 回歸：2026-07-17 線上 log 實證 404 Not found）
             resp = await self._client.post(
-                "https://api.line.me/v2/bot/chat/loading",
+                "https://api.line.me/v2/bot/chat/loading/start",
                 headers=self._auth_headers(),
                 json={"chatId": user_id, "loadingSeconds": seconds},
             )
