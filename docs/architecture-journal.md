@@ -7,6 +7,14 @@
 
 ---
 
+## LINE 載入動畫 404 靜默失效 — fail-open 的盲點：非關鍵路徑的失敗也需要「看得見」
+
+**日期**：2026-07-17（小型修復，單檔 + regression tests ×2，commit `ac635da`）
+
+**主題**：`show_loading` 端點少打 `/start`（`/v2/bot/chat/loading` → 404），但因 fail-open 設計（失敗只記 warning），**動畫從未顯示過卻無人知曉數月**，直到 Larry 實測「沒有動畫」才從 Cloud Run log 的 `line.show_loading.failed` 404 定位。教訓：fail-open 適合「失敗不該擋主流程」的非關鍵呼叫，但**永久性失敗（4xx）與暫時性失敗（5xx/timeout）該區別對待** — 4xx 代表程式錯誤，應該在部署後冒泡（告警或 startup 自檢），而不是每則訊息默默重試同一個註定失敗的呼叫。延伸：對外部 API 端點字串寫 regression test（斷言完整 URL）成本極低，能擋掉這類「打錯門牌」錯誤。
+
+---
+
 ## POC 反饋 P1 — Guard 去重用「協商標記」而非拆咽喉點；重爬發現官方已整站改版
 
 **日期**：2026-07-16
