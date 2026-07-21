@@ -21,6 +21,15 @@ def _needs_max_completion_tokens(model: str) -> bool:
     return any(model.startswith(p) for p in _NEW_PARAM_PREFIXES)
 
 
+def supports_reasoning_effort(model: str) -> bool:
+    """gpt-5 / o-series reasoning 模型才接受 reasoning_effort 參數。
+
+    非 reasoning 模型（gpt-4o 系）收到此參數會被 API 拒絕，
+    呼叫端須以此 gate 決定是否夾帶。
+    """
+    return _needs_max_completion_tokens(model)
+
+
 class OpenAILLMService(LLMService):
     @property
     def model_name(self) -> str:
@@ -45,6 +54,7 @@ class OpenAILLMService(LLMService):
         self,
         temperature: float = 0.7,
         max_tokens: int = 1024,
+        reasoning_effort: str | None = None,
     ):
         """Return a LangChain ChatModel using the same API key and base_url."""
         from langchain_openai import ChatOpenAI
@@ -68,6 +78,10 @@ class OpenAILLMService(LLMService):
         }
         if self._base_url and self._base_url != "https://api.openai.com/v1":
             kwargs["base_url"] = self._base_url
+        # Issue #49：接通 Bot 設定的 reasoning_effort（先前為死設定）。
+        # 只對 reasoning 模型夾帶，非 reasoning 模型會被 API 拒絕。
+        if reasoning_effort and supports_reasoning_effort(self._model):
+            kwargs["reasoning_effort"] = reasoning_effort
         return ChatOpenAI(**kwargs)
 
     def _build_headers(self) -> dict[str, str]:

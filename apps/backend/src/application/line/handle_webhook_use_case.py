@@ -305,6 +305,16 @@ class HandleWebhookUseCase:
                 pb_event, bot.tenant_id, line_service
             )
 
+    @staticmethod
+    async def _show_loading_safe(
+        line_service: LineMessagingService, user_id: str
+    ) -> None:
+        """背景執行 loading 動畫，失敗僅記 log（fail-open 語義不變）。"""
+        try:
+            await line_service.show_loading(user_id, 20)
+        except Exception:
+            logger.warning("line.show_loading_failed", exc_info=True)
+
     async def _resolve_conversation(
         self, user_id: str, bot: Bot
     ) -> Conversation:
@@ -334,11 +344,14 @@ class HandleWebhookUseCase:
         short_code: str,
     ) -> None:
         """Process a single LINE text message event."""
-        # Show loading animation
-        try:
-            await line_service.show_loading(event.user_id, 20)
-        except Exception:
-            logger.warning("line.show_loading_failed", exc_info=True)
+        # Show loading animation — fire-and-forget（Issue #49）：
+        # 這是對 LINE API 的一次完整 round-trip，await 會把它整段
+        # 計入使用者體感延遲；動畫顯示成功與否不影響主流程（fail-open）。
+        loading_task = asyncio.create_task(
+            self._show_loading_safe(line_service, event.user_id)
+        )
+        # 保留引用避免 task 被 GC；主流程遠長於 loading 呼叫，不需 await
+        self._pending_loading_task = loading_task
 
         t0 = time.monotonic()
 
@@ -380,6 +393,10 @@ class HandleWebhookUseCase:
             "temperature": bot.llm_params.temperature,
             "max_tokens": bot.llm_params.max_tokens,
             "frequency_penalty": bot.llm_params.frequency_penalty,
+            # Issue #49：reasoning_effort 一直只存在於 Bot 設定端，
+            # 聊天路徑沒傳 → gpt-5 系列固定用 provider 預設 medium。
+            # LINE 通路對延遲最敏感，率先接通。
+            "reasoning_effort": bot.llm_params.reasoning_effort,
         }
         if bot.llm_provider:
             llm_params["provider_name"] = bot.llm_provider
@@ -561,55 +578,6 @@ class HandleWebhookUseCase:
             ] if result.sources else None,
         )
 
-        # Persist conversation + messages
-        if self._conversation_repo:
-            # S-Gov.6b: bump counters for cron pending-summary detection
-            from datetime import datetime, timezone
-
-            conversation.message_count = len(conversation.messages)
-            conversation.last_message_at = datetime.now(timezone.utc)
-            await self._conversation_repo.save(conversation)
-
-        # Persist agent trace to DB
-        if trace and self._trace_session_factory:
-            try:
-                from src.infrastructure.db.models.agent_trace_model import AgentExecutionTraceModel
-                trace.conversation_id = conversation.id.value
-                trace.message_id = assistant_msg.id.value
-                row = AgentExecutionTraceModel(
-                    id=str(uuid4()),
-                    trace_id=trace.trace_id,
-                    tenant_id=trace.tenant_id,
-                    message_id=trace.message_id,
-                    conversation_id=trace.conversation_id,
-                    agent_mode=trace.agent_mode,
-                    source=trace.source,
-                    llm_model=trace.llm_model,
-                    llm_provider=trace.llm_provider,
-                    bot_id=trace.bot_id,
-                    nodes=[n.to_dict() for n in trace.nodes],
-                    total_ms=trace.total_ms,
-                    total_tokens=trace.total_tokens,
-                )
-                async with self._trace_session_factory() as session:
-                    session.add(row)
-                    await session.commit()
-            except Exception:
-                logger.warning("line.trace_persist_failed", exc_info=True)
-
-        # Record token usage
-        if self._record_usage and result.usage:
-            try:
-                await self._record_usage.execute(
-                    tenant_id=bot.tenant_id,
-                    request_type="chat_line",
-                    usage=result.usage,
-                    bot_id=bot.id.value,
-                    message_id=result.message_id,
-                )
-            except Exception:
-                logger.warning("line.record_usage_error", exc_info=True)
-
         # Build reply text — optionally append sources
         # LINE 純文字通路：清除 LLM 殘留的 Markdown 符號（prompt 約束的安全網）
         reply_text = strip_markdown_for_line(result.answer)
@@ -659,24 +627,82 @@ class HandleWebhookUseCase:
                 "contents": build_contact_flex(contact),
             })
 
-        await line_service.reply_with_quick_reply(
-            event.reply_token, reply_text, message_id,
-            extra_messages=extra_messages or None,
-        )
+        # ── Issue #49：回覆先行，持久化後移 ──
+        # 使用者體感延遲以 reply 送達為終點，存對話 / trace / usage
+        # 挪到 reply 之後。放在 finally 保留「reply 失敗時仍持久化」
+        # 的語義（與重排前 persist-then-reply 的 durability 一致）。
+        try:
+            await line_service.reply_with_quick_reply(
+                event.reply_token, reply_text, message_id,
+                extra_messages=extra_messages or None,
+            )
+        finally:
+            t2 = time.monotonic()
 
-        t2 = time.monotonic()
+            # Persist conversation + messages
+            if self._conversation_repo:
+                # S-Gov.6b: bump counters for cron pending-summary detection
+                from datetime import datetime, timezone
 
-        logger.info(
-            "line.webhook.timing",
-            user_id=event.user_id,
-            short_code=short_code,
-            llm_provider=bot.llm_provider or "(default)",
-            llm_model=bot.llm_model or "(default)",
-            process_message_ms=round((t1 - t0) * 1000),
-            reply_ms=round((t2 - t1) * 1000),
-            total_ms=round((t2 - t0) * 1000),
-            answer_len=len(result.answer),
-        )
+                conversation.message_count = len(conversation.messages)
+                conversation.last_message_at = datetime.now(timezone.utc)
+                await self._conversation_repo.save(conversation)
+
+            # Persist agent trace to DB
+            if trace and self._trace_session_factory:
+                try:
+                    from src.infrastructure.db.models.agent_trace_model import AgentExecutionTraceModel
+                    trace.conversation_id = conversation.id.value
+                    trace.message_id = assistant_msg.id.value
+                    row = AgentExecutionTraceModel(
+                        id=str(uuid4()),
+                        trace_id=trace.trace_id,
+                        tenant_id=trace.tenant_id,
+                        message_id=trace.message_id,
+                        conversation_id=trace.conversation_id,
+                        agent_mode=trace.agent_mode,
+                        source=trace.source,
+                        llm_model=trace.llm_model,
+                        llm_provider=trace.llm_provider,
+                        bot_id=trace.bot_id,
+                        nodes=[n.to_dict() for n in trace.nodes],
+                        total_ms=trace.total_ms,
+                        total_tokens=trace.total_tokens,
+                    )
+                    async with self._trace_session_factory() as session:
+                        session.add(row)
+                        await session.commit()
+                except Exception:
+                    logger.warning("line.trace_persist_failed", exc_info=True)
+
+            # Record token usage
+            if self._record_usage and result.usage:
+                try:
+                    await self._record_usage.execute(
+                        tenant_id=bot.tenant_id,
+                        request_type="chat_line",
+                        usage=result.usage,
+                        bot_id=bot.id.value,
+                        message_id=result.message_id,
+                    )
+                except Exception:
+                    logger.warning("line.record_usage_error", exc_info=True)
+
+            t3 = time.monotonic()
+
+            logger.info(
+                "line.webhook.timing",
+                user_id=event.user_id,
+                short_code=short_code,
+                llm_provider=bot.llm_provider or "(default)",
+                llm_model=bot.llm_model or "(default)",
+                process_message_ms=round((t1 - t0) * 1000),
+                reply_ms=round((t2 - t1) * 1000),
+                persist_ms=round((t3 - t2) * 1000),
+                # total_ms = 使用者體感（t0 → reply 完成），不含持久化
+                total_ms=round((t2 - t0) * 1000),
+                answer_len=len(result.answer),
+            )
 
     @staticmethod
     def _extract_flex_from_tool_calls(

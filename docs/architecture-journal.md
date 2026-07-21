@@ -7,6 +7,34 @@
 
 ---
 
+## LINE Webhook 延遲評估 — 「量測先於優化」與死設定（dead config）的教訓
+
+**日期**：2026-07-21（Issue #49，跨 Application + Infrastructure 層，新增 3 BDD scenarios + 5 unit tests）
+**Sprint 來源**：康達盛通 POC 反饋 — LINE 回覆 6~10 秒體感延遲
+
+**主題**：先用 `agent_execution_traces`（52 筆，p50 8.4s / p90 11.7s）+ Cloud Run `line.webhook.timing` log 做逐節點拆解，才動手優化。結論：瓶頸是**三次串行 LLM round-trip**（意圖分類 ~1.4s → ReAct 迭代 1 決策 ~2s → 迭代 2 生成 ~3s），向量搜尋僅 13–49ms、reply+持久化 ~0.5s — 「升 Cloud Run 規格」「調 DB」都是無效方向，量測讓錢花在刀口上。
+
+**本次落地**（第一輪，低風險項）：
+1. **回覆先行**：`_process_single_event` 從「存對話→存 trace→記 usage→reply」重排為「reply→（finally）持久化」，`finally` 保留 reply 失敗仍持久化的 durability 語義；timing log 拆出 `persist_ms`。
+2. **loading 非阻塞**：`show_loading` 改 `asyncio.create_task` fire-and-forget（fail-open 不變）。
+3. **接通 `reasoning_effort` 死設定**：bots 表欄位存在、UI 可改，但聊天路徑（webhook → react_agent → ChatOpenAI）從未傳遞 — gpt-5.4 一直用預設 medium reasoning。接通後 LINE 通路可設 low 直砍每次呼叫的推理延遲。只對 gpt-5/o-series gate（`supports_reasoning_effort`），非 reasoning 模型夾帶會被 API 拒絕。
+
+**做得好的地方**
+- **證據驅動**：每個優化項都對應 trace 上可量測的時段，預估省時有數據支撐，而非直覺。
+- **拒絕誘人但錯誤的方案**：強制檢索（跳過 ReAct 迭代 1）省最多（~2s）但犧牲 agent 通用性，Larry 否決後改走 RAG prefetch 路線（下一輪）。
+- **重排用 try/finally 保語義**：reply 失敗時持久化行為與重排前一致，BDD scenario 明文鎖住這個契約。
+
+**潛在隱憂**
+- **死設定是系統性風險**：`reasoning_effort` 從加欄位到接通中間隔了多個 sprint，期間 UI 給了「可以調」的假象。→ 新增 Bot 設定欄位時，PR checklist 應包含「聊天路徑 end-to-end 傳遞驗證」（一個 assert llm_params 的 unit test 就夠）→ 優先級：中
+- **p90 11.7s 已超過 LINE webhook 10s timeout**：LINE 可能重送 → 撞 ConversationLock 收到「忙碌中」→ 使用者一題兩則。→ 檢查 `x-line-retry-key` 去重，或評估回歸背景處理 + push → 優先級：高（本輪優化生效後重新量測再決定）
+- **fire-and-forget task 的例外處理**：`_show_loading_safe` 內部吞例外，若未來有人在裡面加邏輯要注意不能拋出 → 優先級：低
+
+**延伸學習**
+- **Amdahl's Law 應用在延遲優化**：串行鏈上最大的段（LLM 呼叫）決定天花板，優化非瓶頸段（DB、機器規格）收益趨近零。
+- **Tail latency 與外部 timeout 的互動**：p50 達標不夠，p90/p99 撞上游 timeout 會產生重試放大。搜尋關鍵字：`tail latency amplification`、`webhook retry idempotency`。
+
+---
+
 ## LINE 載入動畫 404 靜默失效 — fail-open 的盲點：非關鍵路徑的失敗也需要「看得見」
 
 **日期**：2026-07-17（小型修復，單檔 + regression tests ×2，commit `ac635da`）

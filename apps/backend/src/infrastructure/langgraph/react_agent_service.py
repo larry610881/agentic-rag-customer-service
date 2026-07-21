@@ -360,6 +360,7 @@ class ReActAgentService(AgentService):
         model = params.get("model", "")
         temperature = params.get("temperature", 0.7)
         max_tokens = params.get("max_tokens", 1024)
+        reasoning_effort = params.get("reasoning_effort")
 
         # Try dynamic resolution first
         if isinstance(self._llm_service, DynamicLLMServiceProxy) and provider:
@@ -369,7 +370,9 @@ class ReActAgentService(AgentService):
             # Try to get a LangChain ChatModel from the service
             if hasattr(service, "get_chat_model"):
                 return service.get_chat_model(
-                    temperature=temperature, max_tokens=max_tokens,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    reasoning_effort=reasoning_effort,
                 )
 
         # Fallback: create ChatModel from provider/model directly
@@ -378,6 +381,7 @@ class ReActAgentService(AgentService):
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
+            reasoning_effort=reasoning_effort,
         )
 
     @staticmethod
@@ -386,6 +390,7 @@ class ReActAgentService(AgentService):
         model: str,
         temperature: float = 0.7,
         max_tokens: int = 1024,
+        reasoning_effort: str | None = None,
     ) -> Any:
         """Create a LangChain ChatModel from provider and model name."""
         if provider in ("anthropic", "claude"):
@@ -421,6 +426,16 @@ class ReActAgentService(AgentService):
         base_url = os.getenv("OPENAI_API_BASE") or os.getenv("OPENAI_BASE_URL")
         if base_url:
             kwargs["base_url"] = base_url
+
+        # Issue #49：接通 Bot 設定的 reasoning_effort（先前為死設定）。
+        # 只對 gpt-5 / o-series 夾帶，非 reasoning 模型會被 API 拒絕。
+        from src.infrastructure.llm.openai_llm_service import (
+            supports_reasoning_effort,
+        )
+        if reasoning_effort and supports_reasoning_effort(
+            kwargs["model"]
+        ):
+            kwargs["reasoning_effort"] = reasoning_effort
 
         return ChatOpenAI(**kwargs)
 

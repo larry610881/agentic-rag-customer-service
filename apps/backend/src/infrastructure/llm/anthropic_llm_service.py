@@ -36,8 +36,13 @@ class AnthropicLLMService(LLMService):
         self,
         temperature: float = 0.7,
         max_tokens: int = 1024,
+        reasoning_effort: str | None = None,
     ):
-        """Return a LangChain ChatModel using the same API key."""
+        """Return a LangChain ChatModel using the same API key.
+
+        reasoning_effort 為 OpenAI reasoning 模型專用參數，
+        Anthropic 路徑接受但不使用（呼叫端簽名一致性）。
+        """
         from langchain_anthropic import ChatAnthropic
 
         return ChatAnthropic(
