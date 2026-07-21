@@ -1015,6 +1015,7 @@ class ReActAgentService(AgentService):
 
                         if mode == "messages":
                             msg_chunk, chunk_meta = data
+                            was_generating = llm_generating_emitted
                             events, llm_generating_emitted = (
                                 self._handle_text_chunk(
                                     msg_chunk,
@@ -1022,6 +1023,19 @@ class ReActAgentService(AgentService):
                                     llm_generating_emitted,
                                 )
                             )
+                            # Issue #49 TTFT：False→True 轉換點 = 該輪生成的
+                            # 第一個 token 抵達。記零長度節點供延遲分析
+                            # （web 串流體感 = start_ms；LINE 非串流無此節點）
+                            if not was_generating and llm_generating_emitted:
+                                _t_ft = AgentTraceCollector.offset_ms()
+                                AgentTraceCollector.add_node(
+                                    node_type="first_token",
+                                    label=f"首 token（迭代 {call_count + 1}）",
+                                    parent_id=None,
+                                    start_ms=_t_ft,
+                                    end_ms=_t_ft,
+                                    iteration=call_count + 1,
+                                )
                             for ev in events:
                                 yield _ev(ev)
 
@@ -1071,6 +1085,22 @@ class ReActAgentService(AgentService):
                                                     content = str(raw)
                                                 if not content:
                                                     continue
+                                                # Issue #49 TTFT：非串流 fallback
+                                                # 整包一次抵達，首 token = 全文到達
+                                                _t_ft = (
+                                                    AgentTraceCollector.offset_ms()
+                                                )
+                                                AgentTraceCollector.add_node(
+                                                    node_type="first_token",
+                                                    label=(
+                                                        f"首 token（迭代 "
+                                                        f"{call_count + 1}）"
+                                                    ),
+                                                    parent_id=None,
+                                                    start_ms=_t_ft,
+                                                    end_ms=_t_ft,
+                                                    iteration=call_count + 1,
+                                                )
                                                 yield _ev({
                                                     "type": "status",
                                                     "status": "llm_generating",
