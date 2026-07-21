@@ -30,6 +30,23 @@ def supports_reasoning_effort(model: str) -> bool:
     return _needs_max_completion_tokens(model)
 
 
+def reasoning_effort_allowed(model: str, effort: str) -> bool:
+    """判斷 reasoning_effort 值在「chat completions + function tools」下是否合法。
+
+    2026-07-21 線上實證（Issue #49）：gpt-5.4 綁 function tools 時
+    chat completions 回 400 —"Function tools with reasoning_effort are
+    not supported for gpt-5.4 ... set reasoning_effort to 'none'"。
+    即 gpt-5 系列在 tools 場景只接受 'none'；設 low/medium/high 會讓
+    每次 agent 呼叫直接失敗。本專案 agent 路徑必綁 tools，故以此為準；
+    o-series 無此限制維持放行。
+    """
+    if not supports_reasoning_effort(model):
+        return False
+    if model.startswith("gpt-5"):
+        return effort == "none"
+    return True
+
+
 class OpenAILLMService(LLMService):
     @property
     def model_name(self) -> str:
@@ -79,9 +96,17 @@ class OpenAILLMService(LLMService):
         if self._base_url and self._base_url != "https://api.openai.com/v1":
             kwargs["base_url"] = self._base_url
         # Issue #49：接通 Bot 設定的 reasoning_effort（先前為死設定）。
-        # 只對 reasoning 模型夾帶，非 reasoning 模型會被 API 拒絕。
-        if reasoning_effort and supports_reasoning_effort(self._model):
-            kwargs["reasoning_effort"] = reasoning_effort
+        # 只在模型×tools 組合合法時夾帶（gpt-5 系列 tools 場景僅 'none'），
+        # 不合法的值靜默略過（維持 provider 預設）並記 log — 寧可慢不可斷。
+        if reasoning_effort:
+            if reasoning_effort_allowed(self._model, reasoning_effort):
+                kwargs["reasoning_effort"] = reasoning_effort
+            else:
+                logger.warning(
+                    "llm.reasoning_effort.dropped",
+                    model=self._model,
+                    requested=reasoning_effort,
+                )
         return ChatOpenAI(**kwargs)
 
     def _build_headers(self) -> dict[str, str]:

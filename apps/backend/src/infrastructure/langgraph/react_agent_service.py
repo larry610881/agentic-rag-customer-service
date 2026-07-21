@@ -428,14 +428,20 @@ class ReActAgentService(AgentService):
             kwargs["base_url"] = base_url
 
         # Issue #49：接通 Bot 設定的 reasoning_effort（先前為死設定）。
-        # 只對 gpt-5 / o-series 夾帶，非 reasoning 模型會被 API 拒絕。
+        # 只在模型×tools 組合合法時夾帶（gpt-5 系列 tools 場景僅 'none'，
+        # 線上實證 400），不合法的值靜默略過 — 寧可慢不可斷。
         from src.infrastructure.llm.openai_llm_service import (
-            supports_reasoning_effort,
+            reasoning_effort_allowed,
         )
-        if reasoning_effort and supports_reasoning_effort(
-            kwargs["model"]
-        ):
-            kwargs["reasoning_effort"] = reasoning_effort
+        if reasoning_effort:
+            if reasoning_effort_allowed(kwargs["model"], reasoning_effort):
+                kwargs["reasoning_effort"] = reasoning_effort
+            else:
+                logger.warning(
+                    "llm.reasoning_effort.dropped",
+                    model=kwargs["model"],
+                    requested=reasoning_effort,
+                )
 
         return ChatOpenAI(**kwargs)
 

@@ -71,7 +71,10 @@ class BotLLMParams:
     max_tokens: int = 1024
     history_limit: int = 10
     frequency_penalty: float = 0.0
-    reasoning_effort: str = "medium"  # low | medium | high
+    # none | low | medium | high。注意：gpt-5 系列 + function tools
+    # （agent 路徑必綁）在 chat completions 只接受 'none'，其他值會被
+    # gate 略過（openai_llm_service.reasoning_effort_allowed，Issue #49）
+    reasoning_effort: str = "medium"
     rag_top_k: int = 5
     rag_score_threshold: float = 0.3
 

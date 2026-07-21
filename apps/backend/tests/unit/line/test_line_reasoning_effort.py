@@ -66,15 +66,33 @@ def test_webhook_passes_reasoning_effort_to_agent():
     assert llm_params.get("reasoning_effort") == "low"
 
 
-def test_create_chat_model_sets_reasoning_effort_for_gpt5(monkeypatch):
-    """gpt-5 系列 + reasoning_effort → ChatOpenAI 應帶此參數。"""
+def test_create_chat_model_sets_none_effort_for_gpt5(monkeypatch):
+    """gpt-5 系列 + reasoning_effort='none' → ChatOpenAI 應帶此參數。
+
+    2026-07-21 線上 400 實證：gpt-5.4 綁 function tools 時
+    chat completions 只接受 'none'（agent 路徑必綁 tools）。
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    model = ReActAgentService._create_chat_model(
+        provider="openai",
+        model="gpt-5.4",
+        reasoning_effort="none",
+    )
+    assert model.reasoning_effort == "none"
+
+
+def test_create_chat_model_drops_low_effort_for_gpt5(monkeypatch):
+    """gpt-5 + low/medium/high 會被 API 400 拒絕 → 必須略過不傳。
+
+    Regression：部署 low 曾造成 LINE 全面無回應（agent 呼叫全滅）。
+    """
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     model = ReActAgentService._create_chat_model(
         provider="openai",
         model="gpt-5.4",
         reasoning_effort="low",
     )
-    assert model.reasoning_effort == "low"
+    assert model.reasoning_effort is None
 
 
 def test_create_chat_model_skips_reasoning_effort_for_non_reasoning_model(
@@ -90,11 +108,18 @@ def test_create_chat_model_skips_reasoning_effort_for_non_reasoning_model(
     assert model.reasoning_effort is None
 
 
-def test_openai_llm_service_get_chat_model_passes_reasoning_effort():
-    """Dynamic provider 路徑（get_chat_model）也要接通。"""
+def test_openai_llm_service_get_chat_model_passes_none_effort():
+    """Dynamic provider 路徑（get_chat_model）也要接通（'none' 放行）。"""
+    svc = OpenAILLMService(api_key="sk-test", model="gpt-5.4")
+    model = svc.get_chat_model(reasoning_effort="none")
+    assert model.reasoning_effort == "none"
+
+
+def test_openai_llm_service_get_chat_model_drops_low_effort():
+    """Dynamic provider 路徑：gpt-5 + low 同樣必須略過（regression）。"""
     svc = OpenAILLMService(api_key="sk-test", model="gpt-5.4")
     model = svc.get_chat_model(reasoning_effort="low")
-    assert model.reasoning_effort == "low"
+    assert model.reasoning_effort is None
 
 
 def test_openai_llm_service_get_chat_model_default_none():
