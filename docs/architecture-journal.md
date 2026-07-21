@@ -24,8 +24,11 @@
 - **拒絕誘人但錯誤的方案**：強制檢索（跳過 ReAct 迭代 1）省最多（~2s）但犧牲 agent 通用性，Larry 否決後改走 RAG prefetch 路線（下一輪）。
 - **重排用 try/finally 保語義**：reply 失敗時持久化行為與重排前一致，BDD scenario 明文鎖住這個契約。
 
+**部署後實證補記（2026-07-21，重要教訓）**：上線後 LINE 立即無回應 — gpt-5.4 在 `/v1/chat/completions` 綁 function tools 時，`reasoning_effort` **只接受 `'none'`**（400: "Function tools with reasoning_effort are not supported... set reasoning_effort to 'none'"）。設 `low` 導致每次 agent 呼叫 400、重試 3 次耗盡、使用者收不到任何回覆。教訓有三：(1) **unit test 驗證「參數有傳到 client」≠ 驗證「API 接受這個參數組合」**，模型×端點×工具的合法性矩陣只能靠真實呼叫或 API 文件確認；(2) 上這類「參數接通」變更前，應先用一次真實 API smoke call 驗證組合合法；(3) agent LLM 連續失敗時 LINE 使用者收到的是「無聲」— 缺一個 catch-all 錯誤回覆兜底（「系統忙碌中請稍後再試」），失敗至少要看得見。
+
 **潛在隱憂**
 - **死設定是系統性風險**：`reasoning_effort` 從加欄位到接通中間隔了多個 sprint，期間 UI 給了「可以調」的假象。→ 新增 Bot 設定欄位時，PR checklist 應包含「聊天路徑 end-to-end 傳遞驗證」（一個 assert llm_params 的 unit test 就夠）→ 優先級：中
+- **LLM 呼叫全滅時 LINE 無聲失敗**：exception 一路拋出，reply 從未送出，使用者只看到已讀不回。→ `_process_single_event` 加 catch-all 錯誤回覆（用 reply token 回固定訊息）→ 優先級：高
 - **p90 11.7s 已超過 LINE webhook 10s timeout**：LINE 可能重送 → 撞 ConversationLock 收到「忙碌中」→ 使用者一題兩則。→ 檢查 `x-line-retry-key` 去重，或評估回歸背景處理 + push → 優先級：高（本輪優化生效後重新量測再決定）
 - **fire-and-forget task 的例外處理**：`_show_loading_safe` 內部吞例外，若未來有人在裡面加邏輯要注意不能拋出 → 優先級：低
 
