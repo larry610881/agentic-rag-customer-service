@@ -10,7 +10,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 BASE = Path(__file__).parent
-OUT = BASE / "LINE延遲分析_2026-07-21.xlsx"
+OUT = BASE / "LINE延遲分析_2026-07-23.xlsx"
 
 HEADER_FILL = PatternFill("solid", fgColor="1F4E79")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
@@ -196,7 +196,7 @@ warm = lambda ph: [fnum(r["total_ms"]) for r in traces if r["phase"] == ph and n
 p0 = warm("P0 基準"); p2 = warm("P2 關閉推理"); p3 = warm("P3 Haiku分級")
 lines = [
     ["LINE AI 客服回應時間分析報告"],
-    [f"產出：2026-07-21｜資料範圍：近 14 天全部 LINE 請求（{len(traces)} 筆，逐請求逐階段實測）"],
+    [f"產出：2026-07-23｜資料範圍：近 14 天全部 LINE 請求（{len(traces)} 筆，逐請求逐階段實測）"],
     [],
     ["一、回應時間組成（每一則 LINE 回覆必經的階段）"],
     ["  1. 意圖理解與安全檢查（判斷問題類型、分流至對應知識庫）", "約 1~1.5 秒"],
