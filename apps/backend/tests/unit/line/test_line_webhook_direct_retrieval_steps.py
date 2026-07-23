@@ -55,7 +55,7 @@ def _sources(score: float) -> list[Source]:
 
 
 def _setup(context, *, direct: bool, top_score: float = 0.85,
-           retrieve_raises: bool = False):
+           retrieve_raises: bool = False, with_dm: bool = False):
     bot = Bot(
         tenant_id="tenant-dr",
         name="DR Bot",
@@ -69,6 +69,9 @@ def _setup(context, *, direct: bool, top_score: float = 0.85,
         worker_prompt="你是門市客服",
         knowledge_base_ids=["kb-faq"],
         direct_retrieval=direct,
+        enabled_tools=(
+            ["rag_query", "query_dm_with_image"] if with_dm else None
+        ),
     )
     mock_bot_repo = AsyncMock()
     mock_bot_repo.find_by_short_code = AsyncMock(return_value=bot)
@@ -99,6 +102,21 @@ def _setup(context, *, direct: bool, top_score: float = 0.85,
             )
         )
 
+    mock_dm_tool = AsyncMock()
+    mock_dm_tool.invoke = AsyncMock(return_value={
+        "success": True,
+        "context": "DM 第 49 頁：包大人尿布 特價 299",
+        "sources": [{
+            "document_name": "DM 型錄",
+            "content_snippet": "包大人尿布 特價 299",
+            "score": 0.9,
+            "chunk_id": "dm-c1",
+            "document_id": "dm-d1",
+            "page_number": 49,
+            "image_url": "https://signed.example/dm-49.png",
+        }],
+    })
+
     context.update(
         use_case=HandleWebhookUseCase(
             agent_service=mock_agent,
@@ -107,10 +125,12 @@ def _setup(context, *, direct: bool, top_score: float = 0.85,
             intent_classifier=mock_classifier,
             worker_config_repo=mock_worker_repo,
             query_rag_use_case=mock_query_rag,
+            dm_image_query_tool=mock_dm_tool,
         ),
         mock_agent=mock_agent,
         mock_query_rag=mock_query_rag,
         mock_line_service=mock_line_service,
+        mock_dm_tool=mock_dm_tool,
     )
 
 
@@ -176,3 +196,31 @@ def agent_called_with_tools(context):
 @then("不應執行快速道檢索")
 def no_direct_retrieval(context):
     context["mock_query_rag"].retrieve.assert_not_called()
+
+
+@given("一個開啟直接檢索且啟用 DM 工具的 Worker")
+def worker_direct_with_dm(context):
+    _setup(context, direct=True, top_score=0.85, with_dm=True)
+
+
+@then("DM 工具應被並行呼叫")
+def dm_tool_invoked(context):
+    context["mock_dm_tool"].invoke.assert_called_once()
+
+
+@then("回覆應附上 DM 圖卡輪播")
+def reply_has_dm_carousel(context):
+    kwargs = context["mock_line_service"].reply_with_quick_reply.call_args.kwargs
+    extra = kwargs.get("extra_messages") or []
+    assert any(
+        m.get("type") == "flex" and "DM" in (m.get("altText") or "")
+        for m in extra
+    ), f"應含 DM 圖卡 flex，實際 extra_messages={extra}"
+
+
+@then("生成 Prompt 應包含 DM 型錄內容")
+def prompt_contains_dm_context(context):
+    kwargs = context["mock_agent"].process_message.call_args.kwargs
+    assert "包大人尿布 特價 299" in (kwargs["system_prompt"] or ""), (
+        "快速道 system_prompt 應注入 DM 型錄內容"
+    )

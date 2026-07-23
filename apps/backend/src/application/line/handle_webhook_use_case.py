@@ -127,6 +127,7 @@ class HandleWebhookUseCase:
         history_strategy: ConversationHistoryStrategy | None = None,
         prompt_guard: Any | None = None,
         query_rag_use_case: Any | None = None,
+        dm_image_query_tool: Any | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -154,6 +155,8 @@ class HandleWebhookUseCase:
         self._prompt_guard = prompt_guard
         # Issue #50 — workflow 快速道用的檢索管線（direct_retrieval worker）
         self._query_rag = query_rag_use_case
+        # 快速道的 DM 圖卡：並行呼叫 DM 工具（signed URL 產生邏輯原封重用）
+        self._dm_tool = dm_image_query_tool
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
         """Redis 快取查 Bot（by ID），預設 120 秒 TTL。"""
@@ -321,6 +324,8 @@ class HandleWebhookUseCase:
         history: list | None,
         history_context: str,
         router_context: str,
+        enabled_tools: list[str] | None = None,
+        tool_rag_params: dict | None = None,
     ) -> "AgentResponse | None":
         """Issue #50 workflow 快速道：直接檢索 → 門檻判定 → 單次生成。
 
@@ -335,6 +340,31 @@ class HandleWebhookUseCase:
 
         threshold = bot.llm_params.rag_score_threshold
         t_dr = AgentTraceCollector.offset_ms()
+
+        # DM 圖卡（POC 問題：快速道 v1 漏掉 DM 工具 → 圖卡消失）：
+        # 與文字檢索「並行」呼叫 DM 工具本體 — image_url 是文件表查詢 +
+        # signed URL 產生的結果，不在向量 payload，必須走工具而非併庫檢索
+        dm_task = None
+        dm_enabled = (
+            self._dm_tool is not None
+            and "query_dm_with_image" in (enabled_tools or [])
+        )
+        if dm_enabled:
+            dm_params = (tool_rag_params or {}).get(
+                "query_dm_with_image", {}
+            ) or {}
+            dm_kb_ids = dm_params.get("kb_ids") or kb_ids
+            dm_task = asyncio.create_task(self._dm_tool.invoke(
+                tenant_id=bot.tenant_id,
+                kb_id=dm_kb_ids[0] if dm_kb_ids else kb_id,
+                query=event.message_text,
+                kb_ids=dm_kb_ids,
+                top_k=dm_params.get("rag_top_k")
+                or bot.llm_params.rag_top_k,
+                score_threshold=dm_params.get("rag_score_threshold")
+                or threshold,
+            ))
+
         try:
             rr = await self._query_rag.retrieve(QueryRAGCommand(
                 tenant_id=bot.tenant_id,
@@ -349,6 +379,8 @@ class HandleWebhookUseCase:
             ))
         except Exception:
             logger.warning("line.direct_retrieval.error", exc_info=True)
+            if dm_task is not None:
+                dm_task.cancel()
             AgentTraceCollector.add_node(
                 node_type="escalated",
                 label="快速道檢索異常 → 升級 ReAct",
@@ -359,7 +391,27 @@ class HandleWebhookUseCase:
             )
             return None
 
-        top_score = max((s.score for s in rr.sources), default=0.0)
+        # 收斂 DM 結果（失敗不升級 — 文字檢索可能已足夠回答）
+        dm_context = ""
+        dm_sources: list[dict] = []
+        if dm_task is not None:
+            try:
+                dm_res = await dm_task
+                if dm_res and dm_res.get("success"):
+                    dm_context = dm_res.get("context") or ""
+                    dm_sources = dm_res.get("sources") or []
+            except Exception:
+                logger.warning(
+                    "line.direct_retrieval.dm_error", exc_info=True
+                )
+
+        dm_top = max(
+            (float(d.get("score") or 0.0) for d in dm_sources),
+            default=0.0,
+        )
+        top_score = max(
+            max((s.score for s in rr.sources), default=0.0), dm_top
+        )
         AgentTraceCollector.add_node(
             node_type="direct_retrieval",
             label=f"快速道檢索（{len(rr.sources)} 筆，top {top_score:.2f}）",
@@ -386,6 +438,10 @@ class HandleWebhookUseCase:
         context_block = "\n\n---\n\n".join(
             c for c in rr.chunks if c
         )[:8000]
+        if dm_context:
+            context_block += (
+                "\n\n【DM 型錄相關內容】\n" + dm_context[:4000]
+            )
         fast_prompt = (
             (system_prompt or "")
             + "\n\n【知識庫檢索結果（依相關度排序）】\n"
@@ -413,7 +469,9 @@ class HandleWebhookUseCase:
         # 快速道的檢索來源回填（無 tool call → agent 不會帶 sources），
         # 供 LINE 回覆的來源顯示與對話 retrieved_chunks 持久化
         if result is not None and not result.sources:
-            result.sources = rr.sources
+            # DM sources 為 dict（含 image_url），下游 reply builder 與
+            # 持久化皆支援 dict/Source 混用（見 image_sources 組裝處註解）
+            result.sources = list(rr.sources) + list(dm_sources)
         return result
 
     @staticmethod
@@ -694,6 +752,8 @@ class HandleWebhookUseCase:
                     history=history,
                     history_context=history_context,
                     router_context=router_context,
+                    enabled_tools=enabled_tools,
+                    tool_rag_params=tool_rag_params,
                 )
             if result is None:
                 result = await self._agent_service.process_message(

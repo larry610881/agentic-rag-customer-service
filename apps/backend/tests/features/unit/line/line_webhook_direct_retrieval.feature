@@ -25,3 +25,10 @@ Feature: LINE Webhook Worker 直接檢索模式（workflow 快速道）
     When 系統處理一則命中該 Worker 的 LINE 訊息
     Then 不應執行快速道檢索
     And Agent 應以完整工具模式處理
+
+  Scenario: 快速道保留 DM 圖卡 — 並行呼叫 DM 工具
+    Given 一個開啟直接檢索且啟用 DM 工具的 Worker
+    When 系統處理一則命中該 Worker 的 LINE 訊息
+    Then DM 工具應被並行呼叫
+    And 回覆應附上 DM 圖卡輪播
+    And 生成 Prompt 應包含 DM 型錄內容
