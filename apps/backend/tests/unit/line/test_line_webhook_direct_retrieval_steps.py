@@ -55,7 +55,8 @@ def _sources(score: float) -> list[Source]:
 
 
 def _setup(context, *, direct: bool, top_score: float = 0.85,
-           retrieve_raises: bool = False, with_dm: bool = False):
+           retrieve_raises: bool = False, with_dm: bool = False,
+           with_transfer: bool = False):
     bot = Bot(
         tenant_id="tenant-dr",
         name="DR Bot",
@@ -70,7 +71,9 @@ def _setup(context, *, direct: bool, top_score: float = 0.85,
         knowledge_base_ids=["kb-faq"],
         direct_retrieval=direct,
         enabled_tools=(
-            ["rag_query", "query_dm_with_image"] if with_dm else None
+            ["rag_query", "query_dm_with_image"] if with_dm
+            else (["rag_query", "transfer_to_human_agent"]
+                  if with_transfer else None)
         ),
     )
     mock_bot_repo = AsyncMock()
@@ -224,3 +227,22 @@ def prompt_contains_dm_context(context):
     assert "包大人尿布 特價 299" in (kwargs["system_prompt"] or ""), (
         "快速道 system_prompt 應注入 DM 型錄內容"
     )
+
+
+@given("一個開啟直接檢索且啟用轉真人工具的 Worker")
+def worker_direct_with_transfer(context):
+    _setup(context, direct=True, top_score=0.85, with_transfer=True)
+
+
+@then("Agent 應僅綁定轉真人工具")
+def agent_bound_transfer_only(context):
+    kwargs = context["mock_agent"].process_message.call_args.kwargs
+    assert kwargs["enabled_tools"] == ["transfer_to_human_agent"], (
+        f"快速道應僅保留轉真人工具，實際 {kwargs['enabled_tools']}"
+    )
+
+
+@then("生成 Prompt 應禁止輸出工具名稱")
+def prompt_forbids_tool_name_leak(context):
+    kwargs = context["mock_agent"].process_message.call_args.kwargs
+    assert "嚴禁在回覆文字中輸出任何工具名稱" in (kwargs["system_prompt"] or "")

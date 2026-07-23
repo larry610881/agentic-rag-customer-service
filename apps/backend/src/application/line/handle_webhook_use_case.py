@@ -442,6 +442,15 @@ class HandleWebhookUseCase:
             context_block += (
                 "\n\n【DM 型錄相關內容】\n" + dm_context[:4000]
             )
+        # 轉真人工具保留（Larry 實測「多少門市」案例：worker prompt 教
+        # 模型查不到就呼叫 transfer_to_human_agent，快速道拔光工具後
+        # 模型把工具名稱當文字裸吐）。正常回答仍是 1 次呼叫（不呼叫工具
+        # 即結束）；答不出來時可真正轉真人 → 聯絡按鈕與 ReAct 一致
+        fast_tools = (
+            ["transfer_to_human_agent"]
+            if "transfer_to_human_agent" in (enabled_tools or [])
+            else []
+        )
         fast_prompt = (
             (system_prompt or "")
             + "\n\n【知識庫檢索結果（依相關度排序）】\n"
@@ -449,8 +458,15 @@ class HandleWebhookUseCase:
             + "\n【檢索結果結束】\n"
             + "請依上述檢索結果回答使用者問題；"
             + "結果未涵蓋時誠實告知並引導聯絡客服，禁止編造。"
+            + (
+                "檢索工具已由系統代為執行完畢，"
+                "除 transfer_to_human_agent（轉真人）外無其他可用工具；"
+                if fast_tools
+                else "本回覆模式下無任何可用工具；"
+            )
+            + "嚴禁在回覆文字中輸出任何工具名稱。"
         )
-        # enabled_tools=[] → ReAct graph 無工具可綁 = 恰好一次 LLM 呼叫；
+        # 快速道：無檢索工具可綁 → 正常情況恰好一次 LLM 呼叫；
         # 沿用 process_message 保留 output guard / trace / parsing 全套機制
         result = await self._agent_service.process_message(
             tenant_id=bot.tenant_id,
@@ -458,7 +474,7 @@ class HandleWebhookUseCase:
             user_message=event.message_text,
             kb_ids=kb_ids,
             system_prompt=fast_prompt,
-            enabled_tools=[],
+            enabled_tools=fast_tools,
             llm_params=llm_params,
             metadata=rerank_metadata,
             history=history,

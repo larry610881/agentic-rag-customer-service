@@ -32,3 +32,9 @@ Feature: LINE Webhook Worker 直接檢索模式（workflow 快速道）
     Then DM 工具應被並行呼叫
     And 回覆應附上 DM 圖卡輪播
     And 生成 Prompt 應包含 DM 型錄內容
+
+  Scenario: 快速道保留轉真人工具 — 查不到時可正常轉真人
+    Given 一個開啟直接檢索且啟用轉真人工具的 Worker
+    When 系統處理一則命中該 Worker 的 LINE 訊息
+    Then Agent 應僅綁定轉真人工具
+    And 生成 Prompt 應禁止輸出工具名稱
