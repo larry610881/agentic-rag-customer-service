@@ -7,6 +7,37 @@
 
 ---
 
+## 觀測儀表補洞 — 「trace 起點」決定盲區：collector 晚啟動讓 1.4s 前置隱形了兩週
+
+**日期**：2026-07-23（Issue #49 延續，Application + Infrastructure 跨層，TTFT + 前置斷點兩支儀表）
+
+**主題**：PM 要求「逐斷點計時」時才發現：trace 明明存在，但 **AgentTraceCollector 在
+process_message 才啟動**，webhook 的前置段（歷史載入/輸入守門/意圖分類，~1.4s ≈ 總延遲 18%）
+在 trace 中整塊不可見 — 延遲分析只能用「total 減去所有節點」倒推出一團「未覆蓋時間」。
+更隱蔽的是：先前 Token-Gov.7 加的 intent_classify 節點**寫了但從未生效** —— 它在 collector
+啟動前呼叫 add_node，靜默 no-op（add_node 對無 active trace 回空字串的 fail-open 設計）。
+修法：collector 提前到 webhook t0 啟動（start 本身 idempotent，process_message 再 start
+只補欄位），前置各段獨立成節點；同時在串流路徑加 first_token 零長度節點（TTFT），
+量化「web 首字體感 vs LINE 完整回覆」。
+
+**做得好的地方**
+- 儀表先於優化：方案 A（直接檢索）尚未動工，但斷點數據已能精確指出它省的是哪一段
+- 並行節點誠實標註：input_guard 的 end_ms 是「收斂點」非純耗時，metadata 註明 parallel
+
+**潛在隱憂**
+- **fail-open 的觀測 API 會靜默吞掉接線錯誤**（intent 節點寫了兩週沒人發現沒生效）→
+  add_node 回空字串時可考慮 debug log 一次性警告 → 優先級：低
+- trace 起點語義變更後，舊資料（節點偏移相對 process_message）與新資料（相對 t0）
+  的「未覆蓋時間」意義不同 → 分析腳本 scripts/latency_report 已以 node_type 聚合避開，
+  但跨期比較「前置」欄位時要注意口徑 → 優先級：低（README 已註記）
+
+**延伸學習**
+- **Instrumentation coverage**：trace 的盲區永遠在「collector 生命週期之外」——
+  起點放在最外層邊界（request 進入點）是 distributed tracing 的基本原則（root span）。
+- 搜尋關鍵字：`OpenTelemetry root span`、`observability fail-open vs fail-loud`。
+
+---
+
 ## LINE Webhook 延遲評估 — 「量測先於優化」與死設定（dead config）的教訓
 
 **日期**：2026-07-21（Issue #49，跨 Application + Infrastructure 層，新增 3 BDD scenarios + 5 unit tests）
