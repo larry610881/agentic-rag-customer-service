@@ -7,6 +7,39 @@
 
 ---
 
+## 快速道上線首日兩修 — 「拔掉工具」拔掉的不只是延遲，還有工具背後的隱性契約
+
+**日期**：2026-07-23（Issue #50 續，Application + Infrastructure，+2 BDD scenarios）
+**Sprint 來源**：快速道 Larry 實測回饋（DM 圖卡消失、工具名稱裸吐）
+
+**主題**：快速道把「工具」拔掉換速度，首日實測暴露兩個被工具隱性承載的契約：
+（1）**DM 圖卡**：image_url 不在向量 payload，是 DM 工具檢索後查文件表 + 產 signed URL
+的產物 — 併庫檢索拿不到，必須並行呼叫工具本體；（2）**轉真人**：worker prompt 教模型
+「查不到就呼叫 transfer_to_human_agent」，無工具可呼叫時模型把工具名稱當文字裸吐。
+修法分別是「並行呼叫 DM 工具（asyncio.create_task，不加時間）」與「保留轉真人為唯一
+工具（正常回答仍 1 次呼叫，不觸發即結束）+ prompt 明示工具邊界」。
+
+**做得好的地方**
+- 第一輪實測即達驗收：11 題快速道中位數 5.2s（基準 8.3s，-37%），升級率 0%，
+  B 組對照不受影響；亂句正確落回完整 ReAct
+- 兩修都以「重用原機制」收斂：DM 工具原封呼叫（signed URL 邏輯零複製）、
+  轉真人走 ReAct 原生 tool call（聯絡按鈕行為與完整模式一致）
+
+**潛在隱憂**
+- **「檢索過門檻但內容不含答案」快速道無法自救**（「多少門市」案例：FAQ 真的沒有
+  該資料，任何架構都答不出）→ 治本是知識庫內容補強，列 PM 內容清單 → 優先級：中
+- 拔工具前應盤點「prompt 中引用了哪些工具名稱」— worker prompt 與工具集是隱性耦合，
+  未來調整 enabled_tools 時同樣要對 prompt 做一致性檢查 → 優先級：中
+- fast_tools 目前硬編 transfer 一種；若未來 worker 有其他「非檢索型」工具（如表單），
+  需要通用的「快速道保留工具白名單」概念 → 優先級：低（YAGNI，有需求再抽）
+
+**延伸學習**
+- **Capability-prompt coupling**：prompt 引用工具名稱 = prompt 與工具集的隱性介面，
+  任一方單獨變更都會出現「幽靈引用」。對照 API 版本管理的 contract testing 思維。
+- 搜尋關鍵字：`tool use prompt coupling`、`graceful degradation agent tools`。
+
+---
+
 ## Workflow 快速道 + Agent 升級兜底 — 用「架構深度匹配問題寬度」取代「一刀切」
 
 **日期**：2026-07-23（Issue #50，Domain + Infrastructure + Application 跨 3 層，4 BDD scenarios）
