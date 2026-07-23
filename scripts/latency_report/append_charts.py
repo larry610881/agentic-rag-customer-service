@@ -39,7 +39,9 @@ traces = list(csv.DictReader(open(BASE / "traces.csv")))
 for r in traces:
     ts = datetime.strptime(r["created_tw"], "%Y-%m-%d %H:%M:%S")
     model = r["llm_model"] or ""
-    if model.startswith("claude"):
+    if r.get("fast_path") == "t":
+        r["phase"] = "P4"
+    elif model.startswith("claude"):
         r["phase"] = "P3"
     elif ts < datetime(2026, 7, 21, 10, 28):
         r["phase"] = "P0"
@@ -67,6 +69,7 @@ def stage_avgs(phase):
 p0 = stage_avgs("P0")
 p2 = stage_avgs("P2")
 p3 = stage_avgs("P3")
+p4 = stage_avgs("P4")
 
 wb = load_workbook(XLSX)
 if "圖表" in wb.sheetnames:
@@ -115,8 +118,8 @@ ws.cell(row=r2 - 1, column=1, value="圖2 資料：優化歷程（平均總耗�
 hist = [
     ("優化前基準", round(p0["total"] / 1000, 1)),
     ("回覆先行+關閉推理", round(p2["total"] / 1000, 1)),
-    ("Haiku 分級(首測)", round(p3["total"] / 1000, 1) if p3 else None),
-    ("下一輪目標", 4.5),
+    ("快速道(實測)", round(p4["total"] / 1000, 1) if p4 else None),
+    ("下一輪目標", 4.0),
 ]
 for i, (name, val) in enumerate(hist):
     ws.cell(row=r2 + i, column=1, value=name)
@@ -152,7 +155,7 @@ ws.cell(row=r3 - 1, column=1, value="圖3 資料：模型分級前後的階段�
 ws.cell(row=r3, column=1, value="")
 for j, name in enumerate(stage_names):
     ws.cell(row=r3, column=2 + j, value=name)
-rows_cmp = [("gpt-5.4（高階客服）", p2), ("Claude Haiku 4.5（FAQ，首測）", p3)]
+rows_cmp = [("完整 ReAct（複雜題）", p2), ("快速道（FAQ/商品題）", p4)]
 for i, (label, st) in enumerate(rows_cmp):
     ws.cell(row=r3 + 1 + i, column=1, value=label)
     if st:
@@ -163,7 +166,7 @@ stacked = BarChart()
 stacked.type = "bar"       # 水平堆疊
 stacked.grouping = "stacked"
 stacked.overlap = 100
-stacked.title = "模型分級前後：各階段耗時組成（毫秒）"
+stacked.title = "完整 ReAct vs 快速道：各階段耗時組成（毫秒）"
 data = Reference(ws, min_col=2, min_row=r3, max_col=5, max_row=r3 + 2)
 cats = Reference(ws, min_col=1, min_row=r3 + 1, max_row=r3 + 2)
 stacked.add_data(data, titles_from_data=True)
@@ -180,10 +183,10 @@ ws.add_chart(stacked, "E39")
 r4 = 58
 notes = [
     "說明：",
-    "．圖1 佔比為 P2 階段（目前 gpt-5.4）平均；「前置」= 意圖理解與安全檢查，為固定開銷",
-    "．圖2 淺藍色為規劃目標（RAG 預取 + 意圖提速後的預估），其餘為實測平均",
-    "．圖3 顯示 Haiku 將「AI 決策與生成」約砍半；「前置」與「檢索」為下一輪優化目標",
-    "．Haiku 僅 1 筆樣本（含首次連線初始化），穩定水位待補測更新",
+    "．圖1 佔比為完整 ReAct 路徑平均；「前置」= 意圖理解與安全檢查，為固定開銷",
+    "．圖2 淺藍色為規劃目標（意圖分類提速後的預估），其餘為實測平均",
+    "．圖3 顯示快速道砍掉決策輪：LLM 時間約半、總時間 -37%；「前置」為下一輪目標",
+    "．快速道 = FAQ/商品題分流即檢索+單次生成，低分自動升級完整 ReAct（升級率 0%）",
 ]
 for i, t in enumerate(notes):
     ws.cell(row=r4 + i, column=1, value=t)

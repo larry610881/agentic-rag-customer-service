@@ -1,0 +1,1 @@
+trace_id,created_tw,source,llm_model,total_ms,first_token_ms,last_gen_first_token_ms,ft_nodes,llm_total_ms,tool_ms

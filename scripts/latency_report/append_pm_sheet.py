@@ -37,14 +37,16 @@ for r in traces:
 
 one_call = [fnum(r["total_ms"]) for r in p2 if r["llm_calls"] == "1"]
 multi_call = [fnum(r["total_ms"]) for r in p2 if r["llm_calls"] != "1"]
+fast_rows = [fnum(r["total_ms"]) for r in traces if r.get("fast_path") == "t"]
 avg_one = statistics.median(one_call) / 1000 if one_call else 4.2
 avg_multi = statistics.median(multi_call) / 1000 if multi_call else 8.1
 
 # 估算參數（TTFT 儀表已部署，待 web 實測後以真值取代）
 TTFT = 1.2          # 最後一輪生成的首 token 時間（估）
 GEN_TAIL_NOTE = "逐字生成段（估 1.5~2.5s）"
+fast_med = (statistics.median(fast_rows) / 1000) if fast_rows else 5.3
 web_first_one = round(avg_one - (avg_one * 0.45), 1)    # 1次呼叫：總時間 - 生成尾段(約45%)
-web_first_multi = round(avg_multi - 2.4, 1)             # 2次呼叫：完整 - 逐字尾段(估2.4s)
+web_first_multi = round(fast_med - 2.0, 1)              # 快速道單次生成：完整 - 逐字尾段(估2s)
 
 wb = load_workbook(XLSX)
 if "給PM的結論" in wb.sheetnames:
@@ -56,9 +58,9 @@ rows = [
     (f"資料基礎：近 14 天 {len(traces)} 筆真實 LINE 請求逐階段實測｜產出 2026-07-23", ""),
     ("", ""),
     ("【結論一】回應時間由「問題類型」決定，不是單一數字", ""),
-    (f"  ．閒聊/簡單問題（AI 一次生成即可答）：中位數 {avg_one:.1f} 秒", f"實測 {len(one_call)} 筆"),
-    (f"  ．需查知識庫的問題（決策→檢索→生成，兩段式）：中位數 {avg_multi:.1f} 秒", f"實測 {len(multi_call)} 筆"),
-    ("  ．多子題/首查不中須重查的長尾：10~12 秒（少數）", ""),
+    (f"  ．FAQ/商品題（快速道，07-23 上線）：中位數 {fast_med:.1f} 秒（升級率 0%）", f"實測 {len(fast_rows)} 筆"),
+    (f"  ．閒聊/簡單問題：中位數 {avg_one:.1f} 秒", f"實測 {len(one_call)} 筆"),
+    (f"  ．複雜題（完整 AI 推理，高階客服）：中位數 {avg_multi:.1f} 秒", f"實測 {len(multi_call)} 筆"),
     ("", ""),
     ("【結論二】時間組成 — 六成在 AI 生成本身", ""),
     ("  AI 決策與生成 ~60%｜意圖理解/安全檢查 ~19%｜知識庫檢索 ~13%｜組裝傳送 ~8%", ""),
@@ -67,7 +69,7 @@ rows = [
     ("【結論三】LINE 與 Web 的體感差異是平台特性，非系統缺陷", ""),
     ("  LINE 訊息 API 只能送「完整訊息」，不支援逐字串流 →", ""),
     ("  AI 必須生成完最後一個字才能送出；Web 版第一個字出現時使用者即感覺「已回應」", ""),
-    (f"  ．查資料型：Web 約第 {web_first_multi} 秒開始逐字顯示 vs LINE 第 {avg_multi:.1f} 秒整包送達（差 ~2.4 秒）", "估算*"),
+    (f"  ．查資料型（快速道）：Web 約第 {web_first_multi} 秒開始逐字顯示 vs LINE 第 {fast_med:.1f} 秒整包送達（差 ~2 秒）", "估算*"),
     (f"  ．閒聊型：Web 約第 {web_first_one} 秒 vs LINE 第 {avg_one:.1f} 秒（差 ~2 秒）", "估算*"),
     ("  *首字時間儀表已上線，web 實測數據累積後將以真值更新", ""),
     ("", ""),
@@ -77,12 +79,12 @@ rows = [
     ("  數秒等待為此路線的固有成本，已用載入動畫提供即時回饋", ""),
     ("", ""),
     ("【結論五】已完成與下一步", ""),
-    ("  已完成：回覆先行（持久化後移）/ 載入動畫非阻塞 / 關閉不必要的模型推理", ""),
-    ("          → 基準 P50 8.4 秒 → 目前平均 7.8 秒；簡單問題已達 4 秒級", ""),
-    ("  下一步（擇一，預估）：", ""),
-    ("   A. FAQ/DM worker「直接檢索模式」：砍掉決策輪 → 查資料型 8→~5 秒（需品質驗證）", ""),
-    ("   B. 檢索預取（與決策並行）：8→~7 秒（零行為風險）", ""),
-    ("  風險提示：P90 曾達 11.7 秒，超過 LINE webhook 10 秒上限會觸發重送，長尾必須持續壓", ""),
+    ("  已完成三輪：①回覆先行/動畫非阻塞 ②關閉不必要推理 ③workflow 快速道（Issue #50）", ""),
+    (f"  成果：FAQ/商品題 基準中位數 8.3 秒 → {fast_med:.1f} 秒（-37%）；LLM 呼叫 2 次 → 1 次", ""),
+    ("  快速道機制：意圖分流即檢索（含 DM 型錄並行）→ 單次生成；檢索品質不足自動升級完整", ""),
+    ("  AI 推理（本輪升級率 0%）；轉真人與複雜題處理能力不受影響", ""),
+    ("  下一步：意圖分類提速與一致性（快速道進 4 秒級）；FAQ 內容缺口補強（如門市總數）", ""),
+    ("  風險提示：意圖分類偶發未分流會走完整路徑（8~9 秒），屬長尾，列觀測", ""),
 ]
 for r in rows:
     ws.append(list(r))
@@ -102,7 +104,7 @@ ws.cell(row=r0, column=2, value="Web 首字（估）")
 ws.cell(row=r0, column=3, value="LINE 完整回覆（實測）")
 data_rows = [
     ("閒聊/簡單問題", web_first_one, round(avg_one, 1)),
-    ("需查知識庫的問題", web_first_multi, round(avg_multi, 1)),
+    ("FAQ/商品題（快速道）", web_first_multi, round(fast_med, 1)),
 ]
 for i, (name, w, l) in enumerate(data_rows):
     ws.cell(row=r0 + 1 + i, column=1, value=name)

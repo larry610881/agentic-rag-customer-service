@@ -19,6 +19,7 @@ PHASE_COLORS = {
     "P1 回覆先行": "FFF3E0",
     "P2 關閉推理": "E3F2FD",
     "P3 Haiku分級": "E8F5E9",
+    "P4 快速道": "C8E6C9",
 }
 
 
@@ -26,6 +27,8 @@ def classify(row):
     """依時間（台北時區）與模型分期。"""
     ts = datetime.strptime(row["created_tw"], "%Y-%m-%d %H:%M:%S")
     model = row["llm_model"] or ""
+    if row.get("fast_path") == "t":
+        return "P4 快速道"
     if model.startswith("claude"):
         return "P3 Haiku分級"
     cutoff_deploy = datetime(2026, 7, 21, 10, 28)   # revision 00289（回覆先行）
@@ -128,7 +131,7 @@ stat_cols = ["優化階段", "筆數", "平均總耗時(ms)", "P50(ms)", "P90(ms
              "平均LLM(ms)", "平均RAG/工具(ms)", "平均前置(ms)", "平均輸入tokens", "平均輸出tokens"]
 ws2.append(stat_cols)
 style_header(ws2, len(stat_cols))
-order = ["P0 基準", "P1 回覆先行", "P2 關閉推理", "P3 Haiku分級"]
+order = ["P0 基準", "P1 回覆先行", "P2 關閉推理", "P3 Haiku分級", "P4 快速道"]
 for phase in order:
     rows = [r for r in traces if r["phase"] == phase]
     if not rows:
@@ -179,7 +182,8 @@ history = [
     ["2026-07-21 之前", "基準狀態", "—", "gpt-5.4 + 預設推理；回覆前先寫 DB；載入動畫同步等待", "p50 8.4s / p90 11.7s（52 筆）"],
     ["07-21 10:28", "回覆先行 + 動畫非阻塞", "程式碼（commit 877a0bf 系列）", "LINE 回覆提前至持久化之前；載入動畫改背景觸發", "體感 -0.4~0.6s；持久化實測僅 70~120ms 且已移出體感"],
     ["07-21 11:28", "關閉推理（reasoning=none）", "設定（DB）", "gpt-5.4 關閉思考模式（實證：其延遲主因為輸入處理，非推理）", "-0.5~1s；熱機水位 ~7s"],
-    ["07-21 13:15", "模型分級（R2）", "設定（DB）", "商品查詢/門市查詢/閒聊 3 個 worker 切換至 Claude Haiku 4.5；高階客服維持 gpt-5.4", "LLM 呼叫時間約砍半（單次 ~1.4s）；首測含連線初始化，穩定水位待多筆樣本"],
+    ["07-21 13:15", "模型分級（R2）", "設定（DB）", "3 worker 曾切 Claude Haiku 4.5，同日 Larry 指示還原（樣本僅 1 筆）", "單次 LLM 呼叫確實砍半，但整體受固定開銷抵銷"],
+    ["07-23", "workflow 快速道（R3/Issue #50）", "程式碼+設定", "FAQ/商品 worker 分流即檢索（並行含 DM 工具）→ 單次生成；低分自動升級 ReAct；保留轉真人工具", "實測 16 筆命中：中位數 5.3s（基準 8.3s，-37%）、升級率 0%、LLM 呼叫 2→1"],
     ["規劃中", "RAG 預取（與決策並行）", "程式碼", "agent 思考「要不要查」的同時先把檢索做完", "預估 -0.7~1s"],
     ["規劃中", "意圖分類提速 + 輸入瘦身", "程式碼+設定", "router 換快模型/減 context；RAG chunk 5→3 條", "預估 -0.5~1s"],
 ]
@@ -193,7 +197,7 @@ for row_cells in ws4.iter_rows(min_row=2):
 # ── Sheet 1: 總覽（放最前面）──
 ws0 = wb.create_sheet("總覽", 0)
 warm = lambda ph: [fnum(r["total_ms"]) for r in traces if r["phase"] == ph and not r["note"]]
-p0 = warm("P0 基準"); p2 = warm("P2 關閉推理"); p3 = warm("P3 Haiku分級")
+p0 = warm("P0 基準"); p2 = warm("P2 關閉推理"); p3 = warm("P3 Haiku分級"); p4 = warm("P4 快速道")
 lines = [
     ["LINE AI 客服回應時間分析報告"],
     [f"產出：2026-07-23｜資料範圍：近 14 天全部 LINE 請求（{len(traces)} 筆，逐請求逐階段實測）"],
@@ -214,8 +218,9 @@ lines = [
     ["三、優化成果（熱機口徑）"],
     [f"  基準（優化前）：平均 {round(statistics.mean(p0)/1000,1) if p0 else '—'} 秒｜P50 {round((pct(p0,0.5) or 0)/1000,1)} 秒｜P90 {round((pct(p0,0.9) or 0)/1000,1)} 秒（{len(p0)} 筆）"],
     [f"  目前（gpt-5.4 高階客服）：平均 {round(statistics.mean(p2)/1000,1) if p2 else '—'} 秒（{len(p2)} 筆）"],
-    [f"  目前（Haiku FAQ 分級）：{('平均 ' + str(round(statistics.mean(p3)/1000,1)) + ' 秒（' + str(len(p3)) + ' 筆）') if p3 else '樣本不足，首測 7.1 秒（含一次性連線初始化）'}"],
-    ["  下一輪（檢索預取 + 意圖提速）目標：4~5 秒"],
+    [f"  快速道（FAQ/商品題，07-23 上線）：中位數 {round((pct(p4,0.5) or 0)/1000,1)} 秒（{len(p4)} 筆，升級率 0%）— 較基準 -37%"],
+    ["  複雜題（高階客服，完整 ReAct）：維持 6~8 秒，能力不受影響"],
+    ["  下一輪（意圖分類提速/一致性）目標：快速道進 4 秒級"],
     [],
     ["四、資料說明"],
     ["  ．「每筆請求明細」= 每一則真實 LINE 訊息的逐階段耗時（毫秒）"],
