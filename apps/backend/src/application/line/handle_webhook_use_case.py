@@ -355,6 +355,21 @@ class HandleWebhookUseCase:
 
         t0 = time.monotonic()
 
+        # Issue #49 斷點儀表：trace 從 t0 起算。之前 collector 在
+        # process_message 內才啟動，前置 ~1.4s（歷史載入/守門/意圖分類）
+        # 在 trace 中整塊不可見，只能用 total 減總推回。現在各段獨立成節點。
+        from src.infrastructure.observability.agent_trace_collector import (
+            AgentTraceCollector,
+        )
+        AgentTraceCollector.start(
+            tenant_id=bot.tenant_id,
+            agent_mode="react",
+            llm_model=bot.llm_model,
+            llm_provider=bot.llm_provider,
+            bot_id=bot.id.value,
+        )
+
+        t_hist = AgentTraceCollector.offset_ms()
         # Resolve conversation (timeout-based segmentation)
         conversation = await self._resolve_conversation(event.user_id, bot)
 
@@ -388,6 +403,15 @@ class HandleWebhookUseCase:
                     history_len=len(history),
                     fallback_chars=len(history_context),
                 )
+
+        AgentTraceCollector.add_node(
+            node_type="history_load",
+            label="載入對話歷史",
+            parent_id=None,
+            start_ms=t_hist,
+            end_ms=AgentTraceCollector.offset_ms(),
+            history_len=len(history) if history else 0,
+        )
 
         llm_params: dict = {
             "temperature": bot.llm_params.temperature,
@@ -429,6 +453,7 @@ class HandleWebhookUseCase:
         # 並行代表 classifier 會在 guard 判定前收到原文一次，但 classifier
         # 輸出僅為 worker 選擇（enum），且 guard 命中時其結果直接丟棄。
         guard_task: asyncio.Task[Any] | None = None
+        t_guard0 = AgentTraceCollector.offset_ms()
         if self._prompt_guard is not None:
             guard_task = asyncio.create_task(
                 self._prompt_guard.check_input(
@@ -516,7 +541,19 @@ class HandleWebhookUseCase:
 
         # ── 收斂並行 guard 結果：命中 → 不進 agent，改用 blocked 回覆，
         # 其餘下游（persist / reply / trace）與 guard 在咽喉點命中時完全一致
-        guard_result = await guard_task if guard_task is not None else None
+        guard_result = None
+        if guard_task is not None:
+            guard_result = await guard_task
+            # 並行節點：end = 收斂點（≈ max(guard, intent)），非 guard 純耗時
+            AgentTraceCollector.add_node(
+                node_type="input_guard",
+                label="輸入安全檢查（∥意圖分類）",
+                parent_id=None,
+                start_ms=t_guard0,
+                end_ms=AgentTraceCollector.offset_ms(),
+                parallel=True,
+                passed=bool(guard_result.passed),
+            )
         if guard_result is not None and not guard_result.passed:
             result = AgentResponse(
                 answer=guard_result.blocked_response,
