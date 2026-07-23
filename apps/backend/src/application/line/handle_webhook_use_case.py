@@ -126,6 +126,7 @@ class HandleWebhookUseCase:
         worker_config_repo: Any | None = None,
         history_strategy: ConversationHistoryStrategy | None = None,
         prompt_guard: Any | None = None,
+        query_rag_use_case: Any | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -151,6 +152,8 @@ class HandleWebhookUseCase:
         # F2（POC 問題 1）：入口端 input guard，與 intent 分類並行執行。
         # None 時退回 GuardedAgentService 咽喉點串行兜底（行為不變）。
         self._prompt_guard = prompt_guard
+        # Issue #50 — workflow 快速道用的檢索管線（direct_retrieval worker）
+        self._query_rag = query_rag_use_case
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
         """Redis 快取查 Bot（by ID），預設 120 秒 TTL。"""
@@ -304,6 +307,114 @@ class HandleWebhookUseCase:
             await self.handle_postback(
                 pb_event, bot.tenant_id, line_service
             )
+
+    async def _try_direct_retrieval(
+        self,
+        *,
+        event: LineTextMessageEvent,
+        bot: Bot,
+        kb_id: str,
+        kb_ids: list[str],
+        system_prompt: str | None,
+        llm_params: dict,
+        rerank_metadata: dict,
+        history: list | None,
+        history_context: str,
+        router_context: str,
+    ) -> "AgentResponse | None":
+        """Issue #50 workflow 快速道：直接檢索 → 門檻判定 → 單次生成。
+
+        回傳 None 代表升級完整 ReAct（檢索 0 筆 / 低分 / 異常）。
+        設計依據：67 筆實測中 FAQ 型 worker 15/16 必查且查詢詞≈原文，
+        ReAct 決策輪（~2s）對這類 worker 是冗餘 — 意圖分類已回答「要不要查」。
+        """
+        from src.application.rag.query_rag_use_case import QueryRAGCommand
+        from src.infrastructure.observability.agent_trace_collector import (
+            AgentTraceCollector,
+        )
+
+        threshold = bot.llm_params.rag_score_threshold
+        t_dr = AgentTraceCollector.offset_ms()
+        try:
+            rr = await self._query_rag.retrieve(QueryRAGCommand(
+                tenant_id=bot.tenant_id,
+                kb_id=kb_id,
+                query=event.message_text,
+                top_k=bot.llm_params.rag_top_k,
+                score_threshold=threshold,
+                kb_ids=kb_ids,
+                rerank_enabled=bot.rerank_enabled,
+                rerank_model=bot.rerank_model,
+                rerank_top_n=bot.rerank_top_n,
+            ))
+        except Exception:
+            logger.warning("line.direct_retrieval.error", exc_info=True)
+            AgentTraceCollector.add_node(
+                node_type="escalated",
+                label="快速道檢索異常 → 升級 ReAct",
+                parent_id=None,
+                start_ms=t_dr,
+                end_ms=AgentTraceCollector.offset_ms(),
+                reason="retrieval_error",
+            )
+            return None
+
+        top_score = max((s.score for s in rr.sources), default=0.0)
+        AgentTraceCollector.add_node(
+            node_type="direct_retrieval",
+            label=f"快速道檢索（{len(rr.sources)} 筆，top {top_score:.2f}）",
+            parent_id=None,
+            start_ms=t_dr,
+            end_ms=AgentTraceCollector.offset_ms(),
+            chunk_count=len(rr.sources),
+            top_score=round(top_score, 4),
+        )
+        if not rr.sources or top_score < threshold:
+            AgentTraceCollector.add_node(
+                node_type="escalated",
+                label="檢索未過門檻 → 升級 ReAct",
+                parent_id=None,
+                start_ms=AgentTraceCollector.offset_ms(),
+                end_ms=AgentTraceCollector.offset_ms(),
+                reason="low_score",
+                top_score=round(top_score, 4),
+            )
+            return None
+
+        # 檢索結果注入 system prompt（KB 內容，非使用者輸入；與 ReAct
+        # tool result 進入 model context 為同等暴露面），截斷防 token 爆量
+        context_block = "\n\n---\n\n".join(
+            c for c in rr.chunks if c
+        )[:8000]
+        fast_prompt = (
+            (system_prompt or "")
+            + "\n\n【知識庫檢索結果（依相關度排序）】\n"
+            + context_block
+            + "\n【檢索結果結束】\n"
+            + "請依上述檢索結果回答使用者問題；"
+            + "結果未涵蓋時誠實告知並引導聯絡客服，禁止編造。"
+        )
+        # enabled_tools=[] → ReAct graph 無工具可綁 = 恰好一次 LLM 呼叫；
+        # 沿用 process_message 保留 output guard / trace / parsing 全套機制
+        result = await self._agent_service.process_message(
+            tenant_id=bot.tenant_id,
+            kb_id=kb_id,
+            user_message=event.message_text,
+            kb_ids=kb_ids,
+            system_prompt=fast_prompt,
+            enabled_tools=[],
+            llm_params=llm_params,
+            metadata=rerank_metadata,
+            history=history,
+            history_context=history_context,
+            router_context=router_context,
+            max_tool_calls=1,
+        )
+        # 快速道的檢索來源回填（無 tool call → agent 不會帶 sources），
+        # 供 LINE 回覆的來源顯示與對話 retrieved_chunks 持久化
+        if result is not None and not result.sources:
+            result.sources = rr.sources
+        return result
 
     @staticmethod
     async def _show_loading_safe(
@@ -472,6 +583,7 @@ class HandleWebhookUseCase:
         max_tool_calls = bot.max_tool_calls or 5
         tool_rag_params = build_tool_rag_params_map(bot=bot)
 
+        direct_retrieval_worker = None
         if self._worker_config_repo and self._intent_classifier:
             workers = await self._worker_config_repo.find_by_bot_id(
                 bot.id.value
@@ -526,6 +638,8 @@ class HandleWebhookUseCase:
                     tool_rag_params = build_tool_rag_params_map(
                         bot=bot, worker=matched,
                     )
+                    if getattr(matched, "direct_retrieval", False):
+                        direct_retrieval_worker = matched
                     rerank_metadata["_worker_routing"] = {
                         "name": matched.name,
                         "llm_model": matched.llm_model or "",
@@ -565,25 +679,42 @@ class HandleWebhookUseCase:
                 # 告知 GuardedAgentService 咽喉點：input guard 已在入口跑過，
                 # 不要再付一次 LLM roundtrip（見 guarded_agent_service.py）
                 rerank_metadata["_input_guard_checked"] = True
-            result = await self._agent_service.process_message(
-                tenant_id=bot.tenant_id,
-                kb_id=kb_id,
-                user_message=event.message_text,
-                kb_ids=kb_ids,
-                system_prompt=system_prompt,
-                enabled_tools=enabled_tools,
-                llm_params=llm_params,
-                metadata=rerank_metadata,
-                history=history,
-                history_context=history_context,
-                router_context=router_context,
-                rag_top_k=bot.llm_params.rag_top_k,
-                rag_score_threshold=bot.llm_params.rag_score_threshold,
-                tool_rag_params=tool_rag_params,
-                customer_service_url=bot.customer_service_url,
-                mcp_servers=mcp_servers,
-                max_tool_calls=max_tool_calls,
-            )
+            result = None
+            if direct_retrieval_worker is not None and self._query_rag and kb_ids:
+                # Issue #50 workflow 快速道：檢索過門檻 → 單次生成；
+                # 未過門檻 / 異常 → 回傳 None，落回下方完整 ReAct（升級）
+                result = await self._try_direct_retrieval(
+                    event=event,
+                    bot=bot,
+                    kb_id=kb_id,
+                    kb_ids=kb_ids,
+                    system_prompt=system_prompt,
+                    llm_params=llm_params,
+                    rerank_metadata=rerank_metadata,
+                    history=history,
+                    history_context=history_context,
+                    router_context=router_context,
+                )
+            if result is None:
+                result = await self._agent_service.process_message(
+                    tenant_id=bot.tenant_id,
+                    kb_id=kb_id,
+                    user_message=event.message_text,
+                    kb_ids=kb_ids,
+                    system_prompt=system_prompt,
+                    enabled_tools=enabled_tools,
+                    llm_params=llm_params,
+                    metadata=rerank_metadata,
+                    history=history,
+                    history_context=history_context,
+                    router_context=router_context,
+                    rag_top_k=bot.llm_params.rag_top_k,
+                    rag_score_threshold=bot.llm_params.rag_score_threshold,
+                    tool_rag_params=tool_rag_params,
+                    customer_service_url=bot.customer_service_url,
+                    mcp_servers=mcp_servers,
+                    max_tool_calls=max_tool_calls,
+                )
         t1 = time.monotonic()
 
         # Persist agent execution trace

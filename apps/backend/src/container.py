@@ -2345,4 +2345,6 @@ class Container(containers.DeclarativeContainer):
         worker_config_repo=worker_config_repository,
         history_strategy=history_strategy,
         prompt_guard=prompt_guard_service,
+        # Issue #50 — workflow 快速道（direct_retrieval worker 用的檢索管線）
+        query_rag_use_case=query_rag_use_case,
     )

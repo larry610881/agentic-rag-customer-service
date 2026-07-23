@@ -7,6 +7,42 @@
 
 ---
 
+## Workflow 快速道 + Agent 升級兜底 — 用「架構深度匹配問題寬度」取代「一刀切」
+
+**日期**：2026-07-23（Issue #50，Domain + Infrastructure + Application 跨 3 層，4 BDD scenarios）
+**Sprint 來源**：Issue #49 延遲分析的結論落地 — FAQ 型 worker 的 ReAct 決策輪為冗餘
+
+**主題**：67 筆實測顯示 FAQ/商品 worker 15/16 必查知識庫、查詢詞≈使用者原文 —— ReAct
+第一輪 LLM 呼叫（~2s）在重新回答意圖分類器已回答過的問題。解法不是砍掉 ReAct，而是
+**per-worker `direct_retrieval` 開關**：分流後直接以原文檢索綁定 KB（重用 QueryRAGUseCase，
+檢索行為零改動）→ 檢索過門檻（top score ≥ rag_score_threshold）→ 單次生成；未過門檻或
+異常自動升級完整 ReAct。此即 Anthropic《Building Effective Agents》的 workflow-first with
+agent escalation 原型。
+
+**做得好的地方**
+- **單次生成靠 `enabled_tools=[]` 巧接現有機制**：ReAct graph 無工具可綁 = 恰好一次 LLM
+  呼叫，output guard / trace / parsing / usage 全套白拿，零新生成路徑
+- **升級判定用檢索訊號**（0 筆 / 低分），不用 LLM 自評 — 便宜、確定性、生成前決定
+- **可觀測性先行**：direct_retrieval / escalated trace 節點與功能同時上線，升級率
+  （目標 <15%）從第一筆請求就可查
+- **驗證問題集先於實作**：22 題真實 8 秒級問題 + 5 題對照組已入庫，完工即可對比
+
+**潛在隱憂**
+- 檢索結果注入 system prompt（KB 內容非使用者輸入，與 tool result 同等暴露面），
+  已加 8000 字截斷 + 禁止編造指示；KB 內容若被污染仍是共同攻擊面 → 依賴既有
+  KB 上傳權限控管 → 優先級：低
+- 快速道下 history 仍傳入但 agent 無法再查 — 多輪追問（「那營業到幾點」）依賴
+  歷史上下文 + 檢索原文命中，追問句檢索品質待 benchmark 驗證 → 優先級：中
+- 門檻值沿用 rag_score_threshold（0.3），快速道升級門檻與「檢索過濾門檻」語義
+  重疊 — 若要分別調需拆參數 → 優先級：低（先觀測升級率再說）
+
+**延伸學習**
+- **Router-Worker-Escalation 模式**：分層決策系統中，下層只在上層決策資訊量不足時
+  啟動 — 對照 CPU branch prediction / CDN cache miss 的 escalation 思維。
+- 搜尋關鍵字：`Anthropic building effective agents workflow`、`agentic RAG vs classic RAG`。
+
+---
+
 ## 觀測儀表補洞 — 「trace 起點」決定盲區：collector 晚啟動讓 1.4s 前置隱形了兩週
 
 **日期**：2026-07-23（Issue #49 延續，Application + Infrastructure 跨層，TTFT + 前置斷點兩支儀表）

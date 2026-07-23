@@ -38,6 +38,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
                 list(model.enabled_tools) if model.enabled_tools is not None else None
             ),
             tool_configs=_dict_to_tool_configs(model.tool_configs),
+            direct_retrieval=bool(model.direct_retrieval),
             sort_order=model.sort_order,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -63,6 +64,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
                 existing.knowledge_base_ids = worker.knowledge_base_ids
                 existing.enabled_tools = worker.enabled_tools
                 existing.tool_configs = _tool_configs_to_dict(worker.tool_configs)
+                existing.direct_retrieval = worker.direct_retrieval
                 existing.sort_order = worker.sort_order
                 existing.updated_at = now
             else:
@@ -81,6 +83,7 @@ class SQLAlchemyWorkerConfigRepository(WorkerConfigRepository):
                     knowledge_base_ids=worker.knowledge_base_ids,
                     enabled_tools=worker.enabled_tools,
                     tool_configs=_tool_configs_to_dict(worker.tool_configs),
+                    direct_retrieval=worker.direct_retrieval,
                     sort_order=worker.sort_order,
                     created_at=worker.created_at,
                     updated_at=now,

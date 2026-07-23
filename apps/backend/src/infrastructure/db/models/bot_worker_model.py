@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -51,6 +51,10 @@ class BotWorkerModel(Base):
     # Per-tool RAG 參數覆蓋；None / missing 代表繼承 Bot per-tool 或 Bot 全域
     tool_configs: Mapped[dict] = mapped_column(
         JSON, nullable=False, default=dict, server_default="{}"
+    )
+    # Issue #50 — workflow 快速道開關（migration: add_worker_direct_retrieval.sql）
+    direct_retrieval: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     sort_order: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0

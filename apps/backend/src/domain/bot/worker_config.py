@@ -28,6 +28,9 @@ class WorkerConfig:
     enabled_tools: list[str] | None = None
     # Per-tool RAG 參數覆蓋，None 值繼承 Bot 層級（per-tool 或全域）
     tool_configs: dict[str, ToolRagConfig] = field(default_factory=dict)
+    # Issue #50 — workflow 快速道：分流後直接以原文檢索綁定 KB + 單次生成，
+    # 檢索未過門檻自動升級完整 ReAct。False = 維持完整 ReAct（現狀）
+    direct_retrieval: bool = False
     sort_order: int = 0
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
