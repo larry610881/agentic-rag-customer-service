@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 from src.application.agent.intent_classifier import IntentClassifier
 from src.domain.bot.entity import IntentRoute
+from src.domain.bot.worker_config import WorkerConfig
 
 
 def _run(coro):
@@ -125,3 +126,95 @@ def test_classify_passes_correct_params():
     # Verify router_context is included in the user_message prompt
     user_msg = call_kwargs.kwargs.get("user_message") or call_kwargs.args[1]
     assert "一些歷史" in user_msg
+
+
+# ── Issue #51: classify_workers_and_rewrite（分類 + 檢索查詢改寫同一次呼叫）──
+
+def _make_workers() -> list[WorkerConfig]:
+    return [
+        WorkerConfig(name="商品查詢", description="商品價格與促銷"),
+        WorkerConfig(name="閒聊", description="打招呼與閒聊"),
+    ]
+
+
+def test_classify_and_rewrite_two_lines():
+    """兩行輸出：第一行類別、第二行改寫查詢。"""
+    classifier, mock_llm = _make_classifier()
+    mock_llm.generate.return_value = FakeLLMResult(
+        text="商品查詢\n活力東勢胡蘿蔔汁 價格"
+    )
+
+    worker, query = _run(classifier.classify_workers_and_rewrite(
+        "價格呢", "[用戶] 有推薦果汁嗎…", _make_workers()
+    ))
+
+    assert worker is not None and worker.name == "商品查詢"
+    assert query == "活力東勢胡蘿蔔汁 價格"
+
+
+def test_classify_and_rewrite_single_line_fallback():
+    """只回一行（僅類別）→ 改寫查詢為空字串（呼叫端退回原文）。"""
+    classifier, mock_llm = _make_classifier()
+    mock_llm.generate.return_value = FakeLLMResult(text="商品查詢")
+
+    worker, query = _run(classifier.classify_workers_and_rewrite(
+        "價格呢", "", _make_workers()
+    ))
+
+    assert worker is not None and worker.name == "商品查詢"
+    assert query == ""
+
+
+def test_classify_and_rewrite_none_category_keeps_rewrite():
+    """類別 NONE（預設 fallback）仍可取得改寫查詢。"""
+    classifier, mock_llm = _make_classifier()
+    mock_llm.generate.return_value = FakeLLMResult(
+        text="NONE\n家速配周年慶 優惠"
+    )
+
+    worker, query = _run(classifier.classify_workers_and_rewrite(
+        "有什麼優惠", "…", _make_workers()
+    ))
+
+    assert worker is None
+    assert query == "家速配周年慶 優惠"
+
+
+def test_classify_and_rewrite_llm_error():
+    """LLM 例外 → (None, \"\")，不拋出。"""
+    classifier, mock_llm = _make_classifier()
+    mock_llm.generate.side_effect = RuntimeError("LLM down")
+
+    worker, query = _run(classifier.classify_workers_and_rewrite(
+        "價格呢", "", _make_workers()
+    ))
+
+    assert worker is None
+    assert query == ""
+
+
+def test_classify_and_rewrite_empty_workers():
+    """空 worker 清單 → 不呼叫 LLM。"""
+    classifier, mock_llm = _make_classifier()
+
+    worker, query = _run(classifier.classify_workers_and_rewrite(
+        "價格呢", "", []
+    ))
+
+    assert worker is None
+    assert query == ""
+    mock_llm.generate.assert_not_called()
+
+
+def test_classify_and_rewrite_truncates_long_query():
+    """異常長的改寫輸出截斷至 200 字，避免污染向量檢索。"""
+    classifier, mock_llm = _make_classifier()
+    mock_llm.generate.return_value = FakeLLMResult(
+        text="商品查詢\n" + "果汁" * 300
+    )
+
+    _worker, query = _run(classifier.classify_workers_and_rewrite(
+        "價格呢", "…", _make_workers()
+    ))
+
+    assert len(query) == 200

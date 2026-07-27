@@ -29,6 +29,15 @@ BODY = (
     '"timestamp":1700000000000}]}'
 )
 
+# Issue #51 regression：follow-up 短句，單獨看無法檢索到正確商品
+FOLLOWUP_BODY = (
+    '{"events":[{"type":"message","replyToken":"token-dr-002",'
+    '"source":{"userId":"U-dr-user"},'
+    '"message":{"type":"text","text":"價格呢"},'
+    '"timestamp":1700000001000}]}'
+)
+REWRITTEN_QUERY = "活力東勢胡蘿蔔汁 價格"
+
 
 def _run(coro):
     loop = asyncio.new_event_loop()
@@ -56,7 +65,7 @@ def _sources(score: float) -> list[Source]:
 
 def _setup(context, *, direct: bool, top_score: float = 0.85,
            retrieve_raises: bool = False, with_dm: bool = False,
-           with_transfer: bool = False):
+           with_transfer: bool = False, rewrite: str = ""):
     bot = Bot(
         tenant_id="tenant-dr",
         name="DR Bot",
@@ -90,7 +99,11 @@ def _setup(context, *, direct: bool, top_score: float = 0.85,
     mock_worker_repo = AsyncMock()
     mock_worker_repo.find_by_bot_id = AsyncMock(return_value=[worker])
     mock_classifier = AsyncMock()
-    mock_classifier.classify_workers = AsyncMock(return_value=worker)
+    # Issue #51：LINE 路徑改用 classify_workers_and_rewrite（同呼叫回傳
+    # worker + 上下文改寫查詢；改寫缺失時為空字串 → 快速道退回原文）
+    mock_classifier.classify_workers_and_rewrite = AsyncMock(
+        return_value=(worker, rewrite)
+    )
 
     mock_query_rag = AsyncMock()
     if retrieve_raises:
@@ -246,3 +259,46 @@ def agent_bound_transfer_only(context):
 def prompt_forbids_tool_name_leak(context):
     kwargs = context["mock_agent"].process_message.call_args.kwargs
     assert "嚴禁在回覆文字中輸出任何工具名稱" in (kwargs["system_prompt"] or "")
+
+
+@given("一個開啟直接檢索且啟用 DM 工具的 Worker 且意圖分類回傳改寫查詢")
+def worker_direct_with_rewrite(context):
+    _setup(context, direct=True, top_score=0.85, with_dm=True,
+           rewrite=REWRITTEN_QUERY)
+
+
+@given("一個開啟直接檢索且啟用 DM 工具的 Worker 但意圖分類未回傳改寫查詢")
+def worker_direct_without_rewrite(context):
+    _setup(context, direct=True, top_score=0.85, with_dm=True, rewrite="")
+
+
+@when("系統處理一則追問短句的 LINE 訊息")
+def process_followup_message(context):
+    _run(context["use_case"].execute_for_bot("DR01", FOLLOWUP_BODY, "sig"))
+
+
+@then("快速道文字檢索應使用改寫後查詢")
+def retrieve_uses_rewritten_query(context):
+    context["mock_query_rag"].retrieve.assert_called_once()
+    cmd = context["mock_query_rag"].retrieve.call_args.args[0]
+    assert cmd.query == REWRITTEN_QUERY, (
+        f"快速道檢索應使用改寫後查詢，實際 query={cmd.query!r}"
+    )
+
+
+@then("DM 工具應使用改寫後查詢")
+def dm_tool_uses_rewritten_query(context):
+    context["mock_dm_tool"].invoke.assert_called_once()
+    kwargs = context["mock_dm_tool"].invoke.call_args.kwargs
+    assert kwargs["query"] == REWRITTEN_QUERY, (
+        f"DM 工具應使用改寫後查詢，實際 query={kwargs['query']!r}"
+    )
+
+
+@then("快速道文字檢索應使用使用者原文")
+def retrieve_uses_raw_message(context):
+    context["mock_query_rag"].retrieve.assert_called_once()
+    cmd = context["mock_query_rag"].retrieve.call_args.args[0]
+    assert cmd.query == "價格呢", (
+        f"改寫缺失時應退回使用者原文，實際 query={cmd.query!r}"
+    )

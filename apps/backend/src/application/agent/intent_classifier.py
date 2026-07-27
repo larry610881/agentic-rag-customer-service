@@ -22,16 +22,33 @@ _CLASSIFY_SYSTEM_PROMPT = (
     "如果都不符合，回覆「NONE」。"
 )
 
+# Issue #51：快速道（direct_retrieval）跳過 ReAct 決策輪後，follow-up 短句
+# （「價格呢」）失去 LLM 隱性的 query rewriting → 裸句檢索命中錯誤 chunk。
+# 解法：分類與檢索查詢改寫共用同一次 LLM 呼叫（兩行輸出協定），零額外延遲。
+_CLASSIFY_REWRITE_SYSTEM_PROMPT = (
+    "你是意圖分類器。根據用戶訊息和近期對話，輸出兩行：\n"
+    "第一行：將意圖分類為以下類別之一，只輸出類別名稱；"
+    "都不符合輸出「NONE」。\n"
+    "第二行：檢索查詢 — 把用戶訊息改寫成不依賴上下文也能理解的完整查詢，"
+    "補上近期對話中被指代的商品名稱或主題；"
+    "若訊息本身已完整，原樣輸出。\n"
+    "除這兩行外不要輸出任何其他文字。"
+)
+
+# 改寫查詢僅用於向量檢索 embedding；截斷防 LLM 異常輸出污染檢索
+_REWRITE_QUERY_MAX_CHARS = 200
+
 
 def _build_system_with_categories(
     names_and_descriptions: list[tuple[str, str]],
+    base_prompt: str = _CLASSIFY_SYSTEM_PROMPT,
 ) -> str:
     """S-LLM-Cache.1: 把類別列表納入 system prompt，讓 AnthropicLLMService 既有
     cache_control 能 cache 此段（同一 bot 連續分類訊息時命中）。"""
     categories = "\n".join(
         f"- {name}: {desc}" for name, desc in names_and_descriptions
     )
-    return f"{_CLASSIFY_SYSTEM_PROMPT}\n\n類別：\n{categories}"
+    return f"{base_prompt}\n\n類別：\n{categories}"
 
 
 def _build_user_message(
@@ -87,6 +104,48 @@ class IntentClassifier:
         worker_map = {w.name: w for w in workers}
         return self._match(raw, worker_map)
 
+    async def classify_workers_and_rewrite(
+        self,
+        user_message: str,
+        router_context: str,
+        workers: list[WorkerConfig],
+        router_model: str = "",
+        tenant_id: str = "",
+        bot_id: str | None = None,
+    ) -> tuple[WorkerConfig | None, str]:
+        """Issue #51：分類 + 檢索查詢改寫，共用同一次 LLM 呼叫。
+
+        回傳 (worker, 改寫後查詢)。改寫缺失（單行輸出 / LLM 異常）時
+        查詢為空字串，呼叫端退回使用者原文 — 行為不劣於現狀。
+        """
+        if not workers:
+            return None, ""
+
+        names_descs = [(w.name, w.description) for w in workers]
+        system_prompt = _build_system_with_categories(
+            names_descs, base_prompt=_CLASSIFY_REWRITE_SYSTEM_PROMPT
+        )
+        user_msg = _build_user_message(user_message, router_context)
+
+        raw = await self._call_llm(
+            system_prompt, user_msg,
+            [w.name for w in workers], router_model,
+            tenant_id=tenant_id, bot_id=bot_id,
+            max_tokens=120,
+        )
+        if raw is None:
+            return None, ""
+
+        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        if not lines:
+            return None, ""
+        worker_map = {w.name: w for w in workers}
+        matched = self._match(lines[0], worker_map)
+        rewritten = (
+            lines[1][:_REWRITE_QUERY_MAX_CHARS] if len(lines) > 1 else ""
+        )
+        return matched, rewritten
+
     async def classify(
         self,
         user_message: str,
@@ -124,6 +183,7 @@ class IntentClassifier:
         router_model: str = "",
         tenant_id: str = "",
         bot_id: str | None = None,
+        max_tokens: int = 50,
     ) -> str | None:
         try:
             kwargs: dict[str, Any] = {
@@ -131,7 +191,7 @@ class IntentClassifier:
                 "user_message": user_message,
                 "context": "",
                 "temperature": 0,
-                "max_tokens": 50,
+                "max_tokens": max_tokens,
             }
             # Use router_model if specified
             if router_model:

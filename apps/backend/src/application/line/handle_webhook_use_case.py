@@ -326,12 +326,17 @@ class HandleWebhookUseCase:
         router_context: str,
         enabled_tools: list[str] | None = None,
         tool_rag_params: dict | None = None,
+        retrieval_query: str = "",
     ) -> "AgentResponse | None":
         """Issue #50 workflow 快速道：直接檢索 → 門檻判定 → 單次生成。
 
         回傳 None 代表升級完整 ReAct（檢索 0 筆 / 低分 / 異常）。
         設計依據：67 筆實測中 FAQ 型 worker 15/16 必查且查詢詞≈原文，
         ReAct 決策輪（~2s）對這類 worker 是冗餘 — 意圖分類已回答「要不要查」。
+
+        Issue #51：「查詢詞≈原文」對 follow-up 短句（「價格呢」）不成立 —
+        檢索改用意圖分類同步產出的上下文改寫查詢 retrieval_query，
+        缺失時退回原文。生成端 history_context 不受影響。
         """
         from src.application.rag.query_rag_use_case import QueryRAGCommand
         from src.infrastructure.observability.agent_trace_collector import (
@@ -339,6 +344,7 @@ class HandleWebhookUseCase:
         )
 
         threshold = bot.llm_params.rag_score_threshold
+        search_query = (retrieval_query or "").strip() or event.message_text
         t_dr = AgentTraceCollector.offset_ms()
 
         # DM 圖卡（POC 問題：快速道 v1 漏掉 DM 工具 → 圖卡消失）：
@@ -357,7 +363,7 @@ class HandleWebhookUseCase:
             dm_task = asyncio.create_task(self._dm_tool.invoke(
                 tenant_id=bot.tenant_id,
                 kb_id=dm_kb_ids[0] if dm_kb_ids else kb_id,
-                query=event.message_text,
+                query=search_query,
                 kb_ids=dm_kb_ids,
                 top_k=dm_params.get("rag_top_k")
                 or bot.llm_params.rag_top_k,
@@ -369,7 +375,7 @@ class HandleWebhookUseCase:
             rr = await self._query_rag.retrieve(QueryRAGCommand(
                 tenant_id=bot.tenant_id,
                 kb_id=kb_id,
-                query=event.message_text,
+                query=search_query,
                 top_k=bot.llm_params.rag_top_k,
                 score_threshold=threshold,
                 kb_ids=kb_ids,
@@ -420,6 +426,8 @@ class HandleWebhookUseCase:
             end_ms=AgentTraceCollector.offset_ms(),
             chunk_count=len(rr.sources),
             top_score=round(top_score, 4),
+            search_query=search_query,
+            query_rewritten=search_query != event.message_text,
         )
         if not rr.sources or top_score < threshold:
             AgentTraceCollector.add_node(
@@ -658,6 +666,7 @@ class HandleWebhookUseCase:
         tool_rag_params = build_tool_rag_params_map(bot=bot)
 
         direct_retrieval_worker = None
+        rewritten_query = ""
         if self._worker_config_repo and self._intent_classifier:
             workers = await self._worker_config_repo.find_by_bot_id(
                 bot.id.value
@@ -668,11 +677,15 @@ class HandleWebhookUseCase:
                     AgentTraceCollector,
                 )
                 t_start = AgentTraceCollector.offset_ms()
-                matched = await self._intent_classifier.classify_workers(
-                    user_message=event.message_text,
-                    router_context=router_context,
-                    workers=workers,
-                    router_model=bot.router_model,
+                # Issue #51：同一次分類呼叫多產出「上下文改寫檢索查詢」，
+                # 供快速道 follow-up 短句（「價格呢」）檢索命中正確商品
+                matched, rewritten_query = (
+                    await self._intent_classifier.classify_workers_and_rewrite(
+                        user_message=event.message_text,
+                        router_context=router_context,
+                        workers=workers,
+                        router_model=bot.router_model,
+                    )
                 )
                 t_end = AgentTraceCollector.offset_ms()
                 AgentTraceCollector.add_node(
@@ -687,6 +700,7 @@ class HandleWebhookUseCase:
                     matched=matched.name if matched else None,
                     candidates=[w.name for w in workers],
                     classifier_model=bot.router_model,
+                    rewritten_query=rewritten_query or None,
                 )
                 if matched:
                     if matched.worker_prompt:
@@ -770,6 +784,7 @@ class HandleWebhookUseCase:
                     router_context=router_context,
                     enabled_tools=enabled_tools,
                     tool_rag_params=tool_rag_params,
+                    retrieval_query=rewritten_query,
                 )
             if result is None:
                 result = await self._agent_service.process_message(
