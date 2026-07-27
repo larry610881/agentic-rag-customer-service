@@ -7,6 +7,41 @@
 
 ---
 
+## 快速道 follow-up 檢索失焦 — 砍掉 ReAct 決策輪，也砍掉了隱性的 query rewriting
+
+**日期**：2026-07-27（Issue #51，Application 層 ×2 檔，+2 BDD scenarios + 6 classifier 案例）
+**Sprint 來源**：POC 實測（7/24 果汁詢價案例：「有沒有推薦什麼果汁」→「價格呢」）
+
+**主題**：快速道（Issue #50）的設計依據是「67 筆實測中查詢詞≈原文」，於是直接拿
+使用者原文做向量檢索。這個假設對**首問**成立，對 **follow-up 短句**不成立 —
+「價格呢」單獨檢索撈到的是任何含價格字樣的 chunk（吹風機 0.3891），連 DM 圖卡
+工具都因同一裸句查錯頁。根因不是檢索壞掉，而是：**完整 ReAct 中 LLM 產生工具參數
+這一步，隱性承擔了「結合對話歷史改寫查詢」的職責**，決策輪被砍掉時這個職責無人接手
+（與 7/23 的「工具隱性契約」是同一類教訓 — 被移除的環節往往承載著未被列舉的職責）。
+修法：意圖分類的既有 LLM 呼叫改為兩行輸出協定（類別 + 上下文改寫查詢），同一次
+呼叫多產出一行 — 零額外延遲；快速道文字檢索與 DM 工具改用改寫後查詢，缺失時退回原文。
+
+**做得好的地方**
+- 延遲預算是硬約束（P50 5.3s 剛達標），沒有為 rewriting 加第二個 LLM 呼叫，
+  而是搭既有分類呼叫的便車（max_tokens 50→120，數十 token 的邊際成本）
+- 降級路徑完整：單行輸出 / LLM 異常 / 空 worker → 空字串 → 呼叫端退回原文，
+  最壞情況行為 = 現狀；web 路徑 classify_workers 原封不動，爆炸半徑限縮在 LINE
+- trace 節點記錄 search_query + query_rewritten flag，下次線上排查不用再猜
+
+**潛在隱憂**
+- 兩行輸出協定依賴 LLM 遵守格式，弱模型當 router 時可能把改寫寫進第一行 →
+  _match 有模糊匹配兜底，但值得在 benchmark 重測時觀察分類準確率有無回歸 → 優先級：中
+- 改寫品質不可觀測：改寫得爛（如丟掉商品名）時 top_score 會低 → 升級 ReAct 兜底，
+  但沒有 metric 區分「改寫爛」vs「KB 真沒有」→ 可在 trace 加對照（原文 vs 改寫分數）
+  → 優先級：低
+- web 通路（send_message）快速道尚未存在，未來若跟進，rewriting 要一起帶過去，
+  別重踩同一坑 → 優先級：低（記錄在案即可）
+
+**延伸學習**
+- **Query rewriting / contextualization**：RAG 多輪對話的標準前置步（LangChain
+  `create_history_aware_retriever` 同構）。本案的變形是把它疊進既有 router 呼叫省延遲。
+- 搜尋關鍵字：`conversational query rewriting RAG`、`history aware retriever`。
+
 ## 快速道上線首日兩修 — 「拔掉工具」拔掉的不只是延遲，還有工具背後的隱性契約
 
 **日期**：2026-07-23（Issue #50 續，Application + Infrastructure，+2 BDD scenarios）
