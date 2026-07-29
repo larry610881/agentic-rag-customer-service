@@ -7,6 +7,50 @@
 
 ---
 
+## 投機執行（Speculative Execution）進到 LLM pipeline — 預取的有效性判定與取消語義
+
+**日期**：2026-07-29（Issue #52，Infrastructure ×3 新檔 + Application/container，26 BDD scenarios）
+**Sprint 來源**：LINE 延遲優化 R3 — 非 LLM 段 3.9s 的拆解與並行化
+
+**主題**：串行 pipeline（guard → 分類 → 檢索 → 生成）的延遲下限是各段之和；
+要突破就得辨識「無資料依賴的段」搬進並行區。本次把快速道檢索提前到 guard∥分類
+起跑點，本質是 CPU 分支預測的投機執行搬到 LLM pipeline：**用大概率正確的輸入
+（原文 + bot 預設 KB）先跑，事後驗證（查詢未改寫、KB 未覆寫）決定採用或丟棄**。
+配套兩類快取讓「投機的成本」更低：embedding 是 (model, text) 純函數 → 長 TTL
+Redis 快取天然安全；guard/worker 設定是低頻變更讀多寫少 → 60s in-process TTLCache。
+
+**做得好的地方**
+- 投機失敗的每條路都有明確歸宿：改寫/KB 覆寫 → cancel + 重查（行為=現狀）；
+  guard 攔截/ReAct → cancel；預取內部異常 → 吞掉回 None fail-open。最壞情況
+  比現狀多花一次白做的檢索（~$0.0001），不會多花使用者一毫秒
+- 快取層全用 decorator 掛在既有介面上（EmbeddingService / Repository），
+  use case 零改動，DDD 分層沒被打穿；invalidation 走「寫入全清」而非精準失效，
+  用正確性換簡單性（admin 寫入頻率 ≈ 0）
+- 測試踩到 create_task 排程語義：AsyncMock 的 await 不讓出事件迴圈 → 預取
+  task 從未起跑就被 cancel。補 sleep(0) 模擬真實 LLM 呼叫的讓出點 — 這類
+  「並行測試假陽性」值得記住
+
+**潛在隱憂**
+- 投機命中率沒有 metric：trace 有 prefetched 欄位，但沒有彙總「預取採用率 /
+  丟棄率」— 若 follow-up 比例升高（改寫率高），預取變純浪費 → 建議 benchmark
+  時順手統計 → 優先級：中
+- in-process TTLCache 在多 instance Cloud Run 下各自為政：某 instance 寫入後
+  其他 instance 最長 60s 拿舊設定。現階段單 instance POC 無感，scale-out 前要
+  換 Redis pub/sub 失效或縮 TTL → 優先級：低（記錄在案）
+- Embedding 快取 key 未含 tenant_id：向量是 (model, text) 純函數、不含租戶
+  資料，跨租戶共享不構成洩漏且提升命中率；但與 security.md 的字面規範有出入，
+  已在程式碼註解說明推理 — 若未來 embedding 帶租戶客製（如 per-tenant 前綴），
+  此假設失效必須加 tenant → 優先級：低但要記住觸發條件
+
+**延伸學習**
+- Speculative execution / branch prediction：CPU 領域的投機-驗證-回滾模式，
+  對照本次「預取-有效性判定-丟棄」一比一映射
+- Cache stampede 與 negative caching：guard 設定的 None 快取就是 negative
+  caching；若併發高可再看 singleflight 模式
+- 若想深入：搜尋「speculative RAG」「LLM pipeline parallelism」
+
+---
+
 ## 快速道 follow-up 檢索失焦 — 砍掉 ReAct 決策輪，也砍掉了隱性的 query rewriting
 
 **日期**：2026-07-27（Issue #51，Application 層 ×2 檔，+2 BDD scenarios + 6 classifier 案例）
