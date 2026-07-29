@@ -45,6 +45,24 @@ from src.application.bot.worker_use_cases import (
     ListWorkersUseCase,
     UpdateWorkerUseCase,
 )
+from src.application.chunk_category.assign_chunks_use_case import (
+    AssignChunksUseCase,
+)
+from src.application.chunk_category.create_category_use_case import (
+    CreateCategoryUseCase,
+)
+from src.application.chunk_category.delete_category_use_case import (
+    DeleteCategoryUseCase,
+)
+from src.application.conversation.generate_summary_use_case import (
+    GenerateConversationSummaryUseCase,
+)
+from src.application.conversation.get_conversation_messages_use_case import (
+    GetConversationMessagesUseCase,
+)
+from src.application.conversation.get_conversation_token_usage_use_case import (
+    GetConversationTokenUsageUseCase,
+)
 from src.application.conversation.get_conversation_use_case import (
     GetConversationUseCase,
 )
@@ -63,20 +81,20 @@ from src.application.conversation.get_token_cost_stats_use_case import (
 from src.application.conversation.get_top_issues_use_case import (
     GetTopIssuesUseCase,
 )
+from src.application.conversation.list_conv_summaries_use_case import (
+    ListConvSummariesUseCase,
+)
 from src.application.conversation.list_conversations_use_case import (
     ListConversationsUseCase,
 )
 from src.application.conversation.list_feedback_use_case import (
     ListFeedbackUseCase,
 )
-from src.application.conversation.submit_feedback_use_case import (
-    SubmitFeedbackUseCase,
-)
-from src.application.conversation.generate_summary_use_case import (
-    GenerateConversationSummaryUseCase,
-)
 from src.application.conversation.search_conversations_use_case import (
     SearchConversationsUseCase,
+)
+from src.application.conversation.submit_feedback_use_case import (
+    SubmitFeedbackUseCase,
 )
 from src.application.eval_dataset.create_eval_dataset_use_case import (
     CreateEvalDatasetUseCase,
@@ -112,22 +130,23 @@ from src.application.eval_dataset.update_eval_dataset_use_case import (
     UpdateEvalDatasetUseCase,
 )
 from src.application.health.health_check_use_case import HealthCheckUseCase
+from src.application.knowledge.bulk_ingest_use_case import BulkIngestUseCase
 from src.application.knowledge.classify_kb_use_case import ClassifyKbUseCase
-from src.application.knowledge.extract_kb_dm_metadata_use_case import (
-    ExtractKBDMMetadataUseCase,
-)
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseUseCase,
 )
+from src.application.knowledge.delete_chunk_use_case import DeleteChunkUseCase
 from src.application.knowledge.delete_document_use_case import (
     DeleteDocumentUseCase,
 )
-from src.application.knowledge.bulk_ingest_use_case import BulkIngestUseCase
 from src.application.knowledge.delete_documents_by_source_use_case import (
     DeleteDocumentsBySourceUseCase,
 )
 from src.application.knowledge.delete_knowledge_base_use_case import (
     DeleteKnowledgeBaseUseCase,
+)
+from src.application.knowledge.extract_kb_dm_metadata_use_case import (
+    ExtractKBDMMetadataUseCase,
 )
 from src.application.knowledge.get_category_chunks_use_case import (
     GetCategoryChunksUseCase,
@@ -138,6 +157,9 @@ from src.application.knowledge.get_document_chunks_use_case import (
 from src.application.knowledge.get_document_quality_stats_use_case import (
     GetDocumentQualityStatsUseCase,
 )
+from src.application.knowledge.get_kb_quality_summary_use_case import (
+    GetKbQualitySummaryUseCase,
+)
 from src.application.knowledge.get_processing_task_use_case import (
     GetProcessingTaskUseCase,
 )
@@ -147,16 +169,22 @@ from src.application.knowledge.list_all_knowledge_bases_use_case import (
 from src.application.knowledge.list_documents_use_case import (
     ListDocumentsUseCase,
 )
+from src.application.knowledge.list_kb_chunks_use_case import ListKbChunksUseCase
 from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
 )
 from src.application.knowledge.process_document_use_case import (
     ProcessDocumentUseCase,
 )
+from src.application.knowledge.reembed_chunk_use_case import ReEmbedChunkUseCase
 from src.application.knowledge.reprocess_document_use_case import (
     ReprocessDocumentUseCase,
 )
 from src.application.knowledge.split_pdf_use_case import SplitPdfUseCase
+from src.application.knowledge.test_retrieval_use_case import TestRetrievalUseCase
+
+# S-KB-Studio.1 use cases
+from src.application.knowledge.update_chunk_use_case import UpdateChunkUseCase
 from src.application.knowledge.update_knowledge_base_use_case import (
     UpdateKnowledgeBaseUseCase,
 )
@@ -176,15 +204,19 @@ from src.application.ledger.list_all_tenants_quotas_use_case import (
 from src.application.ledger.process_monthly_reset_use_case import (
     ProcessMonthlyResetUseCase,
 )
-from src.application.quota.compute_tenant_quota_use_case import (
-    ComputeTenantQuotaUseCase,
-)
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
 from src.application.memory.extract_memory_use_case import ExtractMemoryUseCase
 from src.application.memory.load_memory_use_case import LoadMemoryUseCase
 from src.application.memory.resolve_identity_use_case import (
     ResolveIdentityUseCase,
 )
+from src.application.milvus.get_collection_stats_use_case import (
+    GetCollectionStatsUseCase,
+)
+from src.application.milvus.list_collections_use_case import (
+    ListCollectionsUseCase as ListMilvusCollectionsUseCase,
+)
+from src.application.milvus.rebuild_index_use_case import RebuildIndexUseCase
 from src.application.observability.diagnostic_rules_use_cases import (
     GetDiagnosticRulesUseCase,
     ResetDiagnosticRulesUseCase,
@@ -213,6 +245,17 @@ from src.application.observability.notification_use_cases import (
 from src.application.observability.rag_evaluation_use_case import (
     RAGEvaluationUseCase,
 )
+from src.application.outbox.admin_use_cases import (
+    AbandonOutboxEventUseCase,
+    BulkRequeueDeadLetterUseCase,
+    GetOutboxStatsUseCase,
+    ListDeadLetterUseCase,
+    RequeueOutboxEventUseCase,
+)
+from src.application.outbox.drain_outbox_use_case import DrainOutboxUseCase
+from src.application.outbox.publish_outbox_event_use_case import (
+    PublishOutboxEventUseCase,
+)
 from src.application.plan.assign_plan_to_tenant_use_case import (
     AssignPlanToTenantUseCase,
 )
@@ -223,68 +266,6 @@ from src.application.plan.list_plans_use_case import ListPlansUseCase
 from src.application.plan.update_plan_use_case import UpdatePlanUseCase
 from src.application.platform.create_provider_setting_use_case import (
     CreateProviderSettingUseCase,
-)
-from src.application.pricing.create_pricing_use_case import (
-    CreatePricingUseCase,
-)
-from src.application.pricing.deactivate_pricing_use_case import (
-    DeactivatePricingUseCase,
-)
-from src.application.pricing.dry_run_recalculate_use_case import (
-    DryRunRecalculateUseCase,
-)
-from src.application.pricing.execute_recalculate_use_case import (
-    ExecuteRecalculateUseCase,
-)
-from src.application.pricing.list_pricing_use_case import ListPricingUseCase
-
-# S-KB-Studio.1 use cases
-from src.application.knowledge.update_chunk_use_case import UpdateChunkUseCase
-from src.application.knowledge.delete_chunk_use_case import DeleteChunkUseCase
-from src.application.knowledge.list_kb_chunks_use_case import ListKbChunksUseCase
-from src.application.knowledge.test_retrieval_use_case import TestRetrievalUseCase
-from src.application.knowledge.reembed_chunk_use_case import ReEmbedChunkUseCase
-from src.application.knowledge.get_kb_quality_summary_use_case import (
-    GetKbQualitySummaryUseCase,
-)
-from src.application.outbox.publish_outbox_event_use_case import (
-    PublishOutboxEventUseCase,
-)
-from src.application.outbox.drain_outbox_use_case import DrainOutboxUseCase
-from src.application.outbox.admin_use_cases import (
-    AbandonOutboxEventUseCase,
-    BulkRequeueDeadLetterUseCase,
-    GetOutboxStatsUseCase,
-    ListDeadLetterUseCase,
-    RequeueOutboxEventUseCase,
-)
-from src.application.chunk_category.create_category_use_case import (
-    CreateCategoryUseCase,
-)
-from src.application.chunk_category.delete_category_use_case import (
-    DeleteCategoryUseCase,
-)
-from src.application.chunk_category.assign_chunks_use_case import (
-    AssignChunksUseCase,
-)
-from src.application.milvus.list_collections_use_case import (
-    ListCollectionsUseCase as ListMilvusCollectionsUseCase,
-)
-from src.application.milvus.get_collection_stats_use_case import (
-    GetCollectionStatsUseCase,
-)
-from src.application.milvus.rebuild_index_use_case import RebuildIndexUseCase
-from src.application.conversation.get_conversation_messages_use_case import (
-    GetConversationMessagesUseCase,
-)
-from src.application.conversation.get_conversation_token_usage_use_case import (
-    GetConversationTokenUsageUseCase,
-)
-from src.application.conversation.list_conv_summaries_use_case import (
-    ListConvSummariesUseCase,
-)
-from src.application.pricing.list_recalc_history_use_case import (
-    ListRecalcHistoryUseCase,
 )
 from src.application.platform.delete_provider_setting_use_case import (
     DeleteProviderSettingUseCase,
@@ -323,6 +304,25 @@ from src.application.platform.test_provider_connection_use_case import (
 from src.application.platform.update_provider_setting_use_case import (
     UpdateProviderSettingUseCase,
 )
+from src.application.pricing.create_pricing_use_case import (
+    CreatePricingUseCase,
+)
+from src.application.pricing.deactivate_pricing_use_case import (
+    DeactivatePricingUseCase,
+)
+from src.application.pricing.dry_run_recalculate_use_case import (
+    DryRunRecalculateUseCase,
+)
+from src.application.pricing.execute_recalculate_use_case import (
+    ExecuteRecalculateUseCase,
+)
+from src.application.pricing.list_pricing_use_case import ListPricingUseCase
+from src.application.pricing.list_recalc_history_use_case import (
+    ListRecalcHistoryUseCase,
+)
+from src.application.quota.compute_tenant_quota_use_case import (
+    ComputeTenantQuotaUseCase,
+)
 from src.application.rag.query_rag_use_case import QueryRAGUseCase
 from src.application.rag.unified_search_use_case import UnifiedSearchUseCase
 from src.application.ratelimit.get_rate_limits_use_case import GetRateLimitsUseCase
@@ -354,9 +354,6 @@ from src.infrastructure.classification.cluster_classification_service import (
     ClusterClassificationService,
 )
 from src.infrastructure.concurrency import RedisConversationLock
-from src.infrastructure.llm.llm_dm_metadata_extractor import (
-    LLMDMMetadataExtractor,
-)
 from src.infrastructure.context.llm_chunk_context_service import (
     LLMChunkContextService,
 )
@@ -382,6 +379,12 @@ from src.infrastructure.db.repositories.bot_repository import (
 )
 from src.infrastructure.db.repositories.built_in_tool_repository import (
     SQLAlchemyBuiltInToolRepository,
+)
+from src.infrastructure.db.repositories.cached_guard_rules_config_repository import (
+    CachedGuardRulesConfigRepository,
+)
+from src.infrastructure.db.repositories.cached_worker_config_repository import (
+    CachedWorkerConfigRepository,
 )
 from src.infrastructure.db.repositories.chunk_category_repository import (
     SQLAlchemyChunkCategoryRepository,
@@ -437,14 +440,6 @@ from src.infrastructure.db.repositories.plan_repository import (
 from src.infrastructure.db.repositories.processing_task_repository import (
     SQLAlchemyProcessingTaskRepository,
 )
-from src.infrastructure.pricing.pricing_cache import InMemoryPricingCache
-from src.infrastructure.pricing.pricing_repository import (
-    SQLAlchemyModelPricingRepository,
-    SQLAlchemyPricingRecalcAuditRepository,
-)
-from src.infrastructure.pricing.usage_recalc_adapter import (
-    SQLAlchemyUsageRecalcAdapter,
-)
 from src.infrastructure.db.repositories.provider_setting_repository import (
     SQLAlchemyProviderSettingRepository,
 )
@@ -479,6 +474,9 @@ from src.infrastructure.db.repositories.worker_config_repository import (
     SQLAlchemyWorkerConfigRepository,
 )
 from src.infrastructure.db.session_middleware import get_tracked_session
+from src.infrastructure.embedding.cached_embedding_service import (
+    CachedEmbeddingService,
+)
 from src.infrastructure.embedding.dynamic_embedding_factory import (
     DynamicEmbeddingServiceFactory,
     DynamicEmbeddingServiceProxy,
@@ -522,17 +520,28 @@ from src.infrastructure.llm.dynamic_llm_factory import (
     DynamicLLMServiceProxy,
 )
 from src.infrastructure.llm.fake_llm_service import FakeLLMService
+from src.infrastructure.llm.llm_dm_metadata_extractor import (
+    LLMDMMetadataExtractor,
+)
 from src.infrastructure.logging.db_error_reporter import DBErrorReporter
 from src.infrastructure.mcp.cached_tool_loader import CachedMCPToolLoader
 from src.infrastructure.memory.llm_memory_extraction_service import (
     LLMMemoryExtractionService,
 )
 from src.infrastructure.milvus.milvus_vector_store import MilvusVectorStore
-from src.infrastructure.outbox.handlers import build_vector_handlers
 from src.infrastructure.notification.email_sender import EmailNotificationSender
 from src.infrastructure.notification.redis_throttle import RedisNotificationThrottle
 from src.infrastructure.notification.sendgrid_quota_alert_sender import (
     SendGridQuotaAlertSender,
+)
+from src.infrastructure.outbox.handlers import build_vector_handlers
+from src.infrastructure.pricing.pricing_cache import InMemoryPricingCache
+from src.infrastructure.pricing.pricing_repository import (
+    SQLAlchemyModelPricingRepository,
+    SQLAlchemyPricingRecalcAuditRepository,
+)
+from src.infrastructure.pricing.usage_recalc_adapter import (
+    SQLAlchemyUsageRecalcAdapter,
 )
 from src.infrastructure.prompt_optimizer.run_manager import RunManager
 from src.infrastructure.storage.gcs_document_file_storage import (
@@ -712,9 +721,13 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
     )
 
+    # Issue #52 E2：LINE routing 每則訊息查 worker 設定，加 60s TTL 快取
     worker_config_repository = providers.Factory(
-        SQLAlchemyWorkerConfigRepository,
-        session=db_session,
+        CachedWorkerConfigRepository,
+        inner=providers.Factory(
+            SQLAlchemyWorkerConfigRepository,
+            session=db_session,
+        ),
     )
 
     list_workers_use_case = providers.Factory(
@@ -861,9 +874,13 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
     )
 
+    # Issue #52 E2：guard 設定每則訊息查 2 次（input+output），加 60s TTL 快取
     guard_rules_config_repository = providers.Factory(
-        SQLAlchemyGuardRulesConfigRepository,
-        session=db_session,
+        CachedGuardRulesConfigRepository,
+        inner=providers.Factory(
+            SQLAlchemyGuardRulesConfigRepository,
+            session=db_session,
+        ),
     )
 
     guard_log_repository = providers.Factory(
@@ -1050,9 +1067,19 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
-    embedding_service = providers.Singleton(
+    _dynamic_embedding_proxy = providers.Singleton(
         DynamicEmbeddingServiceProxy,
         factory=_embedding_factory,
+    )
+
+    # Issue #52 E1：查詢 embedding 走 Redis 快取（embed_texts 直接委派內層）
+    embedding_service = providers.Singleton(
+        CachedEmbeddingService,
+        inner=_dynamic_embedding_proxy,
+        cache=cache_service,
+        model=providers.Callable(
+            lambda cfg: cfg.effective_embedding_model, config
+        ),
     )
 
     vector_store = providers.Singleton(

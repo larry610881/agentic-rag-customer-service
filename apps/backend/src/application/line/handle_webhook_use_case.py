@@ -9,6 +9,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+from src.application.agent.prompt_assembler import inject_runtime_vars
+from src.application.agent.send_message_use_case import (
+    build_tool_rag_params_map,
+)
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.bot.entity import (
@@ -39,17 +43,13 @@ from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.concurrency import ConversationLock
-from src.application.agent.prompt_assembler import inject_runtime_vars
-from src.application.agent.send_message_use_case import (
-    build_tool_rag_params_map,
-)
+from src.infrastructure.line.flex_contact_builder import build_contact_flex
 from src.infrastructure.line.flex_image_carousel_builder import (
     build_image_carousel,
 )
-from src.infrastructure.line.flex_contact_builder import build_contact_flex
+from src.infrastructure.logging.setup import get_logger
 
 from ._text_format import strip_markdown_for_line
-from src.infrastructure.logging.setup import get_logger
 
 logger = get_logger(__name__)
 
@@ -327,6 +327,9 @@ class HandleWebhookUseCase:
         enabled_tools: list[str] | None = None,
         tool_rag_params: dict | None = None,
         retrieval_query: str = "",
+        prefetch_task: "asyncio.Task | None" = None,
+        prefetch_query: str = "",
+        prefetch_kb_ids: list[str] | None = None,
     ) -> "AgentResponse | None":
         """Issue #50 workflow 快速道：直接檢索 → 門檻判定 → 單次生成。
 
@@ -371,31 +374,46 @@ class HandleWebhookUseCase:
                 or threshold,
             ))
 
-        try:
-            rr = await self._query_rag.retrieve(QueryRAGCommand(
-                tenant_id=bot.tenant_id,
-                kb_id=kb_id,
-                query=search_query,
-                top_k=bot.llm_params.rag_top_k,
-                score_threshold=threshold,
-                kb_ids=kb_ids,
-                rerank_enabled=bot.rerank_enabled,
-                rerank_model=bot.rerank_model,
-                rerank_top_n=bot.rerank_top_n,
-            ))
-        except Exception:
-            logger.warning("line.direct_retrieval.error", exc_info=True)
-            if dm_task is not None:
-                dm_task.cancel()
-            AgentTraceCollector.add_node(
-                node_type="escalated",
-                label="快速道檢索異常 → 升級 ReAct",
-                parent_id=None,
-                start_ms=t_dr,
-                end_ms=AgentTraceCollector.offset_ms(),
-                reason="retrieval_error",
-            )
-            return None
+        # Issue #52 E3：預取有效性判定 — 查詢未被改寫（search_query 即原文）
+        # 且 worker 未覆寫 KB 集合時，直接採用與 guard/意圖分類並行起跑的
+        # 預取結果；否則取消預取、以正確參數重新檢索（行為與現狀一致）
+        rr = None
+        prefetch_used = False
+        if (
+            prefetch_task is not None
+            and search_query == prefetch_query
+            and set(kb_ids) == set(prefetch_kb_ids or [])
+        ):
+            rr = await prefetch_task  # _prefetch_retrieval_safe 失敗回 None
+            prefetch_used = rr is not None
+        if rr is None:
+            if prefetch_task is not None:
+                prefetch_task.cancel()
+            try:
+                rr = await self._query_rag.retrieve(QueryRAGCommand(
+                    tenant_id=bot.tenant_id,
+                    kb_id=kb_id,
+                    query=search_query,
+                    top_k=bot.llm_params.rag_top_k,
+                    score_threshold=threshold,
+                    kb_ids=kb_ids,
+                    rerank_enabled=bot.rerank_enabled,
+                    rerank_model=bot.rerank_model,
+                    rerank_top_n=bot.rerank_top_n,
+                ))
+            except Exception:
+                logger.warning("line.direct_retrieval.error", exc_info=True)
+                if dm_task is not None:
+                    dm_task.cancel()
+                AgentTraceCollector.add_node(
+                    node_type="escalated",
+                    label="快速道檢索異常 → 升級 ReAct",
+                    parent_id=None,
+                    start_ms=t_dr,
+                    end_ms=AgentTraceCollector.offset_ms(),
+                    reason="retrieval_error",
+                )
+                return None
 
         # 收斂 DM 結果（失敗不升級 — 文字檢索可能已足夠回答）
         dm_context = ""
@@ -428,6 +446,7 @@ class HandleWebhookUseCase:
             top_score=round(top_score, 4),
             search_query=search_query,
             query_rewritten=search_query != event.message_text,
+            prefetched=prefetch_used,
         )
         if not rr.sources or top_score < threshold:
             AgentTraceCollector.add_node(
@@ -497,6 +516,20 @@ class HandleWebhookUseCase:
             # 持久化皆支援 dict/Source 混用（見 image_sources 組裝處註解）
             result.sources = list(rr.sources) + list(dm_sources)
         return result
+
+    async def _prefetch_retrieval_safe(self, cmd) -> "Any | None":
+        """Issue #52 E3：檢索預取本體 — 吞例外回 None（fail-open）。
+
+        預取失敗不能影響主流程：快速道會回退正常檢索，正常檢索也失敗
+        才走既有的升級 ReAct 路徑。CancelledError 保持傳遞讓取消語義正確。
+        """
+        try:
+            return await self._query_rag.retrieve(cmd)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("line.retrieval_prefetch.error", exc_info=True)
+            return None
 
     @staticmethod
     async def _show_loading_safe(
@@ -667,11 +700,43 @@ class HandleWebhookUseCase:
 
         direct_retrieval_worker = None
         rewritten_query = ""
+        prefetch_task: asyncio.Task | None = None
+        prefetch_query = event.message_text
+        prefetch_kb_ids = list(bot.knowledge_base_ids)
         if self._worker_config_repo and self._intent_classifier:
             workers = await self._worker_config_repo.find_by_bot_id(
                 bot.id.value
             )
             if workers:
+                # ── Issue #52 E3：檢索預取（∥ guard/意圖分類）──
+                # 快速道檢索與 guard/分類無資料依賴：以原文 + bot 預設 KB
+                # 提前起跑，把檢索時間藏進並行區。分類後若查詢被改寫
+                # （Issue #51 follow-up）或 worker 覆寫 KB 則丟棄重查。
+                if (
+                    self._query_rag is not None
+                    and prefetch_kb_ids
+                    and any(
+                        getattr(w, "direct_retrieval", False) for w in workers
+                    )
+                ):
+                    from src.application.rag.query_rag_use_case import (
+                        QueryRAGCommand,
+                    )
+                    prefetch_task = asyncio.create_task(
+                        self._prefetch_retrieval_safe(QueryRAGCommand(
+                            tenant_id=bot.tenant_id,
+                            kb_id=prefetch_kb_ids[0],
+                            query=prefetch_query,
+                            top_k=bot.llm_params.rag_top_k,
+                            score_threshold=(
+                                bot.llm_params.rag_score_threshold
+                            ),
+                            kb_ids=prefetch_kb_ids,
+                            rerank_enabled=bot.rerank_enabled,
+                            rerank_model=bot.rerank_model,
+                            rerank_top_n=bot.rerank_top_n,
+                        ))
+                    )
                 # Token-Gov.7 A: 包 trace node 記錄 intent classifier LLM 時間
                 from src.infrastructure.observability.agent_trace_collector import (
                     AgentTraceCollector,
@@ -785,6 +850,9 @@ class HandleWebhookUseCase:
                     enabled_tools=enabled_tools,
                     tool_rag_params=tool_rag_params,
                     retrieval_query=rewritten_query,
+                    prefetch_task=prefetch_task,
+                    prefetch_query=prefetch_query,
+                    prefetch_kb_ids=prefetch_kb_ids,
                 )
             if result is None:
                 result = await self._agent_service.process_message(
@@ -806,10 +874,16 @@ class HandleWebhookUseCase:
                     mcp_servers=mcp_servers,
                     max_tool_calls=max_tool_calls,
                 )
+        # Issue #52 E3：未被快速道消費的預取（guard 攔截 / 走 ReAct /
+        # 預取失效）在此收尾取消；對已完成或已消費的 task 為 no-op
+        if prefetch_task is not None:
+            prefetch_task.cancel()
         t1 = time.monotonic()
 
         # Persist agent execution trace
-        from src.infrastructure.observability.agent_trace_collector import AgentTraceCollector
+        from src.infrastructure.observability.agent_trace_collector import (
+            AgentTraceCollector,
+        )
         latency_ms = round((t1 - t0) * 1000)
         trace = AgentTraceCollector.finish(total_ms=float(latency_ms))
         if trace:
@@ -910,7 +984,9 @@ class HandleWebhookUseCase:
             # Persist agent trace to DB
             if trace and self._trace_session_factory:
                 try:
-                    from src.infrastructure.db.models.agent_trace_model import AgentExecutionTraceModel
+                    from src.infrastructure.db.models.agent_trace_model import (
+                        AgentExecutionTraceModel,
+                    )
                     trace.conversation_id = conversation.id.value
                     trace.message_id = assistant_msg.id.value
                     row = AgentExecutionTraceModel(
