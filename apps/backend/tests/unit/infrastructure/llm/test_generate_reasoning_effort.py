@@ -95,7 +95,9 @@ def test_fake_service_accepts_and_ignores():
     assert result.text
 
 
-def test_intent_classifier_passes_effort_none():
+def test_intent_classifier_passes_effort_minimal():
+    # 'minimal' 而非 'none'：線上實證 nano 拒收 'none'（unsupported_value
+    # → 被剝除 → reasoning 照樣燒光預算）；'minimal' 為 gpt-5 家族通用值
     from src.application.agent.intent_classifier import IntentClassifier
 
     mock_llm = AsyncMock()
@@ -108,4 +110,73 @@ def test_intent_classifier_passes_effort_none():
         route_names=["商品查詢"],
     ))
     kwargs = mock_llm.generate.await_args.kwargs
-    assert kwargs["reasoning_effort"] == "none"
+    assert kwargs["reasoning_effort"] == "minimal"
+
+
+def _make_worker(name: str):
+    from src.domain.bot.worker_config import WorkerConfig
+
+    return WorkerConfig(bot_id="B001", name=name, description=name)
+
+
+def test_classifier_empty_output_retries_with_default_model():
+    """Issue #52 安全網：router 小模型輸出空 → 用預設模型重試一次。"""
+    from src.application.agent.intent_classifier import IntentClassifier
+
+    mock_llm = AsyncMock()
+    mock_llm.generate = AsyncMock(side_effect=[
+        MagicMock(text="", usage=None),        # nano 空輸出
+        MagicMock(text="商品查詢\n尿布 特價", usage=None),  # 預設模型重試
+    ])
+    classifier = IntentClassifier(llm_service=mock_llm)
+    worker = _make_worker("商品查詢")
+    matched, rewritten = _run(classifier.classify_workers_and_rewrite(
+        user_message="有賣尿布嗎",
+        router_context="",
+        workers=[worker],
+        router_model="openai:gpt-5-nano",
+    ))
+    assert matched is worker
+    assert rewritten == "尿布 特價"
+    assert mock_llm.generate.await_count == 2
+    first_kwargs = mock_llm.generate.await_args_list[0].kwargs
+    second_kwargs = mock_llm.generate.await_args_list[1].kwargs
+    assert first_kwargs.get("model") == "openai:gpt-5-nano"
+    assert "model" not in second_kwargs  # 重試不帶 router 覆寫 → 預設模型
+
+
+def test_classifier_no_retry_when_output_valid():
+    from src.application.agent.intent_classifier import IntentClassifier
+
+    mock_llm = AsyncMock()
+    mock_llm.generate = AsyncMock(
+        return_value=MagicMock(text="商品查詢", usage=None)
+    )
+    classifier = IntentClassifier(llm_service=mock_llm)
+    worker = _make_worker("商品查詢")
+    matched, _ = _run(classifier.classify_workers_and_rewrite(
+        user_message="有賣尿布嗎",
+        router_context="",
+        workers=[worker],
+        router_model="openai:gpt-5-nano",
+    ))
+    assert matched is worker
+    assert mock_llm.generate.await_count == 1
+
+
+def test_classifier_no_retry_without_router_model():
+    """未設 router_model（已是預設模型）時空輸出不重試 — 避免無意義雙呼叫。"""
+    from src.application.agent.intent_classifier import IntentClassifier
+
+    mock_llm = AsyncMock()
+    mock_llm.generate = AsyncMock(return_value=MagicMock(text="", usage=None))
+    classifier = IntentClassifier(llm_service=mock_llm)
+    matched, rewritten = _run(classifier.classify_workers_and_rewrite(
+        user_message="有賣尿布嗎",
+        router_context="",
+        workers=[_make_worker("商品查詢")],
+        router_model="",
+    ))
+    assert matched is None
+    assert rewritten == ""
+    assert mock_llm.generate.await_count == 1

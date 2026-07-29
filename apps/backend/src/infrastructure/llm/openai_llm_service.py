@@ -219,6 +219,7 @@ class OpenAILLMService(LLMService):
                 log.warning(
                     "llm.openai.unsupported_param_stripped",
                     param=bad_param,
+                    response_body=resp.text[:300],
                 )
                 strips += 1
                 resp = await self._client.post(

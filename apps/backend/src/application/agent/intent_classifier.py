@@ -132,11 +132,25 @@ class IntentClassifier:
             [w.name for w in workers], router_model,
             tenant_id=tenant_id, bot_id=bot_id,
             # Issue #52：reasoning 模型的 max_completion_tokens 含內部
-            # reasoning。已帶 reasoning_effort='none'，此為兜底 —— 若
-            # effort 被 API 拒絕剝除，400 tokens 仍給輕度 reasoning 留
-            # 空間讓兩行輸出跑得完；實際可見輸出僅 ~20 tokens 成本不變。
+            # reasoning。已帶 reasoning_effort，此為兜底 —— 若 effort
+            # 被 API 拒絕剝除，400 tokens 仍給輕度 reasoning 留空間
+            # 讓兩行輸出跑得完；實際可見輸出僅 ~20 tokens 成本不變。
             max_tokens=400,
         )
+        # Issue #52 安全網：router 小模型輸出空（reasoning 燒光預算 /
+        # 格式全失敗）時，改用預設模型重試一次 —— routing 靜默全滅
+        # （每題 fallback 走完整 ReAct）比多付一次分類呼叫昂貴得多。
+        if not (raw or "").strip() and router_model:
+            logger.warning(
+                "intent_classification_router_fallback",
+                router_model=router_model,
+            )
+            raw = await self._call_llm(
+                system_prompt, user_msg,
+                [w.name for w in workers], "",
+                tenant_id=tenant_id, bot_id=bot_id,
+                max_tokens=400,
+            )
         if raw is None:
             return None, ""
 
@@ -199,8 +213,10 @@ class IntentClassifier:
                 # Issue #52：分類是簡單任務不需推理。reasoning 模型
                 # （gpt-5-nano 等）不壓 reasoning 會把 max_tokens 預算
                 # 燒光 → content 空字串 → 靜默 fallback（線上實證）。
+                # 值用 'minimal'（gpt-5 家族通用）—— 'none' 實證只有
+                # 5.4+tools 收，nano 回 400 被剝除後照樣燒光預算。
                 # 非 OpenAI reasoning 模型由各 impl 忽略此 hint。
-                "reasoning_effort": "none",
+                "reasoning_effort": "minimal",
             }
             # Use router_model if specified
             if router_model:
