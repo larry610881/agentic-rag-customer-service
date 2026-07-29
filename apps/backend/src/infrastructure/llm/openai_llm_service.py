@@ -16,6 +16,32 @@ logger = get_logger(__name__)
 # Models that require max_completion_tokens instead of max_tokens
 _NEW_PARAM_PREFIXES = ("o1", "o3", "gpt-5")
 
+# === 不支援參數的 learn-and-strip cache =============================
+#
+# 2026-07-29 線上實證（Issue #52）：gpt-5-nano 拒絕 temperature=0 —
+# "Unsupported value: 'temperature' ... Only the default (1) value is
+# supported."（400, code=unsupported_value, param=temperature）。
+# gpt-5.4 容忍同參數，同系列行為不一致 → 靜態 prefix gate 不可靠。
+# 改為動態學習：首次 400 剝參數重試（寧可慢不可斷），結果記進
+# module-level cache，同 model 後續請求直接預剝，不再付重試延遲。
+_UNSUPPORTED_PARAM_CODES = ("unsupported_value", "unsupported_parameter")
+_UNSUPPORTED_PARAMS: dict[str, set[str]] = {}  # model -> rejected params
+
+
+def invalidate_unsupported_param_cache() -> None:
+    _UNSUPPORTED_PARAMS.clear()
+
+
+def _extract_unsupported_param(resp: httpx.Response) -> str | None:
+    """400 回應若為「參數不支援」則回傳該參數名，否則 None。"""
+    try:
+        err = resp.json().get("error") or {}
+    except Exception:
+        return None
+    if err.get("code") in _UNSUPPORTED_PARAM_CODES and err.get("param"):
+        return str(err["param"])
+    return None
+
 
 def _needs_max_completion_tokens(model: str) -> bool:
     return any(model.startswith(p) for p in _NEW_PARAM_PREFIXES)
@@ -163,12 +189,37 @@ class OpenAILLMService(LLMService):
             body["temperature"] = temperature
         if frequency_penalty is not None and "googleapis.com" not in self._base_url:
             body["frequency_penalty"] = frequency_penalty
+        # 已知此 model 不支援的參數直接預剝（learn-and-strip cache）
+        for param in _UNSUPPORTED_PARAMS.get(self._model, ()):  # noqa: B007
+            body.pop(param, None)
         try:
             resp = await self._client.post(
                 f"{self._base_url}/chat/completions",
                 headers=self._build_headers(),
                 json=body,
             )
+            # 400「參數不支援」→ 剝除該參數重試一次並記住（Issue #52：
+            # gpt-5-nano 拒絕 temperature=0，靜默失敗會讓分類全滅）。
+            # 最多剝 3 個參數，其他 400 走既有 raise 路徑。
+            strips = 0
+            while (
+                resp.status_code == 400
+                and strips < 3
+                and (bad_param := _extract_unsupported_param(resp)) is not None
+                and bad_param in body
+            ):
+                body.pop(bad_param)
+                _UNSUPPORTED_PARAMS.setdefault(self._model, set()).add(bad_param)
+                log.warning(
+                    "llm.openai.unsupported_param_stripped",
+                    param=bad_param,
+                )
+                strips += 1
+                resp = await self._client.post(
+                    f"{self._base_url}/chat/completions",
+                    headers=self._build_headers(),
+                    json=body,
+                )
             resp.raise_for_status()
             data = resp.json()
             text = data["choices"][0]["message"]["content"]
