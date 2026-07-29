@@ -215,6 +215,10 @@ class MilvusVectorStore(VectorStore):
         self._schema_field_cache: dict[str, set[str]] = {}
         logger.info("milvus.init", uri=uri, db_name=db_name)
 
+    async def ping(self) -> None:
+        """Issue #53 啟動暖機：以最輕量操作建立首連（TLS/auth/元資料）。"""
+        await asyncio.to_thread(self._client.list_collections)
+
     async def _collection_field_names(self, collection: str) -> set[str]:
         """Return the set of field names defined on the given collection.
 

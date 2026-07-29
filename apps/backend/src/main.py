@@ -120,6 +120,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         logger.warning("pricing_cache.startup_refresh_failed", exc_info=True)
 
+    # Issue #53：換版暖機 — 預熱 DB/Milvus/Redis 連線。uvicorn 在
+    # lifespan 完成後才開始接受連線，Cloud Run startup probe 因此會等
+    # 暖機完成才把流量切到新 revision（期間舊版繼續服務）。fail-open。
+    try:
+        from src.infrastructure.warmup import run_startup_warmup
+
+        container = app.container  # type: ignore[attr-defined]
+        await run_startup_warmup(
+            session_factory=container.trace_session_factory(),
+            vector_store=container.vector_store(),
+            cache_service=container.cache_service(),
+        )
+    except Exception:
+        logger.warning("startup_warmup.failed", exc_info=True)
+
     # Start background log cleanup
     cleanup_task = asyncio.create_task(
         _log_cleanup_loop(app.container)  # type: ignore[attr-defined]
@@ -294,14 +309,14 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         application.include_router(feedback_router)
         application.include_router(admin_router)
 
-        from src.interfaces.api.admin_tools_router import (
-            router as admin_tools_router,
-        )
         from src.interfaces.api.admin_bot_router import (
             router as admin_bot_router,
         )
         from src.interfaces.api.admin_knowledge_base_router import (
             router as admin_knowledge_base_router,
+        )
+        from src.interfaces.api.admin_tools_router import (
+            router as admin_tools_router,
         )
 
         application.include_router(admin_tools_router)
@@ -317,14 +332,14 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.admin_chunk_router import (
             router as admin_chunk_router,
         )
+        from src.interfaces.api.admin_conv_summary_router import (
+            router as admin_conv_summary_router,
+        )
         from src.interfaces.api.admin_milvus_router import (
             router as admin_milvus_router,
         )
         from src.interfaces.api.admin_outbox_router import (
             router as admin_outbox_router,
-        )
-        from src.interfaces.api.admin_conv_summary_router import (
-            router as admin_conv_summary_router,
         )
         application.include_router(admin_chunk_router)
         application.include_router(admin_milvus_router)
