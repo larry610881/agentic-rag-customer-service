@@ -99,8 +99,10 @@ class AnthropicLLMService(LLMService):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
+        reasoning_effort: str | None = None,
     ) -> LLMResult:
-        # Anthropic API does not support frequency_penalty — ignored
+        # Anthropic API does not support frequency_penalty / reasoning_effort
+        # (OpenAI-only hint) — both ignored
         log = logger.bind(model=self._model)
         log.debug("llm.anthropic.request")
         start = time.perf_counter()

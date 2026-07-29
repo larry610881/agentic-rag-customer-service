@@ -358,6 +358,7 @@ class DynamicLLMServiceProxy(LLMService):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
+        reasoning_effort: str | None = None,
         model: str = "",
     ) -> LLMResult:
         # S-KB-Followup.2: 接 "provider:model" 或 bare "model"。有 prefix 就走
@@ -374,6 +375,7 @@ class DynamicLLMServiceProxy(LLMService):
             temperature=temperature,
             max_tokens=max_tokens,
             frequency_penalty=frequency_penalty,
+            reasoning_effort=reasoning_effort,
         )
 
     async def generate_stream(

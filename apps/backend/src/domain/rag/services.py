@@ -133,6 +133,7 @@ class LLMService(ABC):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
+        reasoning_effort: str | None = None,
     ) -> LLMResult: ...
 
     @abstractmethod

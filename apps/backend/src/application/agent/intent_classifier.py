@@ -131,7 +131,11 @@ class IntentClassifier:
             system_prompt, user_msg,
             [w.name for w in workers], router_model,
             tenant_id=tenant_id, bot_id=bot_id,
-            max_tokens=120,
+            # Issue #52：reasoning 模型的 max_completion_tokens 含內部
+            # reasoning。已帶 reasoning_effort='none'，此為兜底 —— 若
+            # effort 被 API 拒絕剝除，400 tokens 仍給輕度 reasoning 留
+            # 空間讓兩行輸出跑得完；實際可見輸出僅 ~20 tokens 成本不變。
+            max_tokens=400,
         )
         if raw is None:
             return None, ""
@@ -192,6 +196,11 @@ class IntentClassifier:
                 "context": "",
                 "temperature": 0,
                 "max_tokens": max_tokens,
+                # Issue #52：分類是簡單任務不需推理。reasoning 模型
+                # （gpt-5-nano 等）不壓 reasoning 會把 max_tokens 預算
+                # 燒光 → content 空字串 → 靜默 fallback（線上實證）。
+                # 非 OpenAI reasoning 模型由各 impl 忽略此 hint。
+                "reasoning_effort": "none",
             }
             # Use router_model if specified
             if router_model:

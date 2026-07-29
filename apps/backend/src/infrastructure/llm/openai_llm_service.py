@@ -163,6 +163,7 @@ class OpenAILLMService(LLMService):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
+        reasoning_effort: str | None = None,
     ) -> LLMResult:
         log = logger.bind(model=self._model, base_url=self._base_url)
         key_prefix = self._api_key[:8] if self._api_key else "EMPTY"
@@ -189,6 +190,11 @@ class OpenAILLMService(LLMService):
             body["temperature"] = temperature
         if frequency_penalty is not None and "googleapis.com" not in self._base_url:
             body["frequency_penalty"] = frequency_penalty
+        # Issue #52：reasoning 模型（gpt-5/o-series）短輸出呼叫（如意圖分類）
+        # 若不壓 reasoning，完成預算會被內部 reasoning 燒光 → content 空字串。
+        # 僅 reasoning 模型夾帶；值不合法時由下方 learn-and-strip 剝除兜底。
+        if reasoning_effort and supports_reasoning_effort(self._model):
+            body["reasoning_effort"] = reasoning_effort
         # 已知此 model 不支援的參數直接預剝（learn-and-strip cache）
         for param in _UNSUPPORTED_PARAMS.get(self._model, ()):  # noqa: B007
             body.pop(param, None)

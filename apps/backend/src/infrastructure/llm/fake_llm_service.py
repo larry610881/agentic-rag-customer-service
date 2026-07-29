@@ -22,6 +22,7 @@ class FakeLLMService(LLMService):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
+        reasoning_effort: str | None = None,
     ) -> LLMResult:
         if not context or not context.strip():
             text = "知識庫中沒有找到相關資訊，請嘗試其他問題。"
