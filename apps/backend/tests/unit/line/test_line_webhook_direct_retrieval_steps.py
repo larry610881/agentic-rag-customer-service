@@ -100,10 +100,11 @@ def _setup(context, *, direct: bool, top_score: float = 0.85,
     mock_worker_repo = AsyncMock()
     mock_worker_repo.find_by_bot_id = AsyncMock(return_value=[worker])
     mock_classifier = AsyncMock()
-    # Issue #51：LINE 路徑改用 classify_workers_and_rewrite（同呼叫回傳
-    # worker + 上下文改寫查詢；改寫缺失時為空字串 → 快速道退回原文）
-    mock_classifier.classify_workers_and_rewrite = AsyncMock(
-        return_value=(worker, rewrite)
+    # Issue #51 → 2026-08-17：LINE 路徑改用 classify_sanitize（同呼叫回傳
+    # worker + 清洗/改寫查詢 + 攻擊判定；改寫缺失時為空字串 → 快速道退回原文）
+    from src.application.agent.intent_classifier import ClassifyOutcome
+    mock_classifier.classify_sanitize = AsyncMock(
+        return_value=ClassifyOutcome(worker=worker, query=rewrite, is_attack=False)
     )
 
     mock_query_rag = AsyncMock()
@@ -354,3 +355,43 @@ def prompt_has_line_suffix(context):
     assert LINE_CHANNEL_PROMPT_SUFFIX in kwargs["system_prompt"]
     # 只注入一次
     assert kwargs["system_prompt"].count("# LINE 通路規範") == 1
+
+
+# ---------------------------------------------------------------------------
+# 2026-08-17 前置語意閘門：分類器 ATTACK → 固定文案、不進生成
+# ---------------------------------------------------------------------------
+
+
+@given("一個開啟直接檢索的 Worker 且分類器判定訊息為純攻擊")
+def worker_with_attack_classification(context):
+    from src.application.agent.intent_classifier import ClassifyOutcome
+    _setup(context, direct=True)
+    context["use_case"]._intent_classifier.classify_sanitize = AsyncMock(
+        return_value=ClassifyOutcome(worker=None, query="", is_attack=True)
+    )
+    mock_guard = AsyncMock()
+    mock_guard.check_input = AsyncMock(
+        return_value=MagicMock(passed=True, blocked_response="", rule_matched="")
+    )
+    mock_guard.block_by_classifier = AsyncMock(
+        return_value=MagicMock(
+            passed=False, blocked_response="我只能協助您處理客服相關問題。",
+            rule_matched="intent_attack",
+        )
+    )
+    context["use_case"]._prompt_guard = mock_guard
+    context["mock_guard"] = mock_guard
+
+
+@then("不應呼叫 Agent 生成")
+def agent_not_called(context):
+    context["mock_agent"].process_message.assert_not_called()
+    context["mock_query_rag"].retrieve.assert_not_called()
+
+
+@then("LINE 回覆應為固定攔截文案")
+def reply_is_blocked_text(context):
+    args = context["mock_line_service"].reply_with_quick_reply.call_args
+    text = args.args[1] if len(args.args) > 1 else args.kwargs.get("text")
+    assert text == "我只能協助您處理客服相關問題。"
+    context["mock_guard"].block_by_classifier.assert_awaited_once()

@@ -672,6 +672,7 @@ class HandleWebhookUseCase:
 
         direct_retrieval_worker = None
         rewritten_query = ""
+        classifier_attack = False
         if self._worker_config_repo and self._intent_classifier:
             workers = await self._worker_config_repo.find_by_bot_id(
                 bot.id.value
@@ -684,14 +685,16 @@ class HandleWebhookUseCase:
                 t_start = AgentTraceCollector.offset_ms()
                 # Issue #51：同一次分類呼叫多產出「上下文改寫檢索查詢」，
                 # 供快速道 follow-up 短句（「價格呢」）檢索命中正確商品
-                matched, rewritten_query = (
-                    await self._intent_classifier.classify_workers_and_rewrite(
-                        user_message=event.message_text,
-                        router_context=router_context,
-                        workers=workers,
-                        router_model=bot.router_model,
-                    )
+                # 2026-08-17：同一次呼叫再多產出「攻擊判定」（三行協定）——
+                # 純攻擊 → 前置語意閘門回固定文案、不進生成
+                outcome = await self._intent_classifier.classify_sanitize(
+                    user_message=event.message_text,
+                    router_context=router_context,
+                    workers=workers,
+                    router_model=bot.router_model,
                 )
+                matched, rewritten_query = outcome.worker, outcome.query
+                classifier_attack = bool(outcome.is_attack)
                 t_end = AgentTraceCollector.offset_ms()
                 AgentTraceCollector.add_node(
                     node_type="intent_classify",
@@ -766,6 +769,20 @@ class HandleWebhookUseCase:
                 answer=guard_result.blocked_response,
                 guard_blocked="input",
                 guard_rule_matched=guard_result.rule_matched,
+            )
+        elif classifier_attack and self._prompt_guard is not None:
+            # 前置語意閘門：分類器判純攻擊 → 與 regex 攔截同一份固定文案，
+            # 不呼叫檢索與生成（攻擊句不進主模型；拒答 ≈ 分類耗時）
+            blocked = await self._prompt_guard.block_by_classifier(
+                message=event.message_text,
+                tenant_id=bot.tenant_id,
+                bot_id=bot.id.value,
+                user_id=event.user_id,
+            )
+            result = AgentResponse(
+                answer=blocked.blocked_response,
+                guard_blocked="input",
+                guard_rule_matched=blocked.rule_matched,
             )
         else:
             if guard_result is not None:

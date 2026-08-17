@@ -196,6 +196,29 @@ class PromptGuardService:
         # LLM），regex 只留作 0ms 第一關。設定欄位保留於 DB 但不再生效。
         return GuardResult(passed=True)
 
+    async def block_by_classifier(
+        self,
+        *,
+        message: str,
+        tenant_id: str,
+        bot_id: str | None = None,
+        user_id: str | None = None,
+    ) -> GuardResult:
+        """2026-08-17 前置語意閘門：意圖分類器判定「純攻擊」時，由此走與
+        regex 攔截相同的副作用（warning log + trace 紅節點 + guard_logs），
+        並回傳同一份 blocked_response 固定文案 — 一個來源，後台改一處。"""
+        config = await self._get_config()
+        return await self._record_input_block(
+            message=message,
+            tenant_id=tenant_id,
+            bot_id=bot_id,
+            user_id=user_id,
+            rule_matched="intent_attack",
+            blocked_response=config.blocked_response,
+            trace_label="🛡️ input blocked: 分類器判定攻擊/越界",
+            trace_error="Intent classifier judged prompt attack",
+        )
+
     async def _record_input_block(
         self,
         *,
