@@ -507,6 +507,9 @@ class HandleWebhookUseCase:
             history=history,
             history_context=history_context,
             router_context=router_context,
+            # 轉真人工具靠這個 URL 產生聯絡卡；漏傳 → tool 回 contact=None
+            # → 有「請點下方按鈕」文字卻沒按鈕（2026-08-17「我要退費」實測）
+            customer_service_url=bot.customer_service_url,
             max_tool_calls=1,
         )
         # 快速道的檢索來源回填（無 tool call → agent 不會帶 sources），

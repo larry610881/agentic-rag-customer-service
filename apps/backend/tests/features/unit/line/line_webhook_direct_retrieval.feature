@@ -56,3 +56,8 @@ Feature: LINE Webhook Worker 直接檢索模式（workflow 快速道）
     When 系統處理一則命中該 Worker 的 LINE 訊息
     Then LINE 回覆文字不得為空
     And 回覆應附上聯絡按鈕
+
+  Scenario: 快速道轉真人 — 應把 Bot 客服 URL 傳給 Agent（無按鈕 regression）
+    Given 一個開啟直接檢索且啟用轉真人工具的 Worker
+    When 系統處理一則命中該 Worker 的 LINE 訊息
+    Then Agent 應收到 Bot 的客服 URL

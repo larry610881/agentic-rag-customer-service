@@ -72,6 +72,7 @@ def _setup(context, *, direct: bool, top_score: float = 0.85,
         line_channel_secret="secret-dr",
         line_channel_access_token="token-dr",
         knowledge_base_ids=["kb-faq"],
+        customer_service_url="https://cs.example/contact",
     )
     worker = WorkerConfig(
         bot_id=bot.id.value,
@@ -335,3 +336,12 @@ def reply_has_contact(context):
     kwargs = context["mock_line_service"].reply_with_quick_reply.call_args.kwargs
     extra = kwargs.get("extra_messages") or []
     assert any(m.get("altText") == "聯絡真人客服" for m in extra)
+
+
+@then("Agent 應收到 Bot 的客服 URL")
+def agent_gets_cs_url(context):
+    """2026-08-17 實測「我要退費」：快速道呼叫 transfer_to_human_agent 成功，
+    但工具回 contact=None（尚未設定客服聯絡資訊）→ 沒有 Flex 按鈕。
+    根因：_try_direct_retrieval 未把 bot.customer_service_url 傳給 agent。"""
+    kwargs = context["mock_agent"].process_message.call_args.kwargs
+    assert kwargs.get("customer_service_url") == "https://cs.example/contact"
