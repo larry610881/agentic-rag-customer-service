@@ -61,3 +61,8 @@ Feature: LINE Webhook Worker 直接檢索模式（workflow 快速道）
     Given 一個開啟直接檢索且啟用轉真人工具的 Worker
     When 系統處理一則命中該 Worker 的 LINE 訊息
     Then Agent 應收到 Bot 的客服 URL
+
+  Scenario: LINE 通路規範由系統注入一次 — 快速道與 ReAct 共用（合併重複 prompt）
+    Given 一個開啟直接檢索的 Worker 且檢索結果分數高於門檻
+    When 系統處理一則命中該 Worker 的 LINE 訊息
+    Then 生成 Prompt 應包含 LINE 通路規範後綴

@@ -22,8 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ModelSelect } from "@/components/shared/model-select";
-import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import {
   useGuardRules,
   useUpdateGuardRules,
@@ -89,26 +87,15 @@ function GuardRulesEditor() {
   const { data: config, isLoading } = useGuardRules();
   const updateMutation = useUpdateGuardRules();
   const resetMutation = useResetGuardRules();
-  const { data: enabledModels } = useEnabledModels();
 
   const [inputRules, setInputRules] = useState<GuardRuleItem[]>([]);
   const [outputKeywords, setOutputKeywords] = useState<OutputKeywordItem[]>([]);
-  const [llmEnabled, setLlmEnabled] = useState(false);
-  const [llmInputEnabled, setLlmInputEnabled] = useState(false);
-  const [llmModel, setLlmModel] = useState("");
-  const [inputPrompt, setInputPrompt] = useState("");
-  const [outputPrompt, setOutputPrompt] = useState("");
   const [blockedResponse, setBlockedResponse] = useState("");
 
   useEffect(() => {
     if (config) {
       setInputRules(config.input_rules);
       setOutputKeywords(config.output_keywords);
-      setLlmEnabled(config.llm_guard_enabled);
-      setLlmInputEnabled(config.llm_input_guard_enabled);
-      setLlmModel(config.llm_guard_model);
-      setInputPrompt(config.input_guard_prompt);
-      setOutputPrompt(config.output_guard_prompt);
       setBlockedResponse(config.blocked_response);
     }
   }, [config]);
@@ -117,11 +104,6 @@ function GuardRulesEditor() {
     updateMutation.mutate({
       input_rules: inputRules,
       output_keywords: outputKeywords,
-      llm_guard_enabled: llmEnabled,
-      llm_input_guard_enabled: llmInputEnabled,
-      llm_guard_model: llmModel === "__none__" ? "" : llmModel,
-      input_guard_prompt: inputPrompt,
-      output_guard_prompt: outputPrompt,
       blocked_response: blockedResponse,
     });
   };
@@ -240,76 +222,12 @@ function GuardRulesEditor() {
         ))}
       </div>
 
-      {/* Guard 模型（輸入/輸出 LLM 防護共用）*/}
-      {(llmInputEnabled || llmEnabled) && (
-        <div className="rounded-lg border p-4 flex flex-col gap-1">
-          <Label className="text-sm font-semibold">Guard 模型（LLM 防護共用）</Label>
-          <ModelSelect
-            value={llmModel}
-            onValueChange={setLlmModel}
-            enabledModels={enabledModels}
-            placeholder="系統預設（Haiku）"
-            allowEmpty
-            emptyLabel="系統預設（Haiku）"
-          />
-        </div>
-      )}
-
-      {/* 輸入防護（Prompt Injection / 角色切換）*/}
-      <div className="rounded-lg border p-4 flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">
-            🛡 輸入防護（Prompt Injection / 角色切換）
-          </h3>
-          <Switch
-            checked={llmInputEnabled}
-            onCheckedChange={setLlmInputEnabled}
-          />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          啟用後，每則訊息先用 LLM 判斷是否想覆蓋指令 / 改換角色 / 越獄。
-          全通道生效（web / LINE / 所有 bot）。會消耗少量 token。
-        </p>
-        {llmInputEnabled && (
-          <div className="flex flex-col gap-1">
-            <Label className="text-sm">輸入檢查 Prompt</Label>
-            <Textarea
-              rows={6}
-              value={inputPrompt}
-              onChange={(e) => setInputPrompt(e.target.value)}
-              placeholder="留空使用預設 prompt..."
-            />
-            <p className="text-xs text-muted-foreground">
-              變數：<code className="rounded bg-muted px-1">{"{user_message}"}</code>
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* 輸出防護（洩密二次確認）*/}
-      <div className="rounded-lg border p-4 flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">🔒 輸出防護（洩密二次確認）</h3>
-          <Switch checked={llmEnabled} onCheckedChange={setLlmEnabled} />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          啟用後，輸出可疑時用 LLM 二次判斷是否洩露系統資訊。會消耗少量 token。
-        </p>
-        {llmEnabled && (
-          <div className="flex flex-col gap-1">
-            <Label className="text-sm">輸出檢查 Prompt</Label>
-            <Textarea
-              rows={6}
-              value={outputPrompt}
-              onChange={(e) => setOutputPrompt(e.target.value)}
-              placeholder="留空使用預設 prompt..."
-            />
-            <p className="text-xs text-muted-foreground">
-              變數：<code className="rounded bg-muted px-1">{"{ai_response}"}</code>
-            </p>
-          </div>
-        )}
-      </div>
+      {/* LLM 語意防護（2026-08-17 移除）：注入 / 角色切換的語意判定已併入
+          意圖分類器（每則訊息本就會跑的那次 LLM），此處只保留 0ms 的
+          regex/keyword 規則與固定回覆文案，避免多套機制疊加。 */}
+      <p className="text-xs text-muted-foreground rounded-lg border p-3">
+        語意層（角色切換 / 越獄 / 越界）判定由意圖分類器處理，命中時回覆下方的固定文案；此頁只維護 0ms 的規則與關鍵字。
+      </p>
 
       {/* Blocked Response */}
       <div className="rounded-lg border p-4 flex flex-col gap-2">

@@ -1947,11 +1947,6 @@ class Container(containers.DeclarativeContainer):
         PromptGuardService,
         guard_rules_repo=guard_rules_config_repository,
         guard_log_repo=guard_log_repository,
-        record_usage=record_usage_use_case,
-        api_key_resolver=providers.Callable(
-            lambda factory: factory.resolve_api_key,
-            _llm_factory,
-        ),
     )
 
     # 共用咽喉點：所有 channel 拿到的 agent_service 都是「包過 prompt guard」的版本。

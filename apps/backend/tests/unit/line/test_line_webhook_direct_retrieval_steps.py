@@ -345,3 +345,12 @@ def agent_gets_cs_url(context):
     根因：_try_direct_retrieval 未把 bot.customer_service_url 傳給 agent。"""
     kwargs = context["mock_agent"].process_message.call_args.kwargs
     assert kwargs.get("customer_service_url") == "https://cs.example/contact"
+
+
+@then("生成 Prompt 應包含 LINE 通路規範後綴")
+def prompt_has_line_suffix(context):
+    from src.domain.platform.prompt_defaults import LINE_CHANNEL_PROMPT_SUFFIX
+    kwargs = context["mock_agent"].process_message.call_args.kwargs
+    assert LINE_CHANNEL_PROMPT_SUFFIX in kwargs["system_prompt"]
+    # 只注入一次
+    assert kwargs["system_prompt"].count("# LINE 通路規範") == 1

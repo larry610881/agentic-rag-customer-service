@@ -18,11 +18,16 @@ export interface GuardRulesConfig {
   id: string;
   input_rules: GuardRuleItem[];
   output_keywords: OutputKeywordItem[];
-  llm_guard_enabled: boolean;
-  llm_input_guard_enabled: boolean;
-  llm_guard_model: string;
-  input_guard_prompt: string;
-  output_guard_prompt: string;
+  /** @deprecated 2026-08-17 LLM guard 已移除（語意判定併入意圖分類器），後端欄位保留但不再生效 */
+  llm_guard_enabled?: boolean;
+  /** @deprecated 同上 */
+  llm_input_guard_enabled?: boolean;
+  /** @deprecated 同上 */
+  llm_guard_model?: string;
+  /** @deprecated 同上 */
+  input_guard_prompt?: string;
+  /** @deprecated 同上 */
+  output_guard_prompt?: string;
   blocked_response: string;
   updated_at: string;
 }
