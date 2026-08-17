@@ -29,6 +29,14 @@ Feature: ReAct Agent 執行流程
     When 用戶詢問需要多次查詢的問題
     Then Agent 的工具呼叫次數不應超過 2 次
 
+  Scenario: max_tool_calls 為 1 時第一次工具呼叫仍應執行並產生最終回答（快速道空回覆 regression）
+    Given 一個 ReAct Agent 配置了 RAG 工具
+    And max_tool_calls 設為 1
+    When 用戶詢問需要一次查詢的問題
+    Then Agent 應呼叫至少 1 個工具
+    And Agent 的工具呼叫次數不應超過 1 次
+    And 最終回答應包含工具結果
+
   Scenario: MCP 連線失敗 graceful degradation
     Given 一個 ReAct Agent 配置了 MCP 工具但連線失敗
     And RAG 工具查詢後回傳 "退貨政策：30天內可退貨"

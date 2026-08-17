@@ -302,3 +302,36 @@ def retrieve_uses_raw_message(context):
     assert cmd.query == "價格呢", (
         f"改寫缺失時應退回使用者原文，實際 query={cmd.query!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 空回覆 regression（2026-08-17 POC 實測：快速道 LLM 呼叫 transfer 後
+# max_tool_calls 觸頂 → answer 為空 → LINE reply 400 無聲失敗）
+# ---------------------------------------------------------------------------
+
+
+@given("一個開啟直接檢索且啟用轉真人工具的 Worker 且 Agent 回傳空回答與聯絡卡")
+def worker_transfer_empty_answer(context):
+    _setup(context, direct=True, with_transfer=True)
+    context["mock_agent"].process_message = AsyncMock(
+        return_value=AgentResponse(
+            answer="",
+            contact={"label": "聯絡真人客服", "url": "https://line.me/R/ti/p/@demo",
+                     "type": "url"},
+        )
+    )
+
+
+@then("LINE 回覆文字不得為空")
+def reply_text_not_empty(context):
+    context["mock_line_service"].reply_with_quick_reply.assert_called_once()
+    args = context["mock_line_service"].reply_with_quick_reply.call_args
+    text = args.args[1] if len(args.args) > 1 else args.kwargs.get("text")
+    assert text and text.strip(), "空文字送到 LINE 會被 400 拒絕 → 使用者無回應"
+
+
+@then("回覆應附上聯絡按鈕")
+def reply_has_contact(context):
+    kwargs = context["mock_line_service"].reply_with_quick_reply.call_args.kwargs
+    extra = kwargs.get("extra_messages") or []
+    assert any(m.get("altText") == "聯絡真人客服" for m in extra)

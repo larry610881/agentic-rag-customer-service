@@ -960,6 +960,22 @@ class HandleWebhookUseCase:
                 "contents": build_contact_flex(contact),
             })
 
+        # 空回覆兜底：LINE text message 不接受空字串（400），空文字等於
+        # 使用者端無聲失敗。無論上游因何回空（工具觸頂、LLM 空輸出、
+        # guard 誤判），一律補一句引導語，寧可罐頭不可沉默。
+        if not reply_text.strip():
+            logger.warning(
+                "line.reply.empty_answer_fallback",
+                has_contact=bool(contact),
+                has_extra=bool(extra_messages),
+            )
+            reply_text = (
+                "已為您轉接真人客服，請點擊下方按鈕聯繫。"
+                if isinstance(contact, dict) and contact.get("url")
+                else "抱歉，這題我暫時沒有找到合適的答案，"
+                     "請換個方式描述，或輸入「真人客服」由專人為您服務。"
+            )
+
         # ── Issue #49：回覆先行，持久化後移 ──
         # 使用者體感延遲以 reply 送達為終點，存對話 / trace / usage
         # 挪到 reply 之後。放在 finally 保留「reply 失敗時仍持久化」

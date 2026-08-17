@@ -266,6 +266,39 @@ def user_asks_multi_query(context):
     context["mock_llm"] = mock_llm
 
 
+@when("用戶詢問需要一次查詢的問題")
+def user_asks_single_query(context):
+    """快速道 regression：max_tool_calls=1 應允許「1 次工具執行 + 最終回答」，
+    而非在第 1 輪 LLM 回傳 tool_calls 時直接 END（工具未執行、回答為空）。"""
+    service = context["service"]
+    rag_return = context.get("rag_return", "知識庫資訊")
+    max_tool_calls = context.get("max_tool_calls", 1)
+
+    rag_lc_tool = _make_rag_tool(rag_return)
+    llm_responses = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "rag_query", "args": {"query": "唯一一次查詢"}, "id": "call_1"},
+            ],
+        ),
+        AIMessage(content="最終回答"),
+    ]
+    mock_llm = _make_mock_llm(llm_responses)
+    result = _patch_and_run(
+        service,
+        mock_llm,
+        rag_lc_tool,
+        [],
+        tenant_id="tenant-1",
+        kb_id="kb-1",
+        user_message="需要一次查詢的問題",
+        max_tool_calls=max_tool_calls,
+    )
+    context["result"] = result
+    context["mock_llm"] = mock_llm
+
+
 # ---------------------------------------------------------------------------
 # Then steps
 # ---------------------------------------------------------------------------

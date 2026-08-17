@@ -655,7 +655,14 @@ class ReActAgentService(AgentService):
             last = state["messages"][-1]
             if not isinstance(last, AIMessage) or not last.tool_calls:
                 return END
-            if call_count >= max_tool_calls:
+            # call_count 計的是 agent_node（LLM 迭代）次數；走到這裡代表
+            # 已執行的工具輪數 = call_count - 1。max_tool_calls 語意是
+            # 「最多執行幾輪工具」，所以第 N 輪工具要放行、第 N+1 輪才擋。
+            # 舊寫法 `call_count >= max_tool_calls` 讓 max_tool_calls=1
+            # （workflow 快速道）在第 1 輪 LLM 回 tool_calls 時直接 END：
+            # transfer_to_human_agent 從未執行、answer 為空 → LINE reply
+            # 400 無聲失敗（2026-08-17 POC 實測「機車中心呢」）。
+            if call_count - 1 >= max_tool_calls:
                 logger.warning(
                     "react.max_tool_calls_reached",
                     max_tool_calls=max_tool_calls,

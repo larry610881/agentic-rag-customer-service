@@ -50,3 +50,9 @@ Feature: LINE Webhook Worker 直接檢索模式（workflow 快速道）
     Given 一個開啟直接檢索且啟用 DM 工具的 Worker 但意圖分類未回傳改寫查詢
     When 系統處理一則追問短句的 LINE 訊息
     Then 快速道文字檢索應使用使用者原文
+
+  Scenario: Agent 回覆為空 — LINE 不得送出空文字（無聲失敗 regression）
+    Given 一個開啟直接檢索且啟用轉真人工具的 Worker 且 Agent 回傳空回答與聯絡卡
+    When 系統處理一則命中該 Worker 的 LINE 訊息
+    Then LINE 回覆文字不得為空
+    And 回覆應附上聯絡按鈕

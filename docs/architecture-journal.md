@@ -5365,3 +5365,12 @@ graph TD
 | Statistical significance | 考慮 Wilson score interval 替代簡單 pass rate，小樣本時更可靠 |
 | Background validation | 改用 arq task queue 做背景驗收，支援大型 dataset |
 | Assertion 自動生成 | 從歷史對話自動提取 assertion（如「回答必須包含價格」），降低手動建立成本 |
+
+## 2026-08-17 — 「上限」計數器數錯對象：max_tool_calls 與快速道空回覆
+
+**現象**：LINE POC「機車中心呢」無回應；後端 log 一切 200、reply_ms 152ms。
+**根因鏈**：快速道 `max_tool_calls=1` → `should_continue` 用 `call_count >= max_tool_calls`，但 `call_count` 在 `agent_node` 遞增（LLM 迭代數），不是工具執行數 → 第 1 輪 LLM 回 tool_call 就 END → `transfer_to_human_agent` 從未執行、`answer=""` → LINE reply 空 text 被 400 拒絕 → reply 程式碼不看 status → 靜默。
+**教訓**：
+1. **參數名稱要對得上計數對象** — 叫 `max_tool_calls` 就該數工具執行；用 LLM 迭代數當代理，在 N=1 這種邊界會整個語意翻掉。修法把判斷改成 `call_count - 1 >= max_tool_calls`（已執行輪數）。
+2. **邊界值是新功能最容易踩的地方** — 快速道把 5 改成 1，才讓 Issue #50 就存在的 off-by-one 浮出來；今天再把高階客服（必轉接題）切到快速道，觸發面立刻放大。
+3. **外部 API 呼叫必須看回應** — `reply_with_quick_reply` 不檢查 status，是「後端全綠、使用者沒收到」的根本原因；補 `line.reply.failed` warning + 空回覆兜底句（寧可罐頭不可沉默）。這也解掉 backlog「LLM 全滅時 LINE 無聲失敗」。

@@ -76,7 +76,7 @@ class HttpxLineMessagingService(LineMessagingService):
             "quickReply": self._feedback_quick_reply(message_id),
         })
 
-        await self._client.post(
+        resp = await self._client.post(
             "https://api.line.me/v2/bot/message/reply",
             headers=self._auth_headers(),
             json={
@@ -84,6 +84,16 @@ class HttpxLineMessagingService(LineMessagingService):
                 "messages": messages[:5],  # LINE max 5 messages per reply
             },
         )
+        # reply 失敗（400 空文字 / 無效 token、429 配額、5xx）過去完全靜默，
+        # 使用者只看到「沒回應」而 log 顯示 200 → 補 warning 讓失敗可觀測
+        status = getattr(resp, "status_code", None)
+        if isinstance(status, int) and status >= 400:
+            logger.warning(
+                "line.reply.failed",
+                status_code=status,
+                body=(getattr(resp, "text", "") or "")[:200],
+                message_types=[m.get("type") for m in messages[:5]],
+            )
 
     async def push_with_quick_reply(
         self, user_id: str, text: str, message_id: str
