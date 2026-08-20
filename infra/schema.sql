@@ -816,7 +816,9 @@ CREATE TABLE public.token_usage_records (
     bot_id character varying(36),
     created_at timestamp with time zone NOT NULL,
     cost_recalc_at timestamp with time zone,
-    kb_id character varying(36)
+    kb_id character varying(36),
+    run_id character varying(36),
+    config_version_id character varying(36)
 );
 
 
@@ -1439,6 +1441,34 @@ CREATE INDEX ix_token_ledgers_tenant_cycle ON public.token_ledgers USING btree (
 --
 
 CREATE INDEX ix_token_usage_records_tenant_kb_created ON public.token_usage_records USING btree (tenant_id, kb_id, created_at);
+
+
+--
+-- Name: ix_token_usage_records_tenant_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_token_usage_records_tenant_created ON public.token_usage_records USING btree (tenant_id, created_at);
+
+
+--
+-- Name: ix_token_usage_records_message_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_token_usage_records_message_id ON public.token_usage_records USING btree (message_id);
+
+
+--
+-- Name: ix_token_usage_records_tenant_bot_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_token_usage_records_tenant_bot_created ON public.token_usage_records USING btree (tenant_id, bot_id, created_at);
+
+
+--
+-- Name: ix_token_usage_records_run_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_token_usage_records_run_id ON public.token_usage_records USING btree (run_id);
 
 
 --

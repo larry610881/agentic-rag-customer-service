@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-08-20 (Issue #54 Prompt 發布閘門 Phase A — bot 設定整包版控)
+> 最後更新：2026-08-20 (Issue #54 Phase B — Eval token 三分類分流 + run_id 歸因)
 >
 > 今日延伸：
 > - DAG 歷史上下文 — 防遺失 fallback + ✓/⚠/empty 載入狀態徽章 (`c56e7fb`)
@@ -1844,7 +1844,14 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
   - ✅ `/api/v1/bots/{bot_id}/config-versions` API
   - ✅ migrations 套 local-docker + schema.sql 同步（dev-vm 已下線待重建）
   - ✅ 4 feature / 29 scenarios，全量 unit 1146 passed
-- ⬜ **Phase B Token 分流**：UsageCategory +3（eval_gate/prompt_optimize/playground）、run_id/config_version_id 欄位、agent chat 標記、mutator 記帳、daily/monthly group-by
+- ✅ **Phase B Token 分流**（開工前先做程式實況三路驗證，spec §7.3 十項修正/確認）
+  - ✅ UsageCategory +3（eval_gate/prompt_optimize/playground）+ 前端 label + enum fence
+  - ✅ token_usage_records 加 run_id/config_version_id + 補 3 個 drift 索引（migration 已套 local-docker）
+  - ✅ usage-context resolver（header 標記、JWT role 授權、fail-open fallback chat_web）
+  - ✅ AgentAPIClient 標記 header；eval→eval_gate、優化 run→prompt_optimize+run_id
+  - ✅ mutator on_usage 回呼落帳（independent_session_scope + .provider delegation）+ 修 retry api_key bug
+  - ✅ 非 stream chat 記帳補 fail-open（修既有債）；daily/monthly 加 by_category（向後相容）
+  - ✅ eval_usage_split.feature 9 scenarios，全量 unit 1161 passed
 - ⬜ **Phase C 閘門引擎**：gate 設定欄位、prompt_gate_runs、Verdict Engine、config_override 影子執行、逐題報告、Playground 後端
 - ⬜ **Phase D Optimizer 整合**：迴圈影子執行、產出→draft、rollback 收斂、平台集強制注入、tenant scoping 補強
 - ⬜ **Phase E 前端**：版本時間線 + 成效卡、bot Prompt tab、對照測試 Playground（雙欄聊天 + 雙 DAG）、hub 重組、usage 圖表

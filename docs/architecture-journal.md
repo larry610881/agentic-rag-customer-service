@@ -7,6 +7,29 @@
 
 ---
 
+## Eval Token 分流 — 「先驗證計畫再動手」與 header 標記的授權邊界（2026-08-20，Issue #54 Phase B）
+
+**Sprint 來源**：Prompt 發布閘門 Phase B（`docs/prompt-gate-spec.md` §7）
+
+**主題**：Plan-vs-Reality 驗證、Fail-open 邊界設計、跨層授權訊號選擇
+
+#### 做得好的地方
+- **開工前三路平行驗證**：對計畫的每個事實假設（「daily/monthly 自然支援分組」「rebind 先例可用」「identity_source 可當授權」）逐項對照程式實況，十項中修正四項、新發現兩項——其中任何一項若直接開寫都會在實作中期才炸出來。計畫的價值不在寫得多細，在於它的假設清單可以被逐項證偽。
+- **授權訊號的選擇**：`identity_source` 是 request body 自報值（client 可任意宣稱 "studio"），改用 JWT `role` 作 header 標記的授權依據。教訓可泛化：**任何出現在 body 的身分宣稱都只是展示用途，授權必須來自驗證過的憑證**。
+- **fail-open 的方向性**：標記解析失敗 → fallback `chat_web`（寧可記錯分類，不可斷對話）；mutator 記帳失敗 → warn（寧可漏帳，不可斷優化迴圈）。兩處的 fail-open 方向都是「保主流程」，與記帳白名單的 fail-closed（防髒資料入帳本）並存不矛盾——**開放或關閉取決於哪一側的失敗代價不可逆**。
+- **背景任務 session 的正規解**：不用 process_document 的 `_repo._session` rebind hack，改用 `independent_session_scope()` + `.provider` 延遲解析——use case 在 scope 內 resolve 時自然綁到新 session，零屬性操作。
+
+#### 潛在隱憂
+- **enum coverage fence 是手動同步點**：UsageCategory、前端 label 檔、fence 測試三處要同步，漏一處是 500（fail-closed raise）或 raw 英文 label。fence 測試會抓後端漏，但前端 label 缺漏無守衛 → 可加「前端 label 檔 value 集合 = 後端 enum」的 e2e 檢查 → 優先級：低。
+- **`X-Usage-Category` 是信任邊界的擴張**：任何拿到 admin JWT 的 caller 都能把對話記成 eval 類（不吃 chat 統計）。目前 admin 本來就能做更糟的事，風險可接受；若未來開放 tenant_admin 給客戶，需重新評估 → 優先級：低（Phase C 加 run_id 存在性驗證可再收緊）。
+- **記帳非同交易的既有格局未變**：usage 寫入與對話持久化各自 commit，極端情況有帳差。append-only + 審計口徑可容忍 → 記錄即可。
+
+#### 延伸學習
+- **Ambient context vs 顯式傳遞**：`independent_session_scope` 本質是 ContextVar ambient transaction 的重置點。對照 .NET 的 `TransactionScope(Suppress)`、Go 的 `context.WithoutCancel`——背景工作要「脫離」請求生命週期時，都需要一個顯式的 ambient 重置原語，否則就會踩到已關閉資源。
+- 若想深入：搜尋 "structured concurrency task lifetime"、"ContextVar asyncio create_task inheritance"。
+
+---
+
 ## Bot 設定整包版控（config as commit）— 白名單快照、overlay 回朔與「唯一寫入通道」的收斂（2026-08-20，Issue #54 Phase A）
 
 **Sprint 來源**：Prompt 發布閘門 Phase A（`docs/prompt-gate-spec.md` v1.3）
