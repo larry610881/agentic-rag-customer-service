@@ -114,6 +114,42 @@ CREATE TABLE public.bot_workers (
 );
 
 
+
+--
+-- Name: bot_config_versions; Type: TABLE; Schema: public; Owner: -
+-- Issue #54 Phase A — Bot 設定整包版控（migrations/add_bot_config_versions.sql）
+--
+
+CREATE TABLE public.bot_config_versions (
+    id character varying(36) NOT NULL,
+    tenant_id character varying(36) NOT NULL,
+    bot_id character varying(36) NOT NULL,
+    version_no integer NOT NULL,
+    config_snapshot jsonb NOT NULL,
+    snapshot_schema integer DEFAULT 1 NOT NULL,
+    changed_fields jsonb DEFAULT '[]'::jsonb NOT NULL,
+    status character varying(20) DEFAULT 'draft'::character varying NOT NULL,
+    is_current boolean DEFAULT false NOT NULL,
+    source character varying(20) DEFAULT 'manual'::character varying NOT NULL,
+    source_run_id character varying(36),
+    gate_run_id character varying(36),
+    gate_verdict character varying(20),
+    author_user_id text,
+    published_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT bot_config_versions_pkey PRIMARY KEY (id),
+    CONSTRAINT uq_bcv_bot_version UNIQUE (bot_id, version_no),
+    CONSTRAINT bot_config_versions_bot_id_fkey FOREIGN KEY (bot_id)
+        REFERENCES public.bots(id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_bcv_bot_created ON public.bot_config_versions
+    USING btree (bot_id, created_at DESC);
+CREATE INDEX ix_bcv_tenant ON public.bot_config_versions
+    USING btree (tenant_id);
+CREATE UNIQUE INDEX ix_bcv_current ON public.bot_config_versions
+    USING btree (bot_id) WHERE is_current;
+
 --
 -- Name: bots; Type: TABLE; Schema: public; Owner: -
 --

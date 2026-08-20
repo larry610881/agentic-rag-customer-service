@@ -8,15 +8,16 @@ description: 每個部署環境獨立的階段旗標。Claude 依此判斷對該
 | Environment | Phase | Claude 可連該 DB 執行 DDL | 連線方式 |
 |-------------|-------|--------------------------|---------|
 | `local-docker` | `dev` | ✅（走五步流程）| `docker exec agentic-rag-db psql ...` |
-| `dev-vm` | `dev` | ✅（走五步流程 + Larry 授權） | `gcloud compute ssh db-services ... + docker exec agentic-rag-db psql` |
+| `dev-vm` | *（已下線，待重建）* | - | GCP POC 資源 2026-08-19 全數清除（VM/DB/映像/bucket），Larry 表示線上 server 需重新建置 |
 | `staging` | *（未建立）* | - | - |
 | `production` | *（未建立）* | - | - |
 
 **當前主要狀態**：
-- `local-docker` 已套 `add_message_structured_content.sql` + 建立 `_applied_migrations` 表
-- `dev-vm`（Cloud Run 後端連的 DB，推測）：⚠️ **尚未套 `add_message_structured_content.sql`** → 導致 Cloud Run `/conversations/{id}` API 500
+- `local-docker`：2026-08-20 以全新 volume 重建——`infra/schema.sql` bootstrap（41 表）+ 套用 `add_bot_config_versions.sql`、`backfill_bot_config_versions.sql`，`_applied_migrations` 有紀錄。**注意：無 seed 資料**（tenants/bots 空，需要時跑 `make seed-data`）。
+- `dev-vm`：已不存在。重建後需以最新 `infra/schema.sql` bootstrap（它已含所有 migration 的最終形狀），並補 `_applied_migrations` 紀錄。
 
 **切換記錄**：
+- 2026-08-20 — dev-vm 標記為已下線（08-19 GCP 清空）；local-docker 全新重建 + Issue #54 Phase A migrations 套用。
 - 2026-04-17 — 初始化為多環境 matrix。發現 Cloud Run backend 連 dev-vm，該 DB migration 未同步，列為待處理。
 
 ---
