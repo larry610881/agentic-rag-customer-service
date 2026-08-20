@@ -297,6 +297,10 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         application.include_router(conversation_router)
         application.include_router(usage_router)
         application.include_router(bot_router)
+        from src.interfaces.api.bot_config_version_router import (
+            router as bot_config_version_router,
+        )
+        application.include_router(bot_config_version_router)
         application.include_router(worker_router)
 
         from src.interfaces.api.admin_router import router as admin_router

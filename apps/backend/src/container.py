@@ -320,6 +320,14 @@ from src.application.pricing.list_pricing_use_case import ListPricingUseCase
 from src.application.pricing.list_recalc_history_use_case import (
     ListRecalcHistoryUseCase,
 )
+from src.application.prompt_gate.version_use_cases import (
+    CreateConfigVersionUseCase,
+    GetConfigVersionUseCase,
+    ListConfigVersionsUseCase,
+    PublishConfigVersionUseCase,
+    RejectConfigVersionUseCase,
+    RollbackConfigVersionUseCase,
+)
 from src.application.quota.compute_tenant_quota_use_case import (
     ComputeTenantQuotaUseCase,
 )
@@ -373,6 +381,9 @@ from src.infrastructure.db.engine import (
 from src.infrastructure.db.health_repository import HealthRepository
 from src.infrastructure.db.repositories.billing_transaction_repository import (
     SQLAlchemyBillingTransactionRepository,
+)
+from src.infrastructure.db.repositories.bot_config_version_repository import (
+    SQLAlchemyBotConfigVersionRepository,
 )
 from src.infrastructure.db.repositories.bot_repository import (
     SQLAlchemyBotRepository,
@@ -627,6 +638,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.widget_router",
             "src.interfaces.api.eval_dataset_router",
             "src.interfaces.api.prompt_optimizer_run_router",
+            "src.interfaces.api.bot_config_version_router",
             "src.interfaces.api.deps",
         ],
     )
@@ -718,6 +730,11 @@ class Container(containers.DeclarativeContainer):
 
     bot_repository = providers.Factory(
         SQLAlchemyBotRepository,
+        session=db_session,
+    )
+
+    bot_config_version_repository = providers.Factory(
+        SQLAlchemyBotConfigVersionRepository,
         session=db_session,
     )
 
@@ -1903,6 +1920,42 @@ class Container(containers.DeclarativeContainer):
         bot_repository=bot_repository,
         cache_service=cache_service,
         encryption_service=encryption_service,
+        version_repository=bot_config_version_repository,
+    )
+
+    create_config_version_use_case = providers.Factory(
+        CreateConfigVersionUseCase,
+        bot_repository=bot_repository,
+        version_repository=bot_config_version_repository,
+    )
+
+    list_config_versions_use_case = providers.Factory(
+        ListConfigVersionsUseCase,
+        version_repository=bot_config_version_repository,
+    )
+
+    get_config_version_use_case = providers.Factory(
+        GetConfigVersionUseCase,
+        version_repository=bot_config_version_repository,
+    )
+
+    publish_config_version_use_case = providers.Factory(
+        PublishConfigVersionUseCase,
+        bot_repository=bot_repository,
+        version_repository=bot_config_version_repository,
+        cache_service=cache_service,
+    )
+
+    reject_config_version_use_case = providers.Factory(
+        RejectConfigVersionUseCase,
+        version_repository=bot_config_version_repository,
+    )
+
+    rollback_config_version_use_case = providers.Factory(
+        RollbackConfigVersionUseCase,
+        bot_repository=bot_repository,
+        version_repository=bot_config_version_repository,
+        publish_use_case=publish_config_version_use_case,
     )
 
     delete_bot_use_case = providers.Factory(

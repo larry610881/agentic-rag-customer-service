@@ -1,3 +1,6 @@
+from src.infrastructure.db.models.bot_config_version_model import (
+    BotConfigVersionModel,
+)
 from src.infrastructure.db.models.bot_knowledge_base_model import BotKnowledgeBaseModel
 from src.infrastructure.db.models.bot_model import BotModel
 from src.infrastructure.db.models.chunk_model import ChunkModel
@@ -76,6 +79,7 @@ __all__ = [
     "DiagnosticRulesConfigModel",
     "LogRetentionPolicyModel",
     "MessageModel",
+    "BotConfigVersionModel",
     "BotModel",
     "BotKnowledgeBaseModel",
     "ProviderSettingModel",

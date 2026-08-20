@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from src.application.prompt_gate.static_checks import check_prompt_fields
 from src.domain.bot.entity import (
     Bot,
     BotMcpBinding,
@@ -14,6 +15,18 @@ from src.domain.bot.entity import (
 )
 from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
+from src.domain.prompt_gate.config_snapshot import (
+    PROMPT_FIELDS,
+    SNAPSHOT_SCHEMA,
+    diff_snapshots,
+    take_snapshot,
+)
+from src.domain.prompt_gate.entity import (
+    SOURCE_MANUAL,
+    VERDICT_SKIPPED,
+    BotConfigVersion,
+)
+from src.domain.prompt_gate.repository import BotConfigVersionRepository
 from src.domain.rag.retrieval_mode import normalize_modes, validate_modes
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
@@ -87,10 +100,12 @@ class UpdateBotUseCase:
         bot_repository: BotRepository,
         cache_service: CacheService | None = None,
         encryption_service: EncryptionService | None = None,
+        version_repository: BotConfigVersionRepository | None = None,
     ) -> None:
         self._bot_repo = bot_repository
         self._cache_service = cache_service
         self._encryption = encryption_service
+        self._version_repo = version_repository
 
     @staticmethod
     def _apply_updates(bot: Bot, command: UpdateBotCommand) -> None:
@@ -242,10 +257,43 @@ class UpdateBotUseCase:
             )
         return result
 
+    async def _record_config_version(
+        self, bot: Bot, before_snapshot: dict
+    ) -> None:
+        """PUT /bots 版控墊片（spec §13.4）：白名單欄位有變更時
+        透明產生 published 版本列（Phase A：gate 未上，verdict=skipped）。
+        非版控欄位（外觀/憑證/營運）變更不產生版本。"""
+        if self._version_repo is None:
+            return
+        after = take_snapshot(bot)
+        changed = diff_snapshots(before_snapshot, after)
+        if not changed:
+            return
+        # 第 0 層靜態檢查對變更的 prompt 欄位一體適用
+        check_prompt_fields(
+            {f: after.get(f, "") for f in PROMPT_FIELDS if f in changed}
+        )
+        version = BotConfigVersion(
+            tenant_id=bot.tenant_id,
+            bot_id=bot.id.value,
+            version_no=await self._version_repo.next_version_no(
+                bot.id.value
+            ),
+            config_snapshot=after,
+            snapshot_schema=SNAPSHOT_SCHEMA,
+            changed_fields=changed,
+            source=SOURCE_MANUAL,
+        )
+        version.mark_published(VERDICT_SKIPPED)
+        await self._version_repo.save(version)
+        await self._version_repo.set_current(bot.id.value, version.id)
+
     async def execute(self, command: UpdateBotCommand) -> Bot:
         bot = await self._bot_repo.find_by_id(command.bot_id)
         if bot is None:
             raise EntityNotFoundError("Bot", command.bot_id)
+
+        before_snapshot = take_snapshot(bot)
 
         # Capture old bindings before update (may contain encrypted env_values)
         old_bindings_map = {b.registry_id: b for b in bot.mcp_bindings}
@@ -259,6 +307,7 @@ class UpdateBotUseCase:
                 old_bindings_map,
             )
 
+        await self._record_config_version(bot, before_snapshot)
         await self._bot_repo.save(bot)
         if self._cache_service is not None:
             await self._cache_service.delete(f"bot:{command.bot_id}")
