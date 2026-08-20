@@ -48,6 +48,13 @@ class UsageRecordModel(Base):
     kb_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True
     )
+    # Issue #54 Phase B — eval 分流歸因（gate/optimizer run）與設定版本打標
+    run_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
+    config_version_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,
@@ -63,4 +70,5 @@ class UsageRecordModel(Base):
         Index("ix_token_usage_records_message_id", "message_id"),
         Index("ix_token_usage_records_tenant_bot_created", "tenant_id", "bot_id", "created_at"),
         Index("ix_token_usage_records_tenant_kb_created", "tenant_id", "kb_id", "created_at"),
+        Index("ix_token_usage_records_run_id", "run_id"),
     )

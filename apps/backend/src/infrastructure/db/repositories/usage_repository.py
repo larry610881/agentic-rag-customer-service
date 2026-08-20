@@ -48,6 +48,8 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 message_id=record.message_id,
                 bot_id=record.bot_id,
                 kb_id=record.kb_id,
+                run_id=record.run_id,
+                config_version_id=record.config_version_id,
                 created_at=record.created_at,
             )
             self._session.add(model)
@@ -219,26 +221,33 @@ class SQLAlchemyUsageRepository(UsageRepository):
         tenant_id: str,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        by_category: bool = False,
     ) -> list[DailyUsageStat]:
         date_col = func.date(UsageRecordModel.created_at).label("dt")
 
-        stmt = (
-            select(
-                date_col,
-                func.count().label("cnt"),
-                func.sum(UsageRecordModel.input_tokens).label("sum_input"),
-                func.sum(UsageRecordModel.output_tokens).label("sum_output"),
-                # Token-Gov.6: total_tokens 欄位已刪，改 SQL expression 動態加總
-                func.sum(_TOTAL_TOKENS_EXPR).label("sum_total"),
-                func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
-            )
-            .where(UsageRecordModel.tenant_id == tenant_id)
-        )
+        cols = [
+            date_col,
+            func.count().label("cnt"),
+            func.sum(UsageRecordModel.input_tokens).label("sum_input"),
+            func.sum(UsageRecordModel.output_tokens).label("sum_output"),
+            # Token-Gov.6: total_tokens 欄位已刪，改 SQL expression 動態加總
+            func.sum(_TOTAL_TOKENS_EXPR).label("sum_total"),
+            func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
+        ]
+        # Issue #54 Phase B — 可選按分類分組（預設彙總，向後相容）
+        if by_category:
+            cols.append(UsageRecordModel.request_type.label("req_type"))
+        stmt = select(*cols).where(UsageRecordModel.tenant_id == tenant_id)
         if start_date:
             stmt = stmt.where(UsageRecordModel.created_at >= start_date)
         if end_date:
             stmt = stmt.where(UsageRecordModel.created_at < end_date)
-        stmt = stmt.group_by(date_col).order_by(date_col)
+        if by_category:
+            stmt = stmt.group_by(
+                date_col, UsageRecordModel.request_type
+            ).order_by(date_col)
+        else:
+            stmt = stmt.group_by(date_col).order_by(date_col)
 
         result = await self._session.execute(stmt)
         return [
@@ -249,6 +258,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 total_tokens=row.sum_total or 0,
                 estimated_cost=round(float(row.sum_cost or 0), 4),
                 message_count=row.cnt,
+                request_type=row.req_type if by_category else None,
             )
             for row in result.all()
         ]
@@ -258,26 +268,33 @@ class SQLAlchemyUsageRepository(UsageRepository):
         tenant_id: str,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        by_category: bool = False,
     ) -> list[MonthlyUsageStat]:
         month_col = func.to_char(UsageRecordModel.created_at, 'YYYY-MM').label("month")
 
-        stmt = (
-            select(
-                month_col,
-                func.count().label("cnt"),
-                func.sum(UsageRecordModel.input_tokens).label("sum_input"),
-                func.sum(UsageRecordModel.output_tokens).label("sum_output"),
-                # Token-Gov.6: total_tokens 欄位已刪，改 SQL expression 動態加總
-                func.sum(_TOTAL_TOKENS_EXPR).label("sum_total"),
-                func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
-            )
-            .where(UsageRecordModel.tenant_id == tenant_id)
-        )
+        cols = [
+            month_col,
+            func.count().label("cnt"),
+            func.sum(UsageRecordModel.input_tokens).label("sum_input"),
+            func.sum(UsageRecordModel.output_tokens).label("sum_output"),
+            # Token-Gov.6: total_tokens 欄位已刪，改 SQL expression 動態加總
+            func.sum(_TOTAL_TOKENS_EXPR).label("sum_total"),
+            func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
+        ]
+        # Issue #54 Phase B — 可選按分類分組（預設彙總，向後相容）
+        if by_category:
+            cols.append(UsageRecordModel.request_type.label("req_type"))
+        stmt = select(*cols).where(UsageRecordModel.tenant_id == tenant_id)
         if start_date:
             stmt = stmt.where(UsageRecordModel.created_at >= start_date)
         if end_date:
             stmt = stmt.where(UsageRecordModel.created_at < end_date)
-        stmt = stmt.group_by(month_col).order_by(month_col)
+        if by_category:
+            stmt = stmt.group_by(
+                month_col, UsageRecordModel.request_type
+            ).order_by(month_col)
+        else:
+            stmt = stmt.group_by(month_col).order_by(month_col)
 
         result = await self._session.execute(stmt)
         return [
@@ -288,6 +305,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 total_tokens=row.sum_total or 0,
                 estimated_cost=round(float(row.sum_cost or 0), 4),
                 message_count=row.cnt,
+                request_type=row.req_type if by_category else None,
             )
             for row in result.all()
         ]

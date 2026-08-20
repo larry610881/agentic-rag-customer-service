@@ -42,6 +42,10 @@ EXPECTED_CATEGORIES: set[str] = {
     "auto_classification",
     "intent_classify",
     "conversation_summary",
+    # Issue #54 Phase B — Eval token 分流三分類（新增分類必須同步此 fence）
+    "eval_gate",
+    "prompt_optimize",
+    "playground",
 }
 
 FIXED_TOKENS = 12345

@@ -30,6 +30,10 @@ export const USAGE_CATEGORIES: readonly UsageCategoryDef[] = [
   { value: "intent_classify", label: "意圖分類", shortLabel: "意圖" },
   // S-Gov.6b: 對話 LLM 摘要（cron 行為，POC 預設不計入 quota）
   { value: "conversation_summary", label: "對話 LLM 摘要", shortLabel: "摘要" },
+  // Issue #54 Phase B — Eval token 分流（三分類獨立記帳，租戶自付）
+  { value: "eval_gate", label: "閘門驗證", shortLabel: "閘門" },
+  { value: "prompt_optimize", label: "Prompt 優化", shortLabel: "優化" },
+  { value: "playground", label: "對照測試", shortLabel: "對照" },
 ] as const;
 
 const LABEL_BY_VALUE: Record<string, string> = Object.fromEntries(

@@ -24,6 +24,10 @@ class UsageRecord:
     bot_id: str | None = None
     # KB 類任務歸屬 (OCR / Contextual Retrieval / Auto Classification / PDF Rename / Embedding)
     kb_id: str | None = None
+    # Issue #54 Phase B — eval 分流歸因：gate run / optimizer run id
+    run_id: str | None = None
+    # Issue #54 §13.6 — 生成當下的 bot 設定版本（Phase C 起打標）
+    config_version_id: str | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

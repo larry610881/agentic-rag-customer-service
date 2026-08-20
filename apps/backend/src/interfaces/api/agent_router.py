@@ -17,6 +17,7 @@ from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.streaming_errors import classify_streaming_error
+from src.interfaces.api.usage_context import UsageContext, get_usage_context
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,7 @@ async def agent_chat(
     record_usage: RecordUsageUseCase = Depends(
         Provide[Container.record_usage_use_case]
     ),
+    usage_ctx: UsageContext = Depends(get_usage_context),
 ) -> ChatResponse:
     # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
     # 跨租戶測試流程請走系統管理專用端點（尚未實作，另立 issue）。
@@ -112,13 +114,18 @@ async def agent_chat(
         result.guard_blocked, result.guard_rule_matched, identity_source
     )
 
-    await record_usage.execute(
-        tenant_id=tenant.tenant_id,
-        request_type="chat_web",
-        usage=result.usage,
-        bot_id=request.bot_id,
-        message_id=result.message_id,
-    )
+    # 記帳 fail-open：帳務失敗不得炸使用者請求（工程約束；spec §7.3 修債）
+    try:
+        await record_usage.execute(
+            tenant_id=tenant.tenant_id,
+            request_type=usage_ctx.request_type,
+            usage=result.usage,
+            bot_id=request.bot_id,
+            message_id=result.message_id,
+            run_id=usage_ctx.run_id,
+        )
+    except Exception:
+        logger.exception("agent.chat.record_usage_error")
 
     usage_resp = None
     if result.usage:
@@ -177,6 +184,7 @@ async def agent_chat_stream(
     record_usage: RecordUsageUseCase = Depends(
         Provide[Container.record_usage_use_case]
     ),
+    usage_ctx: UsageContext = Depends(get_usage_context),
 ) -> StreamingResponse:
     # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
     # 跨租戶測試流程請走系統管理專用端點（尚未實作，另立 issue）。
@@ -295,10 +303,11 @@ async def agent_chat_stream(
                 try:
                     await record_usage.execute(
                         tenant_id=tenant.tenant_id,
-                        request_type="chat_web",
+                        request_type=usage_ctx.request_type,
                         usage=usage,
                         bot_id=request.bot_id,
                         message_id=assistant_message_id,
+                        run_id=usage_ctx.run_id,
                     )
                 except Exception:
                     logger.exception("agent.chat.stream.record_usage_error")

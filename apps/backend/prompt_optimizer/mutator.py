@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
+
+# Issue #54 Phase B — mutator LLM 用量回呼：(model_name, usage_metadata dict)
+UsageCallback = Callable[[str, dict], Awaitable[None]]
 
 
 @dataclass
@@ -29,9 +33,27 @@ class CostStats:
 class PromptMutator:
     """Uses an LLM to generate improved prompt variants based on failed test cases."""
 
-    def __init__(self, model: str = "gpt-4o-mini", api_key: str = ""):
+    def __init__(
+        self,
+        model: str = "gpt-4o-mini",
+        api_key: str = "",
+        on_usage: UsageCallback | None = None,
+    ):
         self._model_name = model
         self._api_key = api_key or None  # None = use env var fallback
+        self._on_usage = on_usage
+
+    async def _report_usage(self, response: object) -> None:
+        """Issue #54 Phase B：回報 mutator LLM 用量（fail-open，不影響優化）。"""
+        if self._on_usage is None:
+            return
+        usage_meta = getattr(response, "usage_metadata", None)
+        if not usage_meta:
+            return
+        try:
+            await self._on_usage(self._model_name, dict(usage_meta))
+        except Exception:
+            logger.warning("Mutator usage callback failed", exc_info=True)
 
     async def mutate(
         self,
@@ -59,6 +81,7 @@ class PromptMutator:
         # Retry up to 3 times if LLM returns empty or identical prompt
         for attempt in range(3):
             response = await llm.ainvoke([HumanMessage(content=meta_prompt)])
+            await self._report_usage(response)
             candidate = response.content.strip()
 
             if candidate and candidate != current_prompt:
@@ -73,7 +96,11 @@ class PromptMutator:
 
             # Increase temperature for retry
             temperature = min(temperature + 0.2, 1.5)
-            llm = ChatOpenAI(model=self._model_name, temperature=temperature)
+            llm = ChatOpenAI(
+                model=self._model_name,
+                temperature=temperature,
+                api_key=self._api_key,  # 修：retry 分支原本漏傳 api_key
+            )
             logger.warning("Mutation retry %d (empty or identical)", attempt + 1)
 
         # If all retries fail, return original with minor modification hint

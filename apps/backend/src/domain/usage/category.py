@@ -26,5 +26,9 @@ class UsageCategory(str, Enum):
     INTENT_CLASSIFY = "intent_classify"
     # S-Gov.6b: 對話 LLM 摘要（cron 行為，POC 預設不計入 quota）
     CONVERSATION_SUMMARY = "conversation_summary"
+    # Issue #54 Phase B — Eval token 分流（定案 2/14：三分類獨立記帳，租戶自付）
+    EVAL_GATE = "eval_gate"                # 閘門驗證的受測對話
+    PROMPT_OPTIMIZE = "prompt_optimize"    # 優化迭代（受測對話 + mutator LLM）
+    PLAYGROUND = "playground"              # 儲存前對照測試聊天
     # OTHER 已刪 — src/ 零 caller 是 dead code；UI 不再提供「其他」checkbox。
     # RecordUsageUseCase 入口會白名單拒絕非此 enum 的字串。

@@ -74,6 +74,7 @@ class DailyUsageStatResponse(BaseModel):
     total_tokens: int
     estimated_cost: float
     message_count: int
+    request_type: str | None = None  # by_category=true 時填入
 
 
 @router.get("/by-bot", response_model=list[BotUsageStatResponse])
@@ -122,6 +123,7 @@ async def get_usage_by_bot(
 async def get_daily_usage(
     start_date: date | None = None,
     end_date: date | None = None,
+    by_category: bool = False,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: QueryDailyUsageUseCase = Depends(
         Provide[Container.query_daily_usage_use_case]
@@ -141,7 +143,9 @@ async def get_daily_usage(
             if end_date
             else None
         )
-    stats = await use_case.execute(tenant.tenant_id, dt_start, dt_end)
+    stats = await use_case.execute(
+        tenant.tenant_id, dt_start, dt_end, by_category=by_category
+    )
     return [
         DailyUsageStatResponse(
             date=s.date,
@@ -150,6 +154,7 @@ async def get_daily_usage(
             total_tokens=s.total_tokens,
             estimated_cost=s.estimated_cost,
             message_count=s.message_count,
+            request_type=s.request_type,
         )
         for s in stats
     ]
@@ -162,6 +167,7 @@ class MonthlyUsageStatResponse(BaseModel):
     total_tokens: int
     estimated_cost: float
     message_count: int
+    request_type: str | None = None  # by_category=true 時填入
 
 
 @router.get("/monthly", response_model=list[MonthlyUsageStatResponse])
@@ -169,6 +175,7 @@ class MonthlyUsageStatResponse(BaseModel):
 async def get_monthly_usage(
     start_date: date | None = None,
     end_date: date | None = None,
+    by_category: bool = False,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: QueryMonthlyUsageUseCase = Depends(
         Provide[Container.query_monthly_usage_use_case]
@@ -188,7 +195,9 @@ async def get_monthly_usage(
             if end_date
             else None
         )
-    stats = await use_case.execute(tenant.tenant_id, dt_start, dt_end)
+    stats = await use_case.execute(
+        tenant.tenant_id, dt_start, dt_end, by_category=by_category
+    )
     return [
         MonthlyUsageStatResponse(
             month=s.month,
@@ -197,6 +206,7 @@ async def get_monthly_usage(
             total_tokens=s.total_tokens,
             estimated_cost=s.estimated_cost,
             message_count=s.message_count,
+            request_type=s.request_type,
         )
         for s in stats
     ]

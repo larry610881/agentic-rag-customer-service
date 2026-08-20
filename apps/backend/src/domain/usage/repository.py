@@ -55,6 +55,7 @@ class UsageRepository(ABC):
         tenant_id: str,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        by_category: bool = False,
     ) -> list[DailyUsageStat]: ...
 
     @abstractmethod
@@ -63,6 +64,7 @@ class UsageRepository(ABC):
         tenant_id: str,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        by_category: bool = False,
     ) -> list[MonthlyUsageStat]: ...
 
     @abstractmethod

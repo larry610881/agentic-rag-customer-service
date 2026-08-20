@@ -2188,6 +2188,9 @@ class Container(containers.DeclarativeContainer):
         db_url=providers.Callable(lambda cfg: cfg.database_url, config),
         provider_setting_repository=provider_setting_repository,
         encryption_service=encryption_service,
+        # Issue #54 Phase B — mutator 記帳：傳 provider 本身（延遲 resolve，
+        # 背景任務在 independent_session_scope 內取得綁新 session 的 use case）
+        record_usage_factory=record_usage_use_case.provider,
     )
 
     list_runs_use_case = providers.Factory(

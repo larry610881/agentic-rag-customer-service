@@ -85,6 +85,7 @@ class RunSingleEvalUseCase:
         api_client = AgentAPIClient(
             base_url=self._api_base_url,
             jwt_token=command.api_token,
+            usage_category="eval_gate",
         )
 
         try:
@@ -510,6 +511,7 @@ class RunValidationEvalUseCase:
         api_client = AgentAPIClient(
             base_url=self._api_base_url,
             jwt_token=command.api_token,
+            usage_category="eval_gate",
         )
 
         async def _eval_fn() -> list[ChatResult]:

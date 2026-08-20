@@ -53,6 +53,8 @@ class DailyUsageStat:
     total_tokens: int
     estimated_cost: float
     message_count: int
+    # Issue #54 Phase B — by_category 分組時填入；預設彙總列為 None
+    request_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -65,3 +67,5 @@ class MonthlyUsageStat:
     total_tokens: int
     estimated_cost: float
     message_count: int
+    # Issue #54 Phase B — by_category 分組時填入；預設彙總列為 None
+    request_type: str | None = None

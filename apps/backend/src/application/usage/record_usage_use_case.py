@@ -59,6 +59,8 @@ class RecordUsageUseCase:
         bot_id: str | None = None,
         kb_id: str | None = None,
         message_id: str | None = None,
+        run_id: str | None = None,
+        config_version_id: str | None = None,
     ) -> None:
         if usage is None or usage.total_tokens == 0:
             return
@@ -88,6 +90,8 @@ class RecordUsageUseCase:
             bot_id=bot_id,
             kb_id=kb_id,
             message_id=message_id,
+            run_id=run_id,
+            config_version_id=config_version_id,
         )
         await self._repo.save(record)
 

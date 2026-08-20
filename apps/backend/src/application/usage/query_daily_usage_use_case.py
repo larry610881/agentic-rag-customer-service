@@ -15,5 +15,8 @@ class QueryDailyUsageUseCase:
         tenant_id: str,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        by_category: bool = False,
     ) -> list[DailyUsageStat]:
-        return await self._repo.get_daily_usage_stats(tenant_id, start_date, end_date)
+        return await self._repo.get_daily_usage_stats(
+            tenant_id, start_date, end_date, by_category=by_category
+        )

@@ -29,16 +29,25 @@ class AgentAPIClient:
         jwt_token: str,
         refresh_token: str = "",
         timeout: int = 60,
+        usage_category: str = "",
+        run_id: str = "",
     ):
         self._base_url = base_url
         self._refresh_token = refresh_token
+        headers = {
+            "Authorization": f"Bearer {jwt_token}",
+            "Content-Type": "application/json",
+        }
+        # Issue #54 Phase B — 受測對話的用量分流標記；
+        # 後端以 JWT role 驗證，不合法會靜默 fallback chat_web
+        if usage_category:
+            headers["X-Usage-Category"] = usage_category
+        if run_id:
+            headers["X-Eval-Run-Id"] = run_id
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=timeout,
-            headers={
-                "Authorization": f"Bearer {jwt_token}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
         )
 
     async def _refresh_access_token(self) -> bool:

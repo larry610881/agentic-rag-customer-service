@@ -46,6 +46,7 @@ class StartRunUseCase:
         api_base_url: str = "http://localhost:8001",
         provider_setting_repository=None,
         encryption_service=None,
+        record_usage_factory=None,
     ) -> None:
         self._dataset_repo = eval_dataset_repository
         self._run_manager = run_manager
@@ -53,6 +54,10 @@ class StartRunUseCase:
         self._api_base_url = api_base_url
         self._provider_repo = provider_setting_repository
         self._encryption = encryption_service
+        # Issue #54 Phase B — mutator 記帳用。傳 provider callable（.provider
+        # delegation 模式）：背景任務在 independent_session_scope 內 resolve，
+        # 讓 use case 綁到新 session 而非已關閉的 request session。
+        self._record_usage_factory = record_usage_factory
 
     async def execute(self, command: StartRunCommand) -> str:
         """Start an optimization run. Returns run_id."""
@@ -199,6 +204,8 @@ class StartRunUseCase:
                 base_url=config.api_base_url,
                 jwt_token=config.api_token,
                 refresh_token=command.refresh_token,
+                usage_category="prompt_optimize",
+                run_id=run_id,
             )
 
             # Use sync RunHistoryClient for DB persistence (its own connection)
@@ -233,7 +240,50 @@ class StartRunUseCase:
 
             from prompt_optimizer.mutator import PromptMutator
 
-            mutator = PromptMutator(api_key=mutator_api_key) if mutator_api_key else None
+            # Issue #54 Phase B — mutator LLM 用量落帳（prompt_optimize 分類，
+            # fail-open：記帳失敗只 warn 不影響優化迴圈）
+            bot_id_for_usage = ds.get("bot_id") or None
+
+            async def _record_mutator_usage(
+                model_name: str, usage_meta: dict
+            ) -> None:
+                if self._record_usage_factory is None:
+                    return
+                try:
+                    from src.domain.rag.value_objects import TokenUsage
+                    from src.infrastructure.db.session_middleware import (
+                        independent_session_scope,
+                    )
+
+                    usage = TokenUsage(
+                        model=model_name,
+                        input_tokens=int(usage_meta.get("input_tokens", 0)),
+                        output_tokens=int(usage_meta.get("output_tokens", 0)),
+                        estimated_cost=0.0,  # RecordUsage 會依 registry 估價
+                    )
+                    async with independent_session_scope():
+                        record_usage = self._record_usage_factory()
+                        await record_usage.execute(
+                            tenant_id=command.tenant_id,
+                            request_type="prompt_optimize",
+                            usage=usage,
+                            bot_id=bot_id_for_usage,
+                            run_id=run_id,
+                        )
+                except Exception:
+                    logger.warning(
+                        "mutator usage recording failed (fail-open)",
+                        exc_info=True,
+                    )
+
+            mutator = (
+                PromptMutator(
+                    api_key=mutator_api_key,
+                    on_usage=_record_mutator_usage,
+                )
+                if mutator_api_key
+                else None
+            )
 
             runner = KarpathyLoopRunner(
                 api_client=api_client,

@@ -15,7 +15,8 @@ class QueryMonthlyUsageUseCase:
         tenant_id: str,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        by_category: bool = False,
     ) -> list[MonthlyUsageStat]:
         return await self._repo.get_monthly_usage_stats(
-            tenant_id, start_date, end_date
+            tenant_id, start_date, end_date, by_category=by_category
         )
