@@ -344,6 +344,23 @@ graph TD
 | 防濫用 | `StartGateRunUseCase` 前置：當日 `prompt_gate_runs` 計數 ≥ `gate_daily_limit` → 429；estimate 結果必須先呈現（前端流程強制），`est_cost` 寫入 run 列 |
 | 索引 | 視需要補 `(tenant_id, request_type, created_at)` 複合索引（`sum_billable` 已在做 `IN (...)` 掃描，量大時受益）——列為 Phase B 選配 |
 
+### 7.3 Phase B 開工前程式實況驗證（08-20，三路掃描）
+
+計畫假設逐項對照後的**修正**（✅ 成立項不列）：
+
+| # | 原計畫描述 | 程式實況 | 修正 |
+|---|-----------|---------|------|
+| 1 | mutator 記帳「沿 process_document rebind 先例」 | optimizer 背景任務**完全沒有 AsyncSession**（刻意只用 sync `RunHistoryClient`/`PromptDBClient`，`run_use_cases.py:36-38` 明文註記不碰 request-scoped session），rebind 無物可 rebind | 改用既有 `independent_session_scope()`（`session_middleware.py:37`）+ `async_session_factory()` 在背景任務內自建 RecordUsageUseCase，fail-open 包裝 |
+| 2 | mutator 用 LangChain（暗示 Anthropic） | 是 `langchain_openai.ChatOpenAI`（gpt-4o-mini），`usage_metadata` 可取但未讀；retry 分支漏傳 api_key（順手修） | 記帳點 = `mutate()` 回傳 usage_metadata；provider 描述修正 |
+| 3 | header 授權「JWT 具 eval 權限」 | `identity_source` 是 **body 自報值**（`agent_router.py:98`）不可作授權依據 | 授權以 `CurrentTenant.role ∈ {system_admin, tenant_admin}` 判定（`require_role` 先例）；header 不合法一律 fallback `chat_web`（fail-open） |
+| 4 | 記帳 fail-open | `RecordUsageUseCase` 白名單是 **raise ValueError（fail-closed）**，且非 stream `/chat` 的記帳呼叫**沒包 try/except**（`agent_router.py:115`，失敗會炸使用者請求，違反工程約束） | Phase B 順手把該呼叫包 fail-open；新增 enum 值時前後端 label 同步為必要步驟（漏了會 500） |
+| 5 | `/daily` `/monthly` group-by「確認是否自然支援」 | **不支援**：repo 只按日期/月分組、VO 無 request_type 欄位（對照 `/by-bot` 與 `/token-usage` 已支援=零改動 ✅） | 照原計畫改 repo+VO+response（工作量已列） |
+| 6 | run_id 欄位 | `UsageRecord` entity / model / execute() 均無 run_id；`request_type` 是 **String(20) 硬上限**（現值 `contextual_retrieval` 已 20 頂滿） | 新三值 `eval_gate`(9)/`prompt_optimize`(15)/`playground`(10) 皆安全，**不需 ALTER 欄寬**；entity+model+execute 加 run_id/config_version_id |
+| 7 | 計費零改動（定案 3） | `included_categories IS NULL` → 全計 ✅ 成立；但**已顯式設 list 的租戶**新分類不會計費（filter retroactive） | 行為正確（顯式名單=顯式意志），文件註記即可 |
+| 8 | （新發現）schema drift | ORM 的 4 個 token_usage_records 索引中 3 個不在 `infra/schema.sql`（local DB 剛以 schema.sql 重建=實際缺索引） | Phase B migration 順手 `CREATE INDEX IF NOT EXISTS` 補齊 + 同步 schema.sql |
+| 9 | （新發現）channel-parity 合規 | 規則要求 usage 記帳單一實作、禁通路特判分支 | header→category 解析做成 interfaces 層**共用 dependency**（usage-context resolver），非 router 內散落 if；通路覆蓋聲明：eval/playground 流量架構上只存在於 `/agent/chat`（api_client.py:82 唯一 caller），widget/LINE 無此流量、不受影響 |
+| 10 | （新發現）eval 倍數 | validate 總呼叫數=題數×repeats；有 conversation_history 的題再 +N 次/題（`runner.py:306-318`） | estimate 與日限額計算（Phase C）需以此為準 |
+
 **修 bug 的範圍聲明**（配合定案 3 調整）：現況的 bug 是「**分類錯誤**」（eval 流量被記成 `chat_web` 混入正式對話統計）與「**mutator 完全不落帳**」，分流上線後兩者修正。定案為租戶自付後，eval 用量**照常消耗配額、照常觸發警報/auto-topup**——這從此是正確行為而非 bug；租戶的保護靠 estimate 預檢、`gate_daily_limit`、`gate_budget_usd` 三道防線。既有被污染的 `chat_web` 紀錄不回溯改寫（append-only 紀律），必要時另出 backfill 腳本標注（不在 v1 scope）。
 
 ---
