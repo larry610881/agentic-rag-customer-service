@@ -23,6 +23,7 @@ from src.application.prompt_gate.version_use_cases import (
     CreateConfigVersionCommand,
     CreateConfigVersionUseCase,
     GetConfigVersionUseCase,
+    GetVersionMetricsUseCase,
     ListConfigVersionsUseCase,
     PublishConfigVersionUseCase,
     RejectConfigVersionUseCase,
@@ -260,6 +261,35 @@ async def get_version(
             detail="Version does not belong to this bot",
         )
     return _to_detail(version)
+
+
+@router.get("/{version_id}/metrics")
+@inject
+async def get_version_metrics(
+    bot_id: str,
+    version_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: GetVersionMetricsUseCase = Depends(
+        Provide[Container.get_version_metrics_use_case]
+    ),
+) -> dict:
+    """版本服役成效卡（§13.6）：方向性參考，非嚴格因果。"""
+    try:
+        m = await use_case.execute(tenant.tenant_id, version_id)
+    except EntityNotFoundError as exc:
+        raise _handle(exc) from exc
+    return {
+        "version_id": m.version_id,
+        "message_count": m.message_count,
+        "input_tokens": m.input_tokens,
+        "output_tokens": m.output_tokens,
+        "total_cost": m.total_cost,
+        "avg_latency_ms": m.avg_latency_ms,
+        "eval_avg_by_layer": m.eval_avg_by_layer,
+        "feedback_up": m.feedback_up,
+        "feedback_down": m.feedback_down,
+        "feedback_positive_rate": m.feedback_positive_rate,
+    }
 
 
 @router.post("/{version_id}/publish", response_model=VersionResponse)

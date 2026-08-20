@@ -316,3 +316,21 @@ class RollbackConfigVersionUseCase:
         return await self._publish.execute(
             command.tenant_id, version.id, verdict=VERDICT_SKIPPED
         )
+
+
+class GetVersionMetricsUseCase:
+    """版本服役成效（spec §13.6 層次 1）：tenant scoping 由 version 查詢保證。"""
+
+    def __init__(
+        self,
+        version_repository: BotConfigVersionRepository,
+        metrics_repository,
+    ) -> None:
+        self._version_repo = version_repository
+        self._metrics_repo = metrics_repository
+
+    async def execute(self, tenant_id: str, version_id: str):
+        version = await self._version_repo.find_by_id(version_id, tenant_id)
+        if version is None:
+            raise EntityNotFoundError("BotConfigVersion", version_id)
+        return await self._metrics_repo.get_metrics(tenant_id, version_id)

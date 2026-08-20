@@ -330,6 +330,7 @@ from src.application.prompt_gate.gate_run_use_cases import (
 from src.application.prompt_gate.version_use_cases import (
     CreateConfigVersionUseCase,
     GetConfigVersionUseCase,
+    GetVersionMetricsUseCase,
     ListConfigVersionsUseCase,
     PublishConfigVersionUseCase,
     RejectConfigVersionUseCase,
@@ -460,6 +461,9 @@ from src.infrastructure.db.repositories.processing_task_repository import (
 )
 from src.infrastructure.db.repositories.prompt_gate_run_repository import (
     SQLAlchemyPromptGateRunRepository,
+)
+from src.infrastructure.db.repositories.version_metrics_repository import (
+    SQLAlchemyVersionMetricsRepository,
 )
 from src.infrastructure.db.repositories.provider_setting_repository import (
     SQLAlchemyProviderSettingRepository,
@@ -750,6 +754,11 @@ class Container(containers.DeclarativeContainer):
 
     prompt_gate_run_repository = providers.Factory(
         SQLAlchemyPromptGateRunRepository,
+        session=db_session,
+    )
+
+    version_metrics_repository = providers.Factory(
+        SQLAlchemyVersionMetricsRepository,
         session=db_session,
     )
 
@@ -1999,6 +2008,12 @@ class Container(containers.DeclarativeContainer):
         eval_dataset_repository=eval_dataset_repository,
     )
 
+    get_version_metrics_use_case = providers.Factory(
+        GetVersionMetricsUseCase,
+        version_repository=bot_config_version_repository,
+        metrics_repository=version_metrics_repository,
+    )
+
     cleanup_orphan_gate_runs_use_case = providers.Factory(
         CleanupOrphanGateRunsUseCase,
         gate_run_repository=prompt_gate_run_repository,
@@ -2344,6 +2359,7 @@ class Container(containers.DeclarativeContainer):
         worker_config_repo=worker_config_repository,
         prompt_guard=prompt_guard_service,
         tenant_repository=tenant_repository,
+        config_version_repository=bot_config_version_repository,
     )
 
     # --- Platform: Provider Settings ---

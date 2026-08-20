@@ -40,6 +40,8 @@ class AgentResponse:
     # 正常對話不填（trace 落庫由 observability API 查）
     trace_id: str | None = None
     trace_nodes: list[dict[str, Any]] | None = None
+    # Issue #54 §13.6 — 生成當下的線上設定版本（usage 打標 → 版本成效卡）
+    config_version_id: str | None = None
 
 
 @dataclass

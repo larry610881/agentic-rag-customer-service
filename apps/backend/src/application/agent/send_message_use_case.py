@@ -154,6 +154,7 @@ class SendMessageUseCase:
         worker_config_repo: WorkerConfigRepository | None = None,
         prompt_guard: Any | None = None,
         tenant_repository: "TenantRepository | None" = None,
+        config_version_repository: Any | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -174,6 +175,7 @@ class SendMessageUseCase:
         self._conversation_lock = conversation_lock
         self._prompt_guard = prompt_guard
         self._tenant_repo = tenant_repository
+        self._config_version_repo = config_version_repository
 
     def _build_lock_key(self, command: SendMessageCommand) -> str:
         """Build a lock key for the conversation."""
@@ -849,6 +851,11 @@ class SendMessageUseCase:
             response.trace_nodes = trace_nodes
             return response  # 六面隔離：不 memory、不線上 eval
 
+        # Issue #54 §13.6 — usage 打標：生成當下的線上設定版本
+        response.config_version_id = await self._resolve_current_version_id(
+            command.bot_id
+        )
+
         # Fire-and-forget: memory extraction
         await self._fire_memory_extraction(command, bot_cfg, conversation)
 
@@ -1151,6 +1158,12 @@ class SendMessageUseCase:
                 "type": "message_id",
                 "message_id": assistant_msg.id.value,
             }
+            cv_id = await self._resolve_current_version_id(command.bot_id)
+            if cv_id:
+                yield {
+                    "type": "config_version",
+                    "config_version_id": cv_id,
+                }
         yield {
             "type": "conversation_id",
             "conversation_id": conversation.id.value,
@@ -1229,6 +1242,19 @@ class SendMessageUseCase:
             trace_id=g_trace_id if command.test_mode else None,
             trace_nodes=g_nodes if command.test_mode else None,
         )
+
+    async def _resolve_current_version_id(
+        self, bot_id: str | None
+    ) -> str | None:
+        """Issue #54 §13.6 — 當前線上設定版本 id（usage 打標用，fail-open）。"""
+        if not bot_id or self._config_version_repo is None:
+            return None
+        try:
+            current = await self._config_version_repo.find_current(bot_id)
+            return current.id if current else None
+        except Exception:
+            logger.warning("config_version.resolve_failed", exc_info=True)
+            return None
 
     async def _enqueue_background_eval(
         self,
