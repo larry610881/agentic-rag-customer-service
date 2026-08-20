@@ -18,6 +18,31 @@ from src.infrastructure.prompt_optimizer.run_manager import (
 logger = logging.getLogger(__name__)
 
 
+class _ShadowAPIClient:
+    """Issue #54 Phase D — 優化迴圈的影子執行包裝：
+    每次受測對話自動帶 config_override（記憶體候選 prompt）+ test_mode，
+    線上 bots 表全程不被觸碰（spec §6.1，修「候選 prompt 污染線上」破口）。"""
+
+    def __init__(self, inner, target_field: str, prompt_store: dict):
+        self._inner = inner
+        self._field = target_field
+        self._store = prompt_store
+
+    async def chat(self, message, bot_id=None, **kwargs):
+        candidate = self._store.get(self._field)
+        override = {self._field: candidate} if candidate is not None else None
+        return await self._inner.chat(
+            message=message,
+            bot_id=bot_id,
+            config_override=override,
+            test_mode=True,
+            **kwargs,
+        )
+
+    async def close(self):
+        await self._inner.close()
+
+
 @dataclass(frozen=True)
 class StartRunCommand:
     tenant_id: str
@@ -47,6 +72,7 @@ class StartRunUseCase:
         provider_setting_repository=None,
         encryption_service=None,
         record_usage_factory=None,
+        create_version_factory=None,
     ) -> None:
         self._dataset_repo = eval_dataset_repository
         self._run_manager = run_manager
@@ -58,6 +84,8 @@ class StartRunUseCase:
         # delegation 模式）：背景任務在 independent_session_scope 內 resolve，
         # 讓 use case 綁到新 session 而非已關閉的 request session。
         self._record_usage_factory = record_usage_factory
+        # Issue #54 Phase D — 優化產出建 draft 版本用（同 .provider 模式）
+        self._create_version_factory = create_version_factory
 
     async def execute(self, command: StartRunCommand) -> str:
         """Start an optimization run. Returns run_id."""
@@ -109,6 +137,66 @@ class StartRunUseCase:
         self._run_manager.set_task(run_id, task)
 
         return run_id
+
+    async def _create_optimizer_draft(
+        self,
+        *,
+        tenant_id: str,
+        bot_id: str | None,
+        target_field: str,
+        best_prompt: str,
+        initial_prompt: str,
+        improved: bool,
+        run_id: str,
+    ) -> str | None:
+        """優化產出 → 版本狀態機（spec §6.2）。fail-open：建版失敗只 warn。
+        回傳 version_id 或 None（未進步 / 不適用 / 失敗）。"""
+        if (
+            self._create_version_factory is None
+            or not bot_id
+            or not improved
+            or not best_prompt
+            or best_prompt == initial_prompt
+        ):
+            return None
+        try:
+            from src.application.prompt_gate.version_use_cases import (
+                CreateConfigVersionCommand,
+            )
+            from src.domain.prompt_gate.config_snapshot import SNAPSHOT_FIELDS
+            from src.domain.prompt_gate.entity import SOURCE_OPTIMIZER
+            from src.infrastructure.db.session_middleware import (
+                independent_session_scope,
+            )
+
+            if target_field not in SNAPSHOT_FIELDS:
+                logger.info(
+                    "optimizer draft skipped: target_field=%s 不在版控白名單",
+                    target_field,
+                )
+                return None
+            async with independent_session_scope():
+                create_version = self._create_version_factory()
+                version = await create_version.execute(
+                    CreateConfigVersionCommand(
+                        tenant_id=tenant_id,
+                        bot_id=bot_id,
+                        changes={target_field: best_prompt},
+                        source=SOURCE_OPTIMIZER,
+                        source_run_id=run_id,
+                    )
+                )
+            logger.info(
+                "optimizer draft created: run=%s version=%s",
+                run_id, version.id,
+            )
+            return str(version.id)
+        except Exception:
+            logger.warning(
+                "optimizer draft creation failed (fail-open) run=%s",
+                run_id, exc_info=True,
+            )
+            return None
 
     async def _resolve_llm_api_key(self) -> str:
         """Resolve LLM API key from the first enabled LLM provider setting."""
@@ -228,17 +316,17 @@ class StartRunUseCase:
                 except Exception as e:
                     logger.warning("Failed to pre-load prompt: %s", e)
 
+            # Issue #54 Phase D — 收尾比對用：prompt_store 會被迴圈改寫，
+            # baseline 要在這裡先固定下來
+            baseline_prompt = prompt_store.get(ds["target_prompt"], "")
+
             def read_prompt(t: PromptTarget) -> str:
                 return prompt_store.get(t.field, "")
 
             def write_prompt(t: PromptTarget, prompt: str) -> None:
+                # Issue #54 Phase D — 候選 prompt 只存記憶體；受測對話由
+                # _ShadowAPIClient 以 config_override 帶入，全程不寫線上表
                 prompt_store[t.field] = prompt
-                # Also write to DB so API eval reads the candidate prompt
-                if prompt_db:
-                    try:
-                        prompt_db.write_prompt(t, prompt)
-                    except Exception as e:
-                        logger.warning("Failed to write prompt to DB: %s", e)
 
             from prompt_optimizer.mutator import PromptMutator
 
@@ -288,11 +376,16 @@ class StartRunUseCase:
             )
 
             runner = KarpathyLoopRunner(
-                api_client=api_client,
+                api_client=_ShadowAPIClient(  # type: ignore[arg-type]  # duck-type 相容
+                    api_client,
+                    target_field=ds["target_prompt"],
+                    prompt_store=prompt_store,
+                ),
                 db_read_prompt=read_prompt,
                 db_write_prompt=write_prompt,
                 evaluator=Evaluator(),
                 mutator=mutator,
+                use_history_override=True,
             )
 
             # Publish started event
@@ -424,6 +517,17 @@ class StartRunUseCase:
                 stopped_reason=result.stopped_reason,
             )
 
+            # Issue #54 Phase D — 產出走版本狀態機：有進步才建 draft
+            version_id = await self._create_optimizer_draft(
+                tenant_id=command.tenant_id,
+                bot_id=ds.get("bot_id") or None,
+                target_field=ds["target_prompt"],
+                best_prompt=result.best_prompt,
+                initial_prompt=baseline_prompt,
+                improved=result.best_score > result.baseline_score,
+                run_id=run_id,
+            )
+
             await self._run_manager.publish_progress(
                 run_id,
                 RunProgress(
@@ -433,9 +537,16 @@ class StartRunUseCase:
                     best_score=result.best_score,
                     total_api_calls=result.total_api_calls,
                     stopped_reason=result.stopped_reason,
+                    version_id=version_id,
                     message=(
                         f"Optimization complete: "
                         f"{result.baseline_score:.4f} → {result.best_score:.4f}"
+                        + (
+                            f"；已建立版本 draft（{version_id[:8]}），"
+                            "請前往驗證/發布"
+                            if version_id
+                            else ""
+                        )
                     ),
                 ),
             )
@@ -550,10 +661,19 @@ class GetRunUseCase:
         self._run_repo = optimization_run_repository
         self._run_manager = run_manager
 
-    async def execute(self, run_id: str) -> dict:
-        """Get run detail with iterations."""
+    async def execute(
+        self, run_id: str, tenant_id: str | None = None
+    ) -> dict:
+        """Get run detail with iterations（tenant_id=None → system_admin）。"""
         iterations = await self._run_repo.get_iterations(run_id)
         active = self._run_manager.get_run(run_id)
+        _check_run_tenant(iterations, tenant_id)
+        if (
+            tenant_id is not None
+            and active is not None
+            and active.tenant_id != tenant_id
+        ):
+            raise EntityNotFoundError("OptimizationRun", run_id)
 
         if not iterations and not active:
             raise EntityNotFoundError("OptimizationRun", run_id)
@@ -635,7 +755,16 @@ class StopRunUseCase:
     def __init__(self, run_manager: RunManager) -> None:
         self._run_manager = run_manager
 
-    async def execute(self, run_id: str) -> bool:
+    async def execute(
+        self, run_id: str, tenant_id: str | None = None
+    ) -> bool:
+        active = self._run_manager.get_run(run_id)
+        if (
+            tenant_id is not None
+            and active is not None
+            and active.tenant_id != tenant_id
+        ):
+            raise EntityNotFoundError("ActiveRun", run_id)
         success = self._run_manager.request_stop(run_id)
         if not success:
             raise EntityNotFoundError("ActiveRun", run_id)
@@ -653,22 +782,86 @@ class StopRunUseCase:
         return True
 
 
+# Issue #54 Phase D — 系統級 prompt 的 setattr 白名單（修無白名單 setattr 破口）
+_SYSTEM_PROMPT_FIELDS = frozenset({"system_prompt"})
+
+
+def _check_run_tenant(iterations: list, tenant_id: str | None) -> None:
+    """Run 端點 tenant scoping（事實校正 #9）：None = system_admin 免檢。"""
+    if tenant_id is None or not iterations:
+        return
+    if iterations[0].tenant_id != tenant_id:
+        raise EntityNotFoundError("OptimizationRun", "run")
+
+
 class RollbackRunUseCase:
+    """Issue #54 Phase D — rollback 收斂到版本狀態機（spec §6.4）：
+    bot 級 = 建 optimizer 版本 → 嘗試發布（gate 啟用時停在 draft，回報導引）；
+    system 級 = 白名單 setattr（system prompt 無版本化，v1 保留舊路徑）。"""
+
     def __init__(
         self,
         optimization_run_repository: OptimizationRunRepository,
         bot_repository: BotRepository,
         system_prompt_config_repository=None,
+        create_version_use_case=None,
+        publish_version_use_case=None,
     ) -> None:
         self._run_repo = optimization_run_repository
         self._bot_repo = bot_repository
         self._system_prompt_repo = system_prompt_config_repository
+        self._create_version = create_version_use_case
+        self._publish_version = publish_version_use_case
 
-    async def execute(self, run_id: str, target_iteration: int) -> dict:
-        """Apply a specific iteration's prompt to bot or system config."""
+    async def _rollback_via_version(
+        self, target, run_id: str
+    ) -> tuple[bool, str | None, bool, str]:
+        """建 optimizer 版本 → 嘗試發布。回傳 (applied, version_id, published, note)。"""
+        from src.application.prompt_gate.version_use_cases import (
+            CreateConfigVersionCommand,
+        )
+        from src.domain.prompt_gate.entity import (
+            SOURCE_OPTIMIZER,
+            GateBlockedError,
+        )
+        from src.domain.shared.exceptions import ValidationError
+
+        version_id: str | None = None
+        note = ""
+        try:
+            version = await self._create_version.execute(
+                CreateConfigVersionCommand(
+                    tenant_id=target.tenant_id,
+                    bot_id=target.bot_id,
+                    changes={target.target_field: target.prompt_snapshot},
+                    source=SOURCE_OPTIMIZER,
+                    source_run_id=run_id,
+                )
+            )
+            version_id = version.id
+        except ValidationError as exc:
+            return False, None, False, str(exc)  # no_changes 等
+        if self._publish_version is not None:
+            try:
+                await self._publish_version.execute(
+                    target.tenant_id, version_id
+                )
+                return True, version_id, True, ""
+            except GateBlockedError as exc:
+                note = f"已建立 draft，發布被閘門攔下：{exc}"
+        return True, version_id, False, note
+
+    async def execute(
+        self,
+        run_id: str,
+        target_iteration: int,
+        tenant_id: str | None = None,
+    ) -> dict:
+        """Apply a specific iteration's prompt via the version state machine."""
         iterations = await self._run_repo.get_iterations(run_id)
         if not iterations:
             raise EntityNotFoundError("OptimizationRun", run_id)
+        _check_run_tenant(iterations, tenant_id)
 
         target = None
         for it in iterations:
@@ -683,34 +876,30 @@ class RollbackRunUseCase:
             )
 
         applied = False
+        version_id: str | None = None
+        published = False
+        note = ""
 
-        # Bot-level prompt
-        if target.bot_id:
-            bot = await self._bot_repo.find_by_id(target.bot_id)
-            if bot:
-                setattr(bot, target.target_field, target.prompt_snapshot)
-                await self._bot_repo.save(bot)
-                applied = True
-                logger.info(
-                    "Applied iteration %d prompt to bot %s.%s",
-                    target_iteration, target.bot_id, target.target_field,
-                )
+        # Bot-level prompt → 版本狀態機（唯一寫入通道）
+        if target.bot_id and self._create_version is not None:
+            applied, version_id, published, note = (
+                await self._rollback_via_version(target, run_id)
+            )
 
-        # System-level prompt
+        # System-level prompt（無版本化，白名單 setattr）
         if not target.bot_id and self._system_prompt_repo:
+            if target.target_field not in _SYSTEM_PROMPT_FIELDS:
+                raise EntityNotFoundError(
+                    "SystemPromptField", target.target_field
+                )
             config = await self._system_prompt_repo.get()
             setattr(config, target.target_field, target.prompt_snapshot)
             await self._system_prompt_repo.save(config)
             applied = True
+            published = True
             logger.info(
                 "Applied iteration %d prompt to system.%s",
                 target_iteration, target.target_field,
-            )
-
-        if not applied:
-            logger.warning(
-                "No target found to apply prompt: bot_id=%s, field=%s",
-                target.bot_id, target.target_field,
             )
 
         return {
@@ -719,6 +908,9 @@ class RollbackRunUseCase:
             "prompt_snapshot": target.prompt_snapshot,
             "score": target.score,
             "applied": applied,
+            "version_id": version_id,
+            "published": published,
+            "note": note,
         }
 
 
@@ -729,11 +921,14 @@ class GetRunReportUseCase:
     ) -> None:
         self._run_repo = optimization_run_repository
 
-    async def execute(self, run_id: str) -> str:
+    async def execute(
+        self, run_id: str, tenant_id: str | None = None
+    ) -> str:
         """Generate a markdown report for a run."""
         iterations = await self._run_repo.get_iterations(run_id)
         if not iterations:
             raise EntityNotFoundError("OptimizationRun", run_id)
+        _check_run_tenant(iterations, tenant_id)
 
         baseline = iterations[0]
         best = max(iterations, key=lambda it: it.score)
@@ -781,11 +976,14 @@ class GetRunDiffUseCase:
     ) -> None:
         self._run_repo = optimization_run_repository
 
-    async def execute(self, run_id: str, iteration: int) -> dict:
+    async def execute(
+        self, run_id: str, iteration: int, tenant_id: str | None = None
+    ) -> dict:
         """Get the prompt diff between baseline and a specific iteration."""
         iterations = await self._run_repo.get_iterations(run_id)
         if not iterations:
             raise EntityNotFoundError("OptimizationRun", run_id)
+        _check_run_tenant(iterations, tenant_id)
 
         baseline = iterations[0]
         target = None

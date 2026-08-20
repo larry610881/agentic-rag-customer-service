@@ -2243,6 +2243,8 @@ class Container(containers.DeclarativeContainer):
         # Issue #54 Phase B — mutator 記帳：傳 provider 本身（延遲 resolve，
         # 背景任務在 independent_session_scope 內取得綁新 session 的 use case）
         record_usage_factory=record_usage_use_case.provider,
+        # Issue #54 Phase D — 優化產出建 draft（同 .provider 延遲 resolve 模式）
+        create_version_factory=create_config_version_use_case.provider,
     )
 
     list_runs_use_case = providers.Factory(
@@ -2267,6 +2269,9 @@ class Container(containers.DeclarativeContainer):
         optimization_run_repository=optimization_run_repository,
         bot_repository=bot_repository,
         system_prompt_config_repository=system_prompt_config_repository,
+        # Issue #54 Phase D — rollback 收斂到版本狀態機（spec §6.4）
+        create_version_use_case=create_config_version_use_case,
+        publish_version_use_case=publish_config_version_use_case,
     )
 
     get_run_report_use_case = providers.Factory(

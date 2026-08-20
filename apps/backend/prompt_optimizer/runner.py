@@ -69,12 +69,17 @@ class KarpathyLoopRunner:
         db_write_prompt: Any,  # callable: (PromptTarget, str) -> None
         evaluator: Evaluator | None = None,
         mutator: PromptMutator | None = None,
+        use_history_override: bool = False,
     ):
         self._api = api_client
         self._read_prompt = db_read_prompt
         self._write_prompt = db_write_prompt
         self._evaluator = evaluator or Evaluator()
         self._mutator = mutator
+        # Issue #54 Phase D — True 時多輪題以 history_override 一次帶入
+        # （API 影子執行路徑；test_mode 下 conversation 不落庫、warm-up
+        # 的 conversation_id 鏈會斷）。False 維持逐句 warm-up（CLI 相容）。
+        self._use_history_override = use_history_override
 
     async def run(
         self,
@@ -294,6 +299,19 @@ class KarpathyLoopRunner:
             cr = None
             for retry in range(max_retries + 1):
                 try:
+                    if self._use_history_override:
+                        # Issue #54 Phase D — 多輪題一次帶入（省 N 次呼叫，
+                        # 且相容 test_mode 影子執行的無狀態 conversation）
+                        cr = await self._api.chat(
+                            message=tc.question,
+                            bot_id=dataset.metadata.bot_id or None,
+                            history_override=(
+                                list(tc.conversation_history)
+                                if tc.conversation_history
+                                else None
+                            ),
+                        )
+                        break
                     # Build conversation history first (if any)
                     conv_id = None
                     if tc.conversation_history:

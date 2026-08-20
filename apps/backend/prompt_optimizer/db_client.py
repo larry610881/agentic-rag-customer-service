@@ -47,6 +47,9 @@ class PromptDBClient:
             return row[0] or ""
 
     def write_prompt(self, target: PromptTarget, prompt: str) -> None:
+        """DEPRECATED（Issue #54 Phase D）：API 優化路徑已改影子執行
+        （config_override），不再寫線上表。此方法僅供 CLI 直連模式使用；
+        會直接改動線上 prompt，請勿在 API 路徑呼叫。"""
         key = (target.level, target.field)
         if key not in _TARGET_MAP:
             raise ValueError(f"Unknown target: {key}")

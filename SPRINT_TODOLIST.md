@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-08-20 (Issue #54 Phase C — 閘門引擎 + 影子執行 + Gate Run)
+> 最後更新：2026-08-20 (Issue #54 Phase D — Optimizer 整合：影子執行 + 版本收斂 + scoping)
 >
 > 今日延伸：
 > - DAG 歷史上下文 — 防遺失 fallback + ✓/⚠/empty 載入狀態徽章 (`c56e7fb`)
@@ -1861,7 +1861,14 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
   - ✅ 順手修 2 個 trace 債（eval trace_id 脫鉤、非 stream 漏 message_id）
   - ✅ migrations ×3 + eval 基礎表 drift 修復已套 local-docker；schema.sql 可乾淨 bootstrap（0 error 實測）
   - ✅ 5 feature 48 scenarios + 3 守衛測試，全量 unit 1208 passed
-- ⬜ **Phase D Optimizer 整合**：迴圈影子執行、產出→draft、rollback 收斂、平台集強制注入、tenant scoping 補強
+- ✅ **Phase D Optimizer 整合＋加固**（無 migration）
+  - ✅ 迴圈影子執行：_ShadowAPIClient（config_override + test_mode），候選 prompt 全程不寫線上 bots 表（修最大破口）
+  - ✅ runner history_override 模式（多輪題一次帶入；CLI 保留 warm-up 相容）
+  - ✅ 優化產出走版本狀態機：有進步建 optimizer draft（fail-open），completed 事件帶 version_id
+  - ✅ rollback 收斂：建版→嘗試發布（gate 啟用停在 draft 並導引）；system 級 setattr 加白名單
+  - ✅ run 端點 tenant scoping ×6（get/stop/rollback/report/diff/progress，system_admin 免檢）
+  - ✅ optimizer_gate_handoff.feature 11 scenarios，全量 unit 1219 passed
+  - 註：平台通用集強制注入已在 Phase C 的 gate runner 落地；optimizer run 不注入（非閘門）
 - ⬜ **Phase E 前端**：版本時間線 + 成效卡、bot Prompt tab、對照測試 Playground（雙欄聊天 + 雙 DAG）、hub 重組、usage 圖表
 - ⬜ **Phase F 收尾**：平台通用集 seed（Larry 圈題）、文件更新
 - ⬜ **Phase G（選配）**：真實流量回放 pairwise 對比

@@ -7,6 +7,28 @@
 
 ---
 
+## Optimizer 整合 — Wrapper 收編既有迴圈與「寫入通道唯一化」的完成（2026-08-20，Issue #54 Phase D）
+
+**Sprint 來源**：Prompt 發布閘門 Phase D（spec §6）
+
+**主題**：Adapter/Decorator 收編、Duck Typing 的邊界、授權語意下沉
+
+#### 做得好的地方
+- **零改 runner 核心的影子化**：`_ShadowAPIClient` 以 decorator 包住既有 client，每次受測對話自動帶 config_override + test_mode——Karpathy 迴圈本體一行未動就從「中途寫線上表」變成全程無副作用。**收編舊系統時，先找它的窄腰（narrow waist）——這裡是 api_client.chat——在窄腰上包一層，比改造寬面便宜一個數量級。**
+- **寫入通道唯一化完成**：手動編輯（Phase A 墊片）、閘門發布（Phase C）、優化產出與 rollback（本次）——四條路徑全部收斂到 `PublishConfigVersionUseCase`。rollback 改走版本後，gate 的 block/warn 語意「免費」適用於 optimizer 回滾（publish use case 自帶分支），不需要在 rollback 裡重複判斷。
+- **相容旗標而非分叉**：runner 的 `use_history_override` 讓 API 路徑用新機制、CLI 保留 warm-up——一個 bool 保住兩個世界，而不是複製第二份 `_eval_all`。
+
+#### 潛在隱憂
+- **`_ShadowAPIClient` 是 duck type**（mypy type: ignore）：runner 標注收 `AgentAPIClient` 但實收任何有 chat/close 的物件 → 正解是抽 Protocol，列入 optimizer arq 化時一併 → 優先級：低。
+- **system 級 prompt 仍走 setattr**（已加白名單）：system prompt config 沒有版本化，是版控地圖上最後一塊空白 → 未來若把 system prompt 納入（spec 已留 target_field 語意），rollback 的雙路徑可再收斂 → 優先級：低。
+- **`_run_optimization` 複雜度 18**：背景任務函式持續長大（Phase B 記帳 + Phase D 建版都掛在裡面），該拆 pipeline 物件了 → 優先級：中（arq 化時必然重構，可併）。
+
+#### 延伸學習
+- **Strangler Fig 模式**：本次是教科書式應用——不重寫 optimizer，而是在邊界（client、收尾、rollback）逐步把它的副作用導進新系統，直到舊寫入路徑（db_client.write_prompt）只剩 deprecated 空殼。
+- 若想深入：搜尋 "strangler fig pattern Fowler"、"narrow waist architecture"。
+
+---
+
 ## 閘門引擎 — 影子執行的隔離面設計與「schema.sql 可重建性」這個被忽視的資產（2026-08-20，Issue #54 Phase C）
 
 **Sprint 來源**：Prompt 發布閘門 Phase C（`.claude/plans/prompt-gate-phase-c-plan.md`）

@@ -30,6 +30,8 @@ class RunProgress:
     total_api_calls: int = 0
     message: str = ""
     timestamp: str = ""
+    # Issue #54 Phase D — 優化完成建立的 draft 版本 id（completed 事件）
+    version_id: str | None = None
 
     def to_sse(self) -> str:
         if not self.timestamp:

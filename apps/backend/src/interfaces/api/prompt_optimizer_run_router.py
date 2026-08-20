@@ -181,17 +181,22 @@ async def list_runs(
     )
 
 
+def _scope(tenant: CurrentTenant) -> str | None:
+    """Issue #54 Phase D — run 端點 tenant scoping：system_admin 免檢。"""
+    return None if tenant.role == "system_admin" else tenant.tenant_id
+
+
 @router.get("/runs/{run_id}", response_model=RunDetailResponse)
 @inject
 async def get_run(
     run_id: str,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetRunUseCase = Depends(
         Provide[Container.get_run_use_case]
     ),
 ) -> RunDetailResponse:
     try:
-        result = await use_case.execute(run_id)
+        result = await use_case.execute(run_id, tenant_id=_scope(tenant))
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
@@ -203,13 +208,13 @@ async def get_run(
 @inject
 async def stop_run(
     run_id: str,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: StopRunUseCase = Depends(
         Provide[Container.stop_run_use_case]
     ),
 ) -> dict:
     try:
-        await use_case.execute(run_id)
+        await use_case.execute(run_id, tenant_id=_scope(tenant))
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
@@ -222,13 +227,15 @@ async def stop_run(
 async def rollback_run(
     run_id: str,
     body: RollbackRequest,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: RollbackRunUseCase = Depends(
         Provide[Container.rollback_run_use_case]
     ),
 ) -> RollbackResponse:
     try:
-        result = await use_case.execute(run_id, body.iteration)
+        result = await use_case.execute(
+            run_id, body.iteration, tenant_id=_scope(tenant)
+        )
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
@@ -240,13 +247,13 @@ async def rollback_run(
 @inject
 async def get_run_report(
     run_id: str,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetRunReportUseCase = Depends(
         Provide[Container.get_run_report_use_case]
     ),
 ) -> dict:
     try:
-        report = await use_case.execute(run_id)
+        report = await use_case.execute(run_id, tenant_id=_scope(tenant))
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
@@ -259,13 +266,15 @@ async def get_run_report(
 async def get_run_diff(
     run_id: str,
     iteration: int,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetRunDiffUseCase = Depends(
         Provide[Container.get_run_diff_use_case]
     ),
 ) -> DiffResponse:
     try:
-        result = await use_case.execute(run_id, iteration)
+        result = await use_case.execute(
+            run_id, iteration, tenant_id=_scope(tenant)
+        )
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
@@ -277,12 +286,22 @@ async def get_run_diff(
 @inject
 async def stream_progress(
     run_id: str,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     run_manager: RunManager = Depends(
         Provide[Container.run_manager]
     ),
 ) -> StreamingResponse:
     """SSE stream for real-time run progress."""
+    # Issue #54 Phase D — 進行中 run 的 tenant scoping（DB 尚無列時的唯一依據）
+    active = run_manager.get_run(run_id)
+    if (
+        tenant.role != "system_admin"
+        and active is not None
+        and active.tenant_id != tenant.tenant_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Run not found"
+        )
     return StreamingResponse(
         run_manager.subscribe_progress(run_id),
         media_type="text/event-stream",
