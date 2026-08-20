@@ -79,6 +79,9 @@ class BotModel(Base):
     gate_budget_usd: Mapped[float] = mapped_column(
         Float, nullable=False, default=1.0, server_default="1.0"
     )
+    gate_excluded_cases: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
     base_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     fab_icon_url: Mapped[str] = mapped_column(
         String(512), nullable=False, default="", server_default=""

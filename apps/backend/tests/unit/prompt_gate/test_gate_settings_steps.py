@@ -193,6 +193,62 @@ def verify_started(context):
     assert context["version"].gate_run_id == context["run"].id
 
 
+# ─── 平台集排除 ───
+
+
+@given("平台通用集有三題且 bot 排除了其中一題")
+def platform_with_exclusion(context):
+    platform = _dataset(platform=True, n=3)
+    excluded_id = platform.test_cases[1].id.value
+    _build_uc(
+        context,
+        datasets=[_dataset(n=1)],
+        platform_datasets=[platform],
+    )
+    context["excluded_ids"] = frozenset({excluded_id})
+    context["excluded_id"] = excluded_id
+
+
+@given("自訂集有一題其 id 被列在排除清單")
+def custom_with_excluded_id(context):
+    custom = _dataset(n=1)
+    _build_uc(context, datasets=[custom], platform_datasets=[])
+    context["excluded_ids"] = frozenset(
+        {custom.test_cases[0].id.value}
+    )
+    context["custom_case_id"] = custom.test_cases[0].case_id
+
+
+@when("收集 gate run 題集")
+def collect_cases(context):
+    cases, ds_ids, has_custom, excluded = _run(
+        context["uc"]._collect_cases(
+            BOT_ID, TENANT, context["excluded_ids"]
+        )
+    )
+    context["cases"] = cases
+    context["excluded_applied"] = excluded
+
+
+@then("題集含兩題平台題且排除清單記錄該題")
+def verify_platform_filtered(context):
+    # 平台集 3 題排除 1 題 = 2 題；自訂集 1 題
+    assert len(context["cases"]) == 3
+    assert context["excluded_applied"] == [context["excluded_id"]]
+
+
+@then("自訂集題目不受排除影響")
+def verify_custom_untouched(context):
+    custom_cases = [c for c in context["cases"] if c.case_id.endswith(":c0")]
+    assert custom_cases  # 自訂集的 c0 仍在
+
+
+@then("該自訂題仍在題集內")
+def verify_custom_kept(context):
+    assert len(context["cases"]) == 1
+    assert context["excluded_applied"] == []
+
+
 # ─── UpdateBot 前置條件 ───
 
 

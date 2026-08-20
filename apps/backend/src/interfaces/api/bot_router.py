@@ -132,6 +132,7 @@ class CreateBotRequest(BaseModel):
     gate_auto_publish: bool = False
     gate_daily_limit: int = Field(default=20, ge=0)
     gate_budget_usd: float = Field(default=1.0, gt=0.0)
+    gate_excluded_cases: list[str] = Field(default_factory=list)
     mcp_servers: list[dict[str, Any]] = []
     mcp_bindings: list[dict[str, Any]] = []
     max_tool_calls: int = 5
@@ -193,6 +194,7 @@ class UpdateBotRequest(BaseModel):
     gate_auto_publish: bool | None = None
     gate_daily_limit: int | None = Field(default=None, ge=0)
     gate_budget_usd: float | None = Field(default=None, gt=0.0)
+    gate_excluded_cases: list[str] | None = None
     mcp_servers: list[dict[str, Any]] | None = None
     mcp_bindings: list[dict[str, Any]] | None = None
     max_tool_calls: int | None = None
@@ -257,6 +259,7 @@ class BotResponse(BaseModel):
     gate_auto_publish: bool
     gate_daily_limit: int
     gate_budget_usd: float
+    gate_excluded_cases: list[str]
     mcp_servers: list[dict[str, Any]]
     mcp_bindings: list[dict[str, Any]]
     max_tool_calls: int
@@ -324,6 +327,7 @@ def _to_response(bot) -> BotResponse:
         gate_auto_publish=bot.gate_auto_publish,
         gate_daily_limit=bot.gate_daily_limit,
         gate_budget_usd=bot.gate_budget_usd,
+        gate_excluded_cases=bot.gate_excluded_cases,
         mcp_servers=[
             {
                 "url": s.url,
@@ -467,6 +471,7 @@ async def create_bot(
             gate_auto_publish=body.gate_auto_publish,
             gate_daily_limit=body.gate_daily_limit,
             gate_budget_usd=body.gate_budget_usd,
+            gate_excluded_cases=body.gate_excluded_cases,
             mcp_servers=body.mcp_servers,
             mcp_bindings=body.mcp_bindings,
             max_tool_calls=body.max_tool_calls,

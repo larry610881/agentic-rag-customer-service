@@ -34,6 +34,7 @@ _EXCLUDED_FIELDS = {
     "eval_provider", "eval_model", "eval_depth",
     "gate_mode", "gate_soft_threshold", "gate_repeats",
     "gate_auto_publish", "gate_daily_limit", "gate_budget_usd",
+    "gate_excluded_cases",
     # Deprecated / legacy
     "intent_routes", "mcp_servers",
 }
@@ -60,6 +61,7 @@ def test_gate_fields_never_in_snapshot():
     for f in (
         "gate_mode", "gate_soft_threshold", "gate_repeats",
         "gate_auto_publish", "gate_daily_limit", "gate_budget_usd",
+    "gate_excluded_cases",
     ):
         assert f not in snap, f"gate 治理欄位 {f} 不得入快照"
 

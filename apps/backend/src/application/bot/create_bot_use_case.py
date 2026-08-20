@@ -45,6 +45,7 @@ class CreateBotCommand:
     gate_auto_publish: bool = False
     gate_daily_limit: int = 20
     gate_budget_usd: float = 1.0
+    gate_excluded_cases: list[str] | None = None
     mcp_servers: list[dict] = field(default_factory=list)
     mcp_bindings: list[dict] = field(default_factory=list)
     max_tool_calls: int = 5
@@ -145,6 +146,7 @@ class CreateBotUseCase:
             gate_auto_publish=command.gate_auto_publish,
             gate_daily_limit=command.gate_daily_limit,
             gate_budget_usd=command.gate_budget_usd,
+            gate_excluded_cases=list(command.gate_excluded_cases or []),
             mcp_servers=[
                 McpServerConfig(
                     url=s.get("url", ""),

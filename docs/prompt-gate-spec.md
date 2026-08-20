@@ -264,8 +264,8 @@ stateDiagram-v2
 
 ### 5.1 平台通用集
 - 實體 = SYSTEM tenant 名下、`is_platform_base=true` 的 `eval_datasets`（可多個，如 `security-invariants`、`rag-invariants`）。
-- 由 system_admin 在既有 dataset UI 維護（加 platform 標記 toggle，僅 system_admin 可見）。
-- **gate run 一律強制注入全部 platform base 集**，租戶不可移除、不可見編輯（列表對租戶唯讀顯示「平台通用」badge）。
+- 由 system_admin 在既有 dataset UI 維護（加 platform 標記 toggle，僅 system_admin 可見）——**內容是活的資料**，seed 只是初始值，隨時可增刪調整，下一次 gate run 立即生效。
+- **【定案更新 08-20】gate run 預設注入全部 platform base 集的啟用案例，但 bot 級可勾選排除個別題目**（`bots.gate_excluded_cases`，存 case id 清單）：彈性優先，治理改靠完整審計——每次 run 的 `details` 記錄實際執行的每一題與 `excluded_platform_cases` 清單，版本的 gate_run_id 可回溯「當時驗了什麼、跳過什麼」。租戶對平台集仍**不可編輯內容**（列表唯讀顯示「平台通用」badge），只能對自己 bot 做勾選。
 - v1 題目內容 = 待決點 6（附錄 A 提供候選清單供圈選）。seed 方式：YAML → `POST /datasets/import` 腳本（或 seed SQL）。
 
 ### 5.2 Bot 自訂集

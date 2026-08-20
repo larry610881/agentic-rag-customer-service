@@ -66,6 +66,7 @@ class UpdateBotCommand:
     gate_auto_publish: object = _UNSET
     gate_daily_limit: object = _UNSET
     gate_budget_usd: object = _UNSET
+    gate_excluded_cases: object = _UNSET
     mcp_servers: object = _UNSET
     mcp_bindings: object = _UNSET
     max_tool_calls: object = _UNSET
@@ -152,6 +153,8 @@ class UpdateBotUseCase:
             bot.widget_allowed_origins = list(command.widget_allowed_origins)  # type: ignore[arg-type]
         if command.widget_greeting_messages is not _UNSET:
             bot.widget_greeting_messages = list(command.widget_greeting_messages)  # type: ignore[arg-type]
+        if command.gate_excluded_cases is not _UNSET:
+            bot.gate_excluded_cases = list(command.gate_excluded_cases)  # type: ignore[arg-type]
         if command.rerank_enabled is not _UNSET:
             bot.rerank_enabled = command.rerank_enabled  # type: ignore[assignment]
         if command.rerank_model is not _UNSET:

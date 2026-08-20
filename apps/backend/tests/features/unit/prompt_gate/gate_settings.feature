@@ -42,6 +42,17 @@ Feature: 閘門三層開關與前置條件
     When 對 draft 版本啟動 gate run
     Then 回傳 run_id 且版本狀態為 validating
 
+  Scenario: bot 勾選排除的平台題不進題集且留下審計清單
+    Given 平台通用集有三題且 bot 排除了其中一題
+    When 收集 gate run 題集
+    Then 題集含兩題平台題且排除清單記錄該題
+    And 自訂集題目不受排除影響
+
+  Scenario: 排除只施於平台集，相同 id 出現在自訂集不受影響
+    Given 自訂集有一題其 id 被列在排除清單
+    When 收集 gate run 題集
+    Then 該自訂題仍在題集內
+
   Scenario: UpdateBot 將 gate_mode 設為 block 但未綁題集被拒
     Given 一個未綁任何題集的 bot
     When 透過 UpdateBot 將 gate_mode 改為 block

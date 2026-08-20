@@ -107,6 +107,8 @@ class Bot:
     gate_auto_publish: bool = False
     gate_daily_limit: int = 20
     gate_budget_usd: float = 1.0
+    # 平台通用集的 bot 級勾選排除（存 eval_test_cases.id；審計靠 run details）
+    gate_excluded_cases: list[str] = field(default_factory=list)
     base_prompt: str = ""       # 空 = 用系統預設
     fab_icon_url: str = ""
     widget_enabled: bool = False

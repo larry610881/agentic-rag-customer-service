@@ -103,15 +103,22 @@ class StartGateRunUseCase:
     # ── 題集組裝（平台通用集強制注入 ∪ 自訂集 enabled cases）──
 
     async def _collect_cases(
-        self, bot_id: str, tenant_id: str
-    ) -> tuple[list[GateCase], list[str], bool]:
-        """回傳 (cases, dataset_ids, has_custom_enabled)。"""
+        self,
+        bot_id: str,
+        tenant_id: str,
+        excluded_case_ids: frozenset[str] = frozenset(),
+    ) -> tuple[list[GateCase], list[str], bool, list[str]]:
+        """回傳 (cases, dataset_ids, has_custom_enabled, excluded_applied)。
+        排除只施於平台通用集（定案更新 08-20：bot 級勾選子集，
+        審計靠 run details 的 excluded_platform_cases）；
+        自訂集用 case enabled toggle 即可（租戶有完整編輯權）。"""
         custom = await self._eval_dataset_repo.find_by_bot(bot_id, tenant_id)
         platform = await self._eval_dataset_repo.find_platform_base()
 
         cases: list[GateCase] = []
         dataset_ids: list[str] = []
         has_custom_enabled = False
+        excluded_applied: list[str] = []
         seen_ds: set[str] = set()
 
         for ds in [*platform, *custom]:
@@ -120,6 +127,14 @@ class StartGateRunUseCase:
                 continue  # bot 自訂集本身被標 platform 時不重複展開
             seen_ds.add(ds_id)
             enabled_cases = [tc for tc in ds.test_cases if tc.enabled]
+            if ds.is_platform_base and excluded_case_ids:
+                kept = []
+                for tc in enabled_cases:
+                    if tc.id.value in excluded_case_ids:
+                        excluded_applied.append(tc.id.value)
+                    else:
+                        kept.append(tc)
+                enabled_cases = kept
             if not enabled_cases:
                 continue
             if not ds.is_platform_base:
@@ -140,7 +155,7 @@ class StartGateRunUseCase:
                         ),
                     )
                 )
-        return cases, dataset_ids, has_custom_enabled
+        return cases, dataset_ids, has_custom_enabled, excluded_applied
 
     # ── estimate（§6：不改造既有 EstimateCostUseCase）──
 
@@ -193,8 +208,12 @@ class StartGateRunUseCase:
         if version is None or version.bot_id != bot_id:
             raise EntityNotFoundError("BotConfigVersion", version_id)
 
-        cases, dataset_ids, has_custom = await self._collect_cases(
-            bot_id, tenant_id
+        cases, dataset_ids, has_custom, excluded_applied = (
+            await self._collect_cases(
+                bot_id,
+                tenant_id,
+                frozenset(bot.gate_excluded_cases or []),
+            )
         )
         if not has_custom:
             raise GatePreconditionError(
@@ -244,6 +263,7 @@ class StartGateRunUseCase:
                 soft_threshold=bot.gate_soft_threshold,
                 budget_usd=bot.gate_budget_usd,
                 api_token=api_token,
+                excluded_platform_cases=excluded_applied,
             )
         )
         return run
@@ -302,6 +322,7 @@ class StartGateRunUseCase:
         soft_threshold: float,
         budget_usd: float,
         api_token: str,
+        excluded_platform_cases: list[str] | None = None,
     ) -> None:
         from prompt_optimizer.api_client import AgentAPIClient
 
@@ -362,7 +383,10 @@ class StartGateRunUseCase:
             run.actual_cost = round(result["actual_cost"], 6)
             run.input_tokens = result["input_tokens"]
             run.output_tokens = result["output_tokens"]
-            run.details = self._build_details(result, verdict)
+            run.details = self._build_details(
+                result, verdict,
+                excluded_platform_cases=excluded_platform_cases or [],
+            )
             run.mark_completed(passed=verdict.passed)
 
             version = await self._load_version_background(
@@ -545,7 +569,10 @@ class StartGateRunUseCase:
         return outcomes
 
     @staticmethod
-    def _build_details(result: dict, verdict) -> dict:
+    def _build_details(
+        result: dict, verdict, *,
+        excluded_platform_cases: list[str] | None = None,
+    ) -> dict:
         cases = []
         for case_id, report in result["case_reports"].items():
             agg = verdict.cases.get(case_id)
@@ -558,7 +585,12 @@ class StartGateRunUseCase:
                     "unstable": agg.unstable if agg else None,
                 }
             )
-        return {"cases": cases, "aborted": result["aborted"]}
+        return {
+            "cases": cases,
+            "aborted": result["aborted"],
+            # 審計：本次 run 被 bot 設定排除的平台題（定案更新 08-20）
+            "excluded_platform_cases": excluded_platform_cases or [],
+        }
 
 
 class GetGateRunUseCase:
@@ -596,8 +628,12 @@ class GateEstimateUseCase:
             gate_run_repository=None,
             eval_dataset_repository=self._eval_dataset_repo,
         )
-        cases, dataset_ids, has_custom = await helper._collect_cases(
-            bot_id, tenant_id
+        cases, dataset_ids, has_custom, excluded_applied = (
+            await helper._collect_cases(
+                bot_id,
+                tenant_id,
+                frozenset(bot.gate_excluded_cases or []),
+            )
         )
         estimate = StartGateRunUseCase._estimate(
             cases, bot.gate_repeats, bot.llm_model
@@ -606,6 +642,7 @@ class GateEstimateUseCase:
             **estimate,
             "dataset_ids": dataset_ids,
             "has_custom_enabled": has_custom,
+            "excluded_platform_cases": excluded_applied,
             "budget_usd": bot.gate_budget_usd,
             "within_budget": estimate["est_cost"] <= bot.gate_budget_usd,
         }
