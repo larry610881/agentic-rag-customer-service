@@ -98,6 +98,8 @@ export interface DailyUsageStat {
   total_tokens: number;
   estimated_cost: number;
   message_count: number;
+  /** Issue #54 Phase E — 帶 by_category=true 查詢時才有（每列一個 category） */
+  request_type?: string | null;
 }
 
 export interface MonthlyUsageStat {

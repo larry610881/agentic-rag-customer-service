@@ -17,6 +17,8 @@ export interface Tenant {
   // S-KB-Followup.2
   default_summary_model?: string;
   default_intent_model?: string;
+  /** Issue #54 Phase E — Prompt 發布閘門（後端預設 false） */
+  prompt_gate_enabled: boolean;
   created_at: string;
   updated_at: string;
 }

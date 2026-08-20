@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -38,6 +39,7 @@ interface UpdateTenantConfigBody {
   plan?: string | null;
   monthly_token_limit: number | null;
   included_categories?: string[] | null;
+  prompt_gate_enabled?: boolean;
 }
 
 function formatTokens(n: number): string {
@@ -58,6 +60,7 @@ export function TenantConfigDialog({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [categoriesEnabled, setCategoriesEnabled] = useState(false);
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
+  const [gateEnabled, setGateEnabled] = useState(false);
 
   const { data: plans } = usePlans(false);
   // S-Token-Gov.2: 載入本月用量
@@ -100,6 +103,7 @@ export function TenantConfigDialog({
         setCategoriesEnabled(false);
         setSelectedCats(new Set(USAGE_CATEGORIES.map((c) => c.value)));
       }
+      setGateEnabled(tenant.prompt_gate_enabled ?? false);
       setShowAdvanced(false);
     }
   }, [open, tenant]);
@@ -107,7 +111,10 @@ export function TenantConfigDialog({
   const handleSave = () => {
     const value = limit.trim() === "" ? null : parseInt(limit, 10);
     if (value !== null && isNaN(value)) return;
-    const body: UpdateTenantConfigBody = { monthly_token_limit: value };
+    const body: UpdateTenantConfigBody = {
+      monthly_token_limit: value,
+      prompt_gate_enabled: gateEnabled,
+    };
     if (plan && plan !== tenant?.plan) {
       body.plan = plan;
     }
@@ -237,6 +244,21 @@ export function TenantConfigDialog({
             <p className="text-xs text-muted-foreground">
               留空表示沿用方案。手動填數值時會覆蓋方案的月度額度上限（fallback hard cap）。
             </p>
+          </div>
+
+          {/* Issue #54 Phase E: Prompt 發布閘門開關 */}
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <div className="space-y-0.5">
+              <Label htmlFor="prompt-gate-enabled">Prompt 發布閘門</Label>
+              <p className="text-xs text-muted-foreground">
+                啟用後，Bot Prompt 發布前必須通過閘門驗證
+              </p>
+            </div>
+            <Switch
+              id="prompt-gate-enabled"
+              checked={gateEnabled}
+              onCheckedChange={setGateEnabled}
+            />
           </div>
 
           {/* S-Token-Gov.2: 進階 — 自訂計費 categories（漸進式 disclosure） */}

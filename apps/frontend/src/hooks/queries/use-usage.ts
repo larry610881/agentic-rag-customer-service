@@ -21,15 +21,22 @@ export function useBotUsage(startDate: string, endDate: string) {
   });
 }
 
-export function useDailyUsage(startDate: string, endDate: string) {
+export function useDailyUsage(
+  startDate: string,
+  endDate: string,
+  byCategory = false,
+) {
   const token = useAuthStore((s) => s.token);
   const tenantId = useAuthStore((s) => s.tenantId);
 
   return useQuery({
-    queryKey: queryKeys.usage.daily(tenantId ?? "", startDate, endDate),
+    queryKey: [
+      ...queryKeys.usage.daily(tenantId ?? "", startDate, endDate),
+      byCategory,
+    ],
     queryFn: () =>
       apiFetch<DailyUsageStat[]>(
-        `${API_ENDPOINTS.usage.daily}?start_date=${startDate}&end_date=${endDate}`,
+        `${API_ENDPOINTS.usage.daily}?start_date=${startDate}&end_date=${endDate}${byCategory ? "&by_category=true" : ""}`,
         {},
         token ?? undefined,
       ),

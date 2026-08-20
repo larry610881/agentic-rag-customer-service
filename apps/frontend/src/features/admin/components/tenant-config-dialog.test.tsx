@@ -13,6 +13,7 @@ const mockTenant: Tenant = {
   name: "Acme Corp",
   plan: "pro",
   monthly_token_limit: null,
+  prompt_gate_enabled: false,
   created_at: "2024-01-01T00:00:00Z",
   updated_at: "2024-01-01T00:00:00Z",
 };
@@ -165,6 +166,28 @@ describe("TenantConfigDialog", () => {
 
     expect(spy.lastBody).toHaveProperty("included_categories");
     expect(spy.lastBody!.included_categories).toBeNull();
+  });
+
+  // ---- Issue #54 Phase E: Prompt 發布閘門 ----
+
+  it("切換「Prompt 發布閘門」後儲存 → PATCH body 帶 prompt_gate_enabled: true", async () => {
+    const spy = registerPatchSpy();
+    const user = userEvent.setup();
+    renderWithProviders(
+      <TenantConfigDialog
+        tenant={mockTenant}
+        open={true}
+        onOpenChange={mockOnOpenChange}
+      />,
+    );
+
+    const gateSwitch = screen.getByRole("switch", { name: "Prompt 發布閘門" });
+    await user.click(gateSwitch);
+
+    await user.click(screen.getByRole("button", { name: "儲存" }));
+    await waitFor(() => expect(spy.lastBody).not.toBeNull());
+
+    expect(spy.lastBody!.prompt_gate_enabled).toBe(true);
   });
 
   it("「其他」不應出現在 category checkbox（OTHER enum 已刪）", async () => {

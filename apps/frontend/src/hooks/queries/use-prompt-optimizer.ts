@@ -14,6 +14,10 @@ export interface EvalDataset {
   bot_id: string | null;
   target_prompt: string;
   test_case_count: number;
+  /** Issue #54 — 平台通用集標記（gate run 強制注入；僅 system_admin 可設） */
+  is_platform_base: boolean;
+  /** detail 端點才有（list 為 summary 無 cases） */
+  test_cases?: TestCase[];
   created_at: string;
   updated_at: string;
 }
@@ -21,9 +25,15 @@ export interface EvalDataset {
 export interface TestCase {
   id: string;
   dataset_id: string;
-  user_input: string;
-  expected_output: string;
-  context?: string;
+  case_id: string;
+  question: string;
+  priority: string;
+  category: string;
+  /** Issue #54 — 停用的 case 不參與閘門驗證 */
+  enabled: boolean;
+  conversation_history: Record<string, unknown>[];
+  assertions: Record<string, unknown>[];
+  tags: string[];
   created_at: string;
 }
 
@@ -102,7 +112,18 @@ export function useUpdateEvalDataset() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; description?: string }) =>
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string;
+      name?: string;
+      description?: string;
+      /** Issue #54 Phase E — "" 表示解除綁定 */
+      bot_id?: string;
+      /** Issue #54 Phase E — 僅 system_admin 可設（非 admin 帶此欄位會 403） */
+      is_platform_base?: boolean;
+    }) =>
       apiFetch<EvalDataset>(
         API_ENDPOINTS.promptOptimizer.dataset(id),
         { method: "PUT", body: JSON.stringify(data) },
@@ -146,6 +167,34 @@ export function useCreateTestCase() {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.promptOptimizer.datasets });
+    },
+  });
+}
+
+/** Issue #54 Phase E — 切換單一測試案例啟用狀態（caseId 用 TestCase.id） */
+export function useUpdateTestCase() {
+  const token = useAuthStore((s) => s.token);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      datasetId,
+      caseId,
+      enabled,
+    }: {
+      datasetId: string;
+      caseId: string;
+      enabled: boolean;
+    }) =>
+      apiFetch<TestCase>(
+        API_ENDPOINTS.promptOptimizer.datasetCase(datasetId, caseId),
+        { method: "PATCH", body: JSON.stringify({ enabled }) },
+        token ?? undefined,
+      ),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.promptOptimizer.dataset(variables.datasetId),
+      });
     },
   });
 }

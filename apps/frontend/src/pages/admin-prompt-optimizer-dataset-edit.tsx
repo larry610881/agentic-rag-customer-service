@@ -22,12 +22,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { ROUTES } from "@/routes/paths";
+import { useAuthStore } from "@/stores/use-auth-store";
+import { useBots } from "@/hooks/queries/use-bots";
 import {
   useEvalDataset,
   useUpdateEvalDataset,
   useCreateTestCase,
   useDeleteTestCase,
+  useUpdateTestCase,
 } from "@/hooks/queries/use-prompt-optimizer";
 import {
   AssertionEditor,
@@ -106,6 +110,8 @@ interface TestCaseData {
   question: string;
   priority: string;
   category: string;
+  /** Issue #54 Phase E — 停用的 case 不參與閘門驗證 */
+  enabled: boolean;
   assertions: { type: string; params?: Record<string, unknown> }[];
   conversation_history?: { role: string; content: string }[];
 }
@@ -114,13 +120,21 @@ export default function AdminPromptOptimizerDatasetEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
+  const role = useAuthStore((s) => s.role);
+  const isSystemAdmin = role === "system_admin";
+
   const { data: dataset, isLoading } = useEvalDataset(id ?? "");
+  const { data: botsData } = useBots(1, 100);
   const updateMutation = useUpdateEvalDataset();
   const createCaseMutation = useCreateTestCase();
   const deleteCaseMutation = useDeleteTestCase();
+  const updateCaseMutation = useUpdateTestCase();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  // Issue #54 Phase E — "" = 不綁定
+  const [botId, setBotId] = useState("");
+  const [isPlatformBase, setIsPlatformBase] = useState(false);
   const [nameInitialized, setNameInitialized] = useState(false);
 
   // Expanded rows
@@ -131,6 +145,8 @@ export default function AdminPromptOptimizerDatasetEditPage() {
   if (dataset && !nameInitialized) {
     setName(dataset.name);
     setDescription(dataset.description ?? "");
+    setBotId(dataset.bot_id ?? "");
+    setIsPlatformBase(dataset.is_platform_base ?? false);
     setNameInitialized(true);
   }
 
@@ -147,10 +163,30 @@ export default function AdminPromptOptimizerDatasetEditPage() {
   const handleUpdateDataset = () => {
     if (!id || !name.trim()) return;
     updateMutation.mutate(
-      { id, name: name.trim(), description: description.trim() || undefined },
+      {
+        id,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        // "" = 解除綁定
+        bot_id: botId,
+        // 非 system_admin 帶 is_platform_base 會 403 → 僅 admin 才送
+        ...(isSystemAdmin ? { is_platform_base: isPlatformBase } : {}),
+      },
       {
         onSuccess: () => toast.success("情境集已更新"),
         onError: () => toast.error("更新失敗"),
+      },
+    );
+  };
+
+  const handleToggleCaseEnabled = (caseId: string, enabled: boolean) => {
+    if (!id) return;
+    updateCaseMutation.mutate(
+      { datasetId: id, caseId, enabled },
+      {
+        onSuccess: () =>
+          toast.success(enabled ? "測試案例已啟用" : "測試案例已停用"),
+        onError: () => toast.error("切換啟用狀態失敗"),
       },
     );
   };
@@ -323,6 +359,42 @@ export default function AdminPromptOptimizerDatasetEditPage() {
               rows={3}
             />
           </div>
+          {/* Issue #54 Phase E — 綁定機器人 */}
+          <div className="space-y-2">
+            <Label htmlFor="edit-bot">綁定機器人</Label>
+            <select
+              id="edit-bot"
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              value={botId}
+              onChange={(e) => setBotId(e.target.value)}
+            >
+              <option value="">不綁定</option>
+              {botsData?.items.map((bot) => (
+                <option key={bot.id} value={bot.id}>
+                  {bot.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              綁定後，此情境集會在該機器人的閘門驗證時使用
+            </p>
+          </div>
+          {/* Issue #54 Phase E — 平台通用集（僅 system_admin） */}
+          {isSystemAdmin && (
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="platform-base">平台通用集</Label>
+                <p className="text-xs text-muted-foreground">
+                  閘門驗證時強制注入所有租戶（僅系統管理員可設定）
+                </p>
+              </div>
+              <Switch
+                id="platform-base"
+                checked={isPlatformBase}
+                onCheckedChange={setIsPlatformBase}
+              />
+            </div>
+          )}
           <div className="flex justify-end">
             <Button
               onClick={handleUpdateDataset}
@@ -527,6 +599,7 @@ export default function AdminPromptOptimizerDatasetEditPage() {
                 <div className="w-[130px]">分類</div>
                 <div className="min-w-0 flex-1">問題</div>
                 <div className="w-[70px] text-center">檢查規則</div>
+                <div className="w-[50px] text-center">啟用</div>
                 <div className="w-[50px]" />
               </div>
 
@@ -540,7 +613,7 @@ export default function AdminPromptOptimizerDatasetEditPage() {
                 return (
                   <div
                     key={tc.id}
-                    className={`border-b last:border-b-0 ${isSelected ? "bg-primary/5" : ""}`}
+                    className={`border-b last:border-b-0 ${isSelected ? "bg-primary/5" : ""} ${tc.enabled === false ? "opacity-60" : ""}`}
                   >
                     {/* Summary row */}
                     <div
@@ -587,11 +660,31 @@ export default function AdminPromptOptimizerDatasetEditPage() {
                           {categoryLabel}
                         </span>
                       </div>
-                      <div className="min-w-0 flex-1 truncate text-sm">
+                      <div
+                        className={`min-w-0 flex-1 truncate text-sm ${
+                          tc.enabled === false
+                            ? "text-muted-foreground line-through"
+                            : ""
+                        }`}
+                      >
                         {tc.question}
                       </div>
                       <div className="w-[70px] text-center text-xs text-muted-foreground">
                         {tc.assertions?.length ?? 0}
+                      </div>
+                      <div
+                        className="w-[50px] text-center"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Switch
+                          size="sm"
+                          aria-label={`啟用案例 ${tc.case_id}`}
+                          checked={tc.enabled !== false}
+                          onCheckedChange={(v) =>
+                            handleToggleCaseEnabled(tc.id, v === true)
+                          }
+                          disabled={updateCaseMutation.isPending}
+                        />
                       </div>
                       <div className="w-[50px]">
                         <Button

@@ -6,6 +6,14 @@ import { UsageSummaryCards } from "@/features/usage/components/usage-summary-car
 import { UsageTrendLineChart } from "@/features/usage/components/usage-daily-line-chart";
 import { UsagePieChart } from "@/features/usage/components/usage-bot-pie-chart";
 import { AdminEmptyStateHint } from "@/components/shared/admin-empty-state-hint";
+import { USAGE_CATEGORIES } from "@/constants/usage-categories";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { DailyUsageStat, MonthlyUsageStat } from "@/types/token-usage";
 
 function getDefaultRange() {
@@ -57,12 +65,18 @@ export default function TokenUsagePage() {
   const [mode, setMode] = useState<"month" | "year">("month");
   const [startDate, setStartDate] = useState(defaults.startDate);
   const [endDate, setEndDate] = useState(defaults.endDate);
+  // Issue #54 Phase E — daily 模式的分類 filter（"all" = 不帶 by_category 參數）
+  const [category, setCategory] = useState<string>("all");
+  const byCategory = mode === "month" && category !== "all";
 
   const botUsage = useBotUsage(startDate, endDate);
-  const dailyUsage = useDailyUsage(startDate, endDate);
+  const dailyUsage = useDailyUsage(startDate, endDate, byCategory);
   const monthlyUsage = useMonthlyUsage(startDate, endDate);
 
-  const trendData = toTrendData(mode, dailyUsage.data, monthlyUsage.data);
+  const filteredDaily = byCategory
+    ? dailyUsage.data?.filter((d) => d.request_type === category)
+    : dailyUsage.data;
+  const trendData = toTrendData(mode, filteredDaily, monthlyUsage.data);
   const trendLoading = mode === "month" ? dailyUsage.isLoading : monthlyUsage.isLoading;
 
   return (
@@ -79,13 +93,30 @@ export default function TokenUsagePage() {
         <h2 className="text-2xl font-semibold font-heading tracking-wide text-primary">
           Token 用量
         </h2>
-        <TokenPeriodSelector
-          onChange={(s, e, m) => {
-            setStartDate(s);
-            setEndDate(e);
-            setMode(m);
-          }}
-        />
+        <div className="flex items-center gap-2">
+          {mode === "month" && (
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger className="w-[160px]" aria-label="分類">
+                <SelectValue placeholder="分類" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部分類</SelectItem>
+                {USAGE_CATEGORIES.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <TokenPeriodSelector
+            onChange={(s, e, m) => {
+              setStartDate(s);
+              setEndDate(e);
+              setMode(m);
+            }}
+          />
+        </div>
       </motion.div>
 
       <motion.div variants={itemVariants}>
