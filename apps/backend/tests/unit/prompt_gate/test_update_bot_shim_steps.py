@@ -17,8 +17,11 @@ from src.domain.bot.value_objects import BotId
 from src.domain.prompt_gate.entity import (
     STATUS_PUBLISHED,
     VERDICT_SKIPPED,
+    GateBlockedError,
 )
 from src.domain.prompt_gate.repository import BotConfigVersionRepository
+from src.domain.tenant.entity import Tenant
+from src.domain.tenant.repository import TenantRepository
 
 scenarios("unit/prompt_gate/update_bot_shim.feature")
 
@@ -72,10 +75,67 @@ def version_repo(saved_versions):
     return repo
 
 
+def _tenant_repo(flag: bool):
+    from unittest.mock import AsyncMock as _AM
+    repo = _AM(spec=TenantRepository)
+    repo.find_by_id.return_value = Tenant(
+        name="t", prompt_gate_enabled=flag
+    )
+    return repo
+
+
+def _eval_repo(has_enabled_case: bool):
+    from unittest.mock import AsyncMock as _AM
+
+    from src.domain.eval_dataset.entity import EvalDataset, EvalTestCase
+    from src.domain.eval_dataset.repository import EvalDatasetRepository
+    repo = _AM(spec=EvalDatasetRepository)
+    datasets = []
+    if has_enabled_case:
+        datasets = [EvalDataset(
+            tenant_id="t1", bot_id=BOT_ID, name="ds",
+            test_cases=[EvalTestCase(case_id="c1", question="q", enabled=True)],
+        )]
+    repo.find_by_bot.return_value = datasets
+    return repo
+
+
 @given("一個既有 Bot 與已注入版本 repo 的 UpdateBotUseCase")
 def uc_with_version_repo(context, bot_repo, version_repo):
     context["uc"] = UpdateBotUseCase(
         bot_repository=bot_repo, version_repository=version_repo
+    )
+
+
+@given("一個 gate_mode 為 block 且租戶已開 prompt_gate 的 Bot")
+def uc_gate_on(context, bot, bot_repo, version_repo):
+    bot.gate_mode = "block"
+    context["uc"] = UpdateBotUseCase(
+        bot_repository=bot_repo,
+        version_repository=version_repo,
+        tenant_repository=_tenant_repo(flag=True),
+        eval_dataset_repository=_eval_repo(has_enabled_case=True),
+    )
+
+
+@given("一個 gate_mode 為 block 但租戶未開 prompt_gate 的 Bot")
+def uc_gate_tenant_off(context, bot, bot_repo, version_repo):
+    bot.gate_mode = "block"
+    context["uc"] = UpdateBotUseCase(
+        bot_repository=bot_repo,
+        version_repository=version_repo,
+        tenant_repository=_tenant_repo(flag=False),
+        eval_dataset_repository=_eval_repo(has_enabled_case=True),
+    )
+
+
+@given("一個已綁題集（含啟用案例）的 gate off Bot")
+def uc_gate_off_with_dataset(context, bot_repo, version_repo):
+    context["uc"] = UpdateBotUseCase(
+        bot_repository=bot_repo,
+        version_repository=version_repo,
+        tenant_repository=_tenant_repo(flag=True),
+        eval_dataset_repository=_eval_repo(has_enabled_case=True),
     )
 
 
@@ -86,11 +146,14 @@ def uc_without_version_repo(context, bot_repo):
 
 @when("透過 UpdateBot 修改 base_prompt")
 def update_base_prompt(context):
-    _run(
-        context["uc"].execute(
-            UpdateBotCommand(bot_id=BOT_ID, base_prompt="新提示詞")
+    try:
+        _run(
+            context["uc"].execute(
+                UpdateBotCommand(bot_id=BOT_ID, base_prompt="新提示詞")
+            )
         )
-    )
+    except GateBlockedError as exc:
+        context["error"] = exc
 
 
 @when("透過 UpdateBot 修改 widget_welcome_message")
@@ -98,6 +161,15 @@ def update_widget(context):
     _run(
         context["uc"].execute(
             UpdateBotCommand(bot_id=BOT_ID, widget_welcome_message="哈囉")
+        )
+    )
+
+
+@when("透過 UpdateBot 將 gate_soft_threshold 改為 0.9")
+def update_gate_threshold(context):
+    _run(
+        context["uc"].execute(
+            UpdateBotCommand(bot_id=BOT_ID, gate_soft_threshold=0.9)
         )
     )
 
@@ -113,6 +185,11 @@ def update_with_injection(context):
             )
         )
     context["error"] = exc_info.value
+
+
+@then("更新被拒絕（gate 啟用需走版本 API）")
+def verify_gate_blocked(context):
+    assert isinstance(context["error"], GateBlockedError)
 
 
 @then("產生一筆 published 且 verdict 為 skipped 的版本列")

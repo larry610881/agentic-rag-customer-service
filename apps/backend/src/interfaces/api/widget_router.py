@@ -12,22 +12,22 @@ from src.application.agent.send_message_use_case import (
     SendMessageCommand,
     SendMessageUseCase,
 )
-from src.application.knowledge.view_document_use_case import (
-    ViewDocumentUseCase,
-)
-from src.domain.knowledge.repository import DocumentRepository
-from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.application.conversation.submit_feedback_use_case import (
     SubmitFeedbackCommand,
     SubmitFeedbackUseCase,
+)
+from src.application.knowledge.view_document_use_case import (
+    ViewDocumentUseCase,
 )
 from src.application.observability.error_event_use_cases import (
     ReportErrorCommand,
     ReportErrorUseCase,
 )
+from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
 from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
+from src.domain.knowledge.repository import DocumentRepository
 from src.interfaces.api.streaming_errors import classify_streaming_error
 
 logger = logging.getLogger(__name__)

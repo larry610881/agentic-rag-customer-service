@@ -36,6 +36,10 @@ class AgentResponse:
     # 避免洩露防禦邏輯（見 agent_router.py 的 sanitize 邏輯）
     guard_blocked: str | None = None
     guard_rule_matched: str | None = None
+    # Issue #54 Phase C — 影子執行（test_mode）回傳 trace 供逐題報告/Playground DAG；
+    # 正常對話不填（trace 落庫由 observability API 查）
+    trace_id: str | None = None
+    trace_nodes: list[dict[str, Any]] | None = None
 
 
 @dataclass

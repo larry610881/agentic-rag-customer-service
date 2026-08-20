@@ -43,6 +43,13 @@ class BotConfigVersionRepository(ABC):
     async def next_version_no(self, bot_id: str) -> int: ...
 
     @abstractmethod
+    async def revert_validating_to_draft(
+        self, version_ids: list[str]
+    ) -> int:
+        """孤兒清理：把仍卡在 validating 的版本退回 draft。回傳影響列數。"""
+        ...
+
+    @abstractmethod
     async def set_current(self, bot_id: str, version_id: str) -> None:
         """單一交易內翻轉 is_current（舊 current 設 False、新版設 True），
         維持 partial unique index 不變量。"""

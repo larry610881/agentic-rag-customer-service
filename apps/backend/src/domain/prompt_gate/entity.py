@@ -39,6 +39,11 @@ _REJECTABLE = frozenset({STATUS_DRAFT, STATUS_PENDING_PUBLISH})
 _VALIDATABLE = frozenset({STATUS_DRAFT})
 
 
+class GateBlockedError(DomainException):
+    """閘門啟用時的操作被擋（interfaces 層對應 409）：
+    版控欄位直改需走版本 API、驗證未過不可發布等。"""
+
+
 class InvalidVersionTransitionError(DomainException):
     """非法的版本狀態轉移（interfaces 層對應 409）。"""
 
@@ -89,6 +94,12 @@ class BotConfigVersion:
             raise InvalidVersionTransitionError(self.status, "validate")
         self.status = STATUS_VALIDATING
         self.gate_run_id = gate_run_id
+
+    def mark_validation_aborted(self) -> None:
+        """gate run 異常中止：退回 draft、不留 verdict（與 fail 區別）。"""
+        if self.status == STATUS_VALIDATING:
+            self.status = STATUS_DRAFT
+            self.gate_run_id = None
 
     def mark_validation_result(self, *, passed: bool) -> None:
         """gate run 完成：通過 → pending_publish（人工發布，定案 1=B）；

@@ -100,6 +100,13 @@ class Bot:
     eval_provider: str = ""  # Eval LLM provider (independent from bot LLM)
     eval_model: str = ""  # Eval LLM model
     eval_depth: str = "L1"  # "off" | any combo of "L1", "L2", "L3" joined by "+"
+    # Issue #54 Phase C — 發布閘門設定（治理欄位，不進 config snapshot 白名單）
+    gate_mode: str = "off"  # off | warn | block
+    gate_soft_threshold: float = 0.8
+    gate_repeats: int = 3
+    gate_auto_publish: bool = False
+    gate_daily_limit: int = 20
+    gate_budget_usd: float = 1.0
     base_prompt: str = ""       # 空 = 用系統預設
     fab_icon_url: str = ""
     widget_enabled: bool = False

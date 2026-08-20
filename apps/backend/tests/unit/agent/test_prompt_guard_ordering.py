@@ -311,7 +311,7 @@ def test_blocked_input_starts_trace_and_persists_for_dag_visibility():
     """input guard 命中時：trace 要被 start (讓 add_node 不被吞)，
     且 _persist_agent_trace 要被呼叫（讓 DAG / 觀測頁看得到攔截節點）。"""
     use_case = _make_use_case(guard_passes=False)
-    use_case._persist_agent_trace = AsyncMock()
+    use_case._persist_agent_trace = AsyncMock(return_value=(None, None))
 
     _run(use_case._execute_inner(_cmd()))
 
@@ -320,7 +320,7 @@ def test_blocked_input_starts_trace_and_persists_for_dag_visibility():
 
 def test_stream_blocked_input_starts_trace_and_persists_for_dag_visibility():
     use_case = _make_use_case(guard_passes=False)
-    use_case._persist_agent_trace = AsyncMock()
+    use_case._persist_agent_trace = AsyncMock(return_value=(None, None))
 
     async def _consume():
         async for _ in use_case._execute_stream_inner(_cmd()):

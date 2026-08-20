@@ -1,11 +1,14 @@
 from dataclasses import dataclass
 
-from src.domain.security.guard_config import GuardRulesConfig, GuardRulesConfigRepository
 from src.application.security.prompt_guard_service import (
-    DEFAULT_INPUT_RULES,
-    DEFAULT_OUTPUT_KEYWORDS,
     DEFAULT_INPUT_GUARD_PROMPT,
+    DEFAULT_INPUT_RULES,
     DEFAULT_OUTPUT_GUARD_PROMPT,
+    DEFAULT_OUTPUT_KEYWORDS,
+)
+from src.domain.security.guard_config import (
+    GuardRulesConfig,
+    GuardRulesConfigRepository,
 )
 
 

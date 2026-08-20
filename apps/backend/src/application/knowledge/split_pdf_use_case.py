@@ -10,7 +10,10 @@ from src.domain.knowledge.repository import (
 )
 from src.domain.knowledge.services import DocumentFileStorageService
 from src.domain.knowledge.value_objects import DocumentId, ProcessingTaskId
-from src.infrastructure.file_parser.pdf_page_extractor import count_pages, iter_pages_as_images
+from src.infrastructure.file_parser.pdf_page_extractor import (
+    count_pages,
+    iter_pages_as_images,
+)
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)

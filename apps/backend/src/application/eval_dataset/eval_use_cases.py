@@ -34,9 +34,11 @@ class RunSingleEvalUseCase:
         from prompt_optimizer.dataset import (
             Assertion,
             CostConfigData,
-            Dataset as CLIDataset,
             DatasetMetadata,
             TestCase,
+        )
+        from prompt_optimizer.dataset import (
+            Dataset as CLIDataset,
         )
         from prompt_optimizer.evaluator import Evaluator
 
@@ -457,9 +459,11 @@ class RunValidationEvalUseCase:
         from prompt_optimizer.dataset import (
             Assertion,
             CostConfigData,
-            Dataset as CLIDataset,
             DatasetMetadata,
             TestCase,
+        )
+        from prompt_optimizer.dataset import (
+            Dataset as CLIDataset,
         )
         from prompt_optimizer.evaluator import Evaluator
         from prompt_optimizer.validation_evaluator import ValidationEvaluator

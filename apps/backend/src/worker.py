@@ -372,7 +372,7 @@ class WorkerSettings:
     on_shutdown = shutdown
     @staticmethod
     def _parse_redis() -> RedisSettings:
-        from urllib.parse import urlparse, unquote
+        from urllib.parse import unquote, urlparse
         url = Settings().redis_url
         parsed = urlparse(url)
         return RedisSettings(

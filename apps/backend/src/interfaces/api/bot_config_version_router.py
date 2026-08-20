@@ -9,9 +9,15 @@ from math import ceil
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
+from src.application.prompt_gate.gate_run_use_cases import (
+    GateEstimateUseCase,
+    GatePreconditionError,
+    GetGateRunUseCase,
+    StartGateRunUseCase,
+)
 from src.application.prompt_gate.static_checks import StaticCheckFailedError
 from src.application.prompt_gate.version_use_cases import (
     CreateConfigVersionCommand,
@@ -24,7 +30,10 @@ from src.application.prompt_gate.version_use_cases import (
     RollbackConfigVersionUseCase,
 )
 from src.container import Container
-from src.domain.prompt_gate.entity import InvalidVersionTransitionError
+from src.domain.prompt_gate.entity import (
+    GateBlockedError,
+    InvalidVersionTransitionError,
+)
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.schemas.pagination import PaginatedResponse
@@ -43,6 +52,52 @@ class CreateVersionRequest(BaseModel):
 
 class RollbackRequest(BaseModel):
     target_version_id: str
+
+
+class PublishRequest(BaseModel):
+    # warn 模式驗證失敗後的強制發布（block 模式 force 無效，spec §4.1）
+    force: bool = False
+
+
+class GateRunResponse(BaseModel):
+    id: str
+    bot_id: str
+    version_id: str
+    status: str
+    verdict: str | None
+    fail_reasons: list[str]
+    dataset_ids: list[str]
+    repeats: int
+    soft_threshold: float
+    total_cases: int | None
+    hard_failed_cases: int | None
+    soft_pass_rate: float | None
+    unstable_cases: int | None
+    est_cost: float | None
+    actual_cost: float | None
+    details: dict | None
+    error_message: str | None
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+
+def _run_to_response(run) -> GateRunResponse:
+    return GateRunResponse(
+        id=run.id, bot_id=run.bot_id, version_id=run.version_id,
+        status=run.status, verdict=run.verdict,
+        fail_reasons=list(run.fail_reasons or []),
+        dataset_ids=list(run.dataset_ids or []),
+        repeats=run.repeats, soft_threshold=run.soft_threshold,
+        total_cases=run.total_cases,
+        hard_failed_cases=run.hard_failed_cases,
+        soft_pass_rate=run.soft_pass_rate,
+        unstable_cases=run.unstable_cases,
+        est_cost=run.est_cost, actual_cost=run.actual_cost,
+        details=run.details, error_message=run.error_message,
+        created_at=run.created_at, started_at=run.started_at,
+        completed_at=run.completed_at,
+    )
 
 
 class VersionResponse(BaseModel):
@@ -100,6 +155,15 @@ def _handle(exc: Exception) -> HTTPException:
     if isinstance(exc, InvalidVersionTransitionError):
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        )
+    if isinstance(exc, GateBlockedError):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        )
+    if isinstance(exc, GatePreconditionError):
+        return HTTPException(
+            status_code=exc.http_status,
+            detail={"code": exc.code, "message": str(exc)},
         )
     if isinstance(exc, StaticCheckFailedError):
         return HTTPException(
@@ -203,16 +267,60 @@ async def get_version(
 async def publish_version(
     bot_id: str,
     version_id: str,
+    body: PublishRequest | None = None,
     tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: PublishConfigVersionUseCase = Depends(
         Provide[Container.publish_config_version_use_case]
     ),
 ) -> VersionResponse:
     try:
-        version = await use_case.execute(tenant.tenant_id, version_id)
-    except (EntityNotFoundError, InvalidVersionTransitionError) as exc:
+        version = await use_case.execute(
+            tenant.tenant_id, version_id,
+            force=bool(body and body.force),
+        )
+    except (
+        EntityNotFoundError,
+        InvalidVersionTransitionError,
+        GateBlockedError,
+    ) as exc:
         raise _handle(exc) from exc
     return _to_response(version)
+
+
+@router.post(
+    "/{version_id}/validate",
+    response_model=GateRunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@inject
+async def validate_version(
+    bot_id: str,
+    version_id: str,
+    request: Request,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: StartGateRunUseCase = Depends(
+        Provide[Container.start_gate_run_use_case]
+    ),
+) -> GateRunResponse:
+    """202 啟動 gate run（背景執行，前端 polling GET /prompt-gate/runs/{id}）。
+    JWT 剝下傳給背景任務回打 /agent/chat（/validate 先例）。"""
+    auth = request.headers.get("authorization", "")
+    api_token = auth.split(" ", 1)[1] if " " in auth else auth
+    try:
+        run = await use_case.execute(
+            tenant_id=tenant.tenant_id,
+            bot_id=bot_id,
+            version_id=version_id,
+            api_token=api_token,
+            triggered_by=tenant.user_id,
+        )
+    except (
+        EntityNotFoundError,
+        InvalidVersionTransitionError,
+        GatePreconditionError,
+    ) as exc:
+        raise _handle(exc) from exc
+    return _run_to_response(run)
 
 
 @router.post("/{version_id}/reject", response_model=VersionResponse)
@@ -254,3 +362,41 @@ async def rollback_version(
     except (EntityNotFoundError, ValidationError) as exc:
         raise _handle(exc) from exc
     return _to_response(version)
+
+
+# ── Gate run 查詢 / estimate（prefix 不同，掛第二個 router）──
+
+gate_router = APIRouter(prefix="/api/v1", tags=["prompt-gate"])
+
+
+@gate_router.get("/bots/{bot_id}/prompt-gate/estimate")
+@inject
+async def gate_estimate(
+    bot_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: GateEstimateUseCase = Depends(
+        Provide[Container.gate_estimate_use_case]
+    ),
+) -> dict:
+    try:
+        return await use_case.execute(tenant.tenant_id, bot_id)
+    except EntityNotFoundError as exc:
+        raise _handle(exc) from exc
+
+
+@gate_router.get(
+    "/prompt-gate/runs/{run_id}", response_model=GateRunResponse
+)
+@inject
+async def get_gate_run(
+    run_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: GetGateRunUseCase = Depends(
+        Provide[Container.get_gate_run_use_case]
+    ),
+) -> GateRunResponse:
+    try:
+        run = await use_case.execute(tenant.tenant_id, run_id)
+    except EntityNotFoundError as exc:
+        raise _handle(exc) from exc
+    return _run_to_response(run)

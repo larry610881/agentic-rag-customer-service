@@ -16,6 +16,9 @@ class UpdateEvalDatasetCommand:
     default_assertions: list[dict[str, Any]] | None = None
     cost_config: dict[str, Any] | None = None
     include_security: bool | None = None
+    # Issue #54 Phase C — bot 綁定可改（"" = 解除綁定）；平台通用集標記
+    bot_id: str | None = None
+    is_platform_base: bool | None = None
 
 
 class UpdateEvalDatasetUseCase:
@@ -39,6 +42,10 @@ class UpdateEvalDatasetUseCase:
             dataset.cost_config = command.cost_config
         if command.include_security is not None:
             dataset.include_security = command.include_security
+        if command.bot_id is not None:
+            dataset.bot_id = command.bot_id or None
+        if command.is_platform_base is not None:
+            dataset.is_platform_base = command.is_platform_base
         dataset.updated_at = datetime.now(timezone.utc)
 
         await self._repo.save(dataset)

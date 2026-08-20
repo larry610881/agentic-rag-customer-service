@@ -13,6 +13,8 @@ class Tenant:
     # S-Token-Gov.2: 哪些 UsageCategory 計入額度。
     # None → 全計入（safe default）；[] → 全不計入（POC 免計費）；list → 只計入列表內的
     included_categories: list[str] | None = None
+    # Issue #54 Phase C — 平台層 per-tenant 閘門功能開關（定案 5：system tenant seed 為 True）
+    prompt_gate_enabled: bool = False
     default_ocr_model: str = ""
     default_context_model: str = ""
     default_classification_model: str = ""

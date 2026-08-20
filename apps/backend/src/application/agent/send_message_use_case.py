@@ -126,6 +126,10 @@ class SendMessageCommand:
     bot_id: str | None = None
     visitor_id: str | None = None
     identity_source: str | None = None  # "widget" | "line"
+    # Issue #54 Phase C — 影子執行（閘門驗證 / Playground）
+    config_override: dict | None = None   # draft 快照 overlay（spec §13.3）
+    test_mode: bool = False               # 六面隔離：不落庫、不 memory、不線上 eval
+    history_override: list[dict] | None = None  # [{role, content}] 取代 DB 歷史
 
 
 class SendMessageUseCase:
@@ -216,6 +220,12 @@ class SendMessageUseCase:
                 f"to tenant '{command.tenant_id}'"
             )
             raise DomainException(msg)
+        # Issue #54 Phase C — 影子執行：draft 快照 overlay 到記憶體實體。
+        # 必須在租戶檢查之後（override 不得繞過隔離）、任何欄位讀取之前。
+        # 紅線：影子路徑絕不可 bot_repo.save(bot)。
+        if command.config_override:
+            from src.domain.prompt_gate.config_snapshot import apply_snapshot
+            apply_snapshot(bot, command.config_override)
         cfg["kb_ids"] = bot.knowledge_base_ids or None
         if not cfg["kb_id"] and cfg["kb_ids"]:
             cfg["kb_id"] = cfg["kb_ids"][0]
@@ -717,37 +727,11 @@ class SendMessageUseCase:
         # 之前擺在 _resolve_worker_config 之後，但 worker routing 的 intent
         # classifier 已經把 user_message 餵給 LLM → prompt injection 已經
         # compromise 那層 LLM。提前到任何 LLM-touching helper 之前。
-        if self._prompt_guard:
-            guard_result = await self._prompt_guard.check_input(
-                command.message,
-                tenant_id=command.tenant_id,
-                bot_id=command.bot_id,
-                user_id=command.visitor_id,
-            )
-            if not guard_result.passed:
-                conversation.add_message("user", command.message)
-                assistant_msg = conversation.add_message(
-                    "assistant", guard_result.blocked_response
-                )
-                _bump_conversation_counters(conversation)
-                await self._conversation_repo.save(conversation)
-                # 持久化 trace（含 guard_input_blocked 紅節點），讓 admin
-                # 觀測頁 / Studio canvas 能看到攔截 DAG
-                await self._persist_agent_trace(
-                    conversation_id=conversation.id.value,
-                    message_id=assistant_msg.id.value,
-                    latency_ms=0,
-                    source=command.identity_source or "web",
-                )
-                return AgentResponse(
-                    answer=guard_result.blocked_response,
-                    conversation_id=conversation.id.value,
-                    guard_blocked="input",
-                    guard_rule_matched=guard_result.rule_matched,
-                )
-            # F1（POC 問題 1）：input guard 已在此跑過並通過 — 帶標記讓
-            # GuardedAgentService 咽喉點跳過重複的 input guard LLM roundtrip
-            metadata["_input_guard_checked"] = True
+        blocked = await self._check_input_guard(
+            command, conversation, metadata
+        )
+        if blocked is not None:
+            return blocked
 
         history, history_context, router_context = (
             await self._resolve_history(
@@ -831,50 +815,55 @@ class SendMessageUseCase:
                 response.guard_blocked = "output"
                 response.guard_rule_matched = guard_result.rule_matched
 
-        conversation.add_message("user", command.message)
-        assistant_msg = conversation.add_message(
-            "assistant",
-            response.answer,
-            tool_calls=tool_calls_to_save,
-            latency_ms=latency_ms,
-            retrieved_chunks=retrieved_chunks,
-            structured_content=structured_content,
-        )
-        _bump_conversation_counters(conversation)
-        await self._conversation_repo.save(conversation)
+        assistant_msg = None
+        if not command.test_mode:
+            conversation.add_message("user", command.message)
+            assistant_msg = conversation.add_message(
+                "assistant",
+                response.answer,
+                tool_calls=tool_calls_to_save,
+                latency_ms=latency_ms,
+                retrieved_chunks=retrieved_chunks,
+                structured_content=structured_content,
+            )
+            _bump_conversation_counters(conversation)
+            await self._conversation_repo.save(conversation)
 
         response.conversation_id = conversation.id.value
         # S-ConvInsights.1: 暴露 assistant message_id 給 agent_router 用於 RecordUsage
-        response.message_id = assistant_msg.id.value
+        response.message_id = (
+            assistant_msg.id.value if assistant_msg else None
+        )
 
         # Fire-and-forget: persist agent execution trace
-        await self._persist_agent_trace(
+        # （修既有債：非 stream 路徑補傳 message_id，spec §7.3 C-3）
+        trace_id, trace_nodes = await self._persist_agent_trace(
             conversation_id=conversation.id.value,
+            message_id=response.message_id,
             latency_ms=latency_ms,
             source=command.identity_source or "web",
+            persist=not command.test_mode,
         )
+        if command.test_mode:
+            response.trace_id = trace_id
+            response.trace_nodes = trace_nodes
+            return response  # 六面隔離：不 memory、不線上 eval
 
         # Fire-and-forget: memory extraction
         await self._fire_memory_extraction(command, bot_cfg, conversation)
 
         # Fire-and-forget: background evaluation
-        trace_id = str(uuid4())
-        eval_depth = bot_cfg.get("eval_depth", "off")
-        if eval_depth != "off" and self._eval_use_case:
-            from src.infrastructure.queue.arq_pool import enqueue
-            # Sources must be JSON serializable
-            sources_dicts = [
-                s.to_dict() if hasattr(s, "to_dict") else s
-                for s in response.sources
-            ]
-            await enqueue(
-                "run_evaluation",
-                eval_depth, command.message, response.answer,
-                sources_dicts, response.tool_calls,
-                command.tenant_id, trace_id,
-                bot_cfg.get("eval_provider", ""),
-                bot_cfg.get("eval_model", ""),
-            )
+        await self._enqueue_background_eval(
+            eval_depth=bot_cfg.get("eval_depth", "off"),
+            message=command.message,
+            answer=response.answer,
+            sources=response.sources,
+            tool_calls=response.tool_calls,
+            tenant_id=command.tenant_id,
+            trace_id=trace_id or str(uuid4()),
+            eval_provider=bot_cfg.get("eval_provider", ""),
+            eval_model=bot_cfg.get("eval_model", ""),
+        )
 
         return response
 
@@ -944,12 +933,14 @@ class SendMessageUseCase:
                 user_id=command.visitor_id,
             )
             if not guard_result.passed:
-                conversation.add_message("user", command.message)
-                assistant_msg = conversation.add_message(
-                    "assistant", guard_result.blocked_response
-                )
-                _bump_conversation_counters(conversation)
-                await self._conversation_repo.save(conversation)
+                assistant_msg = None
+                if not command.test_mode:
+                    conversation.add_message("user", command.message)
+                    assistant_msg = conversation.add_message(
+                        "assistant", guard_result.blocked_response
+                    )
+                    _bump_conversation_counters(conversation)
+                    await self._conversation_repo.save(conversation)
                 yield {
                     "type": "token",
                     "content": guard_result.blocked_response,
@@ -963,9 +954,12 @@ class SendMessageUseCase:
                 # canvas / admin 觀測頁能看到攔截 DAG
                 await self._persist_agent_trace(
                     conversation_id=conversation.id.value,
-                    message_id=assistant_msg.id.value,
+                    message_id=(
+                        assistant_msg.id.value if assistant_msg else None
+                    ),
                     latency_ms=0,
                     source=command.identity_source or "web",
+                    persist=not command.test_mode,
                 )
                 yield {"type": "done"}
                 return
@@ -1096,17 +1090,19 @@ class SendMessageUseCase:
                 "refund_step": refund_step_value,
             })
 
-        conversation.add_message("user", command.message)
-        assistant_msg = conversation.add_message(
-            "assistant",
-            full_answer,
-            tool_calls=tool_calls_to_save,
-            latency_ms=latency_ms,
-            retrieved_chunks=retrieved_chunks,
-            structured_content=structured_content,
-        )
-        _bump_conversation_counters(conversation)
-        await self._conversation_repo.save(conversation)
+        assistant_msg = None
+        if not command.test_mode:
+            conversation.add_message("user", command.message)
+            assistant_msg = conversation.add_message(
+                "assistant",
+                full_answer,
+                tool_calls=tool_calls_to_save,
+                latency_ms=latency_ms,
+                retrieved_chunks=retrieved_chunks,
+                structured_content=structured_content,
+            )
+            _bump_conversation_counters(conversation)
+            await self._conversation_repo.save(conversation)
 
         # 在 _persist_agent_trace 之前取 trace_id（finish 後 ContextVar 會被清掉）
         # 用於 SSE done 事件回傳給前端，讓 Studio canvas 等可 fetch 完整 DAG。
@@ -1114,19 +1110,27 @@ class SendMessageUseCase:
         stream_trace_id = _current_trace.trace_id if _current_trace else None
 
         # Fire-and-forget: persist agent execution trace
-        await self._persist_agent_trace(
+        _, stream_trace_nodes = await self._persist_agent_trace(
             conversation_id=conversation.id.value,
-            message_id=assistant_msg.id.value,
+            message_id=(
+                assistant_msg.id.value if assistant_msg else None
+            ),
             latency_ms=latency_ms,
             source=command.identity_source or "web",
+            persist=not command.test_mode,
         )
 
-        # Fire-and-forget: memory extraction
-        await self._fire_memory_extraction(command, bot_cfg, conversation)
+        if not command.test_mode:
+            # Fire-and-forget: memory extraction（test_mode 六面隔離跳過）
+            await self._fire_memory_extraction(command, bot_cfg, conversation)
 
         # Fire-and-forget: background evaluation
-        trace_id = str(uuid4())
-        eval_depth = bot_cfg.get("eval_depth", "off")
+        # （修既有債：trace_id 改用真實 agent trace id，可對回 trace 表）
+        trace_id = stream_trace_id or str(uuid4())
+        if command.test_mode:
+            eval_depth = "off"  # 六面隔離：不觸發線上 eval
+        else:
+            eval_depth = bot_cfg.get("eval_depth", "off")
         if eval_depth != "off" and self._eval_use_case:
             from src.infrastructure.queue.arq_pool import enqueue
             sources_dicts = [
@@ -1142,10 +1146,11 @@ class SendMessageUseCase:
                 bot_cfg.get("eval_model", ""),
             )
 
-        yield {
-            "type": "message_id",
-            "message_id": assistant_msg.id.value,
-        }
+        if assistant_msg is not None:
+            yield {
+                "type": "message_id",
+                "message_id": assistant_msg.id.value,
+            }
         yield {
             "type": "conversation_id",
             "conversation_id": conversation.id.value,
@@ -1153,11 +1158,24 @@ class SendMessageUseCase:
         done_event: dict[str, Any] = {"type": "done"}
         if stream_trace_id:
             done_event["trace_id"] = stream_trace_id
+        if command.test_mode and stream_trace_nodes is not None:
+            done_event["trace_nodes"] = stream_trace_nodes
         yield done_event
 
     async def _load_or_create_conversation(
         self, command: SendMessageCommand
     ) -> Conversation:
+        # Issue #54 Phase C — test_mode：不讀不寫 DB，一律新建記憶體對話；
+        # history_override 直接灌成訊息（多輪題/Playground 的歷史來源）
+        if command.test_mode:
+            conv = Conversation(
+                tenant_id=command.tenant_id, bot_id=command.bot_id
+            )
+            for m in command.history_override or []:
+                conv.add_message(
+                    str(m.get("role", "user")), str(m.get("content", ""))
+                )
+            return conv
         if command.conversation_id:
             existing = await self._conversation_repo.find_by_id(
                 command.conversation_id
@@ -1167,22 +1185,123 @@ class SendMessageUseCase:
 
         return Conversation(tenant_id=command.tenant_id, bot_id=command.bot_id)
 
+    async def _check_input_guard(
+        self, command: SendMessageCommand, conversation, metadata: dict
+    ) -> AgentResponse | None:
+        """Input guard 前置檢查；攔截時回傳攔截回應（test_mode 不落庫）。"""
+        if not self._prompt_guard:
+            return None
+        guard_result = await self._prompt_guard.check_input(
+            command.message,
+            tenant_id=command.tenant_id,
+            bot_id=command.bot_id,
+            user_id=command.visitor_id,
+        )
+        if guard_result.passed:
+            # F1（POC 問題 1）：input guard 已在此跑過並通過 — 帶標記讓
+            # GuardedAgentService 咽喉點跳過重複的 input guard LLM roundtrip
+            metadata["_input_guard_checked"] = True
+            return None
+        assistant_msg = None
+        if not command.test_mode:
+            conversation.add_message("user", command.message)
+            assistant_msg = conversation.add_message(
+                "assistant", guard_result.blocked_response
+            )
+            _bump_conversation_counters(conversation)
+            await self._conversation_repo.save(conversation)
+        # 持久化 trace（含 guard_input_blocked 紅節點），讓 admin
+        # 觀測頁 / Studio canvas 能看到攔截 DAG
+        g_trace_id, g_nodes = await self._persist_agent_trace(
+            conversation_id=conversation.id.value,
+            message_id=(
+                assistant_msg.id.value if assistant_msg else None
+            ),
+            latency_ms=0,
+            source=command.identity_source or "web",
+            persist=not command.test_mode,
+        )
+        return AgentResponse(
+            answer=guard_result.blocked_response,
+            conversation_id=conversation.id.value,
+            guard_blocked="input",
+            guard_rule_matched=guard_result.rule_matched,
+            trace_id=g_trace_id if command.test_mode else None,
+            trace_nodes=g_nodes if command.test_mode else None,
+        )
+
+    async def _enqueue_background_eval(
+        self,
+        *,
+        eval_depth: str,
+        message: str,
+        answer: str,
+        sources: list,
+        tool_calls: list,
+        tenant_id: str,
+        trace_id: str,
+        eval_provider: str,
+        eval_model: str,
+    ) -> None:
+        """線上 L1/L2/L3 eval enqueue（fire-and-forget）。
+        （修既有債：trace_id 為真實 agent trace id，可對回 trace 表）"""
+        if eval_depth == "off" or not self._eval_use_case:
+            return
+        from src.infrastructure.queue.arq_pool import enqueue
+
+        sources_dicts = [
+            s.to_dict() if hasattr(s, "to_dict") else s for s in sources
+        ]
+        await enqueue(
+            "run_evaluation",
+            eval_depth, message, answer,
+            sources_dicts, tool_calls,
+            tenant_id, trace_id,
+            eval_provider, eval_model,
+        )
+
+    @staticmethod
+    def _compact_trace_nodes(node_dicts: list[dict]) -> list[dict]:
+        """逐題報告/Playground 用的 compact 版：截斷 metadata 長字串
+        （llm_input/llm_output 全文不重複存，spec §4.5 體積控制）。"""
+        compact: list[dict] = []
+        for n in node_dicts:
+            node = dict(n)
+            meta = node.get("metadata")
+            if isinstance(meta, dict):
+                node["metadata"] = {
+                    k: (v[:500] + "…[truncated]")
+                    if isinstance(v, str) and len(v) > 500
+                    else v
+                    for k, v in meta.items()
+                }
+            compact.append(node)
+        return compact
+
     async def _persist_agent_trace(
         self,
         conversation_id: str | None = None,
         message_id: str | None = None,
         latency_ms: int = 0,
         source: str = "",
-    ) -> None:
-        """Finalize and persist agent execution trace (fire-and-forget)."""
+        persist: bool = True,
+    ) -> tuple[str | None, list[dict] | None]:
+        """Finalize agent trace；persist=False（test_mode）時不落庫但仍
+        finish（清 ContextVar）並回傳 (trace_id, compact_nodes)。"""
         try:
             trace = AgentTraceCollector.finish(total_ms=float(latency_ms))
             if trace is None:
-                return
+                return None, None
+
+            node_dicts_compact = self._compact_trace_nodes(
+                [n.to_dict() for n in trace.nodes]
+            )
+            if not persist:
+                return trace.trace_id, node_dicts_compact
 
             session_factory = self._trace_session_factory
             if session_factory is None:
-                return
+                return trace.trace_id, node_dicts_compact
 
             trace.conversation_id = conversation_id
             trace.message_id = message_id
@@ -1218,8 +1337,10 @@ class SendMessageUseCase:
             async with session_factory() as session:
                 session.add(row)
                 await session.commit()
+            return trace.trace_id, node_dicts_compact
         except Exception:
             logger.warning("agent_trace.persist_failed", exc_info=True)
+            return None, None
 
     async def _run_evaluations(
         self,

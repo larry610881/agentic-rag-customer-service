@@ -134,6 +134,22 @@ class SQLAlchemyBotConfigVersionRepository(BotConfigVersionRepository):
         ).where(BotConfigVersionModel.bot_id == bot_id)
         return (await self._session.execute(stmt)).scalar_one() + 1
 
+    async def revert_validating_to_draft(
+        self, version_ids: list[str]
+    ) -> int:
+        if not version_ids:
+            return 0
+        async with atomic(self._session):
+            result = await self._session.execute(
+                update(BotConfigVersionModel)
+                .where(
+                    BotConfigVersionModel.id.in_(version_ids),
+                    BotConfigVersionModel.status == "validating",
+                )
+                .values(status="draft", gate_run_id=None)
+            )
+            return result.rowcount
+
     async def set_current(self, bot_id: str, version_id: str) -> None:
         # 單一交易翻轉：先全部清 False 再設新 current，
         # 順序保證 partial unique index 不變量不被違反

@@ -116,6 +116,7 @@ from src.application.eval_dataset.list_eval_datasets_use_case import (
 from src.application.eval_dataset.manage_test_cases_use_case import (
     CreateTestCaseUseCase,
     DeleteTestCaseUseCase,
+    UpdateTestCaseUseCase,
 )
 from src.application.eval_dataset.run_use_cases import (
     GetRunDiffUseCase,
@@ -320,6 +321,12 @@ from src.application.pricing.list_pricing_use_case import ListPricingUseCase
 from src.application.pricing.list_recalc_history_use_case import (
     ListRecalcHistoryUseCase,
 )
+from src.application.prompt_gate.gate_run_use_cases import (
+    CleanupOrphanGateRunsUseCase,
+    GateEstimateUseCase,
+    GetGateRunUseCase,
+    StartGateRunUseCase,
+)
 from src.application.prompt_gate.version_use_cases import (
     CreateConfigVersionUseCase,
     GetConfigVersionUseCase,
@@ -450,6 +457,9 @@ from src.infrastructure.db.repositories.plan_repository import (
 )
 from src.infrastructure.db.repositories.processing_task_repository import (
     SQLAlchemyProcessingTaskRepository,
+)
+from src.infrastructure.db.repositories.prompt_gate_run_repository import (
+    SQLAlchemyPromptGateRunRepository,
 )
 from src.infrastructure.db.repositories.provider_setting_repository import (
     SQLAlchemyProviderSettingRepository,
@@ -735,6 +745,11 @@ class Container(containers.DeclarativeContainer):
 
     bot_config_version_repository = providers.Factory(
         SQLAlchemyBotConfigVersionRepository,
+        session=db_session,
+    )
+
+    prompt_gate_run_repository = providers.Factory(
+        SQLAlchemyPromptGateRunRepository,
         session=db_session,
     )
 
@@ -1921,6 +1936,8 @@ class Container(containers.DeclarativeContainer):
         cache_service=cache_service,
         encryption_service=encryption_service,
         version_repository=bot_config_version_repository,
+        tenant_repository=tenant_repository,
+        eval_dataset_repository=eval_dataset_repository,
     )
 
     create_config_version_use_case = providers.Factory(
@@ -1944,6 +1961,7 @@ class Container(containers.DeclarativeContainer):
         bot_repository=bot_repository,
         version_repository=bot_config_version_repository,
         cache_service=cache_service,
+        tenant_repository=tenant_repository,
     )
 
     reject_config_version_use_case = providers.Factory(
@@ -1956,6 +1974,35 @@ class Container(containers.DeclarativeContainer):
         bot_repository=bot_repository,
         version_repository=bot_config_version_repository,
         publish_use_case=publish_config_version_use_case,
+    )
+
+    start_gate_run_use_case = providers.Factory(
+        StartGateRunUseCase,
+        bot_repository=bot_repository,
+        tenant_repository=tenant_repository,
+        version_repository=bot_config_version_repository,
+        gate_run_repository=prompt_gate_run_repository,
+        eval_dataset_repository=eval_dataset_repository,
+        # 背景任務：.provider 延遲 resolve（independent_session_scope 內綁新 session）
+        gate_run_repo_factory=prompt_gate_run_repository.provider,
+        version_repo_factory=bot_config_version_repository.provider,
+    )
+
+    get_gate_run_use_case = providers.Factory(
+        GetGateRunUseCase,
+        gate_run_repository=prompt_gate_run_repository,
+    )
+
+    gate_estimate_use_case = providers.Factory(
+        GateEstimateUseCase,
+        bot_repository=bot_repository,
+        eval_dataset_repository=eval_dataset_repository,
+    )
+
+    cleanup_orphan_gate_runs_use_case = providers.Factory(
+        CleanupOrphanGateRunsUseCase,
+        gate_run_repository=prompt_gate_run_repository,
+        version_repository=bot_config_version_repository,
     )
 
     delete_bot_use_case = providers.Factory(
@@ -2138,6 +2185,11 @@ class Container(containers.DeclarativeContainer):
 
     delete_eval_dataset_use_case = providers.Factory(
         DeleteEvalDatasetUseCase,
+        eval_dataset_repository=eval_dataset_repository,
+    )
+
+    update_test_case_use_case = providers.Factory(
+        UpdateTestCaseUseCase,
         eval_dataset_repository=eval_dataset_repository,
     )
 

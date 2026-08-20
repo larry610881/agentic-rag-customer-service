@@ -28,6 +28,7 @@ class SQLAlchemyEvalDatasetRepository(EvalDatasetRepository):
                 conversation_history=list(tc.conversation_history or []),
                 assertions=list(tc.assertions or []),
                 tags=list(tc.tags or []),
+                enabled=tc.enabled,
                 created_at=tc.created_at,
             )
             for tc in (model.test_cases or [])
@@ -42,6 +43,7 @@ class SQLAlchemyEvalDatasetRepository(EvalDatasetRepository):
             default_assertions=list(model.default_assertions or []),
             cost_config=dict(model.cost_config or {}),
             include_security=model.include_security,
+            is_platform_base=model.is_platform_base,
             test_cases=test_cases,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -59,6 +61,7 @@ class SQLAlchemyEvalDatasetRepository(EvalDatasetRepository):
                 default_assertions=dataset.default_assertions,
                 cost_config=dataset.cost_config,
                 include_security=dataset.include_security,
+                is_platform_base=dataset.is_platform_base,
                 created_at=dataset.created_at,
                 updated_at=dataset.updated_at,
             )
@@ -91,6 +94,31 @@ class SQLAlchemyEvalDatasetRepository(EvalDatasetRepository):
             stmt = stmt.limit(limit)
         if offset is not None:
             stmt = stmt.offset(offset)
+        result = await self._session.execute(stmt)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def find_by_bot(
+        self, bot_id: str, tenant_id: str
+    ) -> list[EvalDataset]:
+        stmt = (
+            select(EvalDatasetModel)
+            .options(selectinload(EvalDatasetModel.test_cases))
+            .where(
+                EvalDatasetModel.bot_id == bot_id,
+                EvalDatasetModel.tenant_id == tenant_id,
+            )
+            .order_by(EvalDatasetModel.created_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def find_platform_base(self) -> list[EvalDataset]:
+        stmt = (
+            select(EvalDatasetModel)
+            .options(selectinload(EvalDatasetModel.test_cases))
+            .where(EvalDatasetModel.is_platform_base.is_(True))
+            .order_by(EvalDatasetModel.created_at)
+        )
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
 
@@ -142,6 +170,7 @@ class SQLAlchemyEvalDatasetRepository(EvalDatasetRepository):
                 conversation_history=test_case.conversation_history,
                 assertions=test_case.assertions,
                 tags=test_case.tags,
+                enabled=test_case.enabled,
                 created_at=test_case.created_at,
             )
             await self._session.merge(model)

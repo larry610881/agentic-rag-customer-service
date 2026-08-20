@@ -25,6 +25,7 @@ from src.domain.prompt_gate.entity import (
     SOURCE_MANUAL,
     VERDICT_SKIPPED,
     BotConfigVersion,
+    GateBlockedError,
 )
 from src.domain.prompt_gate.repository import BotConfigVersionRepository
 from src.domain.rag.retrieval_mode import normalize_modes, validate_modes
@@ -59,6 +60,12 @@ class UpdateBotCommand:
     eval_provider: object = _UNSET
     eval_model: object = _UNSET
     eval_depth: object = _UNSET
+    gate_mode: object = _UNSET
+    gate_soft_threshold: object = _UNSET
+    gate_repeats: object = _UNSET
+    gate_auto_publish: object = _UNSET
+    gate_daily_limit: object = _UNSET
+    gate_budget_usd: object = _UNSET
     mcp_servers: object = _UNSET
     mcp_bindings: object = _UNSET
     max_tool_calls: object = _UNSET
@@ -101,11 +108,15 @@ class UpdateBotUseCase:
         cache_service: CacheService | None = None,
         encryption_service: EncryptionService | None = None,
         version_repository: BotConfigVersionRepository | None = None,
+        tenant_repository=None,
+        eval_dataset_repository=None,
     ) -> None:
         self._bot_repo = bot_repository
         self._cache_service = cache_service
         self._encryption = encryption_service
         self._version_repo = version_repository
+        self._tenant_repo = tenant_repository
+        self._eval_dataset_repo = eval_dataset_repository
 
     @staticmethod
     def _apply_updates(bot: Bot, command: UpdateBotCommand) -> None:
@@ -115,6 +126,8 @@ class UpdateBotUseCase:
             "bot_prompt",
             "llm_provider", "llm_model", "show_sources",
             "eval_provider", "eval_model", "eval_depth",
+            "gate_mode", "gate_soft_threshold", "gate_repeats",
+            "gate_auto_publish", "gate_daily_limit", "gate_budget_usd",
             "max_tool_calls",
             "widget_enabled", "widget_keep_history",
             "widget_welcome_message", "widget_placeholder_text",
@@ -257,18 +270,52 @@ class UpdateBotUseCase:
             )
         return result
 
+    async def _gate_active(self, bot: Bot) -> bool:
+        """三層開關的前兩層：tenant flag AND bot gate_mode ≠ off。
+        依賴未注入時視為關閉（向後相容）。"""
+        if bot.gate_mode == "off" or self._tenant_repo is None:
+            return False
+        tenant = await self._tenant_repo.find_by_id(bot.tenant_id)
+        return bool(tenant and getattr(tenant, "prompt_gate_enabled", False))
+
+    async def _ensure_dataset_bound(self, bot: Bot) -> None:
+        """啟用前置條件（spec §2.1）：自訂集（非平台通用集）至少 1 個
+        啟用案例，否則 gate_mode 不可 ≠ off。"""
+        if self._eval_dataset_repo is None:
+            return
+        datasets = await self._eval_dataset_repo.find_by_bot(
+            bot.id.value, bot.tenant_id
+        )
+        has_enabled_case = any(
+            not d.is_platform_base
+            and any(tc.enabled for tc in d.test_cases)
+            for d in datasets
+        )
+        if not has_enabled_case:
+            raise ValidationError(
+                "gate_mode 啟用前須先設定問題集"
+                "（該 bot 至少要綁 1 個含啟用案例的自訂題集）"
+            )
+
     async def _record_config_version(
         self, bot: Bot, before_snapshot: dict
     ) -> None:
-        """PUT /bots 版控墊片（spec §13.4）：白名單欄位有變更時
-        透明產生 published 版本列（Phase A：gate 未上，verdict=skipped）。
-        非版控欄位（外觀/憑證/營運）變更不產生版本。"""
+        """PUT /bots 版控墊片（spec §13.4）：白名單欄位有變更時——
+        gate 未啟用 → 透明產生 published 版本列（verdict=skipped）；
+        gate 啟用（warn/block）→ 409 導引版本 API（Phase C）。
+        非版控欄位（外觀/憑證/營運/治理）變更不產生版本。"""
         if self._version_repo is None:
             return
         after = take_snapshot(bot)
         changed = diff_snapshots(before_snapshot, after)
         if not changed:
             return
+        if await self._gate_active(bot):
+            raise GateBlockedError(
+                "發布閘門啟用中：受版控欄位"
+                f"（{', '.join(changed)}）的變更請走版本 API "
+                "POST /api/v1/bots/{bot_id}/config-versions"
+            )
         # 第 0 層靜態檢查對變更的 prompt 欄位一體適用
         check_prompt_fields(
             {f: after.get(f, "") for f in PROMPT_FIELDS if f in changed}
@@ -306,6 +353,10 @@ class UpdateBotUseCase:
                 command.mcp_bindings,  # type: ignore[arg-type]
                 old_bindings_map,
             )
+
+        # Issue #54 Phase C — gate_mode 啟用前置條件（application 層驗證先例）
+        if command.gate_mode is not _UNSET and bot.gate_mode != "off":
+            await self._ensure_dataset_bound(bot)
 
         await self._record_config_version(bot, before_snapshot)
         await self._bot_repo.save(bot)

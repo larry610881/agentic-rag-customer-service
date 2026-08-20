@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 
-
 # Alert types
 ALERT_TYPE_BASE_WARNING_80 = "base_warning_80"
 ALERT_TYPE_BASE_EXHAUSTED_100 = "base_exhausted_100"

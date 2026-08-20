@@ -39,6 +39,12 @@ class CreateBotCommand:
     eval_provider: str = ""
     eval_model: str = ""
     eval_depth: str = "L1"
+    gate_mode: str = "off"
+    gate_soft_threshold: float = 0.8
+    gate_repeats: int = 3
+    gate_auto_publish: bool = False
+    gate_daily_limit: int = 20
+    gate_budget_usd: float = 1.0
     mcp_servers: list[dict] = field(default_factory=list)
     mcp_bindings: list[dict] = field(default_factory=list)
     max_tool_calls: int = 5
@@ -133,6 +139,12 @@ class CreateBotUseCase:
             eval_provider=command.eval_provider,
             eval_model=command.eval_model,
             eval_depth=command.eval_depth,
+            gate_mode=command.gate_mode,
+            gate_soft_threshold=command.gate_soft_threshold,
+            gate_repeats=command.gate_repeats,
+            gate_auto_publish=command.gate_auto_publish,
+            gate_daily_limit=command.gate_daily_limit,
+            gate_budget_usd=command.gate_budget_usd,
             mcp_servers=[
                 McpServerConfig(
                     url=s.get("url", ""),

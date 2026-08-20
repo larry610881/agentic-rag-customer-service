@@ -16,6 +16,8 @@ class EvalTestCase:
     conversation_history: list[dict] = field(default_factory=list)
     assertions: list[dict[str, Any]] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    # Issue #54 Phase C — 停用的 case 不參與閘門驗證
+    enabled: bool = True
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -30,6 +32,8 @@ class EvalDataset:
     default_assertions: list[dict[str, Any]] = field(default_factory=list)
     cost_config: dict[str, Any] = field(default_factory=dict)
     include_security: bool = True
+    # Issue #54 Phase C — 平台通用集標記（gate run 強制注入，租戶唯讀）
+    is_platform_base: bool = False
     test_cases: list[EvalTestCase] = field(default_factory=list)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

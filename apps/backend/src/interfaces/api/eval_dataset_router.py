@@ -34,6 +34,7 @@ from src.application.eval_dataset.manage_test_cases_use_case import (
     CreateTestCaseCommand,
     CreateTestCaseUseCase,
     DeleteTestCaseUseCase,
+    UpdateTestCaseUseCase,
 )
 from src.application.eval_dataset.update_eval_dataset_use_case import (
     UpdateEvalDatasetCommand,
@@ -73,6 +74,13 @@ class UpdateDatasetRequest(BaseModel):
     default_assertions: list[dict[str, Any]] | None = None
     cost_config: dict[str, Any] | None = None
     include_security: bool | None = None
+    # Issue #54 Phase C — bot 綁定可改（"" = 解除）；平台集標記限 system_admin
+    bot_id: str | None = None
+    is_platform_base: bool | None = None
+
+
+class UpdateTestCaseRequest(BaseModel):
+    enabled: bool
 
 
 class TestCaseRequest(BaseModel):
@@ -259,11 +267,17 @@ async def get_dataset(
 async def update_dataset(
     dataset_id: str,
     body: UpdateDatasetRequest,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: UpdateEvalDatasetUseCase = Depends(
         Provide[Container.update_eval_dataset_use_case]
     ),
 ) -> DatasetResponse:
+    # 平台通用集標記只有 system_admin 可動（spec §5.1）
+    if body.is_platform_base is not None and tenant.role != "system_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="is_platform_base requires system_admin role",
+        )
     try:
         command = UpdateEvalDatasetCommand(
             dataset_id=dataset_id,
@@ -273,6 +287,8 @@ async def update_dataset(
             default_assertions=body.default_assertions,
             cost_config=body.cost_config,
             include_security=body.include_security,
+            bot_id=body.bot_id,
+            is_platform_base=body.is_platform_base,
         )
         dataset = await use_case.execute(command)
     except EntityNotFoundError as e:
@@ -485,6 +501,27 @@ async def create_test_case(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from e
     return _tc_to_response(test_case)
+
+
+@router.patch("/datasets/{dataset_id}/cases/{case_id}")
+@inject
+async def update_test_case(
+    dataset_id: str,
+    case_id: str,
+    body: UpdateTestCaseRequest,
+    _: CurrentTenant = Depends(get_current_tenant),
+    use_case: UpdateTestCaseUseCase = Depends(
+        Provide[Container.update_test_case_use_case]
+    ),
+) -> dict:
+    """Issue #54 Phase C — case enabled toggle（停用不參與閘門驗證）。"""
+    try:
+        tc = await use_case.execute(dataset_id, case_id, enabled=body.enabled)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+        ) from e
+    return {"id": tc.id.value, "case_id": tc.case_id, "enabled": tc.enabled}
 
 
 @router.delete(

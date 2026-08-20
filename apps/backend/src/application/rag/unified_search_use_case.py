@@ -27,7 +27,6 @@ from src.application.rag.query_rag_use_case import (
 )
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.shared.exceptions import (
-    EntityNotFoundError,
     NoRelevantKnowledgeError,
 )
 

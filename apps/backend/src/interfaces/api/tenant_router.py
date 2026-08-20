@@ -37,6 +37,7 @@ class CreateTenantRequest(BaseModel):
 
 class UpdateTenantConfigRequest(BaseModel):
     plan: str | None = None
+    prompt_gate_enabled: bool | None = None
     monthly_token_limit: int | None = None
     included_categories: list[str] | None = None
     default_ocr_model: str | None = None
@@ -69,6 +70,7 @@ class TenantResponse(BaseModel):
     plan: str
     monthly_token_limit: int | None = None
     included_categories: list[str] | None = None
+    prompt_gate_enabled: bool = False
     default_ocr_model: str = ""
     default_context_model: str = ""
     default_classification_model: str = ""
@@ -85,6 +87,7 @@ def _to_response(t: Tenant) -> TenantResponse:
         plan=t.plan,
         monthly_token_limit=t.monthly_token_limit,
         included_categories=t.included_categories,
+        prompt_gate_enabled=t.prompt_gate_enabled,
         default_ocr_model=t.default_ocr_model,
         default_context_model=t.default_context_model,
         default_classification_model=t.default_classification_model,
@@ -185,6 +188,8 @@ async def update_tenant_config(
         cmd_kwargs["monthly_token_limit"] = body.monthly_token_limit
     if "included_categories" in fields_set:
         cmd_kwargs["included_categories"] = body.included_categories  # 含顯式 null
+    if "prompt_gate_enabled" in fields_set:
+        cmd_kwargs["prompt_gate_enabled"] = body.prompt_gate_enabled
     if "default_ocr_model" in fields_set:
         cmd_kwargs["default_ocr_model"] = body.default_ocr_model
     if "default_context_model" in fields_set:

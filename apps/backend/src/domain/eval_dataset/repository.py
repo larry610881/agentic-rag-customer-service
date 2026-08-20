@@ -20,6 +20,18 @@ class EvalDatasetRepository(ABC):
     ) -> list[EvalDataset]: ...
 
     @abstractmethod
+    async def find_by_bot(
+        self, bot_id: str, tenant_id: str
+    ) -> list[EvalDataset]:
+        """該 bot 綁定的題集（tenant scoped）。"""
+        ...
+
+    @abstractmethod
+    async def find_platform_base(self) -> list[EvalDataset]:
+        """全部平台通用集（is_platform_base=true，gate run 強制注入）。"""
+        ...
+
+    @abstractmethod
     async def find_all(
         self, *, limit: int | None = None, offset: int | None = None
     ) -> list[EvalDataset]: ...

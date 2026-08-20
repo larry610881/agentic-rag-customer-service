@@ -1,7 +1,10 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.security.guard_config import GuardRulesConfig, GuardRulesConfigRepository
+from src.domain.security.guard_config import (
+    GuardRulesConfig,
+    GuardRulesConfigRepository,
+)
 from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.guard_rules_config_model import GuardRulesConfigModel
 

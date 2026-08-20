@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 
-
 # Transaction types — 預留 manual_topup / refund 給未來
 TRANSACTION_TYPE_AUTO_TOPUP = "auto_topup"
 

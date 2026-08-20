@@ -22,15 +22,16 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
 
 from src.application.agent.prompt_assembler import assemble as assemble_prompt
+from src.application.agent.tool_label_resolver import resolve_tool_label
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.conversation.entity import Message
 from src.domain.rag.services import LLMService
 from src.domain.rag.value_objects import Source
-from src.infrastructure.langgraph.tools import RAGQueryTool
 from src.infrastructure.langgraph.dm_image_query_tool import (
     DmImageQueryTool,
 )
+from src.infrastructure.langgraph.tools import RAGQueryTool
 from src.infrastructure.langgraph.transfer_to_human_tool import (
     TransferToHumanTool,
 )
@@ -39,7 +40,6 @@ from src.infrastructure.langgraph.usage import (
     extract_usage_from_langchain_messages,
 )
 from src.infrastructure.llm.dynamic_llm_factory import DynamicLLMServiceProxy
-from src.application.agent.tool_label_resolver import resolve_tool_label
 from src.infrastructure.observability.agent_trace_collector import (
     AgentTraceCollector,
 )

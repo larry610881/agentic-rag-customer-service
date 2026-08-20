@@ -16,8 +16,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
-from src.domain.billing.repository import BillingTransactionRepository
 from src.domain.billing.quota_alert import QuotaAlertLogRepository
+from src.domain.billing.repository import BillingTransactionRepository
 from src.domain.tenant.repository import TenantRepository
 
 

@@ -20,6 +20,9 @@ class ChatResult:
         None  # {model, input_tokens, output_tokens, total_tokens, estimated_cost}
     )
     latency_ms: int = 0
+    # Issue #54 Phase C — test_mode 影子執行時後端回傳（逐題報告 DAG 用）
+    trace_id: str | None = None
+    trace_nodes: list[dict[str, Any]] | None = None
 
 
 class AgentAPIClient:
@@ -78,6 +81,9 @@ class AgentAPIClient:
         bot_id: str | None = None,
         knowledge_base_id: str | None = None,
         conversation_id: str | None = None,
+        config_override: dict[str, Any] | None = None,
+        test_mode: bool = False,
+        history_override: list[dict[str, Any]] | None = None,
     ) -> ChatResult:
         payload: dict[str, Any] = {"message": message}
         if bot_id:
@@ -86,6 +92,13 @@ class AgentAPIClient:
             payload["knowledge_base_id"] = knowledge_base_id
         if conversation_id:
             payload["conversation_id"] = conversation_id
+        # Issue #54 Phase C — 影子執行（需 eval 標記 header 授權，否則後端 403）
+        if config_override is not None:
+            payload["config_override"] = config_override
+        if test_mode:
+            payload["test_mode"] = True
+        if history_override is not None:
+            payload["history_override"] = history_override
 
         start = time.monotonic()
         resp = await self._client.post("/api/v1/agent/chat", json=payload)
@@ -110,6 +123,8 @@ class AgentAPIClient:
             sources=data.get("sources", []),
             usage=data.get("usage"),
             latency_ms=latency_ms,
+            trace_id=data.get("trace_id"),
+            trace_nodes=data.get("trace_nodes"),
         )
 
     async def close(self):

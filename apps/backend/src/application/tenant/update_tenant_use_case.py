@@ -35,6 +35,7 @@ class UpdateTenantCommand:
     plan: Any = field(default=_UNSET)
     monthly_token_limit: Any = field(default=_UNSET)
     included_categories: Any = field(default=_UNSET)
+    prompt_gate_enabled: Any = field(default=_UNSET)
     default_ocr_model: Any = field(default=_UNSET)
     default_context_model: Any = field(default=_UNSET)
     default_classification_model: Any = field(default=_UNSET)
@@ -73,6 +74,8 @@ class UpdateTenantUseCase:
             tenant.monthly_token_limit = command.monthly_token_limit
         if command.included_categories is not _UNSET:
             tenant.included_categories = command.included_categories
+        if command.prompt_gate_enabled is not _UNSET:
+            tenant.prompt_gate_enabled = bool(command.prompt_gate_enabled)
         if command.default_ocr_model is not _UNSET:
             tenant.default_ocr_model = command.default_ocr_model
         if command.default_context_model is not _UNSET:

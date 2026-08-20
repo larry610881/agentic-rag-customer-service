@@ -4,13 +4,13 @@ from pydantic import BaseModel
 
 from src.application.security.guard_rules_use_cases import (
     GetGuardRulesUseCase,
+    ResetGuardRulesUseCase,
     UpdateGuardRulesCommand,
     UpdateGuardRulesUseCase,
-    ResetGuardRulesUseCase,
 )
 from src.container import Container
 from src.domain.security.guard_config import GuardLogRepository
-from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
+from src.interfaces.api.deps import CurrentTenant, require_role
 from src.interfaces.api.schemas.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/api/v1/security", tags=["security"])

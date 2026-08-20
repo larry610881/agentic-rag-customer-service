@@ -1,7 +1,7 @@
 """Eval dataset and test case models for prompt optimization."""
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +21,9 @@ class EvalDatasetModel(Base):
     target_prompt: Mapped[str] = mapped_column(String(50), nullable=False, default="base_prompt")
     default_assertions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     cost_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    is_platform_base: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     include_security: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
@@ -52,6 +55,9 @@ class EvalTestCaseModel(Base):
     conversation_history: Mapped[list | None] = mapped_column(JSON, nullable=True)
     assertions: Mapped[list] = mapped_column(JSON, nullable=False)
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )

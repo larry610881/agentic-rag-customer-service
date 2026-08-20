@@ -44,6 +44,29 @@ class CreateTestCaseUseCase:
         return test_case
 
 
+class UpdateTestCaseUseCase:
+    """Issue #54 Phase C — v1 只開 enabled toggle（停用的 case 不參與閘門）。"""
+
+    def __init__(self, eval_dataset_repository: EvalDatasetRepository):
+        self._repo = eval_dataset_repository
+
+    async def execute(
+        self, dataset_id: str, test_case_id: str, *, enabled: bool
+    ) -> EvalTestCase:
+        dataset = await self._repo.find_by_id(dataset_id)
+        if dataset is None:
+            raise EntityNotFoundError("EvalDataset", dataset_id)
+        test_case = next(
+            (tc for tc in dataset.test_cases if tc.id.value == test_case_id),
+            None,
+        )
+        if test_case is None:
+            raise EntityNotFoundError("EvalTestCase", test_case_id)
+        test_case.enabled = enabled
+        await self._repo.save_test_case(test_case)
+        return test_case
+
+
 class DeleteTestCaseUseCase:
     def __init__(self, eval_dataset_repository: EvalDatasetRepository):
         self._repo = eval_dataset_repository

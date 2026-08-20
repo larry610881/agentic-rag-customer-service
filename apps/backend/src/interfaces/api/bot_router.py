@@ -14,12 +14,12 @@ from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.bot.list_bots_use_case import ListBotsUseCase
 from src.application.bot.update_bot_use_case import UpdateBotCommand, UpdateBotUseCase
-from src.application.bot.validate_bot_enabled_tools import (
-    validate_bot_enabled_tools,
-)
 from src.application.bot.upload_bot_icon_use_case import (
     UploadBotIconCommand,
     UploadBotIconUseCase,
+)
+from src.application.bot.validate_bot_enabled_tools import (
+    validate_bot_enabled_tools,
 )
 from src.container import Container
 from src.domain.platform.value_objects import ProviderName
@@ -36,6 +36,7 @@ _VALID_EVAL_DEPTHS = {
     "L1+L2+L3",
 }
 _VALID_LLM_PROVIDERS = {p.value for p in ProviderName}
+_VALID_GATE_MODES = {"off", "warn", "block"}
 def _validate_intent_routes(routes: list["IntentRouteSchema"]) -> None:
     """Validate intent routes: max 10, unique names."""
     if len(routes) > 10:
@@ -125,6 +126,12 @@ class CreateBotRequest(BaseModel):
     eval_provider: str = ""
     eval_model: str = ""
     eval_depth: str = "L1"
+    gate_mode: str = "off"
+    gate_soft_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+    gate_repeats: int = Field(default=3, ge=1, le=10)
+    gate_auto_publish: bool = False
+    gate_daily_limit: int = Field(default=20, ge=0)
+    gate_budget_usd: float = Field(default=1.0, gt=0.0)
     mcp_servers: list[dict[str, Any]] = []
     mcp_bindings: list[dict[str, Any]] = []
     max_tool_calls: int = 5
@@ -180,6 +187,12 @@ class UpdateBotRequest(BaseModel):
     eval_provider: str | None = None
     eval_model: str | None = None
     eval_depth: str | None = None
+    gate_mode: str | None = None
+    gate_soft_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    gate_repeats: int | None = Field(default=None, ge=1, le=10)
+    gate_auto_publish: bool | None = None
+    gate_daily_limit: int | None = Field(default=None, ge=0)
+    gate_budget_usd: float | None = Field(default=None, gt=0.0)
     mcp_servers: list[dict[str, Any]] | None = None
     mcp_bindings: list[dict[str, Any]] | None = None
     max_tool_calls: int | None = None
@@ -238,6 +251,12 @@ class BotResponse(BaseModel):
     eval_provider: str
     eval_model: str
     eval_depth: str
+    gate_mode: str
+    gate_soft_threshold: float
+    gate_repeats: int
+    gate_auto_publish: bool
+    gate_daily_limit: int
+    gate_budget_usd: float
     mcp_servers: list[dict[str, Any]]
     mcp_bindings: list[dict[str, Any]]
     max_tool_calls: int
@@ -299,6 +318,12 @@ def _to_response(bot) -> BotResponse:
         eval_provider=bot.eval_provider,
         eval_model=bot.eval_model,
         eval_depth=bot.eval_depth,
+        gate_mode=bot.gate_mode,
+        gate_soft_threshold=bot.gate_soft_threshold,
+        gate_repeats=bot.gate_repeats,
+        gate_auto_publish=bot.gate_auto_publish,
+        gate_daily_limit=bot.gate_daily_limit,
+        gate_budget_usd=bot.gate_budget_usd,
         mcp_servers=[
             {
                 "url": s.url,
@@ -393,6 +418,11 @@ async def create_bot(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
         )
+    if body.gate_mode not in _VALID_GATE_MODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"gate_mode must be one of {sorted(_VALID_GATE_MODES)}",
+        )
     _validate_llm_fields(
         body.llm_provider, body.llm_model,
         body.eval_provider, body.eval_model,
@@ -431,6 +461,12 @@ async def create_bot(
             eval_provider=body.eval_provider,
             eval_model=body.eval_model,
             eval_depth=body.eval_depth,
+            gate_mode=body.gate_mode,
+            gate_soft_threshold=body.gate_soft_threshold,
+            gate_repeats=body.gate_repeats,
+            gate_auto_publish=body.gate_auto_publish,
+            gate_daily_limit=body.gate_daily_limit,
+            gate_budget_usd=body.gate_budget_usd,
             mcp_servers=body.mcp_servers,
             mcp_bindings=body.mcp_bindings,
             max_tool_calls=body.max_tool_calls,
@@ -555,6 +591,11 @@ async def update_bot(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
+        )
+    if body.gate_mode is not None and body.gate_mode not in _VALID_GATE_MODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"gate_mode must be one of {sorted(_VALID_GATE_MODES)}",
         )
     _validate_llm_fields(
         body.llm_provider, body.llm_model,

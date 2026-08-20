@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +19,9 @@ class TenantModel(Base):
         Integer, nullable=True, default=None
     )
     # S-Token-Gov.2: NULL=全計入；list=只計入列表內的；[]=全不計入
+    prompt_gate_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     included_categories: Mapped[list[str] | None] = mapped_column(
         JSONB, nullable=True, default=None
     )

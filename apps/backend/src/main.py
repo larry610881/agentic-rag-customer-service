@@ -111,6 +111,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         logger.warning("built_in_tool.seed.failed", exc_info=True)
 
+    # Issue #54 Phase C — 孤兒 gate run 清理（重啟遺留的 queued/running
+    # 標 error、validating 版本退回 draft）。fail-open，不擋啟動。
+    try:
+        from src.infrastructure.db.session_middleware import (
+            independent_session_scope,
+        )
+        async with independent_session_scope():
+            cleaned = await app.container.cleanup_orphan_gate_runs_use_case().execute()  # type: ignore[attr-defined]
+        if cleaned:
+            logger.info("startup.gate_orphans_cleaned", count=cleaned)
+    except Exception:
+        logger.warning("startup.gate_orphan_cleanup_failed", exc_info=True)
+
     # S-Pricing.1: 啟動時 load DB pricing 到記憶體 cache
     # 失敗不擋啟動 — RecordUsageUseCase 會 fallback 到 DEFAULT_MODELS
     try:
@@ -236,6 +249,25 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     # middleware finish. This guarantees every AsyncSession created
     # during the request (including by RateLimitMiddleware) is closed.
     application.add_middleware(SessionCleanupMiddleware)
+
+    from src.domain.prompt_gate.entity import (
+        GateBlockedError,
+        InvalidVersionTransitionError,
+    )
+
+    @application.exception_handler(GateBlockedError)
+    async def gate_blocked_handler(
+        request: Request, exc: GateBlockedError
+    ) -> JSONResponse:
+        logger.warning("domain.gate_blocked", error=exc.message)
+        return JSONResponse(status_code=409, content={"detail": exc.message})
+
+    @application.exception_handler(InvalidVersionTransitionError)
+    async def version_transition_handler(
+        request: Request, exc: InvalidVersionTransitionError
+    ) -> JSONResponse:
+        logger.warning("domain.invalid_transition", error=exc.message)
+        return JSONResponse(status_code=409, content={"detail": exc.message})
 
     @application.exception_handler(EntityNotFoundError)
     async def entity_not_found_handler(

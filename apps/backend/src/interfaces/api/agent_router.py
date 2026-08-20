@@ -35,6 +35,12 @@ class ChatRequest(BaseModel):
     # 來源識別（"web" / "widget" / "line" / "studio"），影響 agent_execution_traces.source；
     # 預設 "web" 對應後台 chat / Studio 試運轉等網頁來源。
     identity_source: str | None = None
+    # Issue #54 Phase C — 影子執行（閘門驗證 / Playground）。
+    # 授權：必須帶合法 eval 標記 header（X-Usage-Category ∈ eval 類 + admin role），
+    # 否則 403。widget/LINE 不走本 router，天然隔離。
+    config_override: dict | None = None
+    test_mode: bool = False
+    history_override: list[dict] | None = None
 
 
 class ToolCallInfo(BaseModel):
@@ -64,6 +70,8 @@ class ChatResponse(BaseModel):
     sources: list[SourceResponse]
     structured_content: dict | None = None
     usage: TokenUsageResponse | None = None
+    trace_id: str | None = None       # test_mode 影子執行才填
+    trace_nodes: list[dict] | None = None
     # Sprint A++ Guard UX: 只暴露給 Studio（identity_source="studio"）
     # widget / LINE / web 路徑會被 sanitize 成 None 避免洩露防禦邏輯
     guard_blocked: str | None = None
@@ -72,6 +80,29 @@ class ChatResponse(BaseModel):
 
 # Studio 以外的 identity_source 都視為 end-user 介面，guard_blocked
 # 必須清空避免洩露安全規則的存在。
+_EVAL_USAGE_CATEGORIES = frozenset(
+    {"eval_gate", "prompt_optimize", "playground"}
+)
+
+
+def _require_shadow_authorized(
+    request: ChatRequest, usage_ctx: UsageContext
+) -> None:
+    """Issue #54 Phase C — 影子執行是新攻擊面：body 帶 override/test_mode
+    但 usage 標記未通過授權（header 缺失/分類不合法/role 不足）→ 403。"""
+    wants_shadow = (
+        request.config_override is not None
+        or request.test_mode
+        or request.history_override is not None
+    )
+    if wants_shadow and usage_ctx.request_type not in _EVAL_USAGE_CATEGORIES:
+        raise HTTPException(
+            status_code=403,
+            detail="config_override/test_mode requires a valid eval usage "
+            "marker (X-Usage-Category + admin role)",
+        )
+
+
 _STUDIO_IDENTITY_SOURCES = frozenset({"studio"})
 
 
@@ -98,6 +129,7 @@ async def agent_chat(
     # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
     # 跨租戶測試流程請走系統管理專用端點（尚未實作，另立 issue）。
     identity_source = request.identity_source or "web"
+    _require_shadow_authorized(request, usage_ctx)
     result = await use_case.execute(
         SendMessageCommand(
             tenant_id=tenant.tenant_id,
@@ -106,6 +138,9 @@ async def agent_chat(
             conversation_id=request.conversation_id,
             bot_id=request.bot_id,
             identity_source=identity_source,
+            config_override=request.config_override,
+            test_mode=request.test_mode,
+            history_override=request.history_override,
         )
     )
 
@@ -150,6 +185,8 @@ async def agent_chat(
     return ChatResponse(
         answer=result.answer,
         conversation_id=result.conversation_id,
+        trace_id=result.trace_id,
+        trace_nodes=result.trace_nodes,
         tool_calls=[
             ToolCallInfo(
                 tool_name=tc["tool_name"],
@@ -188,6 +225,7 @@ async def agent_chat_stream(
 ) -> StreamingResponse:
     # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
     # 跨租戶測試流程請走系統管理專用端點（尚未實作，另立 issue）。
+    _require_shadow_authorized(request, usage_ctx)
     command = SendMessageCommand(
         tenant_id=tenant.tenant_id,
         kb_id=request.knowledge_base_id or "",
@@ -195,6 +233,9 @@ async def agent_chat_stream(
         conversation_id=request.conversation_id,
         bot_id=request.bot_id,
         identity_source=request.identity_source or "web",
+        config_override=request.config_override,
+        test_mode=request.test_mode,
+        history_override=request.history_override,
     )
 
     async def event_generator():

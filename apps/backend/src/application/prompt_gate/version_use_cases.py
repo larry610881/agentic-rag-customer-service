@@ -22,9 +22,15 @@ from src.domain.prompt_gate.config_snapshot import (
 from src.domain.prompt_gate.entity import (
     SOURCE_MANUAL,
     SOURCE_ROLLBACK,
+    STATUS_DRAFT,
+    STATUS_PENDING_PUBLISH,
     STATUS_PUBLISHED,
+    VERDICT_FAIL,
+    VERDICT_FORCED,
+    VERDICT_PASS,
     VERDICT_SKIPPED,
     BotConfigVersion,
+    GateBlockedError,
 )
 from src.domain.prompt_gate.repository import BotConfigVersionRepository
 from src.domain.shared.cache_service import CacheService
@@ -151,17 +157,49 @@ class GetConfigVersionUseCase:
 class PublishConfigVersionUseCase:
     """發布：唯一寫入 bots 白名單欄位的通道。
     overlay 套用快照 → save bot → 翻轉 is_current → 清 cache。
-    Phase A（閘門未上）：一律 verdict=skipped 直接發布。"""
+    Phase C 閘門分支（spec §4.1 / gate_run_lifecycle.feature）：
+      gate 未啟用（tenant flag off 或 gate_mode=off）→ skipped 直接發布
+      pending_publish（驗證通過）→ pass 發布（定案 1=B 人工按發布）
+      block + draft（fail/未驗）→ 409（force 無效）
+      warn  + draft(fail) + force → forced 發布；未帶 force → 409"""
 
     def __init__(
         self,
         bot_repository: BotRepository,
         version_repository: BotConfigVersionRepository,
         cache_service: CacheService | None = None,
+        tenant_repository=None,
     ) -> None:
         self._bot_repo = bot_repository
         self._version_repo = version_repository
         self._cache = cache_service
+        self._tenant_repo = tenant_repository
+
+    async def _gate_active(self, bot) -> bool:
+        if bot.gate_mode == "off" or self._tenant_repo is None:
+            return False
+        tenant = await self._tenant_repo.find_by_id(bot.tenant_id)
+        return bool(tenant and getattr(tenant, "prompt_gate_enabled", False))
+
+    @staticmethod
+    def _resolve_gate_verdict(
+        version: BotConfigVersion, gate_mode: str, force: bool
+    ) -> str:
+        if version.status == STATUS_PENDING_PUBLISH:
+            return VERDICT_PASS
+        if version.status == STATUS_DRAFT:
+            if (
+                gate_mode == "warn"
+                and force
+                and version.gate_verdict == VERDICT_FAIL
+            ):
+                return VERDICT_FORCED
+            raise GateBlockedError(
+                "閘門未通過：draft 需先送驗且通過"
+                + ("；warn 模式可帶 force=true 強制發布" if gate_mode == "warn" else "")
+            )
+        # 其餘狀態交給 mark_published 的轉移 guard
+        return VERDICT_PASS
 
     async def execute(
         self,
@@ -169,6 +207,7 @@ class PublishConfigVersionUseCase:
         version_id: str,
         *,
         verdict: str = VERDICT_SKIPPED,
+        force: bool = False,
     ) -> BotConfigVersion:
         version = await self._version_repo.find_by_id(version_id, tenant_id)
         if version is None:
@@ -177,6 +216,11 @@ class PublishConfigVersionUseCase:
         bot = await self._bot_repo.find_by_id(version.bot_id)
         if bot is None or bot.tenant_id != tenant_id:
             raise EntityNotFoundError("Bot", version.bot_id)
+
+        if await self._gate_active(bot):
+            verdict = self._resolve_gate_verdict(
+                version, bot.gate_mode, force
+            )
 
         version.mark_published(verdict)  # 非法轉移在此 raise
 

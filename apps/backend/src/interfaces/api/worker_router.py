@@ -4,9 +4,7 @@ from typing import Any
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from src.application.bot.worker_use_cases import (
     CreateWorkerCommand,

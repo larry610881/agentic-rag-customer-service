@@ -2,7 +2,6 @@
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -16,7 +15,7 @@ from src.domain.rag.retrieval_mode import (
 )
 from src.domain.rag.services import EmbeddingService, LLMService, VectorStore
 from src.domain.rag.text_normalization import normalize_query_variants
-from src.domain.rag.value_objects import RAGResponse, Source
+from src.domain.rag.value_objects import Source
 from src.domain.shared.exceptions import EntityNotFoundError, NoRelevantKnowledgeError
 from src.infrastructure.logging import get_logger
 from src.infrastructure.observability.agent_trace_collector import AgentTraceCollector

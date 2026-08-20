@@ -17,7 +17,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.infrastructure.db.base import Base
 
 if TYPE_CHECKING:
-    from src.infrastructure.db.models.bot_knowledge_base_model import BotKnowledgeBaseModel
+    from src.infrastructure.db.models.bot_knowledge_base_model import (
+        BotKnowledgeBaseModel,
+    )
 
 TZDateTime = DateTime(timezone=True)
 
@@ -57,6 +59,25 @@ class BotModel(Base):
     eval_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     eval_depth: Mapped[str] = mapped_column(
         String(20), nullable=False, default="L1", server_default="L1"
+    )
+    # Issue #54 Phase C — 發布閘門設定
+    gate_mode: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="off", server_default="off"
+    )
+    gate_soft_threshold: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.8, server_default="0.8"
+    )
+    gate_repeats: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3, server_default="3"
+    )
+    gate_auto_publish: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    gate_daily_limit: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=20, server_default="20"
+    )
+    gate_budget_usd: Mapped[float] = mapped_column(
+        Float, nullable=False, default=1.0, server_default="1.0"
     )
     base_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     fab_icon_url: Mapped[str] = mapped_column(
