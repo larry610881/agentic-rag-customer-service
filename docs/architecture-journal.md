@@ -7,6 +7,30 @@
 
 ---
 
+## 閘門引擎 — 影子執行的隔離面設計與「schema.sql 可重建性」這個被忽視的資產（2026-08-20，Issue #54 Phase C）
+
+**Sprint 來源**：Prompt 發布閘門 Phase C（`.claude/plans/prompt-gate-phase-c-plan.md`）
+
+**主題**：Shadow Execution、Fail-open 生命週期、Schema as Bootstrap、Verdict 純函式化
+
+#### 做得好的地方
+- **隔離面用「寫入點清單」定義而非「旗標到處判」**：test_mode 的六面隔離（對話×2 路徑、guard 攔截分支、memory、線上 eval、trace 落庫）先由探索列出全部寫入點行號，再逐點加守衛——而不是憑感覺找。guard 攔截分支也會落庫這種反直覺點，靠清單才不會漏。
+- **判定引擎純函式化**：Verdict Engine 是零 I/O 的 domain 純函式（rounds → aggregates → verdict），12 個判定矩陣 scenario 跑 0.06 秒。與「執行」徹底分離讓邊界值（79.9% vs 80.0%）可以窮舉測試。
+- **by case_id 聚合取代 by index**：探索發現既有 ValidationEvaluator 靠隱性順序契約對齊，Round 策略（只重跑 P0 子集）會讓它靜默錯位。新引擎以 case_id 分組，亂序輸入有專屬 scenario 防回歸。
+- **背景任務的失敗語意完整**：run error → 版本退回 draft（不卡死在 validating）；重啟孤兒由 startup 一次性清理。狀態機每個「非快樂路徑」都有去處。
+- **schema.sql 以暫存 DB 實測可重建**：發現 eval 三表從未同步進 schema.sql（drift 半年）、Phase A 區塊插錯位置（inline FK 在 bots 之前）——用 `CREATE DATABASE schema_check` 實跑驗證修到 0 error。**「source of truth」宣稱必須可執行驗證，否則只是願望**。
+
+#### 潛在隱憂
+- **gate run 的背景執行仍是 in-process create_task**：部署重啟會中斷進行中的驗證（孤兒清理只是善後不是恢復）；量大時也無並發控制 → arq 化列 Phase D 後評估 → 優先級：中。
+- **estimate 是粗估**（固定 1500/400 token 假設 × registry 單價），與實際成本可能差數倍；預算閘門有雙保險（執行中逐 case 累計、超了即中止），但 UI 顯示的預估要標注「約」→ 優先級：低。
+- **`_execute_stream_inner` 複雜度 25**（既有債 + 本次守衛又加了幾個分支）：與 execute_inner 是複製分身的問題依舊，`_finalize()` 統一重構值得排入 → 優先級：中。
+
+#### 延伸學習
+- **Shadow traffic / dark launch**：本次的 config_override + test_mode 本質是應用層的 shadow request——業界在 service mesh 層做（Istio traffic mirroring），我們在 use case 層做，換到的是「能改設定再跑」的能力，代價是隔離面要自己維護。
+- 若想深入：搜尋 "shadow traffic testing"、"dark launch feature flag"、"Postgres pg_dump schema drift detection CI"。
+
+---
+
 ## Eval Token 分流 — 「先驗證計畫再動手」與 header 標記的授權邊界（2026-08-20，Issue #54 Phase B）
 
 **Sprint 來源**：Prompt 發布閘門 Phase B（`docs/prompt-gate-spec.md` §7）

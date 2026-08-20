@@ -115,40 +115,6 @@ CREATE TABLE public.bot_workers (
 
 
 
---
--- Name: bot_config_versions; Type: TABLE; Schema: public; Owner: -
--- Issue #54 Phase A — Bot 設定整包版控（migrations/add_bot_config_versions.sql）
---
-
-CREATE TABLE public.bot_config_versions (
-    id character varying(36) NOT NULL,
-    tenant_id character varying(36) NOT NULL,
-    bot_id character varying(36) NOT NULL,
-    version_no integer NOT NULL,
-    config_snapshot jsonb NOT NULL,
-    snapshot_schema integer DEFAULT 1 NOT NULL,
-    changed_fields jsonb DEFAULT '[]'::jsonb NOT NULL,
-    status character varying(20) DEFAULT 'draft'::character varying NOT NULL,
-    is_current boolean DEFAULT false NOT NULL,
-    source character varying(20) DEFAULT 'manual'::character varying NOT NULL,
-    source_run_id character varying(36),
-    gate_run_id character varying(36),
-    gate_verdict character varying(20),
-    author_user_id text,
-    published_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT bot_config_versions_pkey PRIMARY KEY (id),
-    CONSTRAINT uq_bcv_bot_version UNIQUE (bot_id, version_no),
-    CONSTRAINT bot_config_versions_bot_id_fkey FOREIGN KEY (bot_id)
-        REFERENCES public.bots(id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_bcv_bot_created ON public.bot_config_versions
-    USING btree (bot_id, created_at DESC);
-CREATE INDEX ix_bcv_tenant ON public.bot_config_versions
-    USING btree (tenant_id);
-CREATE UNIQUE INDEX ix_bcv_current ON public.bot_config_versions
-    USING btree (bot_id) WHERE is_current;
 
 --
 -- Name: bots; Type: TABLE; Schema: public; Owner: -
@@ -212,8 +178,47 @@ CREATE TABLE public.bots (
     query_rewrite_extra_hint text DEFAULT ''::text NOT NULL,
     hyde_enabled boolean DEFAULT false NOT NULL,
     hyde_model character varying(100) DEFAULT ''::character varying NOT NULL,
-    hyde_extra_hint text DEFAULT ''::text NOT NULL
+    hyde_extra_hint text DEFAULT ''::text NOT NULL,
+    gate_mode character varying(10) DEFAULT 'off'::character varying NOT NULL,
+    gate_soft_threshold double precision DEFAULT 0.8 NOT NULL,
+    gate_repeats integer DEFAULT 3 NOT NULL,
+    gate_auto_publish boolean DEFAULT false NOT NULL,
+    gate_daily_limit integer DEFAULT 20 NOT NULL,
+    gate_budget_usd double precision DEFAULT 1.0 NOT NULL
 );
+
+--
+-- Name: bot_config_versions; Type: TABLE; Schema: public; Owner: -
+-- Issue #54 Phase A — Bot 設定整包版控（migrations/add_bot_config_versions.sql）
+--
+
+CREATE TABLE public.bot_config_versions (
+    id character varying(36) NOT NULL,
+    tenant_id character varying(36) NOT NULL,
+    bot_id character varying(36) NOT NULL,
+    version_no integer NOT NULL,
+    config_snapshot jsonb NOT NULL,
+    snapshot_schema integer DEFAULT 1 NOT NULL,
+    changed_fields jsonb DEFAULT '[]'::jsonb NOT NULL,
+    status character varying(20) DEFAULT 'draft'::character varying NOT NULL,
+    is_current boolean DEFAULT false NOT NULL,
+    source character varying(20) DEFAULT 'manual'::character varying NOT NULL,
+    source_run_id character varying(36),
+    gate_run_id character varying(36),
+    gate_verdict character varying(20),
+    author_user_id text,
+    published_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT bot_config_versions_pkey PRIMARY KEY (id),
+    CONSTRAINT uq_bcv_bot_version UNIQUE (bot_id, version_no)
+);
+
+CREATE INDEX ix_bcv_bot_created ON public.bot_config_versions
+    USING btree (bot_id, created_at DESC);
+CREATE INDEX ix_bcv_tenant ON public.bot_config_versions
+    USING btree (tenant_id);
+CREATE UNIQUE INDEX ix_bcv_current ON public.bot_config_versions
+    USING btree (bot_id) WHERE is_current;
 
 
 --
@@ -754,7 +759,8 @@ CREATE TABLE public.tenants (
     default_classification_model character varying(100) DEFAULT ''::character varying NOT NULL,
     included_categories jsonb,
     default_summary_model character varying(100) DEFAULT ''::character varying NOT NULL,
-    default_intent_model character varying(100) DEFAULT ''::character varying NOT NULL
+    default_intent_model character varying(100) DEFAULT ''::character varying NOT NULL,
+    prompt_gate_enabled boolean DEFAULT false NOT NULL
 );
 
 
@@ -1674,3 +1680,171 @@ ALTER TABLE ONLY public.visitor_identities
 
 \unrestrict QKlvJhIklbFIPUA8XbC0Nf7vIaW9SnqahESmB3a8cHI4r9OSGb5U96iCzOoRZMA
 
+
+
+--
+-- Issue #54 — prompt_optimizer / prompt gate 表（migrations:
+-- gcp_sync_prompt_optimizer.sql + add_eval_gate_flags.sql +
+-- add_prompt_gate_runs.sql；本區塊由 pg_dump 自 local-docker 取回，
+-- 順帶修復 eval 表長期未同步 schema.sql 的 drift）
+--
+
+-- PostgreSQL database dump
+
+-- Dumped from database version 16.14
+-- Dumped by pg_dump version 16.14
+
+-- Name: eval_datasets; Type: TABLE; Schema: public; Owner: -
+
+CREATE TABLE public.eval_datasets (
+    id character varying(36) NOT NULL,
+    tenant_id character varying(36) NOT NULL,
+    bot_id character varying(36),
+    name character varying(200) NOT NULL,
+    description text DEFAULT ''::text,
+    target_prompt character varying(50) DEFAULT 'base_prompt'::character varying NOT NULL,
+    agent_mode character varying(20) DEFAULT 'router'::character varying NOT NULL,
+    default_assertions json,
+    cost_config json,
+    include_security boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    is_platform_base boolean DEFAULT false NOT NULL
+);
+
+-- Name: eval_test_cases; Type: TABLE; Schema: public; Owner: -
+
+CREATE TABLE public.eval_test_cases (
+    id character varying(36) NOT NULL,
+    dataset_id character varying(36) NOT NULL,
+    case_id character varying(100) NOT NULL,
+    question text NOT NULL,
+    priority character varying(5) DEFAULT 'P1'::character varying NOT NULL,
+    category character varying(100) DEFAULT ''::character varying,
+    conversation_history json,
+    assertions json NOT NULL,
+    tags json,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    enabled boolean DEFAULT true NOT NULL
+);
+
+-- Name: prompt_gate_runs; Type: TABLE; Schema: public; Owner: -
+
+CREATE TABLE public.prompt_gate_runs (
+    id character varying(36) NOT NULL,
+    tenant_id character varying(36) NOT NULL,
+    bot_id character varying(36) NOT NULL,
+    version_id character varying(36) NOT NULL,
+    status character varying(20) DEFAULT 'queued'::character varying NOT NULL,
+    verdict character varying(10),
+    fail_reasons jsonb,
+    dataset_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    repeats integer DEFAULT 3 NOT NULL,
+    soft_threshold double precision DEFAULT 0.8 NOT NULL,
+    total_cases integer,
+    hard_failed_cases integer,
+    soft_pass_rate double precision,
+    unstable_cases integer,
+    est_cost double precision,
+    actual_cost double precision,
+    input_tokens bigint,
+    output_tokens bigint,
+    details jsonb,
+    error_message text,
+    triggered_by text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone
+);
+
+-- Name: prompt_opt_runs; Type: TABLE; Schema: public; Owner: -
+
+CREATE TABLE public.prompt_opt_runs (
+    id character varying(36) NOT NULL,
+    run_id character varying(36) NOT NULL,
+    iteration integer NOT NULL,
+    tenant_id character varying(36) NOT NULL,
+    target_field character varying(50) NOT NULL,
+    bot_id character varying(36),
+    prompt_snapshot text NOT NULL,
+    score double precision NOT NULL,
+    passed_count integer NOT NULL,
+    total_count integer NOT NULL,
+    is_best boolean DEFAULT false,
+    details json,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+-- Name: eval_datasets eval_datasets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+
+ALTER TABLE ONLY public.eval_datasets
+    ADD CONSTRAINT eval_datasets_pkey PRIMARY KEY (id);
+
+-- Name: eval_test_cases eval_test_cases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+
+ALTER TABLE ONLY public.eval_test_cases
+    ADD CONSTRAINT eval_test_cases_pkey PRIMARY KEY (id);
+
+-- Name: prompt_gate_runs prompt_gate_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+
+ALTER TABLE ONLY public.prompt_gate_runs
+    ADD CONSTRAINT prompt_gate_runs_pkey PRIMARY KEY (id);
+
+-- Name: prompt_opt_runs prompt_opt_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+
+ALTER TABLE ONLY public.prompt_opt_runs
+    ADD CONSTRAINT prompt_opt_runs_pkey PRIMARY KEY (id);
+
+-- Name: ix_eval_datasets_bot_id; Type: INDEX; Schema: public; Owner: -
+
+CREATE INDEX ix_eval_datasets_bot_id ON public.eval_datasets USING btree (bot_id);
+
+-- Name: ix_eval_datasets_tenant_id; Type: INDEX; Schema: public; Owner: -
+
+CREATE INDEX ix_eval_datasets_tenant_id ON public.eval_datasets USING btree (tenant_id);
+
+-- Name: ix_eval_test_cases_dataset_id; Type: INDEX; Schema: public; Owner: -
+
+CREATE INDEX ix_eval_test_cases_dataset_id ON public.eval_test_cases USING btree (dataset_id);
+
+-- Name: ix_pgr_bot_created; Type: INDEX; Schema: public; Owner: -
+
+CREATE INDEX ix_pgr_bot_created ON public.prompt_gate_runs USING btree (bot_id, created_at DESC);
+
+-- Name: ix_pgr_tenant; Type: INDEX; Schema: public; Owner: -
+
+CREATE INDEX ix_pgr_tenant ON public.prompt_gate_runs USING btree (tenant_id);
+
+-- Name: ix_prompt_opt_runs_bot_id; Type: INDEX; Schema: public; Owner: -
+
+CREATE INDEX ix_prompt_opt_runs_bot_id ON public.prompt_opt_runs USING btree (bot_id);
+
+-- Name: ix_prompt_opt_runs_created_at; Type: INDEX; Schema: public; Owner: -
+
+CREATE INDEX ix_prompt_opt_runs_created_at ON public.prompt_opt_runs USING btree (created_at);
+
+-- Name: ix_prompt_opt_runs_run_id; Type: INDEX; Schema: public; Owner: -
+
+CREATE INDEX ix_prompt_opt_runs_run_id ON public.prompt_opt_runs USING btree (run_id);
+
+-- Name: eval_test_cases eval_test_cases_dataset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+
+ALTER TABLE ONLY public.eval_test_cases
+    ADD CONSTRAINT eval_test_cases_dataset_id_fkey FOREIGN KEY (dataset_id) REFERENCES public.eval_datasets(id) ON DELETE CASCADE;
+
+-- Name: prompt_gate_runs prompt_gate_runs_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+
+ALTER TABLE ONLY public.prompt_gate_runs
+    ADD CONSTRAINT prompt_gate_runs_version_id_fkey FOREIGN KEY (version_id) REFERENCES public.bot_config_versions(id) ON DELETE CASCADE;
+
+-- PostgreSQL database dump complete
+
+
+
+--
+-- Name: bot_config_versions bot_config_versions_bot_id_fkey; Type: FK CONSTRAINT
+--
+
+ALTER TABLE ONLY public.bot_config_versions
+    ADD CONSTRAINT bot_config_versions_bot_id_fkey
+    FOREIGN KEY (bot_id) REFERENCES public.bots(id) ON DELETE CASCADE;

@@ -17,6 +17,7 @@ description: 每個部署環境獨立的階段旗標。Claude 依此判斷對該
 - `dev-vm`：已不存在。重建後需以最新 `infra/schema.sql` bootstrap（它已含所有 migration 的最終形狀），並補 `_applied_migrations` 紀錄。
 
 **切換記錄**：
+- 2026-08-20（Phase C）— local-docker 套 `gcp_sync_prompt_optimizer.sql`（eval 三表，schema.sql 原本漏掉的 drift）+ `add_gate_settings.sql` + `add_eval_gate_flags.sql` + `add_prompt_gate_runs.sql`；schema.sql 修復為可乾淨 bootstrap（0 error / 46 表，暫存 DB 實測）。⚠️ 注意：DB 目前無 seed 資料，`add_gate_settings.sql` 的 system tenant UPDATE 為 0 列——**跑 `make seed-data` 之後需補跑該 UPDATE**（冪等，可直接重放整支 migration）。
 - 2026-08-20 — dev-vm 標記為已下線（08-19 GCP 清空）；local-docker 全新重建 + Issue #54 Phase A migrations 套用。
 - 2026-04-17 — 初始化為多環境 matrix。發現 Cloud Run backend 連 dev-vm，該 DB migration 未同步，列為待處理。
 
