@@ -341,6 +341,8 @@ export const API_ENDPOINTS = {
       `/api/v1/bots/${botId}/config-versions/${versionId}/metrics`,
     rollback: (botId: string) =>
       `/api/v1/bots/${botId}/config-versions/rollback`,
+    replayCompare: (botId: string, versionId: string) =>
+      `/api/v1/bots/${botId}/config-versions/${versionId}/replay-compare`,
   },
   promptGate: {
     run: (runId: string) => `/api/v1/prompt-gate/runs/${runId}`,

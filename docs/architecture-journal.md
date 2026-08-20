@@ -7,6 +7,28 @@
 
 ---
 
+## Phase F/G 收官 — 「容器復用」與 LLM judge 的換位雙判（2026-08-20，Issue #54 完結）
+
+**Sprint 來源**：Prompt 發布閘門 Phase F（通用集 seed）+ G（回放 pairwise 對比）
+
+**主題**：Run Container 復用、Position Bias 防護、Seed as Living Data
+
+#### 做得好的地方
+- **回放對比零 migration**：不建新表，復用 `prompt_gate_runs` 容器（`details.type="replay_compare"` 判別），GET run 端點、前端 polling hook、日限額與預算檢查全部免費繼承。**同一生命週期形狀（queued→running→completed/error + details JSONB）的評估活動，共用一個 run 容器比每種活動一張表便宜得多**；判別欄位放 details 而非 schema，保留了未來第三種評估活動的空間。
+- **換位雙判防 position bias**：LLM pairwise judge 對「回答一/回答二」的位置有系統性偏好，單判不可信。正序（1=線上）與換位（1=草稿）各判一次、意見一致才計勝負、不一致或解析失敗一律平手——寧可保守也不給出偽訊號。純函式 `consistent_verdict` 全矩陣單測。
+- **Seed 是活資料不是常數**：平台通用集 seed 後即由 UI 維護（增刪/停用/bot 級排除），seed 腳本只負責冪等初始化——把「圈題」從開發階段的 blocker 變成營運階段的日常操作。
+
+#### 潛在隱憂
+- **Judge 綁 OpenAI 型 client**（gpt-4o-mini，沿 mutator 先例）：Anthropic-only 環境 judge 會失敗（fail-open 全平手，報告仍出但無鑑別力）→ judge 接 DynamicLLMServiceFactory 列後續 → 優先級：中。
+- **回放樣本 = 最近 N 則去重問題**：熱門問題與長尾問題等權，無分層抽樣 → 樣本代表性有限，UI 已標注「僅供參考」→ 優先級：低。
+- **replay 與 gate run 共用容器的語意張力**：replay 的 verdict pass/fail 是「草稿勝率過半」的弱語意，與 gate 的硬判定不同——UI 靠 details.type 區隔呈現，但 DB 層兩者混在同表，報表統計時要記得過濾 → 優先級：低（文件已註記）。
+
+#### 延伸學習
+- **LLM-as-judge 的偏誤族譜**：position bias（本次處理）、verbosity bias（偏長回答）、self-enhancement bias（偏自家模型風格）——生產級評審通常換位 + 多 judge + 校準集三管齊下；我們 v1 只做第一項，是刻意的成本取捨。
+- 若想深入：搜尋 "LLM as a judge position bias"、"pairwise preference evaluation swap"。
+
+---
+
 ## Phase E 前端整合 — 錨點式 read model 與「並行 agent 下的 git 紀律」教訓（2026-08-20，Issue #54 Phase E）
 
 **Sprint 來源**：Prompt 發布閘門 Phase E（版本頁 / 閘門卡 / Playground / 成效卡）

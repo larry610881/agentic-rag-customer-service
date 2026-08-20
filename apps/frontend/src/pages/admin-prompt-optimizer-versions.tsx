@@ -44,6 +44,7 @@ import {
   useGateRun,
   usePublishConfigVersion,
   useRejectConfigVersion,
+  useReplayCompare,
   useRollbackConfigVersion,
   useValidateConfigVersion,
 } from "@/hooks/queries/use-config-versions";
@@ -120,12 +121,16 @@ function VersionCard({
   const rejectMutation = useRejectConfigVersion();
   const rollbackMutation = useRollbackConfigVersion();
   const validateMutation = useValidateConfigVersion();
+  const replayMutation = useReplayCompare();
+  const [replayRunId, setReplayRunId] = useState<string | null>(null);
+  const { data: replayRun } = useGateRun(replayRunId);
 
   const busy =
     publishMutation.isPending ||
     rejectMutation.isPending ||
     rollbackMutation.isPending ||
-    validateMutation.isPending;
+    validateMutation.isPending ||
+    replayMutation.isPending;
 
   const handlePublish = (force = false) => {
     publishMutation.mutate(
@@ -306,6 +311,49 @@ function VersionCard({
             </AlertDialogContent>
           </AlertDialog>
         )}
+        {version.status !== "validating" && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="ghost" disabled={busy}>
+                回放對比
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>真實流量回放對比</AlertDialogTitle>
+                <AlertDialogDescription>
+                  抽此 bot 最近 10 則真實使用者問題，「線上版 vs
+                  此版本」各影子執行一次並由 LLM 換位雙判勝負。
+                  約 20 次受測呼叫 + 20 次評審呼叫，
+                  <span className="font-medium">
+                    消耗 token 並計入租戶用量
+                  </span>
+                  ；與閘門共用每日次數與預算上限。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() =>
+                    replayMutation.mutate(
+                      { botId, versionId: version.id },
+                      {
+                        onSuccess: (run) => {
+                          setReplayRunId((run as { id: string }).id);
+                          setOpen(true);
+                          toast.success("回放對比已啟動，結果將自動更新");
+                        },
+                        onError: (err) => toast.error(errorMessage(err)),
+                      },
+                    )
+                  }
+                >
+                  確認啟動
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
         {version.status === "validating" && (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -380,6 +428,7 @@ function VersionCard({
             <Skeleton className="h-24 w-full" />
           )}
           {gateRun && <GateRunReport run={gateRun} />}
+          {replayRun && <GateRunReport run={replayRun} />}
           {version.status === "published" && (
             <VersionMetricsCard botId={botId} versionId={version.id} />
           )}

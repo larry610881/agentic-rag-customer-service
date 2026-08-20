@@ -62,6 +62,37 @@ export interface GateRunCase {
   unstable: boolean | null;
 }
 
+export interface GateRunDetails {
+  type?: undefined;
+  cases: GateRunCase[];
+  aborted: boolean;
+  excluded_platform_cases: string[];
+}
+
+/** Phase G — 真實流量回放 pairwise 對比（復用 gate run 容器） */
+export interface ReplayCompareItem {
+  question: string;
+  baseline_answer: string;
+  candidate_answer: string;
+  verdict: "candidate" | "baseline" | "tie";
+  judge_normal: string;
+  judge_swapped: string;
+  baseline_cost: number;
+  candidate_cost: number;
+}
+
+export interface ReplayCompareDetails {
+  type: "replay_compare";
+  aborted?: boolean;
+  summary?: {
+    candidate_wins: number;
+    baseline_wins: number;
+    ties: number;
+    win_rate: number;
+  };
+  items?: ReplayCompareItem[];
+}
+
 export interface GateRun {
   id: string;
   bot_id: string;
@@ -78,11 +109,7 @@ export interface GateRun {
   unstable_cases: number | null;
   est_cost: number | null;
   actual_cost: number | null;
-  details: {
-    cases: GateRunCase[];
-    aborted: boolean;
-    excluded_platform_cases: string[];
-  } | null;
+  details: GateRunDetails | ReplayCompareDetails | null;
   error_message: string | null;
   created_at: string;
   started_at: string | null;

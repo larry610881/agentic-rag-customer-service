@@ -596,7 +596,7 @@ CREATE TABLE bot_config_versions (
 | 層次 | 機制 | 時機 | 納入 |
 |------|------|------|------|
 | **1. 版本歸因 + 前後指標對照** | §13.6：既有線上數據（`rag_evaluations` L1/L2/L3、`feedback`、traces 延遲、usage 成本、guard_logs）按 version_id 切開比較 | 發布後持續 | **v1**（Phase A/E） |
-| **2. 真實流量回放 pairwise 對比** | 抽真實問題 → 新舊兩版 config 影子執行 → LLM judge pairwise（A-B/B-A 換位防 position bias）→ 勝負報告；同時補齊 §6.3 缺的 run A vs B 比較視圖 | 發布**前**的決策點 | Phase G（選配） |
+| **2. 真實流量回放 pairwise 對比** | 抽真實問題 → 新舊兩版 config 影子執行 → LLM judge pairwise（A-B/B-A 換位防 position bias）→ 勝負報告 | 發布**前**的決策點 | **✅ 已交付（08-20）**：復用 prompt_gate_runs、共用日限額/預算、UI 含 token 提醒 |
 | **3. 線上 canary / A/B 分流** | 部分流量走新版 + 統計檢定；版本表已天然支援多 published 共存，只缺 serving 層選版邏輯 | 發布後 | backlog（POC 流量不足） |
 
 與 observability 升級計畫的閉環：層次 2 的「真實問題抽樣」與該計畫 2-P4「爛 trace 一鍵入題集」共用素材管道；層次 1 的版本成效卡是該計畫「run 比較視圖」的線上版對應物。

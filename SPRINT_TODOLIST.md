@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-08-20 (Issue #54 Phase E — 前端整合：版本頁 + 閘門卡 + Playground)
+> 最後更新：2026-08-20 (Issue #54 全案完成：A–G 七階段交付)
 >
 > 今日延伸：
 > - DAG 歷史上下文 — 防遺失 fallback + ✓/⚠/empty 載入狀態徽章 (`c56e7fb`)
@@ -1877,8 +1877,9 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
   - ✅ 周邊：tenant 閘門 toggle、dataset bot 綁定/平台標記/case 開關、usage 分類過濾、rollback UX 同步
   - ✅ 測試：gate-run-report 5/5、bot-detail-form 17/17、tenant-dialog 7/7；全量 252 passed（9 failed 為既有債：pagination/document-list/provider-list，本次未觸碰該模組）
   - ⬜ e2e feature（prompt-gate.feature）— 需 seed 資料與運行環境，隨 Phase F 後補
-- 🔄 **Phase F 收尾**：seed 腳本已備（scripts/seed_platform_gate_dataset.py，20 題 = security_base 16 + 行為不變量 4，冪等；定案更新：內容為活資料，UI 隨時可調）待授權執行；文件收尾進行中
-- ⬜ **Phase G（選配）**：真實流量回放 pairwise 對比
+- ✅ **Phase F 收尾**：平台通用集已 seed（20 題 = security_base 16 + 行為不變量 4，冪等驗證通過，dataset 797e9800）；e2e feature 規格已寫（prompt-gate.feature，steps 待 dev 環境重建後實作）
+- ✅ **Phase G 回放對比**：真實流量抽樣（find_recent_user_questions）→ 雙版影子執行 → LLM judge 換位雙判（不一致計平手）→ win/lose/tie 報告；復用 prompt_gate_runs（details.type=replay_compare，零 migration）；共用日限額/預算；UI 含 token 消耗提醒（Larry 唯一要求）；replay_compare.feature 9 scenarios
+
 
 ## Bug Backlog（待重現 + 待排入 Sprint）
 

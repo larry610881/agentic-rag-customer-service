@@ -7,7 +7,14 @@ import { AgentTraceGraph } from "@/features/admin/components/agent-trace-graph";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import type { ExecutionNode } from "@/types/agent-trace";
-import type { GateRun, GateRunCase, GateRunRound } from "@/types/config-version";
+import type {
+  GateRun,
+  GateRunCase,
+  GateRunDetails,
+  GateRunRound,
+} from "@/types/config-version";
+
+import { ReplayCompareReport } from "./replay-compare-report";
 
 const FAIL_REASON_LABEL: Record<string, string> = {
   hard_gate: "硬閘門未過（資安/行為不變量）",
@@ -171,12 +178,17 @@ function CaseRow({ caseData }: { caseData: GateRunCase }) {
 }
 
 export function GateRunReport({ run }: { run: GateRun }) {
-  const cases = run.details?.cases ?? [];
-  const excluded = run.details?.excluded_platform_cases ?? [];
+  // Phase G — 回放對比復用 gate run 容器，依 details.type 分流
+  if (run.details?.type === "replay_compare") {
+    return <ReplayCompareReport run={run} />;
+  }
+  const details = run.details as GateRunDetails | null;
+  const cases = details?.cases ?? [];
+  const excluded = details?.excluded_platform_cases ?? [];
   return (
     <Card className="space-y-3 p-4">
       <VerdictBanner run={run} />
-      {run.details?.aborted && (
+      {details?.aborted && (
         <p className="text-xs text-destructive">
           ⚠ 驗證因超出預算而提前中止，以下為中止前的結果。
         </p>

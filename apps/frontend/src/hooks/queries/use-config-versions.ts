@@ -175,6 +175,28 @@ export function useRollbackConfigVersion() {
   );
 }
 
+export function useReplayCompare() {
+  return useVersionMutation(
+    (
+      vars: { botId: string; versionId: string; sampleSize?: number },
+      token,
+    ) =>
+      apiFetch<GateRun>(
+        API_ENDPOINTS.configVersions.replayCompare(
+          vars.botId,
+          vars.versionId,
+        ),
+        {
+          method: "POST",
+          body: JSON.stringify({ sample_size: vars.sampleSize ?? 10 }),
+        },
+        token,
+      ),
+    (vars) => vars.botId,
+  );
+}
+
+
 export function useValidateConfigVersion() {
   return useVersionMutation(
     (vars: { botId: string; versionId: string }, token) =>

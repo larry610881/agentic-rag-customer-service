@@ -18,6 +18,32 @@ class SQLAlchemyConversationRepository(ConversationRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def find_recent_user_questions(
+        self, bot_id: str, tenant_id: str, limit: int = 10
+    ) -> list[str]:
+        """Issue #54 Phase G — 最近 N 則不重複真實使用者問題（新→舊）。"""
+        stmt = (
+            select(
+                MessageModel.content,
+                func.max(MessageModel.created_at).label("latest"),
+            )
+            .join(
+                ConversationModel,
+                MessageModel.conversation_id == ConversationModel.id,
+            )
+            .where(
+                ConversationModel.bot_id == bot_id,
+                ConversationModel.tenant_id == tenant_id,
+                MessageModel.role == "user",
+                func.length(MessageModel.content) > 1,
+            )
+            .group_by(MessageModel.content)
+            .order_by(func.max(MessageModel.created_at).desc())
+            .limit(limit)
+        )
+        rows = (await self._session.execute(stmt)).all()
+        return [row.content for row in rows]
+
     async def save(self, conversation: Conversation) -> None:
         async with atomic(self._session):
             existing = await self._session.get(

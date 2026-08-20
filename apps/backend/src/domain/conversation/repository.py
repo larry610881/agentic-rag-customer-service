@@ -13,6 +13,14 @@ class ConversationRepository(ABC):
     async def find_by_id(self, conversation_id: str) -> Conversation | None: ...
 
     @abstractmethod
+    async def find_recent_user_questions(
+        self, bot_id: str, tenant_id: str, limit: int = 10
+    ) -> list[str]:
+        """Issue #54 Phase G — 該 bot 最近 N 則不重複的真實使用者問題
+        （回放 pairwise 對比的樣本來源）。"""
+        ...
+
+    @abstractmethod
     async def find_by_tenant(
         self,
         tenant_id: str,

@@ -18,6 +18,9 @@ from src.application.prompt_gate.gate_run_use_cases import (
     GetGateRunUseCase,
     StartGateRunUseCase,
 )
+from src.application.prompt_gate.replay_use_cases import (
+    StartReplayCompareUseCase,
+)
 from src.application.prompt_gate.static_checks import StaticCheckFailedError
 from src.application.prompt_gate.version_use_cases import (
     CreateConfigVersionCommand,
@@ -315,6 +318,44 @@ async def publish_version(
     ) as exc:
         raise _handle(exc) from exc
     return _to_response(version)
+
+
+class ReplayCompareRequest(BaseModel):
+    sample_size: int = Field(default=10, ge=1, le=30)
+
+
+@router.post(
+    "/{version_id}/replay-compare",
+    response_model=GateRunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@inject
+async def replay_compare_version(
+    bot_id: str,
+    version_id: str,
+    request: Request,
+    body: ReplayCompareRequest | None = None,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    use_case: StartReplayCompareUseCase = Depends(
+        Provide[Container.start_replay_compare_use_case]
+    ),
+) -> GateRunResponse:
+    """Phase G — 真實流量回放 pairwise 對比（202 背景執行）。
+    消耗 token 計入租戶（受測 ×2 + judge ×2 每題），與 gate 共用日限額/預算。"""
+    auth = request.headers.get("authorization", "")
+    api_token = auth.split(" ", 1)[1] if " " in auth else auth
+    try:
+        run = await use_case.execute(
+            tenant_id=tenant.tenant_id,
+            bot_id=bot_id,
+            version_id=version_id,
+            api_token=api_token,
+            sample_size=body.sample_size if body else 10,
+            triggered_by=tenant.user_id,
+        )
+    except (EntityNotFoundError, GatePreconditionError) as exc:
+        raise _handle(exc) from exc
+    return _run_to_response(run)
 
 
 @router.post(

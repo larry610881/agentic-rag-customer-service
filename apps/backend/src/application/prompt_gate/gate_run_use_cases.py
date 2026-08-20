@@ -49,6 +49,7 @@ class GatePreconditionError(DomainException):
         "no_dataset_bound": 422,
         "daily_limit_exceeded": 429,
         "budget_exceeded": 422,
+        "no_history": 422,  # Phase G 回放：無真實對話可抽樣
     }
 
     def __init__(self, code: str, message: str) -> None:

@@ -321,6 +321,9 @@ from src.application.pricing.list_pricing_use_case import ListPricingUseCase
 from src.application.pricing.list_recalc_history_use_case import (
     ListRecalcHistoryUseCase,
 )
+from src.application.prompt_gate.replay_use_cases import (
+    StartReplayCompareUseCase,
+)
 from src.application.prompt_gate.gate_run_use_cases import (
     CleanupOrphanGateRunsUseCase,
     GateEstimateUseCase,
@@ -2012,6 +2015,18 @@ class Container(containers.DeclarativeContainer):
         GetVersionMetricsUseCase,
         version_repository=bot_config_version_repository,
         metrics_repository=version_metrics_repository,
+    )
+
+    start_replay_compare_use_case = providers.Factory(
+        StartReplayCompareUseCase,
+        bot_repository=bot_repository,
+        version_repository=bot_config_version_repository,
+        gate_run_repository=prompt_gate_run_repository,
+        conversation_repository=conversation_repository,
+        provider_setting_repository=provider_setting_repository,
+        encryption_service=encryption_service,
+        gate_run_repo_factory=prompt_gate_run_repository.provider,
+        record_usage_factory=record_usage_use_case.provider,
     )
 
     cleanup_orphan_gate_runs_use_case = providers.Factory(
