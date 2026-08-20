@@ -7,6 +7,29 @@
 
 ---
 
+## Bot 設定整包版控（config as commit）— 白名單快照、overlay 回朔與「唯一寫入通道」的收斂（2026-08-20，Issue #54 Phase A）
+
+**Sprint 來源**：Prompt 發布閘門 Phase A（`docs/prompt-gate-spec.md` v1.3）
+
+**主題**：Snapshot Pattern、State Machine、Append-only Event Log、Anti-corruption 墊片
+
+#### 做得好的地方
+- **白名單而非黑名單**：快照欄位採顯式白名單（`SNAPSHOT_FIELDS`）。Bot 實體未來新增欄位時，預設**不會**被版控——寧可漏版控（可補），不可誤把新憑證欄位快照出去（不可逆的秘密擴散）。安全預設方向和黑名單相反。
+- **overlay 合併的回朔語意**：舊快照缺新欄位時保留現值而非重設 default，並回報 `skipped_fields`。這是 schema 演進下「舊 commit checkout 到新 working tree」的正確語意——git 沒有這個問題是因為它版控全部檔案，我們版控的是實體的子集。
+- **`bots` 表保留為 denormalized 讀取快照**：線上讀取路徑（`send_message` 每則訊息）零改動、零 join；版本表只在寫入時參與。read path 與 audit path 分離，是 event sourcing lite 的務實取捨——沒有付「重播事件重建狀態」的複雜度。
+- **墊片維持向後相容**：`UpdateBotUseCase` 的 `version_repository` 參數 optional，54 個既有 bot 測試零修改全過——新功能以「可拔插」方式掛進舊路徑，而不是改寫舊路徑。
+
+#### 潛在隱憂
+- **publish 的兩張表寫入非同交易**：`bot_repo.save()` 與 `version_repo.save()`+`set_current()` 各自 `atomic()`。crash 在中間會出現「bots 已更新但版本未翻 current」的縫隙 → 建議未來把 publish 收斂成單一 UoW（repo 同 session 已天然支援，只差 use case 層的交易邊界）→ 優先級：中。
+- **快照白名單與 Bot 實體欄位無編譯期同步檢查**：新增實體欄位時忘了評估是否入白名單，只能靠 code review 發現 → 可加一個「實體欄位 − 白名單 − 顯式排除清單 = ∅」的守衛測試 → 優先級：中（Phase C 前補）。
+- **backfill 對空 DB 是 no-op**：local 重建後無 seed 資料，第一個 bot 的 v1 會由墊片在首次更新時建立，但「建立 bot 當下」沒有 v1（CreateBot 未接版本化）→ Phase C 一併把 CreateBot 納入 → 優先級：低。
+
+#### 延伸學習
+- **Memento Pattern vs Event Sourcing**：本設計是 memento（存整包狀態）而非 event sourcing（存變更事件）。changed_fields 只是索引不是重放來源——當「診斷誰改了什麼」比「重建任意時點狀態」重要時，memento + diff 索引是成本低一個數量級的選擇。
+- 若想深入：搜尋 "snapshot vs event sourcing tradeoff"、"Martin Fowler Memento"、LaunchDarkly/Unleash 的 feature flag versioning 設計（同為 config-as-commit 的工業實作）。
+
+---
+
 ## 投機執行（Speculative Execution）進到 LLM pipeline — 預取的有效性判定與取消語義
 
 **日期**：2026-07-29（Issue #52，Infrastructure ×3 新檔 + Application/container，26 BDD scenarios）

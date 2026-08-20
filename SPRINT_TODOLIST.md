@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-04-30 (Retrieval Playground 對齊真實 RAG — query rewrite + rerank + threshold)
+> 最後更新：2026-08-20 (Issue #54 Prompt 發布閘門 Phase A — bot 設定整包版控)
 >
 > 今日延伸：
 > - DAG 歷史上下文 — 防遺失 fallback + ✓/⚠/empty 載入狀態徽章 (`c56e7fb`)
@@ -1830,6 +1830,26 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | 前端 tsc + vitest 不退步 | ✅ | tsc 112→107（順手清掉 5 errors，零新增）；vitest 223→226 passed |
 
 ---
+
+## Prompt 發布閘門 × 設定版控 × Token 分流（2026-08-20 起，Issue #54）
+
+> 規劃書：`docs/prompt-gate-spec.md` v1.3（14 項待決全數定案）
+
+- ✅ 階段一規劃書 + 14 待決點定案 + Issue #54 建立
+- ✅ **Phase A 版本化底座**（commit `a05f04c`）
+  - ✅ domain/prompt_gate：快照白名單 / diff / overlay、BotConfigVersion 狀態機
+  - ✅ 第 0 層靜態檢查（模板變數 / 長度 / injection 句式）
+  - ✅ create/list/get/publish/reject/rollback use cases（publish = 唯一寫入通道）
+  - ✅ PUT /bots 墊片（版控欄位變更透明產生版本）
+  - ✅ `/api/v1/bots/{bot_id}/config-versions` API
+  - ✅ migrations 套 local-docker + schema.sql 同步（dev-vm 已下線待重建）
+  - ✅ 4 feature / 29 scenarios，全量 unit 1146 passed
+- ⬜ **Phase B Token 分流**：UsageCategory +3（eval_gate/prompt_optimize/playground）、run_id/config_version_id 欄位、agent chat 標記、mutator 記帳、daily/monthly group-by
+- ⬜ **Phase C 閘門引擎**：gate 設定欄位、prompt_gate_runs、Verdict Engine、config_override 影子執行、逐題報告、Playground 後端
+- ⬜ **Phase D Optimizer 整合**：迴圈影子執行、產出→draft、rollback 收斂、平台集強制注入、tenant scoping 補強
+- ⬜ **Phase E 前端**：版本時間線 + 成效卡、bot Prompt tab、對照測試 Playground（雙欄聊天 + 雙 DAG）、hub 重組、usage 圖表
+- ⬜ **Phase F 收尾**：平台通用集 seed（Larry 圈題）、文件更新
+- ⬜ **Phase G（選配）**：真實流量回放 pairwise 對比
 
 ## Bug Backlog（待重現 + 待排入 Sprint）
 
