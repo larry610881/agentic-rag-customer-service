@@ -318,4 +318,32 @@ export const API_ENDPOINTS = {
     validate: "/api/v1/prompt-optimizer/validate",
     exchangeRate: "/api/v1/prompt-optimizer/exchange-rate",
   },
+  // Issue #54 — Bot 設定版本與發布閘門
+  configVersions: {
+    list: (botId: string, page = 1, pageSize = 20, status?: string) => {
+      const params = new URLSearchParams({
+        page: String(page),
+        page_size: String(pageSize),
+      });
+      if (status) params.set("status", status);
+      return `/api/v1/bots/${botId}/config-versions?${params.toString()}`;
+    },
+    create: (botId: string) => `/api/v1/bots/${botId}/config-versions`,
+    detail: (botId: string, versionId: string) =>
+      `/api/v1/bots/${botId}/config-versions/${versionId}`,
+    publish: (botId: string, versionId: string) =>
+      `/api/v1/bots/${botId}/config-versions/${versionId}/publish`,
+    reject: (botId: string, versionId: string) =>
+      `/api/v1/bots/${botId}/config-versions/${versionId}/reject`,
+    validate: (botId: string, versionId: string) =>
+      `/api/v1/bots/${botId}/config-versions/${versionId}/validate`,
+    metrics: (botId: string, versionId: string) =>
+      `/api/v1/bots/${botId}/config-versions/${versionId}/metrics`,
+    rollback: (botId: string) =>
+      `/api/v1/bots/${botId}/config-versions/rollback`,
+  },
+  promptGate: {
+    run: (runId: string) => `/api/v1/prompt-gate/runs/${runId}`,
+    estimate: (botId: string) => `/api/v1/bots/${botId}/prompt-gate/estimate`,
+  },
 } as const;

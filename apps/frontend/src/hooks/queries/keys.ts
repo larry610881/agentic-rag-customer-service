@@ -160,4 +160,14 @@ export const queryKeys = {
     runs: ["prompt-optimizer", "runs"] as const,
     run: (id: string) => ["prompt-optimizer", "runs", id] as const,
   },
+  // Issue #54 — Bot 設定版本與發布閘門
+  configVersions: {
+    list: (botId: string) => ["config-versions", botId] as const,
+    detail: (botId: string, versionId: string) =>
+      ["config-versions", botId, versionId] as const,
+    metrics: (botId: string, versionId: string) =>
+      ["config-versions", botId, versionId, "metrics"] as const,
+    gateRun: (runId: string) => ["prompt-gate", "runs", runId] as const,
+    estimate: (botId: string) => ["prompt-gate", "estimate", botId] as const,
+  },
 };

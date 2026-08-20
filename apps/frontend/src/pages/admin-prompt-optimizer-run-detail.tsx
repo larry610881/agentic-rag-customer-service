@@ -148,7 +148,15 @@ export default function AdminPromptOptimizerRunDetailPage() {
   const handleApplyPrompt = useCallback((iteration: number) => {
     if (!runId) return;
     applyMutation.mutate({ runId, iteration }, {
-      onSuccess: () => toast.success("已套用提示詞到機器人"),
+      onSuccess: (result) => {
+        if (result.published) {
+          toast.success("已建立版本並發布上線");
+        } else if (result.version_id) {
+          toast.info(result.note || "已建立 draft 版本，請至「版本與發布」送驗後發布");
+        } else {
+          toast.error(result.note || "未套用（設定與現行相同）");
+        }
+      },
       onError: () => toast.error("套用失敗"),
     });
   }, [runId, applyMutation]);

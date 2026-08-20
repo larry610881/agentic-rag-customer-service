@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
-import { Wand2, Play, Database, History, ShieldCheck } from "lucide-react";
+import { Wand2, Play, Database, History, ShieldCheck, GitBranch } from "lucide-react";
 import { ROUTES } from "@/routes/paths";
 
 export default function AdminPromptOptimizerPage() {
   const cards = [
+    { title: "版本與發布", description: "設定版本歷史、閘門驗證與一鍵回滾", icon: GitBranch, href: ROUTES.ADMIN_PROMPT_OPTIMIZER_VERSIONS },
     { title: "啟動優化", description: "選擇 Bot 與情境集，開始自動優化", icon: Play, href: ROUTES.ADMIN_PROMPT_OPTIMIZER_START },
     { title: "情境集管理", description: "建立與管理評估用的測試情境集", icon: Database, href: ROUTES.ADMIN_PROMPT_OPTIMIZER_DATASETS },
     { title: "歷史紀錄", description: "查看過往優化紀錄與 Rollback", icon: History, href: ROUTES.ADMIN_PROMPT_OPTIMIZER_RUNS },

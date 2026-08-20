@@ -23,6 +23,11 @@ import {
   Upload,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import {
+  useEvalDataset,
+  useEvalDatasets,
+} from "@/hooks/queries/use-prompt-optimizer";
+import { PlaygroundCompareDialog } from "@/features/bot/components/playground-compare-dialog";
 import { ROUTES } from "@/routes/paths";
 import { API_BASE, PUBLIC_API_URL } from "@/lib/api-config";
 import { Button } from "@/components/ui/button";
@@ -127,6 +132,14 @@ const botFormSchema = z.object({
   ),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
   base_prompt: z.string().default(""),
+  // Issue #54 — 發布閘門設定（治理欄位）
+  gate_mode: z.enum(["off", "warn", "block"]).default("off"),
+  gate_soft_threshold: z.coerce.number().min(0).max(1).default(0.8),
+  gate_repeats: z.coerce.number().int().min(1).max(10).default(3),
+  gate_auto_publish: z.boolean().default(false),
+  gate_daily_limit: z.coerce.number().int().min(0).default(20),
+  gate_budget_usd: z.coerce.number().gt(0).default(1.0),
+  gate_excluded_cases: z.array(z.string()).default([]),
   widget_enabled: z.boolean().default(false),
   widget_allowed_origins: z.string().default(""),
   widget_keep_history: z.boolean().default(true),
@@ -431,6 +444,179 @@ function RetrievalModesSection({
 }
 
 
+type GateSettingsSectionProps = {
+  control: Control<BotFormValues>;
+  register: UseFormRegister<BotFormValues>;
+  watch: UseFormWatch<BotFormValues>;
+  setValue: UseFormSetValue<BotFormValues>;
+};
+
+/** Issue #54 — 平台通用集題目勾選排除（單一 dataset 的案例清單） */
+function PlatformDatasetCases({
+  datasetId,
+  excluded,
+  onToggle,
+}: {
+  datasetId: string;
+  excluded: string[];
+  onToggle: (caseRowId: string, exclude: boolean) => void;
+}) {
+  const { data: dataset } = useEvalDataset(datasetId);
+  if (!dataset) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium">{dataset.name}</p>
+      {(dataset.test_cases ?? []).map((tc) => {
+        const isExcluded = excluded.includes(tc.id);
+        return (
+          <label
+            key={tc.id}
+            className="flex cursor-pointer items-center gap-2 text-xs"
+          >
+            <input
+              type="checkbox"
+              checked={!isExcluded}
+              onChange={(e) => onToggle(tc.id, !e.target.checked)}
+            />
+            <span className={isExcluded ? "text-muted-foreground line-through" : ""}>
+              [{tc.priority}] {tc.question}
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Issue #54 — 發布閘門設定卡（治理欄位，不受版控；定案 1/7/C-4 的預設值） */
+function GateSettingsSection({
+  control,
+  register,
+  watch,
+  setValue,
+}: GateSettingsSectionProps) {
+  const gateMode = watch("gate_mode");
+  const excluded = watch("gate_excluded_cases") ?? [];
+  const { data: datasetsData } = useEvalDatasets(1, 100);
+  const platformDatasets = (datasetsData?.items ?? []).filter(
+    (d) => d.is_platform_base,
+  );
+
+  const handleToggleCase = (caseRowId: string, exclude: boolean) => {
+    const next = exclude
+      ? [...excluded, caseRowId]
+      : excluded.filter((id) => id !== caseRowId);
+    setValue("gate_excluded_cases", next, { shouldDirty: true });
+  };
+
+  return (
+    <section className="flex flex-col gap-4 rounded-lg border p-4">
+      <div>
+        <h3 className="text-lg font-semibold">發布閘門</h3>
+        <p className="text-xs text-muted-foreground">
+          啟用後，設定變更需通過評測題集驗證才能發布（須先綁定至少一個含
+          啟用案例的自訂題集）。驗證消耗 token 並計入租戶用量。
+        </p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="gate-mode">模式</Label>
+          <Controller
+            name="gate_mode"
+            control={control}
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger id="gate-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="off">off — 不驗證</SelectItem>
+                  <SelectItem value="warn">warn — 失敗可強制發布</SelectItem>
+                  <SelectItem value="block">block — 失敗即擋</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="gate-threshold">軟閘門通過率門檻（0–1）</Label>
+          <Input
+            id="gate-threshold"
+            type="number"
+            step="0.05"
+            min={0}
+            max={1}
+            {...register("gate_soft_threshold")}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="gate-repeats">P0 重跑輪數（1–10）</Label>
+          <Input
+            id="gate-repeats"
+            type="number"
+            min={1}
+            max={10}
+            {...register("gate_repeats")}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="gate-daily">每日驗證次數上限</Label>
+          <Input
+            id="gate-daily"
+            type="number"
+            min={0}
+            {...register("gate_daily_limit")}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="gate-budget">單次驗證預算（USD）</Label>
+          <Input
+            id="gate-budget"
+            type="number"
+            step="0.1"
+            min={0.1}
+            {...register("gate_budget_usd")}
+          />
+        </div>
+        <div className="flex items-center gap-2 pt-6">
+          <Controller
+            name="gate_auto_publish"
+            control={control}
+            render={({ field }) => (
+              <Switch
+                id="gate-auto-publish"
+                checked={field.value}
+                onCheckedChange={field.onChange}
+              />
+            )}
+          />
+          <Label htmlFor="gate-auto-publish" className="text-sm">
+            驗證通過後自動發布
+          </Label>
+        </div>
+      </div>
+      {gateMode !== "off" && platformDatasets.length > 0 && (
+        <div className="rounded-md border p-3">
+          <p className="mb-2 text-xs font-medium">
+            平台通用題集（取消勾選 = 此 bot 驗證時排除該題；排除紀錄會留在
+            每次驗證報告中）
+          </p>
+          <div className="max-h-48 space-y-3 overflow-y-auto">
+            {platformDatasets.map((d) => (
+              <PlatformDatasetCases
+                key={d.id}
+                datasetId={d.id}
+                excluded={excluded}
+                onToggle={handleToggleCase}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function WebhookCopyButton({
   url,
   label = "Webhook URL",
@@ -471,6 +657,7 @@ export function BotDetailForm({
   const { data: enabledModels } = useEnabledModels();
   const { data: builtInTools = [] } = useBuiltInTools();
   const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.LLM_PROMPT);
+  const [playgroundOpen, setPlaygroundOpen] = useState(false);
   const navigate = useNavigate();
 
   const {
@@ -506,6 +693,13 @@ export function BotDetailForm({
       mcp_servers: bot.mcp_servers ?? [],
       max_tool_calls: bot.max_tool_calls ?? 5,
       base_prompt: bot.base_prompt ?? "",
+      gate_mode: bot.gate_mode ?? "off",
+      gate_soft_threshold: bot.gate_soft_threshold ?? 0.8,
+      gate_repeats: bot.gate_repeats ?? 3,
+      gate_auto_publish: bot.gate_auto_publish ?? false,
+      gate_daily_limit: bot.gate_daily_limit ?? 20,
+      gate_budget_usd: bot.gate_budget_usd ?? 1.0,
+      gate_excluded_cases: bot.gate_excluded_cases ?? [],
       widget_enabled: bot.widget_enabled ?? false,
       widget_allowed_origins: (bot.widget_allowed_origins ?? []).join("\n"),
       widget_keep_history: bot.widget_keep_history ?? true,
@@ -610,6 +804,13 @@ export function BotDetailForm({
       mcp_servers: bot.mcp_servers ?? [],
       max_tool_calls: bot.max_tool_calls ?? 5,
       base_prompt: bot.base_prompt ?? "",
+      gate_mode: bot.gate_mode ?? "off",
+      gate_soft_threshold: bot.gate_soft_threshold ?? 0.8,
+      gate_repeats: bot.gate_repeats ?? 3,
+      gate_auto_publish: bot.gate_auto_publish ?? false,
+      gate_daily_limit: bot.gate_daily_limit ?? 20,
+      gate_budget_usd: bot.gate_budget_usd ?? 1.0,
+      gate_excluded_cases: bot.gate_excluded_cases ?? [],
       widget_enabled: bot.widget_enabled ?? false,
       widget_allowed_origins: (bot.widget_allowed_origins ?? []).join("\n"),
       widget_keep_history: bot.widget_keep_history ?? true,
@@ -673,8 +874,13 @@ export function BotDetailForm({
     try {
       await onSave(payload);
       toast.success("機器人設定已儲存");
-    } catch {
-      toast.error("儲存失敗，請稍後再試");
+    } catch (err) {
+      // Issue #54 — 閘門啟用時版控欄位直改會 409，導引走版本 API
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : "儲存失敗，請稍後再試";
+      toast.error(msg);
     }
   };
 
@@ -938,6 +1144,59 @@ export function BotDetailForm({
               提示：Reranking 等檢索屬性已移至「能力」頁的「知識庫與檢索」區塊。
             </p>
           </section>
+
+          {/* Issue #54 — 系統提示詞（base_prompt，受版控） */}
+          <section className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold">系統提示詞（受版控）</h3>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bot-base-prompt">Base Prompt</Label>
+              <Textarea
+                id="bot-base-prompt"
+                {...register("base_prompt")}
+                rows={8}
+                placeholder="空白 = 使用系統預設提示詞"
+              />
+              <p className="text-xs text-muted-foreground">
+                每次變更會自動建立設定版本；閘門啟用（warn/block）時，
+                變更需在「Prompt 管理 → 版本與發布」送驗後發布。
+              </p>
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPlaygroundOpen(true)}
+                >
+                  對照測試（線上 vs 草稿）
+                </Button>
+                <span className="ml-2 text-xs text-muted-foreground">
+                  此功能會消耗 token（約 2 則對話/次，計入租戶用量）
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <PlaygroundCompareDialog
+            open={playgroundOpen}
+            onOpenChange={setPlaygroundOpen}
+            botId={bot.id}
+            draftOverride={{
+              base_prompt: watch("base_prompt"),
+              bot_prompt: watch("bot_prompt") ?? "",
+              llm_params: {
+                temperature: Number(watch("temperature")),
+                max_tokens: Number(watch("max_tokens")),
+              },
+            }}
+          />
+
+          {/* Issue #54 — 發布閘門設定（治理欄位，不受版控） */}
+          <GateSettingsSection
+            control={control}
+            register={register}
+            watch={watch}
+            setValue={setValue}
+          />
 
           {/* 自訂指令 */}
           <section className="flex flex-col gap-4">

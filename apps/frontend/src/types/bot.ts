@@ -63,6 +63,14 @@ export interface Bot {
   eval_provider: string;
   eval_model: string;
   eval_depth: string;
+  /** Issue #54 — 發布閘門設定（治理欄位，不受版控） */
+  gate_mode: "off" | "warn" | "block";
+  gate_soft_threshold: number;
+  gate_repeats: number;
+  gate_auto_publish: boolean;
+  gate_daily_limit: number;
+  gate_budget_usd: number;
+  gate_excluded_cases: string[];
   mcp_servers: McpServerConfig[];
   max_tool_calls: number;
   base_prompt: string;
@@ -119,6 +127,14 @@ export interface CreateBotRequest {
   eval_provider?: string;
   eval_model?: string;
   eval_depth?: "off" | "L1" | "L1+L2" | "L1+L2+L3";
+  /** Issue #54 — 發布閘門設定 */
+  gate_mode?: "off" | "warn" | "block";
+  gate_soft_threshold?: number;
+  gate_repeats?: number;
+  gate_auto_publish?: boolean;
+  gate_daily_limit?: number;
+  gate_budget_usd?: number;
+  gate_excluded_cases?: string[];
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
   base_prompt?: string;
@@ -171,6 +187,14 @@ export interface UpdateBotRequest {
   eval_provider?: string;
   eval_model?: string;
   eval_depth?: "off" | "L1" | "L1+L2" | "L1+L2+L3";
+  /** Issue #54 — 發布閘門設定 */
+  gate_mode?: "off" | "warn" | "block";
+  gate_soft_threshold?: number;
+  gate_repeats?: number;
+  gate_auto_publish?: boolean;
+  gate_daily_limit?: number;
+  gate_budget_usd?: number;
+  gate_excluded_cases?: string[];
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
   base_prompt?: string;

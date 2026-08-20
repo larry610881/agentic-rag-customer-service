@@ -50,4 +50,5 @@ export const ROUTES = {
   ADMIN_PROMPT_OPTIMIZER_RUNS: "/admin/prompt-optimizer/runs",
   ADMIN_PROMPT_OPTIMIZER_RUN_DETAIL: "/admin/prompt-optimizer/runs/:runId",
   ADMIN_PROMPT_OPTIMIZER_VALIDATE: "/admin/prompt-optimizer/validate",
+  ADMIN_PROMPT_OPTIMIZER_VERSIONS: "/admin/prompt-optimizer/versions",
 } as const;

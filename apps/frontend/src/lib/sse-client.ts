@@ -6,12 +6,14 @@ export async function fetchSSE(
   token: string,
   onEvent: (event: SSEEvent) => void,
   onError?: (error: Error) => void,
+  extraHeaders?: Record<string, string>,
 ): Promise<void> {
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
+      ...(extraHeaders ?? {}),
     },
     body: JSON.stringify(body),
   });

@@ -40,7 +40,10 @@ export default function AdminPromptOptimizerRunsPage() {
 
   const handleRollback = (runId: string) => {
     rollbackMutation.mutate({ runId, iteration: 0 }, {
-      onSuccess: () => toast.success("已回滾至優化前狀態"),
+      onSuccess: (result) =>
+        result.published
+          ? toast.success("已建立版本並回滾上線")
+          : toast.info(result.note || "已建立 draft 版本（閘門啟用，需送驗）"),
       onError: () => toast.error("回滾失敗"),
     });
   };

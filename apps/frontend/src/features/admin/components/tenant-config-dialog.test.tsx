@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { USAGE_CATEGORIES } from "@/constants/usage-categories";
 import { renderWithProviders } from "@/test/test-utils";
 import { server } from "@/test/mocks/server";
 import { TenantConfigDialog } from "@/features/admin/components/tenant-config-dialog";
@@ -131,7 +132,7 @@ describe("TenantConfigDialog", () => {
     expect(Array.isArray(sent)).toBe(true);
     expect(sent).not.toContain("chat_line");
     expect(sent).toContain("rag"); // 其他未動的仍在
-    expect(sent).toHaveLength(11);
+    expect(sent).toHaveLength(USAGE_CATEGORIES.length - 1);
   });
 
   it("打開進階 + 取消啟用自訂 → PATCH body.included_categories 為 null（Bug 1 修復）", async () => {

@@ -76,6 +76,7 @@ const AdminPromptOptimizerDatasetEditPage = lazyWithRetry(() => import("@/pages/
 const AdminPromptOptimizerRunsPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-runs"));
 const AdminPromptOptimizerRunDetailPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-run-detail"));
 const AdminPromptOptimizerValidatePage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-validate"));
+const AdminPromptOptimizerVersionsPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-versions"));
 
 function PageFallback() {
   return (
@@ -282,6 +283,10 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_PROMPT_OPTIMIZER_VALIDATE}
               element={<AdminPromptOptimizerValidatePage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_PROMPT_OPTIMIZER_VERSIONS}
+              element={<AdminPromptOptimizerVersionsPage />}
             />
           </Route>
         </Route>

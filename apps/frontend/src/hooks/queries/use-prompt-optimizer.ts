@@ -308,13 +308,25 @@ export function useStopOptimization() {
   });
 }
 
+export interface RollbackResult {
+  run_id: string;
+  iteration: number;
+  prompt_snapshot: string;
+  score: number;
+  applied: boolean;
+  /** Issue #54 Phase D — rollback 已收斂到版本狀態機 */
+  version_id: string | null;
+  published: boolean;
+  note: string;
+}
+
 export function useRollbackRun() {
   const token = useAuthStore((s) => s.token);
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: ({ runId, iteration }: { runId: string; iteration: number }) =>
-      apiFetch<OptimizationRun>(
+      apiFetch<RollbackResult>(
         API_ENDPOINTS.promptOptimizer.runRollback(runId),
         { method: "POST", body: JSON.stringify({ iteration }) },
         token ?? undefined,

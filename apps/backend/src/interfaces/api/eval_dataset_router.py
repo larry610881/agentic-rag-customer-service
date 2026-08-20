@@ -100,6 +100,7 @@ class TestCaseResponse(BaseModel):
     question: str
     priority: str
     category: str
+    enabled: bool
     conversation_history: list[dict]
     assertions: list[dict[str, Any]]
     tags: list[str]
@@ -116,6 +117,7 @@ class DatasetResponse(BaseModel):
     default_assertions: list[dict[str, Any]]
     cost_config: dict[str, Any]
     include_security: bool
+    is_platform_base: bool
     test_cases: list[TestCaseResponse]
     test_case_count: int
     created_at: str
@@ -128,6 +130,7 @@ class DatasetSummaryResponse(BaseModel):
     bot_id: str | None
     name: str
     description: str
+    is_platform_base: bool = False
     target_prompt: str
     include_security: bool
     test_case_count: int
@@ -146,6 +149,7 @@ def _tc_to_response(tc: EvalTestCase) -> TestCaseResponse:
         question=tc.question,
         priority=tc.priority,
         category=tc.category,
+        enabled=tc.enabled,
         conversation_history=tc.conversation_history,
         assertions=tc.assertions,
         tags=tc.tags,
@@ -164,6 +168,7 @@ def _to_response(ds: EvalDataset) -> DatasetResponse:
         default_assertions=ds.default_assertions,
         cost_config=ds.cost_config,
         include_security=ds.include_security,
+        is_platform_base=ds.is_platform_base,
         test_cases=[_tc_to_response(tc) for tc in ds.test_cases],
         test_case_count=len(ds.test_cases),
         created_at=ds.created_at.isoformat(),
@@ -180,6 +185,7 @@ def _to_summary(ds: EvalDataset) -> DatasetSummaryResponse:
         description=ds.description,
         target_prompt=ds.target_prompt,
         include_security=ds.include_security,
+        is_platform_base=ds.is_platform_base,
         test_case_count=len(ds.test_cases),
         created_at=ds.created_at.isoformat(),
         updated_at=ds.updated_at.isoformat(),
