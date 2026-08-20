@@ -4,7 +4,7 @@
 >
 > 狀態：⬜ 待辦 | 🔄 進行中 | ✅ 完成 | ❌ 阻塞 | ⏭️ 跳過
 >
-> 最後更新：2026-08-20 (Issue #54 Phase D — Optimizer 整合：影子執行 + 版本收斂 + scoping)
+> 最後更新：2026-08-20 (Issue #54 Phase E — 前端整合：版本頁 + 閘門卡 + Playground)
 >
 > 今日延伸：
 > - DAG 歷史上下文 — 防遺失 fallback + ✓/⚠/empty 載入狀態徽章 (`c56e7fb`)
@@ -1869,8 +1869,15 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
   - ✅ run 端點 tenant scoping ×6（get/stop/rollback/report/diff/progress，system_admin 免檢）
   - ✅ optimizer_gate_handoff.feature 11 scenarios，全量 unit 1219 passed
   - 註：平台通用集強制注入已在 Phase C 的 gate runner 落地；optimizer run 不注入（非閘門）
-- ⬜ **Phase E 前端**：版本時間線 + 成效卡、bot Prompt tab、對照測試 Playground（雙欄聊天 + 雙 DAG）、hub 重組、usage 圖表
-- ⬜ **Phase F 收尾**：平台通用集 seed（Larry 圈題）、文件更新
+- ✅ **Phase E 前端整合**（E1 後端前置 + E2 前端主體）
+  - ✅ E1：config_version_id 打標（usage 錨點，fail-open）+ 版本成效 metrics API（join messages/rag_evaluations/feedback，零 migration）
+  - ✅ 版本時間線頁：estimate 預檢→送驗→逐題報告（回應+斷言+trace DAG）→發布/force/回滾；成效卡
+  - ✅ bot 表單：base_prompt 編輯器 + 閘門設定卡（含平台題勾選排除）+ 409 導引
+  - ✅ Playground 對照測試（雙欄影子聊天、單輸入同發兩版、history_override、雙 DAG）
+  - ✅ 周邊：tenant 閘門 toggle、dataset bot 綁定/平台標記/case 開關、usage 分類過濾、rollback UX 同步
+  - ✅ 測試：gate-run-report 5/5、bot-detail-form 17/17、tenant-dialog 7/7；全量 252 passed（9 failed 為既有債：pagination/document-list/provider-list，本次未觸碰該模組）
+  - ⬜ e2e feature（prompt-gate.feature）— 需 seed 資料與運行環境，隨 Phase F 後補
+- 🔄 **Phase F 收尾**：seed 腳本已備（scripts/seed_platform_gate_dataset.py，20 題 = security_base 16 + 行為不變量 4，冪等；定案更新：內容為活資料，UI 隨時可調）待授權執行；文件收尾進行中
 - ⬜ **Phase G（選配）**：真實流量回放 pairwise 對比
 
 ## Bug Backlog（待重現 + 待排入 Sprint）

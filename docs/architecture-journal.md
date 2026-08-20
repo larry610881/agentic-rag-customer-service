@@ -7,6 +7,28 @@
 
 ---
 
+## Phase E 前端整合 — 錨點式 read model 與「並行 agent 下的 git 紀律」教訓（2026-08-20，Issue #54 Phase E）
+
+**Sprint 來源**：Prompt 發布閘門 Phase E（版本頁 / 閘門卡 / Playground / 成效卡）
+
+**主題**：Anchor-based Read Model、SSOT 斷言、並行工作區安全
+
+#### 做得好的地方
+- **成效卡零 migration**：版本成效不建任何新表——以 `token_usage_records.config_version_id` 為錨，經 message_id join 出 messages（延遲）/rag_evaluations（分數）/feedback（評價）。**「打標一個欄位、其餘 join」比「每張表都加歸因欄位」便宜一個數量級**，代價是查詢複雜度集中在一個 read-model repository（可接受，讀少寫多）。
+- **Playground 是零後端增量的功能**：雙欄對照聊天 = `/chat/stream` × test_mode × config_override × history_override × X-Usage-Category header——全部是 Phase C/B 已落地的原語，前端只是「組合」。設計時把原語切對，後續功能就變成組合題。
+- **測試斷言改用 SSOT**：tenant-dialog 既有測試把 category 數量寫死 11（12 個時代），Phase B 加 3 類後才爆——改為 `USAGE_CATEGORIES.length - 1`，此類「清單長度」斷言永不再漂移。**枚舉類斷言要嘛用 fence（後端 EXPECTED_CATEGORIES 顯式清單，逼你有意識地同步），要嘛用 SSOT 引用（前端），不要寫死魔法數字**。
+
+#### 潛在隱憂（含本次事故復盤）
+- **【事故】並行 subagent 期間執行 `git stash` 比對**：主線為了驗證「測試失敗是否 HEAD 既有」跑了 stash/pop，把同時工作中的 subagent 未提交修改一併掃走，pop 又因 subagent 的新編輯衝突而中止——雖然 stash 保住了所有內容（零遺失），但 subagent 被迫重做了一輪編輯。→ **規則：有 subagent 在同一工作區時，主線禁止 stash/checkout/reset 等會動工作樹的 git 操作**；需要 HEAD 比對時用 `git worktree add` 開隔離副本 → 優先級：高（已寫入本筆記作為紀律）。
+- **前端 9 個既有失敗測試**（pagination/document-list/provider-list）持續掛紅，會稀釋「測試全綠」的訊號價值 → 應獨立開卡修掉 → 優先級：中。
+- **e2e 尚缺**：prompt-gate 全流程 e2e 需 seed 資料 + 運行環境，列 Phase F 後補 → 優先級：中。
+
+#### 延伸學習
+- **Read model / CQRS-lite**：VersionMetricsRepository 是典型讀模型——不屬於任何聚合、跨表聚合、只讀。放 infrastructure 並以 domain 介面（VersionMetricsRepository ABC + VO）隔離，是 DDD 下「報表查詢不汙染聚合」的標準解。
+- 若想深入：搜尋 "CQRS read model DDD"、"git worktree parallel agents"。
+
+---
+
 ## Optimizer 整合 — Wrapper 收編既有迴圈與「寫入通道唯一化」的完成（2026-08-20，Issue #54 Phase D）
 
 **Sprint 來源**：Prompt 發布閘門 Phase D（spec §6）
