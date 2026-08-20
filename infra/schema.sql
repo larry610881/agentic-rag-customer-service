@@ -184,7 +184,8 @@ CREATE TABLE public.bots (
     gate_repeats integer DEFAULT 3 NOT NULL,
     gate_auto_publish boolean DEFAULT false NOT NULL,
     gate_daily_limit integer DEFAULT 20 NOT NULL,
-    gate_budget_usd double precision DEFAULT 1.0 NOT NULL
+    gate_budget_usd double precision DEFAULT 1.0 NOT NULL,
+    gate_excluded_cases jsonb DEFAULT '[]'::jsonb NOT NULL
 );
 
 --
