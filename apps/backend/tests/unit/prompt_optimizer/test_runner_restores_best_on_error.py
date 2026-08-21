@@ -7,8 +7,13 @@ import pytest
 
 from prompt_optimizer.api_client import ChatResult
 from prompt_optimizer.config import PromptTarget
-from prompt_optimizer.dataset import Assertion, CostConfigData, Dataset
-from prompt_optimizer.dataset import DatasetMetadata, TestCase
+from prompt_optimizer.dataset import (
+    Assertion,
+    CostConfigData,
+    Dataset,
+    DatasetMetadata,
+    TestCase,
+)
 from prompt_optimizer.runner import KarpathyLoopRunner
 
 
