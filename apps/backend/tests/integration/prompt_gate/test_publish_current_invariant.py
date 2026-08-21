@@ -18,9 +18,19 @@ def _auth_only(headers: dict) -> dict:
 
 
 @pytest.fixture
-def bot_id(client, auth_headers):
-    headers = _auth_only(auth_headers)
-    resp = client.post("/api/v1/bots", json={"name": "gate-bot"}, headers=headers)
+def writer_headers(app, auth_headers):
+    """同租戶的 tenant_admin token（config-version 寫入端點需管理員角色，H4）。"""
+    token = app.container.jwt_service().create_user_token(
+        user_id="ta", tenant_id=auth_headers["_tenant_id"], role="tenant_admin"
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def bot_id(client, writer_headers):
+    resp = client.post(
+        "/api/v1/bots", json={"name": "gate-bot"}, headers=writer_headers
+    )
     assert resp.status_code == 201, resp.text
     return resp.json()["id"]
 
@@ -43,10 +53,10 @@ def _create_and_publish(client, headers, bot_id, prompt):
 
 
 def test_second_publish_flips_current_without_index_violation(
-    client, auth_headers, bot_id
+    client, writer_headers, bot_id
 ):
     """已有 current 版本的 bot 再 publish 新版本應成功翻轉 current（C1 regression）。"""
-    headers = _auth_only(auth_headers)
+    headers = writer_headers
 
     v1_id, _ = _create_and_publish(client, headers, bot_id, "第一版提示詞")
     # 第二次 publish：修復前在此 500（v1 仍 current 時 v2 就被寫成 current）

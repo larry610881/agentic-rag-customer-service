@@ -217,7 +217,10 @@ class PublishConfigVersionUseCase:
         if bot is None or bot.tenant_id != tenant_id:
             raise EntityNotFoundError("Bot", version.bot_id)
 
-        if await self._gate_active(bot):
+        # H1：rollback 是回朔到「曾發布且驗過」的快照，定案 9 免重驗直接發布。
+        # 不得走 gate 判定，否則 gate 啟用（warn/block）時 rollback 的 draft 版本
+        # 會被 _resolve_gate_verdict 一律擋下（409）——最需要緊急回朔的環境反而不可用。
+        if version.source != SOURCE_ROLLBACK and await self._gate_active(bot):
             verdict = self._resolve_gate_verdict(
                 version, bot.gate_mode, force
             )

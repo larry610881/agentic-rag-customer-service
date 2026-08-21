@@ -39,8 +39,17 @@ from src.domain.prompt_gate.entity import (
     InvalidVersionTransitionError,
 )
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
-from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.deps import (
+    CurrentTenant,
+    get_current_tenant,
+    require_role,
+)
 from src.interfaces.api.schemas.pagination import PaginatedResponse
+
+# H4：版本寫入/驗證端點限管理員角色。一般成員（role="user"，註冊預設）不得建立/
+# 發布/回朔版本（等同租戶內權限提升寫入 bots 設定），亦不得觸發 validate/replay
+# （每次燒 gate_daily_limit 且必因影子授權 403 全滅，可癱瘓當日正常驗證）。
+_VERSION_WRITER = require_role("system_admin", "tenant_admin")
 
 router = APIRouter(
     prefix="/api/v1/bots/{bot_id}/config-versions",
@@ -195,7 +204,7 @@ def _handle(exc: Exception) -> HTTPException:
 async def create_version(
     bot_id: str,
     request: CreateVersionRequest,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: CreateConfigVersionUseCase = Depends(
         Provide[Container.create_config_version_use_case]
     ),
@@ -301,7 +310,7 @@ async def publish_version(
     bot_id: str,
     version_id: str,
     body: PublishRequest | None = None,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: PublishConfigVersionUseCase = Depends(
         Provide[Container.publish_config_version_use_case]
     ),
@@ -335,7 +344,7 @@ async def replay_compare_version(
     version_id: str,
     request: Request,
     body: ReplayCompareRequest | None = None,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: StartReplayCompareUseCase = Depends(
         Provide[Container.start_replay_compare_use_case]
     ),
@@ -368,7 +377,7 @@ async def validate_version(
     bot_id: str,
     version_id: str,
     request: Request,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: StartGateRunUseCase = Depends(
         Provide[Container.start_gate_run_use_case]
     ),
@@ -399,7 +408,7 @@ async def validate_version(
 async def reject_version(
     bot_id: str,
     version_id: str,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: RejectConfigVersionUseCase = Depends(
         Provide[Container.reject_config_version_use_case]
     ),
@@ -416,7 +425,7 @@ async def reject_version(
 async def rollback_version(
     bot_id: str,
     request: RollbackRequest,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: RollbackConfigVersionUseCase = Depends(
         Provide[Container.rollback_config_version_use_case]
     ),
