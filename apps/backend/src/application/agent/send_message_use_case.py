@@ -622,22 +622,24 @@ class SendMessageUseCase:
             cfg["system_prompt"] = inject_runtime_vars(
                 matched.worker_prompt
             )
-        if matched.llm_provider or matched.llm_model:
-            cfg["llm_params"] = {
-                **(cfg.get("llm_params") or {}),
-                **(
-                    {"provider_name": matched.llm_provider}
-                    if matched.llm_provider
-                    else {}
-                ),
-                **(
-                    {"model": matched.llm_model}
-                    if matched.llm_model
-                    else {}
-                ),
-                "temperature": matched.temperature,
-                "max_tokens": matched.max_tokens,
-            }
+        # M17：temperature/max_tokens 賦值原本在 provider/model 條件內 → worker 沿用
+        # bot 模型（不指定 provider/model）時 web 忽略 worker 的取樣參數，但 LINE 無條件
+        # 套用 → 同一 worker 兩通路取樣參數/回覆長度不同。移出條件，與 LINE 對齊。
+        cfg["llm_params"] = {
+            **(cfg.get("llm_params") or {}),
+            **(
+                {"provider_name": matched.llm_provider}
+                if matched.llm_provider
+                else {}
+            ),
+            **(
+                {"model": matched.llm_model}
+                if matched.llm_model
+                else {}
+            ),
+            "temperature": matched.temperature,
+            "max_tokens": matched.max_tokens,
+        }
         cfg["max_tool_calls"] = matched.max_tool_calls
 
         # Filter MCP servers to worker's subset

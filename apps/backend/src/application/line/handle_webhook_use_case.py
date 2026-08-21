@@ -400,19 +400,33 @@ class HandleWebhookUseCase:
                 or threshold,
             ))
 
+        # M16：快速道文字檢索原本只用 bot 全域 top_k/threshold，忽略 worker 為
+        # rag_query 設的 per-tool RAG 參數（DM 工具有讀、rag_query 沒讀）→ 快速道與
+        # 升級後的完整 ReAct 路徑檢索結果不一致。改為讀 tool_rag_params["rag_query"]，
+        # 缺時退回 bot 全域。
+        rq = (tool_rag_params or {}).get("rag_query", {}) or {}
+        rq_kb_ids = rq.get("kb_ids") or kb_ids
         rr = None
         if rr is None:
             try:
                 rr = await self._query_rag.retrieve(QueryRAGCommand(
                     tenant_id=bot.tenant_id,
-                    kb_id=kb_id,
+                    kb_id=(rq_kb_ids[0] if rq_kb_ids else kb_id),
                     query=search_query,
-                    top_k=bot.llm_params.rag_top_k,
-                    score_threshold=threshold,
-                    kb_ids=kb_ids,
-                    rerank_enabled=bot.rerank_enabled,
-                    rerank_model=bot.rerank_model,
-                    rerank_top_n=bot.rerank_top_n,
+                    top_k=rq.get("rag_top_k") or bot.llm_params.rag_top_k,
+                    score_threshold=(
+                        rq.get("rag_score_threshold")
+                        if rq.get("rag_score_threshold") is not None
+                        else threshold
+                    ),
+                    kb_ids=rq_kb_ids,
+                    rerank_enabled=(
+                        rq.get("rerank_enabled")
+                        if rq.get("rerank_enabled") is not None
+                        else bot.rerank_enabled
+                    ),
+                    rerank_model=rq.get("rerank_model") or bot.rerank_model,
+                    rerank_top_n=rq.get("rerank_top_n") or bot.rerank_top_n,
                 ))
             except Exception:
                 logger.warning("line.direct_retrieval.error", exc_info=True)
