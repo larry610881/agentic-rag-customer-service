@@ -24,4 +24,23 @@ describe('usePagination', () => {
     act(() => result.current.setPageSize(50));
     expect(result.current.pageSize).toBe(50);
   });
+
+  // M46：totalPages 縮小時自動夾回最後一頁
+  it('should clamp page when totalPages shrinks below current page', () => {
+    const { result, rerender } = renderHook(
+      ({ totalPages }: { totalPages: number }) => usePagination({ totalPages }),
+      { initialProps: { totalPages: 3 } },
+    );
+    act(() => result.current.setPage(3));
+    expect(result.current.page).toBe(3);
+    // 刪光第 3 頁 → total_pages 變 1
+    rerender({ totalPages: 1 });
+    expect(result.current.page).toBe(1);
+  });
+
+  it('should not clamp when totalPages is undefined (原行為)', () => {
+    const { result } = renderHook(() => usePagination());
+    act(() => result.current.setPage(5));
+    expect(result.current.page).toBe(5);
+  });
 });

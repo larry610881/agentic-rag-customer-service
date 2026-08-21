@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,13 @@ export default function KnowledgeDetailPage() {
   const [expandedDoc, setExpandedDoc] = useState<DocumentResponse | null>(null);
 
   const { data, isLoading, error } = useDocuments(id!, page);
+  // M46：最末頁刪光文件使 total_pages 縮小時把 page 夾回，避免困在空幽靈頁
+  // （PaginationControls 於 totalPages<=1 消失，使用者無 UI 可回第 1 頁）。
+  useEffect(() => {
+    if (data && data.total_pages >= 1 && page > data.total_pages) {
+      setPage(data.total_pages);
+    }
+  }, [data, page, setPage]);
   const { data: qualityStats } = useDocumentQualityStats(id!);
   const { data: kbData } = useKnowledgeBases();
   const deleteDocument = useDeleteDocument();
