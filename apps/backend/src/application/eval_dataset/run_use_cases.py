@@ -247,6 +247,8 @@ class StartRunUseCase:
 
         history_client = None
         api_client = None
+        prompt_db = None  # L12：原本宣告在 try 內，早期例外會讓 finally 的
+        # `if prompt_db:` 拋 UnboundLocalError 遮蔽原始錯誤
 
         try:
             # H16：dataset 層 default_assertions（含 no_role_switch /

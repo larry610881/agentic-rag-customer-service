@@ -163,107 +163,110 @@ class KarpathyLoopRunner:
         no_improve_count = 0
         temperature = 0.7
 
-        for i in range(1, config.max_iterations + 1):
-            # Check budget
-            if result.total_api_calls + total_cases > config.budget:
-                result.stopped_reason = "budget"
-                logger.info("Budget exhausted at iteration %d", i)
-                break
+        try:
+            for i in range(1, config.max_iterations + 1):
+                # Check budget
+                if result.total_api_calls + total_cases > config.budget:
+                    result.stopped_reason = "budget"
+                    logger.info("Budget exhausted at iteration %d", i)
+                    break
 
-            # Mutate
-            if on_progress:
-                await on_progress(ProgressEvent(
-                    phase="mutating",
-                    iteration=i,
-                    max_iterations=config.max_iterations,
-                    message=f"第 {i} 輪：正在生成改進版提示詞...",
-                ))
+                # Mutate
+                if on_progress:
+                    await on_progress(ProgressEvent(
+                        phase="mutating",
+                        iteration=i,
+                        max_iterations=config.max_iterations,
+                        message=f"第 {i} 輪：正在生成改進版提示詞...",
+                    ))
 
-            failed_cases = self._extract_failed_cases(
-                result.iterations[-1].eval_summary
-            )
-            cost_stats = self._extract_cost_stats(
-                result.iterations[-1].eval_summary, dataset
-            )
-
-            candidate = await self._mutator.mutate(
-                current_prompt=best_prompt,
-                failed_cases=failed_cases,
-                iteration=i,
-                cost_stats=cost_stats,
-                temperature=temperature,
-            )
-
-            # Write candidate to DB
-            self._write_prompt(target, candidate)
-
-            # Eval candidate
-            eval_results = await self._eval_all(
-                dataset, config, iteration=i, on_progress=on_progress,
-            )
-            result.total_api_calls += total_cases
-            eval_summary = self._evaluator.evaluate(
-                dataset, eval_results, dataset.metadata.cost_config
-            )
-            score = eval_summary.final_score
-
-            # Accept or discard
-            accepted = score > best_score
-            is_best = accepted
-            if accepted:
-                best_score = score
-                best_prompt = candidate
-                no_improve_count = 0
-                temperature = 0.7
-                logger.info("Iteration %d: %.4f → ACCEPTED (new best)", i, score)
-            else:
-                no_improve_count += 1
-                temperature = min(temperature + 0.1, 1.5)
-                logger.info(
-                    "Iteration %d: %.4f → DISCARDED (no improve %d/%d)",
-                    i, score, no_improve_count, config.patience,
+                failed_cases = self._extract_failed_cases(
+                    result.iterations[-1].eval_summary
+                )
+                cost_stats = self._extract_cost_stats(
+                    result.iterations[-1].eval_summary, dataset
                 )
 
-            iter_result = IterationResult(
-                iteration=i,
-                prompt_snapshot=candidate,
-                eval_summary=eval_summary,
-                is_best=is_best,
-                accepted=accepted,
-            )
-            result.iterations.append(iter_result)
-            if on_iteration:
-                on_iteration(iter_result)
-
-            if on_progress:
-                await on_progress(ProgressEvent(
-                    phase="iteration_done",
+                candidate = await self._mutator.mutate(
+                    current_prompt=best_prompt,
+                    failed_cases=failed_cases,
                     iteration=i,
-                    max_iterations=config.max_iterations,
-                    total_cases=total_cases,
-                    score=score,
-                    best_score=best_score,
-                    baseline_score=result.baseline_score,
+                    cost_stats=cost_stats,
+                    temperature=temperature,
+                )
+
+                # Write candidate to DB
+                self._write_prompt(target, candidate)
+
+                # Eval candidate
+                eval_results = await self._eval_all(
+                    dataset, config, iteration=i, on_progress=on_progress,
+                )
+                result.total_api_calls += total_cases
+                eval_summary = self._evaluator.evaluate(
+                    dataset, eval_results, dataset.metadata.cost_config
+                )
+                score = eval_summary.final_score
+
+                # Accept or discard
+                accepted = score > best_score
+                is_best = accepted
+                if accepted:
+                    best_score = score
+                    best_prompt = candidate
+                    no_improve_count = 0
+                    temperature = 0.7
+                    logger.info("Iteration %d: %.4f → ACCEPTED (new best)", i, score)
+                else:
+                    no_improve_count += 1
+                    temperature = min(temperature + 0.1, 1.5)
+                    logger.info(
+                        "Iteration %d: %.4f → DISCARDED (no improve %d/%d)",
+                        i, score, no_improve_count, config.patience,
+                    )
+
+                iter_result = IterationResult(
+                    iteration=i,
+                    prompt_snapshot=candidate,
+                    eval_summary=eval_summary,
+                    is_best=is_best,
                     accepted=accepted,
-                    message=f"第 {i} 輪：{score:.4f} {'✓ 接受' if accepted else '✗ 放棄'}",
-                ))
+                )
+                result.iterations.append(iter_result)
+                if on_iteration:
+                    on_iteration(iter_result)
 
-            # Early stop: perfect score
-            if best_score >= 1.0:
-                result.stopped_reason = "converged"
-                logger.info("Perfect score reached at iteration %d", i)
-                break
+                if on_progress:
+                    await on_progress(ProgressEvent(
+                        phase="iteration_done",
+                        iteration=i,
+                        max_iterations=config.max_iterations,
+                        total_cases=total_cases,
+                        score=score,
+                        best_score=best_score,
+                        baseline_score=result.baseline_score,
+                        accepted=accepted,
+                        message=f"第 {i} 輪：{score:.4f} {'✓ 接受' if accepted else '✗ 放棄'}",
+                    ))
 
-            # Early stop: patience
-            if no_improve_count >= config.patience:
-                result.stopped_reason = "patience"
-                logger.info("Patience exhausted at iteration %d", i)
-                break
-        else:
-            result.stopped_reason = "max_iterations"
+                # Early stop: perfect score
+                if best_score >= 1.0:
+                    result.stopped_reason = "converged"
+                    logger.info("Perfect score reached at iteration %d", i)
+                    break
 
-        # Finalize: write best prompt to DB
-        self._write_prompt(target, best_prompt)
+                # Early stop: patience
+                if no_improve_count >= config.patience:
+                    result.stopped_reason = "patience"
+                    logger.info("Patience exhausted at iteration %d", i)
+                    break
+            else:
+                result.stopped_reason = "max_iterations"
+
+        finally:
+            # M34：無論迴圈正常結束或中途例外（mutate rate limit / 網路），
+            # 一律把線上 prompt 回寫為 best，避免停留在已 discarded 或未評完的候選。
+            self._write_prompt(target, best_prompt)
         result.best_score = best_score
         result.best_prompt = best_prompt
 
