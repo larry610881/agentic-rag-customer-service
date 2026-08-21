@@ -17,9 +17,28 @@ _TARGET_MAP = {
         "system_prompt",
         "id = 'default'",
     ),
-    ("bot", "bot_prompt"): ("bots", "bot_prompt", "id = :bot_id"),
-    ("bot", "base_prompt"): ("bots", "base_prompt", "id = :bot_id"),
+    # M36：bot 層一律綁 tenant_id，否則攻擊者以 body.bot_id 填他租戶 bot →
+    # 讀出其 system prompt（商業機密/防護規則）落進可見的 run snapshot / diff。
+    ("bot", "bot_prompt"): (
+        "bots", "bot_prompt", "id = :bot_id AND tenant_id = :tenant_id",
+    ),
+    ("bot", "base_prompt"): (
+        "bots", "base_prompt", "id = :bot_id AND tenant_id = :tenant_id",
+    ),
 }
+
+
+def _build_params(target: PromptTarget) -> dict[str, str]:
+    """M36：bot 層目標必須帶 tenant_id（空則拒絕），system 層不需。"""
+    params: dict[str, str] = {}
+    if target.level == "bot":
+        if not target.bot_id or not target.tenant_id:
+            raise ValueError(
+                "bot 層 prompt 操作必須同時提供 bot_id 與 tenant_id"
+            )
+        params["bot_id"] = target.bot_id
+        params["tenant_id"] = target.tenant_id
+    return params
 
 
 class PromptDBClient:
@@ -35,9 +54,7 @@ class PromptDBClient:
         table, column, where = _TARGET_MAP[key]
 
         query = f"SELECT {column} FROM {table} WHERE {where}"  # noqa: S608
-        params: dict[str, str] = {}
-        if target.bot_id:
-            params["bot_id"] = target.bot_id
+        params = _build_params(target)
 
         with Session(self._engine) as session:
             result = session.execute(text(query), params)
@@ -56,9 +73,8 @@ class PromptDBClient:
         table, column, where = _TARGET_MAP[key]
 
         query = f"UPDATE {table} SET {column} = :prompt WHERE {where}"  # noqa: S608
-        params: dict[str, str] = {"prompt": prompt}
-        if target.bot_id:
-            params["bot_id"] = target.bot_id
+        params = _build_params(target)
+        params["prompt"] = prompt
 
         with Session(self._engine) as session:
             result = session.execute(text(query), params)
