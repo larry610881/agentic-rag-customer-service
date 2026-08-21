@@ -537,6 +537,7 @@ class SendMessageUseCase:
         message: str,
         router_context: str,
         tenant_id: str = "",
+        test_mode: bool = False,
     ) -> dict[str, Any]:
         """Worker routing: classify → override bot_cfg with worker settings.
 
@@ -563,6 +564,7 @@ class SendMessageUseCase:
                     intent_routes=intent_routes,
                     tenant_id=tenant_id,
                     bot_id=bot_id,
+                    test_mode=test_mode,  # M14：影子執行不記生產 token
                 )
                 t_end = AgentTraceCollector.offset_ms()
                 AgentTraceCollector.add_node(
@@ -596,6 +598,7 @@ class SendMessageUseCase:
             router_model=bot_cfg.get("router_model", ""),
             tenant_id=tenant_id,
             bot_id=bot_id,
+            test_mode=test_mode,  # M14：影子執行不記生產 token
         )
         matched = outcome.worker
         bot_cfg["_classifier_attack"] = outcome.is_attack
@@ -763,6 +766,7 @@ class SendMessageUseCase:
         bot_cfg = await self._resolve_worker_config(
             bot_cfg, command.message, router_context,
             tenant_id=command.tenant_id,
+            test_mode=command.test_mode,  # M14：影子執行不記生產分類 token
         )
 
         # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型
@@ -1017,6 +1021,7 @@ class SendMessageUseCase:
         bot_cfg = await self._resolve_worker_config(
             bot_cfg, command.message, router_context,
             tenant_id=command.tenant_id,
+            test_mode=command.test_mode,  # M14：影子執行不記生產分類 token
         )
 
         # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型。

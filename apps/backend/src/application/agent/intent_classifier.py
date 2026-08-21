@@ -123,6 +123,7 @@ class IntentClassifier:
         router_model: str = "",
         tenant_id: str = "",
         bot_id: str | None = None,
+        test_mode: bool = False,
     ) -> WorkerConfig | None:
         """Classify into a WorkerConfig, or None for default fallback."""
         if not workers:
@@ -137,7 +138,7 @@ class IntentClassifier:
         raw = await self._call_llm(
             system_prompt, user_msg,
             [w.name for w in workers], router_model,
-            tenant_id=tenant_id, bot_id=bot_id,
+            tenant_id=tenant_id, bot_id=bot_id, test_mode=test_mode,
         )
         if raw is None:
             return None
@@ -153,11 +154,12 @@ class IntentClassifier:
         router_model: str = "",
         tenant_id: str = "",
         bot_id: str | None = None,
+        test_mode: bool = False,
     ) -> tuple[WorkerConfig | None, str]:
         """Issue #51 舊介面（分類 + 改寫），保留給既有呼叫端；內部走三行協定。"""
         outcome = await self.classify_sanitize(
             user_message, router_context, workers, router_model,
-            tenant_id=tenant_id, bot_id=bot_id,
+            tenant_id=tenant_id, bot_id=bot_id, test_mode=test_mode,
         )
         return outcome.worker, outcome.query
 
@@ -169,6 +171,7 @@ class IntentClassifier:
         router_model: str = "",
         tenant_id: str = "",
         bot_id: str | None = None,
+        test_mode: bool = False,
     ) -> ClassifyOutcome:
         """分類 + 清洗改寫 + 攻擊判定，共用同一次 LLM 呼叫（三行協定）。
 
@@ -189,7 +192,7 @@ class IntentClassifier:
         raw = await self._call_llm(
             system_prompt, user_msg,
             [w.name for w in workers], router_model,
-            tenant_id=tenant_id, bot_id=bot_id,
+            tenant_id=tenant_id, bot_id=bot_id, test_mode=test_mode,
             # Issue #52：reasoning 模型的 max_completion_tokens 含內部
             # reasoning；三行可見輸出僅 ~30 tokens，400 給 reasoning 留空間
             max_tokens=400,
@@ -203,7 +206,7 @@ class IntentClassifier:
             raw = await self._call_llm(
                 system_prompt, user_msg,
                 [w.name for w in workers], "",
-                tenant_id=tenant_id, bot_id=bot_id,
+                tenant_id=tenant_id, bot_id=bot_id, test_mode=test_mode,
                 max_tokens=400,
             )
         if raw is None:
@@ -235,6 +238,7 @@ class IntentClassifier:
         intent_routes: list[IntentRoute],
         tenant_id: str = "",
         bot_id: str | None = None,
+        test_mode: bool = False,
     ) -> IntentRoute | None:
         """Legacy: classify into an IntentRoute."""
         if not intent_routes:
@@ -249,7 +253,7 @@ class IntentClassifier:
         raw = await self._call_llm(
             system_prompt, user_msg,
             [r.name for r in intent_routes],
-            tenant_id=tenant_id, bot_id=bot_id,
+            tenant_id=tenant_id, bot_id=bot_id, test_mode=test_mode,
         )
         if raw is None:
             return None
@@ -266,6 +270,7 @@ class IntentClassifier:
         tenant_id: str = "",
         bot_id: str | None = None,
         max_tokens: int = 50,
+        test_mode: bool = False,
     ) -> str | None:
         try:
             kwargs: dict[str, Any] = {
@@ -295,7 +300,15 @@ class IntentClassifier:
             )
 
             # Token-Gov.0: 記錄 intent classify token 用量
-            if self._record_usage and result.usage and result.usage.total_tokens > 0:
+            # M14：test_mode（閘門 run / 優化迴圈的影子執行）不得把分類 token 記成
+            # 生產 intent_classify 並計入租戶帳務——#54 的 eval token 分流只涵蓋主模型
+            # （router 層 usage_ctx），分類器這條漏了。影子執行時略過生產記帳。
+            if (
+                not test_mode
+                and self._record_usage
+                and result.usage
+                and result.usage.total_tokens > 0
+            ):
                 await self._record_usage.execute(
                     tenant_id=tenant_id,
                     request_type=UsageCategory.INTENT_CLASSIFY.value,
