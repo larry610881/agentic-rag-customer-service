@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -97,20 +97,26 @@ class SQLAlchemyPromptGateRunRepository(PromptGateRunRepository):
         )
         return (await self._session.execute(stmt)).scalar_one()
 
-    async def mark_orphans_error(self) -> list[str]:
+    async def mark_orphans_error(
+        self, *, grace_minutes: int = 30
+    ) -> list[str]:
+        # M7：多實例／滾動部署時，新實例啟動的孤兒清理不得殺掉舊實例上仍健康
+        # 執行中的 run。加 created_at 寬限窗：只清超過 grace_minutes（遠長於任何
+        # 真實 gate run 時長）的 run，剛啟動的 run 視為其他實例仍在跑、不動。
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=grace_minutes)
+        cond = (
+            PromptGateRunModel.status.in_(("queued", "running")),
+            PromptGateRunModel.created_at < cutoff,
+        )
         async with atomic(self._session):
-            stmt = select(PromptGateRunModel.version_id).where(
-                PromptGateRunModel.status.in_(("queued", "running"))
-            )
+            stmt = select(PromptGateRunModel.version_id).where(*cond)
             version_ids = list(
                 (await self._session.execute(stmt)).scalars().all()
             )
             if version_ids:
                 await self._session.execute(
                     update(PromptGateRunModel)
-                    .where(
-                        PromptGateRunModel.status.in_(("queued", "running"))
-                    )
+                    .where(*cond)
                     .values(
                         status="error",
                         error_message="orphaned by process restart",
