@@ -155,10 +155,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # S-Pricing.1: 啟動時 load DB pricing 到記憶體 cache
     # 失敗不擋啟動 — RecordUsageUseCase 會 fallback 到 DEFAULT_MODELS
     try:
-        # M29：refresh 走 db_session=get_tracked_session，在 lifespan context 建 session
-        # 並 set ContextVar；不包 independent_session_scope 則裸 SELECT 開交易後無人
-        # close → 每次啟動固定漏 1 條 pool 連線，且 create_task(_log_cleanup_loop) 複製此
-        # context 直接繼承這顆已死 session（把 H14 放大為從第一次就失敗）。
+        # M29：refresh 走 db_session=get_tracked_session，在 lifespan context 建
+        # session 卻無 independent_session_scope、無人 close → 每次啟動漏 1 條 pool
+        # 連線，且 create_task(_log_cleanup_loop) 複製此 context 繼承這顆已死 session
+        # （把 H14 放大為從第一次就失敗）。
         from src.infrastructure.db.session_middleware import (
             independent_session_scope,
         )
