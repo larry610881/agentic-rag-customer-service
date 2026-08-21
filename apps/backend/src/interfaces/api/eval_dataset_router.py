@@ -19,6 +19,7 @@ from src.application.eval_dataset.delete_eval_dataset_use_case import (
 from src.application.eval_dataset.eval_use_cases import (
     EstimateCostCommand,
     EstimateCostUseCase,
+    EvalInfrastructureError,
     RunEvalCommand,
     RunSingleEvalUseCase,
     RunValidationCommand,
@@ -605,6 +606,7 @@ async def delete_test_case(
 
 class RunEvalRequest(BaseModel):
     dataset_id: str
+    refresh_token: str = ""
 
 
 class EstimateCostRequest(BaseModel):
@@ -635,12 +637,18 @@ async def run_single_eval(
         dataset_id=body.dataset_id,
         api_token=api_token,
         role=tenant.role,
+        refresh_token=body.refresh_token,
     )
     try:
         return await use_case.execute(command)
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from e
+    except EvalInfrastructureError as e:
+        # M28：大量 API 失敗屬基礎設施故障，回 502 而非把假 FAIL 落歷史
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
         ) from e
 
 
@@ -675,6 +683,7 @@ class RunValidationRequest(BaseModel):
     dataset_id: str
     bot_id: str = ""
     repeats: int = 5
+    refresh_token: str = ""
 
 
 @router.post("/validate")
@@ -702,12 +711,18 @@ async def run_validation_eval(
         repeats=body.repeats,
         bot_id=body.bot_id,
         role=tenant.role,
+        refresh_token=body.refresh_token,
     )
     try:
         return await use_case.execute(command)
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from e
+    except EvalInfrastructureError as e:
+        # M28：大量 API 失敗屬基礎設施故障，回 502 而非把假 FAIL 落歷史
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
         ) from e
 
 

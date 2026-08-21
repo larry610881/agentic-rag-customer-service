@@ -249,7 +249,12 @@ def cmd_validate(args: argparse.Namespace) -> None:
         results: list[ChatResult] = []
         for tc in dataset.test_cases:
             try:
-                cr = await api_client.chat(message=tc.question, bot_id=bot_id)
+                cr = await api_client.chat(
+                    message=tc.question,
+                    bot_id=bot_id,
+                    # M32：多輪 case 帶入對話歷史，否則無上下文必誤判 fail
+                    history_override=list(tc.conversation_history) or None,
+                )
                 results.append(cr)
             except Exception as e:
                 print(f"  ERROR: {tc.id}: {e}")

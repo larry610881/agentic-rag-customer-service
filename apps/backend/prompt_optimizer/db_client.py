@@ -129,6 +129,14 @@ class PromptDBClient:
                 },
             )
 
+            # M35：case 斷言剔除已在 default_assertions 的項目再寫入。YAML 載入時
+            # _parse_cases 已把 defaults 併進每個 case，若原樣寫入，read_dataset 讀回時
+            # 又疊一次 → 每個 default 斷言跑兩次、分數灌水、優化 accept/discard 失真。
+            # 對齊 dataset_to_yaml 與 eval_dataset_router 的 default_set 過濾。
+            default_set = {
+                (a.type, str(a.params)) for a in dataset.default_assertions
+            }
+
             # Insert test cases
             for tc in dataset.test_cases:
                 tc_id = str(uuid.uuid4())
@@ -154,6 +162,7 @@ class PromptDBClient:
                             [
                                 {"type": a.type, "params": a.params}
                                 for a in tc.assertions
+                                if (a.type, str(a.params)) not in default_set
                             ]
                         ),
                         "tags": None,
