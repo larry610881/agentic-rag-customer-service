@@ -13,6 +13,7 @@ from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
 from src.domain.agent.entity import AgentResponse
 from src.domain.bot.entity import Bot
 from src.domain.line.entity import LineTextMessageEvent
+from src.domain.shared.exceptions import DomainException, EntityNotFoundError
 
 scenarios("unit/line/line_webhook_multitenant.feature")
 
@@ -105,7 +106,8 @@ def process_webhook_for_bot(context, bot_id):
             )
         )
         context["error"] = None
-    except ValueError as e:
+    except DomainException as e:
+        # M15：bot 查驗失敗改拋 EntityNotFoundError（DomainException）供 router 映射 404
         context["error"] = e
 
 
@@ -149,7 +151,9 @@ def bot_without_line_channel(context, bot_id, tenant_id):
 @then("應拋出 LINE Channel 未設定的錯誤")
 def verify_channel_not_configured_error(context):
     assert context["error"] is not None
-    assert "no LINE channel secret" in str(context["error"])
+    # M15：改拋 EntityNotFoundError("LineChannel", ...) → router 映射 404
+    assert isinstance(context["error"], EntityNotFoundError)
+    assert "LineChannel" in str(context["error"])
 
 
 # --- Scenario: Bot ID 不存在時回傳錯誤 ---
@@ -166,7 +170,9 @@ def bot_not_found(context, bot_id):
 @then("應拋出 Bot 不存在的錯誤")
 def verify_bot_not_found_error(context):
     assert context["error"] is not None
-    assert "Bot not found" in str(context["error"])
+    # M15：改拋 EntityNotFoundError("Bot", ...) → router 映射 404
+    assert isinstance(context["error"], EntityNotFoundError)
+    assert "Bot" in str(context["error"])
 
 
 # --- Scenario: 使用 Bot 的 Channel Secret 驗簽 ---

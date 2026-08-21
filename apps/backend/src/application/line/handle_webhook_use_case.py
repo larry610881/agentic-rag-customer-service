@@ -43,6 +43,10 @@ from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.concurrency import ConversationLock
+from src.domain.shared.exceptions import (
+    AuthorizationError,
+    EntityNotFoundError,
+)
 from src.infrastructure.line.flex_contact_builder import build_contact_flex
 from src.infrastructure.line.flex_image_carousel_builder import (
     build_image_carousel,
@@ -281,14 +285,14 @@ class HandleWebhookUseCase:
         signature: str,
     ) -> "WebhookContext | None":
         """Bot 查詢 → 驗簽 → 解析事件。回傳 context 供後續處理。"""
+        # M15：查驗失敗改拋 DomainException，讓 router 映射為 404/403 而非 500
+        # （假簽章不應回 500 引發 LINE redelivery，也不應被 500 掩蓋成伺服器錯誤）。
         bot = await self._get_bot_by_short_code_cached(short_code)
         if bot is None:
-            raise ValueError(f"Bot not found: {short_code}")
+            raise EntityNotFoundError("Bot", short_code)
 
         if not bot.line_channel_secret:
-            raise ValueError(
-                f"Bot {short_code} has no LINE channel secret configured"
-            )
+            raise EntityNotFoundError("LineChannel", short_code)
 
         line_service = self._line_service_factory.create(
             bot.line_channel_secret,
@@ -296,7 +300,7 @@ class HandleWebhookUseCase:
         )
 
         if not await line_service.verify_signature(body_text, signature):
-            raise ValueError("Invalid LINE webhook signature")
+            raise AuthorizationError("Invalid LINE webhook signature")
 
         events = self._parse_text_events(body_text)
         postback_events = self._parse_postback_events(body_text)

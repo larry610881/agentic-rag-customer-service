@@ -9,6 +9,10 @@ from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
 from src.container import Container
 from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService
+from src.domain.shared.exceptions import (
+    AuthorizationError,
+    EntityNotFoundError,
+)
 from src.infrastructure.logging.error_handler import safe_background_task
 
 router = APIRouter(prefix="/api/v1/webhook", tags=["webhook"])
@@ -95,6 +99,7 @@ async def line_webhook(
 async def line_webhook_multitenant(
     bot_short_code: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     x_line_signature: str = Header(...),
     use_case: HandleWebhookUseCase = Depends(
         Provide[Container.handle_webhook_use_case]
@@ -103,9 +108,23 @@ async def line_webhook_multitenant(
     body = await request.body()
     body_text = body.decode("utf-8")
 
-    # 單階段：bot 查詢 + 驗簽 + RAG + LLM + reply（省 Push 配額）
-    await use_case.execute_for_bot(
-        bot_short_code, body_text, x_line_signature,
-    )
+    # M15：先同步做 bot 查詢 + 驗簽（快、可能拋 404/403），驗簽通過後把重管線
+    # （RAG + LLM + reply）丟背景任務先回 200。否則任何處理例外都回 500 →
+    # LINE redelivery 重送 → 重複 LLM 呼叫/回覆，持續錯誤更會讓 LINE 停用 webhook。
+    try:
+        ctx = await use_case.prepare_and_reply(
+            bot_short_code, body_text, x_line_signature,
+        )
+    except EntityNotFoundError as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+    except AuthorizationError as e:
+        raise HTTPException(status_code=403, detail=e.message) from e
+
+    if ctx is not None:
+        background_tasks.add_task(
+            safe_background_task,
+            use_case.process_and_push, ctx,
+            task_name="line_process_and_push",
+        )
 
     return {"status": "ok"}
