@@ -9,6 +9,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -70,7 +71,14 @@ class BotConfigVersionModel(Base):
         UniqueConstraint("bot_id", "version_no", name="uq_bcv_bot_version"),
         Index("ix_bcv_bot_created", "bot_id", "created_at"),
         Index("ix_bcv_tenant", "tenant_id"),
-        # partial unique index（is_current 唯一）由 migration SQL 建立：
-        # CREATE UNIQUE INDEX ix_bcv_current ON bot_config_versions (bot_id)
-        # WHERE is_current
+        # is_current 唯一不變量（每 bot 至多一個線上版本）。與 migration
+        # add_bot_config_versions.sql 的 partial unique index 定義一致；宣告於此
+        # 讓 create_all（測試 schema）也建出此索引，避免只有真實 DB 有約束、
+        # 測試永遠抓不到 is_current 併發違反（C1）。DB 已套用，非新增 DDL。
+        Index(
+            "ix_bcv_current",
+            "bot_id",
+            unique=True,
+            postgresql_where=text("is_current"),
+        ),
     )

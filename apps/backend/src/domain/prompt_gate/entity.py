@@ -81,8 +81,10 @@ class BotConfigVersion:
             raise InvalidVersionTransitionError(self.status, "publish")
         self.status = STATUS_PUBLISHED
         self.gate_verdict = verdict
-        self.is_current = True
         self.published_at = datetime.now(timezone.utc)
+        # is_current 不在此設定：save(version) 會立即 commit，若此處先設 True，
+        # 舊 current 尚未清除即違反 partial unique index ix_bcv_current（C1）。
+        # is_current 的翻轉一律交給 repository.set_current 在單一交易內完成。
 
     def mark_rejected(self) -> None:
         if self.status not in _REJECTABLE:

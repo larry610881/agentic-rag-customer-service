@@ -227,7 +227,10 @@ class PublishConfigVersionUseCase:
         apply_snapshot(bot, version.config_snapshot)
         await self._bot_repo.save(bot)
         await self._version_repo.save(version)
+        # set_current 在單一交易內先清舊 current 再設新，是 is_current 的唯一翻轉點
+        # （mark_published 不再預設 True，避免 save 先 commit 撞 ix_bcv_current，C1）
         await self._version_repo.set_current(version.bot_id, version.id)
+        version.is_current = True  # 回傳實體反映 DB 翻轉結果
 
         if self._cache is not None:
             await self._cache.delete(f"bot:{bot.id.value}")

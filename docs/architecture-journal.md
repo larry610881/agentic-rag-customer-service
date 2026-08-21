@@ -7,6 +7,29 @@
 
 ---
 
+## Code Review CRITICAL 修復 C1/C3 — 「測試 schema 要照真實約束」與「VO 改型別要掃呼叫端」（2026-08-21，全專案 review 後續）
+
+**Sprint 來源**：2026-08-20 多代理全專案 review（`docs/reviews/full-review-2026-08-20.md`）CRITICAL 批次第一輪
+
+**主題**：Partial Unique Index 不變量、Value Object 型別遷移的呼叫端稽核、測試 schema 保真度
+
+#### 做得好的地方
+- **C1 根因收斂在一處**：publish 端點與 PUT /bots 版控墊片是同一個 bug 的兩個現場（都 `mark_published()` 預設 `is_current=True` → `save()` 先 commit → 撞 `ix_bcv_current`）。修在共用的 `entity.mark_published`（移除 is_current 設定）+ 讓 `set_current` 成為 is_current 唯一翻轉點，一次覆蓋兩條路徑，而非各補一個 patch。**同根因多現場，修根不修枝**。
+- **補上測試 schema 的約束保真度**：原本 `bot_config_version_model.__table_args__` 刻意不宣告 partial unique index（靠 migration SQL 建），導致 conftest 的 `create_all` 測試 schema 缺這條約束，任何 is_current 併發違反在測試中「永遠是綠的」。改用 `Index(unique=True, postgresql_where=text("is_current"))` 宣告後，`create_all` 建出與真實 DB 一致的約束，C1 的 regression 才第一次能在測試裡重現 500。DB 已套用同名索引 → 純宣告、零新 DDL。
+- **C3 用既有共用工具修**：widget 記帳的 `TokenUsage(total_tokens=...)` 崩潰，直接改用 `extract_usage_from_accumulated()`（agent_router 早就在用的正解），順帶把漏掉的 `cache_read/creation_tokens` 一起帶回——與 VO 註解裡「Carrefour 5.14M cache token 沒扣 quota」是同一類漏算。
+- **對抗性歸因守紀律**：全量測試 43 紅，用 `git stash` 隔離自己的 4 個 tracked 檔後重跑代表性子集，證明 43 紅在我改動前就存在（TokenUsage total_tokens、total_used_in_cycle、event loop、401、vector_store.delete），與本次無關——先證明再下結論，不含糊放行。
+
+#### 潛在隱憂
+- **VO 改成 @property 卻沒稽核全部呼叫端**：`TokenUsage.total_tokens` 從 field 改 property（Token-Gov.6），widget 呼叫端漏改躺了整個 #54 週期沒被發現——**因為 widget 通路完全沒有 usage 記帳測試**。同型別遷移應配一次 `grep -rn 'TokenUsage(' ` 全掃 + 每通路至少一個記帳測試 → 優先級：高（本次已補 widget regression，其餘通路待查）。
+- **publish 跨表非同交易縫隙仍在**：`atomic()` 每次 repo 呼叫即 commit，故 save(bot) / save(version) / set_current 是三次獨立 commit。本次只消除了確定性崩潰（is_current 撞索引），但「bot 已套新設定、set_current 卻失敗」的半套用窗口仍在（journal 既有已知風險）。根治要 use-case 級單一交易，需重構 atomic/repo 邊界 → 優先級：中（超出 CRITICAL hotfix 範圍，另立）。
+- **43 個既有 integration 紅測**：多數是測試 step 檔自建 `TokenUsage(total_tokens=)` 的既有債，會持續稀釋「全綠」訊號 → 應獨立開卡批次修（與前端 9 紅同性質）→ 優先級：中。
+
+#### 延伸學習
+- **Partial unique index 是 append-only 版控表表達「單一 current」不變量的正解**（比觸發器/應用層鎖輕），但代價是：ORM 若不宣告它，測試 schema 與生產 schema 就會分岔。**凡是靠 migration 手寫、ORM 沒宣告的約束，等於在測試裡不存在**——要嘛 ORM 宣告（可被 create_all 建的都該宣告），要嘛測試改用真實 migration 建 schema。
+- 若想深入：搜尋 "PostgreSQL partial unique index invariant"、"SQLAlchemy postgresql_where index"、"test schema drift create_all vs migrations"。
+
+---
+
 ## Phase F/G 收官 — 「容器復用」與 LLM judge 的換位雙判（2026-08-20，Issue #54 完結）
 
 **Sprint 來源**：Prompt 發布閘門 Phase F（通用集 seed）+ G（回放 pairwise 對比）

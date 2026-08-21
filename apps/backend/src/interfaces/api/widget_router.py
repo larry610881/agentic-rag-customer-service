@@ -209,24 +209,21 @@ async def widget_chat_stream(
 
         # Record token usage after stream completes
         if usage_data:
-            from src.domain.rag.value_objects import TokenUsage
-
-            usage = TokenUsage(
-                model=usage_data.get("model", "unknown"),
-                input_tokens=usage_data.get("input_tokens", 0),
-                output_tokens=usage_data.get("output_tokens", 0),
-                total_tokens=usage_data.get("total_tokens", 0),
-                estimated_cost=usage_data.get("estimated_cost", 0.0),
+            from src.infrastructure.langgraph.usage import (
+                extract_usage_from_accumulated,
             )
-            try:
-                await record_usage.execute(
-                    tenant_id=bot.tenant_id,
-                    request_type="chat_widget",
-                    usage=usage,
-                    bot_id=bot.id.value,
-                )
-            except Exception:
-                logger.exception("widget.chat.stream.record_usage_error")
+
+            usage = extract_usage_from_accumulated(usage_data)
+            if usage is not None:
+                try:
+                    await record_usage.execute(
+                        tenant_id=bot.tenant_id,
+                        request_type="chat_widget",
+                        usage=usage,
+                        bot_id=bot.id.value,
+                    )
+                except Exception:
+                    logger.exception("widget.chat.stream.record_usage_error")
 
     response = StreamingResponse(
         event_generator(),
