@@ -105,6 +105,26 @@ def _bot_from_json(raw: str) -> Bot:
     return Bot(**d)
 
 
+def _format_line_source_lines(sources: list, limit: int = 3) -> list[str]:
+    """組 LINE「參考來源」文字行（H10）。
+
+    sources 可能是 Source dataclass 或 dict（DM 快速道透傳的 dm_sources）。原本
+    直接 s.score / s.document_name 屬性存取，遇 dict 拋 AttributeError；且該例外在
+    reply 送出前拋出（try/finally 之前）→ 使用者收不到任何回覆、對話/trace 未持久化、
+    LINE redelivery 重送。此處對兩型都安全取值。
+    """
+    lines: list[str] = []
+    for i, s in enumerate(sources[:limit], 1):
+        if isinstance(s, dict):
+            score = s.get("score", 0) or 0
+            name = s.get("document_name") or s.get("kb_id") or ""
+        else:
+            score = getattr(s, "score", 0) or 0
+            name = getattr(s, "document_name", "") or ""
+        lines.append(f"{i}. {name}（{round(score * 100)}%）")
+    return lines
+
+
 class HandleWebhookUseCase:
     def __init__(
         self,
@@ -692,6 +712,10 @@ class HandleWebhookUseCase:
                     router_context=router_context,
                     workers=workers,
                     router_model=bot.router_model,
+                    # H9：漏傳則分類器 token 以 tenant_id="" 落孤兒帳（計費繞過），
+                    # 與 web 通路（send_message_use_case）行為不一致
+                    tenant_id=bot.tenant_id,
+                    bot_id=bot.id.value,
                 )
                 matched, rewritten_query = outcome.worker, outcome.query
                 classifier_attack = bool(outcome.is_attack)
@@ -871,10 +895,7 @@ class HandleWebhookUseCase:
         # LINE 純文字通路：清除 LLM 殘留的 Markdown 符號（prompt 約束的安全網）
         reply_text = strip_markdown_for_line(result.answer)
         if bot.line_show_sources and result.sources:
-            source_lines = []
-            for i, s in enumerate(result.sources[:3], 1):
-                score_pct = round(s.score * 100)
-                source_lines.append(f"{i}. {s.document_name}（{score_pct}%）")
+            source_lines = _format_line_source_lines(result.sources)
             reply_text += "\n\n📚 參考來源：\n" + "\n".join(source_lines)
 
         message_id = assistant_msg.id.value

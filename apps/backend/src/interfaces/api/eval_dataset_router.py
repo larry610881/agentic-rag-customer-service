@@ -376,7 +376,12 @@ async def import_dataset_from_yaml(
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Invalid YAML: {e}") from e
 
-    tenant_id = body.tenant_id or tenant.tenant_id
+    # H12：非 system_admin 一律忽略 body.tenant_id，強制用自己的 tenant_id，
+    # 否則任一租戶可指定他人 tenant_id 冒名寫入其命名空間。
+    if body.tenant_id and tenant.role == "system_admin":
+        tenant_id = body.tenant_id
+    else:
+        tenant_id = tenant.tenant_id
 
     # Create dataset
     dataset = await create_use_case.execute(
