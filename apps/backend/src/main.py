@@ -59,24 +59,41 @@ async def _log_cleanup_loop(container: object) -> None:
     while True:
         await asyncio.sleep(3600)  # check every hour
         try:
-            repo = container.log_retention_policy_repository()  # type: ignore[attr-defined]
-            policy = await repo.get()
-            if not policy or not policy.enabled:
-                continue
-            now = datetime.now(timezone.utc)
-            if policy.last_cleanup_at:
-                next_run = policy.last_cleanup_at + timedelta(
-                    hours=policy.cleanup_interval_hours
-                )
-                if now < next_run:
-                    continue
-                if now.hour != policy.cleanup_hour:
-                    continue
-            uc = container.execute_log_cleanup_use_case()  # type: ignore[attr-defined]
-            deleted = await uc.execute()
-            logger.info("log_cleanup.success", deleted_count=deleted)
+            await _run_log_cleanup_once(container)
         except Exception:
             logger.warning("log_cleanup.failed", exc_info=True)
+
+
+async def _run_log_cleanup_once(container: object) -> None:
+    """單次 log retention 檢查 + 清理（若到期）。
+
+    H14：整段包 independent_session_scope 取新 session 並確保關閉。原本直接
+    container.log_retention_policy_repository() 走 db_session=get_tracked_session，
+    把 session 存進背景 task 的 ContextVar 卻無人 close，首次 idle-in-transaction 被
+    PG 砍斷後每小時拿到同一顆死 session → 清理永久失效且不歸還連線。對齊 startup
+    gate 孤兒清理的做法。
+    """
+    from src.infrastructure.db.session_middleware import (
+        independent_session_scope,
+    )
+
+    async with independent_session_scope():
+        repo = container.log_retention_policy_repository()  # type: ignore[attr-defined]
+        policy = await repo.get()
+        if not policy or not policy.enabled:
+            return
+        now = datetime.now(timezone.utc)
+        if policy.last_cleanup_at:
+            next_run = policy.last_cleanup_at + timedelta(
+                hours=policy.cleanup_interval_hours
+            )
+            if now < next_run:
+                return
+            if now.hour != policy.cleanup_hour:
+                return
+        uc = container.execute_log_cleanup_use_case()  # type: ignore[attr-defined]
+        deleted = await uc.execute()
+        logger.info("log_cleanup.success", deleted_count=deleted)
 
 
 @asynccontextmanager
