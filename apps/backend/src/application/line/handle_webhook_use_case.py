@@ -69,17 +69,28 @@ class WebhookContext:
     postback_events: list[LinePostbackEvent] = field(default_factory=list)
 
 
-def _bot_to_json(bot: Bot) -> str:
-    """Bot dataclass → JSON str（處理 BotId、BotShortCode 和 datetime）"""
+def _bot_to_json(bot: Bot, encryption: Any | None = None) -> str:
+    """Bot dataclass → JSON str（處理 BotId、BotShortCode 和 datetime）
+
+    L10：LINE 憑證不得明文進 Redis（會把暴露面從 PG 擴大到 Redis／dump／replica）。
+    有加密服務時加密存放（保留快取效益）；無則剝除，cache hit 後由
+    prepare_and_reply 回 DB 補讀。
+    """
     d = dataclasses.asdict(bot)
     d["id"] = bot.id.value
     d["short_code"] = bot.short_code.value
     d["created_at"] = bot.created_at.isoformat()
     d["updated_at"] = bot.updated_at.isoformat()
+    for key in ("line_channel_secret", "line_channel_access_token"):
+        val = d.get(key) or ""
+        if val and encryption is not None:
+            d[key] = encryption.encrypt(val)
+        else:
+            d[key] = ""
     return json.dumps(d, ensure_ascii=False)
 
 
-def _bot_from_json(raw: str) -> Bot:
+def _bot_from_json(raw: str, encryption: Any | None = None) -> Bot:
     """JSON str → Bot dataclass
 
     `dataclasses.asdict` 把 nested dataclass 攤平成 dict，反向時必須逐欄重建，
@@ -89,6 +100,17 @@ def _bot_from_json(raw: str) -> Bot:
     d = json.loads(raw)
     d["id"] = BotId(value=d["id"])
     d["short_code"] = BotShortCode(value=d["short_code"])
+    # L10：快取中的 LINE 憑證為加密存放；解密失敗（舊格式/換 key）視同缺失，
+    # 由 prepare_and_reply 回 DB 補讀。
+    for key in ("line_channel_secret", "line_channel_access_token"):
+        val = d.get(key) or ""
+        if val and encryption is not None:
+            try:
+                d[key] = encryption.decrypt(val)
+            except Exception:
+                d[key] = ""
+        elif val and encryption is None:
+            d[key] = ""
     d["llm_params"] = BotLLMParams(**d["llm_params"])
     d["created_at"] = datetime.fromisoformat(d["created_at"])
     d["updated_at"] = datetime.fromisoformat(d["updated_at"])
@@ -153,6 +175,7 @@ class HandleWebhookUseCase:
         query_rag_use_case: Any | None = None,
         dm_image_query_tool: Any | None = None,
         tenant_repository: Any | None = None,
+        encryption_service: Any | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -183,6 +206,8 @@ class HandleWebhookUseCase:
         self._query_rag = query_rag_use_case
         # 快速道的 DM 圖卡：並行呼叫 DM 工具（signed URL 產生邏輯原封重用）
         self._dm_tool = dm_image_query_tool
+        # L10：bot 快取中的 LINE 憑證加密存放（None 時剝除 + DB 補讀）
+        self._encryption = encryption_service
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
         """Redis 快取查 Bot（by ID），預設 120 秒 TTL。"""
@@ -190,12 +215,13 @@ class HandleWebhookUseCase:
         if self._cache_service is not None:
             cached = await self._cache_service.get(cache_key)
             if cached is not None:
-                return _bot_from_json(cached)
+                return _bot_from_json(cached, self._encryption)
 
         bot = await self._bot_repository.find_by_id(bot_id)
         if bot is not None and self._cache_service is not None:
             await self._cache_service.set(
-                cache_key, _bot_to_json(bot), ttl_seconds=self._cache_ttl
+                cache_key, _bot_to_json(bot, self._encryption),
+                ttl_seconds=self._cache_ttl,
             )
         return bot
 
@@ -205,12 +231,13 @@ class HandleWebhookUseCase:
         if self._cache_service is not None:
             cached = await self._cache_service.get(cache_key)
             if cached is not None:
-                return _bot_from_json(cached)
+                return _bot_from_json(cached, self._encryption)
 
         bot = await self._bot_repository.find_by_short_code(short_code)
         if bot is not None and self._cache_service is not None:
             await self._cache_service.set(
-                cache_key, _bot_to_json(bot), ttl_seconds=self._cache_ttl
+                cache_key, _bot_to_json(bot, self._encryption),
+                ttl_seconds=self._cache_ttl,
             )
         return bot
 
@@ -290,6 +317,13 @@ class HandleWebhookUseCase:
         bot = await self._get_bot_by_short_code_cached(short_code)
         if bot is None:
             raise EntityNotFoundError("Bot", short_code)
+
+        # L10：快取 JSON 已剝除 LINE 憑證，cache hit 時回 DB 補讀兩欄
+        if not bot.line_channel_secret:
+            fresh = await self._bot_repository.find_by_short_code(short_code)
+            if fresh is not None:
+                bot.line_channel_secret = fresh.line_channel_secret
+                bot.line_channel_access_token = fresh.line_channel_access_token
 
         if not bot.line_channel_secret:
             raise EntityNotFoundError("LineChannel", short_code)

@@ -206,9 +206,14 @@ class PublishConfigVersionUseCase:
         *,
         verdict: str = VERDICT_SKIPPED,
         force: bool = False,
+        expected_bot_id: str | None = None,
     ) -> BotConfigVersion:
         version = await self._version_repo.find_by_id(version_id, tenant_id)
         if version is None:
+            raise EntityNotFoundError("BotConfigVersion", version_id)
+        # L1：URL 的 bot_id 與版本實際歸屬須一致，否則以 bot A 的 URL 可發布
+        # bot B 的版本（同租戶），audit/前端呈現與作用對象脫鉤。
+        if expected_bot_id is not None and version.bot_id != expected_bot_id:
             raise EntityNotFoundError("BotConfigVersion", version_id)
 
         bot = await self._bot_repo.find_by_id(version.bot_id)
@@ -251,10 +256,17 @@ class RejectConfigVersionUseCase:
         self._version_repo = version_repository
 
     async def execute(
-        self, tenant_id: str, version_id: str
+        self,
+        tenant_id: str,
+        version_id: str,
+        *,
+        expected_bot_id: str | None = None,
     ) -> BotConfigVersion:
         version = await self._version_repo.find_by_id(version_id, tenant_id)
         if version is None:
+            raise EntityNotFoundError("BotConfigVersion", version_id)
+        # L1：URL bot_id 與版本歸屬一致性（同 publish）
+        if expected_bot_id is not None and version.bot_id != expected_bot_id:
             raise EntityNotFoundError("BotConfigVersion", version_id)
         prev_status = version.status
         version.mark_rejected()
@@ -343,8 +355,17 @@ class GetVersionMetricsUseCase:
         self._version_repo = version_repository
         self._metrics_repo = metrics_repository
 
-    async def execute(self, tenant_id: str, version_id: str):
+    async def execute(
+        self,
+        tenant_id: str,
+        version_id: str,
+        *,
+        expected_bot_id: str | None = None,
+    ):
         version = await self._version_repo.find_by_id(version_id, tenant_id)
         if version is None:
+            raise EntityNotFoundError("BotConfigVersion", version_id)
+        # L1：URL bot_id 與版本歸屬一致性
+        if expected_bot_id is not None and version.bot_id != expected_bot_id:
             raise EntityNotFoundError("BotConfigVersion", version_id)
         return await self._metrics_repo.get_metrics(tenant_id, version_id)

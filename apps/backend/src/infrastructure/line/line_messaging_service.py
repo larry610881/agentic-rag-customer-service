@@ -11,12 +11,17 @@ from src.infrastructure.logging.setup import get_logger
 
 logger = get_logger(__name__)
 
+# L7：module 級共用 AsyncClient。multitenant factory 每個 webhook 建新 service
+# 實例，若每實例各建 AsyncClient 且全 codebase 無 aclose() → 每請求遺留未關閉
+# 連線/socket 靠 GC 非確定性回收。token 走 per-request header，共用連線池安全。
+_shared_client = httpx.AsyncClient(timeout=30.0)
+
 
 class HttpxLineMessagingService(LineMessagingService):
     def __init__(self, channel_secret: str, channel_access_token: str):
         self._channel_secret = channel_secret
         self._channel_access_token = channel_access_token
-        self._client = httpx.AsyncClient(timeout=30.0)
+        self._client = _shared_client
 
     def _auth_headers(self) -> dict[str, str]:
         return {

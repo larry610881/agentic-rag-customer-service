@@ -214,7 +214,10 @@ async def widget_chat_stream(
         message=body.message,
         conversation_id=body.conversation_id if bot.widget_keep_history else None,
         visitor_id=visitor_id,
-        identity_source="widget" if visitor_id else None,
+        # L6：widget 端點固定通路標記——無 X-Visitor-Id 時原本為 None，trace source
+        # 會 fallback 成 "web"，通路別統計把 widget 流量算進 web。memory 身份解析
+        # 仍以 visitor_id 為 gate（_resolve_and_load_memory 先檢查 visitor_id）。
+        identity_source="widget",
     )
 
     async def event_generator():
@@ -226,9 +229,24 @@ async def widget_chat_stream(
         except Exception as exc:
             logger.exception("widget.chat.stream.error")
             error_msg = classify_streaming_error(exc)
+            # L5：與 agent_router 對齊（channel parity）——標記+持久化 failed trace，
+            # 否則 widget 通路的失敗不出現在 Studio 觀測頁，該輪 trace 直接丟失。
+            from src.interfaces.api._streaming_failure import (
+                persist_failed_stream_trace,
+            )
+
+            failed_trace_id = await persist_failed_stream_trace(
+                use_case,
+                conversation_id=command.conversation_id,
+                source="widget",
+                error_msg=error_msg,
+            )
             error_payload = {"type": "error", "message": error_msg}
+            done_payload: dict = {"type": "done"}
+            if failed_trace_id:
+                done_payload["trace_id"] = failed_trace_id
             yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
 
         # Record token usage after stream completes
         usage_data = captured.get("usage")

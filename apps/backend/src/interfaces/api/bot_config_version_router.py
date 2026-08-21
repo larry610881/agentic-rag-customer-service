@@ -288,7 +288,10 @@ async def get_version_metrics(
 ) -> dict:
     """版本服役成效卡（§13.6）：方向性參考，非嚴格因果。"""
     try:
-        m = await use_case.execute(tenant.tenant_id, version_id)
+        m = await use_case.execute(
+            tenant.tenant_id, version_id,
+            expected_bot_id=bot_id,  # L1
+        )
     except EntityNotFoundError as exc:
         raise _handle(exc) from exc
     return {
@@ -320,6 +323,7 @@ async def publish_version(
         version = await use_case.execute(
             tenant.tenant_id, version_id,
             force=bool(body and body.force),
+            expected_bot_id=bot_id,  # L1：URL 與版本歸屬一致性
         )
     except (
         EntityNotFoundError,
@@ -425,7 +429,10 @@ async def reject_version(
     ),
 ) -> VersionResponse:
     try:
-        version = await use_case.execute(tenant.tenant_id, version_id)
+        version = await use_case.execute(
+            tenant.tenant_id, version_id,
+            expected_bot_id=bot_id,  # L1
+        )
     except (EntityNotFoundError, InvalidVersionTransitionError) as exc:
         raise _handle(exc) from exc
     return _to_response(version)

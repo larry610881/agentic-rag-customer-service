@@ -2522,4 +2522,5 @@ class Container(containers.DeclarativeContainer):
         query_rag_use_case=query_rag_use_case,
         dm_image_query_tool=dm_image_query_tool,
         tenant_repository=tenant_repository,  # M19：router_model tenant fallback
+        encryption_service=encryption_service,  # L10：快取憑證加密
     )
