@@ -7,6 +7,57 @@
 
 ---
 
+## Full Review 全量收斂 — 104 findings 一次性處理的工程紀律（2026-08-21，公開前最終關卡）
+
+**Sprint 來源**：2026-08-20 多代理全專案 review 的 MEDIUM 53 + LOW 22 全量修復（總計 50 commits，加前兩批 C/H 共 102/104 修復、2 項有理有據延後）
+
+**主題**：樂觀鎖 vs 悲觀鎖的落地選型、背景任務 session 生命週期、絞殺者遷移下的「修 vs 排期」判斷、測試 vacuous 化
+
+#### 做得好的地方
+- **併發防護選「條件式 UPDATE 樂觀鎖」而非 SELECT FOR UPDATE**：版本狀態機
+  （M3/M6）的 race 用 `UPDATE ... WHERE status=<讀取時狀態>` + rowcount=0→409
+  解決——零 migration、無鎖等待、失敗方得到明確 409。並刻意**重排寫入順序**：
+  先搶下狀態轉移再動 bot/建 run，輸的一方在污染任何資料前就出局。搭配真 DB
+  整合測試驗證 SQL 層行為（mock 測不到 WHERE 條件）。
+- **背景 session 生命週期一個原語治全域**：M29/M30/H13/H14 四個 findings 同根因
+  （get_tracked_session 的 ContextVar session 只有 HTTP middleware 會關），全部
+  收斂到同一個 `independent_session_scope`——worker 在 `execute_with_resilience`
+  一處包住所有 job，startup 任務各自包。**資源生命週期問題找「唯一收斂點」，
+  不是逐 job 補 close**。
+- **「修」與「排期」的邊界照規範走**：M21（LINE 接 memory）強行修會違反
+  channel-parity 的絞殺者紀律（先抽共用 service、LINE 零回歸），review 報告
+  本身就提供「排入債務清單」選項——選它並把 M12/M21/M22 明文寫進
+  `channel-parity.md` 債務清單（含理由與做法），讓延後成為**被追蹤的決策**
+  而非沉默的 TODO。M22 另加 `pipeline_approximation: "web"` 誠實標注，
+  讓使用者看得到近似的限制。
+- **測試 vacuous 化的識別與修法**（M49/M50）：兩個 shadow 隔離測試「斷言恆真」
+  ——factory=None 使持久化路徑根本不存在、command 沒帶 conversation_id 使
+  「未查詢」永遠成立。修法是**把否定斷言變成有機會失敗的斷言**：注入可觀察的
+  mock factory 斷言「從未被呼叫」、補上會觸發查詢的前置條件再斷言沒查。
+  口訣：**否定式斷言必須先證明「肯定路徑存在」**。
+
+#### 潛在隱憂
+- **樂觀鎖只覆蓋了版本狀態機**：bots 表本身的並發 update（雙管理員同時改設定）
+  仍是 last-write-wins；閘門版控某程度緩解（版控欄位走版本 API），但非版控
+  欄位無防護 → 優先級：低（單租戶單管理員為主的使用型態）。
+- **quota union（L4）改變了 included_categories 的語意**：eval 分類現在強制計入
+  quota。若未來有「平台吸收 eval 成本」的商業需求，需要另立欄位而非復用
+  included_categories → 優先級：低（記錄語意決策即可）。
+- **既有測試 drift 的補課揭示流程缺口**：i18n 改版（a1c7660）與加第 5 家
+  provider 時測試沒同步更新且 CI 沒擋——表示 `make test` 未必在每次 commit 前
+  跑全量。建議 CI 對 PR 強制全量前端測試 → 優先級：中。
+
+#### 延伸學習
+- **Optimistic vs Pessimistic locking 的判準**：衝突頻率低（人為 double-click）
+  且失敗可回報使用者（409 重試）→ 樂觀鎖；衝突頻率高或失敗代價大（金融扣款）
+  → 悲觀鎖/序列化。搜尋 "optimistic concurrency control compare-and-set"、
+  "PostgreSQL SELECT FOR UPDATE vs conditional update"。
+- **Strangler Fig 遷移中的「順手還債 vs 排期」**：判準是「這次改動是否已經
+  觸碰該邏輯的兩份實作」——有觸碰就順手抽共用（如 L5 的 failed-trace helper），
+  沒觸碰就排期（如 M21 memory），避免每個 bugfix 都膨脹成重構。
+
+---
+
 ## Code Review CRITICAL 批次二 — 租戶隔離 IDOR 系統性根因（C2/C4–C9）（2026-08-21，全專案 review 後續）
 
 **Sprint 來源**：2026-08-20 多代理全專案 review CRITICAL 批次第二輪（7 個跨租戶 IDOR）
