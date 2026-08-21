@@ -19,6 +19,18 @@ from src.infrastructure.prompt_optimizer.run_manager import (
 logger = logging.getLogger(__name__)
 
 
+def merge_case_assertions(
+    default_assertions: list[dict], case_assertions: list[dict]
+) -> list[dict]:
+    """H16：dataset 層 default_assertions 併入 case 層（defaults 在前）。
+
+    Evaluator 只讀 case.assertions，不讀 dataset.default_assertions；不併入等於
+    安全預設斷言（no_role_switch / no_system_prompt_leak 等）在優化評分中被忽略。
+    case 已於匯入時排除 defaults，故併入不會重複。
+    """
+    return list(default_assertions or []) + list(case_assertions or [])
+
+
 class _ShadowAPIClient:
     """Issue #54 Phase D — 優化迴圈的影子執行包裝：
     每次受測對話自動帶 config_override（記憶體候選 prompt）+ test_mode，
@@ -237,6 +249,16 @@ class StartRunUseCase:
         api_client = None
 
         try:
+            # H16：dataset 層 default_assertions（含 no_role_switch /
+            # no_system_prompt_leak 等安全預設）必須併入每個 case 的 assertions——
+            # Evaluator._evaluate_case 只讀 tc.assertions，從不讀 CLIDataset.
+            # default_assertions，不併就等於優化分數完全忽略安全預設，mutator 可接受
+            # 違反安全預設的 prompt。per-case 已於匯入時排除 defaults，併入不會重複。
+            default_raw = ds.get("default_assertions", [])
+            default_assertions = tuple(
+                Assertion(type=a["type"], params=a.get("params", {}))
+                for a in default_raw
+            )
             # Build CLI-compatible dataset from snapshot
             test_cases = tuple(
                 TestCase(
@@ -246,7 +268,9 @@ class StartRunUseCase:
                     category=tc.get("category", ""),
                     assertions=tuple(
                         Assertion(type=a["type"], params=a.get("params", {}))
-                        for a in tc.get("assertions", [])
+                        for a in merge_case_assertions(
+                            default_raw, tc.get("assertions", [])
+                        )
                     ),
                     conversation_history=tuple(
                         tc.get("conversation_history", [])
@@ -270,10 +294,8 @@ class StartRunUseCase:
                     ),
                 ),
                 test_cases=test_cases,
-                default_assertions=tuple(
-                    Assertion(type=a["type"], params=a.get("params", {}))
-                    for a in ds.get("default_assertions", [])
-                ),
+                # 已併入各 case（見上），此處保留供 metadata 完整性
+                default_assertions=default_assertions,
             )
 
             target = PromptTarget(
