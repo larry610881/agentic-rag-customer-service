@@ -161,7 +161,17 @@ async def execute_with_resilience(
     )
 
     try:
-        result = await coro_factory()
+        # M30：arq job 的 use case 透過 get_tracked_session()（ContextVar）建 session，
+        # 但 SessionCleanupMiddleware 只在 HTTP scope 生效 → worker session 無人關閉，
+        # 以 SELECT 結尾的 job 留下 idle-in-transaction 連線、每分鐘 churn；長 LLM job
+        # 的連線更會被 idle 逾時砍掉導致後續寫入失敗。用 independent_session_scope 在此
+        # 統一建立/關閉背景 session（每次 retry 亦取得乾淨 session）。
+        from src.infrastructure.db.session_middleware import (
+            independent_session_scope,
+        )
+
+        async with independent_session_scope():
+            result = await coro_factory()
     except Retry:
         # Pass-through: nested code may already raise Retry intentionally.
         raise
