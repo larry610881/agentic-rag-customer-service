@@ -1011,7 +1011,12 @@ class HandleWebhookUseCase:
                         request_type="chat_line",
                         usage=result.usage,
                         bot_id=bot.id.value,
-                        message_id=result.message_id,
+                        # H8：result.message_id 對 LINE 恆為 None（僅 send_message
+                        # 路徑會設）；正解是本地 message_id = assistant_msg.id.value，
+                        # 否則版本成效 metrics 以 message_id join 不到 LINE 訊息。
+                        # 註：config_version_id 打標待共用管線抽取（channel-parity
+                        # 絞殺者遷移）統一補上，避免在此複製版本解析邏輯。
+                        message_id=message_id,
                     )
                 except Exception:
                     logger.warning("line.record_usage_error", exc_info=True)

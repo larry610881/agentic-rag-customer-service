@@ -101,6 +101,34 @@ async def validate_widget_bot(
     return bot
 
 
+def _widget_should_forward(
+    event: dict, keep_history: bool, captured: dict
+) -> bool:
+    """決定 widget SSE 事件是否下發匿名前端，並側錄歸因欄位到 captured。
+
+    - usage / config_version：內部事件，捕獲後不下發（H7 config_version；H8 歸因）。
+    - guard_blocked：含命中規則原文（rule_matched，需 system_admin 才可正規讀取）與
+      replacement，匿名通路不得外洩，否則可逐條探針枚舉整份防護規則（H7）。
+    - message_id：捕獲供版本成效歸因（H8），仍下發以與 web 對齊。
+    - conversation_id：keep_history 關閉時不下發。
+    """
+    etype = event.get("type")
+    if etype == "usage":
+        captured["usage"] = event
+        return False
+    if etype == "config_version":
+        captured["config_version_id"] = event.get("config_version_id")
+        return False
+    if etype == "guard_blocked":
+        return False
+    if etype == "message_id":
+        captured["message_id"] = event.get("message_id")
+        return True
+    if etype == "conversation_id" and not keep_history:
+        return False
+    return True
+
+
 def _set_cors_headers(response, origin: str | None, bot: Bot) -> None:
     """Set dynamic CORS headers based on bot's allowed origins."""
     if origin and origin in bot.widget_allowed_origins:
@@ -190,16 +218,11 @@ async def widget_chat_stream(
     )
 
     async def event_generator():
-        usage_data: dict | None = None
+        captured: dict = {}
         try:
             async for event in use_case.execute_stream(command):
-                if event.get("type") == "usage":
-                    usage_data = event
-                    continue
-                # Filter out conversation_id when keep_history is disabled
-                if not bot.widget_keep_history and event.get("type") == "conversation_id":
-                    continue
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                if _widget_should_forward(event, bot.widget_keep_history, captured):
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:
             logger.exception("widget.chat.stream.error")
             error_msg = classify_streaming_error(exc)
@@ -208,6 +231,7 @@ async def widget_chat_stream(
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
         # Record token usage after stream completes
+        usage_data = captured.get("usage")
         if usage_data:
             from src.infrastructure.langgraph.usage import (
                 extract_usage_from_accumulated,
@@ -221,6 +245,8 @@ async def widget_chat_stream(
                         request_type="chat_widget",
                         usage=usage,
                         bot_id=bot.id.value,
+                        message_id=captured.get("message_id"),  # H8
+                        config_version_id=captured.get("config_version_id"),  # H8
                     )
                 except Exception:
                     logger.exception("widget.chat.stream.record_usage_error")

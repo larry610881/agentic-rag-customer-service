@@ -12,7 +12,7 @@ from src.domain.agent.entity import AgentResponse
 from src.domain.bot.entity import Bot
 from src.domain.bot.value_objects import BotId, BotShortCode
 from src.domain.line.entity import LineTextMessageEvent
-from src.domain.rag.value_objects import Source
+from src.domain.rag.value_objects import Source, TokenUsage
 
 
 def _run(coro):
@@ -78,3 +78,43 @@ def test_line_classify_passes_tenant_and_bot_id():
     kwargs = classifier.classify_sanitize.call_args.kwargs
     assert kwargs["tenant_id"] == "tenant-line"
     assert kwargs["bot_id"] == "bot-line"
+
+
+def test_line_record_usage_uses_real_assistant_message_id():
+    """H8：LINE record_usage 的 message_id 應為 assistant_msg.id（非 result.message_id
+    ——後者對 LINE 恆 None，會讓版本成效 join 不到 LINE 訊息）。"""
+    bot = Bot(
+        id=BotId(value="bot-line"),
+        short_code=BotShortCode(value="sc"),
+        tenant_id="tenant-line",
+        name="Line Bot",
+        knowledge_base_ids=["kb"],
+    )
+    agent = AsyncMock()
+    agent.process_message = AsyncMock(return_value=AgentResponse(
+        answer="ok",
+        usage=TokenUsage(model="m", input_tokens=10, output_tokens=5),
+        message_id=None,  # AgentResponse 對 LINE 不帶 message_id
+    ))
+    record_spy = AsyncMock()
+    record_spy.execute = AsyncMock(return_value=None)
+
+    uc = HandleWebhookUseCase(
+        agent_service=agent,
+        bot_repository=AsyncMock(),
+        line_service_factory=MagicMock(),
+        record_usage_use_case=record_spy,
+    )
+    ctx = WebhookContext(
+        bot=bot,
+        short_code="sc",
+        line_service=AsyncMock(),
+        events=[LineTextMessageEvent(
+            reply_token="tk", user_id="U1", message_text="hi", timestamp=1,
+        )],
+    )
+    _run(uc.process_and_push(ctx))
+
+    record_spy.execute.assert_called_once()
+    mid = record_spy.execute.call_args.kwargs["message_id"]
+    assert mid is not None and mid != ""
