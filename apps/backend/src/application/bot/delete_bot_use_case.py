@@ -1,5 +1,6 @@
 """刪除機器人用例"""
 
+from src.application.bot._tenant_guard import ensure_bot_tenant
 from src.domain.bot.repository import BotRepository
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.exceptions import EntityNotFoundError
@@ -14,10 +15,15 @@ class DeleteBotUseCase:
         self._bot_repo = bot_repository
         self._cache_service = cache_service
 
-    async def execute(self, bot_id: str) -> None:
+    async def execute(
+        self, bot_id: str, tenant_id: str | None = None, role: str | None = None
+    ) -> None:
         bot = await self._bot_repo.find_by_id(bot_id)
         if bot is None:
             raise EntityNotFoundError("Bot", bot_id)
+        # C9：跨租戶 → 404，不刪（tenant_id 為 None 維持舊行為，生產走 router 必帶）
+        if tenant_id is not None:
+            ensure_bot_tenant(bot, tenant_id, role)
         await self._bot_repo.delete(bot_id)
         if self._cache_service is not None:
             # Invalidate both LINE handler cache keys.

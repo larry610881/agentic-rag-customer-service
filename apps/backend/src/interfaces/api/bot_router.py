@@ -552,7 +552,9 @@ async def get_bot(
     ),
 ) -> BotResponse:
     try:
-        bot = await use_case.execute(bot_id)
+        bot = await use_case.execute(
+            bot_id, tenant_id=tenant.tenant_id, role=tenant.role
+        )
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -562,10 +564,14 @@ async def get_bot(
 
 
 def _build_update_command(
-    bot_id: str, body: UpdateBotRequest
+    bot_id: str, body: UpdateBotRequest, tenant: CurrentTenant
 ) -> UpdateBotCommand:
     """Build UpdateBotCommand from request, only including set fields."""
-    kwargs: dict = {"bot_id": bot_id}
+    kwargs: dict = {
+        "bot_id": bot_id,
+        "tenant_id": tenant.tenant_id,
+        "role": tenant.role,
+    }
     for field in body.model_fields_set:
         val = getattr(body, field)
         if field == "intent_routes" and val is not None:
@@ -620,7 +626,7 @@ async def update_bot(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=str(exc),
             ) from exc
-    command = _build_update_command(bot_id, body)
+    command = _build_update_command(bot_id, body, tenant)
     try:
         bot = await use_case.execute(command)
     except EntityNotFoundError as e:
@@ -641,7 +647,9 @@ async def delete_bot(
     ),
 ) -> None:
     try:
-        await use_case.execute(bot_id)
+        await use_case.execute(
+            bot_id, tenant_id=tenant.tenant_id, role=tenant.role
+        )
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
