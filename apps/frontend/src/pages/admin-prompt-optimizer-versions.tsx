@@ -42,6 +42,7 @@ import {
   useConfigVersions,
   useGateEstimate,
   useGateRun,
+  useInvalidateVersionsOnGateComplete,
   usePublishConfigVersion,
   useRejectConfigVersion,
   useReplayCompare,
@@ -112,6 +113,8 @@ function VersionCard({
   );
   // 驗證中 / 已驗證：抓 gate run（validating 時 3s polling）
   const { data: gateRun } = useGateRun(open ? version.gate_run_id : null);
+  // H18：gate run 完成 → 刷新版本列表，讓卡片脫離 stale 的 "validating"
+  useInvalidateVersionsOnGateComplete(botId, gateRun?.status);
   const { data: estimate, isLoading: estimateLoading } = useGateEstimate(
     botId,
     estimateOpen,

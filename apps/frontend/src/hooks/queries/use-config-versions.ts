@@ -1,6 +1,7 @@
 /** Issue #54 — Bot 設定版本與發布閘門 hooks */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 import { apiFetch } from "@/lib/api-client";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
@@ -78,6 +79,27 @@ export function useGateEstimate(botId: string, enabled: boolean) {
     enabled: !!token && !!botId && enabled,
     staleTime: 30_000,
   });
+}
+
+/**
+ * H18：gate run 轉 completed/error 時 invalidate 版本列表與 detail。
+ *
+ * useGateRun 完成後只停止輪詢，但 useConfigVersions 列表無輪詢也不會被 invalidate，
+ * 導致 version.status 停在 stale 的 "validating"：卡片持續轉圈、發布按鈕永不出現。
+ * 傳入 gate run 目前狀態，轉為終態時刷新列表讓 UI 反映 pending_publish/draft。
+ */
+export function useInvalidateVersionsOnGateComplete(
+  botId: string,
+  gateRunStatus: string | null | undefined,
+) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (gateRunStatus === "completed" || gateRunStatus === "error") {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.configVersions.list(botId),
+      });
+    }
+  }, [gateRunStatus, botId, queryClient]);
 }
 
 /** Gate run polling：3s 刷新，completed/error 停止 */
