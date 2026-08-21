@@ -253,7 +253,8 @@ class StartGateRunUseCase:
         await self._gate_run_repo.save(run)
         await self._version_repo.save(version)
 
-        asyncio.create_task(
+        from src.application.prompt_gate._background import spawn_tracked
+        spawn_tracked(
             self._execute_background(
                 run_id=run.id,
                 tenant_id=tenant_id,
@@ -267,7 +268,8 @@ class StartGateRunUseCase:
                 api_token=api_token,
                 refresh_token=refresh_token,
                 excluded_platform_cases=excluded_applied,
-            )
+            ),
+            name=f"gate_run:{run.id}",  # M4：保存引用避免被 GC
         )
         return run
 

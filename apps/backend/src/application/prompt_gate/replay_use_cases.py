@@ -198,7 +198,8 @@ class StartReplayCompareUseCase:
         )
         await self._gate_run_repo.save(run)
 
-        asyncio.create_task(
+        from src.application.prompt_gate._background import spawn_tracked
+        spawn_tracked(
             self._execute_background(
                 run_id=run.id,
                 tenant_id=tenant_id,
@@ -210,7 +211,8 @@ class StartReplayCompareUseCase:
                 api_token=api_token,
                 refresh_token=refresh_token,
                 judge_api_key=judge_api_key,
-            )
+            ),
+            name=f"replay_compare:{run.id}",  # M4
         )
         return run
 
