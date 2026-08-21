@@ -611,17 +611,32 @@ class ListRunsUseCase:
         limit: int = 20,
         offset: int = 0,
     ) -> list[dict]:
-        """List runs combining active (in-memory) and historical (DB) runs."""
-        db_runs = await self._run_repo.list_runs(
-            tenant_id, limit=limit, offset=offset
-        )
-        active_runs = self._run_manager.list_runs(tenant_id)
+        """List runs combining active (in-memory) and historical (DB) runs.
 
-        # Merge: active runs override DB runs with same run_id
+        M27：active runs 概念上位於合併列表頂端。原本每頁都塞全部 active（重複）、
+        再 merged[:limit] 截掉每頁尾端的 DB run（該筆在任何頁都看不到）。改為依 offset
+        正確切 active 視窗、DB offset 扣掉 active 數量、DB limit 扣掉本頁 active 數量。
+        """
+        active_runs = self._run_manager.list_runs(tenant_id)
         active_ids = {r.run_id for r in active_runs}
+        n_active = len(active_runs)
+
+        # 本頁應顯示的 active（active 佔據 index 0..n_active-1）
+        active_slice = active_runs[offset:offset + limit] if offset < n_active else []
+        db_offset = max(0, offset - n_active)
+        db_limit = limit - len(active_slice)
+        # 多抓 n_active 筆以吸收「DB 中同時是 active」被過濾掉的名額
+        db_runs = (
+            await self._run_repo.list_runs(
+                tenant_id, limit=db_limit + n_active, offset=db_offset
+            )
+            if db_limit > 0
+            else []
+        )
+
         merged = []
 
-        for ar in active_runs:
+        for ar in active_slice:
             merged.append({
                 "run_id": ar.run_id,
                 "tenant_id": ar.tenant_id,
@@ -643,8 +658,12 @@ class ListRunsUseCase:
                 ),
             })
 
+        _db_added = 0
         for dr in db_runs:
+            if _db_added >= db_limit:
+                break
             if dr["run_id"] not in active_ids:
+                _db_added += 1
                 started = dr.get("started_at")
                 started_str = (
                     started.isoformat()
@@ -670,7 +689,7 @@ class ListRunsUseCase:
                     "completed_at": None,
                 })
 
-        return merged[:limit]
+        return merged
 
     async def count(self, tenant_id: str | None = None) -> int:
         db_count = await self._run_repo.count_runs(tenant_id)
