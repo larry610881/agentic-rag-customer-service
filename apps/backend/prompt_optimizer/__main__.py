@@ -16,6 +16,17 @@ import sys
 from pathlib import Path
 
 
+def resolve_target_level(target_field: str) -> str:
+    """target_field → PromptTarget.level（H15）。
+
+    只有 system_prompt 屬 system 層；base_prompt / bot_prompt 皆為 bot 層。原本判斷寫反
+    （base_prompt → system），使 (system, base_prompt) 落在 _TARGET_MAP 之外 → 所有以
+    base_prompt 為 target 的內建 dataset（ecommerce/education/saas）一開跑即 ValueError。
+    與 API 路徑 run_use_cases 依 bot_id 判斷的結果一致。
+    """
+    return "system" if target_field == "system_prompt" else "bot"
+
+
 def setup_logging(verbose: bool = False) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -91,11 +102,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     # Determine target
     target_field = args.target or dataset.metadata.target_prompt
-    target_level = (
-        "system"
-        if target_field in ("base_prompt",)
-        else "bot"
-    )
+    target_level = resolve_target_level(target_field)
     target = PromptTarget(
         level=target_level,
         field=target_field,
