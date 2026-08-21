@@ -393,8 +393,12 @@ def _to_response(bot) -> BotResponse:
             for r in bot.intent_routes
         ],
         busy_reply_message=bot.busy_reply_message,
-        line_channel_secret=bot.line_channel_secret,
-        line_channel_access_token=bot.line_channel_access_token,
+        # M23：LINE 憑證不回傳原值（任何租戶成員都能 GET，等同憑證外洩面）。
+        # 比照 mcp env_values 慣例回 "***"，update 時 "***" 視為未變更。
+        line_channel_secret="***" if bot.line_channel_secret else None,
+        line_channel_access_token=(
+            "***" if bot.line_channel_access_token else None
+        ),
         line_show_sources=bot.line_show_sources,
         created_at=bot.created_at.isoformat(),
         updated_at=bot.updated_at.isoformat(),

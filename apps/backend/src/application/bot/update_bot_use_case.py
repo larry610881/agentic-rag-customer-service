@@ -146,8 +146,16 @@ class UpdateBotUseCase:
         )
         for field in _DIRECT_FIELDS:
             val = getattr(command, field)
-            if val is not _UNSET:
-                setattr(bot, field, val)
+            if val is _UNSET:
+                continue
+            # M23：LINE 憑證 API 回應為 "***" 遮罩，表單原封送回時視為未變更
+            # （比照 mcp env_values 慣例）；要清除請送空字串。
+            if (
+                field in ("line_channel_secret", "line_channel_access_token")
+                and val == _MASKED_VALUE
+            ):
+                continue
+            setattr(bot, field, val)
 
         if command.knowledge_base_ids is not _UNSET:
             bot.knowledge_base_ids = list(command.knowledge_base_ids)  # type: ignore[arg-type]

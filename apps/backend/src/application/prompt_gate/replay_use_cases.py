@@ -388,6 +388,10 @@ class StartReplayCompareUseCase:
             run.details = {
                 "type": "replay_compare",
                 "aborted": aborted,
+                # M22：真實流量可能來自 LINE，但影子執行走 web 管線（無 LINE
+                # channel suffix、無 direct_retrieval 快速道）。對比屬近似參考，
+                # 前端據此標注限制；管線統一（channel-parity 債務 #6）後移除。
+                "pipeline_approximation": "web",
                 "summary": {
                     "candidate_wins": summary.candidate_wins,
                     "baseline_wins": summary.baseline_wins,

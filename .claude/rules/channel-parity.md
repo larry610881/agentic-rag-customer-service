@@ -63,8 +63,14 @@
 2. trace 持久化統一（兩份 `_persist_agent_trace` 合一）
 3. guard 呼叫點統一
 4. eval 補上 LINE 通路（目前 LINE 每輪對話無品質評估）
-5. usage 記帳路徑統一
-6. 最終：`ConversationTurnPipeline` 共用管線 + 中性事件流輸出
+5. usage 記帳路徑統一（含 full-review M12：SSE 中斷漏記——記帳移入
+   `execute_stream` 產生 usage 當下即落帳，router 不再事後補記）
+6. 長期記憶接上 LINE（full-review M21：`memory_enabled` 對 LINE 靜默無效；
+   LINE user_id 穩定、本是 memory 最適用通路。先抽共用 memory service 再由
+   LINE 轉接器呼叫，禁止在 `application/line/` 內複製 load/extract 邏輯）
+7. 閘門 replay 通路保真（full-review M22：回放 LINE 流量走 web 影子管線，
+   結果已標注 `pipeline_approximation: "web"`；管線統一後以能力旗標模擬來源通路）
+8. 最終：`ConversationTurnPipeline` 共用管線 + 中性事件流輸出
 
 在債務清完之前，任何觸碰兩條 use case 的修改，都必須自問：
 **「這段邏輯是不是應該趁這次抽成共用？」**——順手還債優先於再堆一層。
