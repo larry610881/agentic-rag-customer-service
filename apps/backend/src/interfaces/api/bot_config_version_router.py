@@ -331,6 +331,13 @@ async def publish_version(
 
 class ReplayCompareRequest(BaseModel):
     sample_size: int = Field(default=10, ge=1, le=30)
+    # H3：長 run 中途 access token 過期時供背景任務續期（前端由 auth store 帶入）
+    refresh_token: str = ""
+
+
+class ValidateRequest(BaseModel):
+    # H3：同上，背景 gate run 可能跑超過 access token 15 分鐘壽命
+    refresh_token: str = ""
 
 
 @router.post(
@@ -359,6 +366,7 @@ async def replay_compare_version(
             bot_id=bot_id,
             version_id=version_id,
             api_token=api_token,
+            refresh_token=body.refresh_token if body else "",
             sample_size=body.sample_size if body else 10,
             triggered_by=tenant.user_id,
         )
@@ -377,6 +385,7 @@ async def validate_version(
     bot_id: str,
     version_id: str,
     request: Request,
+    body: ValidateRequest | None = None,
     tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: StartGateRunUseCase = Depends(
         Provide[Container.start_gate_run_use_case]
@@ -392,6 +401,7 @@ async def validate_version(
             bot_id=bot_id,
             version_id=version_id,
             api_token=api_token,
+            refresh_token=body.refresh_token if body else "",
             triggered_by=tenant.user_id,
         )
     except (

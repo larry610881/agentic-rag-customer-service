@@ -123,6 +123,7 @@ class StartReplayCompareUseCase:
         bot_id: str,
         version_id: str,
         api_token: str,
+        refresh_token: str = "",
         sample_size: int = 10,
         triggered_by: str | None = None,
     ) -> PromptGateRun:
@@ -193,6 +194,7 @@ class StartReplayCompareUseCase:
                 questions=questions,
                 budget_usd=bot.gate_budget_usd,
                 api_token=api_token,
+                refresh_token=refresh_token,
                 judge_api_key=judge_api_key,
             )
         )
@@ -222,7 +224,8 @@ class StartReplayCompareUseCase:
         questions: list[str],
         budget_usd: float,
         api_token: str,
-        judge_api_key: str,
+        refresh_token: str = "",
+        judge_api_key: str = "",
     ) -> None:
         from prompt_optimizer.api_client import AgentAPIClient, ChatResult
 
@@ -248,6 +251,7 @@ class StartReplayCompareUseCase:
             api_client = AgentAPIClient(
                 base_url=self._api_base_url,
                 jwt_token=api_token,
+                refresh_token=refresh_token,  # H3
                 usage_category="eval_gate",
                 run_id=run_id,
             )

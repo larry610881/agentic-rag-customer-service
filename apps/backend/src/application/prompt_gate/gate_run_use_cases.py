@@ -189,6 +189,7 @@ class StartGateRunUseCase:
         bot_id: str,
         version_id: str,
         api_token: str,
+        refresh_token: str = "",
         triggered_by: str | None = None,
     ) -> PromptGateRun:
         bot = await self._bot_repo.find_by_id(bot_id)
@@ -264,6 +265,7 @@ class StartGateRunUseCase:
                 soft_threshold=bot.gate_soft_threshold,
                 budget_usd=bot.gate_budget_usd,
                 api_token=api_token,
+                refresh_token=refresh_token,
                 excluded_platform_cases=excluded_applied,
             )
         )
@@ -323,6 +325,7 @@ class StartGateRunUseCase:
         soft_threshold: float,
         budget_usd: float,
         api_token: str,
+        refresh_token: str = "",
         excluded_platform_cases: list[str] | None = None,
     ) -> None:
         from prompt_optimizer.api_client import AgentAPIClient
@@ -354,6 +357,7 @@ class StartGateRunUseCase:
             api_client = AgentAPIClient(
                 base_url=self._api_base_url,
                 jwt_token=api_token,
+                refresh_token=refresh_token,  # H3：長 run 中途 access token 過期可續期
                 usage_category="eval_gate",
                 run_id=run_id,
             )

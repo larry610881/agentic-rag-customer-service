@@ -188,7 +188,11 @@ export function useReplayCompare() {
         ),
         {
           method: "POST",
-          body: JSON.stringify({ sample_size: vars.sampleSize ?? 10 }),
+          body: JSON.stringify({
+            sample_size: vars.sampleSize ?? 10,
+            // H3：背景任務長 run 中途 access token 過期時可用 refresh_token 續期
+            refresh_token: useAuthStore.getState().refreshToken ?? "",
+          }),
         },
         token,
       ),
@@ -202,7 +206,13 @@ export function useValidateConfigVersion() {
     (vars: { botId: string; versionId: string }, token) =>
       apiFetch<GateRun>(
         API_ENDPOINTS.configVersions.validate(vars.botId, vars.versionId),
-        { method: "POST" },
+        {
+          method: "POST",
+          // H3：長 gate run 可能超過 access token 15 分鐘壽命，帶 refresh_token 供續期
+          body: JSON.stringify({
+            refresh_token: useAuthStore.getState().refreshToken ?? "",
+          }),
+        },
         token,
       ),
     (vars) => vars.botId,
