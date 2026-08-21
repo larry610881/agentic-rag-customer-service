@@ -148,9 +148,11 @@ class HandleWebhookUseCase:
         prompt_guard: Any | None = None,
         query_rag_use_case: Any | None = None,
         dm_image_query_tool: Any | None = None,
+        tenant_repository: Any | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
+        self._tenant_repo = tenant_repository  # M19：router_model tenant fallback
         self._intent_classifier = intent_classifier
         self._worker_config_repo = worker_config_repo
         self._line_service_factory = line_service_factory
@@ -727,6 +729,22 @@ class HandleWebhookUseCase:
                 from src.infrastructure.observability.agent_trace_collector import (
                     AgentTraceCollector,
                 )
+                # M19：router_model 空時退回租戶 default_intent_model（與 web 一致），
+                # 否則 LINE 用系統預設 LLM、同一 bot 兩通路分類模型不同。
+                _router_model = bot.router_model
+                if not _router_model and self._tenant_repo:
+                    try:
+                        _tenant = await self._tenant_repo.find_by_id(
+                            bot.tenant_id
+                        )
+                        if _tenant:
+                            _router_model = getattr(
+                                _tenant, "default_intent_model", ""
+                            )
+                    except Exception:
+                        logger.warning(
+                            "line.router_model_fallback_failed", exc_info=True
+                        )
                 t_start = AgentTraceCollector.offset_ms()
                 # Issue #51：同一次分類呼叫多產出「上下文改寫檢索查詢」，
                 # 供快速道 follow-up 短句（「價格呢」）檢索命中正確商品
@@ -736,7 +754,7 @@ class HandleWebhookUseCase:
                     user_message=event.message_text,
                     router_context=router_context,
                     workers=workers,
-                    router_model=bot.router_model,
+                    router_model=_router_model,  # M19
                     # H9：漏傳則分類器 token 以 tenant_id="" 落孤兒帳（計費繞過），
                     # 與 web 通路（send_message_use_case）行為不一致
                     tenant_id=bot.tenant_id,

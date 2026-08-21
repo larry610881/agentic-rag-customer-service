@@ -2521,4 +2521,5 @@ class Container(containers.DeclarativeContainer):
         # Issue #50 — workflow 快速道（direct_retrieval worker 用的檢索管線）
         query_rag_use_case=query_rag_use_case,
         dm_image_query_tool=dm_image_query_tool,
+        tenant_repository=tenant_repository,  # M19：router_model tenant fallback
     )
