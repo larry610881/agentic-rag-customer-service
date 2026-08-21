@@ -5,7 +5,11 @@ from __future__ import annotations
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.prompt_gate.entity import BotConfigVersion
+from src.domain.prompt_gate.entity import (
+    BotConfigVersion,
+    InvalidVersionTransitionError,
+    VersionConflictError,
+)
 from src.domain.prompt_gate.repository import BotConfigVersionRepository
 from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.bot_config_version_model import (
@@ -51,25 +55,77 @@ class SQLAlchemyBotConfigVersionRepository(BotConfigVersionRepository):
                 existing.gate_verdict = version.gate_verdict
                 existing.published_at = version.published_at
             else:
-                self._session.add(
-                    BotConfigVersionModel(
-                        id=version.id,
-                        tenant_id=version.tenant_id,
-                        bot_id=version.bot_id,
-                        version_no=version.version_no,
-                        config_snapshot=version.config_snapshot,
-                        snapshot_schema=version.snapshot_schema,
-                        changed_fields=version.changed_fields,
-                        status=version.status,
-                        is_current=version.is_current,
-                        source=version.source,
-                        source_run_id=version.source_run_id,
-                        gate_run_id=version.gate_run_id,
-                        gate_verdict=version.gate_verdict,
-                        author_user_id=version.author_user_id,
-                        published_at=version.published_at,
-                        created_at=version.created_at,
-                    )
+                self._session.add(self._new_model(version))
+
+    @staticmethod
+    def _new_model(version: BotConfigVersion) -> BotConfigVersionModel:
+        return BotConfigVersionModel(
+            id=version.id,
+            tenant_id=version.tenant_id,
+            bot_id=version.bot_id,
+            version_no=version.version_no,
+            config_snapshot=version.config_snapshot,
+            snapshot_schema=version.snapshot_schema,
+            changed_fields=version.changed_fields,
+            status=version.status,
+            is_current=version.is_current,
+            source=version.source,
+            source_run_id=version.source_run_id,
+            gate_run_id=version.gate_run_id,
+            gate_verdict=version.gate_verdict,
+            author_user_id=version.author_user_id,
+            published_at=version.published_at,
+            created_at=version.created_at,
+        )
+
+    async def create_next_version(
+        self, version: BotConfigVersion
+    ) -> BotConfigVersion:
+        """M2：取號（MAX+1）與 INSERT 併入重試迴圈。並發建版兩者取到同號 →
+        後者撞 uq_bcv_bot_version → 捕捉 IntegrityError、rollback、重取號重試，
+        避免直接 500；重試多次仍衝突才拋 VersionConflictError（→409）。"""
+        from sqlalchemy.exc import IntegrityError
+
+        for _ in range(5):
+            version.version_no = await self.next_version_no(version.bot_id)
+            try:
+                async with atomic(self._session):
+                    self._session.add(self._new_model(version))
+                return version
+            except IntegrityError:
+                await self._session.rollback()
+        raise VersionConflictError(
+            "版本號並發衝突，請重新載入版本清單後再試"
+        )
+
+    async def save_status_transition(
+        self, version: BotConfigVersion, *, expected_status: str, action: str
+    ) -> None:
+        """M3/M6：條件式狀態轉移（樂觀鎖）。以 WHERE status=expected_status 更新，
+        rowcount=0 代表並發已改動（lost update）→ 讀回實際狀態拋
+        InvalidVersionTransitionError（interfaces 層對應 409），避免無條件覆寫寫出
+        entity 明文禁止的轉移（如 published→rejected）或同版本雙背景 run。"""
+        async with atomic(self._session):
+            result = await self._session.execute(
+                update(BotConfigVersionModel)
+                .where(
+                    BotConfigVersionModel.id == version.id,
+                    BotConfigVersionModel.status == expected_status,
+                )
+                .values(
+                    status=version.status,
+                    is_current=version.is_current,
+                    gate_run_id=version.gate_run_id,
+                    gate_verdict=version.gate_verdict,
+                    published_at=version.published_at,
+                )
+            )
+            if result.rowcount == 0:
+                current = await self._session.get(
+                    BotConfigVersionModel, version.id
+                )
+                raise InvalidVersionTransitionError(
+                    current.status if current else "missing", action
                 )
 
     async def find_by_id(

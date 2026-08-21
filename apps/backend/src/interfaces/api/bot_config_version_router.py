@@ -37,6 +37,7 @@ from src.container import Container
 from src.domain.prompt_gate.entity import (
     GateBlockedError,
     InvalidVersionTransitionError,
+    VersionConflictError,
 )
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import (
@@ -165,7 +166,7 @@ def _handle(exc: Exception) -> HTTPException:
         return HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         )
-    if isinstance(exc, InvalidVersionTransitionError):
+    if isinstance(exc, InvalidVersionTransitionError | VersionConflictError):
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         )

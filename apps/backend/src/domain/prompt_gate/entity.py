@@ -44,6 +44,11 @@ class GateBlockedError(DomainException):
     版控欄位直改需走版本 API、驗證未過不可發布等。"""
 
 
+class VersionConflictError(DomainException):
+    """並發建版撞版本號唯一約束（interfaces 層對應 409）：重試多次仍衝突，
+    請前端重新載入版本清單後再試（M2）。"""
+
+
 class InvalidVersionTransitionError(DomainException):
     """非法的版本狀態轉移（interfaces 層對應 409）。"""
 

@@ -248,9 +248,14 @@ class StartGateRunUseCase:
             total_cases=len(cases),
             triggered_by=triggered_by,
         )
-        version.mark_validating(run.id)  # 非法轉移在此 raise（409）
+        prev_status = version.status
+        version.mark_validating(run.id)  # 非法轉移在此 raise（記憶體 guard）
+        # M6：先以樂觀鎖搶下 draft→validating（WHERE status='draft'）。連點兩下驗證
+        # 只有一方 rowcount=1，另一方 409 且不會建立第二個背景 run（token ×2）。
+        await self._version_repo.save_status_transition(
+            version, expected_status=prev_status, action="validate"
+        )
         await self._gate_run_repo.save(run)
-        await self._version_repo.save(version)
 
         from src.application.prompt_gate._background import spawn_tracked
         spawn_tracked(
