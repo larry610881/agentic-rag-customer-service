@@ -236,10 +236,16 @@ class HandleWebhookUseCase:
                 event_data.get("type") == "message"
                 and event_data.get("message", {}).get("type") == "text"
             ):
+                # M18：群組/room 或未同意條款的事件 source 可能無 userId。原本直接
+                # 下標 KeyError → 整批事件解析失敗 → 500 → LINE redelivery，同批
+                # 正常 1:1 訊息也一起卡死。無 userId 的事件跳過。
+                user_id = (event_data.get("source") or {}).get("userId")
+                if not user_id:
+                    continue
                 events.append(
                     LineTextMessageEvent(
                         reply_token=event_data["replyToken"],
-                        user_id=event_data["source"]["userId"],
+                        user_id=user_id,
                         message_text=event_data["message"]["text"],
                         timestamp=event_data["timestamp"],
                     )
@@ -253,10 +259,13 @@ class HandleWebhookUseCase:
         events: list[LinePostbackEvent] = []
         for event_data in data.get("events", []):
             if event_data.get("type") == "postback":
+                user_id = (event_data.get("source") or {}).get("userId")
+                if not user_id:  # M18：無 userId 的 postback 跳過
+                    continue
                 events.append(
                     LinePostbackEvent(
                         reply_token=event_data["replyToken"],
-                        user_id=event_data["source"]["userId"],
+                        user_id=user_id,
                         postback_data=event_data["postback"]["data"],
                         timestamp=event_data["timestamp"],
                     )
@@ -514,6 +523,7 @@ class HandleWebhookUseCase:
             # → 有「請點下方按鈕」文字卻沒按鈕（2026-08-17「我要退費」實測）
             customer_service_url=bot.customer_service_url,
             max_tool_calls=1,
+            bot_id=bot.id.value,  # L9：output guard_logs 補 bot 歸因
         )
         # 快速道的檢索來源回填（無 tool call → agent 不會帶 sources），
         # 供 LINE 回覆的來源顯示與對話 retrieved_chunks 持久化
@@ -678,6 +688,7 @@ class HandleWebhookUseCase:
                     event.message_text,
                     tenant_id=bot.tenant_id,
                     bot_id=bot.id.value,
+                    user_id=event.user_id,  # L9：guard_logs 補使用者歸因
                 )
             )
 
@@ -857,6 +868,7 @@ class HandleWebhookUseCase:
                     customer_service_url=bot.customer_service_url,
                     mcp_servers=mcp_servers,
                     max_tool_calls=max_tool_calls,
+                    bot_id=bot.id.value,  # L9：output guard_logs 補 bot 歸因
                 )
         t1 = time.monotonic()
 
@@ -977,11 +989,15 @@ class HandleWebhookUseCase:
             # Persist agent trace to DB
             if trace and self._trace_session_factory:
                 try:
+                    from src.application.agent.send_message_use_case import (
+                        _compute_trace_outcome,
+                    )
                     from src.infrastructure.db.models.agent_trace_model import (
                         AgentExecutionTraceModel,
                     )
                     trace.conversation_id = conversation.id.value
                     trace.message_id = assistant_msg.id.value
+                    node_dicts = [n.to_dict() for n in trace.nodes]
                     row = AgentExecutionTraceModel(
                         id=str(uuid4()),
                         trace_id=trace.trace_id,
@@ -990,10 +1006,14 @@ class HandleWebhookUseCase:
                         conversation_id=trace.conversation_id,
                         agent_mode=trace.agent_mode,
                         source=trace.source,
+                        # M20：LINE trace 原本不設 outcome → 恆 NULL，失敗率儀表板
+                        # （以 outcome 過濾）看不到 LINE trace，主力通路監控失明。
+                        # 呼叫 web 端同一份共用純函式計算（非重寫）。
+                        outcome=_compute_trace_outcome(node_dicts),
                         llm_model=trace.llm_model,
                         llm_provider=trace.llm_provider,
                         bot_id=trace.bot_id,
-                        nodes=[n.to_dict() for n in trace.nodes],
+                        nodes=node_dicts,
                         total_ms=trace.total_ms,
                         total_tokens=trace.total_tokens,
                     )
@@ -1087,6 +1107,9 @@ class HandleWebhookUseCase:
         line_service: LineMessagingService | None = None,
     ) -> None:
         """處理 LINE Postback 事件（回饋收集 + 追問原因）。"""
+        # L8：舊 webhook 端點傳 tenant_id=""，會讓 Feedback(tenant_id="") 落孤兒帳、
+        # 在按租戶過濾的報表中消失。空時退回設定的 default_tenant_id。
+        tenant_id = tenant_id or self._default_tenant_id
         if not self._feedback_repo:
             return
 
