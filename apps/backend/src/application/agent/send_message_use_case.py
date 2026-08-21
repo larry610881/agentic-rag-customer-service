@@ -1193,7 +1193,15 @@ class SendMessageUseCase:
             existing = await self._conversation_repo.find_by_id(
                 command.conversation_id
             )
-            if existing is not None:
+            # 歸屬檢查（C2）：conversation_id 未帶歸屬，find_by_id 不做 tenant
+            # 過濾。不比對會讓任一租戶帶他人 conversation_id 讀到對方歷史、
+            # 並把訊息寫進對方對話。不屬於此租戶/bot（或不存在）→ 不沿用外來
+            # id，改開新對話。
+            if (
+                existing is not None
+                and existing.tenant_id == command.tenant_id
+                and existing.bot_id == command.bot_id
+            ):
                 return existing
 
         return Conversation(tenant_id=command.tenant_id, bot_id=command.bot_id)
