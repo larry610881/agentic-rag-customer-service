@@ -103,6 +103,16 @@ def check_prompt_fields(prompts: dict[str, str]) -> None:
     """檢查多個 prompt 欄位（{欄位名: 文字}），任一違規即 raise。"""
     all_violations: list[StaticCheckViolation] = []
     for field_name, text in prompts.items():
+        # M1：非字串值（如 {"bot_prompt": 123}）原本讓 _TEMPLATE_VAR_RE.finditer
+        # 拋 TypeError → 未被分類 → 500。改為 StaticCheckViolation → 400。
+        if text is not None and not isinstance(text, str):
+            all_violations.append(
+                StaticCheckViolation(
+                    type="invalid_type",
+                    detail=f"{field_name}: 必須為字串，收到 {type(text).__name__}",
+                )
+            )
+            continue
         result = check_prompt(text or "")
         for v in result.violations:
             all_violations.append(
