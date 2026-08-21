@@ -83,6 +83,11 @@ import {
 /** Tools 需要 per-tool RAG 覆蓋 UI 的白名單 */
 const RAG_TOOL_NAMES = ["rag_query", "query_dm_with_image"] as const;
 
+// H17：Radix Select 不允許 value=""，原本「（預設）」選項用單一空白 " "，存回後端
+// 被當 truthy 的 model spec → rewrite/HyDE 每次靜默失敗退回 raw query。改用 sentinel
+// 並在 onChange 轉回空字串，讓後端正確走預設模型。
+const DEFAULT_MODEL_SENTINEL = "__default__";
+
 const RERANK_MODEL_OPTIONS: ModelOption[] = [
   { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
   { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
@@ -347,14 +352,16 @@ function RetrievalModesSection({
                 control={control}
                 render={({ field }) => (
                   <Select
-                    value={field.value || ""}
-                    onValueChange={(v) => field.onChange(v)}
+                    value={field.value || DEFAULT_MODEL_SENTINEL}
+                    onValueChange={(v) =>
+                      field.onChange(v === DEFAULT_MODEL_SENTINEL ? "" : v)
+                    }
                   >
                     <SelectTrigger id="bot-rewrite-model">
                       <SelectValue placeholder="（預設）Claude Haiku 4.5" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value=" ">
+                      <SelectItem value={DEFAULT_MODEL_SENTINEL}>
                         （預設）Claude Haiku 4.5
                       </SelectItem>
                       {RERANK_MODEL_OPTIONS.map((opt) => (
@@ -402,14 +409,16 @@ function RetrievalModesSection({
                 control={control}
                 render={({ field }) => (
                   <Select
-                    value={field.value || ""}
-                    onValueChange={(v) => field.onChange(v)}
+                    value={field.value || DEFAULT_MODEL_SENTINEL}
+                    onValueChange={(v) =>
+                      field.onChange(v === DEFAULT_MODEL_SENTINEL ? "" : v)
+                    }
                   >
                     <SelectTrigger id="bot-hyde-model">
                       <SelectValue placeholder="（預設）Claude Haiku 4.5" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value=" ">
+                      <SelectItem value={DEFAULT_MODEL_SENTINEL}>
                         （預設）Claude Haiku 4.5
                       </SelectItem>
                       {RERANK_MODEL_OPTIONS.map((opt) => (

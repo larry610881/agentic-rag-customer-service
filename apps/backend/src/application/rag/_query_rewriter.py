@@ -24,6 +24,18 @@ from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
 
+_DEFAULT_MODEL_SPEC = "anthropic:claude-haiku-4-5"
+
+
+def effective_model_spec(model: str | None) -> str:
+    """H17：解析 rewrite/HyDE 模型 spec，空字串或純空白一律退回預設。
+
+    前端「（預設）」選項曾存成單一空白 " "（Radix Select 不允許 value=""），
+    若直接當 truthy 的 model spec 會讓 _parse_model_spec 產生 ("anthropic", " ")
+    → LLM API 400 → 靜默 fallback，rewrite/HyDE 每次白跑一次註定失敗的呼叫。
+    """
+    return (model or "").strip() or _DEFAULT_MODEL_SPEC
+
 
 # 通用 rewrite（沒指定 bot 時用）— 純 RAG 改寫示範
 _GENERIC_REWRITE_PROMPT = (
@@ -82,7 +94,7 @@ async def rewrite_query(
     from src.domain.llm.prompt_block import BlockRole, PromptBlock
     from src.infrastructure.llm.llm_caller import call_llm
 
-    spec = model or "anthropic:claude-haiku-4-5"
+    spec = effective_model_spec(model)
     extra_hint_text = _format_extra_hint(extra_hint)
     try:
         if bot_system_prompt:

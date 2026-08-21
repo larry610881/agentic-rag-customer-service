@@ -26,6 +26,7 @@ Extra hint
 
 from __future__ import annotations
 
+from src.application.rag._query_rewriter import effective_model_spec
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -92,7 +93,7 @@ async def generate_hyde(
     from src.domain.llm.prompt_block import BlockRole, PromptBlock
     from src.infrastructure.llm.llm_caller import call_llm
 
-    spec = model or "anthropic:claude-haiku-4-5"
+    spec = effective_model_spec(model)
     extra_hint_text = _format_extra_hint(extra_hint)
     try:
         if bot_system_prompt:
