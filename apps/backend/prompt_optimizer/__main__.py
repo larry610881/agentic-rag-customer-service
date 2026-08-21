@@ -149,10 +149,18 @@ def cmd_run(args: argparse.Namespace) -> None:
     )
 
     # Run
+    # L14：run 與 client close 必須在同一個 event loop——原本 finally 內另起
+    # asyncio.run 關閉舊 loop 建立的連線會拋 RuntimeError('Event loop is
+    # closed')，且在 finally 內拋出會遮蔽原始例外。
+    async def _run_and_close():
+        try:
+            return await runner.run(config, dataset)
+        finally:
+            await api_client.close()
+
     try:
-        result = asyncio.run(runner.run(config, dataset))
+        result = asyncio.run(_run_and_close())
     finally:
-        asyncio.run(api_client.close())
         if db_client:
             db_client.close()
 
@@ -267,13 +275,16 @@ def cmd_validate(args: argparse.Namespace) -> None:
         return results
 
     async def _run():
+        # L14：validate 與 client close 同一 loop（見 run 指令同型修法）
         validator = ValidationEvaluator(evaluator=Evaluator())
-        return await validator.validate(dataset, _eval_fn, n_repeats=args.repeats)
+        try:
+            return await validator.validate(
+                dataset, _eval_fn, n_repeats=args.repeats
+            )
+        finally:
+            await api_client.close()
 
-    try:
-        summary = asyncio.run(_run())
-    finally:
-        asyncio.run(api_client.close())
+    summary = asyncio.run(_run())
 
     # Print report
     icon = "\u2705" if summary.verdict == "PASS" else "\u274c"

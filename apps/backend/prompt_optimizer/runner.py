@@ -80,6 +80,8 @@ class KarpathyLoopRunner:
         # （API 影子執行路徑；test_mode 下 conversation 不落庫、warm-up
         # 的 conversation_id 鏈會斷）。False 維持逐句 warm-up（CLI 相容）。
         self._use_history_override = use_history_override
+        # L13：上一輪 _eval_all 的實際 API 呼叫數（含 warm-up 與 retry）
+        self._last_eval_api_calls = 0
 
     async def run(
         self,
@@ -117,7 +119,8 @@ class KarpathyLoopRunner:
             baseline_score=baseline_score,
             best_score=baseline_score,
             best_prompt=baseline_prompt,
-            total_api_calls=total_cases,
+            # L13：記實際呼叫數（含 warm-up/retry），不再以題數低估
+            total_api_calls=self._last_eval_api_calls,
         )
 
         # Record baseline as iteration 0
@@ -166,7 +169,11 @@ class KarpathyLoopRunner:
         try:
             for i in range(1, config.max_iterations + 1):
                 # Check budget
-                if result.total_api_calls + total_cases > config.budget:
+                # L13：以上一輪實際呼叫數估下一輪成本（warm-up/retry 計入）
+                next_round_est = max(
+                    self._last_eval_api_calls, total_cases
+                )
+                if result.total_api_calls + next_round_est > config.budget:
                     result.stopped_reason = "budget"
                     logger.info("Budget exhausted at iteration %d", i)
                     break
@@ -202,7 +209,7 @@ class KarpathyLoopRunner:
                 eval_results = await self._eval_all(
                     dataset, config, iteration=i, on_progress=on_progress,
                 )
-                result.total_api_calls += total_cases
+                result.total_api_calls += self._last_eval_api_calls  # L13
                 eval_summary = self._evaluator.evaluate(
                     dataset, eval_results, dataset.metadata.cost_config
                 )
@@ -288,6 +295,10 @@ class KarpathyLoopRunner:
         import asyncio as _asyncio
 
         results = []
+        # L13：budget 必須計「實際」API 呼叫數——多輪 warm-up（每句歷史一次）與
+        # retry 都是真實成本。每次 chat 呼叫前計數，round 結束存
+        # self._last_eval_api_calls 供 run() 累計與預算檢查。
+        calls = 0
         total = len(dataset.test_cases)
         for idx, tc in enumerate(dataset.test_cases):
             if on_progress:
@@ -305,6 +316,7 @@ class KarpathyLoopRunner:
                     if self._use_history_override:
                         # Issue #54 Phase D — 多輪題一次帶入（省 N 次呼叫，
                         # 且相容 test_mode 影子執行的無狀態 conversation）
+                        calls += 1
                         cr = await self._api.chat(
                             message=tc.question,
                             bot_id=dataset.metadata.bot_id or None,
@@ -324,6 +336,7 @@ class KarpathyLoopRunner:
                                 if isinstance(hist_msg, dict)
                                 else str(hist_msg)
                             )
+                            calls += 1
                             hist_cr = await self._api.chat(
                                 message=msg_content,
                                 bot_id=dataset.metadata.bot_id or None,
@@ -332,6 +345,7 @@ class KarpathyLoopRunner:
                             conv_id = hist_cr.conversation_id
 
                     # Send actual test question
+                    calls += 1
                     cr = await self._api.chat(
                         message=tc.question,
                         bot_id=dataset.metadata.bot_id or None,
@@ -359,6 +373,7 @@ class KarpathyLoopRunner:
                             latency_ms=0,
                         )
             results.append(cr)  # type: ignore[arg-type]
+        self._last_eval_api_calls = calls  # L13
         return results
 
     def _extract_failed_cases(self, summary: DatasetEvalSummary) -> list[FailedCase]:
