@@ -36,7 +36,7 @@ describe("ProviderList", () => {
 
     // Only LLM badges
     const llmBadges = screen.getAllByText("LLM");
-    expect(llmBadges.length).toBe(4);
+    expect(llmBadges.length).toBe(5);
     expect(screen.queryByText("EMBEDDING")).not.toBeInTheDocument();
   });
 
@@ -50,6 +50,6 @@ describe("ProviderList", () => {
 
     const switches = screen.getAllByRole("switch");
     // 4 providers in PROVIDER_ORDER
-    expect(switches.length).toBe(4);
+    expect(switches.length).toBe(5);
   });
 });

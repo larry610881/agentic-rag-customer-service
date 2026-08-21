@@ -101,6 +101,34 @@ describe("GateRunReport", () => {
     expect(screen.getByText(/no_role_switch/)).toBeInTheDocument();
   });
 
+  it("aborted 時顯示預算中止橫幅（M53）", () => {
+    const run = makeRun();
+    (run.details as { aborted: boolean }).aborted = true;
+    render(<GateRunReport run={run} />);
+    expect(screen.getByText(/超出預算而提前中止/)).toBeInTheDocument();
+  });
+
+  it("excluded_platform_cases 顯示排除說明（M53）", () => {
+    const run = makeRun();
+    (
+      run.details as { excluded_platform_cases: string[] }
+    ).excluded_platform_cases = ["p:sec1", "p:sec2"];
+    render(<GateRunReport run={run} />);
+    expect(screen.getByText(/排除了 2 題平台通用題/)).toBeInTheDocument();
+  });
+
+  it("unstable case 顯示不穩定徽章（M53）", () => {
+    const run = makeRun();
+    const c = (
+      run.details as { cases: Array<Record<string, unknown>> }
+    ).cases[0];
+    c.unstable = true;
+    c.soft_passed = true;
+    c.hard_failed = false;
+    render(<GateRunReport run={run} />);
+    expect(screen.getByText("通過（不穩定）")).toBeInTheDocument();
+  });
+
   it("執行中顯示進度提示", () => {
     render(
       <GateRunReport

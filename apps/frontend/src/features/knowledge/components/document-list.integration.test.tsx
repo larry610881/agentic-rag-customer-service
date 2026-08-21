@@ -16,8 +16,8 @@ describe("DocumentList integration", () => {
     renderWithProviders(<DocumentList {...defaultProps} />);
 
     // Document filenames
-    expect(screen.getByText("product-guide.pdf")).toBeInTheDocument();
-    expect(screen.getByText("setup-manual.pdf")).toBeInTheDocument();
+    expect(screen.getByText("product-guide")).toBeInTheDocument();
+    expect(screen.getByText("setup-manual")).toBeInTheDocument();
 
     // Status indicators
     expect(screen.getByText("完成")).toBeInTheDocument();

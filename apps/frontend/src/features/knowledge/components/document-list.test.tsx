@@ -14,8 +14,8 @@ describe("DocumentList", () => {
 
   it("renders document rows", () => {
     renderWithProviders(<DocumentList kbId="kb-1" documents={mockDocuments} />);
-    expect(screen.getByText("product-guide.pdf")).toBeInTheDocument();
-    expect(screen.getByText("setup-manual.pdf")).toBeInTheDocument();
+    expect(screen.getByText("product-guide")).toBeInTheDocument();
+    expect(screen.getByText("setup-manual")).toBeInTheDocument();
   });
 
   it("displays chunk count for each document", () => {

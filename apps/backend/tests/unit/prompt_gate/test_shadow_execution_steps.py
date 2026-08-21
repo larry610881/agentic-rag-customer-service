@@ -2,7 +2,7 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pytest_bdd import given, scenarios, then, when
@@ -83,6 +83,9 @@ def deps(bot, monkeypatch):
         sys_prompt_repo=sys_prompt_repo,
         eval_uc=eval_uc,
         enqueued=enqueued,
+        # M49：注入可觀察的 factory——test_mode 下它必須從未被呼叫，
+        # 否則「trace 不落庫」的隔離面只是碰巧成立（factory=None 的早退）。
+        trace_factory=MagicMock(),
     )
 
 
@@ -95,7 +98,7 @@ def _make_use_case(deps, prompt_guard=None):
         rag_evaluation_use_case=deps.eval_uc,
         extract_memory_use_case=AsyncMock(),
         prompt_guard=prompt_guard,
-        trace_session_factory=None,
+        trace_session_factory=deps.trace_factory,
     )
 
 
@@ -176,7 +179,11 @@ def run_test_mode(context):
 
 @when("以 test_mode 與 history_override 執行影子對話")
 def run_with_history(context):
-    context["result"] = _run(context["uc"].execute(_command(context)))
+    # M50：帶上 conversation_id 才能真正驗「test_mode 忽略既有對話、不讀 DB」
+    # ——原本 command 從不帶 id，find_by_id==0 在任何模式下都 vacuous 成立。
+    context["result"] = _run(
+        context["uc"].execute(_command(context, conversation_id="conv-x"))
+    )
 
 
 @then("agent 收到的 system prompt 含 \"草稿提示詞\"")
@@ -219,13 +226,17 @@ def verify_trace_returned(context):
 
 
 @then("trace 未被持久化")
-def verify_trace_not_persisted(context):
-    # trace_session_factory=None + persist=False：沒有任何 DB 寫入路徑；
-    # 且 ContextVar 已被 finish() 清空（不殘留到下個 request）
+def verify_trace_not_persisted(context, deps):
+    # M49：真正防守「trace 不落庫」——test_mode（persist=False）下
+    # trace_session_factory 必須從未被呼叫；並確認 ContextVar 已被 finish()
+    # 清空（不殘留到下個 request）。
     from src.infrastructure.observability.agent_trace_collector import (
         AgentTraceCollector,
     )
 
+    assert not deps.trace_factory.called, (
+        "test_mode 下 trace_session_factory 被呼叫 → 影子 trace 正在落庫"
+    )
     assert AgentTraceCollector.current() is None
 
 
