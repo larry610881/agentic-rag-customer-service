@@ -454,10 +454,28 @@ class RunValidationEvalUseCase:
         eval_dataset_repository: EvalDatasetRepository,
         optimization_run_repository=None,
         api_base_url: str = "http://localhost:8000",
+        run_repo_factory=None,
     ) -> None:
         self._dataset_repo = eval_dataset_repository
         self._run_repo = optimization_run_repository
         self._api_base_url = api_base_url
+        # H13：驗證迴圈同步跑數十秒~數分鐘，request session 會 idle-in-transaction
+        # 被 PG 砍斷，history 寫入必失敗。以 factory 在 independent_session_scope 內取
+        # 新 session-bound repo 落庫。
+        self._run_repo_factory = run_repo_factory
+
+    async def _persist_iteration(self, iteration) -> None:
+        """H13：history 落庫。有 factory → 在 independent_session_scope 內取新
+        session repo（驗證迴圈跑完 request session 多半已 idle-txn 被砍）；否則
+        fallback 舊 request-scoped repo。"""
+        if self._run_repo_factory is not None:
+            from src.infrastructure.db.session_middleware import (
+                independent_session_scope,
+            )
+            async with independent_session_scope():
+                await self._run_repo_factory().save_iteration(iteration)
+        elif self._run_repo is not None:
+            await self._run_repo.save_iteration(iteration)
 
     async def execute(self, command: RunValidationCommand) -> dict:
         from prompt_optimizer.api_client import AgentAPIClient, ChatResult
@@ -591,7 +609,7 @@ class RunValidationEvalUseCase:
                     created_at=datetime.now(timezone.utc),
                 )
                 try:
-                    await self._run_repo.save_iteration(iteration)
+                    await self._persist_iteration(iteration)
                 except Exception as e:
                     logger.warning("Failed to save validation history: %s", e)
 

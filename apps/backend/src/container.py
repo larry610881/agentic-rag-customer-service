@@ -2263,6 +2263,8 @@ class Container(containers.DeclarativeContainer):
         api_base_url=config.provided.self_api_base_url,  # H2
         eval_dataset_repository=eval_dataset_repository,
         optimization_run_repository=optimization_run_repository,
+        # H13：history 寫入在 independent_session_scope 內取新 session repo
+        run_repo_factory=optimization_run_repository.provider,
     )
 
     run_manager = providers.Singleton(RunManager)
