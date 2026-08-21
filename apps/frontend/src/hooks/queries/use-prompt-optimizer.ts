@@ -333,6 +333,11 @@ export function useRollbackRun() {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.promptOptimizer.runs });
+      // M41：optimizer rollback 已收斂到版本狀態機（建 config version 並嘗試發布）。
+      // RollbackResult 不含 botId，故以前綴廣域刷新版本時間線與 bot 設定，避免版本
+      // 時間線缺新版本、bot-detail 顯示舊 prompt（存表單即覆寫新 prompt）。
+      queryClient.invalidateQueries({ queryKey: ["config-versions"] });
+      queryClient.invalidateQueries({ queryKey: ["bots", "detail"] });
     },
   });
 }

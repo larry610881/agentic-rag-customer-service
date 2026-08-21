@@ -129,13 +129,26 @@ function useVersionMutation<TVariables>(
   botIdOf: (vars: TVariables) => string,
 ) {
   const token = useAuthStore((s) => s.token);
+  const tenantId = useAuthStore((s) => s.tenantId);
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (vars: TVariables) => makeRequest(vars, token ?? undefined),
     onSuccess: (_data, vars) => {
+      const botId = botIdOf(vars);
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.configVersions.list(botIdOf(vars)),
+        queryKey: queryKeys.configVersions.list(botId),
       });
+      // M40：publish/rollback 會把版本快照 apply 回 bot 本體並清後端 cache。若不刷新
+      // bots.detail，使用者切到 bot-detail 頁會吃到 staleTime 內的舊 prompt，誤以為
+      // 沒生效而按儲存 → PUT 舊值覆寫剛發布的設定。
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.bots.detail(botId),
+      });
+      if (tenantId) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.bots.all(tenantId),
+        });
+      }
     },
   });
 }
