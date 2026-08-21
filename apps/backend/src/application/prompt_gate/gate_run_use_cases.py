@@ -9,7 +9,6 @@ independent_session_scope 內以 .provider factory 重新 resolve（Phase B 先�
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 
@@ -666,13 +665,17 @@ class CleanupOrphanGateRunsUseCase:
     async def execute(self) -> int:
         version_ids = await self._gate_run_repo.mark_orphans_error()
         if version_ids:
-            reverted = await self._version_repo.revert_validating_to_draft(
-                version_ids
-            )
-            logger.info(
-                "gate_run.orphans_cleaned runs=%d versions_reverted=%d",
-                len(version_ids), reverted,
-            )
+            await self._version_repo.revert_validating_to_draft(version_ids)
+        # M5：mark_orphans_error 只撈 queued/running run，撈不到「run 已 completed 但
+        # 版本仍卡 validating」的孤兒（非同交易寫入間進程被砍）。額外 revert 所有
+        # validating 且 run 非 running 的版本，否則該版本三個 API 全 409、無 API 可解。
+        stale = 0
+        if hasattr(self._version_repo, "revert_stale_validating_versions"):
+            stale = await self._version_repo.revert_stale_validating_versions()
+        logger.info(
+            "gate_run.orphans_cleaned runs=%d stale_versions_reverted=%d",
+            len(version_ids), stale,
+        )
         return len(version_ids)
 
 

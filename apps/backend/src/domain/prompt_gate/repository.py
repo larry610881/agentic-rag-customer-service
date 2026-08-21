@@ -50,6 +50,13 @@ class BotConfigVersionRepository(ABC):
         ...
 
     @abstractmethod
+    async def revert_stale_validating_versions(self) -> int:
+        """M5：revert 所有 validating 且對應 gate_run 非 running/queued（或無 run）
+        的版本。撈回 mark_orphans_error 漏掉的孤兒（run 已 completed 但版本仍卡
+        validating）。回傳影響列數。"""
+        ...
+
+    @abstractmethod
     async def set_current(self, bot_id: str, version_id: str) -> None:
         """單一交易內翻轉 is_current（舊 current 設 False、新版設 True），
         維持 partial unique index 不變量。"""

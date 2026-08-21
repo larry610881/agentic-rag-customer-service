@@ -150,6 +150,33 @@ class SQLAlchemyBotConfigVersionRepository(BotConfigVersionRepository):
             )
             return result.rowcount
 
+    async def revert_stale_validating_versions(self) -> int:
+        """M5：revert 所有 validating 且對應 gate_run 非 running/queued（或無 run）的
+        版本。啟動時清理 mark_orphans_error 撈不到的孤兒——run 已 completed 但版本卡
+        validating（兩筆非同交易寫入間進程被 SIGKILL / Cloud Run 換版）。"""
+        from sqlalchemy import or_
+
+        from src.infrastructure.db.models.prompt_gate_run_model import (
+            PromptGateRunModel,
+        )
+
+        active_runs = select(PromptGateRunModel.id).where(
+            PromptGateRunModel.status.in_(["queued", "running"])
+        )
+        async with atomic(self._session):
+            result = await self._session.execute(
+                update(BotConfigVersionModel)
+                .where(
+                    BotConfigVersionModel.status == "validating",
+                    or_(
+                        BotConfigVersionModel.gate_run_id.is_(None),
+                        BotConfigVersionModel.gate_run_id.notin_(active_runs),
+                    ),
+                )
+                .values(status="draft", gate_run_id=None)
+            )
+            return result.rowcount
+
     async def set_current(self, bot_id: str, version_id: str) -> None:
         # 單一交易翻轉：先全部清 False 再設新 current，
         # 順序保證 partial unique index 不變量不被違反
