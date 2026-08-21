@@ -215,6 +215,26 @@ class Settings(BaseSettings):
             return "DEBUG"
         return self.log_level.upper()
 
+    def validate_production_secrets(self) -> list[str]:
+        """M24：非 development 環境 fail-closed 檢查關鍵密鑰未用預設 fallback。
+
+        jwt_secret_key 若停留在公開已知的 "dev-secret-key-change-in-production"，
+        攻擊者可自簽 role=system_admin token 完全繞過認證；encryption_master_key 空
+        則 mcp env_values / LINE 憑證等同未加密。回傳問題清單（呼叫端決定拒絕啟動）。
+        """
+        if self.app_env == "development":
+            return []
+        problems: list[str] = []
+        if self.jwt_secret_key == "dev-secret-key-change-in-production":
+            problems.append(
+                "JWT_SECRET_KEY 仍為預設值，請以環境變數覆寫"
+            )
+        if not self.encryption_master_key:
+            problems.append(
+                "ENCRYPTION_MASTER_KEY 未設定，加密退化為明文"
+            )
+        return problems
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 

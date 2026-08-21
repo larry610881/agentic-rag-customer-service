@@ -109,6 +109,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         enabled_modules=settings.enabled_modules,
     )
 
+    # M24：非 development 環境拒絕以預設密鑰啟動（fail-closed）
+    secret_problems = settings.validate_production_secrets()
+    if secret_problems:
+        for _p in secret_problems:
+            logger.error("app.startup.insecure_secret", detail=_p)
+        raise RuntimeError(
+            "拒絕啟動：關鍵密鑰使用預設 fallback（"
+            + "；".join(secret_problems)
+            + "）。請設定對應環境變數。"
+        )
+
     # Seed built-in tools (idempotent — preserves admin-set scope/tenant_ids)
     try:
         from copy import deepcopy
