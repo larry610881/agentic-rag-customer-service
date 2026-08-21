@@ -409,7 +409,14 @@ function VersionCard({
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              disabled={validateMutation.isPending}
+              // L17：estimate 載入完成前不可送驗——預檢確認的知情同意（題數/
+              // 成本/預算）必須先看到才可按；超預算亦禁用（後端同樣會擋）
+              disabled={
+                validateMutation.isPending ||
+                estimateLoading ||
+                !estimate ||
+                !estimate.within_budget
+              }
               onClick={handleValidate}
             >
               確認送驗

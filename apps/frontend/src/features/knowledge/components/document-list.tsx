@@ -117,6 +117,9 @@ async function openDocumentPreview(
       const blobUrl = URL.createObjectURL(blob);
       if (w) w.location.href = blobUrl;
       else window.open(blobUrl, '_blank');
+      // L22：blob URL 不 revoke 會讓整份文件（PDF 可達數十 MB）佔住記憶體到分頁
+      // 關閉。立即 revoke 會讓新分頁載入失敗，延時 60s 待新視窗完成載入後釋放。
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
     } catch {
       if (w) w.close();
     }
@@ -305,6 +308,7 @@ function ChildrenRows({
   setTextPreviewDoc,
   setTextPreviewContent,
   onReprocess,
+  showActions = true,
 }: {
   kbId: string;
   parentId: string;
@@ -313,6 +317,8 @@ function ChildrenRows({
   setTextPreviewDoc: (d: DocumentResponse) => void;
   setTextPreviewContent: (t: string) => void;
   onReprocess?: (doc: DocumentResponse) => void;
+  /** L21：父表格無「操作」欄（admin 端不傳 onDelete）時，子列須同步少一欄 */
+  showActions?: boolean;
 }) {
   const { data: children, isLoading } = useQuery({
     queryKey: ["document-children", kbId, parentId],
@@ -333,7 +339,10 @@ function ChildrenRows({
   if (isLoading) {
     return (
       <tr>
-        <td colSpan={7} className="border-b px-8 py-2 text-xs text-muted-foreground">
+        <td
+          colSpan={showActions ? 7 : 6}
+          className="border-b px-8 py-2 text-xs text-muted-foreground"
+        >
           載入子頁面...
         </td>
       </tr>
@@ -379,6 +388,7 @@ function ChildrenRows({
             <td className="border-b px-4 py-1 text-sm text-muted-foreground">
               {formatDate(child.created_at)}
             </td>
+            {showActions && (
             <td className="border-b px-4 py-1">
               <div className="flex items-center gap-1">
                 {child.status === "processed" && child.chunk_count > 0 && (
@@ -413,6 +423,7 @@ function ChildrenRows({
                   )}
               </div>
             </td>
+            )}
           </tr>
         );
       })}
@@ -724,6 +735,7 @@ export function DocumentList({
                   setTextPreviewDoc={setTextPreviewDoc}
                   setTextPreviewContent={setTextPreviewContent}
                   onReprocess={(child) => setReprocessTarget(child)}
+                  showActions={!!onDelete}
                 />
               )}
               </Fragment>

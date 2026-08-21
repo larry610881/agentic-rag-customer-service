@@ -115,6 +115,9 @@ export function useGateRun(runId: string | null) {
       ),
     enabled: !!token && !!runId,
     refetchInterval: (query) => {
+      // L16：查詢本身失敗（404/500）時 data 恆 undefined，若不先判斷 error
+      // 會對已確定失敗的 run id 每 3 秒無限輪詢直到使用者離開
+      if (query.state.status === "error") return false;
       const status = query.state.data?.status;
       return status === "completed" || status === "error" ? false : 3000;
     },

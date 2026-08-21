@@ -3,7 +3,7 @@
  * 每則回應可展開執行軌跡 DAG。token 消耗計入租戶（分類：playground）。
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FlaskConical, Loader2, Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -81,6 +81,15 @@ function CompareColumn({
   column: ColumnState;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  // L18：串流時跟隨捲到底（對照 message-list.tsx 同模式），否則對話超過欄高後
+  // 新 token 一直長在可視範圍外，每輪需手動捲動兩個欄位
+  const lastContent =
+    column.turns.length > 0
+      ? column.turns[column.turns.length - 1].content
+      : "";
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [lastContent, column.turns.length]);
   return (
     <div className="flex min-h-0 flex-1 flex-col rounded-lg border">
       <div className="flex items-center gap-2 border-b px-3 py-2 text-sm font-medium">
