@@ -700,6 +700,7 @@ class SendMessageUseCase:
 
         history = conversation.messages if conversation.messages else None
         metadata = self._extract_metadata(conversation)
+        metadata["_dry_run_guard"] = command.test_mode  # H6
 
         bot_cfg = await self._load_bot_config(command)
 
@@ -823,6 +824,7 @@ class SendMessageUseCase:
                 bot_id=command.bot_id,
                 user_id=command.visitor_id,
                 user_message=command.message,
+                dry_run=command.test_mode,  # H6
             )
             if not guard_result.passed:
                 response.answer = guard_result.blocked_response
@@ -912,6 +914,7 @@ class SendMessageUseCase:
 
         history = conversation.messages if conversation.messages else None
         metadata = self._extract_metadata(conversation)
+        metadata["_dry_run_guard"] = command.test_mode  # H6
 
         bot_cfg = await self._load_bot_config(command)
 
@@ -951,6 +954,7 @@ class SendMessageUseCase:
                 tenant_id=command.tenant_id,
                 bot_id=command.bot_id,
                 user_id=command.visitor_id,
+                dry_run=command.test_mode,  # H6
             )
             if not guard_result.passed:
                 assistant_msg = None
@@ -1013,6 +1017,7 @@ class SendMessageUseCase:
                 tenant_id=command.tenant_id,
                 bot_id=command.bot_id,
                 user_id=command.visitor_id,
+                dry_run=command.test_mode,  # H6
             )
             attack_msg = None
             if not command.test_mode:
@@ -1118,6 +1123,7 @@ class SendMessageUseCase:
                 bot_id=command.bot_id,
                 user_id=command.visitor_id,
                 user_message=command.message,
+                dry_run=command.test_mode,  # H6
             )
             if not output_guard.passed:
                 full_answer = output_guard.blocked_response
@@ -1263,6 +1269,7 @@ class SendMessageUseCase:
             tenant_id=command.tenant_id,
             bot_id=command.bot_id,
             user_id=command.visitor_id,
+            dry_run=command.test_mode,  # H6
         )
         if guard_result.passed:
             # F1（POC 問題 1）：input guard 已在此跑過並通過 — 帶標記讓
@@ -1289,6 +1296,7 @@ class SendMessageUseCase:
             tenant_id=command.tenant_id,
             bot_id=command.bot_id,
             user_id=command.visitor_id,
+            dry_run=command.test_mode,  # H6
         )
         return await self._finalize_input_block(
             command, conversation, guard_result
