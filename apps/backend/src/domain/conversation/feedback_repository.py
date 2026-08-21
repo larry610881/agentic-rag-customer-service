@@ -43,8 +43,10 @@ class FeedbackRepository(ABC):
 
     @abstractmethod
     async def update_tags(
-        self, message_id: str, tags: list[str]
-    ) -> None: ...
+        self, message_id: str, tags: list[str], tenant_id: str | None = None
+    ) -> None:
+        """L11：tenant_id 綁定更新條件，防跨租戶標籤注入。"""
+        ...
 
     @abstractmethod
     async def get_daily_trend(

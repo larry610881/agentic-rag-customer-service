@@ -281,7 +281,10 @@ async def update_feedback_tags(
         Provide[Container.list_feedback_use_case]
     ),
 ) -> dict:
-    await use_case.update_tags(feedback_id, body.tags)
+    # L11：綁定呼叫者租戶，杜絕跨租戶標籤注入
+    await use_case.update_tags(
+        feedback_id, body.tags, tenant_id=tenant.tenant_id
+    )
     return {"status": "ok"}
 
 

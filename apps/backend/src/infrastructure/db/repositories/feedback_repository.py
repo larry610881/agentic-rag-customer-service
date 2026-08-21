@@ -126,12 +126,15 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
         return result.scalar_one()
 
     async def update_tags(
-        self, message_id: str, tags: list[str]
+        self, message_id: str, tags: list[str], tenant_id: str | None = None
     ) -> None:
         async with atomic(self._session):
             stmt = select(FeedbackModel).where(
                 FeedbackModel.message_id == message_id
             )
+            # L11：綁定租戶，杜絕以他租戶 message_id 跨租戶注入標籤
+            if tenant_id is not None:
+                stmt = stmt.where(FeedbackModel.tenant_id == tenant_id)
             result = await self._session.execute(stmt)
             model = result.scalar_one_or_none()
             if model is None:

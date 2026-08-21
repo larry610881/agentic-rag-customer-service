@@ -87,6 +87,9 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 message_id=r.message_id,
                 bot_id=r.bot_id,
                 kb_id=r.kb_id,
+                # L3：save 有寫入這兩欄但讀取建構漏帶 → entity 恆為 None
+                run_id=r.run_id,
+                config_version_id=r.config_version_id,
                 created_at=r.created_at,
             )
             for r in rows
@@ -366,8 +369,19 @@ class SQLAlchemyUsageRepository(UsageRepository):
             UsageRecordModel.created_at < end,
         )
         if included_categories is not None:
+            # L4：明確清單自動 union 三個 eval 分類。否則 tenant_admin 可對一般
+            # 對話自帶 X-Usage-Category: playground 標記逃 quota（清單未含 eval
+            # 分類時 IN 過濾不計此流量）。#54 eval 分流的意圖是歸因/可視性，
+            # 不是 quota 豁免——eval token 仍是租戶消耗的 token。
+            from src.domain.usage.category import UsageCategory
+
+            effective = set(included_categories) | {
+                UsageCategory.EVAL_GATE.value,
+                UsageCategory.PROMPT_OPTIMIZE.value,
+                UsageCategory.PLAYGROUND.value,
+            }
             stmt = stmt.where(
-                UsageRecordModel.request_type.in_(included_categories)
+                UsageRecordModel.request_type.in_(sorted(effective))
             )
         result = await self._session.execute(stmt)
         value = result.scalar_one()
