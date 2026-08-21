@@ -51,6 +51,9 @@ class RunSingleEvalUseCase:
         ensure_dataset_read(dataset, command.tenant_id, command.role)
 
         # Build CLI-compatible dataset
+        # M31：dataset 層 default_assertions（含安全預設）併入每個 case，
+        # 否則 Evaluator 只讀 case.assertions → 違反安全預設的 prompt 仍判 PASS。
+        _defaults = list(dataset.default_assertions or [])
         test_cases = tuple(
             TestCase(
                 id=tc.case_id,
@@ -59,7 +62,7 @@ class RunSingleEvalUseCase:
                 category=tc.category,
                 assertions=tuple(
                     Assertion(type=a["type"], params=a.get("params", {}))
-                    for a in tc.assertions
+                    for a in (_defaults + list(tc.assertions))
                 ),
                 conversation_history=tuple(tc.conversation_history),
             )
@@ -345,7 +348,12 @@ class EstimateCostUseCase:
                     sys_chars = 0
                     if self._prompt_config_repo:
                         sys_config = await self._prompt_config_repo.get()
-                        sys_chars = len(sys_config.base_prompt or "")
+                        # M26：SystemPromptConfig 只有 system_prompt，無 base_prompt。
+                        # 原本讀 .base_prompt 拋 AttributeError 被廣域 except 吃掉 →
+                        # prompt_tokens 一律 fallback 500，估價功能對所有 bot 靜默失效。
+                        sys_chars = len(
+                            getattr(sys_config, "system_prompt", "") or ""
+                        )
 
                     prompt_tokens = int((bot_prompt_chars + sys_chars) / CHARS_PER_TOKEN)
             except Exception as e:
@@ -501,6 +509,9 @@ class RunValidationEvalUseCase:
         effective_bot_id = command.bot_id or dataset.bot_id or ""
 
         # Build CLI-compatible dataset
+        # M31：dataset 層 default_assertions（含安全預設）併入每個 case，
+        # 否則 Evaluator 只讀 case.assertions → 違反安全預設的 prompt 仍判 PASS。
+        _defaults = list(dataset.default_assertions or [])
         test_cases = tuple(
             TestCase(
                 id=tc.case_id,
@@ -509,7 +520,7 @@ class RunValidationEvalUseCase:
                 category=tc.category,
                 assertions=tuple(
                     Assertion(type=a["type"], params=a.get("params", {}))
-                    for a in tc.assertions
+                    for a in (_defaults + list(tc.assertions))
                 ),
                 conversation_history=tuple(tc.conversation_history),
             )
