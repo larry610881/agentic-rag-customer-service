@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from src.application.eval_dataset._tenant_guard import ensure_dataset_read
 from src.domain.eval_dataset.repository import EvalDatasetRepository
 from src.domain.shared.exceptions import EntityNotFoundError
 
@@ -16,6 +17,7 @@ class RunEvalCommand:
     tenant_id: str
     dataset_id: str
     api_token: str
+    role: str | None = None
 
 
 class RunSingleEvalUseCase:
@@ -45,6 +47,8 @@ class RunSingleEvalUseCase:
         dataset = await self._dataset_repo.find_by_id(command.dataset_id)
         if dataset is None:
             raise EntityNotFoundError("EvalDataset", command.dataset_id)
+        # C7：跨租戶對他人題集跑 eval 會經 case_results 洩漏題目內容 → 404
+        ensure_dataset_read(dataset, command.tenant_id, command.role)
 
         # Build CLI-compatible dataset
         test_cases = tuple(
@@ -439,6 +443,7 @@ class RunValidationCommand:
     api_token: str
     repeats: int = 5
     bot_id: str = ""
+    role: str | None = None
 
 
 class RunValidationEvalUseCase:
@@ -471,6 +476,8 @@ class RunValidationEvalUseCase:
         dataset = await self._dataset_repo.find_by_id(command.dataset_id)
         if dataset is None:
             raise EntityNotFoundError("EvalDataset", command.dataset_id)
+        # C7：跨租戶對他人題集跑 validate 會洩漏題目內容 → 404
+        ensure_dataset_read(dataset, command.tenant_id, command.role)
 
         # bot_id: command override > dataset default
         effective_bot_id = command.bot_id or dataset.bot_id or ""

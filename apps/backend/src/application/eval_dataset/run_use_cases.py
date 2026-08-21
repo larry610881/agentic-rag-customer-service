@@ -6,6 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
+from src.application.eval_dataset._tenant_guard import ensure_dataset_read
 from src.domain.bot.repository import BotRepository
 from src.domain.eval_dataset.repository import EvalDatasetRepository
 from src.domain.eval_dataset.run_repository import OptimizationRunRepository
@@ -53,6 +54,7 @@ class StartRunCommand:
     patience: int = 5
     budget: int = 200
     dry_run: bool = False
+    role: str | None = None
 
 
 class StartRunUseCase:
@@ -92,6 +94,8 @@ class StartRunUseCase:
         dataset = await self._dataset_repo.find_by_id(command.dataset_id)
         if dataset is None:
             raise EntityNotFoundError("EvalDataset", command.dataset_id)
+        # C7：跨租戶對他人題集啟動 run 會把題集 snapshot 寫進可見 iterations → 404
+        ensure_dataset_read(dataset, command.tenant_id, command.role)
 
         # Snapshot dataset data before spawning background task
         dataset_snapshot = {

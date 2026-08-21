@@ -150,8 +150,14 @@ async def start_run(
         patience=body.patience,
         budget=body.budget,
         dry_run=body.dry_run,
+        role=tenant.role,
     )
-    run_id = await use_case.execute(command)
+    try:
+        run_id = await use_case.execute(command)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from e
     return StartRunResponse(run_id=run_id, status="running")
 
 

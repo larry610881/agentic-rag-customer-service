@@ -7,6 +7,29 @@
 
 ---
 
+## Code Review CRITICAL 批次二 — 租戶隔離 IDOR 系統性根因（C2/C4–C9）（2026-08-21，全專案 review 後續）
+
+**Sprint 來源**：2026-08-20 多代理全專案 review CRITICAL 批次第二輪（7 個跨租戶 IDOR）
+
+**主題**：「知道 id 就能存取」的授權缺口、資源歸屬檢查的統一落點、讀/寫權限分級
+
+#### 做得好的地方
+- **同根因一次收斂，不逐處補丁**：C2（對話）、C8/C9（bot）、C4–C7（eval dataset）表面是 9 個端點，根因同一個——use case 以純 id `find_by_id`、只把 command 裡的 `tenant_id` 當 metadata、從不比對歸屬。每個 bounded context 建一個 `_tenant_guard.py`（bot 一份、eval_dataset 一份），所有讀寫端點呼叫同一 guard，而非每個端點各寫一段 if。**授權歸屬是 application 層邏輯，集中在 guard，端點只負責把 JWT 的 tenant/role 帶進來**。
+- **讀/寫分級 + 平台集語意**：eval dataset 的 guard 區分 `ensure_dataset_read`（擁有者/平台通用集/admin）與 `ensure_dataset_write`（平台集非 admin → 403 可讀不可改、一般集非擁有者 → 404 不洩漏存在性）。用 404 vs 403 精準表達「不該知道它存在」vs「知道但無權改」——新增 `AuthorizationError` 對應 403，與既有 `EntityNotFoundError`（404）分流。
+- **端點級 + use-case 級雙層測試**：unit 測 guard 矩陣（快、覆蓋 owner/foreign/platform-base/admin 組合），integration 測真實端點跨租戶回 404/403（釘住 router 有把 tenant/role 帶進去）。防止「guard 對但 router 忘了傳」的漏接。
+- **可選參數 + None 跳過，零既有測試 churn**：guard 參數對 use case 用 `tenant_id: str | None = None`，None 時跳過檢查——既有大量以舊簽章呼叫的單元測試全數保持綠燈，生產一律經 router 帶入、由 integration 測試保證。
+
+#### 潛在隱憂
+- **「None 跳過」是刻意的取捨，也是未來的坑**：安全檢查做成 opt-in（未帶 tenant_id 即不檢查），代價是新呼叫端若忘記帶就靜默無保護。目前每個 use case 僅一個 production 呼叫端（router，已帶），靠 integration 測試釘住；但若未來 use case 被別處復用，需 code review 盯住 → 優先級：中。長期正解是 request-scoped 的 tenant context（ContextVar / 依賴注入）讓 tenant 不可能漏傳。
+- **DeleteTestCaseUseCase 原本連 dataset 都不載入**（純 case_id 直刪）——這類「以子資源 id 直接操作、完全不經父聚合」的 repo 方法是 IDOR 高風險模式。已改為帶 dataset_id 驗歸屬 + 驗 case 屬於該 dataset，但 repo 層 `delete_test_case(case_id)` 仍是無 scope 的原語 → 未來可考慮 repo 層強制帶 dataset_id → 優先級：中。
+- **import_dataset 仍接受 body.tenant_id**（review H12，本批未處理）：屬 HIGH 非 CRITICAL，任意租戶可冒名寫入他租戶命名空間 → 下一批 HIGH 處理 → 優先級：中。
+
+#### 延伸學習
+- **IDOR（Insecure Direct Object Reference）的結構性成因**：DDD 分層把「查詢」與「授權」分開，repository 的 `find_by_id(id)` 天然無 tenant 概念，若 application 層沒補上歸屬檢查，多租戶系統就漏。**多租戶系統的鐵律：任何以外部可控 id 查詢的資源，取得後第一件事就是驗歸屬**——最好在 repository 層就強制 `find_by_id(id, tenant_id)`（本專案 conversation repo 的 `find_by_id` 反而是少數沒帶 tenant 的，正是 C2 破口）。
+- 若想深入：搜尋 "IDOR broken object level authorization"、"OWASP API1:2023 BOLA"、"multi-tenant row level security PostgreSQL RLS"（RLS 是在 DB 層一次性封死此類漏洞的手段，代價是所有連線要帶 tenant context）。
+
+---
+
 ## Code Review CRITICAL 修復 C1/C3 — 「測試 schema 要照真實約束」與「VO 改型別要掃呼叫端」（2026-08-21，全專案 review 後續）
 
 **Sprint 來源**：2026-08-20 多代理全專案 review（`docs/reviews/full-review-2026-08-20.md`）CRITICAL 批次第一輪

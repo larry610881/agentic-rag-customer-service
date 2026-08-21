@@ -67,3 +67,14 @@ class NoRelevantKnowledgeError(DomainException):
     def __init__(self, query: str) -> None:
         super().__init__(f"No relevant knowledge found for query: '{query}'")
         self.query = query
+
+
+class AuthorizationError(DomainException):
+    """Raised when an authenticated principal lacks permission for an action.
+
+    對應 HTTP 403：資源存在且呼叫者知道其存在（例如可讀取的平台通用集），
+    但無權執行該寫入/刪除操作。與 EntityNotFoundError（404，不洩漏存在性）區別。
+    """
+
+    def __init__(self, message: str = "Not authorized for this action") -> None:
+        super().__init__(message)
