@@ -978,7 +978,7 @@ class SendMessageUseCase:
                 }
                 # 持久化 trace（含 guard_input_blocked 紅節點），讓 Studio
                 # canvas / admin 觀測頁能看到攔截 DAG
-                await self._persist_agent_trace(
+                gb_trace_id, gb_nodes = await self._persist_agent_trace(
                     conversation_id=conversation.id.value,
                     message_id=(
                         assistant_msg.id.value if assistant_msg else None
@@ -987,7 +987,15 @@ class SendMessageUseCase:
                     source=command.identity_source or "web",
                     persist=not command.test_mode,
                 )
-                yield {"type": "done"}
+                # M10：原本丟棄回傳的 (trace_id, nodes)、done 不帶 → 前端拿不到
+                # trace_id 無法 fetch 剛持久化的 guard DAG；test_mode 下 trace 不落庫、
+                # 資訊全失。比照正常結束路徑帶上。
+                gb_done: dict[str, Any] = {"type": "done"}
+                if gb_trace_id:
+                    gb_done["trace_id"] = gb_trace_id
+                if command.test_mode and gb_nodes:
+                    gb_done["trace_nodes"] = gb_nodes
+                yield gb_done
                 return
 
         history, history_context, router_context = (
@@ -1035,14 +1043,19 @@ class SendMessageUseCase:
                 "block_type": "input",
                 "rule_matched": gr.rule_matched,
             }
-            await self._persist_agent_trace(
+            atk_trace_id, atk_nodes = await self._persist_agent_trace(
                 conversation_id=conversation.id.value,
                 message_id=attack_msg.id.value if attack_msg else None,
                 latency_ms=0,
                 source=command.identity_source or "web",
                 persist=not command.test_mode,
             )
-            yield {"type": "done"}
+            atk_done: dict[str, Any] = {"type": "done"}  # M10
+            if atk_trace_id:
+                atk_done["trace_id"] = atk_trace_id
+            if command.test_mode and atk_nodes:
+                atk_done["trace_nodes"] = atk_nodes
+            yield atk_done
             return
 
         # Propagate worker routing info to agent service (for trace visualization)

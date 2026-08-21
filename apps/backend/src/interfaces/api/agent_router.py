@@ -85,6 +85,21 @@ _EVAL_USAGE_CATEGORIES = frozenset(
 )
 
 
+def _effective_test_mode(request: ChatRequest) -> bool:
+    """M9：config_override / history_override 存在時強制 test_mode。
+
+    否則授權 client 若漏設 test_mode，draft 設定產生的回答會被當真實對話持久化、
+    觸發 memory 萃取與線上 eval，usage 仍打成「當前線上版本」的 config_version_id
+    （草稿品質/token 計入線上版本），且 history_override 只在 test_mode 分支被消費、
+    此時被靜默忽略。三旗標任一存在即視為影子執行。
+    """
+    return (
+        request.test_mode
+        or request.config_override is not None
+        or request.history_override is not None
+    )
+
+
 def _require_shadow_authorized(
     request: ChatRequest, usage_ctx: UsageContext
 ) -> None:
@@ -146,7 +161,7 @@ async def agent_chat(
             bot_id=request.bot_id,
             identity_source=identity_source,
             config_override=request.config_override,
-            test_mode=request.test_mode,
+            test_mode=_effective_test_mode(request),  # M9
             history_override=request.history_override,
         )
     )
@@ -242,7 +257,7 @@ async def agent_chat_stream(
         bot_id=request.bot_id,
         identity_source=request.identity_source or "web",
         config_override=request.config_override,
-        test_mode=request.test_mode,
+        test_mode=_effective_test_mode(request),  # M9
         history_override=request.history_override,
     )
 
@@ -291,6 +306,9 @@ async def agent_chat_stream(
                         message_id=None,
                         latency_ms=0,
                         source=command.identity_source or "web",
+                        # M8：正常路徑三處都帶 persist=not test_mode，唯獨此例外分支
+                        # 漏帶（預設 True）→ Playground 影子 trace 汙染生產觀測頁。
+                        persist=not command.test_mode,
                     )
                 except Exception:
                     logger.exception("agent.chat.stream.persist_failed_trace_error")

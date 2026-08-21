@@ -68,3 +68,26 @@ def test_admin_eval_category_accepted():
 def test_system_admin_eval_category_accepted():
     ctx = resolve_usage_context("prompt_optimize", run_id=None, role="system_admin")
     assert ctx.request_type == "prompt_optimize"
+
+
+# --- _effective_test_mode（M9）---
+
+from src.interfaces.api.agent_router import _effective_test_mode  # noqa: E402
+
+
+def test_config_override_forces_test_mode():
+    assert _effective_test_mode(_req(config_override={"base_prompt": "x"})) is True
+
+
+def test_history_override_forces_test_mode():
+    assert _effective_test_mode(
+        _req(history_override=[{"role": "user", "content": "x"}])
+    ) is True
+
+
+def test_plain_request_not_test_mode():
+    assert _effective_test_mode(_req()) is False
+
+
+def test_explicit_test_mode_preserved():
+    assert _effective_test_mode(_req(test_mode=True)) is True
