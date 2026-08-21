@@ -86,7 +86,7 @@ class StartReplayCompareUseCase:
         conversation_repository,
         provider_setting_repository=None,
         encryption_service=None,
-        api_base_url: str = "http://localhost:8001",
+        api_base_url: str = "http://localhost:8000",
         gate_run_repo_factory=None,
         record_usage_factory=None,
     ) -> None:

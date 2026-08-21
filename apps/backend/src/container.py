@@ -1990,6 +1990,7 @@ class Container(containers.DeclarativeContainer):
 
     start_gate_run_use_case = providers.Factory(
         StartGateRunUseCase,
+        api_base_url=config.provided.self_api_base_url,  # H2
         bot_repository=bot_repository,
         tenant_repository=tenant_repository,
         version_repository=bot_config_version_repository,
@@ -2019,6 +2020,7 @@ class Container(containers.DeclarativeContainer):
 
     start_replay_compare_use_case = providers.Factory(
         StartReplayCompareUseCase,
+        api_base_url=config.provided.self_api_base_url,  # H2
         bot_repository=bot_repository,
         version_repository=bot_config_version_repository,
         gate_run_repository=prompt_gate_run_repository,
@@ -2235,6 +2237,7 @@ class Container(containers.DeclarativeContainer):
 
     run_single_eval_use_case = providers.Factory(
         RunSingleEvalUseCase,
+        api_base_url=config.provided.self_api_base_url,  # H2
         eval_dataset_repository=eval_dataset_repository,
     )
 
@@ -2257,6 +2260,7 @@ class Container(containers.DeclarativeContainer):
 
     run_validation_eval_use_case = providers.Factory(
         RunValidationEvalUseCase,
+        api_base_url=config.provided.self_api_base_url,  # H2
         eval_dataset_repository=eval_dataset_repository,
         optimization_run_repository=optimization_run_repository,
     )
@@ -2265,6 +2269,7 @@ class Container(containers.DeclarativeContainer):
 
     start_run_use_case = providers.Factory(
         StartRunUseCase,
+        api_base_url=config.provided.self_api_base_url,  # H2
         eval_dataset_repository=eval_dataset_repository,
         run_manager=run_manager,
         db_url=providers.Callable(lambda cfg: cfg.database_url, config),

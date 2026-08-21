@@ -26,7 +26,7 @@ class RunSingleEvalUseCase:
     def __init__(
         self,
         eval_dataset_repository: EvalDatasetRepository,
-        api_base_url: str = "http://localhost:8001",
+        api_base_url: str = "http://localhost:8000",
     ) -> None:
         self._dataset_repo = eval_dataset_repository
         self._api_base_url = api_base_url
@@ -453,7 +453,7 @@ class RunValidationEvalUseCase:
         self,
         eval_dataset_repository: EvalDatasetRepository,
         optimization_run_repository=None,
-        api_base_url: str = "http://localhost:8001",
+        api_base_url: str = "http://localhost:8000",
     ) -> None:
         self._dataset_repo = eval_dataset_repository
         self._run_repo = optimization_run_repository

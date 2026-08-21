@@ -87,7 +87,7 @@ class StartGateRunUseCase:
         version_repository,
         gate_run_repository,
         eval_dataset_repository,
-        api_base_url: str = "http://localhost:8001",
+        api_base_url: str = "http://localhost:8000",
         # 背景任務用 provider factories（延遲 resolve，綁新 session）
         gate_run_repo_factory=None,
         version_repo_factory=None,

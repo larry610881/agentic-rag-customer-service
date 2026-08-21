@@ -70,7 +70,7 @@ class StartRunUseCase:
         eval_dataset_repository: EvalDatasetRepository,
         run_manager: RunManager,
         db_url: str = "",
-        api_base_url: str = "http://localhost:8001",
+        api_base_url: str = "http://localhost:8000",
         provider_setting_repository=None,
         encryption_service=None,
         record_usage_factory=None,
