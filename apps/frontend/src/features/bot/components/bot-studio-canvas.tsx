@@ -219,11 +219,17 @@ export function BotStudioWorkspace({ bot }: BotStudioWorkspaceProps) {
 
   const { sendMessage, isStreaming } = useStudioStreaming({
     onEvent: (event) => {
-      setEventLog((prev) =>
-        prev.length >= STREAM_RESET_LIMIT ? prev : [...prev, event],
-      );
-      if (event.type === "token" && typeof event.content === "string") {
-        appendAssistantContent(event.content);
+      // M45：token 事件不進 eventLog（只餵內容累積）。否則長回答的前 ~80 個 token
+      // 就填滿硬上限，之後的 tool_calls / sources / worker_routing / error 全被丟棄，
+      // ExecutionTimeline 與 LiveTraceGraph 中途凍結。結構性事件才佔名額。
+      if (event.type === "token") {
+        if (typeof event.content === "string") {
+          appendAssistantContent(event.content);
+        }
+      } else {
+        setEventLog((prev) =>
+          prev.length >= STREAM_RESET_LIMIT ? prev : [...prev, event],
+        );
       }
       if (event.type === "tool_calls" && Array.isArray(event.tool_calls)) {
         const calls = event.tool_calls as Array<{ tool_name: string }>;

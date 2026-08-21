@@ -55,6 +55,26 @@ describe("DocumentList", () => {
     expect(screen.getByText("失敗")).toBeInTheDocument();
   });
 
+  it("prunes selectedIds when documents change across pages (M47)", async () => {
+    const user = userEvent.setup();
+    const docA = { ...mockDocuments[0], id: "doc-a" };
+    const docB = { ...mockDocuments[1], id: "doc-b" };
+    const { rerender } = renderWithProviders(
+      <DocumentList kbId="kb-1" documents={[docA, docB]} onDelete={vi.fn()} />,
+    );
+    // 勾選兩筆 → 工具列顯示已選 2
+    const checkboxes = screen.getAllByRole("checkbox");
+    await user.click(checkboxes[1]);
+    await user.click(checkboxes[2]);
+    expect(screen.getByText(/已選 2 個文件/)).toBeInTheDocument();
+
+    // 切到只含 docA 的頁面 → 殘留的 docB 應被修剪，工具列剩已選 1
+    rerender(
+      <DocumentList kbId="kb-1" documents={[docA]} onDelete={vi.fn()} />,
+    );
+    expect(screen.getByText(/已選 1 個文件/)).toBeInTheDocument();
+  });
+
   it("shows delete buttons when onDelete is provided", () => {
     const onDelete = vi.fn();
     renderWithProviders(<DocumentList kbId="kb-1" documents={mockDocuments} onDelete={onDelete} />);

@@ -467,6 +467,18 @@ export function DocumentList({
     onSingleExpandedChange(doc);
   }, [expandedParents, documents, onSingleExpandedChange]);
 
+  // M47：documents 變動（切頁、單筆刪除後 refetch）時，把 selectedIds 與現存
+  // document id 取交集。否則殘留他頁／已刪 id 會讓表頭全選誤判、批量刪除送出畫面
+  // 上看不到的文件 id（真實刪除連帶移除向量資料）。回傳 prev 保持引用避免 re-render 迴圈。
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(documents.map((d) => d.id));
+      const pruned = new Set([...prev].filter((id) => visible.has(id)));
+      return pruned.size === prev.size ? prev : pruned;
+    });
+  }, [documents]);
+
   const statsMap = new Map(
     (qualityStats ?? []).map((s) => [s.document_id, s])
   );
@@ -483,7 +495,9 @@ export function DocumentList({
     ).length;
   }, [documents, selectedIds]);
 
-  const allSelected = documents.length > 0 && selectedIds.size === documents.length;
+  // M47：以內容比對（每一筆現存文件都被勾）取代只比 size，避免殘留他頁 id 湊滿數量誤判全選
+  const allSelected =
+    documents.length > 0 && documents.every((d) => selectedIds.has(d.id));
 
   const toggleSelectAll = () => {
     if (allSelected) {

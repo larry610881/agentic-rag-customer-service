@@ -1,6 +1,12 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { mockTenants } from "@/test/fixtures/auth";
+
+const clearQueryCacheMock = vi.fn();
+vi.mock("@/lib/query-client-registry", () => ({
+  registerQueryClient: vi.fn(),
+  clearQueryCache: () => clearQueryCacheMock(),
+}));
 
 describe("useAuthStore", () => {
   beforeEach(() => {
@@ -33,6 +39,13 @@ describe("useAuthStore", () => {
     expect(state.token).toBeNull();
     expect(state.tenantId).toBeNull();
     expect(state.tenants).toEqual([]);
+  });
+
+  it("should clear the query cache on logout (M43 跨租戶快取隔離)", () => {
+    clearQueryCacheMock.mockClear();
+    useAuthStore.getState().login("test-token", "test-refresh-token");
+    useAuthStore.getState().logout();
+    expect(clearQueryCacheMock).toHaveBeenCalled();
   });
 
   it("should set tenantId", () => {
