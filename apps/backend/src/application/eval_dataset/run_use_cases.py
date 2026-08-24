@@ -6,6 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
+from src.application.eval_dataset._tenant_guard import ensure_dataset_read
 from src.domain.bot.repository import BotRepository
 from src.domain.eval_dataset.repository import EvalDatasetRepository
 from src.domain.eval_dataset.run_repository import OptimizationRunRepository
@@ -16,6 +17,18 @@ from src.infrastructure.prompt_optimizer.run_manager import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def merge_case_assertions(
+    default_assertions: list[dict], case_assertions: list[dict]
+) -> list[dict]:
+    """H16：dataset 層 default_assertions 併入 case 層（defaults 在前）。
+
+    Evaluator 只讀 case.assertions，不讀 dataset.default_assertions；不併入等於
+    安全預設斷言（no_role_switch / no_system_prompt_leak 等）在優化評分中被忽略。
+    case 已於匯入時排除 defaults，故併入不會重複。
+    """
+    return list(default_assertions or []) + list(case_assertions or [])
 
 
 class _ShadowAPIClient:
@@ -53,6 +66,7 @@ class StartRunCommand:
     patience: int = 5
     budget: int = 200
     dry_run: bool = False
+    role: str | None = None
 
 
 class StartRunUseCase:
@@ -68,7 +82,7 @@ class StartRunUseCase:
         eval_dataset_repository: EvalDatasetRepository,
         run_manager: RunManager,
         db_url: str = "",
-        api_base_url: str = "http://localhost:8001",
+        api_base_url: str = "http://localhost:8000",
         provider_setting_repository=None,
         encryption_service=None,
         record_usage_factory=None,
@@ -92,6 +106,8 @@ class StartRunUseCase:
         dataset = await self._dataset_repo.find_by_id(command.dataset_id)
         if dataset is None:
             raise EntityNotFoundError("EvalDataset", command.dataset_id)
+        # C7：跨租戶對他人題集啟動 run 會把題集 snapshot 寫進可見 iterations → 404
+        ensure_dataset_read(dataset, command.tenant_id, command.role)
 
         # Snapshot dataset data before spawning background task
         dataset_snapshot = {
@@ -231,8 +247,20 @@ class StartRunUseCase:
 
         history_client = None
         api_client = None
+        prompt_db = None  # L12：原本宣告在 try 內，早期例外會讓 finally 的
+        # `if prompt_db:` 拋 UnboundLocalError 遮蔽原始錯誤
 
         try:
+            # H16：dataset 層 default_assertions（含 no_role_switch /
+            # no_system_prompt_leak 等安全預設）必須併入每個 case 的 assertions——
+            # Evaluator._evaluate_case 只讀 tc.assertions，從不讀 CLIDataset.
+            # default_assertions，不併就等於優化分數完全忽略安全預設，mutator 可接受
+            # 違反安全預設的 prompt。per-case 已於匯入時排除 defaults，併入不會重複。
+            default_raw = ds.get("default_assertions", [])
+            default_assertions = tuple(
+                Assertion(type=a["type"], params=a.get("params", {}))
+                for a in default_raw
+            )
             # Build CLI-compatible dataset from snapshot
             test_cases = tuple(
                 TestCase(
@@ -242,7 +270,9 @@ class StartRunUseCase:
                     category=tc.get("category", ""),
                     assertions=tuple(
                         Assertion(type=a["type"], params=a.get("params", {}))
-                        for a in tc.get("assertions", [])
+                        for a in merge_case_assertions(
+                            default_raw, tc.get("assertions", [])
+                        )
                     ),
                     conversation_history=tuple(
                         tc.get("conversation_history", [])
@@ -266,10 +296,8 @@ class StartRunUseCase:
                     ),
                 ),
                 test_cases=test_cases,
-                default_assertions=tuple(
-                    Assertion(type=a["type"], params=a.get("params", {}))
-                    for a in ds.get("default_assertions", [])
-                ),
+                # 已併入各 case（見上），此處保留供 metadata 完整性
+                default_assertions=default_assertions,
             )
 
             target = PromptTarget(
@@ -585,17 +613,32 @@ class ListRunsUseCase:
         limit: int = 20,
         offset: int = 0,
     ) -> list[dict]:
-        """List runs combining active (in-memory) and historical (DB) runs."""
-        db_runs = await self._run_repo.list_runs(
-            tenant_id, limit=limit, offset=offset
-        )
-        active_runs = self._run_manager.list_runs(tenant_id)
+        """List runs combining active (in-memory) and historical (DB) runs.
 
-        # Merge: active runs override DB runs with same run_id
+        M27：active runs 概念上位於合併列表頂端。原本每頁都塞全部 active（重複）、
+        再 merged[:limit] 截掉每頁尾端的 DB run（該筆在任何頁都看不到）。改為依 offset
+        正確切 active 視窗、DB offset 扣掉 active 數量、DB limit 扣掉本頁 active 數量。
+        """
+        active_runs = self._run_manager.list_runs(tenant_id)
         active_ids = {r.run_id for r in active_runs}
+        n_active = len(active_runs)
+
+        # 本頁應顯示的 active（active 佔據 index 0..n_active-1）
+        active_slice = active_runs[offset:offset + limit] if offset < n_active else []
+        db_offset = max(0, offset - n_active)
+        db_limit = limit - len(active_slice)
+        # 多抓 n_active 筆以吸收「DB 中同時是 active」被過濾掉的名額
+        db_runs = (
+            await self._run_repo.list_runs(
+                tenant_id, limit=db_limit + n_active, offset=db_offset
+            )
+            if db_limit > 0
+            else []
+        )
+
         merged = []
 
-        for ar in active_runs:
+        for ar in active_slice:
             merged.append({
                 "run_id": ar.run_id,
                 "tenant_id": ar.tenant_id,
@@ -617,8 +660,12 @@ class ListRunsUseCase:
                 ),
             })
 
+        _db_added = 0
         for dr in db_runs:
+            if _db_added >= db_limit:
+                break
             if dr["run_id"] not in active_ids:
+                _db_added += 1
                 started = dr.get("started_at")
                 started_str = (
                     started.isoformat()
@@ -644,7 +691,7 @@ class ListRunsUseCase:
                     "completed_at": None,
                 })
 
-        return merged[:limit]
+        return merged
 
     async def count(self, tenant_id: str | None = None) -> int:
         db_count = await self._run_repo.count_runs(tenant_id)

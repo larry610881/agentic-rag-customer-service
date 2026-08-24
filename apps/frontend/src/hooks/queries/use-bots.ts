@@ -77,6 +77,11 @@ export function useUpdateBot() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.bots.detail(variables.botId),
       });
+      // L19：PUT /bots 會透過版控墊片產生新版本並 set_current；不刷新版本時間線
+      // 會看不到新版本、is_current 停在舊版本，據此回滾會用過期時間線決策。
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.configVersions.list(variables.botId),
+      });
     },
   });
 }

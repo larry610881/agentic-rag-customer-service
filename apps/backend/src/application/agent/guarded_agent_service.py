@@ -70,12 +70,15 @@ class GuardedAgentService(AgentService):
         # 會在 metadata 帶 `_input_guard_checked=True` — 此時跳過重複檢查
         # （每次都是一發 LLM roundtrip）。未帶標記的呼叫者（未來新通路）
         # 仍在此兜底，「預設生效」的咽喉點契約不變。
+        # H6：影子執行（test_mode）不寫 guard_logs 生產表
+        dry_run_guard = bool((metadata or {}).get("_dry_run_guard"))
         already_checked = bool((metadata or {}).get("_input_guard_checked"))
         if self._prompt_guard is not None and not already_checked:
             guard_result = await self._prompt_guard.check_input(
                 user_message,
                 tenant_id=tenant_id,
                 bot_id=bot_id or None,
+                dry_run=dry_run_guard,
             )
             if not guard_result.passed:
                 return AgentResponse(
@@ -112,6 +115,7 @@ class GuardedAgentService(AgentService):
                 tenant_id=tenant_id,
                 bot_id=bot_id or None,
                 user_message=user_message,
+                dry_run=dry_run_guard,
             )
             if not output_guard.passed:
                 response.answer = output_guard.blocked_response

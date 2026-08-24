@@ -18,6 +18,10 @@ Monorepo 架構的 RAG AI Agent 電商客服平台。採用 DDD + TDD + BDD 開�
 | Conversation | `domain/conversation/` | 對話管理、對話歷史 |
 | Agent | `domain/agent/` | LangGraph Agent 編排、Tool 管理 |
 
+> **通路不是上下文**：web / widget / LINE 是 interfaces 層的轉接器，**禁止**在
+> application 層按通路實作對話管線邏輯（guard、意圖、trace、usage、eval、檢索決策
+> 只能有一份，所有通路共用）。詳見 `.claude/rules/channel-parity.md`。
+
 ## 開發工作流（六階段，不可跳過）
 
 ### Stage 0：Issue 建立

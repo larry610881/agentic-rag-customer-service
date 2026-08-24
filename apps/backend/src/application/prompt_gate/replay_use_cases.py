@@ -51,9 +51,13 @@ class PairwiseJudge:
     """LLM pairwise 評審（換位雙判由呼叫端負責）。
     沿 mutator 先例用 langchain ChatOpenAI；失敗由呼叫端 fail-open 處理。"""
 
-    def __init__(self, api_key: str = "", model: str = "gpt-4o-mini") -> None:
+    def __init__(
+        self, api_key: str = "", model: str = "gpt-4o-mini", on_usage=None
+    ) -> None:
         self._api_key = api_key or None
         self._model = model
+        # H5：每次 judge 呼叫的 token 用量回呼（記帳），原本 usage_metadata 被丟棄
+        self._on_usage = on_usage
 
     async def judge(
         self, question: str, answer_a: str, answer_b: str
@@ -72,6 +76,16 @@ class PairwiseJudge:
             answer_b=answer_b[:2000],
         )
         response = await llm.ainvoke([HumanMessage(content=prompt)])
+        if self._on_usage is not None:
+            meta = getattr(response, "usage_metadata", None) or {}
+            if meta:
+                resp_meta = getattr(response, "response_metadata", None) or {}
+                model_name = (
+                    resp_meta.get("model_name")
+                    or resp_meta.get("model")
+                    or self._model
+                )
+                await self._on_usage(model_name, meta)
         return str(response.content).strip()
 
 
@@ -86,7 +100,7 @@ class StartReplayCompareUseCase:
         conversation_repository,
         provider_setting_repository=None,
         encryption_service=None,
-        api_base_url: str = "http://localhost:8001",
+        api_base_url: str = "http://localhost:8000",
         gate_run_repo_factory=None,
         record_usage_factory=None,
     ) -> None:
@@ -123,6 +137,7 @@ class StartReplayCompareUseCase:
         bot_id: str,
         version_id: str,
         api_token: str,
+        refresh_token: str = "",
         sample_size: int = 10,
         triggered_by: str | None = None,
     ) -> PromptGateRun:
@@ -183,7 +198,8 @@ class StartReplayCompareUseCase:
         )
         await self._gate_run_repo.save(run)
 
-        asyncio.create_task(
+        from src.application.prompt_gate._background import spawn_tracked
+        spawn_tracked(
             self._execute_background(
                 run_id=run.id,
                 tenant_id=tenant_id,
@@ -193,8 +209,10 @@ class StartReplayCompareUseCase:
                 questions=questions,
                 budget_usd=bot.gate_budget_usd,
                 api_token=api_token,
+                refresh_token=refresh_token,
                 judge_api_key=judge_api_key,
-            )
+            ),
+            name=f"replay_compare:{run.id}",  # M4
         )
         return run
 
@@ -211,6 +229,43 @@ class StartReplayCompareUseCase:
             )
             await repo.save(run)
 
+    def _make_judge_usage_recorder(
+        self, *, tenant_id: str, bot_id: str, run_id: str
+    ):
+        """H5：回傳記 judge token 用量的 callback（eval_gate + run_id 歸因），仿
+        mutator 先例。原本 judge 的 usage_metadata 完全被丟棄、record_usage_factory
+        注入後零使用。"""
+        async def _record(model_name: str, usage_meta: dict) -> None:
+            if self._record_usage_factory is None:
+                return
+            try:
+                from src.domain.rag.value_objects import TokenUsage
+                from src.infrastructure.db.session_middleware import (
+                    independent_session_scope,
+                )
+
+                usage = TokenUsage(
+                    model=model_name,
+                    input_tokens=int(usage_meta.get("input_tokens", 0)),
+                    output_tokens=int(usage_meta.get("output_tokens", 0)),
+                )
+                async with independent_session_scope():
+                    record_usage = self._record_usage_factory()
+                    await record_usage.execute(
+                        tenant_id=tenant_id,
+                        request_type="eval_gate",
+                        usage=usage,
+                        bot_id=bot_id,
+                        run_id=run_id,
+                    )
+            except Exception:
+                logger.warning(
+                    "replay.judge_usage_record_failed (fail-open)",
+                    exc_info=True,
+                )
+
+        return _record
+
     async def _execute_background(
         self,
         *,
@@ -222,7 +277,8 @@ class StartReplayCompareUseCase:
         questions: list[str],
         budget_usd: float,
         api_token: str,
-        judge_api_key: str,
+        refresh_token: str = "",
+        judge_api_key: str = "",
     ) -> None:
         from prompt_optimizer.api_client import AgentAPIClient, ChatResult
 
@@ -248,10 +304,16 @@ class StartReplayCompareUseCase:
             api_client = AgentAPIClient(
                 base_url=self._api_base_url,
                 jwt_token=api_token,
+                refresh_token=refresh_token,  # H3
                 usage_category="eval_gate",
                 run_id=run_id,
             )
-            judge = PairwiseJudge(api_key=judge_api_key)
+            judge = PairwiseJudge(
+                api_key=judge_api_key,
+                on_usage=self._make_judge_usage_recorder(
+                    tenant_id=tenant_id, bot_id=bot_id, run_id=run_id
+                ),
+            )
 
             async def _shadow(question: str, snapshot: dict) -> ChatResult:
                 try:
@@ -326,6 +388,10 @@ class StartReplayCompareUseCase:
             run.details = {
                 "type": "replay_compare",
                 "aborted": aborted,
+                # M22：真實流量可能來自 LINE，但影子執行走 web 管線（無 LINE
+                # channel suffix、無 direct_retrieval 快速道）。對比屬近似參考，
+                # 前端據此標注限制；管線統一（channel-parity 債務 #6）後移除。
+                "pipeline_approximation": "web",
                 "summary": {
                     "candidate_wins": summary.candidate_wins,
                     "baseline_wins": summary.baseline_wins,

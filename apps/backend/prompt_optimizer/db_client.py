@@ -17,9 +17,28 @@ _TARGET_MAP = {
         "system_prompt",
         "id = 'default'",
     ),
-    ("bot", "bot_prompt"): ("bots", "bot_prompt", "id = :bot_id"),
-    ("bot", "base_prompt"): ("bots", "base_prompt", "id = :bot_id"),
+    # M36：bot 層一律綁 tenant_id，否則攻擊者以 body.bot_id 填他租戶 bot →
+    # 讀出其 system prompt（商業機密/防護規則）落進可見的 run snapshot / diff。
+    ("bot", "bot_prompt"): (
+        "bots", "bot_prompt", "id = :bot_id AND tenant_id = :tenant_id",
+    ),
+    ("bot", "base_prompt"): (
+        "bots", "base_prompt", "id = :bot_id AND tenant_id = :tenant_id",
+    ),
 }
+
+
+def _build_params(target: PromptTarget) -> dict[str, str]:
+    """M36：bot 層目標必須帶 tenant_id（空則拒絕），system 層不需。"""
+    params: dict[str, str] = {}
+    if target.level == "bot":
+        if not target.bot_id or not target.tenant_id:
+            raise ValueError(
+                "bot 層 prompt 操作必須同時提供 bot_id 與 tenant_id"
+            )
+        params["bot_id"] = target.bot_id
+        params["tenant_id"] = target.tenant_id
+    return params
 
 
 class PromptDBClient:
@@ -35,9 +54,7 @@ class PromptDBClient:
         table, column, where = _TARGET_MAP[key]
 
         query = f"SELECT {column} FROM {table} WHERE {where}"  # noqa: S608
-        params: dict[str, str] = {}
-        if target.bot_id:
-            params["bot_id"] = target.bot_id
+        params = _build_params(target)
 
         with Session(self._engine) as session:
             result = session.execute(text(query), params)
@@ -56,9 +73,8 @@ class PromptDBClient:
         table, column, where = _TARGET_MAP[key]
 
         query = f"UPDATE {table} SET {column} = :prompt WHERE {where}"  # noqa: S608
-        params: dict[str, str] = {"prompt": prompt}
-        if target.bot_id:
-            params["bot_id"] = target.bot_id
+        params = _build_params(target)
+        params["prompt"] = prompt
 
         with Session(self._engine) as session:
             result = session.execute(text(query), params)
@@ -113,6 +129,14 @@ class PromptDBClient:
                 },
             )
 
+            # M35：case 斷言剔除已在 default_assertions 的項目再寫入。YAML 載入時
+            # _parse_cases 已把 defaults 併進每個 case，若原樣寫入，read_dataset 讀回時
+            # 又疊一次 → 每個 default 斷言跑兩次、分數灌水、優化 accept/discard 失真。
+            # 對齊 dataset_to_yaml 與 eval_dataset_router 的 default_set 過濾。
+            default_set = {
+                (a.type, str(a.params)) for a in dataset.default_assertions
+            }
+
             # Insert test cases
             for tc in dataset.test_cases:
                 tc_id = str(uuid.uuid4())
@@ -138,6 +162,7 @@ class PromptDBClient:
                             [
                                 {"type": a.type, "params": a.params}
                                 for a in tc.assertions
+                                if (a.type, str(a.params)) not in default_set
                             ]
                         ),
                         "tags": None,

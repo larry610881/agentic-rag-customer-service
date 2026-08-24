@@ -101,6 +101,34 @@ async def validate_widget_bot(
     return bot
 
 
+def _widget_should_forward(
+    event: dict, keep_history: bool, captured: dict
+) -> bool:
+    """決定 widget SSE 事件是否下發匿名前端，並側錄歸因欄位到 captured。
+
+    - usage / config_version：內部事件，捕獲後不下發（H7 config_version；H8 歸因）。
+    - guard_blocked：含命中規則原文（rule_matched，需 system_admin 才可正規讀取）與
+      replacement，匿名通路不得外洩，否則可逐條探針枚舉整份防護規則（H7）。
+    - message_id：捕獲供版本成效歸因（H8），仍下發以與 web 對齊。
+    - conversation_id：keep_history 關閉時不下發。
+    """
+    etype = event.get("type")
+    if etype == "usage":
+        captured["usage"] = event
+        return False
+    if etype == "config_version":
+        captured["config_version_id"] = event.get("config_version_id")
+        return False
+    if etype == "guard_blocked":
+        return False
+    if etype == "message_id":
+        captured["message_id"] = event.get("message_id")
+        return True
+    if etype == "conversation_id" and not keep_history:
+        return False
+    return True
+
+
 def _set_cors_headers(response, origin: str | None, bot: Bot) -> None:
     """Set dynamic CORS headers based on bot's allowed origins."""
     if origin and origin in bot.widget_allowed_origins:
@@ -186,47 +214,60 @@ async def widget_chat_stream(
         message=body.message,
         conversation_id=body.conversation_id if bot.widget_keep_history else None,
         visitor_id=visitor_id,
-        identity_source="widget" if visitor_id else None,
+        # L6：widget 端點固定通路標記——無 X-Visitor-Id 時原本為 None，trace source
+        # 會 fallback 成 "web"，通路別統計把 widget 流量算進 web。memory 身份解析
+        # 仍以 visitor_id 為 gate（_resolve_and_load_memory 先檢查 visitor_id）。
+        identity_source="widget",
     )
 
     async def event_generator():
-        usage_data: dict | None = None
+        captured: dict = {}
         try:
             async for event in use_case.execute_stream(command):
-                if event.get("type") == "usage":
-                    usage_data = event
-                    continue
-                # Filter out conversation_id when keep_history is disabled
-                if not bot.widget_keep_history and event.get("type") == "conversation_id":
-                    continue
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                if _widget_should_forward(event, bot.widget_keep_history, captured):
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:
             logger.exception("widget.chat.stream.error")
             error_msg = classify_streaming_error(exc)
+            # L5：與 agent_router 對齊（channel parity）——標記+持久化 failed trace，
+            # 否則 widget 通路的失敗不出現在 Studio 觀測頁，該輪 trace 直接丟失。
+            from src.interfaces.api._streaming_failure import (
+                persist_failed_stream_trace,
+            )
+
+            failed_trace_id = await persist_failed_stream_trace(
+                use_case,
+                conversation_id=command.conversation_id,
+                source="widget",
+                error_msg=error_msg,
+            )
             error_payload = {"type": "error", "message": error_msg}
+            done_payload: dict = {"type": "done"}
+            if failed_trace_id:
+                done_payload["trace_id"] = failed_trace_id
             yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
 
         # Record token usage after stream completes
+        usage_data = captured.get("usage")
         if usage_data:
-            from src.domain.rag.value_objects import TokenUsage
-
-            usage = TokenUsage(
-                model=usage_data.get("model", "unknown"),
-                input_tokens=usage_data.get("input_tokens", 0),
-                output_tokens=usage_data.get("output_tokens", 0),
-                total_tokens=usage_data.get("total_tokens", 0),
-                estimated_cost=usage_data.get("estimated_cost", 0.0),
+            from src.infrastructure.langgraph.usage import (
+                extract_usage_from_accumulated,
             )
-            try:
-                await record_usage.execute(
-                    tenant_id=bot.tenant_id,
-                    request_type="chat_widget",
-                    usage=usage,
-                    bot_id=bot.id.value,
-                )
-            except Exception:
-                logger.exception("widget.chat.stream.record_usage_error")
+
+            usage = extract_usage_from_accumulated(usage_data)
+            if usage is not None:
+                try:
+                    await record_usage.execute(
+                        tenant_id=bot.tenant_id,
+                        request_type="chat_widget",
+                        usage=usage,
+                        bot_id=bot.id.value,
+                        message_id=captured.get("message_id"),  # H8
+                        config_version_id=captured.get("config_version_id"),  # H8
+                    )
+                except Exception:
+                    logger.exception("widget.chat.stream.record_usage_error")
 
     response = StreamingResponse(
         event_generator(),

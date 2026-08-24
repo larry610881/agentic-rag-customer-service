@@ -119,7 +119,10 @@ class PromptGuardService:
         tenant_id: str,
         bot_id: str | None = None,
         user_id: str | None = None,
+        dry_run: bool = False,
     ) -> GuardResult:
+        # H6：dry_run（影子執行 test_mode）時不寫 guard_logs 生產表，否則閘門/
+        # optimizer 的攻擊測項每次執行灌入數十筆假攻擊紀錄，汙染租戶安全檢視。
         config = await self._get_config()
 
         for rule in config.input_rules:
@@ -166,24 +169,25 @@ class PromptGuardService:
                     logger.debug("guard.trace_add_failed", exc_info=True)
 
                 # Sprint A++ 修 silent swallow — 錯誤要浮現才抓得到 bug
-                try:
-                    await self._log_repo.save_log(
-                        tenant_id=tenant_id,
-                        bot_id=bot_id,
-                        user_id=user_id,
-                        log_type="input_blocked",
-                        rule_matched=pattern,
-                        user_message=message[:2000],
-                        ai_response=None,
-                    )
-                except Exception:
-                    logger.warning(
-                        "guard.log_save_failed",
-                        tenant_id=tenant_id,
-                        bot_id=bot_id,
-                        log_type="input_blocked",
-                        exc_info=True,
-                    )
+                if not dry_run:
+                    try:
+                        await self._log_repo.save_log(
+                            tenant_id=tenant_id,
+                            bot_id=bot_id,
+                            user_id=user_id,
+                            log_type="input_blocked",
+                            rule_matched=pattern,
+                            user_message=message[:2000],
+                            ai_response=None,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "guard.log_save_failed",
+                            tenant_id=tenant_id,
+                            bot_id=bot_id,
+                            log_type="input_blocked",
+                            exc_info=True,
+                        )
 
                 return GuardResult(
                     passed=False,
@@ -203,6 +207,7 @@ class PromptGuardService:
         tenant_id: str,
         bot_id: str | None = None,
         user_id: str | None = None,
+        dry_run: bool = False,
     ) -> GuardResult:
         """2026-08-17 前置語意閘門：意圖分類器判定「純攻擊」時，由此走與
         regex 攔截相同的副作用（warning log + trace 紅節點 + guard_logs），
@@ -217,6 +222,7 @@ class PromptGuardService:
             blocked_response=config.blocked_response,
             trace_label="🛡️ input blocked: 分類器判定攻擊/越界",
             trace_error="Intent classifier judged prompt attack",
+            dry_run=dry_run,
         )
 
     async def _record_input_block(
@@ -230,6 +236,7 @@ class PromptGuardService:
         blocked_response: str,
         trace_label: str,
         trace_error: str,
+        dry_run: bool = False,
     ) -> GuardResult:
         """攔截 input 時的共用副作用：warning log + trace 紅節點 + guard_logs。"""
         logger.warning(
@@ -255,24 +262,25 @@ class PromptGuardService:
         except Exception:
             logger.debug("guard.trace_add_failed", exc_info=True)
 
-        try:
-            await self._log_repo.save_log(
-                tenant_id=tenant_id,
-                bot_id=bot_id,
-                user_id=user_id,
-                log_type="input_blocked",
-                rule_matched=rule_matched,
-                user_message=message[:2000],
-                ai_response=None,
-            )
-        except Exception:
-            logger.warning(
-                "guard.log_save_failed",
-                tenant_id=tenant_id,
-                bot_id=bot_id,
-                log_type="input_blocked",
-                exc_info=True,
-            )
+        if not dry_run:  # H6
+            try:
+                await self._log_repo.save_log(
+                    tenant_id=tenant_id,
+                    bot_id=bot_id,
+                    user_id=user_id,
+                    log_type="input_blocked",
+                    rule_matched=rule_matched,
+                    user_message=message[:2000],
+                    ai_response=None,
+                )
+            except Exception:
+                logger.warning(
+                    "guard.log_save_failed",
+                    tenant_id=tenant_id,
+                    bot_id=bot_id,
+                    log_type="input_blocked",
+                    exc_info=True,
+                )
 
         return GuardResult(
             passed=False,
@@ -287,6 +295,7 @@ class PromptGuardService:
         bot_id: str | None = None,
         user_id: str | None = None,
         user_message: str = "",
+        dry_run: bool = False,
     ) -> GuardResult:
         config = await self._get_config()
 
@@ -333,24 +342,25 @@ class PromptGuardService:
         except Exception:
             logger.debug("guard.trace_add_failed", exc_info=True)
 
-        try:
-            await self._log_repo.save_log(
-                tenant_id=tenant_id,
-                bot_id=bot_id,
-                user_id=user_id,
-                log_type="output_blocked",
-                rule_matched=matched_keywords,
-                user_message=user_message[:2000],
-                ai_response=response[:2000],
-            )
-        except Exception:
-            logger.warning(
-                "guard.log_save_failed",
-                tenant_id=tenant_id,
-                bot_id=bot_id,
-                log_type="output_blocked",
-                exc_info=True,
-            )
+        if not dry_run:  # H6
+            try:
+                await self._log_repo.save_log(
+                    tenant_id=tenant_id,
+                    bot_id=bot_id,
+                    user_id=user_id,
+                    log_type="output_blocked",
+                    rule_matched=matched_keywords,
+                    user_message=user_message[:2000],
+                    ai_response=response[:2000],
+                )
+            except Exception:
+                logger.warning(
+                    "guard.log_save_failed",
+                    tenant_id=tenant_id,
+                    bot_id=bot_id,
+                    log_type="output_blocked",
+                    exc_info=True,
+                )
 
         return GuardResult(
             passed=False,

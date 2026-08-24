@@ -80,6 +80,8 @@ class KarpathyLoopRunner:
         # （API 影子執行路徑；test_mode 下 conversation 不落庫、warm-up
         # 的 conversation_id 鏈會斷）。False 維持逐句 warm-up（CLI 相容）。
         self._use_history_override = use_history_override
+        # L13：上一輪 _eval_all 的實際 API 呼叫數（含 warm-up 與 retry）
+        self._last_eval_api_calls = 0
 
     async def run(
         self,
@@ -117,7 +119,8 @@ class KarpathyLoopRunner:
             baseline_score=baseline_score,
             best_score=baseline_score,
             best_prompt=baseline_prompt,
-            total_api_calls=total_cases,
+            # L13：記實際呼叫數（含 warm-up/retry），不再以題數低估
+            total_api_calls=self._last_eval_api_calls,
         )
 
         # Record baseline as iteration 0
@@ -163,107 +166,114 @@ class KarpathyLoopRunner:
         no_improve_count = 0
         temperature = 0.7
 
-        for i in range(1, config.max_iterations + 1):
-            # Check budget
-            if result.total_api_calls + total_cases > config.budget:
-                result.stopped_reason = "budget"
-                logger.info("Budget exhausted at iteration %d", i)
-                break
+        try:
+            for i in range(1, config.max_iterations + 1):
+                # Check budget
+                # L13：以上一輪實際呼叫數估下一輪成本（warm-up/retry 計入）
+                next_round_est = max(
+                    self._last_eval_api_calls, total_cases
+                )
+                if result.total_api_calls + next_round_est > config.budget:
+                    result.stopped_reason = "budget"
+                    logger.info("Budget exhausted at iteration %d", i)
+                    break
 
-            # Mutate
-            if on_progress:
-                await on_progress(ProgressEvent(
-                    phase="mutating",
-                    iteration=i,
-                    max_iterations=config.max_iterations,
-                    message=f"第 {i} 輪：正在生成改進版提示詞...",
-                ))
+                # Mutate
+                if on_progress:
+                    await on_progress(ProgressEvent(
+                        phase="mutating",
+                        iteration=i,
+                        max_iterations=config.max_iterations,
+                        message=f"第 {i} 輪：正在生成改進版提示詞...",
+                    ))
 
-            failed_cases = self._extract_failed_cases(
-                result.iterations[-1].eval_summary
-            )
-            cost_stats = self._extract_cost_stats(
-                result.iterations[-1].eval_summary, dataset
-            )
-
-            candidate = await self._mutator.mutate(
-                current_prompt=best_prompt,
-                failed_cases=failed_cases,
-                iteration=i,
-                cost_stats=cost_stats,
-                temperature=temperature,
-            )
-
-            # Write candidate to DB
-            self._write_prompt(target, candidate)
-
-            # Eval candidate
-            eval_results = await self._eval_all(
-                dataset, config, iteration=i, on_progress=on_progress,
-            )
-            result.total_api_calls += total_cases
-            eval_summary = self._evaluator.evaluate(
-                dataset, eval_results, dataset.metadata.cost_config
-            )
-            score = eval_summary.final_score
-
-            # Accept or discard
-            accepted = score > best_score
-            is_best = accepted
-            if accepted:
-                best_score = score
-                best_prompt = candidate
-                no_improve_count = 0
-                temperature = 0.7
-                logger.info("Iteration %d: %.4f → ACCEPTED (new best)", i, score)
-            else:
-                no_improve_count += 1
-                temperature = min(temperature + 0.1, 1.5)
-                logger.info(
-                    "Iteration %d: %.4f → DISCARDED (no improve %d/%d)",
-                    i, score, no_improve_count, config.patience,
+                failed_cases = self._extract_failed_cases(
+                    result.iterations[-1].eval_summary
+                )
+                cost_stats = self._extract_cost_stats(
+                    result.iterations[-1].eval_summary, dataset
                 )
 
-            iter_result = IterationResult(
-                iteration=i,
-                prompt_snapshot=candidate,
-                eval_summary=eval_summary,
-                is_best=is_best,
-                accepted=accepted,
-            )
-            result.iterations.append(iter_result)
-            if on_iteration:
-                on_iteration(iter_result)
-
-            if on_progress:
-                await on_progress(ProgressEvent(
-                    phase="iteration_done",
+                candidate = await self._mutator.mutate(
+                    current_prompt=best_prompt,
+                    failed_cases=failed_cases,
                     iteration=i,
-                    max_iterations=config.max_iterations,
-                    total_cases=total_cases,
-                    score=score,
-                    best_score=best_score,
-                    baseline_score=result.baseline_score,
+                    cost_stats=cost_stats,
+                    temperature=temperature,
+                )
+
+                # Write candidate to DB
+                self._write_prompt(target, candidate)
+
+                # Eval candidate
+                eval_results = await self._eval_all(
+                    dataset, config, iteration=i, on_progress=on_progress,
+                )
+                result.total_api_calls += self._last_eval_api_calls  # L13
+                eval_summary = self._evaluator.evaluate(
+                    dataset, eval_results, dataset.metadata.cost_config
+                )
+                score = eval_summary.final_score
+
+                # Accept or discard
+                accepted = score > best_score
+                is_best = accepted
+                if accepted:
+                    best_score = score
+                    best_prompt = candidate
+                    no_improve_count = 0
+                    temperature = 0.7
+                    logger.info("Iteration %d: %.4f → ACCEPTED (new best)", i, score)
+                else:
+                    no_improve_count += 1
+                    temperature = min(temperature + 0.1, 1.5)
+                    logger.info(
+                        "Iteration %d: %.4f → DISCARDED (no improve %d/%d)",
+                        i, score, no_improve_count, config.patience,
+                    )
+
+                iter_result = IterationResult(
+                    iteration=i,
+                    prompt_snapshot=candidate,
+                    eval_summary=eval_summary,
+                    is_best=is_best,
                     accepted=accepted,
-                    message=f"第 {i} 輪：{score:.4f} {'✓ 接受' if accepted else '✗ 放棄'}",
-                ))
+                )
+                result.iterations.append(iter_result)
+                if on_iteration:
+                    on_iteration(iter_result)
 
-            # Early stop: perfect score
-            if best_score >= 1.0:
-                result.stopped_reason = "converged"
-                logger.info("Perfect score reached at iteration %d", i)
-                break
+                if on_progress:
+                    await on_progress(ProgressEvent(
+                        phase="iteration_done",
+                        iteration=i,
+                        max_iterations=config.max_iterations,
+                        total_cases=total_cases,
+                        score=score,
+                        best_score=best_score,
+                        baseline_score=result.baseline_score,
+                        accepted=accepted,
+                        message=f"第 {i} 輪：{score:.4f} {'✓ 接受' if accepted else '✗ 放棄'}",
+                    ))
 
-            # Early stop: patience
-            if no_improve_count >= config.patience:
-                result.stopped_reason = "patience"
-                logger.info("Patience exhausted at iteration %d", i)
-                break
-        else:
-            result.stopped_reason = "max_iterations"
+                # Early stop: perfect score
+                if best_score >= 1.0:
+                    result.stopped_reason = "converged"
+                    logger.info("Perfect score reached at iteration %d", i)
+                    break
 
-        # Finalize: write best prompt to DB
-        self._write_prompt(target, best_prompt)
+                # Early stop: patience
+                if no_improve_count >= config.patience:
+                    result.stopped_reason = "patience"
+                    logger.info("Patience exhausted at iteration %d", i)
+                    break
+            else:
+                result.stopped_reason = "max_iterations"
+
+        finally:
+            # M34：無論迴圈正常結束或中途例外（mutate rate limit / 網路），
+            # 一律把線上 prompt 回寫為 best，避免停留在已 discarded 或未評完的候選。
+            self._write_prompt(target, best_prompt)
         result.best_score = best_score
         result.best_prompt = best_prompt
 
@@ -285,6 +295,10 @@ class KarpathyLoopRunner:
         import asyncio as _asyncio
 
         results = []
+        # L13：budget 必須計「實際」API 呼叫數——多輪 warm-up（每句歷史一次）與
+        # retry 都是真實成本。每次 chat 呼叫前計數，round 結束存
+        # self._last_eval_api_calls 供 run() 累計與預算檢查。
+        calls = 0
         total = len(dataset.test_cases)
         for idx, tc in enumerate(dataset.test_cases):
             if on_progress:
@@ -302,6 +316,7 @@ class KarpathyLoopRunner:
                     if self._use_history_override:
                         # Issue #54 Phase D — 多輪題一次帶入（省 N 次呼叫，
                         # 且相容 test_mode 影子執行的無狀態 conversation）
+                        calls += 1
                         cr = await self._api.chat(
                             message=tc.question,
                             bot_id=dataset.metadata.bot_id or None,
@@ -321,6 +336,7 @@ class KarpathyLoopRunner:
                                 if isinstance(hist_msg, dict)
                                 else str(hist_msg)
                             )
+                            calls += 1
                             hist_cr = await self._api.chat(
                                 message=msg_content,
                                 bot_id=dataset.metadata.bot_id or None,
@@ -329,6 +345,7 @@ class KarpathyLoopRunner:
                             conv_id = hist_cr.conversation_id
 
                     # Send actual test question
+                    calls += 1
                     cr = await self._api.chat(
                         message=tc.question,
                         bot_id=dataset.metadata.bot_id or None,
@@ -356,6 +373,7 @@ class KarpathyLoopRunner:
                             latency_ms=0,
                         )
             results.append(cr)  # type: ignore[arg-type]
+        self._last_eval_api_calls = calls  # L13
         return results
 
     def _extract_failed_cases(self, summary: DatasetEvalSummary) -> list[FailedCase]:

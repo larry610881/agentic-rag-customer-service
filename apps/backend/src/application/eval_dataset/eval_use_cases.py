@@ -5,10 +5,19 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from src.application.eval_dataset._tenant_guard import ensure_dataset_read
 from src.domain.eval_dataset.repository import EvalDatasetRepository
 from src.domain.shared.exceptions import EntityNotFoundError
 
 logger = logging.getLogger(__name__)
+
+# M28：API 呼叫失敗率超過此比例即視為基礎設施故障（token 過期／後端 5xx），
+# 整輪作廢並回 502，而非把假 0 分寫進 run 歷史誤導使用者判定 prompt 不合格。
+_EVAL_INFRA_FAILURE_THRESHOLD = 0.5
+
+
+class EvalInfrastructureError(Exception):
+    """eval/validate 期間 API 呼叫大量失敗（非品質問題）→ 整輪作廢（→502）。"""
 
 
 @dataclass(frozen=True)
@@ -16,6 +25,8 @@ class RunEvalCommand:
     tenant_id: str
     dataset_id: str
     api_token: str
+    role: str | None = None
+    refresh_token: str = ""
 
 
 class RunSingleEvalUseCase:
@@ -24,7 +35,7 @@ class RunSingleEvalUseCase:
     def __init__(
         self,
         eval_dataset_repository: EvalDatasetRepository,
-        api_base_url: str = "http://localhost:8001",
+        api_base_url: str = "http://localhost:8000",
     ) -> None:
         self._dataset_repo = eval_dataset_repository
         self._api_base_url = api_base_url
@@ -45,8 +56,13 @@ class RunSingleEvalUseCase:
         dataset = await self._dataset_repo.find_by_id(command.dataset_id)
         if dataset is None:
             raise EntityNotFoundError("EvalDataset", command.dataset_id)
+        # C7：跨租戶對他人題集跑 eval 會經 case_results 洩漏題目內容 → 404
+        ensure_dataset_read(dataset, command.tenant_id, command.role)
 
         # Build CLI-compatible dataset
+        # M31：dataset 層 default_assertions（含安全預設）併入每個 case，
+        # 否則 Evaluator 只讀 case.assertions → 違反安全預設的 prompt 仍判 PASS。
+        _defaults = list(dataset.default_assertions or [])
         test_cases = tuple(
             TestCase(
                 id=tc.case_id,
@@ -55,7 +71,7 @@ class RunSingleEvalUseCase:
                 category=tc.category,
                 assertions=tuple(
                     Assertion(type=a["type"], params=a.get("params", {}))
-                    for a in tc.assertions
+                    for a in (_defaults + list(tc.assertions))
                 ),
                 conversation_history=tuple(tc.conversation_history),
             )
@@ -87,20 +103,27 @@ class RunSingleEvalUseCase:
         api_client = AgentAPIClient(
             base_url=self._api_base_url,
             jwt_token=command.api_token,
+            # M28：長 run 中 JWT 過期可自動續期
+            refresh_token=command.refresh_token,
             usage_category="eval_gate",
         )
 
         try:
             results: list[ChatResult] = []
+            failures = 0
             for tc in cli_dataset.test_cases:
                 try:
                     cr = await api_client.chat(
                         message=tc.question,
                         bot_id=cli_dataset.metadata.bot_id or None,
+                        # M32：多輪 case 必須帶入對話歷史，否則 bot 無上下文回答
+                        # 「那第二個方案呢？」類問題 → 每輪 repeat 皆 fail 誤判。
+                        history_override=list(tc.conversation_history) or None,
                     )
                     results.append(cr)
                 except Exception as e:
                     logger.error("Eval API call failed for %s: %s", tc.id, e)
+                    failures += 1
                     results.append(
                         ChatResult(
                             answer="",
@@ -111,6 +134,13 @@ class RunSingleEvalUseCase:
                             latency_ms=0,
                         )
                     )
+
+            # M28：大量 API 失敗屬基礎設施故障，整輪作廢回 502，不記假 0 分
+            total = len(cli_dataset.test_cases)
+            if total and failures / total >= _EVAL_INFRA_FAILURE_THRESHOLD:
+                raise EvalInfrastructureError(
+                    f"{failures}/{total} 題 API 呼叫失敗，判定為基礎設施故障"
+                )
 
             evaluator = Evaluator()
             summary = evaluator.evaluate(cli_dataset, results)
@@ -341,7 +371,12 @@ class EstimateCostUseCase:
                     sys_chars = 0
                     if self._prompt_config_repo:
                         sys_config = await self._prompt_config_repo.get()
-                        sys_chars = len(sys_config.base_prompt or "")
+                        # M26：SystemPromptConfig 只有 system_prompt，無 base_prompt。
+                        # 原本讀 .base_prompt 拋 AttributeError 被廣域 except 吃掉 →
+                        # prompt_tokens 一律 fallback 500，估價功能對所有 bot 靜默失效。
+                        sys_chars = len(
+                            getattr(sys_config, "system_prompt", "") or ""
+                        )
 
                     prompt_tokens = int((bot_prompt_chars + sys_chars) / CHARS_PER_TOKEN)
             except Exception as e:
@@ -439,6 +474,8 @@ class RunValidationCommand:
     api_token: str
     repeats: int = 5
     bot_id: str = ""
+    role: str | None = None
+    refresh_token: str = ""
 
 
 class RunValidationEvalUseCase:
@@ -448,11 +485,29 @@ class RunValidationEvalUseCase:
         self,
         eval_dataset_repository: EvalDatasetRepository,
         optimization_run_repository=None,
-        api_base_url: str = "http://localhost:8001",
+        api_base_url: str = "http://localhost:8000",
+        run_repo_factory=None,
     ) -> None:
         self._dataset_repo = eval_dataset_repository
         self._run_repo = optimization_run_repository
         self._api_base_url = api_base_url
+        # H13：驗證迴圈同步跑數十秒~數分鐘，request session 會 idle-in-transaction
+        # 被 PG 砍斷，history 寫入必失敗。以 factory 在 independent_session_scope 內取
+        # 新 session-bound repo 落庫。
+        self._run_repo_factory = run_repo_factory
+
+    async def _persist_iteration(self, iteration) -> None:
+        """H13：history 落庫。有 factory → 在 independent_session_scope 內取新
+        session repo（驗證迴圈跑完 request session 多半已 idle-txn 被砍）；否則
+        fallback 舊 request-scoped repo。"""
+        if self._run_repo_factory is not None:
+            from src.infrastructure.db.session_middleware import (
+                independent_session_scope,
+            )
+            async with independent_session_scope():
+                await self._run_repo_factory().save_iteration(iteration)
+        elif self._run_repo is not None:
+            await self._run_repo.save_iteration(iteration)
 
     async def execute(self, command: RunValidationCommand) -> dict:
         from prompt_optimizer.api_client import AgentAPIClient, ChatResult
@@ -471,11 +526,16 @@ class RunValidationEvalUseCase:
         dataset = await self._dataset_repo.find_by_id(command.dataset_id)
         if dataset is None:
             raise EntityNotFoundError("EvalDataset", command.dataset_id)
+        # C7：跨租戶對他人題集跑 validate 會洩漏題目內容 → 404
+        ensure_dataset_read(dataset, command.tenant_id, command.role)
 
         # bot_id: command override > dataset default
         effective_bot_id = command.bot_id or dataset.bot_id or ""
 
         # Build CLI-compatible dataset
+        # M31：dataset 層 default_assertions（含安全預設）併入每個 case，
+        # 否則 Evaluator 只讀 case.assertions → 違反安全預設的 prompt 仍判 PASS。
+        _defaults = list(dataset.default_assertions or [])
         test_cases = tuple(
             TestCase(
                 id=tc.case_id,
@@ -484,7 +544,7 @@ class RunValidationEvalUseCase:
                 category=tc.category,
                 assertions=tuple(
                     Assertion(type=a["type"], params=a.get("params", {}))
-                    for a in tc.assertions
+                    for a in (_defaults + list(tc.assertions))
                 ),
                 conversation_history=tuple(tc.conversation_history),
             )
@@ -515,20 +575,27 @@ class RunValidationEvalUseCase:
         api_client = AgentAPIClient(
             base_url=self._api_base_url,
             jwt_token=command.api_token,
+            # M28：比照優化 run 帶 refresh_token，長 run 中 JWT 過期可自動續期
+            refresh_token=command.refresh_token,
             usage_category="eval_gate",
         )
 
         async def _eval_fn() -> list[ChatResult]:
             results: list[ChatResult] = []
+            failures = 0
             for tc in cli_dataset.test_cases:
                 try:
                     cr = await api_client.chat(
                         message=tc.question,
                         bot_id=cli_dataset.metadata.bot_id or None,
+                        # M32：多輪 case 必須帶入對話歷史，否則 bot 無上下文回答
+                        # 「那第二個方案呢？」類問題 → 每輪 repeat 皆 fail 誤判。
+                        history_override=list(tc.conversation_history) or None,
                     )
                     results.append(cr)
                 except Exception as e:
                     logger.error("Validation API call failed for %s: %s", tc.id, e)
+                    failures += 1
                     results.append(
                         ChatResult(
                             answer="",
@@ -539,6 +606,14 @@ class RunValidationEvalUseCase:
                             latency_ms=0,
                         )
                     )
+            # M28：大量 API 失敗屬基礎設施故障（token 過期／後端 5xx），整輪作廢，
+            # 不讓假 0 分連同 FAIL verdict 寫進 run 歷史誤導 prompt 品質判定。
+            total = len(cli_dataset.test_cases)
+            if total and failures / total >= _EVAL_INFRA_FAILURE_THRESHOLD:
+                raise EvalInfrastructureError(
+                    f"{failures}/{total} 題 API 呼叫失敗，判定為基礎設施故障"
+                    f"（token 過期或後端異常），本輪驗證作廢"
+                )
             return results
 
         try:
@@ -584,7 +659,7 @@ class RunValidationEvalUseCase:
                     created_at=datetime.now(timezone.utc),
                 )
                 try:
-                    await self._run_repo.save_iteration(iteration)
+                    await self._persist_iteration(iteration)
                 except Exception as e:
                     logger.warning("Failed to save validation history: %s", e)
 

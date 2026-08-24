@@ -343,3 +343,20 @@ def orphan_setup(context):
 @when("執行孤兒清理")
 def do_cleanup(context):
     context["cleaned"] = _run(context["cleanup_uc"].execute())
+
+
+def test_cleanup_reverts_stale_validating_when_no_orphan_runs():
+    """M5：run 已 completed 但版本卡 validating（非同交易寫入間進程被砍）——
+    mark_orphans_error 撈不到（沒有 queued/running run），仍須靠 stale 掃描救回。"""
+    gate_repo = AsyncMock(spec=PromptGateRunRepository)
+    version_repo = AsyncMock(spec=BotConfigVersionRepository)
+    gate_repo.mark_orphans_error.return_value = []  # 無孤兒 run
+    version_repo.revert_stale_validating_versions.return_value = 1
+
+    uc = CleanupOrphanGateRunsUseCase(
+        gate_run_repository=gate_repo, version_repository=version_repo
+    )
+    _run(uc.execute())
+
+    # 關鍵：即使沒有孤兒 run，仍呼叫 stale 掃描把卡住的版本退回 draft
+    version_repo.revert_stale_validating_versions.assert_awaited_once()

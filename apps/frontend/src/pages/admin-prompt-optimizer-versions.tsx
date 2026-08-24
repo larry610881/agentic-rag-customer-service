@@ -42,6 +42,7 @@ import {
   useConfigVersions,
   useGateEstimate,
   useGateRun,
+  useInvalidateVersionsOnGateComplete,
   usePublishConfigVersion,
   useRejectConfigVersion,
   useReplayCompare,
@@ -112,6 +113,8 @@ function VersionCard({
   );
   // 驗證中 / 已驗證：抓 gate run（validating 時 3s polling）
   const { data: gateRun } = useGateRun(open ? version.gate_run_id : null);
+  // H18：gate run 完成 → 刷新版本列表，讓卡片脫離 stale 的 "validating"
+  useInvalidateVersionsOnGateComplete(botId, gateRun?.status);
   const { data: estimate, isLoading: estimateLoading } = useGateEstimate(
     botId,
     estimateOpen,
@@ -406,7 +409,14 @@ function VersionCard({
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              disabled={validateMutation.isPending}
+              // L17：estimate 載入完成前不可送驗——預檢確認的知情同意（題數/
+              // 成本/預算）必須先看到才可按；超預算亦禁用（後端同樣會擋）
+              disabled={
+                validateMutation.isPending ||
+                estimateLoading ||
+                !estimate ||
+                !estimate.within_budget
+              }
               onClick={handleValidate}
             >
               確認送驗

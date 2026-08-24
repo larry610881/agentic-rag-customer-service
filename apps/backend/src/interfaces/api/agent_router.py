@@ -85,6 +85,21 @@ _EVAL_USAGE_CATEGORIES = frozenset(
 )
 
 
+def _effective_test_mode(request: ChatRequest) -> bool:
+    """M9：config_override / history_override 存在時強制 test_mode。
+
+    否則授權 client 若漏設 test_mode，draft 設定產生的回答會被當真實對話持久化、
+    觸發 memory 萃取與線上 eval，usage 仍打成「當前線上版本」的 config_version_id
+    （草稿品質/token 計入線上版本），且 history_override 只在 test_mode 分支被消費、
+    此時被靜默忽略。三旗標任一存在即視為影子執行。
+    """
+    return (
+        request.test_mode
+        or request.config_override is not None
+        or request.history_override is not None
+    )
+
+
 def _require_shadow_authorized(
     request: ChatRequest, usage_ctx: UsageContext
 ) -> None:
@@ -103,12 +118,19 @@ def _require_shadow_authorized(
         )
 
 
-_STUDIO_IDENTITY_SOURCES = frozenset({"studio"})
+_GUARD_DETAIL_ROLES = frozenset({"system_admin", "tenant_admin"})
 
 
-def _maybe_expose_guard(result_guard_blocked, result_guard_rule, identity_source):
+def _can_see_guard_details(role: str | None) -> bool:
+    """M13：guard_blocked 的 rule_matched 是平台防護規則原文（正規讀取需 admin）。
+    原本以 body 自報的 identity_source="studio" 判定，任何租戶使用者都能偽造以枚舉
+    規則。改以 JWT role 判定——只有 admin（Studio 使用者本就是）看得到細節。"""
+    return role in _GUARD_DETAIL_ROLES
+
+
+def _maybe_expose_guard(result_guard_blocked, result_guard_rule, role):
     """返回 (guard_blocked, guard_rule) tuple 或 (None, None)。"""
-    if identity_source in _STUDIO_IDENTITY_SOURCES:
+    if _can_see_guard_details(role):
         return result_guard_blocked, result_guard_rule
     return None, None
 
@@ -139,14 +161,14 @@ async def agent_chat(
             bot_id=request.bot_id,
             identity_source=identity_source,
             config_override=request.config_override,
-            test_mode=request.test_mode,
+            test_mode=_effective_test_mode(request),  # M9
             history_override=request.history_override,
         )
     )
 
     # Sprint A++: Studio 才暴露 guard flag
     guard_blocked, guard_rule_matched = _maybe_expose_guard(
-        result.guard_blocked, result.guard_rule_matched, identity_source
+        result.guard_blocked, result.guard_rule_matched, tenant.role
     )
 
     # 記帳 fail-open：帳務失敗不得炸使用者請求（工程約束；spec §7.3 修債）
@@ -235,58 +257,15 @@ async def agent_chat_stream(
         bot_id=request.bot_id,
         identity_source=request.identity_source or "web",
         config_override=request.config_override,
-        test_mode=request.test_mode,
+        test_mode=_effective_test_mode(request),  # M9
         history_override=request.history_override,
     )
 
     async def event_generator():
-        # --- TEST TRIGGER: remove before production ---
-        if command.message == "test-back":
-            import traceback as _tb
-
-            from src.application.observability.error_event_use_cases import (
-                ReportErrorCommand,
-            )
-            from src.infrastructure.notification.dispatch_helper import (
-                dispatch_error_notification,
-            )
-
-            # Simulate a realistic traceback
-            try:
-                raise RuntimeError(
-                    "MilvusClient: Connection refused (connect ECONNREFUSED 127.0.0.1:19530)"
-                )
-            except RuntimeError:
-                fake_stack = _tb.format_exc()
-
-            report_uc = Container.report_error_use_case()
-            event = await report_uc.execute(
-                ReportErrorCommand(
-                    source="backend",
-                    error_type="RuntimeError",
-                    message="MilvusClient: Connection refused (connect ECONNREFUSED 127.0.0.1:19530)",
-                    stack_trace=fake_stack,
-                    path="/api/v1/agent/chat/stream",
-                    method="POST",
-                    status_code=500,
-                    tenant_id=command.tenant_id,
-                    extra={
-                        "bot_id": command.bot_id,
-                        "milvus_host": "localhost",
-                        "milvus_port": 19530,
-                        "retry_count": 3,
-                    },
-                )
-            )
-            asyncio.create_task(dispatch_error_notification(event))
-            yield f"data: {json.dumps({'type': 'error', 'message': '[Test] 後端模擬錯誤已觸發'}, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
-            return
-        # --- END TEST TRIGGER ---
-
         # Sprint A++: 只有 Studio 才看得到 guard_blocked event，end-user 介面
         # (widget/LINE/web bot) 不暴露防禦邏輯存在
-        is_studio = (request.identity_source or "web") in _STUDIO_IDENTITY_SOURCES
+        # M13：guard 細節暴露改以 JWT role 判定（非 body 自報的 identity_source）
+        is_studio = _can_see_guard_details(tenant.role)
 
         usage_data: dict | None = None
         assistant_message_id: str | None = None
@@ -327,6 +306,9 @@ async def agent_chat_stream(
                         message_id=None,
                         latency_ms=0,
                         source=command.identity_source or "web",
+                        # M8：正常路徑三處都帶 persist=not test_mode，唯獨此例外分支
+                        # 漏帶（預設 True）→ Playground 影子 trace 汙染生產觀測頁。
+                        persist=not command.test_mode,
                     )
                 except Exception:
                     logger.exception("agent.chat.stream.persist_failed_trace_error")

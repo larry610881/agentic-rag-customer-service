@@ -50,6 +50,29 @@ class BotConfigVersionRepository(ABC):
         ...
 
     @abstractmethod
+    async def create_next_version(
+        self, version: BotConfigVersion
+    ) -> BotConfigVersion:
+        """M2：取號 + INSERT 併入重試迴圈，並發撞唯一約束時重取號重試，
+        多次失敗才拋 VersionConflictError（→409）。回傳含 version_no 的版本。"""
+        ...
+
+    @abstractmethod
+    async def save_status_transition(
+        self, version: BotConfigVersion, *, expected_status: str, action: str
+    ) -> None:
+        """M3/M6：條件式狀態轉移（樂觀鎖）。以讀取時狀態為 WHERE 條件更新，
+        並發已改動（rowcount=0）時拋 InvalidVersionTransitionError（→409）。"""
+        ...
+
+    @abstractmethod
+    async def revert_stale_validating_versions(self) -> int:
+        """M5：revert 所有 validating 且對應 gate_run 非 running/queued（或無 run）
+        的版本。撈回 mark_orphans_error 漏掉的孤兒（run 已 completed 但版本仍卡
+        validating）。回傳影響列數。"""
+        ...
+
+    @abstractmethod
     async def set_current(self, bot_id: str, version_id: str) -> None:
         """單一交易內翻轉 is_current（舊 current 設 False、新版設 True），
         維持 partial unique index 不變量。"""

@@ -50,12 +50,26 @@ def _build_cached_use_case(context, bot_id, cache_ttl):
 
     cache_service = InMemoryCacheService()
 
+    # L10：生產 container 恆注入 encryption_service（快取憑證加密存放而非剝除）。
+    # fake 用可逆變換即可，重點是 round-trip 後憑證仍在、cache hit 不需回 DB 補讀。
+    import base64 as _b64
+
+    class _FakeEncryption:
+        def encrypt(self, plaintext: str) -> str:
+            return "enc:" + _b64.b64encode(plaintext.encode()).decode()
+
+        def decrypt(self, ciphertext: str) -> str:
+            if not ciphertext.startswith("enc:"):
+                raise ValueError("bad ciphertext")
+            return _b64.b64decode(ciphertext[4:]).decode()
+
     context["use_case"] = HandleWebhookUseCase(
         agent_service=mock_agent,
         bot_repository=mock_bot_repo,
         line_service_factory=mock_factory,
         cache_service=cache_service,
         cache_ttl=cache_ttl,
+        encryption_service=_FakeEncryption(),
     )
     context["mock_bot_repo"] = mock_bot_repo
     context["bot_id"] = bot_id
@@ -91,3 +105,21 @@ def verify_single_db_call(context):
 @then("Bot Repository 應查詢兩次")
 def verify_double_db_call(context):
     assert context["mock_bot_repo"].find_by_short_code.call_count == 2
+
+
+def test_cached_json_never_contains_plaintext_line_credentials():
+    """L10：LINE 憑證不得明文進快取（Redis dump/replica 暴露面）。"""
+    context: dict = {}
+    _build_cached_use_case(context, "bot-l10", cache_ttl=60)
+    body_text = (
+        '{"events":[{"type":"message","replyToken":"tk","source":'
+        '{"userId":"U1"},"message":{"type":"text","text":"hi"},"timestamp":1}]}'
+    )
+    _run(context["use_case"].execute_for_bot("bot-l10", body_text, "sig"))
+
+    cache = context["use_case"]._cache_service  # noqa: SLF001
+    raw_entries = [v for v, _exp in cache._store.values()]  # noqa: SLF001
+    assert raw_entries, "應有寫入快取"
+    for raw in raw_entries:
+        assert "secret-cache" not in raw
+        assert "token-cache" not in raw

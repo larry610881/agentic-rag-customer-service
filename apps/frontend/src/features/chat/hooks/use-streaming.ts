@@ -225,6 +225,11 @@ export function useStreaming() {
           },
         );
       } catch {
+        // 錯誤已在 onError 處理；此處僅兜底
+      } finally {
+        // M44：SSE 乾淨關閉但未送 done（generator 提前 return、代理層正常結束）時，
+        // fetchSSE 正常 resolve 不走 onError/catch → 原本成功路徑無清理 → isStreaming
+        // 永久卡 true、輸入框鎖死需重載。統一在 finally 清理。
         if (hintTimer) {
           clearTimeout(hintTimer);
           hintTimer = null;

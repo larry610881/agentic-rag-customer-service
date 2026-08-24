@@ -193,6 +193,18 @@ class RunManager:
                 if progress.event in ("completed", "stopped", "error"):
                     return
             except asyncio.TimeoutError:
+                # L2：run 已終態但終止事件已被先前訂閱者消費（或 queue 滿載時被
+                # get_nowait 丟棄）→ 新訂閱者原本每 30s keepalive 無限循環。
+                # timeout 時補查 run.status，終態即補發終止事件並結束。
+                if run.status in ("completed", "stopped", "failed"):
+                    yield RunProgress(
+                        run_id=run_id,
+                        event=(
+                            "error" if run.status == "failed" else run.status
+                        ),
+                        message=f"run already {run.status}",
+                    ).to_sse()
+                    return
                 # Send keepalive
                 yield ": keepalive\n\n"
             except asyncio.CancelledError:

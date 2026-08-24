@@ -9,7 +9,6 @@ independent_session_scope 內以 .provider factory 重新 resolve（Phase B 先�
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 
@@ -87,7 +86,7 @@ class StartGateRunUseCase:
         version_repository,
         gate_run_repository,
         eval_dataset_repository,
-        api_base_url: str = "http://localhost:8001",
+        api_base_url: str = "http://localhost:8000",
         # 背景任務用 provider factories（延遲 resolve，綁新 session）
         gate_run_repo_factory=None,
         version_repo_factory=None,
@@ -189,6 +188,7 @@ class StartGateRunUseCase:
         bot_id: str,
         version_id: str,
         api_token: str,
+        refresh_token: str = "",
         triggered_by: str | None = None,
     ) -> PromptGateRun:
         bot = await self._bot_repo.find_by_id(bot_id)
@@ -248,11 +248,17 @@ class StartGateRunUseCase:
             total_cases=len(cases),
             triggered_by=triggered_by,
         )
-        version.mark_validating(run.id)  # 非法轉移在此 raise（409）
+        prev_status = version.status
+        version.mark_validating(run.id)  # 非法轉移在此 raise（記憶體 guard）
+        # M6：先以樂觀鎖搶下 draft→validating（WHERE status='draft'）。連點兩下驗證
+        # 只有一方 rowcount=1，另一方 409 且不會建立第二個背景 run（token ×2）。
+        await self._version_repo.save_status_transition(
+            version, expected_status=prev_status, action="validate"
+        )
         await self._gate_run_repo.save(run)
-        await self._version_repo.save(version)
 
-        asyncio.create_task(
+        from src.application.prompt_gate._background import spawn_tracked
+        spawn_tracked(
             self._execute_background(
                 run_id=run.id,
                 tenant_id=tenant_id,
@@ -264,8 +270,10 @@ class StartGateRunUseCase:
                 soft_threshold=bot.gate_soft_threshold,
                 budget_usd=bot.gate_budget_usd,
                 api_token=api_token,
+                refresh_token=refresh_token,
                 excluded_platform_cases=excluded_applied,
-            )
+            ),
+            name=f"gate_run:{run.id}",  # M4：保存引用避免被 GC
         )
         return run
 
@@ -323,6 +331,7 @@ class StartGateRunUseCase:
         soft_threshold: float,
         budget_usd: float,
         api_token: str,
+        refresh_token: str = "",
         excluded_platform_cases: list[str] | None = None,
     ) -> None:
         from prompt_optimizer.api_client import AgentAPIClient
@@ -354,6 +363,7 @@ class StartGateRunUseCase:
             api_client = AgentAPIClient(
                 base_url=self._api_base_url,
                 jwt_token=api_token,
+                refresh_token=refresh_token,  # H3：長 run 中途 access token 過期可續期
                 usage_category="eval_gate",
                 run_id=run_id,
             )
@@ -660,13 +670,17 @@ class CleanupOrphanGateRunsUseCase:
     async def execute(self) -> int:
         version_ids = await self._gate_run_repo.mark_orphans_error()
         if version_ids:
-            reverted = await self._version_repo.revert_validating_to_draft(
-                version_ids
-            )
-            logger.info(
-                "gate_run.orphans_cleaned runs=%d versions_reverted=%d",
-                len(version_ids), reverted,
-            )
+            await self._version_repo.revert_validating_to_draft(version_ids)
+        # M5：mark_orphans_error 只撈 queued/running run，撈不到「run 已 completed 但
+        # 版本仍卡 validating」的孤兒（非同交易寫入間進程被砍）。額外 revert 所有
+        # validating 且 run 非 running 的版本，否則該版本三個 API 全 409、無 API 可解。
+        stale = 0
+        if hasattr(self._version_repo, "revert_stale_validating_versions"):
+            stale = await self._version_repo.revert_stale_validating_versions()
+        logger.info(
+            "gate_run.orphans_cleaned runs=%d stale_versions_reverted=%d",
+            len(version_ids), stale,
+        )
         return len(version_ids)
 
 

@@ -537,6 +537,7 @@ class SendMessageUseCase:
         message: str,
         router_context: str,
         tenant_id: str = "",
+        test_mode: bool = False,
     ) -> dict[str, Any]:
         """Worker routing: classify → override bot_cfg with worker settings.
 
@@ -563,6 +564,7 @@ class SendMessageUseCase:
                     intent_routes=intent_routes,
                     tenant_id=tenant_id,
                     bot_id=bot_id,
+                    test_mode=test_mode,  # M14：影子執行不記生產 token
                 )
                 t_end = AgentTraceCollector.offset_ms()
                 AgentTraceCollector.add_node(
@@ -585,14 +587,21 @@ class SendMessageUseCase:
 
         # Token-Gov.7 A: 包 trace node 記錄 intent classifier LLM 時間
         t_start = AgentTraceCollector.offset_ms()
-        matched = await self._intent_classifier.classify_workers(
+        # H11：改用 classify_sanitize（與 LINE 同）以取得 is_attack。2026-08-17 起
+        # regex guard 已不做語意判斷，語意型攻擊（同義改寫/拆字/多輪鋪陳）的唯一防線
+        # 是分類器的攻擊判定——原本 web/widget 用 classify_workers 把 is_attack 丟棄，
+        # 導致此防護只在 LINE 生效、web/widget（含匿名 public widget 端點）裸奔。
+        outcome = await self._intent_classifier.classify_sanitize(
             user_message=message,
             router_context=router_context,
             workers=workers,
             router_model=bot_cfg.get("router_model", ""),
             tenant_id=tenant_id,
             bot_id=bot_id,
+            test_mode=test_mode,  # M14：影子執行不記生產 token
         )
+        matched = outcome.worker
+        bot_cfg["_classifier_attack"] = outcome.is_attack
         t_end = AgentTraceCollector.offset_ms()
         AgentTraceCollector.add_node(
             node_type="intent_classify",
@@ -616,22 +625,24 @@ class SendMessageUseCase:
             cfg["system_prompt"] = inject_runtime_vars(
                 matched.worker_prompt
             )
-        if matched.llm_provider or matched.llm_model:
-            cfg["llm_params"] = {
-                **(cfg.get("llm_params") or {}),
-                **(
-                    {"provider_name": matched.llm_provider}
-                    if matched.llm_provider
-                    else {}
-                ),
-                **(
-                    {"model": matched.llm_model}
-                    if matched.llm_model
-                    else {}
-                ),
-                "temperature": matched.temperature,
-                "max_tokens": matched.max_tokens,
-            }
+        # M17：temperature/max_tokens 賦值原本在 provider/model 條件內 → worker 沿用
+        # bot 模型（不指定 provider/model）時 web 忽略 worker 的取樣參數，但 LINE 無條件
+        # 套用 → 同一 worker 兩通路取樣參數/回覆長度不同。移出條件，與 LINE 對齊。
+        cfg["llm_params"] = {
+            **(cfg.get("llm_params") or {}),
+            **(
+                {"provider_name": matched.llm_provider}
+                if matched.llm_provider
+                else {}
+            ),
+            **(
+                {"model": matched.llm_model}
+                if matched.llm_model
+                else {}
+            ),
+            "temperature": matched.temperature,
+            "max_tokens": matched.max_tokens,
+        }
         cfg["max_tool_calls"] = matched.max_tool_calls
 
         # Filter MCP servers to worker's subset
@@ -694,6 +705,7 @@ class SendMessageUseCase:
 
         history = conversation.messages if conversation.messages else None
         metadata = self._extract_metadata(conversation)
+        metadata["_dry_run_guard"] = command.test_mode  # H6
 
         bot_cfg = await self._load_bot_config(command)
 
@@ -754,7 +766,15 @@ class SendMessageUseCase:
         bot_cfg = await self._resolve_worker_config(
             bot_cfg, command.message, router_context,
             tenant_id=command.tenant_id,
+            test_mode=command.test_mode,  # M14：影子執行不記生產分類 token
         )
+
+        # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型
+        attack_block = await self._check_classifier_attack(
+            command, conversation, bot_cfg
+        )
+        if attack_block is not None:
+            return attack_block
 
         # Propagate worker routing info to agent service (for trace visualization)
         if bot_cfg.get("_worker_matched_info"):
@@ -810,6 +830,7 @@ class SendMessageUseCase:
                 bot_id=command.bot_id,
                 user_id=command.visitor_id,
                 user_message=command.message,
+                dry_run=command.test_mode,  # H6
             )
             if not guard_result.passed:
                 response.answer = guard_result.blocked_response
@@ -899,6 +920,7 @@ class SendMessageUseCase:
 
         history = conversation.messages if conversation.messages else None
         metadata = self._extract_metadata(conversation)
+        metadata["_dry_run_guard"] = command.test_mode  # H6
 
         bot_cfg = await self._load_bot_config(command)
 
@@ -938,6 +960,7 @@ class SendMessageUseCase:
                 tenant_id=command.tenant_id,
                 bot_id=command.bot_id,
                 user_id=command.visitor_id,
+                dry_run=command.test_mode,  # H6
             )
             if not guard_result.passed:
                 assistant_msg = None
@@ -959,7 +982,7 @@ class SendMessageUseCase:
                 }
                 # 持久化 trace（含 guard_input_blocked 紅節點），讓 Studio
                 # canvas / admin 觀測頁能看到攔截 DAG
-                await self._persist_agent_trace(
+                gb_trace_id, gb_nodes = await self._persist_agent_trace(
                     conversation_id=conversation.id.value,
                     message_id=(
                         assistant_msg.id.value if assistant_msg else None
@@ -968,7 +991,15 @@ class SendMessageUseCase:
                     source=command.identity_source or "web",
                     persist=not command.test_mode,
                 )
-                yield {"type": "done"}
+                # M10：原本丟棄回傳的 (trace_id, nodes)、done 不帶 → 前端拿不到
+                # trace_id 無法 fetch 剛持久化的 guard DAG；test_mode 下 trace 不落庫、
+                # 資訊全失。比照正常結束路徑帶上。
+                gb_done: dict[str, Any] = {"type": "done"}
+                if gb_trace_id:
+                    gb_done["trace_id"] = gb_trace_id
+                if command.test_mode and gb_nodes:
+                    gb_done["trace_nodes"] = gb_nodes
+                yield gb_done
                 return
 
         history, history_context, router_context = (
@@ -990,7 +1021,47 @@ class SendMessageUseCase:
         bot_cfg = await self._resolve_worker_config(
             bot_cfg, command.message, router_context,
             tenant_id=command.tenant_id,
+            test_mode=command.test_mode,  # M14：影子執行不記生產分類 token
         )
+
+        # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型。
+        # widget 端由 router 過濾 guard_blocked 事件（H7），只收到固定文案。
+        if bot_cfg.get("_classifier_attack") and self._prompt_guard:
+            gr = await self._prompt_guard.block_by_classifier(
+                message=command.message,
+                tenant_id=command.tenant_id,
+                bot_id=command.bot_id,
+                user_id=command.visitor_id,
+                dry_run=command.test_mode,  # H6
+            )
+            attack_msg = None
+            if not command.test_mode:
+                conversation.add_message("user", command.message)
+                attack_msg = conversation.add_message(
+                    "assistant", gr.blocked_response
+                )
+                _bump_conversation_counters(conversation)
+                await self._conversation_repo.save(conversation)
+            yield {"type": "token", "content": gr.blocked_response}
+            yield {
+                "type": "guard_blocked",
+                "block_type": "input",
+                "rule_matched": gr.rule_matched,
+            }
+            atk_trace_id, atk_nodes = await self._persist_agent_trace(
+                conversation_id=conversation.id.value,
+                message_id=attack_msg.id.value if attack_msg else None,
+                latency_ms=0,
+                source=command.identity_source or "web",
+                persist=not command.test_mode,
+            )
+            atk_done: dict[str, Any] = {"type": "done"}  # M10
+            if atk_trace_id:
+                atk_done["trace_id"] = atk_trace_id
+            if command.test_mode and atk_nodes:
+                atk_done["trace_nodes"] = atk_nodes
+            yield atk_done
+            return
 
         # Propagate worker routing info to agent service (for trace visualization)
         if bot_cfg.get("_worker_matched_info"):
@@ -1072,6 +1143,7 @@ class SendMessageUseCase:
                 bot_id=command.bot_id,
                 user_id=command.visitor_id,
                 user_message=command.message,
+                dry_run=command.test_mode,  # H6
             )
             if not output_guard.passed:
                 full_answer = output_guard.blocked_response
@@ -1193,7 +1265,15 @@ class SendMessageUseCase:
             existing = await self._conversation_repo.find_by_id(
                 command.conversation_id
             )
-            if existing is not None:
+            # 歸屬檢查（C2）：conversation_id 未帶歸屬，find_by_id 不做 tenant
+            # 過濾。不比對會讓任一租戶帶他人 conversation_id 讀到對方歷史、
+            # 並把訊息寫進對方對話。不屬於此租戶/bot（或不存在）→ 不沿用外來
+            # id，改開新對話。
+            if (
+                existing is not None
+                and existing.tenant_id == command.tenant_id
+                and existing.bot_id == command.bot_id
+            ):
                 return existing
 
         return Conversation(tenant_id=command.tenant_id, bot_id=command.bot_id)
@@ -1209,12 +1289,44 @@ class SendMessageUseCase:
             tenant_id=command.tenant_id,
             bot_id=command.bot_id,
             user_id=command.visitor_id,
+            dry_run=command.test_mode,  # H6
         )
         if guard_result.passed:
             # F1（POC 問題 1）：input guard 已在此跑過並通過 — 帶標記讓
             # GuardedAgentService 咽喉點跳過重複的 input guard LLM roundtrip
             metadata["_input_guard_checked"] = True
             return None
+        return await self._finalize_input_block(
+            command, conversation, guard_result
+        )
+
+    async def _check_classifier_attack(
+        self, command: SendMessageCommand, conversation, bot_cfg: dict
+    ) -> AgentResponse | None:
+        """H11：分類器判純攻擊 → 與 regex guard 同一份固定文案短路（web/widget）。
+
+        worker routing 的 classify_sanitize 在 _resolve_worker_config 已把 is_attack
+        暫存於 bot_cfg；此處走 block_by_classifier（與 LINE block_by_classifier 同副作用
+        與文案）並回傳攔截回應。無 workers / 非攻擊 / 無 guard → None。
+        """
+        if not bot_cfg.get("_classifier_attack") or not self._prompt_guard:
+            return None
+        guard_result = await self._prompt_guard.block_by_classifier(
+            message=command.message,
+            tenant_id=command.tenant_id,
+            bot_id=command.bot_id,
+            user_id=command.visitor_id,
+            dry_run=command.test_mode,  # H6
+        )
+        return await self._finalize_input_block(
+            command, conversation, guard_result
+        )
+
+    async def _finalize_input_block(
+        self, command: SendMessageCommand, conversation, guard_result
+    ) -> AgentResponse:
+        """從 blocked GuardResult 組攔截回應（persist + trace），regex guard 與
+        分類器攻擊共用（test_mode 不落庫）。"""
         assistant_msg = None
         if not command.test_mode:
             conversation.add_message("user", command.message)

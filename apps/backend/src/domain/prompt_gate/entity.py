@@ -44,6 +44,11 @@ class GateBlockedError(DomainException):
     版控欄位直改需走版本 API、驗證未過不可發布等。"""
 
 
+class VersionConflictError(DomainException):
+    """並發建版撞版本號唯一約束（interfaces 層對應 409）：重試多次仍衝突，
+    請前端重新載入版本清單後再試（M2）。"""
+
+
 class InvalidVersionTransitionError(DomainException):
     """非法的版本狀態轉移（interfaces 層對應 409）。"""
 
@@ -81,8 +86,10 @@ class BotConfigVersion:
             raise InvalidVersionTransitionError(self.status, "publish")
         self.status = STATUS_PUBLISHED
         self.gate_verdict = verdict
-        self.is_current = True
         self.published_at = datetime.now(timezone.utc)
+        # is_current 不在此設定：save(version) 會立即 commit，若此處先設 True，
+        # 舊 current 尚未清除即違反 partial unique index ix_bcv_current（C1）。
+        # is_current 的翻轉一律交給 repository.set_current 在單一交易內完成。
 
     def mark_rejected(self) -> None:
         if self.status not in _REJECTABLE:

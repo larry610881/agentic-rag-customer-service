@@ -43,6 +43,10 @@ from src.domain.line.entity import LinePostbackEvent, LineTextMessageEvent
 from src.domain.line.services import LineMessagingService, LineMessagingServiceFactory
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.concurrency import ConversationLock
+from src.domain.shared.exceptions import (
+    AuthorizationError,
+    EntityNotFoundError,
+)
 from src.infrastructure.line.flex_contact_builder import build_contact_flex
 from src.infrastructure.line.flex_image_carousel_builder import (
     build_image_carousel,
@@ -65,17 +69,28 @@ class WebhookContext:
     postback_events: list[LinePostbackEvent] = field(default_factory=list)
 
 
-def _bot_to_json(bot: Bot) -> str:
-    """Bot dataclass → JSON str（處理 BotId、BotShortCode 和 datetime）"""
+def _bot_to_json(bot: Bot, encryption: Any | None = None) -> str:
+    """Bot dataclass → JSON str（處理 BotId、BotShortCode 和 datetime）
+
+    L10：LINE 憑證不得明文進 Redis（會把暴露面從 PG 擴大到 Redis／dump／replica）。
+    有加密服務時加密存放（保留快取效益）；無則剝除，cache hit 後由
+    prepare_and_reply 回 DB 補讀。
+    """
     d = dataclasses.asdict(bot)
     d["id"] = bot.id.value
     d["short_code"] = bot.short_code.value
     d["created_at"] = bot.created_at.isoformat()
     d["updated_at"] = bot.updated_at.isoformat()
+    for key in ("line_channel_secret", "line_channel_access_token"):
+        val = d.get(key) or ""
+        if val and encryption is not None:
+            d[key] = encryption.encrypt(val)
+        else:
+            d[key] = ""
     return json.dumps(d, ensure_ascii=False)
 
 
-def _bot_from_json(raw: str) -> Bot:
+def _bot_from_json(raw: str, encryption: Any | None = None) -> Bot:
     """JSON str → Bot dataclass
 
     `dataclasses.asdict` 把 nested dataclass 攤平成 dict，反向時必須逐欄重建，
@@ -85,6 +100,17 @@ def _bot_from_json(raw: str) -> Bot:
     d = json.loads(raw)
     d["id"] = BotId(value=d["id"])
     d["short_code"] = BotShortCode(value=d["short_code"])
+    # L10：快取中的 LINE 憑證為加密存放；解密失敗（舊格式/換 key）視同缺失，
+    # 由 prepare_and_reply 回 DB 補讀。
+    for key in ("line_channel_secret", "line_channel_access_token"):
+        val = d.get(key) or ""
+        if val and encryption is not None:
+            try:
+                d[key] = encryption.decrypt(val)
+            except Exception:
+                d[key] = ""
+        elif val and encryption is None:
+            d[key] = ""
     d["llm_params"] = BotLLMParams(**d["llm_params"])
     d["created_at"] = datetime.fromisoformat(d["created_at"])
     d["updated_at"] = datetime.fromisoformat(d["updated_at"])
@@ -103,6 +129,26 @@ def _bot_from_json(raw: str) -> Bot:
         name: ToolRagConfig(**cfg) for name, cfg in d.get("tool_configs", {}).items()
     }
     return Bot(**d)
+
+
+def _format_line_source_lines(sources: list, limit: int = 3) -> list[str]:
+    """組 LINE「參考來源」文字行（H10）。
+
+    sources 可能是 Source dataclass 或 dict（DM 快速道透傳的 dm_sources）。原本
+    直接 s.score / s.document_name 屬性存取，遇 dict 拋 AttributeError；且該例外在
+    reply 送出前拋出（try/finally 之前）→ 使用者收不到任何回覆、對話/trace 未持久化、
+    LINE redelivery 重送。此處對兩型都安全取值。
+    """
+    lines: list[str] = []
+    for i, s in enumerate(sources[:limit], 1):
+        if isinstance(s, dict):
+            score = s.get("score", 0) or 0
+            name = s.get("document_name") or s.get("kb_id") or ""
+        else:
+            score = getattr(s, "score", 0) or 0
+            name = getattr(s, "document_name", "") or ""
+        lines.append(f"{i}. {name}（{round(score * 100)}%）")
+    return lines
 
 
 class HandleWebhookUseCase:
@@ -128,9 +174,12 @@ class HandleWebhookUseCase:
         prompt_guard: Any | None = None,
         query_rag_use_case: Any | None = None,
         dm_image_query_tool: Any | None = None,
+        tenant_repository: Any | None = None,
+        encryption_service: Any | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
+        self._tenant_repo = tenant_repository  # M19：router_model tenant fallback
         self._intent_classifier = intent_classifier
         self._worker_config_repo = worker_config_repo
         self._line_service_factory = line_service_factory
@@ -157,6 +206,8 @@ class HandleWebhookUseCase:
         self._query_rag = query_rag_use_case
         # 快速道的 DM 圖卡：並行呼叫 DM 工具（signed URL 產生邏輯原封重用）
         self._dm_tool = dm_image_query_tool
+        # L10：bot 快取中的 LINE 憑證加密存放（None 時剝除 + DB 補讀）
+        self._encryption = encryption_service
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
         """Redis 快取查 Bot（by ID），預設 120 秒 TTL。"""
@@ -164,12 +215,13 @@ class HandleWebhookUseCase:
         if self._cache_service is not None:
             cached = await self._cache_service.get(cache_key)
             if cached is not None:
-                return _bot_from_json(cached)
+                return _bot_from_json(cached, self._encryption)
 
         bot = await self._bot_repository.find_by_id(bot_id)
         if bot is not None and self._cache_service is not None:
             await self._cache_service.set(
-                cache_key, _bot_to_json(bot), ttl_seconds=self._cache_ttl
+                cache_key, _bot_to_json(bot, self._encryption),
+                ttl_seconds=self._cache_ttl,
             )
         return bot
 
@@ -179,12 +231,13 @@ class HandleWebhookUseCase:
         if self._cache_service is not None:
             cached = await self._cache_service.get(cache_key)
             if cached is not None:
-                return _bot_from_json(cached)
+                return _bot_from_json(cached, self._encryption)
 
         bot = await self._bot_repository.find_by_short_code(short_code)
         if bot is not None and self._cache_service is not None:
             await self._cache_service.set(
-                cache_key, _bot_to_json(bot), ttl_seconds=self._cache_ttl
+                cache_key, _bot_to_json(bot, self._encryption),
+                ttl_seconds=self._cache_ttl,
             )
         return bot
 
@@ -216,10 +269,16 @@ class HandleWebhookUseCase:
                 event_data.get("type") == "message"
                 and event_data.get("message", {}).get("type") == "text"
             ):
+                # M18：群組/room 或未同意條款的事件 source 可能無 userId。原本直接
+                # 下標 KeyError → 整批事件解析失敗 → 500 → LINE redelivery，同批
+                # 正常 1:1 訊息也一起卡死。無 userId 的事件跳過。
+                user_id = (event_data.get("source") or {}).get("userId")
+                if not user_id:
+                    continue
                 events.append(
                     LineTextMessageEvent(
                         reply_token=event_data["replyToken"],
-                        user_id=event_data["source"]["userId"],
+                        user_id=user_id,
                         message_text=event_data["message"]["text"],
                         timestamp=event_data["timestamp"],
                     )
@@ -233,10 +292,13 @@ class HandleWebhookUseCase:
         events: list[LinePostbackEvent] = []
         for event_data in data.get("events", []):
             if event_data.get("type") == "postback":
+                user_id = (event_data.get("source") or {}).get("userId")
+                if not user_id:  # M18：無 userId 的 postback 跳過
+                    continue
                 events.append(
                     LinePostbackEvent(
                         reply_token=event_data["replyToken"],
-                        user_id=event_data["source"]["userId"],
+                        user_id=user_id,
                         postback_data=event_data["postback"]["data"],
                         timestamp=event_data["timestamp"],
                     )
@@ -250,14 +312,21 @@ class HandleWebhookUseCase:
         signature: str,
     ) -> "WebhookContext | None":
         """Bot 查詢 → 驗簽 → 解析事件。回傳 context 供後續處理。"""
+        # M15：查驗失敗改拋 DomainException，讓 router 映射為 404/403 而非 500
+        # （假簽章不應回 500 引發 LINE redelivery，也不應被 500 掩蓋成伺服器錯誤）。
         bot = await self._get_bot_by_short_code_cached(short_code)
         if bot is None:
-            raise ValueError(f"Bot not found: {short_code}")
+            raise EntityNotFoundError("Bot", short_code)
+
+        # L10：快取 JSON 已剝除 LINE 憑證，cache hit 時回 DB 補讀兩欄
+        if not bot.line_channel_secret:
+            fresh = await self._bot_repository.find_by_short_code(short_code)
+            if fresh is not None:
+                bot.line_channel_secret = fresh.line_channel_secret
+                bot.line_channel_access_token = fresh.line_channel_access_token
 
         if not bot.line_channel_secret:
-            raise ValueError(
-                f"Bot {short_code} has no LINE channel secret configured"
-            )
+            raise EntityNotFoundError("LineChannel", short_code)
 
         line_service = self._line_service_factory.create(
             bot.line_channel_secret,
@@ -265,7 +334,7 @@ class HandleWebhookUseCase:
         )
 
         if not await line_service.verify_signature(body_text, signature):
-            raise ValueError("Invalid LINE webhook signature")
+            raise AuthorizationError("Invalid LINE webhook signature")
 
         events = self._parse_text_events(body_text)
         postback_events = self._parse_postback_events(body_text)
@@ -371,19 +440,33 @@ class HandleWebhookUseCase:
                 or threshold,
             ))
 
+        # M16：快速道文字檢索原本只用 bot 全域 top_k/threshold，忽略 worker 為
+        # rag_query 設的 per-tool RAG 參數（DM 工具有讀、rag_query 沒讀）→ 快速道與
+        # 升級後的完整 ReAct 路徑檢索結果不一致。改為讀 tool_rag_params["rag_query"]，
+        # 缺時退回 bot 全域。
+        rq = (tool_rag_params or {}).get("rag_query", {}) or {}
+        rq_kb_ids = rq.get("kb_ids") or kb_ids
         rr = None
         if rr is None:
             try:
                 rr = await self._query_rag.retrieve(QueryRAGCommand(
                     tenant_id=bot.tenant_id,
-                    kb_id=kb_id,
+                    kb_id=(rq_kb_ids[0] if rq_kb_ids else kb_id),
                     query=search_query,
-                    top_k=bot.llm_params.rag_top_k,
-                    score_threshold=threshold,
-                    kb_ids=kb_ids,
-                    rerank_enabled=bot.rerank_enabled,
-                    rerank_model=bot.rerank_model,
-                    rerank_top_n=bot.rerank_top_n,
+                    top_k=rq.get("rag_top_k") or bot.llm_params.rag_top_k,
+                    score_threshold=(
+                        rq.get("rag_score_threshold")
+                        if rq.get("rag_score_threshold") is not None
+                        else threshold
+                    ),
+                    kb_ids=rq_kb_ids,
+                    rerank_enabled=(
+                        rq.get("rerank_enabled")
+                        if rq.get("rerank_enabled") is not None
+                        else bot.rerank_enabled
+                    ),
+                    rerank_model=rq.get("rerank_model") or bot.rerank_model,
+                    rerank_top_n=rq.get("rerank_top_n") or bot.rerank_top_n,
                 ))
             except Exception:
                 logger.warning("line.direct_retrieval.error", exc_info=True)
@@ -494,6 +577,7 @@ class HandleWebhookUseCase:
             # → 有「請點下方按鈕」文字卻沒按鈕（2026-08-17「我要退費」實測）
             customer_service_url=bot.customer_service_url,
             max_tool_calls=1,
+            bot_id=bot.id.value,  # L9：output guard_logs 補 bot 歸因
         )
         # 快速道的檢索來源回填（無 tool call → agent 不會帶 sources），
         # 供 LINE 回覆的來源顯示與對話 retrieved_chunks 持久化
@@ -658,6 +742,7 @@ class HandleWebhookUseCase:
                     event.message_text,
                     tenant_id=bot.tenant_id,
                     bot_id=bot.id.value,
+                    user_id=event.user_id,  # L9：guard_logs 補使用者歸因
                 )
             )
 
@@ -682,6 +767,22 @@ class HandleWebhookUseCase:
                 from src.infrastructure.observability.agent_trace_collector import (
                     AgentTraceCollector,
                 )
+                # M19：router_model 空時退回租戶 default_intent_model（與 web 一致），
+                # 否則 LINE 用系統預設 LLM、同一 bot 兩通路分類模型不同。
+                _router_model = bot.router_model
+                if not _router_model and self._tenant_repo:
+                    try:
+                        _tenant = await self._tenant_repo.find_by_id(
+                            bot.tenant_id
+                        )
+                        if _tenant:
+                            _router_model = getattr(
+                                _tenant, "default_intent_model", ""
+                            )
+                    except Exception:
+                        logger.warning(
+                            "line.router_model_fallback_failed", exc_info=True
+                        )
                 t_start = AgentTraceCollector.offset_ms()
                 # Issue #51：同一次分類呼叫多產出「上下文改寫檢索查詢」，
                 # 供快速道 follow-up 短句（「價格呢」）檢索命中正確商品
@@ -691,7 +792,11 @@ class HandleWebhookUseCase:
                     user_message=event.message_text,
                     router_context=router_context,
                     workers=workers,
-                    router_model=bot.router_model,
+                    router_model=_router_model,  # M19
+                    # H9：漏傳則分類器 token 以 tenant_id="" 落孤兒帳（計費繞過），
+                    # 與 web 通路（send_message_use_case）行為不一致
+                    tenant_id=bot.tenant_id,
+                    bot_id=bot.id.value,
                 )
                 matched, rewritten_query = outcome.worker, outcome.query
                 classifier_attack = bool(outcome.is_attack)
@@ -833,6 +938,7 @@ class HandleWebhookUseCase:
                     customer_service_url=bot.customer_service_url,
                     mcp_servers=mcp_servers,
                     max_tool_calls=max_tool_calls,
+                    bot_id=bot.id.value,  # L9：output guard_logs 補 bot 歸因
                 )
         t1 = time.monotonic()
 
@@ -871,10 +977,7 @@ class HandleWebhookUseCase:
         # LINE 純文字通路：清除 LLM 殘留的 Markdown 符號（prompt 約束的安全網）
         reply_text = strip_markdown_for_line(result.answer)
         if bot.line_show_sources and result.sources:
-            source_lines = []
-            for i, s in enumerate(result.sources[:3], 1):
-                score_pct = round(s.score * 100)
-                source_lines.append(f"{i}. {s.document_name}（{score_pct}%）")
+            source_lines = _format_line_source_lines(result.sources)
             reply_text += "\n\n📚 參考來源：\n" + "\n".join(source_lines)
 
         message_id = assistant_msg.id.value
@@ -956,11 +1059,15 @@ class HandleWebhookUseCase:
             # Persist agent trace to DB
             if trace and self._trace_session_factory:
                 try:
+                    from src.application.agent.send_message_use_case import (
+                        _compute_trace_outcome,
+                    )
                     from src.infrastructure.db.models.agent_trace_model import (
                         AgentExecutionTraceModel,
                     )
                     trace.conversation_id = conversation.id.value
                     trace.message_id = assistant_msg.id.value
+                    node_dicts = [n.to_dict() for n in trace.nodes]
                     row = AgentExecutionTraceModel(
                         id=str(uuid4()),
                         trace_id=trace.trace_id,
@@ -969,10 +1076,14 @@ class HandleWebhookUseCase:
                         conversation_id=trace.conversation_id,
                         agent_mode=trace.agent_mode,
                         source=trace.source,
+                        # M20：LINE trace 原本不設 outcome → 恆 NULL，失敗率儀表板
+                        # （以 outcome 過濾）看不到 LINE trace，主力通路監控失明。
+                        # 呼叫 web 端同一份共用純函式計算（非重寫）。
+                        outcome=_compute_trace_outcome(node_dicts),
                         llm_model=trace.llm_model,
                         llm_provider=trace.llm_provider,
                         bot_id=trace.bot_id,
-                        nodes=[n.to_dict() for n in trace.nodes],
+                        nodes=node_dicts,
                         total_ms=trace.total_ms,
                         total_tokens=trace.total_tokens,
                     )
@@ -990,7 +1101,12 @@ class HandleWebhookUseCase:
                         request_type="chat_line",
                         usage=result.usage,
                         bot_id=bot.id.value,
-                        message_id=result.message_id,
+                        # H8：result.message_id 對 LINE 恆為 None（僅 send_message
+                        # 路徑會設）；正解是本地 message_id = assistant_msg.id.value，
+                        # 否則版本成效 metrics 以 message_id join 不到 LINE 訊息。
+                        # 註：config_version_id 打標待共用管線抽取（channel-parity
+                        # 絞殺者遷移）統一補上，避免在此複製版本解析邏輯。
+                        message_id=message_id,
                     )
                 except Exception:
                     logger.warning("line.record_usage_error", exc_info=True)
@@ -1061,6 +1177,9 @@ class HandleWebhookUseCase:
         line_service: LineMessagingService | None = None,
     ) -> None:
         """處理 LINE Postback 事件（回饋收集 + 追問原因）。"""
+        # L8：舊 webhook 端點傳 tenant_id=""，會讓 Feedback(tenant_id="") 落孤兒帳、
+        # 在按租戶過濾的報表中消失。空時退回設定的 default_tenant_id。
+        tenant_id = tenant_id or self._default_tenant_id
         if not self._feedback_repo:
             return
 

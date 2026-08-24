@@ -315,9 +315,19 @@ def _make_rollback(context, *, gate_mode: str, iteration=None):
         v = store.get(vid)
         return v if v and v.tenant_id == tid else None
 
+    async def _create_next(v):
+        v.version_no = 5
+        store[v.id] = v
+        return v
+
+    async def _save_transition(v, *, expected_status, action):
+        store[v.id] = v
+
     version_repo.save.side_effect = _save
     version_repo.find_by_id.side_effect = _find
     version_repo.next_version_no.return_value = 5
+    version_repo.create_next_version.side_effect = _create_next
+    version_repo.save_status_transition.side_effect = _save_transition
 
     create_uc = CreateConfigVersionUseCase(bot_repo, version_repo)
     publish_uc = PublishConfigVersionUseCase(

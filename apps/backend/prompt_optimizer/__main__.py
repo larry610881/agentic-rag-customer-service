@@ -16,6 +16,17 @@ import sys
 from pathlib import Path
 
 
+def resolve_target_level(target_field: str) -> str:
+    """target_field → PromptTarget.level（H15）。
+
+    只有 system_prompt 屬 system 層；base_prompt / bot_prompt 皆為 bot 層。原本判斷寫反
+    （base_prompt → system），使 (system, base_prompt) 落在 _TARGET_MAP 之外 → 所有以
+    base_prompt 為 target 的內建 dataset（ecommerce/education/saas）一開跑即 ValueError。
+    與 API 路徑 run_use_cases 依 bot_id 判斷的結果一致。
+    """
+    return "system" if target_field == "system_prompt" else "bot"
+
+
 def setup_logging(verbose: bool = False) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -91,11 +102,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     # Determine target
     target_field = args.target or dataset.metadata.target_prompt
-    target_level = (
-        "system"
-        if target_field in ("base_prompt",)
-        else "bot"
-    )
+    target_level = resolve_target_level(target_field)
     target = PromptTarget(
         level=target_level,
         field=target_field,
@@ -142,10 +149,18 @@ def cmd_run(args: argparse.Namespace) -> None:
     )
 
     # Run
+    # L14：run 與 client close 必須在同一個 event loop——原本 finally 內另起
+    # asyncio.run 關閉舊 loop 建立的連線會拋 RuntimeError('Event loop is
+    # closed')，且在 finally 內拋出會遮蔽原始例外。
+    async def _run_and_close():
+        try:
+            return await runner.run(config, dataset)
+        finally:
+            await api_client.close()
+
     try:
-        result = asyncio.run(runner.run(config, dataset))
+        result = asyncio.run(_run_and_close())
     finally:
-        asyncio.run(api_client.close())
         if db_client:
             db_client.close()
 
@@ -242,7 +257,12 @@ def cmd_validate(args: argparse.Namespace) -> None:
         results: list[ChatResult] = []
         for tc in dataset.test_cases:
             try:
-                cr = await api_client.chat(message=tc.question, bot_id=bot_id)
+                cr = await api_client.chat(
+                    message=tc.question,
+                    bot_id=bot_id,
+                    # M32：多輪 case 帶入對話歷史，否則無上下文必誤判 fail
+                    history_override=list(tc.conversation_history) or None,
+                )
                 results.append(cr)
             except Exception as e:
                 print(f"  ERROR: {tc.id}: {e}")
@@ -255,13 +275,16 @@ def cmd_validate(args: argparse.Namespace) -> None:
         return results
 
     async def _run():
+        # L14：validate 與 client close 同一 loop（見 run 指令同型修法）
         validator = ValidationEvaluator(evaluator=Evaluator())
-        return await validator.validate(dataset, _eval_fn, n_repeats=args.repeats)
+        try:
+            return await validator.validate(
+                dataset, _eval_fn, n_repeats=args.repeats
+            )
+        finally:
+            await api_client.close()
 
-    try:
-        summary = asyncio.run(_run())
-    finally:
-        asyncio.run(api_client.close())
+    summary = asyncio.run(_run())
 
     # Print report
     icon = "\u2705" if summary.verdict == "PASS" else "\u274c"

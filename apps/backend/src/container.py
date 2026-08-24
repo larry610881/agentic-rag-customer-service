@@ -1990,6 +1990,7 @@ class Container(containers.DeclarativeContainer):
 
     start_gate_run_use_case = providers.Factory(
         StartGateRunUseCase,
+        api_base_url=config.provided.self_api_base_url,  # H2
         bot_repository=bot_repository,
         tenant_repository=tenant_repository,
         version_repository=bot_config_version_repository,
@@ -2019,6 +2020,7 @@ class Container(containers.DeclarativeContainer):
 
     start_replay_compare_use_case = providers.Factory(
         StartReplayCompareUseCase,
+        api_base_url=config.provided.self_api_base_url,  # H2
         bot_repository=bot_repository,
         version_repository=bot_config_version_repository,
         gate_run_repository=prompt_gate_run_repository,
@@ -2235,6 +2237,7 @@ class Container(containers.DeclarativeContainer):
 
     run_single_eval_use_case = providers.Factory(
         RunSingleEvalUseCase,
+        api_base_url=config.provided.self_api_base_url,  # H2
         eval_dataset_repository=eval_dataset_repository,
     )
 
@@ -2257,14 +2260,18 @@ class Container(containers.DeclarativeContainer):
 
     run_validation_eval_use_case = providers.Factory(
         RunValidationEvalUseCase,
+        api_base_url=config.provided.self_api_base_url,  # H2
         eval_dataset_repository=eval_dataset_repository,
         optimization_run_repository=optimization_run_repository,
+        # H13：history 寫入在 independent_session_scope 內取新 session repo
+        run_repo_factory=optimization_run_repository.provider,
     )
 
     run_manager = providers.Singleton(RunManager)
 
     start_run_use_case = providers.Factory(
         StartRunUseCase,
+        api_base_url=config.provided.self_api_base_url,  # H2
         eval_dataset_repository=eval_dataset_repository,
         run_manager=run_manager,
         db_url=providers.Callable(lambda cfg: cfg.database_url, config),
@@ -2514,4 +2521,6 @@ class Container(containers.DeclarativeContainer):
         # Issue #50 — workflow 快速道（direct_retrieval worker 用的檢索管線）
         query_rag_use_case=query_rag_use_case,
         dm_image_query_tool=dm_image_query_tool,
+        tenant_repository=tenant_repository,  # M19：router_model tenant fallback
+        encryption_service=encryption_service,  # L10：快取憑證加密
     )

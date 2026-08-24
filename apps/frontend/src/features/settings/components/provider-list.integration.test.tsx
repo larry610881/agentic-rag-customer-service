@@ -28,10 +28,10 @@ describe("ProviderList integration", () => {
 
     // Each card has a switch for enable/disable
     const switches = screen.getAllByRole("switch");
-    expect(switches.length).toBe(4); // 4 providers in PROVIDER_ORDER
+    expect(switches.length).toBe(5); // 4 providers in PROVIDER_ORDER
 
     // LLM badges
     const llmBadges = screen.getAllByText("LLM");
-    expect(llmBadges.length).toBe(4);
+    expect(llmBadges.length).toBe(5);
   });
 });

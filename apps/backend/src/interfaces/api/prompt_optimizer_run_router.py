@@ -109,6 +109,12 @@ class RollbackResponse(BaseModel):
     prompt_snapshot: str
     score: float
     applied: bool
+    # M25：gate 啟用時 rollback 的 publish 可能被閘門攔下，use case 回傳這三欄說明
+    # 實際結果；原本 RollbackResponse 未宣告 → pydantic 靜默丟棄 → 前端只看到
+    # applied=true 誤以為已上線，實際線上未變、draft 卡在待發布。
+    version_id: str | None = None
+    published: bool = True
+    note: str = ""
 
 
 class DiffResponse(BaseModel):
@@ -150,8 +156,14 @@ async def start_run(
         patience=body.patience,
         budget=body.budget,
         dry_run=body.dry_run,
+        role=tenant.role,
     )
-    run_id = await use_case.execute(command)
+    try:
+        run_id = await use_case.execute(command)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from e
     return StartRunResponse(run_id=run_id, status="running")
 
 

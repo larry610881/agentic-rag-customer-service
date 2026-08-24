@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { clearQueryCache } from "@/lib/query-client-registry";
 import type { Tenant } from "@/types/auth";
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
@@ -50,7 +51,10 @@ export const useAuthStore = create<AuthState>()(
           userId: tokenType === "user_access" ? (sub ?? null) : null,
         });
       },
-      logout: () =>
+      logout: () => {
+        // M43：清整個 TanStack Query 快取，避免同分頁換租戶時 key 不含 tenant
+        // 維度的查詢命中前一租戶殘留資料。含 api-client 401 強制登出路徑。
+        clearQueryCache();
         set({
           token: null,
           refreshToken: null,
@@ -58,7 +62,8 @@ export const useAuthStore = create<AuthState>()(
           role: null,
           userId: null,
           tenants: [],
-        }),
+        });
+      },
       setTenantId: (tenantId) => set({ tenantId }),
       setTenants: (tenants) => set({ tenants }),
     }),

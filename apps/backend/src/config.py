@@ -1,7 +1,26 @@
+import os
+
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
+def _default_self_api_base_url() -> str:
+    """影子自呼叫（gate/replay/optimizer 打自己的 /agent/chat）的 base URL 預設值。
+
+    H2：原本各 use case 寫死 http://localhost:8001（本機 Makefile dev 值），部署容器
+    listen 8000（Dockerfile ENV PORT=8000）→ connection refused → 閘門在生產 100%
+    判 fail。改為依執行時 PORT 推導，並允許用 SELF_API_BASE_URL 明確覆寫。
+    """
+    explicit = os.getenv("SELF_API_BASE_URL")
+    if explicit:
+        return explicit
+    return f"http://localhost:{os.getenv('PORT', '8000')}"
+
+
 class Settings(BaseSettings):
+    # 影子自呼叫 base URL（gate/replay/optimizer 背景任務）
+    self_api_base_url: str = Field(default_factory=_default_self_api_base_url)
+
     # PostgreSQL
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
@@ -195,6 +214,26 @@ class Settings(BaseSettings):
         if self.debug:
             return "DEBUG"
         return self.log_level.upper()
+
+    def validate_production_secrets(self) -> list[str]:
+        """M24：非 development 環境 fail-closed 檢查關鍵密鑰未用預設 fallback。
+
+        jwt_secret_key 若停留在公開已知的 "dev-secret-key-change-in-production"，
+        攻擊者可自簽 role=system_admin token 完全繞過認證；encryption_master_key 空
+        則 mcp env_values / LINE 憑證等同未加密。回傳問題清單（呼叫端決定拒絕啟動）。
+        """
+        if self.app_env == "development":
+            return []
+        problems: list[str] = []
+        if self.jwt_secret_key == "dev-secret-key-change-in-production":
+            problems.append(
+                "JWT_SECRET_KEY 仍為預設值，請以環境變數覆寫"
+            )
+        if not self.encryption_master_key:
+            problems.append(
+                "ENCRYPTION_MASTER_KEY 未設定，加密退化為明文"
+            )
+        return problems
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

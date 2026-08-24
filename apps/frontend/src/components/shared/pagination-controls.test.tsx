@@ -14,14 +14,14 @@ describe('PaginationControls', () => {
     render(
       <PaginationControls page={1} totalPages={5} onPageChange={() => {}} />,
     );
-    expect(screen.getByRole('button', { name: /previous/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: "上一頁" })).toBeDisabled();
   });
 
   it('should disable next button on last page', () => {
     render(
       <PaginationControls page={5} totalPages={5} onPageChange={() => {}} />,
     );
-    expect(screen.getByRole('button', { name: /next/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: "下一頁" })).toBeDisabled();
   });
 
   it('should call onPageChange when clicking next', async () => {
@@ -30,7 +30,7 @@ describe('PaginationControls', () => {
     render(
       <PaginationControls page={2} totalPages={5} onPageChange={onPageChange} />,
     );
-    await user.click(screen.getByRole('button', { name: /next/i }));
+    await user.click(screen.getByRole('button', { name: "下一頁" }));
     expect(onPageChange).toHaveBeenCalledWith(3);
   });
 
@@ -40,7 +40,7 @@ describe('PaginationControls', () => {
     render(
       <PaginationControls page={3} totalPages={5} onPageChange={onPageChange} />,
     );
-    await user.click(screen.getByRole('button', { name: /previous/i }));
+    await user.click(screen.getByRole('button', { name: "上一頁" }));
     expect(onPageChange).toHaveBeenCalledWith(2);
   });
 

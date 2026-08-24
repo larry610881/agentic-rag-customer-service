@@ -393,8 +393,12 @@ def _to_response(bot) -> BotResponse:
             for r in bot.intent_routes
         ],
         busy_reply_message=bot.busy_reply_message,
-        line_channel_secret=bot.line_channel_secret,
-        line_channel_access_token=bot.line_channel_access_token,
+        # M23：LINE 憑證不回傳原值（任何租戶成員都能 GET，等同憑證外洩面）。
+        # 比照 mcp env_values 慣例回 "***"，update 時 "***" 視為未變更。
+        line_channel_secret="***" if bot.line_channel_secret else None,
+        line_channel_access_token=(
+            "***" if bot.line_channel_access_token else None
+        ),
         line_show_sources=bot.line_show_sources,
         created_at=bot.created_at.isoformat(),
         updated_at=bot.updated_at.isoformat(),
@@ -552,7 +556,9 @@ async def get_bot(
     ),
 ) -> BotResponse:
     try:
-        bot = await use_case.execute(bot_id)
+        bot = await use_case.execute(
+            bot_id, tenant_id=tenant.tenant_id, role=tenant.role
+        )
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -562,10 +568,14 @@ async def get_bot(
 
 
 def _build_update_command(
-    bot_id: str, body: UpdateBotRequest
+    bot_id: str, body: UpdateBotRequest, tenant: CurrentTenant
 ) -> UpdateBotCommand:
     """Build UpdateBotCommand from request, only including set fields."""
-    kwargs: dict = {"bot_id": bot_id}
+    kwargs: dict = {
+        "bot_id": bot_id,
+        "tenant_id": tenant.tenant_id,
+        "role": tenant.role,
+    }
     for field in body.model_fields_set:
         val = getattr(body, field)
         if field == "intent_routes" and val is not None:
@@ -620,7 +630,7 @@ async def update_bot(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=str(exc),
             ) from exc
-    command = _build_update_command(bot_id, body)
+    command = _build_update_command(bot_id, body, tenant)
     try:
         bot = await use_case.execute(command)
     except EntityNotFoundError as e:
@@ -641,7 +651,9 @@ async def delete_bot(
     ),
 ) -> None:
     try:
-        await use_case.execute(bot_id)
+        await use_case.execute(
+            bot_id, tenant_id=tenant.tenant_id, role=tenant.role
+        )
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

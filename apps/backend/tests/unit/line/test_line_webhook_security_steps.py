@@ -9,6 +9,7 @@ from pytest_bdd import given, parsers, scenarios, then, when
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
 from src.domain.agent.entity import AgentResponse
 from src.domain.bot.entity import Bot
+from src.domain.shared.exceptions import DomainException
 
 scenarios("unit/line/line_webhook_security.feature")
 
@@ -72,7 +73,8 @@ def receive_malformed_json_with_bad_sig(context):
             )
         )
         context["error"] = None
-    except ValueError as e:
+    except DomainException as e:
+        # M15：驗簽失敗改拋 AuthorizationError（DomainException）供 router 映射 403
         context["error"] = e
 
 

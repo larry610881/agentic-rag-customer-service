@@ -19,6 +19,7 @@ from src.application.eval_dataset.delete_eval_dataset_use_case import (
 from src.application.eval_dataset.eval_use_cases import (
     EstimateCostCommand,
     EstimateCostUseCase,
+    EvalInfrastructureError,
     RunEvalCommand,
     RunSingleEvalUseCase,
     RunValidationCommand,
@@ -42,7 +43,10 @@ from src.application.eval_dataset.update_eval_dataset_use_case import (
 )
 from src.container import Container
 from src.domain.eval_dataset.entity import EvalDataset, EvalTestCase
-from src.domain.shared.exceptions import EntityNotFoundError
+from src.domain.shared.exceptions import (
+    AuthorizationError,
+    EntityNotFoundError,
+)
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
@@ -254,13 +258,15 @@ async def create_dataset(
 @inject
 async def get_dataset(
     dataset_id: str,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetEvalDatasetUseCase = Depends(
         Provide[Container.get_eval_dataset_use_case]
     ),
 ) -> DatasetResponse:
     try:
-        dataset = await use_case.execute(dataset_id)
+        dataset = await use_case.execute(
+            dataset_id, tenant_id=tenant.tenant_id, role=tenant.role
+        )
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
@@ -287,6 +293,8 @@ async def update_dataset(
     try:
         command = UpdateEvalDatasetCommand(
             dataset_id=dataset_id,
+            tenant_id=tenant.tenant_id,
+            role=tenant.role,
             name=body.name,
             description=body.description,
             target_prompt=body.target_prompt,
@@ -297,6 +305,10 @@ async def update_dataset(
             is_platform_base=body.is_platform_base,
         )
         dataset = await use_case.execute(command)
+    except AuthorizationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=e.message
+        ) from e
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
@@ -310,13 +322,19 @@ async def update_dataset(
 @inject
 async def delete_dataset(
     dataset_id: str,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: DeleteEvalDatasetUseCase = Depends(
         Provide[Container.delete_eval_dataset_use_case]
     ),
 ) -> None:
     try:
-        await use_case.execute(dataset_id)
+        await use_case.execute(
+            dataset_id, tenant_id=tenant.tenant_id, role=tenant.role
+        )
+    except AuthorizationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=e.message
+        ) from e
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
@@ -359,7 +377,12 @@ async def import_dataset_from_yaml(
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Invalid YAML: {e}") from e
 
-    tenant_id = body.tenant_id or tenant.tenant_id
+    # H12：非 system_admin 一律忽略 body.tenant_id，強制用自己的 tenant_id，
+    # 否則任一租戶可指定他人 tenant_id 冒名寫入其命名空間。
+    if body.tenant_id and tenant.role == "system_admin":
+        tenant_id = body.tenant_id
+    else:
+        tenant_id = tenant.tenant_id
 
     # Create dataset
     dataset = await create_use_case.execute(
@@ -411,7 +434,7 @@ async def import_dataset_from_yaml(
 @inject
 async def export_dataset(
     dataset_id: str,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetEvalDatasetUseCase = Depends(
         Provide[Container.get_eval_dataset_use_case]
     ),
@@ -427,7 +450,9 @@ async def export_dataset(
     )
 
     try:
-        ds_entity = await use_case.execute(dataset_id)
+        ds_entity = await use_case.execute(
+            dataset_id, tenant_id=tenant.tenant_id, role=tenant.role
+        )
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=e.message) from e
 
@@ -485,7 +510,7 @@ async def export_dataset(
 async def create_test_case(
     dataset_id: str,
     body: TestCaseRequest,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: CreateTestCaseUseCase = Depends(
         Provide[Container.create_test_case_use_case]
     ),
@@ -500,8 +525,14 @@ async def create_test_case(
             conversation_history=body.conversation_history,
             assertions=body.assertions,
             tags=body.tags,
+            tenant_id=tenant.tenant_id,
+            role=tenant.role,
         )
         test_case = await use_case.execute(command)
+    except AuthorizationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=e.message
+        ) from e
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
@@ -515,14 +546,24 @@ async def update_test_case(
     dataset_id: str,
     case_id: str,
     body: UpdateTestCaseRequest,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: UpdateTestCaseUseCase = Depends(
         Provide[Container.update_test_case_use_case]
     ),
 ) -> dict:
     """Issue #54 Phase C — case enabled toggle（停用不參與閘門驗證）。"""
     try:
-        tc = await use_case.execute(dataset_id, case_id, enabled=body.enabled)
+        tc = await use_case.execute(
+            dataset_id,
+            case_id,
+            enabled=body.enabled,
+            tenant_id=tenant.tenant_id,
+            role=tenant.role,
+        )
+    except AuthorizationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=e.message
+        ) from e
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
@@ -538,12 +579,26 @@ async def update_test_case(
 async def delete_test_case(
     dataset_id: str,
     case_id: str,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: DeleteTestCaseUseCase = Depends(
         Provide[Container.delete_test_case_use_case]
     ),
 ) -> None:
-    await use_case.execute(case_id)
+    try:
+        await use_case.execute(
+            case_id,
+            dataset_id=dataset_id,
+            tenant_id=tenant.tenant_id,
+            role=tenant.role,
+        )
+    except AuthorizationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=e.message
+        ) from e
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from e
 
 
 # --- Single Eval & Cost Estimate ---
@@ -551,6 +606,7 @@ async def delete_test_case(
 
 class RunEvalRequest(BaseModel):
     dataset_id: str
+    refresh_token: str = ""
 
 
 class EstimateCostRequest(BaseModel):
@@ -580,12 +636,19 @@ async def run_single_eval(
         tenant_id=tenant.tenant_id,
         dataset_id=body.dataset_id,
         api_token=api_token,
+        role=tenant.role,
+        refresh_token=body.refresh_token,
     )
     try:
         return await use_case.execute(command)
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from e
+    except EvalInfrastructureError as e:
+        # M28：大量 API 失敗屬基礎設施故障，回 502 而非把假 FAIL 落歷史
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
         ) from e
 
 
@@ -620,6 +683,7 @@ class RunValidationRequest(BaseModel):
     dataset_id: str
     bot_id: str = ""
     repeats: int = 5
+    refresh_token: str = ""
 
 
 @router.post("/validate")
@@ -646,12 +710,19 @@ async def run_validation_eval(
         api_token=api_token,
         repeats=body.repeats,
         bot_id=body.bot_id,
+        role=tenant.role,
+        refresh_token=body.refresh_token,
     )
     try:
         return await use_case.execute(command)
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from e
+    except EvalInfrastructureError as e:
+        # M28：大量 API 失敗屬基礎設施故障，回 502 而非把假 FAIL 落歷史
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
         ) from e
 
 

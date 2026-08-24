@@ -1,6 +1,7 @@
 /** Issue #54 — Bot 設定版本與發布閘門 hooks */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 import { apiFetch } from "@/lib/api-client";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
@@ -80,6 +81,27 @@ export function useGateEstimate(botId: string, enabled: boolean) {
   });
 }
 
+/**
+ * H18：gate run 轉 completed/error 時 invalidate 版本列表與 detail。
+ *
+ * useGateRun 完成後只停止輪詢，但 useConfigVersions 列表無輪詢也不會被 invalidate，
+ * 導致 version.status 停在 stale 的 "validating"：卡片持續轉圈、發布按鈕永不出現。
+ * 傳入 gate run 目前狀態，轉為終態時刷新列表讓 UI 反映 pending_publish/draft。
+ */
+export function useInvalidateVersionsOnGateComplete(
+  botId: string,
+  gateRunStatus: string | null | undefined,
+) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (gateRunStatus === "completed" || gateRunStatus === "error") {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.configVersions.list(botId),
+      });
+    }
+  }, [gateRunStatus, botId, queryClient]);
+}
+
 /** Gate run polling：3s 刷新，completed/error 停止 */
 export function useGateRun(runId: string | null) {
   const token = useAuthStore((s) => s.token);
@@ -93,6 +115,9 @@ export function useGateRun(runId: string | null) {
       ),
     enabled: !!token && !!runId,
     refetchInterval: (query) => {
+      // L16：查詢本身失敗（404/500）時 data 恆 undefined，若不先判斷 error
+      // 會對已確定失敗的 run id 每 3 秒無限輪詢直到使用者離開
+      if (query.state.status === "error") return false;
       const status = query.state.data?.status;
       return status === "completed" || status === "error" ? false : 3000;
     },
@@ -107,13 +132,26 @@ function useVersionMutation<TVariables>(
   botIdOf: (vars: TVariables) => string,
 ) {
   const token = useAuthStore((s) => s.token);
+  const tenantId = useAuthStore((s) => s.tenantId);
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (vars: TVariables) => makeRequest(vars, token ?? undefined),
     onSuccess: (_data, vars) => {
+      const botId = botIdOf(vars);
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.configVersions.list(botIdOf(vars)),
+        queryKey: queryKeys.configVersions.list(botId),
       });
+      // M40：publish/rollback 會把版本快照 apply 回 bot 本體並清後端 cache。若不刷新
+      // bots.detail，使用者切到 bot-detail 頁會吃到 staleTime 內的舊 prompt，誤以為
+      // 沒生效而按儲存 → PUT 舊值覆寫剛發布的設定。
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.bots.detail(botId),
+      });
+      if (tenantId) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.bots.all(tenantId),
+        });
+      }
     },
   });
 }
@@ -188,7 +226,11 @@ export function useReplayCompare() {
         ),
         {
           method: "POST",
-          body: JSON.stringify({ sample_size: vars.sampleSize ?? 10 }),
+          body: JSON.stringify({
+            sample_size: vars.sampleSize ?? 10,
+            // H3：背景任務長 run 中途 access token 過期時可用 refresh_token 續期
+            refresh_token: useAuthStore.getState().refreshToken ?? "",
+          }),
         },
         token,
       ),
@@ -202,7 +244,13 @@ export function useValidateConfigVersion() {
     (vars: { botId: string; versionId: string }, token) =>
       apiFetch<GateRun>(
         API_ENDPOINTS.configVersions.validate(vars.botId, vars.versionId),
-        { method: "POST" },
+        {
+          method: "POST",
+          // H3：長 gate run 可能超過 access token 15 分鐘壽命，帶 refresh_token 供續期
+          body: JSON.stringify({
+            refresh_token: useAuthStore.getState().refreshToken ?? "",
+          }),
+        },
         token,
       ),
     (vars) => vars.botId,

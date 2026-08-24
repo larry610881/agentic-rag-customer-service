@@ -59,24 +59,41 @@ async def _log_cleanup_loop(container: object) -> None:
     while True:
         await asyncio.sleep(3600)  # check every hour
         try:
-            repo = container.log_retention_policy_repository()  # type: ignore[attr-defined]
-            policy = await repo.get()
-            if not policy or not policy.enabled:
-                continue
-            now = datetime.now(timezone.utc)
-            if policy.last_cleanup_at:
-                next_run = policy.last_cleanup_at + timedelta(
-                    hours=policy.cleanup_interval_hours
-                )
-                if now < next_run:
-                    continue
-                if now.hour != policy.cleanup_hour:
-                    continue
-            uc = container.execute_log_cleanup_use_case()  # type: ignore[attr-defined]
-            deleted = await uc.execute()
-            logger.info("log_cleanup.success", deleted_count=deleted)
+            await _run_log_cleanup_once(container)
         except Exception:
             logger.warning("log_cleanup.failed", exc_info=True)
+
+
+async def _run_log_cleanup_once(container: object) -> None:
+    """單次 log retention 檢查 + 清理（若到期）。
+
+    H14：整段包 independent_session_scope 取新 session 並確保關閉。原本直接
+    container.log_retention_policy_repository() 走 db_session=get_tracked_session，
+    把 session 存進背景 task 的 ContextVar 卻無人 close，首次 idle-in-transaction 被
+    PG 砍斷後每小時拿到同一顆死 session → 清理永久失效且不歸還連線。對齊 startup
+    gate 孤兒清理的做法。
+    """
+    from src.infrastructure.db.session_middleware import (
+        independent_session_scope,
+    )
+
+    async with independent_session_scope():
+        repo = container.log_retention_policy_repository()  # type: ignore[attr-defined]
+        policy = await repo.get()
+        if not policy or not policy.enabled:
+            return
+        now = datetime.now(timezone.utc)
+        if policy.last_cleanup_at:
+            next_run = policy.last_cleanup_at + timedelta(
+                hours=policy.cleanup_interval_hours
+            )
+            if now < next_run:
+                return
+            if now.hour != policy.cleanup_hour:
+                return
+        uc = container.execute_log_cleanup_use_case()  # type: ignore[attr-defined]
+        deleted = await uc.execute()
+        logger.info("log_cleanup.success", deleted_count=deleted)
 
 
 @asynccontextmanager
@@ -91,6 +108,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log_level=settings.effective_log_level,
         enabled_modules=settings.enabled_modules,
     )
+
+    # M24：非 development 環境拒絕以預設密鑰啟動（fail-closed）
+    secret_problems = settings.validate_production_secrets()
+    if secret_problems:
+        for _p in secret_problems:
+            logger.error("app.startup.insecure_secret", detail=_p)
+        raise RuntimeError(
+            "拒絕啟動：關鍵密鑰使用預設 fallback（"
+            + "；".join(secret_problems)
+            + "）。請設定對應環境變數。"
+        )
 
     # Seed built-in tools (idempotent — preserves admin-set scope/tenant_ids)
     try:
@@ -127,9 +155,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # S-Pricing.1: 啟動時 load DB pricing 到記憶體 cache
     # 失敗不擋啟動 — RecordUsageUseCase 會 fallback 到 DEFAULT_MODELS
     try:
+        # M29：refresh 走 db_session=get_tracked_session，在 lifespan context 建
+        # session 卻無 independent_session_scope、無人 close → 每次啟動漏 1 條 pool
+        # 連線，且 create_task(_log_cleanup_loop) 複製此 context 繼承這顆已死 session
+        # （把 H14 放大為從第一次就失敗）。
+        from src.infrastructure.db.session_middleware import (
+            independent_session_scope,
+        )
         container = app.container  # type: ignore[attr-defined]
-        pricing_cache = container.pricing_cache()
-        await pricing_cache.refresh()
+        async with independent_session_scope():
+            pricing_cache = container.pricing_cache()
+            await pricing_cache.refresh()
     except Exception:
         logger.warning("pricing_cache.startup_refresh_failed", exc_info=True)
 

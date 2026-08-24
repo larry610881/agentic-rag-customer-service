@@ -7,10 +7,9 @@ Bug 背景（2026-04-16）：
         'WorkerConfig' object has no attribute 'system_prompt'
 """
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
-import pytest
-
+from src.application.agent.intent_classifier import ClassifyOutcome
 from src.application.agent.send_message_use_case import SendMessageUseCase
 from src.domain.bot.worker_config import WorkerConfig
 
@@ -31,7 +30,12 @@ def _build_use_case(workers, matched_worker):
     worker_repo.find_by_bot_id = AsyncMock(return_value=workers)
 
     intent_classifier = AsyncMock()
-    intent_classifier.classify_workers = AsyncMock(return_value=matched_worker)
+    # H11：_resolve_worker_config 改用 classify_sanitize（回 worker + is_attack）
+    intent_classifier.classify_sanitize = AsyncMock(
+        return_value=ClassifyOutcome(
+            worker=matched_worker, query="", is_attack=False
+        )
+    )
 
     uc = SendMessageUseCase.__new__(SendMessageUseCase)
     uc._worker_config_repo = worker_repo

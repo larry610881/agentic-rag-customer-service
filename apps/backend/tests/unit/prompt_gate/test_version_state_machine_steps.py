@@ -88,10 +88,21 @@ def version_repo(store):
             if v.bot_id == bot_id:
                 v.is_current = v.id == vid
 
+    async def _create_next(v):
+        v.version_no = await _next_no(v.bot_id)
+        store[v.id] = v
+        return v
+
+    async def _save_transition(v, *, expected_status, action):
+        # 樂觀鎖的 SQL 層行為由整合測試覆蓋；此處 emulate 成功寫入
+        store[v.id] = v
+
     repo.save.side_effect = _save
     repo.find_by_id.side_effect = _find_by_id
     repo.next_version_no.side_effect = _next_no
     repo.set_current.side_effect = _set_current
+    repo.create_next_version.side_effect = _create_next
+    repo.save_status_transition.side_effect = _save_transition
     return repo
 
 

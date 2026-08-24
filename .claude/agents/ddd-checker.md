@@ -27,7 +27,14 @@ maxTurns: 15
    - `src/interfaces/` 中出現 `session.execute(`、`session.query(`
    - `src/interfaces/` 中直接實例化 Repository
 
-4. **Unit Test 使用真實 DB（測試隔離違規）**
+4. **對話管線邏輯按通路實作（通路對等違規，見 rules/channel-parity.md）**
+   - `src/application/line/`（或其他通路目錄）中出現管線步驟邏輯：
+     prompt guard、意圖分類、direct_retrieval 判定、trace 收集/持久化、
+     token usage 記帳、eval、對話歷史組裝的**實作**（呼叫共用 service 不算）
+   - 管線程式碼中出現通路名分支：`if channel == "line"`、`if source == "web"` 等
+     （應使用能力旗標 supports_streaming / supports_rich_card）
+
+5. **Unit Test 使用真實 DB（測試隔離違規）**
    - `tests/unit/` 中出現以下任一：
      - `db_session.execute(` / `db_session.add(` / `db_session.commit(`
      - 直接實例化真實 Repository
@@ -36,22 +43,22 @@ maxTurns: 15
 
 ### HIGH — 應盡快修正
 
-5. **Application 層回傳 ORM Model**
+6. **Application 層回傳 ORM Model**
    - Use Case 方法 return type 是 SQLAlchemy Model 而非 Domain DTO
 
-6. **Infrastructure 層 import Application 層**
+7. **Infrastructure 層 import Application 層**
    - `src/infrastructure/` 中 import `application/`
 
-7. **跨聚合根直接操作**
+8. **跨聚合根直接操作**
    - 一個 Use Case 直接操作多個不同聚合的 Repository（應透過 Domain Event）
 
 ### MEDIUM — 建議修正
 
-8. **Domain Entity 包含 ORM annotation**
+9. **Domain Entity 包含 ORM annotation**
    - `src/domain/` 中的 Entity 使用 `Column`、`relationship` 等 ORM 裝飾器
 
-9. **過大的 Use Case**
-   - 單個 Use Case class 超過 200 行
+10. **過大的 Use Case**
+    - 單個 Use Case class 超過 200 行
 
 ## 掃描範圍
 - `apps/backend/src/domain/**/*.py`

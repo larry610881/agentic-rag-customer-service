@@ -70,7 +70,17 @@ def run_assertion(
             assertion_type=assertion_type,
             message=f"Unknown assertion: {assertion_type}",
         )
-    return fn(ctx, **params)
+    try:
+        return fn(ctx, **params)
+    except TypeError as e:
+        # M33：斷言函式為 kw-only 無 **kwargs，params 有 typo/缺漏（loader 只驗
+        # type 不驗 params）會拋 TypeError。原本無 try/except → 一顆壞 case 使整批
+        # gate run / 優化 run 崩潰。改為單一斷言判 fail，不拖垮整個 run。
+        return AssertionResult(
+            passed=False,
+            assertion_type=assertion_type,
+            message=f"Invalid assertion params for {assertion_type}: {e}",
+        )
 
 
 # ═══════════════════════════════════════════════════════════════

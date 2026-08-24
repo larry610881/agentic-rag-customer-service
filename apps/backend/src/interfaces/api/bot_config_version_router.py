@@ -37,10 +37,20 @@ from src.container import Container
 from src.domain.prompt_gate.entity import (
     GateBlockedError,
     InvalidVersionTransitionError,
+    VersionConflictError,
 )
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
-from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.deps import (
+    CurrentTenant,
+    get_current_tenant,
+    require_role,
+)
 from src.interfaces.api.schemas.pagination import PaginatedResponse
+
+# H4：版本寫入/驗證端點限管理員角色。一般成員（role="user"，註冊預設）不得建立/
+# 發布/回朔版本（等同租戶內權限提升寫入 bots 設定），亦不得觸發 validate/replay
+# （每次燒 gate_daily_limit 且必因影子授權 403 全滅，可癱瘓當日正常驗證）。
+_VERSION_WRITER = require_role("system_admin", "tenant_admin")
 
 router = APIRouter(
     prefix="/api/v1/bots/{bot_id}/config-versions",
@@ -156,7 +166,7 @@ def _handle(exc: Exception) -> HTTPException:
         return HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         )
-    if isinstance(exc, InvalidVersionTransitionError):
+    if isinstance(exc, InvalidVersionTransitionError | VersionConflictError):
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         )
@@ -195,7 +205,7 @@ def _handle(exc: Exception) -> HTTPException:
 async def create_version(
     bot_id: str,
     request: CreateVersionRequest,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: CreateConfigVersionUseCase = Depends(
         Provide[Container.create_config_version_use_case]
     ),
@@ -278,7 +288,10 @@ async def get_version_metrics(
 ) -> dict:
     """版本服役成效卡（§13.6）：方向性參考，非嚴格因果。"""
     try:
-        m = await use_case.execute(tenant.tenant_id, version_id)
+        m = await use_case.execute(
+            tenant.tenant_id, version_id,
+            expected_bot_id=bot_id,  # L1
+        )
     except EntityNotFoundError as exc:
         raise _handle(exc) from exc
     return {
@@ -301,7 +314,7 @@ async def publish_version(
     bot_id: str,
     version_id: str,
     body: PublishRequest | None = None,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: PublishConfigVersionUseCase = Depends(
         Provide[Container.publish_config_version_use_case]
     ),
@@ -310,6 +323,7 @@ async def publish_version(
         version = await use_case.execute(
             tenant.tenant_id, version_id,
             force=bool(body and body.force),
+            expected_bot_id=bot_id,  # L1：URL 與版本歸屬一致性
         )
     except (
         EntityNotFoundError,
@@ -322,6 +336,13 @@ async def publish_version(
 
 class ReplayCompareRequest(BaseModel):
     sample_size: int = Field(default=10, ge=1, le=30)
+    # H3：長 run 中途 access token 過期時供背景任務續期（前端由 auth store 帶入）
+    refresh_token: str = ""
+
+
+class ValidateRequest(BaseModel):
+    # H3：同上，背景 gate run 可能跑超過 access token 15 分鐘壽命
+    refresh_token: str = ""
 
 
 @router.post(
@@ -335,7 +356,7 @@ async def replay_compare_version(
     version_id: str,
     request: Request,
     body: ReplayCompareRequest | None = None,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: StartReplayCompareUseCase = Depends(
         Provide[Container.start_replay_compare_use_case]
     ),
@@ -350,6 +371,7 @@ async def replay_compare_version(
             bot_id=bot_id,
             version_id=version_id,
             api_token=api_token,
+            refresh_token=body.refresh_token if body else "",
             sample_size=body.sample_size if body else 10,
             triggered_by=tenant.user_id,
         )
@@ -368,7 +390,8 @@ async def validate_version(
     bot_id: str,
     version_id: str,
     request: Request,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    body: ValidateRequest | None = None,
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: StartGateRunUseCase = Depends(
         Provide[Container.start_gate_run_use_case]
     ),
@@ -383,6 +406,7 @@ async def validate_version(
             bot_id=bot_id,
             version_id=version_id,
             api_token=api_token,
+            refresh_token=body.refresh_token if body else "",
             triggered_by=tenant.user_id,
         )
     except (
@@ -399,13 +423,16 @@ async def validate_version(
 async def reject_version(
     bot_id: str,
     version_id: str,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: RejectConfigVersionUseCase = Depends(
         Provide[Container.reject_config_version_use_case]
     ),
 ) -> VersionResponse:
     try:
-        version = await use_case.execute(tenant.tenant_id, version_id)
+        version = await use_case.execute(
+            tenant.tenant_id, version_id,
+            expected_bot_id=bot_id,  # L1
+        )
     except (EntityNotFoundError, InvalidVersionTransitionError) as exc:
         raise _handle(exc) from exc
     return _to_response(version)
@@ -416,7 +443,7 @@ async def reject_version(
 async def rollback_version(
     bot_id: str,
     request: RollbackRequest,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(_VERSION_WRITER),
     use_case: RollbackConfigVersionUseCase = Depends(
         Provide[Container.rollback_config_version_use_case]
     ),

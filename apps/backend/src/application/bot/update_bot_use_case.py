@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from src.application.bot._tenant_guard import ensure_bot_tenant
 from src.application.prompt_gate.static_checks import check_prompt_fields
 from src.domain.bot.entity import (
     Bot,
@@ -41,6 +42,9 @@ _MASKED_VALUE = "***"
 @dataclass(frozen=True)
 class UpdateBotCommand:
     bot_id: str
+    # 歸屬檢查用（C9）：由 router 從 JWT 帶入，非可版本化的 bot 欄位
+    tenant_id: str | None = None
+    role: str | None = None
     name: object = _UNSET
     description: object = _UNSET
     is_active: object = _UNSET
@@ -142,8 +146,16 @@ class UpdateBotUseCase:
         )
         for field in _DIRECT_FIELDS:
             val = getattr(command, field)
-            if val is not _UNSET:
-                setattr(bot, field, val)
+            if val is _UNSET:
+                continue
+            # M23：LINE 憑證 API 回應為 "***" 遮罩，表單原封送回時視為未變更
+            # （比照 mcp env_values 慣例）；要清除請送空字串。
+            if (
+                field in ("line_channel_secret", "line_channel_access_token")
+                and val == _MASKED_VALUE
+            ):
+                continue
+            setattr(bot, field, val)
 
         if command.knowledge_base_ids is not _UNSET:
             bot.knowledge_base_ids = list(command.knowledge_base_ids)  # type: ignore[arg-type]
@@ -342,6 +354,9 @@ class UpdateBotUseCase:
         bot = await self._bot_repo.find_by_id(command.bot_id)
         if bot is None:
             raise EntityNotFoundError("Bot", command.bot_id)
+        # C9：跨租戶竄改 → 404（tenant_id 為 None 時代表 router 未帶入，維持舊行為）
+        if command.tenant_id is not None:
+            ensure_bot_tenant(bot, command.tenant_id, command.role)
 
         before_snapshot = take_snapshot(bot)
 

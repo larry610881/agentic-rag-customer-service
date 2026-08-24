@@ -7,6 +7,103 @@
 
 ---
 
+## Full Review 全量收斂 — 104 findings 一次性處理的工程紀律（2026-08-21，公開前最終關卡）
+
+**Sprint 來源**：2026-08-20 多代理全專案 review 的 MEDIUM 53 + LOW 22 全量修復（總計 50 commits，加前兩批 C/H 共 102/104 修復、2 項有理有據延後）
+
+**主題**：樂觀鎖 vs 悲觀鎖的落地選型、背景任務 session 生命週期、絞殺者遷移下的「修 vs 排期」判斷、測試 vacuous 化
+
+#### 做得好的地方
+- **併發防護選「條件式 UPDATE 樂觀鎖」而非 SELECT FOR UPDATE**：版本狀態機
+  （M3/M6）的 race 用 `UPDATE ... WHERE status=<讀取時狀態>` + rowcount=0→409
+  解決——零 migration、無鎖等待、失敗方得到明確 409。並刻意**重排寫入順序**：
+  先搶下狀態轉移再動 bot/建 run，輸的一方在污染任何資料前就出局。搭配真 DB
+  整合測試驗證 SQL 層行為（mock 測不到 WHERE 條件）。
+- **背景 session 生命週期一個原語治全域**：M29/M30/H13/H14 四個 findings 同根因
+  （get_tracked_session 的 ContextVar session 只有 HTTP middleware 會關），全部
+  收斂到同一個 `independent_session_scope`——worker 在 `execute_with_resilience`
+  一處包住所有 job，startup 任務各自包。**資源生命週期問題找「唯一收斂點」，
+  不是逐 job 補 close**。
+- **「修」與「排期」的邊界照規範走**：M21（LINE 接 memory）強行修會違反
+  channel-parity 的絞殺者紀律（先抽共用 service、LINE 零回歸），review 報告
+  本身就提供「排入債務清單」選項——選它並把 M12/M21/M22 明文寫進
+  `channel-parity.md` 債務清單（含理由與做法），讓延後成為**被追蹤的決策**
+  而非沉默的 TODO。M22 另加 `pipeline_approximation: "web"` 誠實標注，
+  讓使用者看得到近似的限制。
+- **測試 vacuous 化的識別與修法**（M49/M50）：兩個 shadow 隔離測試「斷言恆真」
+  ——factory=None 使持久化路徑根本不存在、command 沒帶 conversation_id 使
+  「未查詢」永遠成立。修法是**把否定斷言變成有機會失敗的斷言**：注入可觀察的
+  mock factory 斷言「從未被呼叫」、補上會觸發查詢的前置條件再斷言沒查。
+  口訣：**否定式斷言必須先證明「肯定路徑存在」**。
+
+#### 潛在隱憂
+- **樂觀鎖只覆蓋了版本狀態機**：bots 表本身的並發 update（雙管理員同時改設定）
+  仍是 last-write-wins；閘門版控某程度緩解（版控欄位走版本 API），但非版控
+  欄位無防護 → 優先級：低（單租戶單管理員為主的使用型態）。
+- **quota union（L4）改變了 included_categories 的語意**：eval 分類現在強制計入
+  quota。若未來有「平台吸收 eval 成本」的商業需求，需要另立欄位而非復用
+  included_categories → 優先級：低（記錄語意決策即可）。
+- **既有測試 drift 的補課揭示流程缺口**：i18n 改版（a1c7660）與加第 5 家
+  provider 時測試沒同步更新且 CI 沒擋——表示 `make test` 未必在每次 commit 前
+  跑全量。建議 CI 對 PR 強制全量前端測試 → 優先級：中。
+
+#### 延伸學習
+- **Optimistic vs Pessimistic locking 的判準**：衝突頻率低（人為 double-click）
+  且失敗可回報使用者（409 重試）→ 樂觀鎖；衝突頻率高或失敗代價大（金融扣款）
+  → 悲觀鎖/序列化。搜尋 "optimistic concurrency control compare-and-set"、
+  "PostgreSQL SELECT FOR UPDATE vs conditional update"。
+- **Strangler Fig 遷移中的「順手還債 vs 排期」**：判準是「這次改動是否已經
+  觸碰該邏輯的兩份實作」——有觸碰就順手抽共用（如 L5 的 failed-trace helper），
+  沒觸碰就排期（如 M21 memory），避免每個 bugfix 都膨脹成重構。
+
+---
+
+## Code Review CRITICAL 批次二 — 租戶隔離 IDOR 系統性根因（C2/C4–C9）（2026-08-21，全專案 review 後續）
+
+**Sprint 來源**：2026-08-20 多代理全專案 review CRITICAL 批次第二輪（7 個跨租戶 IDOR）
+
+**主題**：「知道 id 就能存取」的授權缺口、資源歸屬檢查的統一落點、讀/寫權限分級
+
+#### 做得好的地方
+- **同根因一次收斂，不逐處補丁**：C2（對話）、C8/C9（bot）、C4–C7（eval dataset）表面是 9 個端點，根因同一個——use case 以純 id `find_by_id`、只把 command 裡的 `tenant_id` 當 metadata、從不比對歸屬。每個 bounded context 建一個 `_tenant_guard.py`（bot 一份、eval_dataset 一份），所有讀寫端點呼叫同一 guard，而非每個端點各寫一段 if。**授權歸屬是 application 層邏輯，集中在 guard，端點只負責把 JWT 的 tenant/role 帶進來**。
+- **讀/寫分級 + 平台集語意**：eval dataset 的 guard 區分 `ensure_dataset_read`（擁有者/平台通用集/admin）與 `ensure_dataset_write`（平台集非 admin → 403 可讀不可改、一般集非擁有者 → 404 不洩漏存在性）。用 404 vs 403 精準表達「不該知道它存在」vs「知道但無權改」——新增 `AuthorizationError` 對應 403，與既有 `EntityNotFoundError`（404）分流。
+- **端點級 + use-case 級雙層測試**：unit 測 guard 矩陣（快、覆蓋 owner/foreign/platform-base/admin 組合），integration 測真實端點跨租戶回 404/403（釘住 router 有把 tenant/role 帶進去）。防止「guard 對但 router 忘了傳」的漏接。
+- **可選參數 + None 跳過，零既有測試 churn**：guard 參數對 use case 用 `tenant_id: str | None = None`，None 時跳過檢查——既有大量以舊簽章呼叫的單元測試全數保持綠燈，生產一律經 router 帶入、由 integration 測試保證。
+
+#### 潛在隱憂
+- **「None 跳過」是刻意的取捨，也是未來的坑**：安全檢查做成 opt-in（未帶 tenant_id 即不檢查），代價是新呼叫端若忘記帶就靜默無保護。目前每個 use case 僅一個 production 呼叫端（router，已帶），靠 integration 測試釘住；但若未來 use case 被別處復用，需 code review 盯住 → 優先級：中。長期正解是 request-scoped 的 tenant context（ContextVar / 依賴注入）讓 tenant 不可能漏傳。
+- **DeleteTestCaseUseCase 原本連 dataset 都不載入**（純 case_id 直刪）——這類「以子資源 id 直接操作、完全不經父聚合」的 repo 方法是 IDOR 高風險模式。已改為帶 dataset_id 驗歸屬 + 驗 case 屬於該 dataset，但 repo 層 `delete_test_case(case_id)` 仍是無 scope 的原語 → 未來可考慮 repo 層強制帶 dataset_id → 優先級：中。
+- **import_dataset 仍接受 body.tenant_id**（review H12，本批未處理）：屬 HIGH 非 CRITICAL，任意租戶可冒名寫入他租戶命名空間 → 下一批 HIGH 處理 → 優先級：中。
+
+#### 延伸學習
+- **IDOR（Insecure Direct Object Reference）的結構性成因**：DDD 分層把「查詢」與「授權」分開，repository 的 `find_by_id(id)` 天然無 tenant 概念，若 application 層沒補上歸屬檢查，多租戶系統就漏。**多租戶系統的鐵律：任何以外部可控 id 查詢的資源，取得後第一件事就是驗歸屬**——最好在 repository 層就強制 `find_by_id(id, tenant_id)`（本專案 conversation repo 的 `find_by_id` 反而是少數沒帶 tenant 的，正是 C2 破口）。
+- 若想深入：搜尋 "IDOR broken object level authorization"、"OWASP API1:2023 BOLA"、"multi-tenant row level security PostgreSQL RLS"（RLS 是在 DB 層一次性封死此類漏洞的手段，代價是所有連線要帶 tenant context）。
+
+---
+
+## Code Review CRITICAL 修復 C1/C3 — 「測試 schema 要照真實約束」與「VO 改型別要掃呼叫端」（2026-08-21，全專案 review 後續）
+
+**Sprint 來源**：2026-08-20 多代理全專案 review（`docs/reviews/full-review-2026-08-20.md`）CRITICAL 批次第一輪
+
+**主題**：Partial Unique Index 不變量、Value Object 型別遷移的呼叫端稽核、測試 schema 保真度
+
+#### 做得好的地方
+- **C1 根因收斂在一處**：publish 端點與 PUT /bots 版控墊片是同一個 bug 的兩個現場（都 `mark_published()` 預設 `is_current=True` → `save()` 先 commit → 撞 `ix_bcv_current`）。修在共用的 `entity.mark_published`（移除 is_current 設定）+ 讓 `set_current` 成為 is_current 唯一翻轉點，一次覆蓋兩條路徑，而非各補一個 patch。**同根因多現場，修根不修枝**。
+- **補上測試 schema 的約束保真度**：原本 `bot_config_version_model.__table_args__` 刻意不宣告 partial unique index（靠 migration SQL 建），導致 conftest 的 `create_all` 測試 schema 缺這條約束，任何 is_current 併發違反在測試中「永遠是綠的」。改用 `Index(unique=True, postgresql_where=text("is_current"))` 宣告後，`create_all` 建出與真實 DB 一致的約束，C1 的 regression 才第一次能在測試裡重現 500。DB 已套用同名索引 → 純宣告、零新 DDL。
+- **C3 用既有共用工具修**：widget 記帳的 `TokenUsage(total_tokens=...)` 崩潰，直接改用 `extract_usage_from_accumulated()`（agent_router 早就在用的正解），順帶把漏掉的 `cache_read/creation_tokens` 一起帶回——與 VO 註解裡「Carrefour 5.14M cache token 沒扣 quota」是同一類漏算。
+- **對抗性歸因守紀律**：全量測試 43 紅，用 `git stash` 隔離自己的 4 個 tracked 檔後重跑代表性子集，證明 43 紅在我改動前就存在（TokenUsage total_tokens、total_used_in_cycle、event loop、401、vector_store.delete），與本次無關——先證明再下結論，不含糊放行。
+
+#### 潛在隱憂
+- **VO 改成 @property 卻沒稽核全部呼叫端**：`TokenUsage.total_tokens` 從 field 改 property（Token-Gov.6），widget 呼叫端漏改躺了整個 #54 週期沒被發現——**因為 widget 通路完全沒有 usage 記帳測試**。同型別遷移應配一次 `grep -rn 'TokenUsage(' ` 全掃 + 每通路至少一個記帳測試 → 優先級：高（本次已補 widget regression，其餘通路待查）。
+- **publish 跨表非同交易縫隙仍在**：`atomic()` 每次 repo 呼叫即 commit，故 save(bot) / save(version) / set_current 是三次獨立 commit。本次只消除了確定性崩潰（is_current 撞索引），但「bot 已套新設定、set_current 卻失敗」的半套用窗口仍在（journal 既有已知風險）。根治要 use-case 級單一交易，需重構 atomic/repo 邊界 → 優先級：中（超出 CRITICAL hotfix 範圍，另立）。
+- **43 個既有 integration 紅測**：多數是測試 step 檔自建 `TokenUsage(total_tokens=)` 的既有債，會持續稀釋「全綠」訊號 → 應獨立開卡批次修（與前端 9 紅同性質）→ 優先級：中。
+
+#### 延伸學習
+- **Partial unique index 是 append-only 版控表表達「單一 current」不變量的正解**（比觸發器/應用層鎖輕），但代價是：ORM 若不宣告它，測試 schema 與生產 schema 就會分岔。**凡是靠 migration 手寫、ORM 沒宣告的約束，等於在測試裡不存在**——要嘛 ORM 宣告（可被 create_all 建的都該宣告），要嘛測試改用真實 migration 建 schema。
+- 若想深入：搜尋 "PostgreSQL partial unique index invariant"、"SQLAlchemy postgresql_where index"、"test schema drift create_all vs migrations"。
+
+---
+
 ## Phase F/G 收官 — 「容器復用」與 LLM judge 的換位雙判（2026-08-20，Issue #54 完結）
 
 **Sprint 來源**：Prompt 發布閘門 Phase F（通用集 seed）+ G（回放 pairwise 對比）
