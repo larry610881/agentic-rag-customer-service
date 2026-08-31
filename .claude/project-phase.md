@@ -8,11 +8,12 @@ description: 每個部署環境獨立的階段旗標。Claude 依此判斷對該
 | Environment | Phase | Claude 可連該 DB 執行 DDL | 連線方式 |
 |-------------|-------|--------------------------|---------|
 | `local-docker` | `dev` | ✅（走五步流程）| `docker exec agentic-rag-db psql ...` |
-| `dev-vm` | *（已下線，待重建）* | - | GCP POC 資源 2026-08-19 全數清除（VM/DB/映像/bucket），Larry 表示線上 server 需重新建置 |
+| `dev-vm` | `dev` | ✅（每次需 Larry 授權 + 走五步流程）| IAP SSH 進 `db-services` → `sudo docker exec -i postgres psql -U postgres -d agentic_rag` |
 | `staging` | *（未建立）* | - | - |
 | `production` | *（未建立）* | - | - |
 
 **當前主要狀態**：
+- `dev-vm`：**2026-08-24 全新重建完成**（VM `db-services` e2-standard-2 / Ubuntu 24.04 / internal 10.140.0.3，五容器 postgres+redis+etcd+minio+milvus，全新強密碼——舊 repo 內外洩密碼已棄用）。`infra/schema.sql` bootstrap（46 表含 `_applied_migrations`）+ 54 筆 migration 紀錄（53 檔 + `schema.sql-bootstrap-2026-08-24`）。最小 seed：2 tenants + admin@system.com + system tenant `prompt_gate_enabled=TRUE`。**未 seed**：provider_settings / bots / KB（舊匯出用舊 ENCRYPTION_MASTER_KEY 加密 + 舊 schema shape，由 Larry 從 UI 重建）。Cloud Run `agentic-rag` rev 00001（main @ PR #55 merge）+ arq-worker 已跑。
 - `local-docker`：2026-08-20 以全新 volume 重建——`infra/schema.sql` bootstrap（41 表）+ 套用 `add_bot_config_versions.sql`、`backfill_bot_config_versions.sql`，`_applied_migrations` 有紀錄。**注意：無 seed 資料**（tenants/bots 空，需要時跑 `make seed-data`）。
 - `dev-vm`：已不存在。重建後需以最新 `infra/schema.sql` bootstrap（它已含所有 migration 的最終形狀），並補 `_applied_migrations` 紀錄。
 
