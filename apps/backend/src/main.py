@@ -145,6 +145,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from src.infrastructure.db.session_middleware import (
             independent_session_scope,
         )
+
         async with independent_session_scope():
             cleaned = await app.container.cleanup_orphan_gate_runs_use_case().execute()  # type: ignore[attr-defined]
         if cleaned:
@@ -162,6 +163,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from src.infrastructure.db.session_middleware import (
             independent_session_scope,
         )
+
         container = app.container  # type: ignore[attr-defined]
         async with independent_session_scope():
             pricing_cache = container.pricing_cache()
@@ -368,6 +370,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.bot_config_version_router import (
             router as bot_config_version_router,
         )
+
         application.include_router(bot_config_version_router)
         application.include_router(worker_router)
 
@@ -398,6 +401,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.admin_pricing_router import (
             router as admin_pricing_router,
         )
+
         application.include_router(admin_pricing_router)
 
         # S-KB-Studio.1
@@ -413,6 +417,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.admin_outbox_router import (
             router as admin_outbox_router,
         )
+
         application.include_router(admin_chunk_router)
         application.include_router(admin_milvus_router)
         application.include_router(admin_outbox_router)
@@ -422,9 +427,11 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.admin_conversation_insights_router import (
             router as admin_conversation_insights_router,
         )
+
         application.include_router(admin_conversation_insights_router)
 
         from src.interfaces.api.plan_router import router as plan_router
+
         application.include_router(plan_router)
 
         from src.interfaces.api.mcp_router import router as mcp_router
@@ -493,12 +500,44 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     #     from src.interfaces.ws.chat_websocket import ws_router
     #     application.include_router(ws_router)
 
+    _mount_admin_spa(application, static_dir)
+
     logger.info(
         "app.modules_loaded",
         modules=list(modules),
     )
 
     return application
+
+
+def _mount_admin_spa(application: FastAPI, static_dir: str) -> None:
+    """Admin SPA（前端 build 產物，同源部署）。
+
+    只接住未被任何 API router 匹配的 GET；/api、/static、/docs 由先註冊的路由
+    優先處理。前端不存在（純 API 部署）時靜默略過。
+    """
+    import os
+
+    admin_dir = os.path.normpath(os.path.join(static_dir, "admin"))
+    admin_index = os.path.join(admin_dir, "index.html")
+    if not os.path.isfile(admin_index):
+        return
+
+    from fastapi import HTTPException
+    from fastapi.responses import FileResponse
+
+    reserved = ("api/", "static/", "docs", "openapi.json", "redoc")
+
+    @application.get("/{full_path:path}", include_in_schema=False)
+    async def admin_spa(full_path: str) -> FileResponse:
+        if full_path.startswith(reserved):
+            raise HTTPException(status_code=404)
+        candidate = os.path.normpath(os.path.join(admin_dir, full_path))
+        if candidate.startswith(admin_dir) and os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(admin_index)
+
+    logger.info("admin_spa.mounted", dir=admin_dir)
 
 
 try:

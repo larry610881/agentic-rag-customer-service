@@ -75,3 +75,4 @@ apps/backend/seeds/
 
 # Claude local overrides
 CLAUDE.local.md
+apps/backend/static/admin/
