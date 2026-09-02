@@ -681,6 +681,9 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.eval_dataset_router",
             "src.interfaces.api.prompt_optimizer_run_router",
             "src.interfaces.api.bot_config_version_router",
+            # Issue #60（上線 bug 修復）：新 router 必須登記，否則 Provide 不注入 → 500
+            "src.interfaces.api.audit_log_router",
+            "src.interfaces.api.config_snapshot_router",
             "src.interfaces.api.deps",
         ],
     )
