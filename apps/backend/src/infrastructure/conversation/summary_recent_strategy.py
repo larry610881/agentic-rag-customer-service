@@ -1,5 +1,9 @@
 """SummaryRecentStrategy — 舊對話壓縮成摘要 + 最近 N 輪完整保留"""
 
+from typing import Any
+
+import structlog
+
 from src.domain.conversation.entity import Message
 from src.domain.conversation.history_strategy import (
     ConversationHistoryStrategy,
@@ -8,6 +12,8 @@ from src.domain.conversation.history_strategy import (
 )
 from src.domain.rag.services import LLMService
 from src.domain.shared.cache_service import CacheService
+
+logger = structlog.get_logger(__name__)
 
 _DEFAULT_CONFIG = HistoryStrategyConfig()
 
@@ -32,10 +38,13 @@ class SummaryRecentStrategy(ConversationHistoryStrategy):
         llm_service: LLMService,
         cache_service: CacheService | None = None,
         cache_ttl: int = 3600,
+        record_usage: Any | None = None,
     ) -> None:
         self._llm_service = llm_service
         self._cache_service = cache_service
         self._cache_ttl = cache_ttl
+        # Issue #59：摘要 LLM 呼叫原本沒記帳
+        self._record_usage = record_usage
 
     @property
     def name(self) -> str:
@@ -68,7 +77,7 @@ class SummaryRecentStrategy(ConversationHistoryStrategy):
         old_messages = messages[:-recent_count]
         recent_messages = messages[-recent_count:]
 
-        summary = await self._summarize(old_messages)
+        summary = await self._summarize(old_messages, tenant_id=cfg.tenant_id)
         recent_text = _format_messages(recent_messages)
 
         respond_context = f"[對話摘要] {summary}\n\n{recent_text}"
@@ -81,7 +90,9 @@ class SummaryRecentStrategy(ConversationHistoryStrategy):
             strategy_name=self.name,
         )
 
-    async def _summarize(self, messages: list[Message]) -> str:
+    async def _summarize(
+        self, messages: list[Message], tenant_id: str = ""
+    ) -> str:
         cache_key = f"conv_summary:{len(messages)}:{messages[-1].id.value}"
 
         if self._cache_service is not None:
@@ -96,6 +107,18 @@ class SummaryRecentStrategy(ConversationHistoryStrategy):
             conversation_text,
             max_tokens=200,
         )
+
+        if self._record_usage is not None and tenant_id:
+            from src.domain.usage.category import UsageCategory
+
+            try:
+                await self._record_usage.execute(
+                    tenant_id=tenant_id,
+                    request_type=UsageCategory.HISTORY_SUMMARY.value,
+                    usage=result.usage,
+                )
+            except Exception:
+                logger.warning("history_summary.usage_record_failed", exc_info=True)
 
         if self._cache_service is not None:
             await self._cache_service.set(

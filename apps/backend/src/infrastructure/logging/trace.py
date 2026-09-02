@@ -1,7 +1,10 @@
 """Request-scoped trace logging — configurable via TRACE_THRESHOLD_MS.
 
-- TRACE_THRESHOLD_MS=0  → always flush (log every request)
-- TRACE_THRESHOLD_MS=2000 → only flush when request >= 2000ms
+- TRACE_THRESHOLD_MS=0    → 停用（預設）：不印 console、request_logs.trace_steps 不寫
+- TRACE_THRESHOLD_MS=2000 → 只有耗時 >= 2000ms 的請求才印 console 並持久化 trace_steps
+
+Issue #59：原本門檻只控 console、DB 一律寫入，導致每個請求把全部 SQL 片段塞進
+request_logs。現在門檻同時決定 console 與持久化。
 """
 
 import time
@@ -49,21 +52,22 @@ def record_sql(elapsed_ms: float, sql: str) -> None:
 
 
 def flush_trace(request_elapsed_ms: float) -> list[dict] | None:
-    """Log buffered entries (console controlled by threshold) and return them."""
+    """Flush buffered entries. Returns them only when the request crossed the
+    threshold (threshold 0 = disabled) — the return value is what gets persisted."""
     buf = _trace_buffer.get()
     _trace_buffer.set(None)
     if not buf:
         return None
 
-    # Console output still respects threshold
     threshold = _get_threshold_ms()
-    if threshold == 0 or request_elapsed_ms >= threshold:
-        for entry in buf:
-            _logger.info("trace.step", **entry)
-        _logger.info(
-            "trace.summary",
-            total_steps=len(buf),
-            request_elapsed_ms=round(request_elapsed_ms, 1),
-        )
+    if threshold <= 0 or request_elapsed_ms < threshold:
+        return None
 
+    for entry in buf:
+        _logger.info("trace.step", **entry)
+    _logger.info(
+        "trace.summary",
+        total_steps=len(buf),
+        request_elapsed_ms=round(request_elapsed_ms, 1),
+    )
     return buf

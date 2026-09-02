@@ -1,6 +1,7 @@
 """LLM-based memory extraction service — 從對話中萃取用戶事實"""
 
 import json
+from typing import Any
 
 import structlog
 
@@ -44,6 +45,7 @@ class LLMMemoryExtractionService(MemoryExtractionService):
         conversation_messages: list[dict[str, str]],
         existing_facts: list[MemoryFact],
         extraction_prompt: str = "",
+        usage_collector: dict[str, Any] | None = None,
     ) -> list[ExtractedFact]:
         prompt_template = extraction_prompt or DEFAULT_EXTRACTION_PROMPT
 
@@ -67,15 +69,22 @@ class LLMMemoryExtractionService(MemoryExtractionService):
             "{existing_facts}", existing_str
         ).replace("{conversation}", conv_str)
 
+        # Issue #59 回歸修復：原本以 ``generate(prompt=..., system_prompt=...)``
+        # 呼叫，與 LLMService.generate(system_prompt, user_message, context) 簽名
+        # 不符 → TypeError 被下面的 except 吞掉 → 記憶萃取靜默永遠回空。
         try:
-            response = await self._llm.generate(
-                prompt=prompt,
+            result = await self._llm.generate(
                 system_prompt="你是記憶萃取助手，只回傳 JSON 陣列。",
+                user_message=prompt,
+                context="",
             )
-            return self._parse_response(response)
         except Exception:
             logger.warning("memory.extraction.llm_failed", exc_info=True)
             return []
+        if usage_collector is not None:
+            usage_collector["usage"] = getattr(result, "usage", None)
+        text = result.text if hasattr(result, "text") else str(result)
+        return self._parse_response(text)
 
     @staticmethod
     def _parse_response(response: str) -> list[ExtractedFact]:

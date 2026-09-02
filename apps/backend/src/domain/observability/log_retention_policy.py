@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 @dataclass
@@ -32,3 +32,24 @@ class LogRetentionPolicyRepository(ABC):
     async def cleanup_logs_before(self, cutoff: datetime) -> int:
         """Delete request_logs older than cutoff. Returns deleted count."""
         ...
+
+
+def should_run_cleanup(policy: LogRetentionPolicy, now: datetime) -> bool:
+    """Issue #59：worker 每小時呼叫，判斷此刻是否該執行清理。
+
+    - 未啟用 → 否
+    - 只在 cleanup_hour 起算、每 cleanup_interval_hours 的整點執行
+    - 同一小時內已執行過（last_cleanup_at 距今 < 1 小時）→ 否，避免重複
+    """
+    if not policy.enabled:
+        return False
+    interval = max(1, int(policy.cleanup_interval_hours or 24))
+    if (now.hour - policy.cleanup_hour) % interval != 0:
+        return False
+    last = policy.last_cleanup_at
+    if last is not None:
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=now.tzinfo)
+        if now - last < timedelta(hours=1):
+            return False
+    return True

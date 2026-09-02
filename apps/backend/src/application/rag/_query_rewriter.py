@@ -79,6 +79,8 @@ async def rewrite_query(
     bot_system_prompt: str = "",
     extra_hint: str = "",
     api_key_resolver=None,
+    record_usage=None,
+    tenant_id: str = "",
 ) -> str:
     """Use LLM to rewrite query for better vector retrieval.
 
@@ -91,11 +93,17 @@ async def rewrite_query(
     Returns:
         改寫後字串；任何錯誤 fallback 回原 query（不擋下游 search）
     """
+    from src.application.rag._aux_llm_accounting import account_aux_llm
     from src.domain.llm.prompt_block import BlockRole, PromptBlock
     from src.infrastructure.llm.llm_caller import call_llm
+    from src.infrastructure.observability.agent_trace_collector import (
+        AgentTraceCollector,
+    )
 
     spec = effective_model_spec(model)
     extra_hint_text = _format_extra_hint(extra_hint)
+    start_ms = AgentTraceCollector.offset_ms()
+    llm_input = ""
     try:
         if bot_system_prompt:
             blocks = [
@@ -111,6 +119,7 @@ async def rewrite_query(
                     role=BlockRole.USER,
                 ),
             ]
+            llm_input = f"[System] {bot_system_prompt}\n\n[User] {blocks[1].text}"
             result = await call_llm(
                 model_spec=spec,
                 prompt=blocks,
@@ -122,12 +131,22 @@ async def rewrite_query(
                 query=raw_query,
                 extra_hint=extra_hint_text,
             )
+            llm_input = prompt
             result = await call_llm(
                 model_spec=spec,
                 prompt=prompt,
                 max_tokens=200,
                 api_key_resolver=api_key_resolver,
             )
+        await account_aux_llm(
+            result,
+            label="query_rewrite",
+            category="query_rewrite",
+            tenant_id=tenant_id,
+            record_usage=record_usage,
+            start_ms=start_ms,
+            llm_input=llm_input,
+        )
         rewritten = result.text.strip().strip('"').strip("「").strip("」")
         return rewritten or raw_query
     except Exception:

@@ -6,15 +6,15 @@
 Tasks:
     - process_document: PDF OCR + chunking + embedding
     - extract_memory: 記憶萃取
-    - run_evaluation: RAG 品質評估
 
 Resilience（Layer 1）：5 個業務 jobs（split_pdf / process_document /
-classify_kb / extract_memory / run_evaluation）以 ``execute_with_resilience``
+classify_kb / extract_memory）以 ``execute_with_resilience``
 包裝。transient 錯誤指數退避重試 3 次（5s → 30s → 2min），permanent 錯誤
 （auth / config）直接落 ``processing_task.status='failed'`` 不浪費 quota。
 """
 
 import logging
+from datetime import datetime, timezone
 
 from arq import cron, func
 from arq.connections import RedisSettings
@@ -159,63 +159,33 @@ async def extract_dm_metadata_task(
     )
 
 
-# --- Task: run_evaluation ---
-
-async def run_evaluation_task(
-    ctx: dict,
-    eval_depth: str,
-    query: str,
-    answer: str,
-    sources: list,
-    tool_calls: list,
-    tenant_id: str,
-    trace_id: str,
-    eval_provider: str,
-    eval_model: str,
-) -> None:
-    """RAG 品質評估：L1 檢索 + L2 回答 + L3 Agent。"""
-    async def _inner() -> None:
-        container = _new_container()
-        eval_use_case = container.rag_evaluation_use_case()
-
-        eval_llm = container.llm_service()
-        if eval_provider or eval_model:
-            if hasattr(eval_llm, "resolve_for_bot"):
-                eval_llm = await eval_llm.resolve_for_bot(
-                    provider_name=eval_provider,
-                    model=eval_model,
-                )
-
-        context_texts = [
-            s.get("content_snippet", "")
-            for s in sources
-            if isinstance(s, dict)
-        ]
-
-        await eval_use_case.evaluate_combined(
-            query=query,
-            answer=answer,
-            context_texts=context_texts,
-            tool_calls=tool_calls,
-            eval_depth=eval_depth,
-            tenant_id=tenant_id,
-            trace_id=trace_id,
-            llm_service_override=eval_llm,
-        )
-
-    await execute_with_resilience(
-        ctx=ctx,
-        task_name="run_evaluation",
-        task_id=trace_id,  # no processing_task row, used as trace label
-        coro_factory=_inner,
-        extra_log={
-            "tenant_id": tenant_id,
-            "eval_depth": eval_depth,
-        },
-    )
+# --- Task: run_evaluation — Issue #59 已移除 ---
+# 線上每輪 LLM 自評下線：worker 的 run_evaluation 從未成功執行（呼叫參數與
+# evaluate_combined 簽名不符 → TypeError 重試 3 次），rag_evaluations 一列都沒寫過。
+# 品質驗收改依 prompt gate 離線回放（eval use case 保留給 gate / optimizer）。
 
 
-# --- Cron Task: monthly_reset (S-Token-Gov.2) ---
+# --- Cron: log_retention_cleanup（Issue #59） ---
+
+async def log_retention_cleanup_task(ctx: dict, *, now: datetime | None = None) -> None:
+    """每小時檢查 log_retention_policies；到 cleanup_hour 才真的清 request_logs。
+
+    原本政策表存在但沒有任何排程，只能手動打 API。判斷邏輯在 domain
+    ``should_run_cleanup``（純函式，含「同一小時不重複」保護）。
+    """
+    from src.domain.observability.log_retention_policy import should_run_cleanup
+
+    container = _new_container()
+    policy = await container.get_log_retention_policy_use_case().execute()
+    now = now or datetime.now(timezone.utc)
+    if not should_run_cleanup(policy, now):
+        return
+    try:
+        deleted = await container.execute_log_cleanup_use_case().execute()
+        logger.info(f"[log_retention] cleanup done deleted={deleted}")
+    except Exception:
+        logger.exception("[log_retention] cleanup failed")
+
 
 async def monthly_reset_task(ctx: dict) -> None:
     """每月 1 日為所有租戶建本月新 ledger，addon 從上月 carryover。
@@ -292,7 +262,13 @@ async def conversation_summary_scan_task(ctx: dict) -> None:
     """
     container = _new_container()
     conv_repo = container.conversation_repository()
-    pending = await conv_repo.find_pending_summary(idle_minutes=5, limit=200)
+    # Issue #59：短對話（一兩輪客服）不摘要，省 1 LLM + 1 embedding
+    min_messages = int(
+        getattr(container.config(), "conversation_summary_min_messages", 6)
+    )
+    pending = await conv_repo.find_pending_summary(
+        idle_minutes=5, limit=200, min_message_count=min_messages,
+    )
     if not pending:
         return
     logger.info(f"[conv_summary_scan] enqueue {len(pending)} jobs")
@@ -342,7 +318,6 @@ class WorkerSettings:
         func(split_pdf_task, name="split_pdf", max_tries=MAX_TRIES),
         func(process_document_task, name="process_document", max_tries=MAX_TRIES),
         func(extract_memory_task, name="extract_memory", max_tries=MAX_TRIES),
-        func(run_evaluation_task, name="run_evaluation", max_tries=MAX_TRIES),
         func(classify_kb_task, name="classify_kb", max_tries=MAX_TRIES),
         # Issue #47 L3.5: KB-level DM metadata 抽取（cover/promotion 頁 → LLM tool use）
         func(extract_dm_metadata_task, name="extract_dm_metadata", max_tries=MAX_TRIES),
@@ -361,7 +336,9 @@ class WorkerSettings:
     # S-Token-Gov.3.5: 警示 email 寄送（每天 01:30 UTC = 09:30 Asia/Taipei）
     # S-Gov.6b: 對話摘要掃 pending（每分鐘 — 5min 閒置即生）
     # Outbox: 每分鐘 drain（events 為 DELETE 類，少量；batch_size=50 撐得起）
+    # Issue #59: log retention 每小時檢查（到 cleanup_hour 才清）
     cron_jobs = [
+        cron(log_retention_cleanup_task, minute={10}),
         cron(monthly_reset_task, hour={0}, minute={5}, day={1}),
         cron(quota_alerts_task, hour={1}, minute={0}),
         cron(quota_email_dispatch_task, hour={1}, minute={30}),

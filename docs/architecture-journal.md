@@ -7,6 +7,56 @@
 
 ---
 
+## 線上 LLM 自評下線 — 「從未跑成功的功能」與記帳漏洞的系統性補課（2026-09-02，Issue #59）
+
+**Sprint 來源**：09-02 審計機制盤點發現 `rag_evaluations` 從未寫入過一列：worker 的
+`run_evaluation` 呼叫參數與 `evaluate_combined` 簽名不符，每輪 TypeError 重試三次後
+永久失敗；同時 `LLMMemoryExtractionService` 以 `generate(prompt=...)` 呼叫、與
+`LLMService.generate(system_prompt, user_message, context)` 不符，例外被吞 → 記憶萃取
+靜默永遠回空。兩個「有 UI、有設定、有測試」的功能，線上一次都沒成功過。
+
+**主題**：mock 邊界讓簽名漂移逃過測試、fail-open 的 except 把 bug 變成靜默、
+輔助 LLM 呼叫的記帳一致性、cron 政策表沒有 cron
+
+#### 做得好的地方
+- **決策先於修復**：eval 不是「修好簽名讓它跑」，而是先問「跑起來有人看嗎」。
+  答案是否（品質驗收實務上靠測試案例 + POC 驗收 + 真實客戶回饋），所以直接下線
+  線上路徑、保留 use case 給 gate 離線回放。少一次 LLM/輪、少一條 arq 任務、
+  少一張永遠空的表。
+- **記憶萃取則是修**：它有明確使用者價值（LINE user_id 穩定、memory 是最適用通路），
+  所以補 regression test「以 system_prompt/user_message 關鍵字呼叫 generate」再修。
+  同一份盤點、兩種處置，判準是「下游有沒有消費者」。
+- **記帳補漏用同一個慣例**：rewrite / HyDE 走 `account_aux_llm` helper（trace 節點 +
+  usage 一次做完），memory / summary 沿用 `generate_stream` 已有的 `usage_collector`
+  dict 慣例，不新增第三種回傳 usage 的方式。新分類同步進 enum fence 測試。
+- **cron 判斷抽成純函式** `should_run_cleanup(policy, now)`：interval 取模 + 同小時
+  不重複，Scenario Outline 五組例子覆蓋，worker task 只剩接線。
+- **trace 門檻語意收斂**：`TRACE_THRESHOLD_MS` 從「只控 console」改成「同時控
+  console 與持久化」，0 = 停用。一個旗標兩種語意是 request_logs 肥大的根因。
+
+#### 潛在隱憂
+- **mock 邊界的簽名漂移沒有防線**：memory 測試 mock 了整個 `MemoryExtractionService`
+  port，infra 對 `LLMService.generate` 的呼叫從未被真實簽名檢查過。建議對
+  「infra → 另一個 port」的呼叫用 `AsyncMock(spec=LLMService)` 或 `autospec`，
+  mypy 也沒抓到是因為 `self._llm` 型別是 ABC 但呼叫用 `**kwargs` 風格 → 優先級：中。
+- **診斷規則（diagnostic rules）現在是孤兒**：它的觸發來源是 eval 分數，eval 下線後
+  整套規則與通知沒有輸入。Issue #59 決議改接營運訊號（p90、升級率、轉真人率），
+  尚未做 → 優先級：中（併入 #57 延遲聚合時處理）。
+- **`eval_depth` 欄位語意變了但 UI 還在**：bot 表單仍可選 L1/L2/L3，實際只影響
+  gate 離線回放。UI 文案要改成「離線評估深度」，否則使用者以為線上有評分
+  → 優先級：低。
+- **對話摘要門檻用全域設定**（6 則訊息），不是 per-bot。深度道 bot 可能想更早摘要
+  → 優先級：低。
+
+#### 延伸學習
+- **「有測試但功能是死的」的偵測法**：對每個背景任務問「它最後一次成功寫入是什麼
+  時候」，用資料表列數而不是測試綠燈當健康指標。搜尋 "dead feature detection
+  observability write-path SLO"、"mock boundary drift contract test"。
+- **Fail-open except 的代價**：`except Exception: return []` 讓功能永遠「正常但無效」。
+  規則：fail-open 必須 `logger.warning(exc_info=True)` 且有指標可看，否則等於沒 except。
+
+---
+
 ## 公開後台加固 — 「Redis 三兄弟」的 fail-open 一致性與去重的驗簽順序（2026-09-02，Issue #58）
 
 **Sprint 來源**：公司 POC Cloud Run 09-02 開放 allUsers invoker 後，對方資安提醒兩點：

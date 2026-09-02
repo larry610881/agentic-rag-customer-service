@@ -30,5 +30,10 @@ class UsageCategory(str, Enum):
     EVAL_GATE = "eval_gate"                # 閘門驗證的受測對話
     PROMPT_OPTIMIZE = "prompt_optimize"    # 優化迭代（受測對話 + mutator LLM）
     PLAYGROUND = "playground"              # 儲存前對照測試聊天
+    # Issue #59 — 原本沒記帳的輔助 LLM 呼叫（開啟這些功能的 bot 成本曾被低估）
+    QUERY_REWRITE = "query_rewrite"
+    HYDE = "hyde"
+    MEMORY_EXTRACTION = "memory_extraction"
+    HISTORY_SUMMARY = "history_summary"    # summary_recent 歷史策略的摘要呼叫
     # OTHER 已刪 — src/ 零 caller 是 dead code；UI 不再提供「其他」checkbox。
     # RecordUsageUseCase 入口會白名單拒絕非此 enum 的字串。

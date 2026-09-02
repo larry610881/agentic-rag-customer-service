@@ -297,12 +297,14 @@ class SQLAlchemyConversationRepository(ConversationRepository):
         *,
         idle_minutes: int = 5,
         limit: int = 200,
+        min_message_count: int = 0,
     ) -> list[str]:
         """S-Gov.6b: 找需要生 summary 的 conversation_id（cron 用）。
 
         條件（與 partial index ix_conversations_pending_summary 對齊）：
         - last_message_at < NOW() - INTERVAL 'idle_minutes minutes'（閒置）
         - summary IS NULL OR summary_message_count < message_count（pending）
+        - Issue #59：message_count >= min_message_count（短對話不摘要）
         """
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=idle_minutes)
         stmt = (
@@ -310,6 +312,7 @@ class SQLAlchemyConversationRepository(ConversationRepository):
             .where(
                 ConversationModel.last_message_at.is_not(None),
                 ConversationModel.last_message_at < cutoff,
+                ConversationModel.message_count >= min_message_count,
                 or_(
                     ConversationModel.summary.is_(None),
                     ConversationModel.summary_message_count

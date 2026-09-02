@@ -38,7 +38,7 @@ class CreateBotCommand:
     show_sources: bool = True
     eval_provider: str = ""
     eval_model: str = ""
-    eval_depth: str = "L1"
+    eval_depth: str = "off"
     gate_mode: str = "off"
     gate_soft_threshold: float = 0.8
     gate_repeats: int = 3

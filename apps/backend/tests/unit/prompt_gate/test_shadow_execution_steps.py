@@ -95,7 +95,6 @@ def _make_use_case(deps, prompt_guard=None):
         conversation_repository=deps.conv_repo,
         bot_repository=deps.bot_repo,
         system_prompt_config_repository=deps.sys_prompt_repo,
-        rag_evaluation_use_case=deps.eval_uc,
         extract_memory_use_case=AsyncMock(),
         prompt_guard=prompt_guard,
         trace_session_factory=deps.trace_factory,

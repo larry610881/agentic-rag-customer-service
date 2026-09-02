@@ -1,6 +1,5 @@
 """發送訊息用例 — 委託 AgentService 處理，支援對話記憶"""
 
-import asyncio
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -70,12 +69,6 @@ if TYPE_CHECKING:
     from src.application.memory.resolve_identity_use_case import (
         ResolveIdentityUseCase,
     )
-    from src.application.observability.diagnostic_rules_use_cases import (
-        GetDiagnosticRulesUseCase,
-    )
-    from src.application.observability.rag_evaluation_use_case import (
-        RAGEvaluationUseCase,
-    )
     from src.domain.tenant.repository import TenantRepository
 
 logger = structlog.get_logger(__name__)
@@ -142,13 +135,11 @@ class SendMessageUseCase:
         debug: bool = False,
         system_prompt_config_repository: SystemPromptConfigRepository | None = None,
         trace_session_factory: Any | None = None,
-        rag_evaluation_use_case: "RAGEvaluationUseCase | None" = None,
         mcp_registry_repo: Any | None = None,
         encryption_service: EncryptionService | None = None,
         resolve_identity_use_case: "ResolveIdentityUseCase | None" = None,
         load_memory_use_case: "LoadMemoryUseCase | None" = None,
         extract_memory_use_case: "ExtractMemoryUseCase | None" = None,
-        get_diagnostic_rules_uc: "GetDiagnosticRulesUseCase | None" = None,
         conversation_lock: ConversationLock | None = None,
         intent_classifier: IntentClassifier | None = None,
         worker_config_repo: WorkerConfigRepository | None = None,
@@ -163,7 +154,6 @@ class SendMessageUseCase:
         self._debug = debug
         self._trace_session_factory = trace_session_factory
         self._sys_prompt_repo = system_prompt_config_repository
-        self._eval_use_case = rag_evaluation_use_case
         self._mcp_registry_repo = mcp_registry_repo
         self._encryption = encryption_service
         self._resolve_identity = resolve_identity_use_case
@@ -171,7 +161,6 @@ class SendMessageUseCase:
         self._extract_memory = extract_memory_use_case
         self._intent_classifier = intent_classifier
         self._worker_config_repo = worker_config_repo
-        self._get_diagnostic_rules_uc = get_diagnostic_rules_uc
         self._conversation_lock = conversation_lock
         self._prompt_guard = prompt_guard
         self._tenant_repo = tenant_repository
@@ -477,6 +466,7 @@ class SendMessageUseCase:
         self,
         history: list | None,
         history_limit: int | None,
+        tenant_id: str = "",
     ) -> tuple[list | None, str, str]:
         """Process history via strategy, return (history, ctx, router).
 
@@ -490,6 +480,7 @@ class SendMessageUseCase:
             strategy_config = HistoryStrategyConfig(
                 history_limit=history_limit or 10,
                 recent_turns=3,
+                tenant_id=tenant_id,
             )
             ctx = await self._history_strategy.process(
                 history, strategy_config
@@ -749,7 +740,7 @@ class SendMessageUseCase:
 
         history, history_context, router_context = (
             await self._resolve_history(
-                history, bot_cfg["history_limit"]
+                history, bot_cfg["history_limit"], tenant_id=command.tenant_id
             )
         )
 
@@ -880,18 +871,7 @@ class SendMessageUseCase:
         # Fire-and-forget: memory extraction
         await self._fire_memory_extraction(command, bot_cfg, conversation)
 
-        # Fire-and-forget: background evaluation
-        await self._enqueue_background_eval(
-            eval_depth=bot_cfg.get("eval_depth", "off"),
-            message=command.message,
-            answer=response.answer,
-            sources=response.sources,
-            tool_calls=response.tool_calls,
-            tenant_id=command.tenant_id,
-            trace_id=trace_id or str(uuid4()),
-            eval_provider=bot_cfg.get("eval_provider", ""),
-            eval_model=bot_cfg.get("eval_model", ""),
-        )
+        # Issue #59：線上每輪 LLM 自評已下線（品質驗收走 prompt gate 離線回放）
 
         return response
 
@@ -1004,7 +984,7 @@ class SendMessageUseCase:
 
         history, history_context, router_context = (
             await self._resolve_history(
-                history, bot_cfg["history_limit"]
+                history, bot_cfg["history_limit"], tenant_id=command.tenant_id
             )
         )
 
@@ -1203,27 +1183,7 @@ class SendMessageUseCase:
             # Fire-and-forget: memory extraction（test_mode 六面隔離跳過）
             await self._fire_memory_extraction(command, bot_cfg, conversation)
 
-        # Fire-and-forget: background evaluation
-        # （修既有債：trace_id 改用真實 agent trace id，可對回 trace 表）
-        trace_id = stream_trace_id or str(uuid4())
-        if command.test_mode:
-            eval_depth = "off"  # 六面隔離：不觸發線上 eval
-        else:
-            eval_depth = bot_cfg.get("eval_depth", "off")
-        if eval_depth != "off" and self._eval_use_case:
-            from src.infrastructure.queue.arq_pool import enqueue
-            sources_dicts = [
-                s if isinstance(s, dict) else s
-                for s in sources_list
-            ]
-            await enqueue(
-                "run_evaluation",
-                eval_depth, command.message, full_answer,
-                sources_dicts, tool_calls,
-                command.tenant_id, trace_id,
-                bot_cfg.get("eval_provider", ""),
-                bot_cfg.get("eval_model", ""),
-            )
+        # Issue #59：線上每輪 LLM 自評已下線（品質驗收走 prompt gate 離線回放）
 
         if assistant_msg is not None:
             yield {
@@ -1368,36 +1328,6 @@ class SendMessageUseCase:
             logger.warning("config_version.resolve_failed", exc_info=True)
             return None
 
-    async def _enqueue_background_eval(
-        self,
-        *,
-        eval_depth: str,
-        message: str,
-        answer: str,
-        sources: list,
-        tool_calls: list,
-        tenant_id: str,
-        trace_id: str,
-        eval_provider: str,
-        eval_model: str,
-    ) -> None:
-        """線上 L1/L2/L3 eval enqueue（fire-and-forget）。
-        （修既有債：trace_id 為真實 agent trace id，可對回 trace 表）"""
-        if eval_depth == "off" or not self._eval_use_case:
-            return
-        from src.infrastructure.queue.arq_pool import enqueue
-
-        sources_dicts = [
-            s.to_dict() if hasattr(s, "to_dict") else s for s in sources
-        ]
-        await enqueue(
-            "run_evaluation",
-            eval_depth, message, answer,
-            sources_dicts, tool_calls,
-            tenant_id, trace_id,
-            eval_provider, eval_model,
-        )
-
     @staticmethod
     def _compact_trace_nodes(node_dicts: list[dict]) -> list[dict]:
         """逐題報告/Playground 用的 compact 版：截斷 metadata 長字串
@@ -1479,211 +1409,6 @@ class SendMessageUseCase:
         except Exception:
             logger.warning("agent_trace.persist_failed", exc_info=True)
             return None, None
-
-    async def _run_evaluations(
-        self,
-        eval_depth: str,
-        query: str,
-        answer: str,
-        sources: list[Any],
-        tool_calls: list[dict[str, Any]],
-        tenant_id: str,
-        trace_id: str,
-        eval_provider: str = "",
-        eval_model: str = "",
-    ) -> None:
-        """Run RAG evaluations in background (fire-and-forget, never raises).
-
-        Uses evaluate_combined() for 1 LLM call instead of up to 3 separate calls.
-        Resolves bot-specific eval LLM via DynamicLLMServiceProxy when configured.
-        Smart L1 skip: MCP-only scenarios (no RAG sources) skip L1 retrieval metrics.
-        """
-        try:
-            from src.application.observability.rag_evaluation_use_case import (
-                RAGEvaluationUseCase,
-            )
-            from src.infrastructure.db.session_middleware import (
-                independent_session_scope,
-            )
-
-            assert self._eval_use_case is not None  # noqa: S101
-
-            # Background task: request session is closed.
-            # Use independent_session_scope so DynamicLLMServiceFactory
-            # gets a fresh DB session to resolve provider settings.
-            async with independent_session_scope():
-                eval_llm = self._eval_use_case._llm_service
-                if eval_provider or eval_model:
-                    if hasattr(eval_llm, "resolve_for_bot"):
-                        eval_llm = await eval_llm.resolve_for_bot(
-                            provider_name=eval_provider,
-                            model=eval_model,
-                        )
-                else:
-                    # No eval-specific config: resolve system default
-                    if hasattr(eval_llm, "resolve_for_bot"):
-                        eval_llm = await eval_llm.resolve_for_bot()
-            eval_uc = RAGEvaluationUseCase(llm_service=eval_llm)
-
-            # Parse depth levels
-            depth = eval_depth.upper()
-            run_l1 = "L1" in depth
-            run_l2 = "L2" in depth
-            run_l3 = "L3" in depth
-
-            # Determine if we have RAG sources (vs MCP-only)
-            has_rag_sources = False
-            chunks: list[str] = []
-            # QualityEdit.1 P0: 收集 chunk_id / kb_id 對齊 chunks index，
-            # 讓 eval chunk_scores 能帶跳轉 metadata
-            chunk_ids: list[str] = []
-            chunk_kb_ids: list[str] = []
-            if sources:
-                for s in sources:
-                    if isinstance(s, dict):
-                        text = s.get("content_snippet") or s.get("content", "")
-                        cid = s.get("chunk_id", "")
-                        kid = s.get("kb_id", "")
-                    else:
-                        text = getattr(s, "content_snippet", "") or getattr(s, "content", "")
-                        cid = getattr(s, "chunk_id", "")
-                        kid = getattr(s, "kb_id", "")
-                    if text:
-                        chunks.append(text)
-                        chunk_ids.append(cid or "")
-                        chunk_kb_ids.append(kid or "")
-                        has_rag_sources = True
-
-            # Include MCP tool outputs (non-RAG tools) as context
-            for tc in tool_calls:
-                tool_output = tc.get("tool_output", "")
-                tool_name = tc.get("tool_name", "")
-                if tool_name in ("rag_query", "direct"):
-                    continue
-                if tool_output:
-                    chunks.append(f"[{tool_name}] {tool_output}")
-                    chunk_ids.append("")  # MCP 無 chunk_id
-                    chunk_kb_ids.append("")
-
-            all_context = "\n---\n".join(chunks)
-
-            result = await eval_uc.evaluate_combined(
-                query=query,
-                answer=answer,
-                all_context=all_context,
-                chunks=chunks,
-                tool_calls=tool_calls,
-                run_l1=run_l1,
-                run_l2=run_l2,
-                run_l3=run_l3,
-                has_rag_sources=has_rag_sources,
-                agent_mode="react",
-                tenant_id=tenant_id,
-                trace_id=trace_id,
-                chunk_ids=chunk_ids,
-                chunk_kb_ids=chunk_kb_ids,
-            )
-            if result.dimensions:
-                await self._persist_eval(result)
-                await self._dispatch_diagnostic_if_needed(
-                    result, tenant_id, trace_id
-                )
-
-        except Exception:
-            logger.warning("eval.run_failed", exc_info=True)
-
-    async def _persist_eval(self, eval_result: Any) -> None:
-        """Persist a single EvalResult to DB (fire-and-forget, never raises)."""
-        try:
-            from src.infrastructure.db.models.rag_eval_model import RAGEvalModel
-
-            session_factory = self._trace_session_factory
-            if session_factory is None:
-                return  # No session factory → skip (prevents unit test leakage)
-
-            row = RAGEvalModel(
-                id=str(uuid4()),
-                eval_id=eval_result.eval_id,
-                message_id=eval_result.message_id,
-                trace_id=eval_result.trace_id,
-                tenant_id=eval_result.tenant_id,
-                layer=eval_result.layer,
-                dimensions=[
-                    {
-                        "name": d.name,
-                        "score": d.score,
-                        "explanation": d.explanation,
-                        **({"metadata": d.metadata} if d.metadata else {}),
-                    }
-                    for d in eval_result.dimensions
-                ],
-                avg_score=round(eval_result.avg_score, 3),
-                model_used=eval_result.model_used,
-            )
-            async with session_factory() as session:
-                session.add(row)
-                await session.commit()
-        except Exception:
-            logger.warning("eval.persist_failed", exc_info=True)
-
-    async def _dispatch_diagnostic_if_needed(
-        self,
-        eval_result: Any,
-        tenant_id: str,
-        trace_id: str,
-    ) -> None:
-        """Check diagnostic rules and dispatch notifications if triggered."""
-        if self._get_diagnostic_rules_uc is None:
-            return
-        try:
-            from src.domain.observability.diagnostic import (
-                DiagnosticEvent,
-                diagnose,
-            )
-            from src.infrastructure.notification.dispatch_helper import (
-                dispatch_diagnostic_notification,
-            )
-
-            rule_config = await self._get_diagnostic_rules_uc.execute()
-            dims = [
-                {"name": d.name, "score": d.score}
-                for d in eval_result.dimensions
-            ]
-            hints = diagnose(dims, rule_config)
-            if not hints:
-                return
-
-            # Determine highest severity
-            severities = {h.severity for h in hints}
-            top_severity = (
-                "critical" if "critical" in severities else "warning"
-            )
-
-            # Only dispatch for critical/warning (skip info)
-            if top_severity not in ("critical", "warning"):
-                return
-
-            event = DiagnosticEvent(
-                fingerprint=(
-                    f"diag|{hints[0].dimension}|{top_severity}"
-                ),
-                severity=top_severity,
-                tenant_id=tenant_id,
-                trace_id=trace_id,
-                hints=[
-                    h for h in hints
-                    if h.severity in ("critical", "warning")
-                ],
-                eval_avg_score=round(eval_result.avg_score, 3),
-                eval_layer=eval_result.layer,
-            )
-            asyncio.create_task(
-                dispatch_diagnostic_notification(event)
-            )
-        except Exception:
-            logger.warning(
-                "eval.diagnostic_dispatch_failed", exc_info=True
-            )
 
     @staticmethod
     def _extract_metadata(conversation: Conversation) -> dict[str, Any]:

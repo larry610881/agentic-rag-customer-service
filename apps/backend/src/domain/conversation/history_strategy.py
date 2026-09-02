@@ -24,6 +24,8 @@ class HistoryStrategyConfig:
     recent_turns: int = 3
     summary_max_tokens: int = 200
     router_context_limit: int = 3
+    # Issue #59：summary_recent 的摘要 LLM 呼叫要記帳，需要知道租戶
+    tenant_id: str = ""
 
 
 class ConversationHistoryStrategy(ABC):

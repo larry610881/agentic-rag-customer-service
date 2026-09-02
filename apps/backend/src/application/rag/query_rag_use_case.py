@@ -105,6 +105,8 @@ class QueryRAGUseCase:
                     bot_system_prompt=command.bot_system_prompt,
                     extra_hint=command.query_rewrite_extra_hint,
                     api_key_resolver=self._api_key_resolver,
+                    record_usage=self._record_usage,
+                    tenant_id=command.tenant_id,
                 ),
             ))
         if RetrievalMode.HYDE.value in modes:
@@ -116,6 +118,8 @@ class QueryRAGUseCase:
                     bot_system_prompt=command.bot_system_prompt,
                     extra_hint=command.hyde_extra_hint,
                     api_key_resolver=self._api_key_resolver,
+                    record_usage=self._record_usage,
+                    tenant_id=command.tenant_id,
                 ),
             ))
 

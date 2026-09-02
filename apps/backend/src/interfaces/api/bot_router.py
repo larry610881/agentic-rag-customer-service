@@ -125,7 +125,7 @@ class CreateBotRequest(BaseModel):
     show_sources: bool = True
     eval_provider: str = ""
     eval_model: str = ""
-    eval_depth: str = "L1"
+    eval_depth: str = "off"
     gate_mode: str = "off"
     gate_soft_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
     gate_repeats: int = Field(default=3, ge=1, le=10)

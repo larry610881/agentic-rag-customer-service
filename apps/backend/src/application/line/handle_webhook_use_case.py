@@ -703,6 +703,7 @@ class HandleWebhookUseCase:
             cfg = HistoryStrategyConfig(
                 history_limit=bot.llm_params.history_limit,
                 recent_turns=3,
+                tenant_id=bot.tenant_id,
             )
             ctx = await self._history_strategy.process(history, cfg)
             history_context = ctx.respond_context

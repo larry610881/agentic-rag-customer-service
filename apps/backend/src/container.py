@@ -1935,6 +1935,7 @@ class Container(containers.DeclarativeContainer):
             SummaryRecentStrategy,
             llm_service=llm_service,
             cache_service=cache_service,
+            record_usage=record_usage_use_case,
             cache_ttl=providers.Callable(
                 lambda cfg: cfg.cache_summary_ttl, config
             ),
@@ -2373,6 +2374,7 @@ class Container(containers.DeclarativeContainer):
         ExtractMemoryUseCase,
         memory_fact_repository=memory_fact_repository,
         extraction_service=memory_extraction_service,
+        record_usage=record_usage_use_case,
     )
 
     intent_classifier = providers.Factory(
@@ -2390,13 +2392,11 @@ class Container(containers.DeclarativeContainer):
         debug=providers.Callable(lambda cfg: cfg.debug, config),
         system_prompt_config_repository=system_prompt_config_repository,
         trace_session_factory=trace_session_factory,
-        rag_evaluation_use_case=rag_evaluation_use_case,
         mcp_registry_repo=mcp_server_repository,
         encryption_service=encryption_service,
         resolve_identity_use_case=resolve_identity_use_case,
         load_memory_use_case=load_memory_use_case,
         extract_memory_use_case=extract_memory_use_case,
-        get_diagnostic_rules_uc=get_diagnostic_rules_use_case,
         conversation_lock=conversation_lock,
         intent_classifier=intent_classifier,
         worker_config_repo=worker_config_repository,

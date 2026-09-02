@@ -99,7 +99,8 @@ class Bot:
     max_tool_calls: int = 5
     eval_provider: str = ""  # Eval LLM provider (independent from bot LLM)
     eval_model: str = ""  # Eval LLM model
-    eval_depth: str = "L1"  # "off" | any combo of "L1", "L2", "L3" joined by "+"
+    # Issue #59：線上每輪自評下線，預設 off；L1/L2/L3 僅供 prompt gate 離線回放
+    eval_depth: str = "off"  # "off" | any combo of "L1", "L2", "L3" joined by "+"
     # Issue #54 Phase C — 發布閘門設定（治理欄位，不進 config snapshot 白名單）
     gate_mode: str = "off"  # off | warn | block
     gate_soft_threshold: float = 0.8

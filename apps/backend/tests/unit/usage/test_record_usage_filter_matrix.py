@@ -45,6 +45,11 @@ EXPECTED_CATEGORIES: set[str] = {
     # Issue #54 Phase B — Eval token 分流三分類（新增分類必須同步此 fence）
     "eval_gate",
     "prompt_optimize",
+    # Issue #59 — 輔助 LLM 呼叫補記帳
+    "query_rewrite",
+    "hyde",
+    "memory_extraction",
+    "history_summary",
     "playground",
 }
 

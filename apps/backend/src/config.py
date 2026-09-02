@@ -134,6 +134,9 @@ class Settings(BaseSettings):
     # LINE webhook 事件去重 TTL（Issue #58）
     line_webhook_dedup_ttl_seconds: int = 3600
 
+    # 對話摘要 cron 只處理達此訊息數的對話（Issue #59：一兩輪的客服對話不摘要）
+    conversation_summary_min_messages: int = 6
+
     # Rate Limiting
     rate_limit_enabled: bool = True
     rate_limit_global_rpm: int = 1000
