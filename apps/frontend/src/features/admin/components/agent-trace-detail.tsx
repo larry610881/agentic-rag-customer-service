@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentTraceGraph } from "./agent-trace-graph";
+import { ConfigHashChip } from "./config-hash-chip";
+import { ConfigSnapshotPanel } from "./config-snapshot-panel";
 import { TraceTimeline } from "./trace-timeline";
 import type { AgentExecutionTrace } from "@/types/agent-trace";
 
@@ -29,6 +31,8 @@ export function AgentTraceDetail({
   const toolNodes = (trace.nodes ?? []).filter(
     (n) => n.node_type === "tool_call",
   );
+  // Issue #60：只有已持久化且帶 config_hash 的 trace 才有「生效設定」可看
+  const configHash = trace.config_hash ?? null;
 
   return (
     <div className="space-y-4">
@@ -73,13 +77,21 @@ export function AgentTraceDetail({
         <span className="text-xs text-muted-foreground">
           {formatDateTime(trace.created_at)}
         </span>
+        {configHash && (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            設定 <ConfigHashChip hash={configHash} />
+          </span>
+        )}
       </div>
 
-      {/* Tabs: DAG（預設）/ 時間軸（Issue #57 waterfall） */}
+      {/* Tabs: DAG（預設）/ 時間軸（Issue #57 waterfall）/ 生效設定（Issue #60） */}
       <Tabs defaultValue="graph">
         <TabsList>
           <TabsTrigger value="graph">節點圖</TabsTrigger>
           <TabsTrigger value="timeline">時間軸</TabsTrigger>
+          {configHash && (
+            <TabsTrigger value="config">生效設定</TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="graph" className="pt-2">
           <AgentTraceGraph execNodes={trace.nodes ?? []} />
@@ -91,6 +103,11 @@ export function AgentTraceDetail({
             onSelectNode={onSelectNode}
           />
         </TabsContent>
+        {configHash && (
+          <TabsContent value="config" className="pt-2">
+            <ConfigSnapshotPanel hash={configHash} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

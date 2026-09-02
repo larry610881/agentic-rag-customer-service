@@ -137,6 +137,9 @@ class Settings(BaseSettings):
     # 對話摘要 cron 只處理達此訊息數的對話（Issue #59：一兩輪的客服對話不摘要）
     conversation_summary_min_messages: int = 6
 
+    # 快速道 profile（Issue #61）：零額外 LLM；True 才放行 rerank
+    fast_lane_allow_rerank: bool = False
+
     # Rate Limiting
     rate_limit_enabled: bool = True
     rate_limit_global_rpm: int = 1000

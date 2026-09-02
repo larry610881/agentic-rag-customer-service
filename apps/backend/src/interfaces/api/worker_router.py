@@ -15,6 +15,7 @@ from src.application.bot.worker_use_cases import (
     UpdateWorkerUseCase,
 )
 from src.container import Container
+from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 
 router = APIRouter(
     prefix="/api/v1/bots/{bot_id}/workers", tags=["bot-workers"]
@@ -151,12 +152,14 @@ async def list_workers(
 async def create_worker(
     bot_id: str,
     body: CreateWorkerRequest,
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: CreateWorkerUseCase = Depends(
         Provide[Container.create_worker_use_case]
     ),
 ) -> WorkerResponse:
     worker = await use_case.execute(
         CreateWorkerCommand(
+            actor_user_id=tenant.user_id,
             bot_id=bot_id,
             name=body.name,
             description=body.description,
@@ -185,6 +188,7 @@ async def update_worker(
     bot_id: str,
     worker_id: str,
     body: UpdateWorkerRequest,
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: UpdateWorkerUseCase = Depends(
         Provide[Container.update_worker_use_case]
     ),
@@ -196,6 +200,7 @@ async def update_worker(
     )
     worker = await use_case.execute(
         UpdateWorkerCommand(
+            actor_user_id=tenant.user_id,
             worker_id=worker_id,
             name=body.name,
             description=body.description,
@@ -234,8 +239,9 @@ async def update_worker(
 async def delete_worker(
     bot_id: str,
     worker_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: DeleteWorkerUseCase = Depends(
         Provide[Container.delete_worker_use_case]
     ),
 ) -> None:
-    await use_case.execute(worker_id)
+    await use_case.execute(worker_id, actor_user_id=tenant.user_id)

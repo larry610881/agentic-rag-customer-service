@@ -170,4 +170,14 @@ export const queryKeys = {
     gateRun: (runId: string) => ["prompt-gate", "runs", runId] as const,
     estimate: (botId: string) => ["prompt-gate", "estimate", botId] as const,
   },
+  // Issue #60 — 生效設定快照 / 稽核紀錄
+  configSnapshots: {
+    detail: (hash: string) => ["config-snapshots", hash] as const,
+    diff: (a: string, b: string) => ["config-snapshots", "diff", a, b] as const,
+    botTimeline: (botId: string, limit: number) =>
+      ["config-snapshots", "timeline", botId, limit] as const,
+  },
+  auditLogs: {
+    list: (filters?: object) => ["audit-logs", filters ?? {}] as const,
+  },
 };

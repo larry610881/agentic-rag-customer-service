@@ -45,6 +45,7 @@ class CreateWorkerCommand:
     enabled_tools: list[str] | None = None
     tool_configs: dict = field(default_factory=dict)
     sort_order: int = 0
+    actor_user_id: str | None = None  # Issue #60：稽核 actor
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ class UpdateWorkerCommand:
     enabled_tools: Any = ...
     tool_configs: dict | None = None
     sort_order: int | None = None
+    actor_user_id: str | None = None  # Issue #60：稽核 actor
 
 
 class ListWorkersUseCase:
@@ -74,9 +76,33 @@ class ListWorkersUseCase:
         return await self._repo.find_by_bot_id(bot_id)
 
 
+def _worker_view(w: WorkerConfig | None) -> dict | None:
+    """Issue #60：稽核用可比較視圖（含 worker_prompt——最常被改壞的欄位）。"""
+    if w is None:
+        return None
+    return {
+        "bot_id": w.bot_id,
+        "name": w.name,
+        "description": w.description,
+        "worker_prompt": w.worker_prompt,
+        "llm_provider": w.llm_provider,
+        "llm_model": w.llm_model,
+        "temperature": w.temperature,
+        "max_tokens": w.max_tokens,
+        "max_tool_calls": w.max_tool_calls,
+        "enabled_mcp_ids": list(w.enabled_mcp_ids or []),
+        "knowledge_base_ids": list(w.knowledge_base_ids or []),
+        "enabled_tools": list(w.enabled_tools) if w.enabled_tools is not None else None,
+        "tool_configs": str(w.tool_configs),
+        "sort_order": w.sort_order,
+        "direct_retrieval": getattr(w, "direct_retrieval", False),
+    }
+
+
 class CreateWorkerUseCase:
-    def __init__(self, repo: WorkerConfigRepository) -> None:
+    def __init__(self, repo: WorkerConfigRepository, audit: Any | None = None) -> None:
         self._repo = repo
+        self._audit = audit
 
     async def execute(
         self, command: CreateWorkerCommand
@@ -101,12 +127,19 @@ class CreateWorkerUseCase:
             sort_order=command.sort_order,
         )
         await self._repo.save(worker)
+        if self._audit is not None:
+            await self._audit.record(
+                entity_type="worker", entity_id=worker.id, action="create",
+                before=None, after=_worker_view(worker),
+                actor_user_id=command.actor_user_id,
+            )
         return worker
 
 
 class UpdateWorkerUseCase:
-    def __init__(self, repo: WorkerConfigRepository) -> None:
+    def __init__(self, repo: WorkerConfigRepository, audit: Any | None = None) -> None:
         self._repo = repo
+        self._audit = audit
 
     async def execute(
         self, command: UpdateWorkerCommand
@@ -114,6 +147,7 @@ class UpdateWorkerUseCase:
         worker = await self._repo.find_by_id(command.worker_id)
         if worker is None:
             return None
+        before = _worker_view(worker) if self._audit is not None else None
         if command.name is not None:
             worker.name = command.name
         if command.description is not None:
@@ -144,12 +178,27 @@ class UpdateWorkerUseCase:
         if command.sort_order is not None:
             worker.sort_order = command.sort_order
         await self._repo.save(worker)
+        if self._audit is not None:
+            await self._audit.record(
+                entity_type="worker", entity_id=worker.id, action="update",
+                before=before, after=_worker_view(worker),
+                actor_user_id=command.actor_user_id,
+            )
         return worker
 
 
 class DeleteWorkerUseCase:
-    def __init__(self, repo: WorkerConfigRepository) -> None:
+    def __init__(self, repo: WorkerConfigRepository, audit: Any | None = None) -> None:
         self._repo = repo
+        self._audit = audit
 
-    async def execute(self, worker_id: str) -> None:
+    async def execute(self, worker_id: str, actor_user_id: str | None = None) -> None:
+        before = None
+        if self._audit is not None:
+            before = _worker_view(await self._repo.find_by_id(worker_id))
         await self._repo.delete(worker_id)
+        if self._audit is not None:
+            await self._audit.record(
+                entity_type="worker", entity_id=worker_id, action="delete",
+                before=before, after=None, actor_user_id=actor_user_id,
+            )

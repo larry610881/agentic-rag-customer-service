@@ -42,6 +42,7 @@ export const ROUTES = {
   ADMIN_LOG_RETENTION: "/admin/log-retention",
   ADMIN_ERROR_EVENTS: "/admin/error-events",
   ADMIN_NOTIFICATION_CHANNELS: "/admin/notification-channels",
+  ADMIN_AUDIT_LOGS: "/admin/audit-logs",
   ADMIN_PROMPT_OPTIMIZER: "/admin/prompt-optimizer",
   ADMIN_PROMPT_OPTIMIZER_START: "/admin/prompt-optimizer/start",
   ADMIN_PROMPT_OPTIMIZER_DATASETS: "/admin/prompt-optimizer/datasets",

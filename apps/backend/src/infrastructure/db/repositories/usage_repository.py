@@ -50,6 +50,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 kb_id=record.kb_id,
                 run_id=record.run_id,
                 config_version_id=record.config_version_id,
+                config_hash=record.config_hash,
                 created_at=record.created_at,
             )
             self._session.add(model)
@@ -90,6 +91,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 # L3：save 有寫入這兩欄但讀取建構漏帶 → entity 恆為 None
                 run_id=r.run_id,
                 config_version_id=r.config_version_id,
+                config_hash=getattr(r, "config_hash", None),
                 created_at=r.created_at,
             )
             for r in rows

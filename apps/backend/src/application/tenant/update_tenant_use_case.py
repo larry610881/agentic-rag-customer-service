@@ -42,6 +42,7 @@ class UpdateTenantCommand:
     # S-KB-Followup.2: intent_classify / conversation_summary 的 tenant default
     default_summary_model: Any = field(default=_UNSET)
     default_intent_model: Any = field(default=_UNSET)
+    actor_user_id: str | None = None  # Issue #60：稽核 actor
 
 
 class UpdateTenantUseCase:
@@ -49,14 +50,29 @@ class UpdateTenantUseCase:
         self,
         tenant_repository: TenantRepository,
         plan_repository: PlanRepository | None = None,
+        audit: Any | None = None,
     ) -> None:
         self._tenant_repo = tenant_repository
         self._plan_repo = plan_repository
+        self._audit = audit
+
+    @staticmethod
+    def _audit_view(tenant: Tenant) -> dict:
+        return {
+            f: getattr(tenant, f, None)
+            for f in (
+                "plan", "monthly_token_limit", "included_categories",
+                "prompt_gate_enabled", "default_ocr_model", "default_context_model",
+                "default_classification_model", "default_summary_model",
+                "default_intent_model",
+            )
+        }
 
     async def execute(self, command: UpdateTenantCommand) -> Tenant:  # noqa: C901
         tenant = await self._tenant_repo.find_by_id(command.tenant_id)
         if tenant is None:
             raise EntityNotFoundError("Tenant", command.tenant_id)
+        before = self._audit_view(tenant) if self._audit is not None else None
 
         # plan 變更時驗證存在 + active
         if command.plan is not _UNSET and command.plan != tenant.plan:
@@ -90,4 +106,10 @@ class UpdateTenantUseCase:
             tenant.default_intent_model = command.default_intent_model
 
         await self._tenant_repo.save(tenant)
+        if self._audit is not None:
+            await self._audit.record(
+                entity_type="tenant", entity_id=tenant.id.value, action="update",
+                before=before, after=self._audit_view(tenant),
+                actor_user_id=command.actor_user_id, tenant_id=tenant.id.value,
+            )
         return tenant

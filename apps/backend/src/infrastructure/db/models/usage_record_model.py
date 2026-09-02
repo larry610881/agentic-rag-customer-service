@@ -55,6 +55,7 @@ class UsageRecordModel(Base):
     config_version_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True
     )
+    config_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

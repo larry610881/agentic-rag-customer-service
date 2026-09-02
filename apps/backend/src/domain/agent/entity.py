@@ -42,6 +42,8 @@ class AgentResponse:
     trace_nodes: list[dict[str, Any]] | None = None
     # Issue #54 §13.6 — 生成當下的線上設定版本（usage 打標 → 版本成效卡）
     config_version_id: str | None = None
+    # Issue #60：這一輪實際生效設定的指紋（router 記帳與前端顯示用）
+    config_hash: str | None = None
 
 
 @dataclass

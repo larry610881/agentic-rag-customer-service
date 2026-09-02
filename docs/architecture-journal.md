@@ -7,6 +7,95 @@
 
 ---
 
+## 快速道抽共用 — 「plan 與 generate 分離」讓串流通路也能用同一份快速道（2026-09-02，Issue #61）
+
+**Sprint 來源**：channel-parity 債務清單第 1 項。`direct_retrieval` 快速道只活在 LINE 轉接器
+（`_try_direct_retrieval` 200 行），web / widget 永遠付 ReAct 決策輪；兩類 bot（快速 / 深度）
+的定位要求三通路一致。
+
+**主題**：從通路目錄抽邏輯到 application 共用層的切法、plan/execute 分離、快速道 profile
+的「減法」設定、換模型不是換字串（Gemini reasoning_effort 對應）
+
+#### 做得好的地方
+- **只抽「決策」不抽「生成」**：`DirectRetrievalService.plan()` 做檢索 + DM 並行 + 門檻判定
+  + 組 prompt，回 `DirectRetrievalPlan(system_prompt, enabled_tools, max_tool_calls=1, sources)`；
+  生成留給各通路呼叫自己的 agent_service（LINE 非串流、web 串流）。這樣 web 的 SSE 路徑
+  零改動就能吃到快速道，而且 LINE 的六個既有 scenario 一個都沒動就綠。
+- **向後相容的注入**：LINE use case 仍接受 `query_rag_use_case` / `dm_image_query_tool`，
+  未給 `direct_retrieval_service` 時就地建構——既有測試與 container 都不需要同步改。
+- **快速道 profile 用減法**：`retrieval_modes=["raw"]`、rerank 預設關（`fast_lane_allow_rerank`
+  可放行）——快速道的定義就是「分類 + 生成」兩次 LLM，其他都是深度道的事。
+- **web 串流補發 sources 事件**：快速道沒有 tool call 就沒有 sources 事件，widget 會看不到
+  來源；在串流結束時以 plan.sources 補發一個同型事件，前端零改動。
+- **Gemini 對應放在 provider adapter**：`normalize_reasoning_effort`（minimal → low）與
+  `reasoning_effort_allowed`（Gemini 收 none/low/medium/high）都在 OpenAI 相容 service 內，
+  bot 設定層不用知道換了模型。呼應 R3 的教訓「換 LLM 模型不是換字串」。
+
+#### 潛在隱憂
+- **Gemini 3.7 Flash low 的分類準確率與速度尚未實測**：本次只打通參數對應，20 題分流
+  基準與 12 題攻擊守備需要 provider key 與 dev 環境，列為交付後驗收項 → 優先級：高。
+- **快速道 rerank 預設關閉改變了 LINE 現況**：8/17 R4 之後 POC 的高階客服 worker 走快速道，
+  若當時 bot 有開 rerank，現在不會再 rerank。實測若分數分布變差，設
+  `FAST_LANE_ALLOW_RERANK=true` 回復 → 優先級：中（交付時明講）。
+- **意圖分類的 usage 寫入仍在回覆前同步**（含 quota SUM 查詢，數 ms）：改成回覆後需要
+  處理測試的事件迴圈生命週期，本次未動 → 優先級：低。
+- **`_process_single_event` 仍 40+ 複雜度**：快速道抽出後少了 150 行，但 reply/persist 尚未
+  拆 → 優先級：中。
+
+#### 延伸學習
+- **Plan / Execute 分離**：把「決定怎麼做」抽成純資料（plan），「做」留在各執行環境，是讓
+  串流與非串流、同步與背景共用邏輯的通用手法。搜尋 "command pattern plan execute
+  separation"、"strangler fig extract decision not effect"。
+
+---
+
+## 執行時設定指紋 + 管理端稽核 — 「證據」與「責任鏈」分開做（2026-09-02，Issue #60）
+
+**Sprint 來源**：紅隊 prompt injection 事後追溯需求。盤點結論：worker / route prompt、
+guard 規則、平台 system prompt 全無版本；LINE 不打 config_version_id；無 audit log。
+
+**主題**：內容定址快照取代逐表版本化、在組裝點捕捉而非事後回讀、密鑰剝除靠鍵名
+規則而非欄位白名單、稽核只存 diff、fail-open 邊界
+
+#### 做得好的地方
+- **指紋抓「解析後的有效值」**：`EffectiveConfig` 由兩條管線在 prompt 組裝完成的那一刻
+  建立（覆蓋後 system prompt、命中 worker、guard 規則集、模型參數、KB），sha256 為
+  主鍵、`ON CONFLICT DO NOTHING` 寫入。設定沒變零寫入；SQL 直改 prompt 也逃不掉，
+  因為看的是執行時的值不是設定表。LRU 讓已知 hash 連 DB 都不碰。
+- **`finish` 之前掛 hash 到 trace**，usage 記帳同時打 `config_hash`——串流路徑用
+  內部事件 `config_hash` 傳給 router（與既有 `config_version` 事件同型），widget 同步。
+  這是「執行當下」的捕捉，不再是回合結束後讀 `find_current()` 的競態。
+- **密鑰剝除用鍵名片段規則**（api_key / token / secret / password / env_values …）遞迴
+  套在整份 snapshot 上，而不是維護一份白名單。新增設定欄位時預設安全，測試以
+  「序列化文字不含 sk-live / line-token」鎖住。
+- **稽核 = diff + actor + source**：`AuditRecorder.record(before, after)` 只寫變更欄位，
+  長字串截到 2000 字；無變更不寫。六個管理 use case 各加一個可選的 `audit` 依賴與
+  `actor_user_id`，既有測試零改動；`PUT /bots` 順手補了版本作者。
+- **兩個紀錄器都 fail-open 但有 warning log**：稽核失敗不能擋管理操作、指紋失敗不能
+  擋對話；但指紋失敗會把 hash 從 LRU 移除，下一輪再試，不會永遠漏寫。
+
+#### 潛在隱憂
+- **LINE 與 web 同 bot 同設定的 hash 不同**：LINE 有 `LINE_CHANNEL_PROMPT_SUFFIX`，
+  有效 prompt 本來就不一樣，指紋忠實反映。Issue 驗收條件「跨通路相同 hash」改為
+  「同通路相同 hash、跨通路差異可由 diff 看到 suffix」→ 優先級：低（語意正確）。
+- **guard snapshot 只取 id / pattern / enabled**：規則的其他欄位（權重、分類）不進
+  指紋；規則新增欄位時要回來補 → 優先級：低。
+- **稽核 actor 依賴 router 傳入**：optimizer / rollback / migration 路徑目前 source
+  仍是 api 或未記；`SOURCE_*` 常數已備，需在對應 use case 接上 → 優先級：中。
+- **Migration 尚未套用任何環境**：ORM 已加欄位（traces / usage / 兩張新表），依
+  `migration-workflow.md` 必須 local-docker → dev-vm → company-poc 逐一 preview 授權後
+  才能 merge；否則 Cloud Run 起來即 500 → 優先級：**Critical（交付時已列為前置）**。
+
+#### 延伸學習
+- **Content-addressed storage 的適用判準**：寫多讀少、值重複率高、需要「同內容同身分」
+  → 用 hash 當主鍵；需要「誰在何時改」→ 另存 append-only log。兩者不要混。搜尋
+  "content-addressable storage configuration snapshot"、"audit log design changed
+  fields only"。
+- **Secret redaction by key pattern**：比欄位白名單穩健，但要配 canary 測試（塞一個
+  假密鑰進來確認被剝掉）。搜尋 "structured logging secret redaction key patterns"。
+
+---
+
 ## Trace 時間軸 — 「請求邊界根節點」讓瀑布圖可對帳到 100%（2026-09-02，Issue #57）
 
 **Sprint 來源**：後台 DAG 只回答「誰呼叫誰」，看不出單一請求的時間分配。實作

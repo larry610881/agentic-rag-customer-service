@@ -67,6 +67,8 @@ export type AgentExecutionTrace = {
   } | null;
   /** S-Gov.6a: snapshot trace-level outcome */
   outcome?: TraceOutcome | null;
+  /** Issue #60: 對話當下生效設定的快照 hash；舊 trace / 即時 trace 為 null */
+  config_hash?: string | null;
   created_at: string;
 };
 

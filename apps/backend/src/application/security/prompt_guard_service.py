@@ -104,6 +104,21 @@ class PromptGuardService:
         self._rules_repo = guard_rules_repo
         self._log_repo = guard_log_repo
 
+    async def rules_snapshot(self) -> dict:
+        """Issue #60：目前生效 guard 規則集的可序列化視圖（進設定指紋）。"""
+        cfg = await self._get_config()
+        return {
+            "input_rules": [
+                {k: v for k, v in r.items() if k in ("id", "pattern", "enabled")}
+                if isinstance(r, dict) else str(r)
+                for r in (cfg.input_rules or [])
+            ],
+            "output_keywords": list(cfg.output_keywords or []),
+            "blocked_response": cfg.blocked_response,
+            "llm_guard_enabled": cfg.llm_guard_enabled,
+            "llm_input_guard_enabled": cfg.llm_input_guard_enabled,
+        }
+
     async def _get_config(self) -> GuardRulesConfig:
         config = await self._rules_repo.get()
         if config is None:

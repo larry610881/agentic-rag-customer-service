@@ -40,6 +40,8 @@ class AgentExecutionTraceModel(Base):
     # S-Gov.6a: snapshot trace-level outcome（success / failed / partial）
     # 寫入時計算（_persist_trace），查詢時免解 nodes JSON
     outcome: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Issue #60：有效設定指紋（config_snapshots.hash）
+    config_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

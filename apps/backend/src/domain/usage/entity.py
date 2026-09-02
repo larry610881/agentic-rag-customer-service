@@ -28,6 +28,8 @@ class UsageRecord:
     run_id: str | None = None
     # Issue #54 §13.6 — 生成當下的 bot 設定版本（Phase C 起打標）
     config_version_id: str | None = None
+    # Issue #60：生成當下實際生效設定的指紋
+    config_hash: str | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

@@ -90,7 +90,7 @@ async def get_guard_rules(
 @inject
 async def update_guard_rules(
     body: UpdateGuardRulesRequest,
-    _: CurrentTenant = Depends(require_role("system_admin")),
+    tenant: CurrentTenant = Depends(require_role("system_admin")),
     use_case: UpdateGuardRulesUseCase = Depends(
         Provide[Container.update_guard_rules_use_case]
     ),
@@ -105,6 +105,7 @@ async def update_guard_rules(
             input_guard_prompt=body.input_guard_prompt,
             output_guard_prompt=body.output_guard_prompt,
             blocked_response=body.blocked_response,
+            actor_user_id=tenant.user_id,
         )
     )
     return GuardRulesResponse(
@@ -124,12 +125,12 @@ async def update_guard_rules(
 @router.post("/guard-rules/reset", response_model=GuardRulesResponse)
 @inject
 async def reset_guard_rules(
-    _: CurrentTenant = Depends(require_role("system_admin")),
+    tenant: CurrentTenant = Depends(require_role("system_admin")),
     use_case: ResetGuardRulesUseCase = Depends(
         Provide[Container.reset_guard_rules_use_case]
     ),
 ) -> GuardRulesResponse:
-    config = await use_case.execute()
+    config = await use_case.execute(actor_user_id=tenant.user_id)
     return GuardRulesResponse(
         id=config.id,
         input_rules=config.input_rules,

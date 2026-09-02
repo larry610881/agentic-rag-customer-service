@@ -33,6 +33,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BotConfigTimeline } from "@/features/admin/components/bot-config-timeline";
 import { GateRunReport } from "@/features/admin/components/prompt-optimizer/gate-run-report";
 import { PromptDiff } from "@/features/admin/components/prompt-optimizer/prompt-diff";
 import { VersionMetricsCard } from "@/features/admin/components/prompt-optimizer/version-metrics-card";
@@ -511,23 +513,35 @@ export default function AdminPromptOptimizerVersionsPage() {
         </p>
       )}
 
-      {botId && isLoading && <Skeleton className="h-40 w-full" />}
-      {botId && !isLoading && versions.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          尚無版本紀錄——首次修改設定時會自動建立。
-        </p>
+      {botId && (
+        <Tabs defaultValue="versions">
+          <TabsList>
+            <TabsTrigger value="versions">設定版本</TabsTrigger>
+            {/* Issue #60：對話實際生效的設定 hash 時間軸（與版本表獨立，可對照 drift） */}
+            <TabsTrigger value="timeline">生效設定時間軸</TabsTrigger>
+          </TabsList>
+          <TabsContent value="versions" className="space-y-3 pt-3">
+            {isLoading && <Skeleton className="h-40 w-full" />}
+            {!isLoading && versions.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                尚無版本紀錄——首次修改設定時會自動建立。
+              </p>
+            )}
+            {versions.map((v) => (
+              <VersionCard
+                key={v.id}
+                botId={botId}
+                version={v}
+                currentBasePrompt={currentBasePrompt}
+                gateMode={selectedBot?.gate_mode ?? "off"}
+              />
+            ))}
+          </TabsContent>
+          <TabsContent value="timeline" className="pt-3">
+            <BotConfigTimeline botId={botId} />
+          </TabsContent>
+        </Tabs>
       )}
-      <div className="space-y-3">
-        {versions.map((v) => (
-          <VersionCard
-            key={v.id}
-            botId={botId}
-            version={v}
-            currentBasePrompt={currentBasePrompt}
-            gateMode={selectedBot?.gate_mode ?? "off"}
-          />
-        ))}
-      </div>
     </div>
   );
 }

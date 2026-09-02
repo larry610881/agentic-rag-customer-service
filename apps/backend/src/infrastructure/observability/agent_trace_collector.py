@@ -223,6 +223,13 @@ class AgentTraceCollector:
         )
 
     @staticmethod
+    def set_config_hash(config_hash: str | None) -> None:
+        """Issue #60：把有效設定指紋掛到目前 trace（無 trace 靜默跳過）。"""
+        trace = _agent_trace.get()
+        if trace is not None and config_hash:
+            trace.config_hash = config_hash
+
+    @staticmethod
     def set_tool_parent(node_id: str) -> None:
         """Set current tool node ID so inner nodes can use it as parent."""
         _current_tool_node_id.set(node_id)

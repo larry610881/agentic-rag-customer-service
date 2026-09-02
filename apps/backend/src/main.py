@@ -447,6 +447,15 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
 
         application.include_router(security_router)
 
+        # Issue #60：設定指紋 snapshot / 時間軸 / diff + 管理端稽核
+        from src.interfaces.api.audit_log_router import router as audit_log_router
+        from src.interfaces.api.config_snapshot_router import (
+            router as config_snapshot_router,
+        )
+
+        application.include_router(config_snapshot_router)
+        application.include_router(audit_log_router)
+
         from src.interfaces.api.error_event_router import (
             router as error_event_router,
         )

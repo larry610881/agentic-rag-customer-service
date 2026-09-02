@@ -59,6 +59,8 @@ class AgentExecutionTrace:
     nodes: list[ExecutionNode] = field(default_factory=list)
     total_ms: float = 0.0
     total_tokens: dict[str, Any] | None = None
+    # Issue #60：這一輪實際生效設定的指紋（config_snapshots.hash）
+    config_hash: str | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -125,5 +127,6 @@ class AgentExecutionTrace:
             "nodes": [n.to_dict() for n in self.nodes],
             "total_ms": self.total_ms,
             "total_tokens": self.total_tokens,
+            "config_hash": self.config_hash,
             "created_at": self.created_at.isoformat(),
         }

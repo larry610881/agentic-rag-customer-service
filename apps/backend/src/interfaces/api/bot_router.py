@@ -575,6 +575,7 @@ def _build_update_command(
         "bot_id": bot_id,
         "tenant_id": tenant.tenant_id,
         "role": tenant.role,
+        "actor_user_id": tenant.user_id,  # Issue #60：稽核 + 版本作者
     }
     for field in body.model_fields_set:
         val = getattr(body, field)

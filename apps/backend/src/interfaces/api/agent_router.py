@@ -181,6 +181,7 @@ async def agent_chat(
             message_id=result.message_id,
             run_id=usage_ctx.run_id,
             config_version_id=result.config_version_id,
+            config_hash=result.config_hash,
         )
     except Exception:
         logger.exception("agent.chat.record_usage_error")
@@ -270,6 +271,7 @@ async def agent_chat_stream(
         usage_data: dict | None = None
         assistant_message_id: str | None = None
         config_version_id: str | None = None
+        config_hash: str | None = None
         try:
             async for event in use_case.execute_stream(command):
                 if event.get("type") == "usage":
@@ -281,6 +283,9 @@ async def agent_chat_stream(
                 if event.get("type") == "config_version":
                     config_version_id = event.get("config_version_id")
                     continue  # 內部事件，不下發前端
+                if event.get("type") == "config_hash":
+                    config_hash = event.get("config_hash")
+                    continue  # Issue #60：內部事件，不下發前端
                 # Sprint A++: strip guard_blocked event for end-user 介面
                 if event.get("type") == "guard_blocked" and not is_studio:
                     continue
@@ -337,6 +342,7 @@ async def agent_chat_stream(
                         message_id=assistant_message_id,
                         run_id=usage_ctx.run_id,
                         config_version_id=config_version_id,
+                        config_hash=config_hash,
                     )
                 except Exception:
                     logger.exception("agent.chat.stream.record_usage_error")

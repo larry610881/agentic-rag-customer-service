@@ -47,13 +47,33 @@ def _needs_max_completion_tokens(model: str) -> bool:
     return any(model.startswith(p) for p in _NEW_PARAM_PREFIXES)
 
 
+_GEMINI_PREFIXES = ("gemini",)
+# Issue #61：Gemini 3.7 Flash 拔掉 minimal，OpenAI 相容端點只收 none/low/medium/high
+_GEMINI_EFFORTS = ("none", "low", "medium", "high")
+
+
+def _is_gemini(model: str) -> bool:
+    return any(model.startswith(p) for p in _GEMINI_PREFIXES)
+
+
+def normalize_reasoning_effort(model: str, effort: str) -> str:
+    """Issue #61：把 bot 設定的 reasoning_effort 對應到該模型接受的值。
+
+    Gemini（OpenAI 相容端點以 reasoning_effort 映射 thinking level）：minimal → low。
+    其他模型原值回傳（是否合法由 reasoning_effort_allowed 判斷）。
+    """
+    if _is_gemini(model) and effort == "minimal":
+        return "low"
+    return effort
+
+
 def supports_reasoning_effort(model: str) -> bool:
-    """gpt-5 / o-series reasoning 模型才接受 reasoning_effort 參數。
+    """gpt-5 / o-series reasoning 模型與 Gemini 才接受 reasoning_effort 參數。
 
     非 reasoning 模型（gpt-4o 系）收到此參數會被 API 拒絕，
     呼叫端須以此 gate 決定是否夾帶。
     """
-    return _needs_max_completion_tokens(model)
+    return _needs_max_completion_tokens(model) or _is_gemini(model)
 
 
 def reasoning_effort_allowed(model: str, effort: str) -> bool:
@@ -68,6 +88,8 @@ def reasoning_effort_allowed(model: str, effort: str) -> bool:
     """
     if not supports_reasoning_effort(model):
         return False
+    if _is_gemini(model):
+        return normalize_reasoning_effort(model, effort) in _GEMINI_EFFORTS
     if model.startswith("gpt-5"):
         return effort == "none"
     return True
@@ -126,7 +148,9 @@ class OpenAILLMService(LLMService):
         # 不合法的值靜默略過（維持 provider 預設）並記 log — 寧可慢不可斷。
         if reasoning_effort:
             if reasoning_effort_allowed(self._model, reasoning_effort):
-                kwargs["reasoning_effort"] = reasoning_effort
+                kwargs["reasoning_effort"] = normalize_reasoning_effort(
+                    self._model, reasoning_effort
+                )
             else:
                 logger.warning(
                     "llm.reasoning_effort.dropped",

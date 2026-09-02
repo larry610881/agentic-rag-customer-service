@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import Any
 
 from src.application.bot._tenant_guard import ensure_bot_tenant
 from src.application.prompt_gate.static_checks import check_prompt_fields
@@ -45,6 +46,8 @@ class UpdateBotCommand:
     # 歸屬檢查用（C9）：由 router 從 JWT 帶入，非可版本化的 bot 欄位
     tenant_id: str | None = None
     role: str | None = None
+    # Issue #60：稽核 actor（同時補進 bot_config_versions.author_user_id）
+    actor_user_id: str | None = None
     name: object = _UNSET
     description: object = _UNSET
     is_active: object = _UNSET
@@ -115,6 +118,7 @@ class UpdateBotUseCase:
         version_repository: BotConfigVersionRepository | None = None,
         tenant_repository=None,
         eval_dataset_repository=None,
+        audit: Any | None = None,
     ) -> None:
         self._bot_repo = bot_repository
         self._cache_service = cache_service
@@ -122,6 +126,8 @@ class UpdateBotUseCase:
         self._version_repo = version_repository
         self._tenant_repo = tenant_repository
         self._eval_dataset_repo = eval_dataset_repository
+        # Issue #60：管理端變更稽核（None 時不記）
+        self._audit = audit
 
     @staticmethod
     def _apply_updates(bot: Bot, command: UpdateBotCommand) -> None:
@@ -312,8 +318,24 @@ class UpdateBotUseCase:
                 "（該 bot 至少要綁 1 個含啟用案例的自訂題集）"
             )
 
+    @staticmethod
+    def _audit_view(bot: Bot) -> dict:
+        """Issue #60：稽核視圖 = 版控白名單 + 不進快照但影響行為/治理的欄位。"""
+        view = dict(take_snapshot(bot))
+        view["name"] = bot.name
+        view["description"] = getattr(bot, "description", "")
+        view["intent_routes"] = list(getattr(bot, "intent_routes", []) or [])
+        for f in (
+            "gate_mode", "gate_soft_threshold", "gate_repeats", "gate_auto_publish",
+            "gate_daily_limit", "gate_budget_usd", "eval_depth", "show_sources",
+            "line_show_sources",
+        ):
+            if hasattr(bot, f):
+                view[f] = getattr(bot, f)
+        return view
+
     async def _record_config_version(
-        self, bot: Bot, before_snapshot: dict
+        self, bot: Bot, before_snapshot: dict, actor_user_id: str | None = None
     ) -> None:
         """PUT /bots 版控墊片（spec §13.4）：白名單欄位有變更時——
         gate 未啟用 → 透明產生 published 版本列（verdict=skipped）；
@@ -345,6 +367,7 @@ class UpdateBotUseCase:
             snapshot_schema=SNAPSHOT_SCHEMA,
             changed_fields=changed,
             source=SOURCE_MANUAL,
+            author_user_id=actor_user_id,  # Issue #60：PUT 路徑原本恆 None
         )
         version.mark_published(VERDICT_SKIPPED)
         await self._version_repo.save(version)
@@ -359,6 +382,7 @@ class UpdateBotUseCase:
             ensure_bot_tenant(bot, command.tenant_id, command.role)
 
         before_snapshot = take_snapshot(bot)
+        before_view = self._audit_view(bot) if self._audit is not None else None
 
         # Capture old bindings before update (may contain encrypted env_values)
         old_bindings_map = {b.registry_id: b for b in bot.mcp_bindings}
@@ -376,8 +400,16 @@ class UpdateBotUseCase:
         if command.gate_mode is not _UNSET and bot.gate_mode != "off":
             await self._ensure_dataset_bound(bot)
 
-        await self._record_config_version(bot, before_snapshot)
+        await self._record_config_version(
+            bot, before_snapshot, actor_user_id=command.actor_user_id
+        )
         await self._bot_repo.save(bot)
+        if self._audit is not None:
+            await self._audit.record(
+                entity_type="bot", entity_id=bot.id.value, action="update",
+                before=before_view, after=self._audit_view(bot),
+                actor_user_id=command.actor_user_id, tenant_id=bot.tenant_id,
+            )
         if self._cache_service is not None:
             await self._cache_service.delete(f"bot:{command.bot_id}")
             await self._cache_service.delete(f"bot:sc:{bot.short_code.value}")

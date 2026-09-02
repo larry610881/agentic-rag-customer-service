@@ -16,6 +16,24 @@ from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.list_users_use_case import ListUsersUseCase
 from src.application.auth.login_use_case import LoginUseCase
+from src.application.audit.audit_recorder import AuditRecorder, ListAuditLogsUseCase
+from src.application.agent.direct_retrieval_service import (
+    DirectRetrievalService,
+)
+from src.application.observability.config_fingerprint_service import (
+    ConfigFingerprintService,
+)
+from src.application.observability.config_snapshot_use_cases import (
+    DiffConfigSnapshotsUseCase,
+    GetConfigSnapshotUseCase,
+    GetConfigTimelineUseCase,
+)
+from src.infrastructure.db.repositories.audit_log_repository import (
+    SQLAlchemyAuditLogRepository,
+)
+from src.infrastructure.db.repositories.config_snapshot_repository import (
+    SQLAlchemyConfigSnapshotRepository,
+)
 from src.domain.auth.login_attempt_tracker import LoginLockoutPolicy
 from src.infrastructure.auth.redis_login_attempt_tracker import (
     RedisLoginAttemptTracker,
@@ -690,6 +708,16 @@ class Container(containers.DeclarativeContainer):
     db_session = providers.Factory(get_tracked_session)
     trace_session_factory = providers.Object(_async_session_factory)
 
+    # Issue #60：設定指紋紀錄器 + 稽核紀錄器（獨立 session，fail-open）
+    config_fingerprint_service = providers.Singleton(
+        ConfigFingerprintService,
+        session_factory=trace_session_factory,
+    )
+    audit_recorder = providers.Singleton(
+        AuditRecorder,
+        session_factory=trace_session_factory,
+    )
+
     jwt_service = providers.Singleton(
         JWTService,
         secret_key=providers.Callable(lambda cfg: cfg.jwt_secret_key, config),
@@ -788,16 +816,19 @@ class Container(containers.DeclarativeContainer):
 
     create_worker_use_case = providers.Factory(
         CreateWorkerUseCase,
+        audit=audit_recorder,
         repo=worker_config_repository,
     )
 
     update_worker_use_case = providers.Factory(
         UpdateWorkerUseCase,
+        audit=audit_recorder,
         repo=worker_config_repository,
     )
 
     delete_worker_use_case = providers.Factory(
         DeleteWorkerUseCase,
+        audit=audit_recorder,
         repo=worker_config_repository,
     )
 
@@ -937,6 +968,28 @@ class Container(containers.DeclarativeContainer):
     guard_log_repository = providers.Factory(
         SQLAlchemyGuardLogRepository,
         session=db_session,
+    )
+
+    # Issue #60：設定指紋 snapshot + 管理端稽核
+    config_snapshot_repository = providers.Factory(
+        SQLAlchemyConfigSnapshotRepository,
+        session=db_session,
+    )
+    audit_log_repository = providers.Factory(
+        SQLAlchemyAuditLogRepository,
+        session=db_session,
+    )
+    get_config_snapshot_use_case = providers.Factory(
+        GetConfigSnapshotUseCase, repository=config_snapshot_repository,
+    )
+    diff_config_snapshots_use_case = providers.Factory(
+        DiffConfigSnapshotsUseCase, repository=config_snapshot_repository,
+    )
+    get_config_timeline_use_case = providers.Factory(
+        GetConfigTimelineUseCase, repository=config_snapshot_repository,
+    )
+    list_audit_logs_use_case = providers.Factory(
+        ListAuditLogsUseCase, repository=audit_log_repository,
     )
 
     log_retention_policy_repository = providers.Factory(
@@ -1205,6 +1258,7 @@ class Container(containers.DeclarativeContainer):
 
     update_tenant_use_case = providers.Factory(
         UpdateTenantUseCase,
+        audit=audit_recorder,
         tenant_repository=tenant_repository,
         plan_repository=plan_repository,
     )
@@ -1882,6 +1936,13 @@ class Container(containers.DeclarativeContainer):
         file_storage=document_file_storage_service,
     )
 
+    # Issue #61：快速道共用服務（web / widget / LINE 同一份）
+    direct_retrieval_service = providers.Factory(
+        DirectRetrievalService,
+        query_rag_use_case=query_rag_use_case,
+        dm_image_query_tool=dm_image_query_tool,
+    )
+
     transfer_to_human_tool = providers.Factory(TransferToHumanTool)
 
     tool_registry = providers.Singleton(ToolRegistry)
@@ -1966,6 +2027,7 @@ class Container(containers.DeclarativeContainer):
 
     update_bot_use_case = providers.Factory(
         UpdateBotUseCase,
+        audit=audit_recorder,
         bot_repository=bot_repository,
         cache_service=cache_service,
         encryption_service=encryption_service,
@@ -2119,11 +2181,13 @@ class Container(containers.DeclarativeContainer):
 
     update_guard_rules_use_case = providers.Factory(
         UpdateGuardRulesUseCase,
+        audit=audit_recorder,
         repo=guard_rules_config_repository,
     )
 
     reset_guard_rules_use_case = providers.Factory(
         ResetGuardRulesUseCase,
+        audit=audit_recorder,
         repo=guard_rules_config_repository,
     )
 
@@ -2386,6 +2450,8 @@ class Container(containers.DeclarativeContainer):
     send_message_use_case = providers.Factory(
         SendMessageUseCase,
         agent_service=agent_service,
+        direct_retrieval_service=direct_retrieval_service,
+        config_fingerprint=config_fingerprint_service,
         conversation_repository=conversation_repository,
         bot_repository=bot_repository,
         history_strategy=history_strategy,
@@ -2495,6 +2561,7 @@ class Container(containers.DeclarativeContainer):
 
     update_system_prompts_use_case = providers.Factory(
         UpdateSystemPromptsUseCase,
+        audit=audit_recorder,
         system_prompt_config_repository=system_prompt_config_repository,
     )
 
@@ -2525,6 +2592,8 @@ class Container(containers.DeclarativeContainer):
     handle_webhook_use_case = providers.Factory(
         HandleWebhookUseCase,
         agent_service=agent_service,
+        direct_retrieval_service=direct_retrieval_service,
+        config_fingerprint=config_fingerprint_service,
         bot_repository=bot_repository,
         line_service_factory=line_messaging_service_factory,
         event_deduplicator=line_webhook_event_deduplicator,

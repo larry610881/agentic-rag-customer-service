@@ -32,6 +32,7 @@ import {
   Wallet,
   TrendingUp,
   Inbox,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -109,6 +110,7 @@ const systemAdminGroups: NavGroup[] = [
       { href: "/admin/diagnostic-rules", label: "診斷規則", icon: Stethoscope },
       { href: "/admin/rate-limits", label: "速率限制", icon: Gauge },
       { href: "/admin/error-events", label: "錯誤追蹤", icon: AlertTriangle },
+      { href: "/admin/audit-logs", label: "稽核紀錄", icon: ClipboardList },
     ],
   },
   {

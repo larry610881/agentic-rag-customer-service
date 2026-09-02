@@ -51,6 +51,7 @@ async def update_system_prompts(
     config = await use_case.execute(
         UpdateSystemPromptsCommand(
             system_prompt=body.system_prompt,
+            actor_user_id=tenant.user_id,
         )
     )
     return SystemPromptConfigResponse(

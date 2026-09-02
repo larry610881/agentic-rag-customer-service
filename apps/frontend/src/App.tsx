@@ -68,6 +68,7 @@ const AdminRateLimitsPage = lazyWithRetry(() => import("@/pages/admin-rate-limit
 const AdminLogRetentionPage = lazyWithRetry(() => import("@/pages/admin-log-retention"));
 const AdminErrorEventsPage = lazyWithRetry(() => import("@/pages/admin-error-events"));
 const AdminNotificationChannelsPage = lazyWithRetry(() => import("@/pages/admin-notification-channels"));
+const AdminAuditLogsPage = lazyWithRetry(() => import("@/pages/admin-audit-logs"));
 const AdminPromptOptimizerPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer"));
 const AdminPromptOptimizerStartPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-start"));
 const AdminPromptOptimizerDatasetsPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-datasets"));
@@ -251,6 +252,10 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_NOTIFICATION_CHANNELS}
               element={<AdminNotificationChannelsPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_AUDIT_LOGS}
+              element={<AdminAuditLogsPage />}
             />
             <Route
               path={ROUTES.ADMIN_PROMPT_OPTIMIZER}

@@ -119,6 +119,9 @@ def _widget_should_forward(
     if etype == "config_version":
         captured["config_version_id"] = event.get("config_version_id")
         return False
+    if etype == "config_hash":
+        captured["config_hash"] = event.get("config_hash")
+        return False
     if etype == "guard_blocked":
         return False
     if etype == "message_id":
@@ -265,6 +268,7 @@ async def widget_chat_stream(
                         bot_id=bot.id.value,
                         message_id=captured.get("message_id"),  # H8
                         config_version_id=captured.get("config_version_id"),  # H8
+                        config_hash=captured.get("config_hash"),
                     )
                 except Exception:
                     logger.exception("widget.chat.stream.record_usage_error")

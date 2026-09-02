@@ -38,6 +38,27 @@ CREATE TABLE public._applied_migrations (
 -- Name: agent_execution_traces; Type: TABLE; Schema: public; Owner: -
 --
 
+CREATE TABLE public.config_snapshots (
+    hash character varying(64) NOT NULL,
+    snapshot json NOT NULL,
+    snapshot_schema integer DEFAULT 1 NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+CREATE TABLE public.audit_logs (
+    id character varying(36) NOT NULL,
+    tenant_id character varying(36),
+    actor_user_id character varying(36),
+    entity_type character varying(40) NOT NULL,
+    entity_id character varying(100) NOT NULL,
+    action character varying(20) NOT NULL,
+    changed_fields json,
+    source character varying(20) DEFAULT 'api'::character varying NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
 CREATE TABLE public.agent_execution_traces (
     id character varying(36) NOT NULL,
     trace_id character varying(36) NOT NULL,
@@ -53,7 +74,8 @@ CREATE TABLE public.agent_execution_traces (
     llm_model character varying(100) DEFAULT ''::character varying NOT NULL,
     llm_provider character varying(50) DEFAULT ''::character varying NOT NULL,
     bot_id character varying(36) DEFAULT NULL::character varying,
-    outcome character varying(20)
+    outcome character varying(20),
+    config_hash character varying(64)
 );
 
 
@@ -825,7 +847,8 @@ CREATE TABLE public.token_usage_records (
     cost_recalc_at timestamp with time zone,
     kb_id character varying(36),
     run_id character varying(36),
-    config_version_id character varying(36)
+    config_version_id character varying(36),
+    config_hash character varying(64)
 );
 
 
@@ -1849,3 +1872,13 @@ ALTER TABLE ONLY public.prompt_gate_runs
 ALTER TABLE ONLY public.bot_config_versions
     ADD CONSTRAINT bot_config_versions_bot_id_fkey
     FOREIGN KEY (bot_id) REFERENCES public.bots(id) ON DELETE CASCADE;
+
+
+-- Issue #60 — config_snapshots / audit_logs 主鍵與索引
+ALTER TABLE ONLY public.config_snapshots
+    ADD CONSTRAINT config_snapshots_pkey PRIMARY KEY (hash);
+ALTER TABLE ONLY public.audit_logs
+    ADD CONSTRAINT audit_logs_pkey PRIMARY KEY (id);
+CREATE INDEX ix_audit_logs_entity ON public.audit_logs USING btree (entity_type, entity_id, created_at);
+CREATE INDEX ix_audit_logs_tenant_created ON public.audit_logs USING btree (tenant_id, created_at);
+CREATE INDEX ix_agent_execution_traces_bot_config_hash ON public.agent_execution_traces USING btree (bot_id, config_hash);

@@ -348,4 +348,33 @@ export const API_ENDPOINTS = {
     run: (runId: string) => `/api/v1/prompt-gate/runs/${runId}`,
     estimate: (botId: string) => `/api/v1/bots/${botId}/prompt-gate/estimate`,
   },
+  // Issue #60 — 生效設定快照 / bot 設定時間軸 / 稽核紀錄
+  configSnapshots: {
+    detail: (hash: string) =>
+      `/api/v1/config-snapshots/${encodeURIComponent(hash)}`,
+    diff: (a: string, b: string) => {
+      const qs = new URLSearchParams({ a, b });
+      return `/api/v1/config-snapshots/diff?${qs.toString()}`;
+    },
+    botTimeline: (botId: string, limit = 50) =>
+      `/api/v1/bots/${botId}/config-timeline?limit=${limit}`,
+  },
+  auditLogs: {
+    list: (params: {
+      tenant_id?: string;
+      entity_type?: string;
+      entity_id?: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const qs = new URLSearchParams();
+      if (params.tenant_id) qs.set("tenant_id", params.tenant_id);
+      if (params.entity_type) qs.set("entity_type", params.entity_type);
+      if (params.entity_id) qs.set("entity_id", params.entity_id);
+      if (params.limit !== undefined) qs.set("limit", String(params.limit));
+      if (params.offset !== undefined) qs.set("offset", String(params.offset));
+      const q = qs.toString();
+      return `/api/v1/audit-logs${q ? `?${q}` : ""}`;
+    },
+  },
 } as const;

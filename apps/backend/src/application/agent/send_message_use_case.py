@@ -132,6 +132,8 @@ class SendMessageUseCase:
         conversation_repository: ConversationRepository,
         bot_repository: BotRepository | None = None,
         history_strategy: ConversationHistoryStrategy | None = None,
+        config_fingerprint: Any | None = None,
+        direct_retrieval_service: Any | None = None,
         debug: bool = False,
         system_prompt_config_repository: SystemPromptConfigRepository | None = None,
         trace_session_factory: Any | None = None,
@@ -151,6 +153,10 @@ class SendMessageUseCase:
         self._conversation_repo = conversation_repository
         self._bot_repo = bot_repository
         self._history_strategy = history_strategy
+        # Issue #60：有效設定指紋紀錄器（None 時不打標）
+        self._config_fingerprint = config_fingerprint
+        # Issue #61：快速道共用服務（channel-parity：web / widget 與 LINE 同一份）
+        self._direct_retrieval = direct_retrieval_service
         self._debug = debug
         self._trace_session_factory = trace_session_factory
         self._sys_prompt_repo = system_prompt_config_repository
@@ -355,9 +361,12 @@ class SendMessageUseCase:
 
         # Resolve prompt overrides: Bot → SystemPromptConfig → Seed
         resolved_system_prompt = ""
+        cfg["_platform_prompt_fallback"] = False
         if self._sys_prompt_repo:
             sys_cfg = await self._sys_prompt_repo.get()
             resolved_system_prompt = bot.base_prompt or sys_cfg.system_prompt
+            # Issue #60：bot 未設 base_prompt 時靜默 fallback 到平台 prompt，鑑識要看得到
+            cfg["_platform_prompt_fallback"] = not bool(bot.base_prompt)
 
         # Pre-assemble the full system prompt (agent services use it directly)
         cfg["system_prompt"] = assemble_prompt(
@@ -674,6 +683,12 @@ class SendMessageUseCase:
             )
 
         # Stash for agent trace node（process_message 會讀並加到 AgentTraceCollector）
+        # Issue #61：快速道旗標與分類器改寫查詢，供 _apply_fast_lane 使用
+        cfg["_direct_retrieval"] = bool(
+            getattr(matched, "direct_retrieval", False)
+        )
+        cfg["_retrieval_query"] = getattr(outcome, "query", "") or ""
+
         cfg["_worker_matched_info"] = {
             "name": matched.name,
             "llm_model": matched.llm_model or "",
@@ -779,6 +794,12 @@ class SendMessageUseCase:
             test_mode=command.test_mode,  # M14：影子執行不記生產分類 token
         )
 
+        # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）
+        config_hash = await self._fingerprint_config(command, bot_cfg)
+
+        # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
+        bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
+
         # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型
         attack_block = await self._check_classifier_attack(
             command, conversation, bot_cfg
@@ -812,6 +833,8 @@ class SendMessageUseCase:
             bot_id=bot_cfg.get("bot_id", ""),
         )
         latency_ms = int((time.perf_counter() - t0) * 1000)
+        if fast_plan is not None and not response.sources:
+            response.sources = list(fast_plan.sources)
 
         retrieved_chunks = (
             [s.to_dict() for s in response.sources]
@@ -888,6 +911,7 @@ class SendMessageUseCase:
         response.config_version_id = await self._resolve_current_version_id(
             command.bot_id
         )
+        response.config_hash = config_hash
 
         # Fire-and-forget: memory extraction
         await self._fire_memory_extraction(command, bot_cfg, conversation)
@@ -1034,6 +1058,12 @@ class SendMessageUseCase:
             test_mode=command.test_mode,  # M14：影子執行不記生產分類 token
         )
 
+        # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）
+        config_hash = await self._fingerprint_config(command, bot_cfg)
+
+        # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
+        bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
+
         # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型。
         # widget 端由 router 過濾 guard_blocked 事件（H7），只收到固定文案。
         if bot_cfg.get("_classifier_attack") and self._prompt_guard:
@@ -1138,6 +1168,12 @@ class SendMessageUseCase:
             if event["type"] == "sources" and not bot_cfg["show_sources"]:
                 continue
             yield event
+        if fast_plan is not None and not sources_list:
+            sources_list = [
+                src.to_dict() if hasattr(src, "to_dict") else src
+                for src in fast_plan.sources
+            ]
+            yield {"type": "sources", "sources": sources_list}
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
         # ── Prompt Guard: output check on accumulated answer (Option B) ──
@@ -1228,6 +1264,8 @@ class SendMessageUseCase:
                     "type": "config_version",
                     "config_version_id": cv_id,
                 }
+            if config_hash:
+                yield {"type": "config_hash", "config_hash": config_hash}
         yield {
             "type": "conversation_id",
             "conversation_id": conversation.id.value,
@@ -1349,6 +1387,92 @@ class SendMessageUseCase:
             trace_nodes=g_nodes if command.test_mode else None,
         )
 
+    async def _apply_fast_lane(
+        self, command: SendMessageCommand, bot_cfg: dict[str, Any]
+    ) -> tuple[dict[str, Any], Any | None]:
+        """Issue #61：命中 direct_retrieval worker 時走共用快速道。
+
+        回 (bot_cfg', plan)：plan 非 None 表示以快速道 prompt + 工具集單次生成；
+        None 表示維持完整 ReAct（未開啟 / 未過門檻 / 異常）。
+        """
+        if self._direct_retrieval is None or not bot_cfg.get("_direct_retrieval"):
+            return bot_cfg, None
+        bot_entity = bot_cfg.get("_bot")
+        if bot_entity is None or not bot_cfg.get("kb_ids"):
+            return bot_cfg, None
+        plan = await self._direct_retrieval.plan(
+            tenant_id=command.tenant_id,
+            bot=bot_entity,
+            kb_id=bot_cfg.get("kb_id", ""),
+            kb_ids=list(bot_cfg.get("kb_ids") or []),
+            system_prompt=bot_cfg.get("system_prompt"),
+            enabled_tools=bot_cfg.get("enabled_tools"),
+            tool_rag_params=bot_cfg.get("tool_rag_params"),
+            user_message=command.message,
+            retrieval_query=bot_cfg.get("_retrieval_query", ""),
+        )
+        if plan is None:
+            return bot_cfg, None
+        fast_cfg = {
+            **bot_cfg,
+            "system_prompt": plan.system_prompt,
+            "enabled_tools": plan.enabled_tools,
+            "max_tool_calls": plan.max_tool_calls,
+            "mcp_servers": [],
+        }
+        return fast_cfg, plan
+
+    async def _fingerprint_config(
+        self, command: SendMessageCommand, bot_cfg: dict[str, Any]
+    ) -> str | None:
+        """Issue #60：以解析後的有效設定算指紋，掛到 trace；fail-open。"""
+        if self._config_fingerprint is None:
+            return None
+        try:
+            from src.domain.observability.effective_config import EffectiveConfig
+
+            guard = None
+            if self._prompt_guard is not None and hasattr(
+                self._prompt_guard, "rules_snapshot"
+            ):
+                snap = await self._prompt_guard.rules_snapshot()
+                guard = snap if isinstance(snap, dict) else None
+            worker = bot_cfg.get("_worker_matched_info") or {}
+            effective = EffectiveConfig(
+                channel=command.identity_source or "web",
+                bot_id=command.bot_id or "",
+                system_prompt=bot_cfg.get("system_prompt") or "",
+                platform_prompt_fallback=bool(
+                    bot_cfg.get("_platform_prompt_fallback", False)
+                ),
+                worker_name=(
+                    str(worker.get("name", "")) if isinstance(worker, dict) else ""
+                ),
+                llm_provider=str(bot_cfg.get("llm_provider") or ""),
+                llm_model=str(bot_cfg.get("llm_model") or ""),
+                router_model=str(bot_cfg.get("router_model") or ""),
+                llm_params=bot_cfg.get("llm_params") or {},
+                retrieval={
+                    "modes": list(bot_cfg.get("rag_retrieval_modes") or ["raw"]),
+                    "rerank_enabled": bool(bot_cfg.get("rerank_enabled", False)),
+                    "rerank_model": bot_cfg.get("rerank_model") or "",
+                    "rerank_top_n": bot_cfg.get("rerank_top_n"),
+                    "query_rewrite_model": bot_cfg.get("query_rewrite_model") or "",
+                    "hyde_model": bot_cfg.get("hyde_model") or "",
+                    "kb_ids": list(bot_cfg.get("kb_ids") or []),
+                },
+                enabled_tools=bot_cfg.get("enabled_tools"),
+                max_tool_calls=int(bot_cfg.get("max_tool_calls") or 0),
+                guard=guard,
+                memory_enabled=bool(bot_cfg.get("memory_enabled", False)),
+            )
+            config_hash = str(await self._config_fingerprint.record(effective))
+            AgentTraceCollector.set_config_hash(config_hash)
+            return config_hash
+        except Exception:
+            logger.warning("config_fingerprint.failed", exc_info=True)
+            return None
+
     async def _resolve_current_version_id(
         self, bot_id: str | None
     ) -> str | None:
@@ -1442,6 +1566,7 @@ class SendMessageUseCase:
                 total_ms=trace.total_ms,
                 total_tokens=trace.total_tokens,
                 outcome=outcome,
+                config_hash=trace.config_hash,
             )
             async with session_factory() as session:
                 session.add(row)

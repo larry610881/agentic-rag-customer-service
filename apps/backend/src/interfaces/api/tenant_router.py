@@ -172,7 +172,7 @@ async def get_tenant(
 async def update_tenant_config(
     tenant_id: str,
     body: UpdateTenantConfigRequest,
-    _: CurrentTenant = Depends(require_role("system_admin")),
+    actor: CurrentTenant = Depends(require_role("system_admin")),
     use_case: UpdateTenantUseCase = Depends(
         Provide[Container.update_tenant_use_case]
     ),
@@ -181,7 +181,7 @@ async def update_tenant_config(
     # 只把 client 顯式傳入的欄位放進 command，未傳者維持 _UNSET sentinel，
     # 讓 UpdateTenantUseCase 能正確保留 / 重置欄位。
     fields_set = body.model_fields_set
-    cmd_kwargs: dict = {"tenant_id": tenant_id}
+    cmd_kwargs: dict = {"tenant_id": tenant_id, "actor_user_id": actor.user_id}
     if "plan" in fields_set:
         cmd_kwargs["plan"] = body.plan
     if "monthly_token_limit" in fields_set:

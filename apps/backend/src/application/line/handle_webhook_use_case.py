@@ -188,6 +188,8 @@ class HandleWebhookUseCase:
         tenant_repository: Any | None = None,
         encryption_service: Any | None = None,
         event_deduplicator: Any | None = None,
+        config_fingerprint: Any | None = None,
+        direct_retrieval_service: Any | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -223,6 +225,19 @@ class HandleWebhookUseCase:
         # Issue #58：webhookEventId 去重（LINE redelivery 重送 → 不重複打 LLM / 寫入）。
         # 通路協定層的關注點，留在 LINE 轉接器；None 時不去重（舊行為）。
         self._deduplicator = event_deduplicator
+        # Issue #60：有效設定指紋紀錄器（None 時不打標）
+        self._config_fingerprint = config_fingerprint
+        # Issue #61：快速道抽成共用服務；未注入但有 query_rag 時就地建構（向後相容）
+        if direct_retrieval_service is None and query_rag_use_case is not None:
+            from src.application.agent.direct_retrieval_service import (
+                DirectRetrievalService,
+            )
+
+            direct_retrieval_service = DirectRetrievalService(
+                query_rag_use_case=query_rag_use_case,
+                dm_image_query_tool=dm_image_query_tool,
+            )
+        self._direct_retrieval = direct_retrieval_service
 
     async def _dedupe_events(self, events: list[_E]) -> list[_E]:
         """過濾已認領（重送）的事件；無 webhook_event_id 的事件一律保留。"""
@@ -443,168 +458,25 @@ class HandleWebhookUseCase:
         tool_rag_params: dict | None = None,
         retrieval_query: str = "",
     ) -> "AgentResponse | None":
-        """Issue #50 workflow 快速道：直接檢索 → 門檻判定 → 單次生成。
+        """Issue #50 workflow 快速道（Issue #61 起委派共用 DirectRetrievalService）。
 
         回傳 None 代表升級完整 ReAct（檢索 0 筆 / 低分 / 異常）。
-        設計依據：67 筆實測中 FAQ 型 worker 15/16 必查且查詢詞≈原文，
-        ReAct 決策輪（~2s）對這類 worker 是冗餘 — 意圖分類已回答「要不要查」。
-
-        Issue #51：「查詢詞≈原文」對 follow-up 短句（「價格呢」）不成立 —
-        檢索改用意圖分類同步產出的上下文改寫查詢 retrieval_query，
-        缺失時退回原文。生成端 history_context 不受影響。
         """
-        from src.application.rag.query_rag_use_case import QueryRAGCommand
-        from src.infrastructure.observability.agent_trace_collector import (
-            AgentTraceCollector,
-        )
-
-        threshold = bot.llm_params.rag_score_threshold
-        search_query = (retrieval_query or "").strip() or event.message_text
-        t_dr = AgentTraceCollector.offset_ms()
-
-        # DM 圖卡（POC 問題：快速道 v1 漏掉 DM 工具 → 圖卡消失）：
-        # 與文字檢索「並行」呼叫 DM 工具本體 — image_url 是文件表查詢 +
-        # signed URL 產生的結果，不在向量 payload，必須走工具而非併庫檢索
-        dm_task = None
-        dm_enabled = (
-            self._dm_tool is not None
-            and "query_dm_with_image" in (enabled_tools or [])
-        )
-        if dm_enabled:
-            dm_params = (tool_rag_params or {}).get(
-                "query_dm_with_image", {}
-            ) or {}
-            dm_kb_ids = dm_params.get("kb_ids") or kb_ids
-            dm_task = asyncio.create_task(self._dm_tool.invoke(
-                tenant_id=bot.tenant_id,
-                kb_id=dm_kb_ids[0] if dm_kb_ids else kb_id,
-                query=search_query,
-                kb_ids=dm_kb_ids,
-                top_k=dm_params.get("rag_top_k")
-                or bot.llm_params.rag_top_k,
-                score_threshold=dm_params.get("rag_score_threshold")
-                or threshold,
-            ))
-
-        # M16：快速道文字檢索原本只用 bot 全域 top_k/threshold，忽略 worker 為
-        # rag_query 設的 per-tool RAG 參數（DM 工具有讀、rag_query 沒讀）→ 快速道與
-        # 升級後的完整 ReAct 路徑檢索結果不一致。改為讀 tool_rag_params["rag_query"]，
-        # 缺時退回 bot 全域。
-        rq = (tool_rag_params or {}).get("rag_query", {}) or {}
-        rq_kb_ids = rq.get("kb_ids") or kb_ids
-        rr = None
-        if rr is None:
-            try:
-                rr = await self._query_rag.retrieve(QueryRAGCommand(
-                    tenant_id=bot.tenant_id,
-                    kb_id=(rq_kb_ids[0] if rq_kb_ids else kb_id),
-                    query=search_query,
-                    top_k=rq.get("rag_top_k") or bot.llm_params.rag_top_k,
-                    score_threshold=(
-                        rq.get("rag_score_threshold")
-                        if rq.get("rag_score_threshold") is not None
-                        else threshold
-                    ),
-                    kb_ids=rq_kb_ids,
-                    rerank_enabled=(
-                        rq.get("rerank_enabled")
-                        if rq.get("rerank_enabled") is not None
-                        else bot.rerank_enabled
-                    ),
-                    rerank_model=rq.get("rerank_model") or bot.rerank_model,
-                    rerank_top_n=rq.get("rerank_top_n") or bot.rerank_top_n,
-                ))
-            except Exception:
-                logger.warning("line.direct_retrieval.error", exc_info=True)
-                if dm_task is not None:
-                    dm_task.cancel()
-                AgentTraceCollector.add_node(
-                    node_type="escalated",
-                    label="快速道檢索異常 → 升級 ReAct",
-                    parent_id=None,
-                    start_ms=t_dr,
-                    end_ms=AgentTraceCollector.offset_ms(),
-                    reason="retrieval_error",
-                )
-                return None
-
-        # 收斂 DM 結果（失敗不升級 — 文字檢索可能已足夠回答）
-        dm_context = ""
-        dm_sources: list[dict] = []
-        if dm_task is not None:
-            try:
-                dm_res = await dm_task
-                if dm_res and dm_res.get("success"):
-                    dm_context = dm_res.get("context") or ""
-                    dm_sources = dm_res.get("sources") or []
-            except Exception:
-                logger.warning(
-                    "line.direct_retrieval.dm_error", exc_info=True
-                )
-
-        dm_top = max(
-            (float(d.get("score") or 0.0) for d in dm_sources),
-            default=0.0,
-        )
-        top_score = max(
-            max((s.score for s in rr.sources), default=0.0), dm_top
-        )
-        AgentTraceCollector.add_node(
-            node_type="direct_retrieval",
-            label=f"快速道檢索（{len(rr.sources)} 筆，top {top_score:.2f}）",
-            parent_id=None,
-            start_ms=t_dr,
-            end_ms=AgentTraceCollector.offset_ms(),
-            chunk_count=len(rr.sources),
-            top_score=round(top_score, 4),
-            search_query=search_query,
-            query_rewritten=search_query != event.message_text,
-        )
-        if not rr.sources or top_score < threshold:
-            AgentTraceCollector.add_node(
-                node_type="escalated",
-                label="檢索未過門檻 → 升級 ReAct",
-                parent_id=None,
-                start_ms=AgentTraceCollector.offset_ms(),
-                end_ms=AgentTraceCollector.offset_ms(),
-                reason="low_score",
-                top_score=round(top_score, 4),
-            )
+        if self._direct_retrieval is None:
             return None
-
-        # 檢索結果注入 system prompt（KB 內容，非使用者輸入；與 ReAct
-        # tool result 進入 model context 為同等暴露面），截斷防 token 爆量
-        context_block = "\n\n---\n\n".join(
-            c for c in rr.chunks if c
-        )[:8000]
-        if dm_context:
-            context_block += (
-                "\n\n【DM 型錄相關內容】\n" + dm_context[:4000]
-            )
-        # 轉真人工具保留（Larry 實測「多少門市」案例：worker prompt 教
-        # 模型查不到就呼叫 transfer_to_human_agent，快速道拔光工具後
-        # 模型把工具名稱當文字裸吐）。正常回答仍是 1 次呼叫（不呼叫工具
-        # 即結束）；答不出來時可真正轉真人 → 聯絡按鈕與 ReAct 一致
-        fast_tools = (
-            ["transfer_to_human_agent"]
-            if "transfer_to_human_agent" in (enabled_tools or [])
-            else []
+        plan = await self._direct_retrieval.plan(
+            tenant_id=bot.tenant_id,
+            bot=bot,
+            kb_id=kb_id,
+            kb_ids=kb_ids,
+            system_prompt=system_prompt,
+            enabled_tools=enabled_tools,
+            tool_rag_params=tool_rag_params,
+            user_message=event.message_text,
+            retrieval_query=retrieval_query,
         )
-        fast_prompt = (
-            (system_prompt or "")
-            + "\n\n【知識庫檢索結果（依相關度排序）】\n"
-            + context_block
-            + "\n【檢索結果結束】\n"
-            + "請依上述檢索結果回答使用者問題；"
-            + "結果未涵蓋時誠實告知並引導聯絡客服，禁止編造。"
-            + (
-                "檢索工具已由系統代為執行完畢，"
-                "除 transfer_to_human_agent（轉真人）外無其他可用工具；"
-                if fast_tools
-                else "本回覆模式下無任何可用工具；"
-            )
-            + "嚴禁在回覆文字中輸出任何工具名稱。"
-        )
+        if plan is None:
+            return None
         # 快速道：無檢索工具可綁 → 正常情況恰好一次 LLM 呼叫；
         # 沿用 process_message 保留 output guard / trace / parsing 全套機制
         result = await self._agent_service.process_message(
@@ -612,25 +484,21 @@ class HandleWebhookUseCase:
             kb_id=kb_id,
             user_message=event.message_text,
             kb_ids=kb_ids,
-            system_prompt=fast_prompt,
-            enabled_tools=fast_tools,
+            system_prompt=plan.system_prompt,
+            enabled_tools=plan.enabled_tools,
             llm_params=llm_params,
             metadata=rerank_metadata,
             history=history,
             history_context=history_context,
             router_context=router_context,
-            # 轉真人工具靠這個 URL 產生聯絡卡；漏傳 → tool 回 contact=None
-            # → 有「請點下方按鈕」文字卻沒按鈕（2026-08-17「我要退費」實測）
+            # 轉真人工具靠這個 URL 產生聯絡卡；漏傳 → 有文字沒按鈕
             customer_service_url=bot.customer_service_url,
-            max_tool_calls=1,
+            max_tool_calls=plan.max_tool_calls,
             bot_id=bot.id.value,  # L9：output guard_logs 補 bot 歸因
         )
-        # 快速道的檢索來源回填（無 tool call → agent 不會帶 sources），
-        # 供 LINE 回覆的來源顯示與對話 retrieved_chunks 持久化
+        # 快速道的檢索來源回填（無 tool call → agent 不會帶 sources）
         if result is not None and not result.sources:
-            # DM sources 為 dict（含 image_url），下游 reply builder 與
-            # 持久化皆支援 dict/Source 混用（見 image_sources 組裝處註解）
-            result.sources = list(rr.sources) + list(dm_sources)
+            result.sources = list(plan.sources)
         return result
 
     @staticmethod
@@ -683,6 +551,7 @@ class HandleWebhookUseCase:
         self._pending_loading_task = loading_task
 
         t0 = time.monotonic()
+        config_hash: str | None = None
 
         # Issue #49 斷點儀表：trace 從 t0 起算。之前 collector 在
         # process_message 內才啟動，前置 ~1.4s（歷史載入/守門/意圖分類）
@@ -966,8 +835,26 @@ class HandleWebhookUseCase:
                 LINE_CHANNEL_PROMPT_SUFFIX,
             )
             system_prompt = (system_prompt or "") + LINE_CHANNEL_PROMPT_SUFFIX
+
+            # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）
+            config_hash = await self._fingerprint_config(
+                bot=bot,
+                system_prompt=system_prompt,
+                worker_name=str(
+                    (rerank_metadata.get("_worker_routing") or {}).get("name", "")
+                ),
+                llm_params=llm_params,
+                kb_ids=kb_ids,
+                enabled_tools=enabled_tools,
+                max_tool_calls=max_tool_calls,
+                direct_retrieval=direct_retrieval_worker is not None,
+            )
             result = None
-            if direct_retrieval_worker is not None and self._query_rag and kb_ids:
+            if (
+                direct_retrieval_worker is not None
+                and self._direct_retrieval is not None
+                and kb_ids
+            ):
                 # Issue #50 workflow 快速道：檢索過門檻 → 單次生成；
                 # 未過門檻 / 異常 → 回傳 None，落回下方完整 ReAct（升級）
                 result = await self._try_direct_retrieval(
@@ -1159,6 +1046,7 @@ class HandleWebhookUseCase:
                         nodes=node_dicts,
                         total_ms=trace.total_ms,
                         total_tokens=trace.total_tokens,
+                        config_hash=trace.config_hash,
                     )
                     async with self._trace_session_factory() as session:
                         session.add(row)
@@ -1172,6 +1060,7 @@ class HandleWebhookUseCase:
                     await self._record_usage.execute(
                         tenant_id=bot.tenant_id,
                         request_type="chat_line",
+                        config_hash=config_hash,
                         usage=result.usage,
                         bot_id=bot.id.value,
                         # H8：result.message_id 對 LINE 恆為 None（僅 send_message
@@ -1231,6 +1120,63 @@ class HandleWebhookUseCase:
                 results.append((alt_text, data["flex_bubble"]))
 
         return results
+
+    async def _fingerprint_config(
+        self,
+        *,
+        bot: Bot,
+        system_prompt: str,
+        worker_name: str,
+        llm_params: Any,
+        kb_ids: list[str],
+        enabled_tools: Any,
+        max_tool_calls: int,
+        direct_retrieval: bool,
+    ) -> str | None:
+        """Issue #60：LINE 通路的有效設定指紋（與 web 同一份 EffectiveConfig）。"""
+        if self._config_fingerprint is None:
+            return None
+        try:
+            from src.domain.observability.effective_config import EffectiveConfig
+            from src.infrastructure.observability.agent_trace_collector import (
+                AgentTraceCollector,
+            )
+
+            guard = None
+            if self._prompt_guard is not None and hasattr(
+                self._prompt_guard, "rules_snapshot"
+            ):
+                snap = await self._prompt_guard.rules_snapshot()
+                guard = snap if isinstance(snap, dict) else None
+            effective = EffectiveConfig(
+                channel="line",
+                bot_id=bot.id.value,
+                system_prompt=system_prompt or "",
+                platform_prompt_fallback=False,
+                worker_name=worker_name,
+                llm_provider=bot.llm_provider or "",
+                llm_model=bot.llm_model or "",
+                router_model=getattr(bot, "router_model", "") or "",
+                llm_params=llm_params if llm_params is not None else {},
+                retrieval={
+                    "modes": list(getattr(bot, "rag_retrieval_modes", None) or ["raw"]),
+                    "rerank_enabled": bool(getattr(bot, "rerank_enabled", False)),
+                    "rerank_model": getattr(bot, "rerank_model", "") or "",
+                    "kb_ids": list(kb_ids or []),
+                    "direct_retrieval": direct_retrieval,
+                },
+                enabled_tools=list(enabled_tools) if enabled_tools is not None
+                else None,
+                max_tool_calls=int(max_tool_calls or 0),
+                guard=guard,
+                memory_enabled=bool(getattr(bot, "memory_enabled", False)),
+            )
+            config_hash = str(await self._config_fingerprint.record(effective))
+            AgentTraceCollector.set_config_hash(config_hash)
+            return config_hash
+        except Exception:
+            logger.warning("config_fingerprint.failed", exc_info=True)
+            return None
 
     async def execute_for_bot(
         self,
