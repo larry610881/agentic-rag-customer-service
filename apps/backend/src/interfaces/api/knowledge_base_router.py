@@ -292,7 +292,6 @@ class UpdateCategoryRequest(BaseModel):
 
 
 @router.post("/{kb_id}/classify", status_code=status.HTTP_202_ACCEPTED)
-@inject
 async def classify_knowledge_base(
     kb_id: str,
     tenant: CurrentTenant = Depends(get_current_tenant),

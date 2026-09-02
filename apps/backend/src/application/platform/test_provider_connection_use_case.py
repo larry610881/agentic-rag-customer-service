@@ -11,6 +11,7 @@ from src.domain.shared.exceptions import EntityNotFoundError
 
 @dataclass(frozen=True)
 class TestConnectionResult:
+    __test__ = False  # 非測試類別；避免 pytest 依 Test* 命名誤收
     success: bool
     latency_ms: int
     error: str = ""

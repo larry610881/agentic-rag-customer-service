@@ -103,6 +103,7 @@ class DiscoverResponse(BaseModel):
 
 
 class TestConnectionRequest(BaseModel):
+    __test__ = False  # 非測試類別；避免 pytest 依 Test* 命名誤收
     transport: str = "http"
     url: str = ""
     command: str = ""

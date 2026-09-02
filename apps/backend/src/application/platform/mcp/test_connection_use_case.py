@@ -19,6 +19,7 @@ class McpConnectionResult:
 
 
 class TestMcpConnectionUseCase:
+    __test__ = False  # 非測試類別；避免 pytest 依 Test* 命名誤收
     async def execute(
         self,
         *,

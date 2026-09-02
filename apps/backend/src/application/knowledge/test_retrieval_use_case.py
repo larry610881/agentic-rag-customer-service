@@ -35,6 +35,7 @@ logger = get_logger(__name__)
 
 @dataclass(frozen=True)
 class TestRetrievalCommand:
+    __test__ = False  # 非測試類別；避免 pytest 依 Test* 命名誤收
     kb_id: str
     tenant_id: str
     query: str
@@ -71,6 +72,7 @@ class RetrievalHit:
 
 @dataclass
 class TestRetrievalResult:
+    __test__ = False  # 非測試類別；避免 pytest 依 Test* 命名誤收
     results: list[RetrievalHit]
     filter_expr: str
     query_vector_dim: int
@@ -96,6 +98,7 @@ def _resolve_modes(command: TestRetrievalCommand) -> list[str]:
 
 
 class TestRetrievalUseCase:
+    __test__ = False  # 非測試類別；避免 pytest 依 Test* 命名誤收
     def __init__(
         self,
         kb_repo: KnowledgeBaseRepository,

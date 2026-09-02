@@ -238,7 +238,6 @@ async def list_documents(
 
 
 @router.get("/{doc_id}/children", response_model=list[DocumentResponse])
-@inject
 async def list_children(
     kb_id: str,
     doc_id: str,

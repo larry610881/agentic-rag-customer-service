@@ -75,6 +75,8 @@ filterwarnings = [
     "ignore:The garbage collector is trying to clean up:sqlalchemy.exc.SAWarning",
     "ignore:cannot collect test class 'TestCase':pytest.PytestCollectionWarning",
     "ignore:There is no current event loop:DeprecationWarning",
+    # pytest-bdd 內部對 pytest 10 的相容警告（函式庫端，等上游修）
+    "ignore::pytest.PytestRemovedIn10Warning",
 ]
 
 [tool.ruff]
