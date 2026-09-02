@@ -209,6 +209,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await engine.dispose()
 
 
+def docs_kwargs_for_env(app_env: str) -> dict[str, str | None]:
+    """production 關閉 FastAPI 自動文件（10820 曝露）；其他環境維持預設。"""
+    if app_env == "production":
+        return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    return {
+        "docs_url": "/docs",
+        "redoc_url": "/redoc",
+        "openapi_url": "/openapi.json",
+    }
+
+
 def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     container = Container()
 
@@ -220,6 +231,8 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         title="Agentic RAG Customer Service",
         version="0.1.0",
         lifespan=lifespan,
+        # security-precheck 10820：production 不公開 /docs /redoc /openapi.json
+        **docs_kwargs_for_env(settings.app_env),
     )
 
     application.container = container  # type: ignore[attr-defined]
@@ -279,6 +292,13 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
 
     # RequestID + trace init/flush (runs before CORS & RateLimit)
     application.add_middleware(RequestIDMiddleware)
+
+    # security-precheck：安全標頭包在最外層（含 401 / 靜態檔 / 例外回應）
+    from src.interfaces.api.security_headers_middleware import (
+        SecurityHeadersMiddleware,
+    )
+
+    application.add_middleware(SecurityHeadersMiddleware)
 
     # SessionCleanupMiddleware MUST be the last add_middleware call.
     # Last added = outermost in ASGI chain = executes after all inner

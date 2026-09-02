@@ -3,7 +3,9 @@ import io
 import json
 from html.parser import HTMLParser
 from typing import Callable
-from xml.etree import ElementTree
+
+from defusedxml import ElementTree  # bandit B314：防 XXE / 實體膨脹
+from defusedxml.common import DefusedXmlException
 
 from src.domain.knowledge.services import FileParserService
 from src.domain.shared.exceptions import UnsupportedFileTypeError
@@ -79,7 +81,13 @@ class DefaultFileParserService(FileParserService):
         return text  # preserve raw JSON for record-based splitting
 
     def _parse_xml(self, raw_bytes: bytes) -> str:
-        root = ElementTree.fromstring(raw_bytes.decode("utf-8"))
+        try:
+            root = ElementTree.fromstring(raw_bytes.decode("utf-8"))
+        except DefusedXmlException as e:
+            # 不回傳原文片段，避免把攻擊 payload 帶進錯誤訊息 / log
+            raise ValueError(
+                f"XML 含不允許的宣告（{type(e).__name__}），已拒絕解析"
+            ) from None
         texts = []
         for elem in root.iter():
             if elem.text and elem.text.strip():

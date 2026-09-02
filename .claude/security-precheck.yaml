@@ -1,0 +1,25 @@
+# 資安送檢前自檢設定（security-precheck skill）；報告輸出 docs/security/（gitignore）
+targets:
+  poc:
+    base: https://agentic-rag-entoontwxa-de.a.run.app   # 公司 POC Cloud Run（allUsers 已開放）
+    openapi: /openapi.json                                # 目前對外開放（APP_ENV 非 production 時 FastAPI 預設開）
+    admin_paths: [/admin/]
+    allow_post: false                                     # 只對 GET query 做差異法注入；POST 不送 payload
+  local:
+    base: http://localhost:8000
+    openapi: /openapi.json
+    admin_paths: [/admin/]
+    allow_post: true
+auth:
+  cookie_env: PRECHECK_COOKIE      # 本專案後台為 JWT Bearer（非 cookie），登入態掃描待腳本支援 header_env
+stack:
+  server: cloudrun-uvicorn
+  db: postgres
+  ldap: false
+known_accepted:
+  - { check: "10210/10810", reason: "未登入回 401；/admin/ 為 SPA 掛載點無目錄列舉；已對應" }
+sast:
+  python: [apps/backend]
+  node: [apps/frontend, apps/widget]
+  bandit: true
+out: docs/security

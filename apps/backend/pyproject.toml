@@ -46,6 +46,7 @@ dependencies = [
     "sendgrid>=6.12.5",
     "tenacity>=8.2",
     "cachetools>=5.3",
+    "defusedxml>=0.7.1",
 ]
 
 [dependency-groups]
