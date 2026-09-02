@@ -39,6 +39,7 @@ class AgentTraceCollector:
         llm_model: str = "",
         llm_provider: str = "",
         bot_id: str | None = None,
+        t0: float | None = None,
     ) -> AgentExecutionTrace:
         # Idempotent：若 caller 已先 start（例如 use case 為了讓 guard
         # node 有 active trace），agent_service 後來再 start 一次時不該
@@ -66,7 +67,9 @@ class AgentTraceCollector:
             bot_id=bot_id,
         )
         _agent_trace.set(trace)
-        _trace_t0.set(time.monotonic())
+        # Issue #57：允許以請求邊界（例如 webhook 收到時）為 t0，讓驗簽 /
+        # bot 查詢等前置段也落在 trace 座標系內，時間軸才能對帳到 100%。
+        _trace_t0.set(t0 if t0 is not None else time.monotonic())
         logger.debug(
             "agent_trace.start",
             trace_id=trace.trace_id,
@@ -136,9 +139,26 @@ class AgentTraceCollector:
                 return
 
     @staticmethod
-    def finish(total_ms: float) -> AgentExecutionTrace | None:
-        """Finish and return the trace, then clear ContextVar."""
+    def finish(total_ms: float | None = None) -> AgentExecutionTrace | None:
+        """Finish and return the trace, then clear ContextVar.
+
+        Issue #57：``total_ms=None`` 時以 ``request`` 根節點的 end_ms 為總時長
+        （wrap_request 之後呼叫），沒有根節點則用目前 offset。
+        """
         trace = _agent_trace.get()
+        if total_ms is None:
+            root = None
+            if trace is not None:
+                root = next(
+                    (
+                        n for n in trace.nodes
+                        if n.node_type == "request" and n.parent_id is None
+                    ),
+                    None,
+                )
+            total_ms = (
+                root.end_ms if root is not None else AgentTraceCollector.offset_ms()
+            )
         _agent_trace.set(None)
         _trace_t0.set(0.0)
         _last_node_id.set("")
@@ -153,6 +173,54 @@ class AgentTraceCollector:
             node_count=len(trace.nodes),
         )
         return trace
+
+    @staticmethod
+    def wrap_request(label: str = "request") -> str:
+        """Issue #57：加一個橫跨整個請求的 ``request`` 根節點（0 → 現在），
+        並把所有原本無父節點的節點掛到它底下。回傳根節點 id；無 trace 回空字串。
+
+        時間軸視圖以此根節點的 wall clock 為分母，未被子節點覆蓋的區段即
+        「未儀表化」空隙。Idempotent：已有 request 根節點時只更新 end_ms。
+        """
+        trace = _agent_trace.get()
+        if trace is None:
+            return ""
+        now_ms = AgentTraceCollector.offset_ms()
+        existing = next(
+            (
+                n for n in trace.nodes
+                if n.node_type == "request" and n.parent_id is None
+            ),
+            None,
+        )
+        if existing is not None:
+            existing.end_ms = round(now_ms, 1)
+            existing.duration_ms = round(existing.end_ms - existing.start_ms, 1)
+            root_id = existing.node_id
+        else:
+            root_id = trace.add_node(
+                node_type="request",
+                label=label,
+                parent_id=None,
+                start_ms=0.0,
+                end_ms=now_ms,
+            )
+        for node in trace.nodes:
+            if node.node_id != root_id and node.parent_id is None:
+                node.parent_id = root_id
+        return root_id
+
+    @staticmethod
+    def span(node_type: str, label: str, start_ms: float, **metadata: Any) -> str:
+        """加一個從 start_ms 到現在的頂層節點（parent 由 wrap_request 收攏）。"""
+        return AgentTraceCollector.add_node(
+            node_type=node_type,
+            label=label,
+            parent_id=None,
+            start_ms=start_ms,
+            end_ms=AgentTraceCollector.offset_ms(),
+            **metadata,
+        )
 
     @staticmethod
     def set_tool_parent(node_id: str) -> None:

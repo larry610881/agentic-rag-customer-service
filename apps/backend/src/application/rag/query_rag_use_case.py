@@ -238,15 +238,17 @@ class QueryRAGUseCase:
         # parent_id 用 label-based 反查 — ContextVar tool_parent() 在 LLM parallel
         # tool calls 場景會被「最後一個 tool」覆蓋。
         # 用 find_last_node_by 確保 parent 永遠指向真正的 rag_query 呼叫者。
-        AgentTraceCollector.add_node(
+        now_ms = AgentTraceCollector.offset_ms()
+        retrieval_node_id = AgentTraceCollector.add_node(
             node_type="tool_result",
             label="RAG 向量搜尋",
             parent_id=(
                 AgentTraceCollector.find_last_node_by("tool_call", "rag_query")
                 or AgentTraceCollector.tool_parent()
             ),
-            start_ms=AgentTraceCollector.offset_ms() - search_ms,
-            end_ms=AgentTraceCollector.offset_ms(),
+            # Issue #57：涵蓋 embed + search 兩段，子節點各自拆出
+            start_ms=now_ms - search_ms - embed_ms,
+            end_ms=now_ms,
             result_count=len(all_results),
             top_score=round(all_results[0].score, 4) if all_results else 0,
             kb_ids=effective_kb_ids,
@@ -262,6 +264,22 @@ class QueryRAGUseCase:
                 for i, r in enumerate(all_results)
             ],
         )
+        if retrieval_node_id:
+            AgentTraceCollector.add_node(
+                node_type="embed_query", label="Embedding",
+                parent_id=retrieval_node_id,
+                start_ms=now_ms - search_ms - embed_ms,
+                end_ms=now_ms - search_ms,
+                modes=ordered_modes,
+            )
+            AgentTraceCollector.add_node(
+                node_type="vector_search", label="Milvus 搜尋",
+                parent_id=retrieval_node_id,
+                start_ms=now_ms - search_ms,
+                end_ms=now_ms,
+                searches=len(plan),
+                kb_ids=effective_kb_ids,
+            )
 
         # 5. Rerank if enabled — 用 raw query 作 rerank judge
         # （rerank LLM 看的是「使用者真正想問什麼」，不是改寫過或假答案）

@@ -1,20 +1,11 @@
-import { useMemo } from "react";
 import { ArrowLeft, Clock, Cpu, Layers } from "lucide-react";
 import { formatDateTime } from "@/lib/format-date";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentTraceGraph } from "./agent-trace-graph";
-import type { AgentExecutionTrace, ExecutionNode } from "@/types/agent-trace";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+import { TraceTimeline } from "./trace-timeline";
+import type { AgentExecutionTrace } from "@/types/agent-trace";
 
 const MODE_LABELS: Record<string, string> = {
   react: "ReAct",
@@ -22,81 +13,18 @@ const MODE_LABELS: Record<string, string> = {
   meta_supervisor: "Meta Supervisor",
 };
 
-const NODE_TYPE_COLORS: Record<string, string> = {
-  user_input: "#94a3b8",
-  agent_llm: "#3b82f6",
-  tool_call: "#10b981",
-  tool_result: "#10b981",
-  supervisor_dispatch: "#a855f7",
-  meta_router: "#f59e0b",
-  worker_execution: "#6366f1",
-  final_response: "#22c55e",
-  router: "#f59e0b",
-};
-
-function WaterfallChart({ nodes }: { nodes: ExecutionNode[] }) {
-  const data = useMemo(() => {
-    return nodes
-      .filter((n) => n.duration_ms > 0)
-      .map((n) => ({
-        name: n.label.length > 20 ? n.label.slice(0, 20) + "..." : n.label,
-        start: n.start_ms,
-        duration: n.duration_ms,
-        nodeType: n.node_type,
-        fullLabel: n.label,
-      }));
-  }, [nodes]);
-
-  if (data.length === 0) {
-    return (
-      <div className="flex h-64 items-center justify-center text-muted-foreground">
-        沒有時間資料
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-[400px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={data}
-          layout="vertical"
-          margin={{ top: 10, right: 30, left: 120, bottom: 10 }}
-        >
-          <XAxis
-            type="number"
-            domain={[0, "dataMax"]}
-            tickFormatter={(v: number) => `${v.toFixed(0)}ms`}
-          />
-          <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 12 }} />
-          <Tooltip
-            formatter={(value: number | undefined) => [
-              `${(value ?? 0).toFixed(0)}ms`,
-            ]}
-            labelFormatter={() => ""}
-          />
-          {/* Invisible bar for offset (start position) */}
-          <Bar dataKey="start" stackId="a" fill="transparent" />
-          <Bar dataKey="duration" stackId="a" radius={[0, 4, 4, 0]}>
-            {data.map((entry, index) => (
-              <Cell
-                key={index}
-                fill={NODE_TYPE_COLORS[entry.nodeType] ?? "#94a3b8"}
-              />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
 type AgentTraceDetailProps = {
   trace: AgentExecutionTrace;
   onBack: () => void;
+  /** 時間軸點擊節點時回呼（頁面目前沒有節點選取狀態，保留擴充點） */
+  onSelectNode?: (nodeId: string) => void;
 };
 
-export function AgentTraceDetail({ trace, onBack }: AgentTraceDetailProps) {
+export function AgentTraceDetail({
+  trace,
+  onBack,
+  onSelectNode,
+}: AgentTraceDetailProps) {
   const nodeCount = trace.nodes?.length ?? 0;
   const toolNodes = (trace.nodes ?? []).filter(
     (n) => n.node_type === "tool_call",
@@ -147,7 +75,7 @@ export function AgentTraceDetail({ trace, onBack }: AgentTraceDetailProps) {
         </span>
       </div>
 
-      {/* Tabs: Graph / Timeline */}
+      {/* Tabs: DAG（預設）/ 時間軸（Issue #57 waterfall） */}
       <Tabs defaultValue="graph">
         <TabsList>
           <TabsTrigger value="graph">節點圖</TabsTrigger>
@@ -157,7 +85,11 @@ export function AgentTraceDetail({ trace, onBack }: AgentTraceDetailProps) {
           <AgentTraceGraph execNodes={trace.nodes ?? []} />
         </TabsContent>
         <TabsContent value="timeline" className="pt-2">
-          <WaterfallChart nodes={trace.nodes ?? []} />
+          <TraceTimeline
+            nodes={trace.nodes ?? []}
+            totalMs={trace.total_ms}
+            onSelectNode={onSelectNode}
+          />
         </TabsContent>
       </Tabs>
     </div>

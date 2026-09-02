@@ -7,6 +7,46 @@
 
 ---
 
+## Trace 時間軸 — 「請求邊界根節點」讓瀑布圖可對帳到 100%（2026-09-02，Issue #57）
+
+**Sprint 來源**：後台 DAG 只回答「誰呼叫誰」，看不出單一請求的時間分配。實作
+瀑布圖（每節點一列、橫軸時間、並行節點相鄰列重疊、父列以子段呈現）。
+
+**主題**：trace 起點放在請求邊界、根節點作為占比分母、並行占比不相加、
+未儀表化空隙顯性化、前後端分工只靠既有節點欄位
+
+#### 做得好的地方
+- **零 schema 變更**：`ExecutionNode` 早就有 `start_ms/end_ms/parent_id`，瀑布圖純粹是
+  前端新視圖 + 後端多幾個節點。`wrap_request()` 在 finish 前補一個 `request` 根節點
+  並把孤兒節點收攏，`finish(total_ms=None)` 改以根節點 end_ms 為總時長——total 與
+  根節點永遠一致，占比分母唯一。
+- **起點移到請求邊界**：LINE 用 `WebhookContext.received_monotonic` 讓 `bot_load` /
+  `webhook_verify` 出現在 trace 座標系；web 把 `start()` 提到 use case 進入點，
+  `conversation_load` / `bot_load` / `history_load` / `persist` 各成節點。這是 #49 留下的
+  教訓「collector 起點要在 request 邊界」的最終落地。
+- **LINE finish 搬到 reply 之後**：原本 trace 在 reply 前就 finish，`reply_push` 與
+  `persist` 天生不可見。搬動時保留 `finally` 語意（reply 失敗仍持久化）。
+- **檢索拆子節點不改父節點語意**：`tool_result` 仍是一顆，`embed_query` / `vector_search`
+  掛在它底下，DAG 看到的樹形不變、瀑布圖多兩段。
+- **前端把「並行不相加」做進 layout 純函式**：占比 = 節點 duration / 根節點 wall clock，
+  關鍵路徑 = 重疊群內最長者遞迴；14 個 layout 測試鎖住這些規則，元件只負責畫。
+
+#### 潛在隱憂
+- **總時長語意改變**：`total_ms` 從「LLM 段」變成「含 reply 推送與持久化的 wall clock」，
+  舊 trace 與新 trace 的 total 不可直接比較；延遲報表（#63）要以 `request` 根節點存在
+  與否分群 → 優先級：中。
+- **web 的 `persist` 節點只涵蓋對話存檔**，trace 自身的 INSERT 不在內（先有雞還是先有蛋）；
+  LINE 同樣。這段通常 <20ms，接受 → 優先級：低。
+- **`_process_single_event` 複雜度 42**：儀表點讓它更長。快速道抽共用（#61）時應順手
+  拆 `_reply_and_persist()` → 優先級：中。
+
+#### 延伸學習
+- **Span 模型的兩個不變式**：子節點時間區間 ⊆ 父節點；根節點 = wall clock。違反任一
+  就會出現 >100% 或負空隙。搜尋 "OpenTelemetry span parent-child timing invariants"、
+  "critical path analysis distributed tracing"。
+
+---
+
 ## 線上 LLM 自評下線 — 「從未跑成功的功能」與記帳漏洞的系統性補課（2026-09-02，Issue #59）
 
 **Sprint 來源**：09-02 審計機制盤點發現 `rag_evaluations` 從未寫入過一列：worker 的

@@ -73,6 +73,11 @@ class WebhookContext:
     line_service: LineMessagingService
     events: list[LineTextMessageEvent] = field(default_factory=list)
     postback_events: list[LinePostbackEvent] = field(default_factory=list)
+    # Issue #57：請求邊界計時（monotonic 秒 / 相對 received 的毫秒偏移），
+    # 讓 trace 從 webhook 收到起算，bot 查詢與驗簽成為可見節點。
+    received_monotonic: float = 0.0
+    bot_load_end_ms: float = 0.0
+    verify_end_ms: float = 0.0
 
 
 def _bot_to_json(bot: Bot, encryption: Any | None = None) -> str:
@@ -344,6 +349,7 @@ class HandleWebhookUseCase:
         signature: str,
     ) -> "WebhookContext | None":
         """Bot 查詢 → 驗簽 → 解析事件。回傳 context 供後續處理。"""
+        received = time.monotonic()
         # M15：查驗失敗改拋 DomainException，讓 router 映射為 404/403 而非 500
         # （假簽章不應回 500 引發 LINE redelivery，也不應被 500 掩蓋成伺服器錯誤）。
         bot = await self._get_bot_by_short_code_cached(short_code)
@@ -365,8 +371,10 @@ class HandleWebhookUseCase:
             bot.line_channel_access_token or "",
         )
 
+        bot_load_end_ms = (time.monotonic() - received) * 1000
         if not await line_service.verify_signature(body_text, signature):
             raise AuthorizationError("Invalid LINE webhook signature")
+        verify_end_ms = (time.monotonic() - received) * 1000
 
         # Issue #58：驗簽通過後才去重（未驗簽的 body 不該消耗去重 key）
         events = await self._dedupe_events(self._parse_text_events(body_text))
@@ -380,6 +388,9 @@ class HandleWebhookUseCase:
             line_service=line_service,
             events=events,
             postback_events=postback_events,
+            received_monotonic=received,
+            bot_load_end_ms=bot_load_end_ms,
+            verify_end_ms=verify_end_ms,
         )
 
     async def process_and_push(self, ctx: "WebhookContext") -> None:
@@ -403,11 +414,11 @@ class HandleWebhookUseCase:
                         )
                         continue
                     await self._process_single_event(
-                        event, bot, line_service, ctx.short_code
+                        event, bot, line_service, ctx.short_code, timing=ctx
                     )
             else:
                 await self._process_single_event(
-                    event, bot, line_service, ctx.short_code
+                    event, bot, line_service, ctx.short_code, timing=ctx
                 )
 
         for pb_event in ctx.postback_events:
@@ -659,6 +670,7 @@ class HandleWebhookUseCase:
         bot: Bot,
         line_service: LineMessagingService,
         short_code: str,
+        timing: "WebhookContext | None" = None,
     ) -> None:
         """Process a single LINE text message event."""
         # Show loading animation — fire-and-forget（Issue #49）：
@@ -675,8 +687,14 @@ class HandleWebhookUseCase:
         # Issue #49 斷點儀表：trace 從 t0 起算。之前 collector 在
         # process_message 內才啟動，前置 ~1.4s（歷史載入/守門/意圖分類）
         # 在 trace 中整塊不可見，只能用 total 減總推回。現在各段獨立成節點。
+        # Issue #57：有 timing 時改以 webhook 收到時為 t0，bot 查詢與驗簽成節點。
         from src.infrastructure.observability.agent_trace_collector import (
             AgentTraceCollector,
+        )
+        trace_t0 = (
+            timing.received_monotonic
+            if timing is not None and timing.received_monotonic > 0
+            else t0
         )
         AgentTraceCollector.start(
             tenant_id=bot.tenant_id,
@@ -684,11 +702,23 @@ class HandleWebhookUseCase:
             llm_model=bot.llm_model,
             llm_provider=bot.llm_provider,
             bot_id=bot.id.value,
+            t0=trace_t0,
         )
+        if timing is not None and timing.received_monotonic > 0:
+            AgentTraceCollector.add_node(
+                node_type="bot_load", label="Bot 查詢", parent_id=None,
+                start_ms=0.0, end_ms=timing.bot_load_end_ms,
+            )
+            AgentTraceCollector.add_node(
+                node_type="webhook_verify", label="Webhook 驗簽", parent_id=None,
+                start_ms=timing.bot_load_end_ms, end_ms=timing.verify_end_ms,
+            )
 
-        t_hist = AgentTraceCollector.offset_ms()
+        t_conv = AgentTraceCollector.offset_ms()
         # Resolve conversation (timeout-based segmentation)
         conversation = await self._resolve_conversation(event.user_id, bot)
+        AgentTraceCollector.span("conversation_load", "對話載入", t_conv)
+        t_hist = AgentTraceCollector.offset_ms()
 
         # Extract history from existing conversation
         history = conversation.messages if conversation.messages else None
@@ -978,15 +1008,9 @@ class HandleWebhookUseCase:
                 )
         t1 = time.monotonic()
 
-        # Persist agent execution trace
-        from src.infrastructure.observability.agent_trace_collector import (
-            AgentTraceCollector,
-        )
-        latency_ms = round((t1 - t0) * 1000)
-        trace = AgentTraceCollector.finish(total_ms=float(latency_ms))
-        if trace:
-            trace.source = "line"
-            # Will set conversation_id and message_id after they're created below
+        # Issue #57：trace 不在此 finish——reply 推送與持久化也要成為節點，
+        # finish 移到 finally 內持久化 trace 之前（含 request 根節點）。
+        trace = None
 
         # Save messages to conversation
         user_msg = conversation.add_message("user", event.message_text)
@@ -1075,6 +1099,7 @@ class HandleWebhookUseCase:
         # 使用者體感延遲以 reply 送達為終點，存對話 / trace / usage
         # 挪到 reply 之後。放在 finally 保留「reply 失敗時仍持久化」
         # 的語義（與重排前 persist-then-reply 的 durability 一致）。
+        t_reply = AgentTraceCollector.offset_ms()
         try:
             await line_service.reply_with_quick_reply(
                 event.reply_token, reply_text, message_id,
@@ -1082,8 +1107,13 @@ class HandleWebhookUseCase:
             )
         finally:
             t2 = time.monotonic()
+            AgentTraceCollector.span(
+                "reply_push", "LINE 回覆推送", t_reply,
+                extra_messages=len(extra_messages),
+            )
 
             # Persist conversation + messages
+            t_persist = AgentTraceCollector.offset_ms()
             if self._conversation_repo:
                 # S-Gov.6b: bump counters for cron pending-summary detection
                 from datetime import datetime, timezone
@@ -1091,6 +1121,13 @@ class HandleWebhookUseCase:
                 conversation.message_count = len(conversation.messages)
                 conversation.last_message_at = datetime.now(timezone.utc)
                 await self._conversation_repo.save(conversation)
+            AgentTraceCollector.span("persist", "對話持久化", t_persist)
+
+            # Issue #57：request 根節點 + finish（total_ms = 根節點 wall clock）
+            AgentTraceCollector.wrap_request()
+            trace = AgentTraceCollector.finish(total_ms=None)
+            if trace:
+                trace.source = "line"
 
             # Persist agent trace to DB
             if trace and self._trace_session_factory:

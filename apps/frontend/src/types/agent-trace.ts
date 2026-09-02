@@ -11,7 +11,17 @@ export type ExecutionNodeType =
   | "worker_execution"
   // Sprint A++: Prompt guard 攔截節點（outcome=failed 會走紅色 variant）
   | "guard_input_blocked"
-  | "guard_output_blocked";
+  | "guard_output_blocked"
+  // Issue #57: 全請求 wall-clock root 與非 agent 階段的儀表化節點
+  | "request"
+  | "webhook_verify"
+  | "bot_load"
+  | "conversation_load"
+  | "history_load"
+  | "embed_query"
+  | "vector_search"
+  | "persist"
+  | "reply_push";
 
 export type ExecutionNode = {
   node_id: string;

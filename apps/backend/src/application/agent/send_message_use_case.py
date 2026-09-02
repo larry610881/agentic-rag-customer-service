@@ -476,6 +476,7 @@ class SendMessageUseCase:
         """
         history_context = ""
         router_context = ""
+        t_hist = AgentTraceCollector.offset_ms()
         if self._history_strategy and history:
             strategy_config = HistoryStrategyConfig(
                 history_limit=history_limit or 10,
@@ -511,6 +512,15 @@ class SendMessageUseCase:
             logger.warning(
                 "history.no_strategy_fallback",
                 history_len=len(history),
+            )
+        if history:
+            AgentTraceCollector.span(
+                "history_load", "歷史載入", t_hist,
+                message_count=len(history),
+                strategy=(
+                    getattr(self._history_strategy, "name", "")
+                    if self._history_strategy else "fallback"
+                ),
             )
         return history, history_context, router_context
 
@@ -692,13 +702,22 @@ class SendMessageUseCase:
         return await self._execute_inner(command)
 
     async def _execute_inner(self, command: SendMessageCommand) -> AgentResponse:
+        # Issue #57：trace 從 use case 進入點起算（請求邊界），前置的對話載入 /
+        # bot 設定載入各成節點；start 為 idempotent，後面的 start 只補欄位。
+        AgentTraceCollector.start(
+            tenant_id=command.tenant_id, agent_mode="", bot_id=command.bot_id,
+        )
+        t_conv = AgentTraceCollector.offset_ms()
         conversation = await self._load_or_create_conversation(command)
+        AgentTraceCollector.span("conversation_load", "對話載入", t_conv)
 
         history = conversation.messages if conversation.messages else None
         metadata = self._extract_metadata(conversation)
         metadata["_dry_run_guard"] = command.test_mode  # H6
 
+        t_bot = AgentTraceCollector.offset_ms()
         bot_cfg = await self._load_bot_config(command)
+        AgentTraceCollector.span("bot_load", "Bot 設定載入", t_bot)
 
         # Inject rerank config into metadata for RAG tool
         metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
@@ -830,6 +849,7 @@ class SendMessageUseCase:
                 response.guard_rule_matched = guard_result.rule_matched
 
         assistant_msg = None
+        t_persist = AgentTraceCollector.offset_ms()
         if not command.test_mode:
             conversation.add_message("user", command.message)
             assistant_msg = conversation.add_message(
@@ -856,6 +876,7 @@ class SendMessageUseCase:
             message_id=response.message_id,
             latency_ms=latency_ms,
             source=command.identity_source or "web",
+            persist_started_ms=t_persist,
             persist=not command.test_mode,
         )
         if command.test_mode:
@@ -896,13 +917,22 @@ class SendMessageUseCase:
     async def _execute_stream_inner(
         self, command: SendMessageCommand
     ) -> AsyncIterator[dict[str, Any]]:
+        # Issue #57：trace 從 use case 進入點起算（請求邊界），前置的對話載入 /
+        # bot 設定載入各成節點；start 為 idempotent，後面的 start 只補欄位。
+        AgentTraceCollector.start(
+            tenant_id=command.tenant_id, agent_mode="", bot_id=command.bot_id,
+        )
+        t_conv = AgentTraceCollector.offset_ms()
         conversation = await self._load_or_create_conversation(command)
+        AgentTraceCollector.span("conversation_load", "對話載入", t_conv)
 
         history = conversation.messages if conversation.messages else None
         metadata = self._extract_metadata(conversation)
         metadata["_dry_run_guard"] = command.test_mode  # H6
 
+        t_bot = AgentTraceCollector.offset_ms()
         bot_cfg = await self._load_bot_config(command)
+        AgentTraceCollector.span("bot_load", "Bot 設定載入", t_bot)
 
         # Inject rerank config into metadata for RAG tool
         metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
@@ -1150,6 +1180,7 @@ class SendMessageUseCase:
             })
 
         assistant_msg = None
+        t_persist = AgentTraceCollector.offset_ms()
         if not command.test_mode:
             conversation.add_message("user", command.message)
             assistant_msg = conversation.add_message(
@@ -1177,6 +1208,7 @@ class SendMessageUseCase:
             latency_ms=latency_ms,
             source=command.identity_source or "web",
             persist=not command.test_mode,
+            persist_started_ms=t_persist,
         )
 
         if not command.test_mode:
@@ -1288,6 +1320,7 @@ class SendMessageUseCase:
         """從 blocked GuardResult 組攔截回應（persist + trace），regex guard 與
         分類器攻擊共用（test_mode 不落庫）。"""
         assistant_msg = None
+        t_persist = AgentTraceCollector.offset_ms()
         if not command.test_mode:
             conversation.add_message("user", command.message)
             assistant_msg = conversation.add_message(
@@ -1305,6 +1338,7 @@ class SendMessageUseCase:
             latency_ms=0,
             source=command.identity_source or "web",
             persist=not command.test_mode,
+            persist_started_ms=t_persist,
         )
         return AgentResponse(
             answer=guard_result.blocked_response,
@@ -1353,11 +1387,18 @@ class SendMessageUseCase:
         latency_ms: int = 0,
         source: str = "",
         persist: bool = True,
+        persist_started_ms: float | None = None,
     ) -> tuple[str | None, list[dict] | None]:
         """Finalize agent trace；persist=False（test_mode）時不落庫但仍
         finish（清 ContextVar）並回傳 (trace_id, compact_nodes)。"""
         try:
-            trace = AgentTraceCollector.finish(total_ms=float(latency_ms))
+            # Issue #57：收尾節點 + request 根節點，total_ms = 根節點 wall clock
+            if persist_started_ms is not None:
+                AgentTraceCollector.span("persist", "對話持久化", persist_started_ms)
+            total_ms: float | None = float(latency_ms)
+            if AgentTraceCollector.wrap_request():
+                total_ms = None  # finish 以 request 根節點 end_ms 為準
+            trace = AgentTraceCollector.finish(total_ms=total_ms)
             if trace is None:
                 return None, None
 
