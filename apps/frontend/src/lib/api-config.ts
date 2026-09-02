@@ -38,5 +38,6 @@ export const API_BASE = (import.meta.env.VITE_API_URL || "").replace(
  * - PUBLIC_API_URL：給外部系統用，必須是完整 URL
  */
 export const PUBLIC_API_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:8001"
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== "undefined" ? window.location.origin : "http://localhost:8001")
 ).replace(/\/+$/, "");

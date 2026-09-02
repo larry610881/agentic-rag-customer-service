@@ -78,3 +78,4 @@ CLAUDE.local.md
 
 # security-precheck 報告（含環境資訊，不進 git）
 docs/security/
+apps/backend/static/admin/

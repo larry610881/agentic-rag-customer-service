@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:embed": "vite build --outDir ../backend/static/admin --emptyOutDir",
     "preview": "vite preview",
     "lint": "eslint",
     "test": "vitest run --passWithNoTests",
