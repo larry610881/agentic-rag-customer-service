@@ -40,3 +40,11 @@ class LineMessagingServiceFactory(ABC):
     def create(
         self, channel_secret: str, channel_access_token: str
     ) -> LineMessagingService: ...
+
+
+class WebhookEventDeduplicator(ABC):
+    """Issue #58：以 webhookEventId 認領事件，redelivery 重送時不重複處理。"""
+
+    @abstractmethod
+    async def claim(self, event_id: str) -> bool:
+        """第一次認領回 True；已處理過回 False。實作在 Redis 不可用時應 fail-open。"""

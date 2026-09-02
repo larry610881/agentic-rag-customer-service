@@ -7,6 +7,54 @@
 
 ---
 
+## 公開後台加固 — 「Redis 三兄弟」的 fail-open 一致性與去重的驗簽順序（2026-09-02，Issue #58）
+
+**Sprint 來源**：公司 POC Cloud Run 09-02 開放 allUsers invoker 後，對方資安提醒兩點：
+webhook 事件去重、登入失敗鎖定。實測發現登入端點比對方擔心的更弱（`/api/v1/auth`
+整段被 rate limit 豁免 + LoginUseCase 無鎖定 = 零節流可暴力嘗試）。
+
+**主題**：port/adapter 加固既有 use case 而不動舊測試、Redis 防護元件的 fail-open 選型、
+去重放在驗簽之後、X-Forwarded-For 的取段方向
+
+#### 做得好的地方
+- **兩個新防護都是「可選注入的 port」**：`LoginAttemptTracker` /
+  `WebhookEventDeduplicator` 以 `None` 為預設，use case 內 `if tracker is None`
+  短路 → 既有 35 個 login/LINE 測試零改動全綠，新行為由新 feature 獨立驗證。
+  加固既有路徑時，**先保證「未注入 = 舊行為」這條 scenario 存在**，再加新 scenario。
+- **Redis 三兄弟一致 fail-open**：rate limiter、conversation lock、現在的登入鎖定
+  與去重，全部在 Redis 不可用時降級為「無防護但可用」。判準：這些都是
+  *防濫用* 元件，Redis 故障時「暫失防護」比「全站不能登入 / LINE 訊息丟失」便宜。
+  若未來加的是 *授權* 元件（例如 token 撤銷名單），就必須 fail-closed——
+  同一個 Redis，兩種語意，不能套模板。
+- **去重放在驗簽之後**：假簽章 body 若先消耗去重 key，攻擊者可用偽造請求「預佔」
+  真實事件 ID 讓正版訊息被跳過（DoS by dedup）。順序即安全邊界。
+- **X-Forwarded-For 取最後一段**：Cloud Run / GCLB 把真實 client 附加在**尾端**，
+  前面各段可由 client 自帶偽造；取第一段等於讓攻擊者自選 IP 繞過 per-IP 節流。
+- **auth 群組獨立 fallback（10 rpm）而不是共用 200 rpm**：無 JWT 的入口只能按 IP 計，
+  預設值必須嚴到「正常人用不到、腳本立刻撞牆」。
+
+#### 潛在隱憂
+- **帳號鎖定可被當作對特定帳號的 DoS**：知道 admin email 就能每 15 分鐘鎖它一次。
+  緩解：鎖定期間仍允許來自「最近成功登入 IP」的嘗試，或改 exponential backoff
+  取代硬鎖 → 優先級：中（POC 帳號少、對方紅隊會測）。
+- **去重 TTL 1 小時是猜的**：LINE redelivery 的最長重送窗口未查證；若超過 1 小時仍會
+  重複處理。`is_redelivery` 已解析進 entity 但尚未使用——可作第二道防線
+  （redelivery + 已有同 reply_token 的 message 即跳過）→ 優先級：低。
+- **registration / token 端點也進了 auth 群組**：`/token` 是 dev-only，
+  `/register` 若日後開放自助註冊，10 rpm/IP 對辦公室 NAT 出口可能太緊
+  → 優先級：低（目前皆管理員操作）。
+
+#### 延伸學習
+- **Fail-open vs fail-closed 的判準**：問「這個元件失效時，錯放與錯擋哪個代價高？」
+  防濫用 → fail-open；授權/計費 → fail-closed。搜尋 "fail open fail closed security design"、
+  "circuit breaker degrade gracefully rate limiter"。
+- **Proxy 信任鏈**：`X-Forwarded-For` 語意是「每個 proxy 附加它看到的 client」，
+  可信的是最後 N 段（N = 你控制的 proxy 數）。uvicorn `--forwarded-allow-ips`
+  與 `ProxyHeadersMiddleware` 是同一件事的標準做法，本次選在 middleware 自取
+  是因為只有 rate limit 需要真實 IP。搜尋 "X-Forwarded-For rightmost trusted proxy"。
+
+---
+
 ## Full Review 全量收斂 — 104 findings 一次性處理的工程紀律（2026-08-21，公開前最終關卡）
 
 **Sprint 來源**：2026-08-20 多代理全專案 review 的 MEDIUM 53 + LOW 22 全量修復（總計 50 commits，加前兩批 C/H 共 102/104 修復、2 項有理有據延後）

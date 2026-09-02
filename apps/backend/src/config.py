@@ -126,6 +126,14 @@ class Settings(BaseSettings):
     # Bcrypt
     bcrypt_rounds: int = 12
 
+    # Login lockout（Issue #58）：同一 email 連續失敗達上限 → 鎖定
+    login_max_failures: int = 5
+    login_failure_window_seconds: int = 900
+    login_lockout_seconds: int = 900
+
+    # LINE webhook 事件去重 TTL（Issue #58）
+    line_webhook_dedup_ttl_seconds: int = 3600
+
     # Rate Limiting
     rate_limit_enabled: bool = True
     rate_limit_global_rpm: int = 1000

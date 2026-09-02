@@ -8,6 +8,7 @@ from src.application.auth.change_password_use_case import (
     SameAsOldPasswordError,
 )
 from src.application.auth.login_use_case import (
+    AccountLockedError,
     AuthenticationError,
     LoginCommand,
     LoginUseCase,
@@ -99,6 +100,13 @@ async def login(
     try:
         with trace_step("login_use_case"):
             result = await use_case.execute(command)
+    except AccountLockedError as e:
+        # Issue #58：訊息刻意不提帳號存在與否，避免帳號列舉
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts. Try again later.",
+            headers={"Retry-After": str(e.retry_after)},
+        ) from None
     except AuthenticationError:
         raise HTTPException(status_code=401, detail="Invalid credentials") from None
     return TokenResponse(

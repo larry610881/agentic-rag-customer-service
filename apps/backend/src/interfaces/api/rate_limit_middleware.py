@@ -17,6 +17,10 @@ from src.infrastructure.ratelimit.config_loader import RateLimitConfigLoader
 logger = logging.getLogger(__name__)
 
 ENDPOINT_GROUP_MAP: dict[str, str | None] = {
+    # Issue #58：無 JWT 的認證入口按 IP 節流（先於 "/api/v1/auth" 豁免規則）
+    "/api/v1/auth/login": "auth",
+    "/api/v1/auth/register": "auth",
+    "/api/v1/auth/token": "auth",
     "/api/v1/webhook": "webhook",
     "/api/v1/widget": "widget",
     "/api/v1/rag": "rag",
@@ -165,13 +169,23 @@ class RateLimitMiddleware:
             "more_body": False,
         })
 
+    @staticmethod
+    def _client_ip(scope: Scope, headers: dict) -> str:
+        """Issue #58：Cloud Run 之類的前端 proxy 會把真實 client IP 附加到
+        X-Forwarded-For 的**最後一段**（前面各段可由 client 自帶偽造），
+        socket client 只會是 proxy 位址。無 header 時退回 socket client。"""
+        forwarded = str(headers.get(b"x-forwarded-for", b"").decode())
+        if forwarded:
+            parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+            if parts:
+                return parts[-1]
+        client = scope.get("client")
+        return str(client[0]) if client else "unknown"
+
     def _extract_identity(self, scope: Scope) -> dict:
         """Lightweight JWT decode to extract tenant_id/user_id. No auth enforcement."""
         headers = dict(scope.get("headers", []))
-        client = scope.get("client")
-        result: dict = {
-            "client_ip": client[0] if client else "unknown",
-        }
+        result: dict = {"client_ip": self._client_ip(scope, headers)}
 
         # Fallback identity: X-Visitor-Id header (widget anonymous users)
         visitor_id = headers.get(b"x-visitor-id", b"").decode()

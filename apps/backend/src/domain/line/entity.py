@@ -9,6 +9,10 @@ class LineTextMessageEvent:
     user_id: str
     message_text: str
     timestamp: int
+    # Issue #58：LINE 每個事件唯一 ID，redelivery 重送時相同 → 去重 key。
+    # 舊 payload / 測試可能沒有 → 空字串表示不去重。
+    webhook_event_id: str = ""
+    is_redelivery: bool = False
 
 
 @dataclass
@@ -17,3 +21,5 @@ class LinePostbackEvent:
     user_id: str
     postback_data: str
     timestamp: int
+    webhook_event_id: str = ""
+    is_redelivery: bool = False

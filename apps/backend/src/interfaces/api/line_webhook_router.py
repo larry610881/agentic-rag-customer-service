@@ -33,6 +33,10 @@ def _parse_text_events(body_text: str) -> list[LineTextMessageEvent]:
                     user_id=event_data["source"]["userId"],
                     message_text=event_data["message"]["text"],
                     timestamp=event_data["timestamp"],
+                    webhook_event_id=event_data.get("webhookEventId", ""),
+                    is_redelivery=bool(
+                        (event_data.get("deliveryContext") or {}).get("isRedelivery")
+                    ),
                 )
             )
     return events
@@ -50,6 +54,10 @@ def _parse_postback_events(body_text: str) -> list[LinePostbackEvent]:
                     user_id=event_data["source"]["userId"],
                     postback_data=event_data["postback"]["data"],
                     timestamp=event_data["timestamp"],
+                    webhook_event_id=event_data.get("webhookEventId", ""),
+                    is_redelivery=bool(
+                        (event_data.get("deliveryContext") or {}).get("isRedelivery")
+                    ),
                 )
             )
     return events

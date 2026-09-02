@@ -16,6 +16,13 @@ from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.list_users_use_case import ListUsersUseCase
 from src.application.auth.login_use_case import LoginUseCase
+from src.domain.auth.login_attempt_tracker import LoginLockoutPolicy
+from src.infrastructure.auth.redis_login_attempt_tracker import (
+    RedisLoginAttemptTracker,
+)
+from src.infrastructure.line.redis_webhook_event_deduplicator import (
+    RedisWebhookEventDeduplicator,
+)
 from src.application.auth.register_user_use_case import RegisterUserUseCase
 from src.application.auth.reset_password_use_case import ResetPasswordUseCase
 from src.application.auth.update_user_use_case import UpdateUserUseCase
@@ -1359,11 +1366,25 @@ class Container(containers.DeclarativeContainer):
         password_service=password_service,
     )
 
+    login_attempt_tracker = providers.Singleton(
+        RedisLoginAttemptTracker,
+        redis_client=redis_client,
+        policy=providers.Callable(
+            lambda cfg: LoginLockoutPolicy(
+                max_failures=cfg.login_max_failures,
+                failure_window_seconds=cfg.login_failure_window_seconds,
+                lockout_seconds=cfg.login_lockout_seconds,
+            ),
+            config,
+        ),
+    )
+
     login_use_case = providers.Factory(
         LoginUseCase,
         user_repository=user_repository,
         password_service=password_service,
         jwt_service=jwt_service,
+        login_attempt_tracker=login_attempt_tracker,
     )
 
     get_user_use_case = providers.Factory(
@@ -2493,11 +2514,20 @@ class Container(containers.DeclarativeContainer):
         HttpxLineMessagingServiceFactory,
     )
 
+    line_webhook_event_deduplicator = providers.Singleton(
+        RedisWebhookEventDeduplicator,
+        redis_client=redis_client,
+        ttl_seconds=providers.Callable(
+            lambda cfg: cfg.line_webhook_dedup_ttl_seconds, config
+        ),
+    )
+
     handle_webhook_use_case = providers.Factory(
         HandleWebhookUseCase,
         agent_service=agent_service,
         bot_repository=bot_repository,
         line_service_factory=line_messaging_service_factory,
+        event_deduplicator=line_webhook_event_deduplicator,
         default_line_service=line_messaging_service,
         default_tenant_id=providers.Callable(
             lambda cfg: cfg.line_default_tenant_id, config

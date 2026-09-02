@@ -22,6 +22,16 @@ _FALLBACK = ResolvedRateLimitConfig(
     per_user_requests_per_minute=100,
 )
 
+# Issue #58：auth（login / register / token）沒有 JWT 只能按 IP 計，
+# 預設要遠比一般端點嚴——10 rpm 足夠正常登入，暴力嘗試立刻撞牆。
+_GROUP_FALLBACKS: dict[str, ResolvedRateLimitConfig] = {
+    "auth": ResolvedRateLimitConfig(
+        requests_per_minute=10,
+        burst_size=10,
+        per_user_requests_per_minute=None,
+    ),
+}
+
 
 class RateLimitConfigLoader:
     def __init__(
@@ -62,7 +72,7 @@ class RateLimitConfigLoader:
             )
 
         if config is None:
-            return _FALLBACK
+            return _GROUP_FALLBACKS.get(endpoint_group, _FALLBACK)
 
         resolved = ResolvedRateLimitConfig(
             requests_per_minute=config.requests_per_minute,

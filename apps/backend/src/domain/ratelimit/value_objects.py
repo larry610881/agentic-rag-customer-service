@@ -9,6 +9,7 @@ class RateLimitConfigId:
 
 
 class EndpointGroup(StrEnum):
+    AUTH = "auth"  # Issue #58：login / register / token，per-IP 節流
     FEEDBACK = "feedback"
     RAG = "rag"
     GENERAL = "general"

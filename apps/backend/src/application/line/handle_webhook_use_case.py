@@ -6,7 +6,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, TypeVar
 from uuid import uuid4
 
 from src.application.agent.prompt_assembler import inject_runtime_vars
@@ -54,6 +54,12 @@ from src.infrastructure.line.flex_image_carousel_builder import (
 from src.infrastructure.logging.setup import get_logger
 
 from ._text_format import strip_markdown_for_line
+
+_E = TypeVar("_E", LineTextMessageEvent, LinePostbackEvent)
+
+
+def _is_redelivery(event_data: dict) -> bool:
+    return bool((event_data.get("deliveryContext") or {}).get("isRedelivery"))
 
 logger = get_logger(__name__)
 
@@ -176,6 +182,7 @@ class HandleWebhookUseCase:
         dm_image_query_tool: Any | None = None,
         tenant_repository: Any | None = None,
         encryption_service: Any | None = None,
+        event_deduplicator: Any | None = None,
     ):
         self._agent_service = agent_service
         self._bot_repository = bot_repository
@@ -208,6 +215,26 @@ class HandleWebhookUseCase:
         self._dm_tool = dm_image_query_tool
         # L10：bot 快取中的 LINE 憑證加密存放（None 時剝除 + DB 補讀）
         self._encryption = encryption_service
+        # Issue #58：webhookEventId 去重（LINE redelivery 重送 → 不重複打 LLM / 寫入）。
+        # 通路協定層的關注點，留在 LINE 轉接器；None 時不去重（舊行為）。
+        self._deduplicator = event_deduplicator
+
+    async def _dedupe_events(self, events: list[_E]) -> list[_E]:
+        """過濾已認領（重送）的事件；無 webhook_event_id 的事件一律保留。"""
+        if self._deduplicator is None or not events:
+            return events
+        kept: list[_E] = []
+        for event in events:
+            event_id = getattr(event, "webhook_event_id", "")
+            if event_id and not await self._deduplicator.claim(event_id):
+                logger.info(
+                    "line.webhook.duplicate_skipped",
+                    webhook_event_id=event_id,
+                    is_redelivery=getattr(event, "is_redelivery", False),
+                )
+                continue
+            kept.append(event)
+        return kept
 
     async def _get_bot_cached(self, bot_id: str) -> Bot | None:
         """Redis 快取查 Bot（by ID），預設 120 秒 TTL。"""
@@ -245,6 +272,7 @@ class HandleWebhookUseCase:
         """舊端點：使用預設租戶設定處理 Webhook 事件。"""
         if not self._default_line_service:
             return
+        events = await self._dedupe_events(events)
         for event in events:
             if not event.message_text:
                 continue
@@ -281,6 +309,8 @@ class HandleWebhookUseCase:
                         user_id=user_id,
                         message_text=event_data["message"]["text"],
                         timestamp=event_data["timestamp"],
+                        webhook_event_id=event_data.get("webhookEventId", ""),
+                        is_redelivery=_is_redelivery(event_data),
                     )
                 )
         return events
@@ -301,6 +331,8 @@ class HandleWebhookUseCase:
                         user_id=user_id,
                         postback_data=event_data["postback"]["data"],
                         timestamp=event_data["timestamp"],
+                        webhook_event_id=event_data.get("webhookEventId", ""),
+                        is_redelivery=_is_redelivery(event_data),
                     )
                 )
         return events
@@ -336,8 +368,11 @@ class HandleWebhookUseCase:
         if not await line_service.verify_signature(body_text, signature):
             raise AuthorizationError("Invalid LINE webhook signature")
 
-        events = self._parse_text_events(body_text)
-        postback_events = self._parse_postback_events(body_text)
+        # Issue #58：驗簽通過後才去重（未驗簽的 body 不該消耗去重 key）
+        events = await self._dedupe_events(self._parse_text_events(body_text))
+        postback_events = await self._dedupe_events(
+            self._parse_postback_events(body_text)
+        )
 
         return WebhookContext(
             bot=bot,

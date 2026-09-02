@@ -73,6 +73,8 @@ def _create_app(mock_rate_limiter, mock_config_loader):
             Route("/api/v1/rag/query", dummy_handler, methods=["GET"]),
             Route("/api/v1/tenants", dummy_handler, methods=["GET"]),
             Route("/health", dummy_handler, methods=["GET"]),
+            Route("/api/v1/auth/login", dummy_handler, methods=["POST"]),
+            Route("/api/v1/auth/refresh", dummy_handler, methods=["POST"]),
         ],
     )
 
@@ -179,5 +181,80 @@ def has_retry_after(context):
 @then("請求應直接通過不檢查限流")
 def request_passes_through(context, mock_rate_limiter):
     assert context["response"].status_code == 200
-    # For health endpoint (exempt), rate limiter should not be called
-    # But it might be called 0 times for the exempt path
+    assert mock_rate_limiter.check_rate_limit.await_count == 0
+
+
+# ── Issue #58：auth 群組 / X-Forwarded-For / fallback ──
+
+
+def _record_keys(context, mock_rate_limiter):
+    """包一層側錄 rate limiter 收到的 key，供 then 斷言。"""
+    inner = mock_rate_limiter.check_rate_limit
+    context["keys"] = []
+
+    async def _recording(key, limit, window):
+        context["keys"].append(key)
+        return await inner(key, limit, window)
+
+    mock_rate_limiter.check_rate_limit = AsyncMock(side_effect=_recording)
+
+
+@when(parsers.parse('IP "{ip}" 以 POST 請求 "{path}"'))
+def ip_post_request(context, mock_rate_limiter, ip, path):
+    _record_keys(context, mock_rate_limiter)
+    client = TestClient(context["app"], raise_server_exceptions=False)
+    context["response"] = client.post(path, json={})
+
+
+@when(parsers.parse('帶 X-Forwarded-For "{xff}" 以 POST 請求 "{path}"'))
+def xff_post_request(context, mock_rate_limiter, xff, path):
+    _record_keys(context, mock_rate_limiter)
+    client = TestClient(context["app"], raise_server_exceptions=False)
+    context["response"] = client.post(
+        path, json={}, headers={"X-Forwarded-For": xff}
+    )
+
+
+@when(parsers.parse('以 POST 請求 "{path}"'))
+def plain_post_request(context, path):
+    client = TestClient(context["app"], raise_server_exceptions=False)
+    context["response"] = client.post(path, json={})
+
+
+@then(parsers.parse('限流 key 應包含端點群組 "{group}"'))
+def keys_contain_group(context, group):
+    assert any(f":{group}:" in k for k in context["keys"]), context["keys"]
+
+
+@then(parsers.parse('限流 key 應包含 IP "{ip}"'))
+def keys_contain_ip(context, ip):
+    assert any(f"rl:ip:{ip}:" in k for k in context["keys"]), context["keys"]
+
+
+@then(parsers.parse('限流 key 不應包含 IP "{ip}"'))
+def keys_not_contain_ip(context, ip):
+    assert not any(ip in k for k in context["keys"]), context["keys"]
+
+
+@given(parsers.parse('限流設定載入器無快取且 DB 無 "{group}" 群組設定'))
+def loader_without_config(context, group):
+    from src.infrastructure.ratelimit.config_loader import RateLimitConfigLoader
+
+    redis = AsyncMock()
+    redis.get = AsyncMock(return_value=None)
+    redis.setex = AsyncMock()
+    repo = AsyncMock()
+    repo.find_by_tenant_and_group = AsyncMock(return_value=None)
+    context["loader"] = RateLimitConfigLoader(
+        rate_limit_config_repo_factory=lambda: repo, redis_client=redis
+    )
+
+
+@when(parsers.parse('載入 "{group}" 群組設定'))
+def load_group_config(context, group):
+    context["resolved"] = _run(context["loader"].get_config(None, group))
+
+
+@then(parsers.parse("requests_per_minute 應為 {rpm:d}"))
+def rpm_is(context, rpm):
+    assert context["resolved"].requests_per_minute == rpm
