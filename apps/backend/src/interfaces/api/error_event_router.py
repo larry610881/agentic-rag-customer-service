@@ -17,7 +17,7 @@ from src.container import Container
 from src.infrastructure.notification.dispatch_helper import (
     dispatch_error_notification,
 )
-from src.interfaces.api.deps import require_role
+from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
 
 router = APIRouter(tags=["error-events"])
 
@@ -41,6 +41,7 @@ class _ReportErrorBody(BaseModel):
 @inject
 async def report_error(
     body: _ReportErrorBody,
+    _caller: CurrentTenant = Depends(get_current_tenant),
     use_case: ReportErrorUseCase = Depends(
         Provide[Container.report_error_use_case]
     ),

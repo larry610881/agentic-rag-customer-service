@@ -6,6 +6,7 @@ from typing import Any
 from src.domain.bot.entity import ToolRagConfig
 from src.domain.bot.worker_config import WorkerConfig
 from src.domain.bot.worker_repository import WorkerConfigRepository
+from src.domain.shared.exceptions import EntityNotFoundError
 
 
 def _build_tool_configs(
@@ -52,6 +53,9 @@ class CreateWorkerCommand:
 @dataclass(frozen=True)
 class UpdateWorkerCommand:
     worker_id: str
+    # Issue #67：路徑上的 bot_id；給定時 worker 必須屬於該 bot
+    #（跨 bot / 跨租戶一律視為找不到）
+    bot_id: str | None = None
     name: str | None = None
     description: str | None = None
     worker_prompt: str | None = None
@@ -150,6 +154,8 @@ class UpdateWorkerUseCase:
         worker = await self._repo.find_by_id(command.worker_id)
         if worker is None:
             return None
+        if command.bot_id is not None and worker.bot_id != command.bot_id:
+            return None
         before = _worker_view(worker) if self._audit is not None else None
         if command.name is not None:
             worker.name = command.name
@@ -197,9 +203,21 @@ class DeleteWorkerUseCase:
         self._repo = repo
         self._audit = audit
 
-    async def execute(self, worker_id: str, actor_user_id: str | None = None) -> None:
+    async def execute(
+        self,
+        worker_id: str,
+        actor_user_id: str | None = None,
+        bot_id: str | None = None,
+    ) -> None:
         before = None
-        if self._audit is not None:
+        if bot_id is not None:
+            # Issue #67：只允許刪除路徑 bot 底下的 worker
+            worker = await self._repo.find_by_id(worker_id)
+            if worker is None or worker.bot_id != bot_id:
+                raise EntityNotFoundError("Worker", worker_id)
+            if self._audit is not None:
+                before = _worker_view(worker)
+        elif self._audit is not None:
             before = _worker_view(await self._repo.find_by_id(worker_id))
         await self._repo.delete(worker_id)
         if self._audit is not None:

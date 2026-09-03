@@ -6,6 +6,7 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.bot.worker_use_cases import (
     CreateWorkerCommand,
     CreateWorkerUseCase,
@@ -15,6 +16,7 @@ from src.application.bot.worker_use_cases import (
     UpdateWorkerUseCase,
 )
 from src.container import Container
+from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 
 router = APIRouter(
@@ -136,10 +138,30 @@ def _to_response(w: Any) -> WorkerResponse:
 # --- Endpoints ---
 
 
+@inject
+async def require_owned_bot(
+    bot_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    get_bot: GetBotUseCase = Depends(Provide[Container.get_bot_use_case]),
+) -> CurrentTenant:
+    """Issue #67：路徑上的 bot 必須屬於呼叫者租戶；否則 404。
+
+    system_admin 可跨租戶（與 get_bot 同一規則）。
+    """
+    try:
+        await get_bot.execute(bot_id, tenant_id=tenant.tenant_id, role=tenant.role)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
+    return tenant
+
+
 @router.get("", response_model=list[WorkerResponse])
 @inject
 async def list_workers(
     bot_id: str,
+    _tenant: CurrentTenant = Depends(require_owned_bot),
     use_case: ListWorkersUseCase = Depends(
         Provide[Container.list_workers_use_case]
     ),
@@ -157,7 +179,7 @@ async def list_workers(
 async def create_worker(
     bot_id: str,
     body: CreateWorkerRequest,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(require_owned_bot),
     use_case: CreateWorkerUseCase = Depends(
         Provide[Container.create_worker_use_case]
     ),
@@ -194,7 +216,7 @@ async def update_worker(
     bot_id: str,
     worker_id: str,
     body: UpdateWorkerRequest,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(require_owned_bot),
     use_case: UpdateWorkerUseCase = Depends(
         Provide[Container.update_worker_use_case]
     ),
@@ -208,6 +230,7 @@ async def update_worker(
         UpdateWorkerCommand(
             actor_user_id=tenant.user_id,
             worker_id=worker_id,
+            bot_id=bot_id,
             name=body.name,
             description=body.description,
             worker_prompt=body.worker_prompt,
@@ -246,9 +269,16 @@ async def update_worker(
 async def delete_worker(
     bot_id: str,
     worker_id: str,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(require_owned_bot),
     use_case: DeleteWorkerUseCase = Depends(
         Provide[Container.delete_worker_use_case]
     ),
 ) -> None:
-    await use_case.execute(worker_id, actor_user_id=tenant.user_id)
+    try:
+        await use_case.execute(
+            worker_id, actor_user_id=tenant.user_id, bot_id=bot_id
+        )
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
