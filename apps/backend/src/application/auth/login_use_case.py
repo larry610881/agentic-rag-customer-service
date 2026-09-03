@@ -1,8 +1,10 @@
 from dataclasses import dataclass
+from uuid import uuid4
 
 from src.domain.auth.login_attempt_tracker import LoginAttemptTracker
 from src.domain.auth.password_service import PasswordService
 from src.domain.auth.repository import UserRepository
+from src.domain.auth.token_stores import RefreshTokenStore
 from src.domain.shared.exceptions import DomainException
 from src.infrastructure.logging.trace import trace_step
 
@@ -40,12 +42,15 @@ class LoginUseCase:
         password_service: PasswordService,
         jwt_service: object,
         login_attempt_tracker: LoginAttemptTracker | None = None,
+        refresh_token_store: RefreshTokenStore | None = None,
     ) -> None:
         self._user_repository = user_repository
         self._password_service = password_service
         self._jwt_service = jwt_service
         # None 時（舊測試 / 未注入）行為與加固前一致
         self._tracker = login_attempt_tracker
+        # Issue #67 P3：refresh family 登記（None = 不做旋轉偵測）
+        self._refresh_store = refresh_token_store
 
     async def execute(self, command: LoginCommand) -> LoginResult:
         identifier = command.email.strip().lower()
@@ -73,18 +78,27 @@ class LoginUseCase:
         if self._tracker is not None:
             await self._tracker.reset(identifier)
 
+        family = str(uuid4())
+        jti = str(uuid4())
         with trace_step("create_user_token"):
             token = self._jwt_service.create_user_token(  # type: ignore[attr-defined]
                 user_id=user.id.value,
                 tenant_id=user.tenant_id,
                 role=user.role.value,
+                version=user.token_version,
             )
         with trace_step("create_refresh_token"):
             refresh = self._jwt_service.create_refresh_token(  # type: ignore[attr-defined]
                 user_id=user.id.value,
                 tenant_id=user.tenant_id,
                 role=user.role.value,
+                version=user.token_version,
+                family=family,
+                jti=jti,
             )
+        if self._refresh_store is not None:
+            ttl = int(self._jwt_service.refresh_token_ttl_seconds)  # type: ignore[attr-defined]
+            await self._refresh_store.begin(family, jti, ttl)
         return LoginResult(access_token=token, refresh_token=refresh)
 
     async def _on_failure(self, identifier: str) -> None:

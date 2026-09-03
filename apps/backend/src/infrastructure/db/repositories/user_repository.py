@@ -22,6 +22,7 @@ class SQLAlchemyUserRepository(UserRepository):
             email=Email(model.email),
             hashed_password=model.hashed_password,
             role=Role(model.role),
+            token_version=model.token_version,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -34,6 +35,7 @@ class SQLAlchemyUserRepository(UserRepository):
                 existing.email = user.email.value
                 existing.hashed_password = user.hashed_password
                 existing.role = user.role.value
+                existing.token_version = user.token_version
                 existing.updated_at = datetime.now(timezone.utc)
             else:
                 model = UserModel(
@@ -42,6 +44,7 @@ class SQLAlchemyUserRepository(UserRepository):
                     email=user.email.value,
                     hashed_password=user.hashed_password,
                     role=user.role.value,
+                    token_version=user.token_version,
                     created_at=user.created_at,
                     updated_at=user.updated_at,
                 )

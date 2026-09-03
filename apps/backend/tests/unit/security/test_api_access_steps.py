@@ -21,6 +21,10 @@ from src.domain.auth.api_key import (
 )
 from src.domain.auth.api_key_repository import ApiKeyRepository
 from src.domain.shared.constants import SYSTEM_TENANT_ID
+from src.infrastructure.auth.in_memory_token_stores import (
+    InMemoryRefreshTokenStore,
+    InMemoryTokenRevocationStore,
+)
 
 scenarios("unit/security/api_access.feature")
 
@@ -119,6 +123,8 @@ def app_ready(context, api_app):
         c.list_conversations_use_case: conv,
         c.list_bots_use_case: bots,
         c.submit_feedback_use_case: fb,
+        c.token_revocation_store: InMemoryTokenRevocationStore(),
+        c.refresh_token_store: InMemoryRefreshTokenStore(),
     }
     for provider, obj in overrides.items():
         provider.override(providers.Object(obj))

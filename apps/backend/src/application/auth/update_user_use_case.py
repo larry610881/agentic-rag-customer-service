@@ -33,6 +33,7 @@ class UpdateUserUseCase:
             email=existing.email,
             hashed_password=existing.hashed_password,
             role=new_role,
+            token_version=existing.token_version,
             created_at=existing.created_at,
             updated_at=existing.updated_at,
         )

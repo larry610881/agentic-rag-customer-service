@@ -27,6 +27,7 @@ from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.list_users_use_case import ListUsersUseCase
 from src.application.auth.login_use_case import LoginUseCase
+from src.application.auth.refresh_token_use_case import RefreshTokenUseCase
 from src.application.auth.register_user_use_case import RegisterUserUseCase
 from src.application.auth.reset_password_use_case import ResetPasswordUseCase
 from src.application.auth.update_user_use_case import UpdateUserUseCase
@@ -391,6 +392,10 @@ from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.auth.redis_login_attempt_tracker import (
     RedisLoginAttemptTracker,
 )
+from src.infrastructure.auth.redis_token_stores import (
+    RedisRefreshTokenStore,
+    RedisTokenRevocationStore,
+)
 from src.infrastructure.cache.redis_cache_service import RedisCacheService
 from src.infrastructure.classification.cluster_classification_service import (
     ClusterClassificationService,
@@ -747,6 +752,21 @@ class Container(containers.DeclarativeContainer):
         api_access_expire_seconds=providers.Callable(
             lambda cfg: cfg.api_access_token_expire_seconds, config
         ),
+        key_id=providers.Callable(lambda cfg: cfg.jwt_key_id, config),
+        # legacy（無 iss）票只在 development 接受
+        allow_legacy_tokens=providers.Callable(
+            lambda cfg: cfg.app_env == "development", config
+        ),
+    )
+
+    # Issue #67 P3：refresh 旋轉 / 撤銷狀態（Redis，fail-open）
+    refresh_token_store = providers.Singleton(
+        RedisRefreshTokenStore,
+        redis_client=redis_client,
+    )
+    token_revocation_store = providers.Singleton(
+        RedisTokenRevocationStore,
+        redis_client=redis_client,
     )
 
     password_service = providers.Singleton(
@@ -1489,6 +1509,7 @@ class Container(containers.DeclarativeContainer):
         password_service=password_service,
         jwt_service=jwt_service,
         login_attempt_tracker=login_attempt_tracker,
+        refresh_token_store=refresh_token_store,
     )
 
     get_user_use_case = providers.Factory(
@@ -1515,12 +1536,26 @@ class Container(containers.DeclarativeContainer):
         ResetPasswordUseCase,
         user_repository=user_repository,
         password_service=password_service,
+        revocation_store=token_revocation_store,
+        access_ttl_seconds=providers.Callable(
+            lambda cfg: cfg.jwt_access_token_expire_minutes * 60, config
+        ),
     )
 
     change_password_use_case = providers.Factory(
         ChangePasswordUseCase,
         user_repository=user_repository,
         password_service=password_service,
+        revocation_store=token_revocation_store,
+        access_ttl_seconds=providers.Callable(
+            lambda cfg: cfg.jwt_access_token_expire_minutes * 60, config
+        ),
+    )
+    refresh_token_use_case = providers.Factory(
+        RefreshTokenUseCase,
+        jwt_service=jwt_service,
+        user_repository=user_repository,
+        refresh_store=refresh_token_store,
     )
 
     get_rate_limits_use_case = providers.Factory(

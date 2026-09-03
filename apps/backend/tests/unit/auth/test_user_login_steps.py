@@ -1,6 +1,6 @@
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
@@ -102,11 +102,15 @@ def jwt_returned(context, mock_jwt_service):
         user_id="user-001",
         tenant_id="tenant-001",
         role="user",
+        version=1,
     )
     mock_jwt_service.create_refresh_token.assert_called_once_with(
         user_id="user-001",
         tenant_id="tenant-001",
         role="user",
+        version=1,
+        family=ANY,
+        jti=ANY,
     )
 
 

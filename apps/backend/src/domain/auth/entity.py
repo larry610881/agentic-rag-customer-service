@@ -27,6 +27,8 @@ class User:
     email: Email = field(default_factory=lambda: Email("placeholder@example.com"))
     hashed_password: str = ""
     role: Role = Role.USER
+    # Issue #67 P3：改密碼 / 重設密碼 +1，票內 ver 不符即拒
+    token_version: int = 1
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

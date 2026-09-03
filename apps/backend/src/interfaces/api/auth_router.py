@@ -16,6 +16,10 @@ from src.application.auth.login_use_case import (
     LoginCommand,
     LoginUseCase,
 )
+from src.application.auth.refresh_token_use_case import (
+    InvalidRefreshTokenError,
+    RefreshTokenUseCase,
+)
 from src.application.auth.register_user_use_case import (
     RegisterUserCommand,
     RegisterUserUseCase,
@@ -209,34 +213,21 @@ async def register(
 @inject
 async def refresh_token(
     body: RefreshRequest,
-    jwt_service: JWTService = Depends(Provide[Container.jwt_service]),
+    use_case: RefreshTokenUseCase = Depends(
+        Provide[Container.refresh_token_use_case]
+    ),
 ) -> TokenResponse:
-    """Exchange a refresh token for a new access + refresh token pair."""
+    """Refresh 換票（Issue #67 P3）。
+
+    每次旋轉；重用舊票 → 整個 family 撤銷；ver 不符 → 401。
+    """
     try:
-        payload = jwt_service.decode_token(body.refresh_token)
-    except ValueError:
-        raise HTTPException(
-            status_code=401, detail="Invalid or expired refresh token"
-        ) from None
-
-    token_type = payload.get("type")
-    if token_type not in ("refresh", "tenant_refresh"):
-        raise HTTPException(
-            status_code=401, detail="Invalid token type for refresh"
-        )
-
-    sub = payload.get("sub", "")
-
-    if token_type == "refresh":
-        role = payload.get("role", "")
-        tenant_id = payload.get("tenant_id")
-        access = jwt_service.create_user_token(sub, tenant_id, role)
-        refresh = jwt_service.create_refresh_token(sub, tenant_id, role)
-    else:
-        access = jwt_service.create_tenant_token(sub)
-        refresh = jwt_service.create_tenant_refresh_token(sub)
-
-    return TokenResponse(access_token=access, refresh_token=refresh)
+        result = await use_case.execute(body.refresh_token)
+    except InvalidRefreshTokenError as e:
+        raise HTTPException(status_code=401, detail=e.message) from None
+    return TokenResponse(
+        access_token=result.access_token, refresh_token=result.refresh_token
+    )
 
 
 # --- S-Auth.1: 租戶自助變更密碼 -----------------------------------------------

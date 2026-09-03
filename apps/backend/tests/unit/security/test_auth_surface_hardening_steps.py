@@ -17,6 +17,10 @@ from src.domain.auth.value_objects import Role
 from src.domain.platform.entity import McpServerRegistration
 from src.domain.platform.value_objects import McpRegistryId
 from src.domain.shared.constants import SYSTEM_TENANT_ID
+from src.infrastructure.auth.in_memory_token_stores import (
+    InMemoryRefreshTokenStore,
+    InMemoryTokenRevocationStore,
+)
 
 scenarios("unit/security/auth_surface_hardening.feature")
 
@@ -102,6 +106,8 @@ def mocks(hardening_app):
         c.list_provider_settings_use_case: list_providers,
         c.list_enabled_models_use_case: enabled_models,
         c.mcp_server_repository: repo,
+        c.token_revocation_store: InMemoryTokenRevocationStore(),
+        c.refresh_token_store: InMemoryRefreshTokenStore(),
     }
     for provider, mock in overrides.items():
         provider.override(providers.Object(mock))

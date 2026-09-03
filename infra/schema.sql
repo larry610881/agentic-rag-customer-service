@@ -884,7 +884,8 @@ CREATE TABLE public.users (
     hashed_password character varying(255) NOT NULL,
     role character varying(20) NOT NULL,
     created_at timestamp with time zone NOT NULL,
-    updated_at timestamp with time zone NOT NULL
+    updated_at timestamp with time zone NOT NULL,
+    token_version integer DEFAULT 1 NOT NULL
 );
 
 

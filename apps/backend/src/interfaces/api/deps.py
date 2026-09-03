@@ -18,6 +18,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from src.application.auth.api_key_use_cases import AuthenticateApiClientUseCase
 from src.container import Container
 from src.domain.auth.api_key import API_CLIENT_ROLE, InvalidClientError
+from src.domain.auth.token_stores import TokenRevocationStore
 from src.infrastructure.auth.jwt_service import API_ACCESS_TOKEN_TYPE, JWTService
 
 bearer_scheme = HTTPBearer()
@@ -56,6 +57,9 @@ async def authenticate(
     api_client_auth: AuthenticateApiClientUseCase = Depends(
         Provide[Container.authenticate_api_client_use_case]
     ),
+    revocation_store: TokenRevocationStore = Depends(
+        Provide[Container.token_revocation_store]
+    ),
 ) -> CurrentTenant:
     """解析任何一種 access 票；不做端點層級授權。"""
     try:
@@ -85,6 +89,12 @@ async def authenticate(
         user_id = payload.get("sub")
         if not user_id:
             raise _unauthorized("Token missing user_id")
+        ver = payload.get("ver")
+        if ver is not None:
+            # Issue #67 P3：改密碼後 access token 到期前即失效（Redis fail-open）
+            min_ver = await revocation_store.min_version(user_id)
+            if min_ver is not None and ver < min_ver:
+                raise _unauthorized("Token revoked")
         return CurrentTenant(
             tenant_id=payload.get("tenant_id") or "",
             user_id=user_id,

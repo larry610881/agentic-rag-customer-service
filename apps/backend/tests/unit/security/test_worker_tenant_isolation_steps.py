@@ -13,6 +13,10 @@ from src.application.bot.worker_use_cases import (
 )
 from src.domain.shared.constants import SYSTEM_TENANT_ID
 from src.domain.shared.exceptions import EntityNotFoundError
+from src.infrastructure.auth.in_memory_token_stores import (
+    InMemoryRefreshTokenStore,
+    InMemoryTokenRevocationStore,
+)
 
 scenarios("unit/security/worker_tenant_isolation.feature")
 
@@ -63,6 +67,8 @@ def app_ready(context, worker_app):
         c.list_workers_use_case: list_uc,
         c.update_worker_use_case: UpdateWorkerUseCase(worker_repo),
         c.delete_worker_use_case: DeleteWorkerUseCase(worker_repo),
+        c.token_revocation_store: InMemoryTokenRevocationStore(),
+        c.refresh_token_store: InMemoryRefreshTokenStore(),
     }
     for provider, obj in overrides.items():
         provider.override(providers.Object(obj))

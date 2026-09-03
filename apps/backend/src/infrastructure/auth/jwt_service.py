@@ -1,3 +1,15 @@
+"""JWT 簽發 / 驗證（Issue #67 P2/P3）
+
+所有票種一律帶 iss / aud / jti / iat / type，header 帶 kid（支援 secret 輪替時辨識）。
+- user_access / refresh：sub=user_id、tenant_id、role、ver（user.token_version）
+- refresh 另帶 family + jti（旋轉 / 重用偵測）
+- tenant_access / tenant_refresh：legacy 租戶票（sub=tenant_id）
+- api_access：機器票（sub=client_id、scopes、bot_ids、ver）
+
+驗證：簽章與 exp 必驗；帶 iss/aud 的票必須相符；不帶 iss 的 legacy 票只在
+allow_legacy_tokens=True（development）時接受。
+"""
+
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
@@ -17,6 +29,8 @@ class JWTService:
         issuer: str = "agentic-rag",
         audience: str = "agentic-rag-api",
         api_access_expire_seconds: int = 900,
+        key_id: str = "k1",
+        allow_legacy_tokens: bool = True,
     ) -> None:
         self._secret_key = secret_key
         self._algorithm = algorithm
@@ -25,6 +39,107 @@ class JWTService:
         self._issuer = issuer
         self._audience = audience
         self._api_access_expire_seconds = api_access_expire_seconds
+        self._key_id = key_id
+        self._allow_legacy_tokens = allow_legacy_tokens
+
+    # ------------------------------------------------------------------ helpers
+
+    @property
+    def access_token_ttl_seconds(self) -> int:
+        return self._access_token_expire_minutes * 60
+
+    @property
+    def refresh_token_ttl_seconds(self) -> int:
+        return self._refresh_token_expire_days * 86400
+
+    def _base_claims(
+        self, *, token_type: str, sub: str, ttl: timedelta, jti: str | None = None
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        return {
+            "iss": self._issuer,
+            "aud": self._audience,
+            "sub": sub,
+            "type": token_type,
+            "jti": jti or str(uuid4()),
+            "iat": now,
+            "exp": now + ttl,
+        }
+
+    def _encode(self, payload: dict[str, Any]) -> str:
+        token: str = jwt.encode(
+            payload,
+            self._secret_key,
+            algorithm=self._algorithm,
+            headers={"kid": self._key_id},
+        )
+        return token
+
+    # ------------------------------------------------------------------ issue
+
+    def create_tenant_token(self, tenant_id: str) -> str:
+        payload = self._base_claims(
+            token_type="tenant_access",
+            sub=tenant_id,
+            ttl=timedelta(minutes=self._access_token_expire_minutes),
+        )
+        return self._encode(payload)
+
+    def create_user_token(
+        self,
+        user_id: str,
+        tenant_id: str | None,
+        role: str,
+        version: int | None = None,
+    ) -> str:
+        payload = self._base_claims(
+            token_type="user_access",
+            sub=user_id,
+            ttl=timedelta(minutes=self._access_token_expire_minutes),
+        )
+        payload["role"] = role
+        if tenant_id is not None:
+            payload["tenant_id"] = tenant_id
+        if version is not None:
+            payload["ver"] = version
+        return self._encode(payload)
+
+    def create_refresh_token(
+        self,
+        user_id: str,
+        tenant_id: str | None,
+        role: str,
+        version: int | None = None,
+        family: str | None = None,
+        jti: str | None = None,
+    ) -> str:
+        payload = self._base_claims(
+            token_type="refresh",
+            sub=user_id,
+            ttl=timedelta(days=self._refresh_token_expire_days),
+            jti=jti,
+        )
+        payload["role"] = role
+        if tenant_id is not None:
+            payload["tenant_id"] = tenant_id
+        if version is not None:
+            payload["ver"] = version
+        if family is not None:
+            payload["family"] = family
+        return self._encode(payload)
+
+    def create_tenant_refresh_token(
+        self, tenant_id: str, family: str | None = None, jti: str | None = None
+    ) -> str:
+        payload = self._base_claims(
+            token_type="tenant_refresh",
+            sub=tenant_id,
+            ttl=timedelta(days=self._refresh_token_expire_days),
+            jti=jti,
+        )
+        if family is not None:
+            payload["family"] = family
+        return self._encode(payload)
 
     def create_api_access_token(
         self,
@@ -39,86 +154,20 @@ class JWTService:
 
         claims：iss/aud/jti/iat/exp + tenant_id/scopes/bot_ids/ver。
         """
-        now = datetime.now(timezone.utc)
-        payload: dict[str, Any] = {
-            "iss": self._issuer,
-            "aud": self._audience,
-            "sub": client_id,
-            "type": API_ACCESS_TOKEN_TYPE,
+        payload = self._base_claims(
+            token_type=API_ACCESS_TOKEN_TYPE,
+            sub=client_id,
+            ttl=timedelta(seconds=self._api_access_expire_seconds),
+        )
+        payload.update({
             "tenant_id": tenant_id,
             "scopes": list(scopes),
             "bot_ids": list(bot_ids),
             "ver": version,
-            "jti": str(uuid4()),
-            "iat": now,
-            "exp": now + timedelta(seconds=self._api_access_expire_seconds),
-        }
-        token: str = jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
-        return token, self._api_access_expire_seconds
+        })
+        return self._encode(payload), self._api_access_expire_seconds
 
-    def create_tenant_token(self, tenant_id: str) -> str:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=self._access_token_expire_minutes
-        )
-        payload = {
-            "sub": tenant_id,
-            "exp": expire,
-            "type": "tenant_access",
-        }
-        token: str = jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
-        return token
-
-    def create_user_token(
-        self,
-        user_id: str,
-        tenant_id: str | None,
-        role: str,
-    ) -> str:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=self._access_token_expire_minutes
-        )
-        payload: dict[str, Any] = {
-            "sub": user_id,
-            "role": role,
-            "exp": expire,
-            "type": "user_access",
-        }
-        if tenant_id is not None:
-            payload["tenant_id"] = tenant_id
-        token: str = jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
-        return token
-
-    def create_refresh_token(
-        self,
-        user_id: str,
-        tenant_id: str | None,
-        role: str,
-    ) -> str:
-        expire = datetime.now(timezone.utc) + timedelta(
-            days=self._refresh_token_expire_days
-        )
-        payload: dict[str, Any] = {
-            "sub": user_id,
-            "role": role,
-            "exp": expire,
-            "type": "refresh",
-        }
-        if tenant_id is not None:
-            payload["tenant_id"] = tenant_id
-        token: str = jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
-        return token
-
-    def create_tenant_refresh_token(self, tenant_id: str) -> str:
-        expire = datetime.now(timezone.utc) + timedelta(
-            days=self._refresh_token_expire_days
-        )
-        payload = {
-            "sub": tenant_id,
-            "exp": expire,
-            "type": "tenant_refresh",
-        }
-        token: str = jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
-        return token
+    # ------------------------------------------------------------------ verify
 
     def decode_token(self, token: str) -> dict[str, Any]:
         try:
@@ -130,16 +179,17 @@ class JWTService:
             )
         except JWTError as e:
             raise ValueError(f"Invalid token: {e}") from e
-        # 帶 iss/aud 的票必須相符；legacy 票（無 iss/aud）維持可解析（P3 收緊）
         self._validate_issuer_audience(payload)
         return payload
 
     def _validate_issuer_audience(self, payload: dict[str, Any]) -> None:
-        if "iss" in payload and payload["iss"] != self._issuer:
+        if "iss" not in payload:
+            if self._allow_legacy_tokens:
+                return  # P3 之前簽的票；production 不接受
+            raise ValueError("Invalid token: missing issuer")
+        if payload["iss"] != self._issuer:
             raise ValueError("Invalid token: Invalid issuer")
-        if "aud" in payload:
-            aud = payload["aud"]
-            auds = aud if isinstance(aud, list) else [aud]
-            if self._audience not in auds:
-                raise ValueError("Invalid token: Invalid audience")
-
+        aud = payload.get("aud")
+        auds = aud if isinstance(aud, list) else [aud]
+        if self._audience not in auds:
+            raise ValueError("Invalid token: Invalid audience")

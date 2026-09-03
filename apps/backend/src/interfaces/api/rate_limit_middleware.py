@@ -202,6 +202,7 @@ class RateLimitMiddleware:
                 token,
                 self._jwt_secret_key,
                 algorithms=[self._jwt_algorithm],
+                options={"verify_aud": False},  # 只取身分，不做授權
             )
         except JWTError:
             return result
