@@ -383,6 +383,76 @@ describe("BotDetailForm", () => {
     expect(screen.getByText("嵌入碼")).toBeInTheDocument();
   });
 
+  // Issue #66 — 推理模式（fast / deep）
+  describe("mode (Issue #66)", () => {
+    it("should default to deep and hide the fast hint", () => {
+      renderWithProviders(
+        <BotDetailForm
+          bot={mockBot}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+      expect(screen.getByRole("radio", { name: /深度道（deep）/ })).toBeChecked();
+      expect(screen.getByRole("radio", { name: /快速道（fast）/ })).not.toBeChecked();
+      expect(
+        screen.queryByText("快速道模式下 rerank / 查詢改寫 / HyDE 會自動關閉"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("should reflect bot.mode = fast and show the fast hint", () => {
+      renderWithProviders(
+        <BotDetailForm
+          bot={{ ...mockBot, mode: "fast" }}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+      expect(screen.getByRole("radio", { name: /快速道（fast）/ })).toBeChecked();
+      expect(
+        screen.getByText("快速道模式下 rerank / 查詢改寫 / HyDE 會自動關閉"),
+      ).toBeInTheDocument();
+    });
+
+    it("should show the fast hint after selecting fast", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <BotDetailForm
+          bot={mockBot}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+      await user.click(screen.getByRole("radio", { name: /快速道（fast）/ }));
+      expect(
+        screen.getByText("快速道模式下 rerank / 查詢改寫 / HyDE 會自動關閉"),
+      ).toBeInTheDocument();
+    });
+
+    it("should include selected mode in submitted payload", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <BotDetailForm
+          bot={mockBot}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+      await user.click(screen.getByRole("radio", { name: /快速道（fast）/ }));
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      expect(mockOnSave.mock.calls[0][0].mode).toBe("fast");
+    });
+  });
+
   // Sprint W.4 (Knowledge Mode Wiki vs RAG) tests removed — Wiki feature
   // dropped in commit 9f62f01. KB binding lives on the "能力" tab and is
   // covered by other test files.

@@ -10,6 +10,15 @@ export type RetrievalMode = "raw" | "rewrite" | "hyde";
 export const RETRIEVAL_MODES: RetrievalMode[] = ["raw", "rewrite", "hyde"];
 
 /**
+ * Issue #66 — Bot 推理模式。
+ * fast：常見問題直答（快速道），升級推理時工具最多 2 次，rerank / 查詢改寫 / HyDE 自動關閉。
+ * deep：完整多步推理，可用全部工具與 rerank。
+ */
+export type BotMode = "fast" | "deep";
+
+export const BOT_MODES: BotMode[] = ["fast", "deep"];
+
+/**
  * Per-tool RAG 參數覆蓋。
  * 欄位省略 / undefined 代表繼承上層（Bot per-tool → Bot 全域 default）。
  * API 序列化時應省略 undefined 欄位（JSON.stringify 會自動處理）。
@@ -71,6 +80,8 @@ export interface Bot {
   gate_daily_limit: number;
   gate_budget_usd: number;
   gate_excluded_cases: string[];
+  /** Issue #66 — 推理模式（fast = 快速道 / deep = 深度道） */
+  mode: BotMode;
   mcp_servers: McpServerConfig[];
   max_tool_calls: number;
   base_prompt: string;
@@ -135,6 +146,8 @@ export interface CreateBotRequest {
   gate_daily_limit?: number;
   gate_budget_usd?: number;
   gate_excluded_cases?: string[];
+  /** Issue #66 — 推理模式（fast = 快速道 / deep = 深度道） */
+  mode?: BotMode;
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
   base_prompt?: string;
@@ -195,6 +208,8 @@ export interface UpdateBotRequest {
   gate_daily_limit?: number;
   gate_budget_usd?: number;
   gate_excluded_cases?: string[];
+  /** Issue #66 — 推理模式（fast = 快速道 / deep = 深度道） */
+  mode?: BotMode;
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
   base_prompt?: string;

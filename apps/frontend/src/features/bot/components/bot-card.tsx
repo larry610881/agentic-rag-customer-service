@@ -46,6 +46,9 @@ export function BotCard({ bot }: BotCardProps) {
                 <Badge variant="outline">
                   {bot.knowledge_base_ids.length} KB
                 </Badge>
+                <Badge variant="outline" title="推理模式">
+                  {bot.mode === "fast" ? "快速" : "深度"}
+                </Badge>
                 <Button
                   variant="ghost"
                   size="icon"

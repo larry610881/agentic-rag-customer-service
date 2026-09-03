@@ -32,6 +32,16 @@ describe("BotCard", () => {
     expect(screen.getByText("2 KB")).toBeInTheDocument();
   });
 
+  it("should show 深度 badge for deep mode (Issue #66)", () => {
+    renderWithProviders(<BotCard bot={mockBot} />);
+    expect(screen.getByText("深度")).toBeInTheDocument();
+  });
+
+  it("should show 快速 badge for fast mode (Issue #66)", () => {
+    renderWithProviders(<BotCard bot={{ ...mockBot, mode: "fast" }} />);
+    expect(screen.getByText("快速")).toBeInTheDocument();
+  });
+
   it("should link to bot detail page", () => {
     renderWithProviders(<BotCard bot={mockBot} />);
     const link = screen.getByRole("link");

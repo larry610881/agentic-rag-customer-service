@@ -66,6 +66,7 @@ import { ModelSelect } from "@/components/shared/model-select";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import type {
   Bot,
+  BotMode,
   RetrievalMode,
   ToolRagConfig,
   UpdateBotRequest,
@@ -137,6 +138,8 @@ const botFormSchema = z.object({
   ),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
   base_prompt: z.string().default(""),
+  // Issue #66 — 推理模式（fast = 快速道 / deep = 深度道）
+  mode: z.enum(["fast", "deep"]).default("deep"),
   // Issue #54 — 發布閘門設定（治理欄位）
   gate_mode: z.enum(["off", "warn", "block"]).default("off"),
   gate_soft_threshold: z.coerce.number().min(0).max(1).default(0.8),
@@ -497,6 +500,79 @@ function PlatformDatasetCases({
   );
 }
 
+type ModeSectionProps = {
+  register: UseFormRegister<BotFormValues>;
+  watch: UseFormWatch<BotFormValues>;
+};
+
+const BOT_MODE_OPTIONS: {
+  value: BotMode;
+  title: string;
+  description: string;
+}[] = [
+  {
+    value: "fast",
+    title: "快速道（fast）",
+    description: "常見問題直答，回覆最快；升級推理時工具最多 2 次",
+  },
+  {
+    value: "deep",
+    title: "深度道（deep）",
+    description: "完整多步推理，可用全部工具與 rerank",
+  },
+];
+
+/** Issue #66 — 推理模式（fast = 快速道 / deep = 深度道） */
+function ModeSection({ register, watch }: ModeSectionProps) {
+  const mode = watch("mode");
+  return (
+    <section className="flex flex-col gap-4 rounded-lg border p-4">
+      <div>
+        <h3 className="text-lg font-semibold">推理模式</h3>
+        <p className="text-xs text-muted-foreground">
+          決定每輪對話的推理深度與可用工具範圍。
+        </p>
+      </div>
+      <div
+        role="radiogroup"
+        aria-label="推理模式"
+        className="grid gap-3 md:grid-cols-2"
+      >
+        {BOT_MODE_OPTIONS.map((opt) => {
+          const checked = mode === opt.value;
+          return (
+            <label
+              key={opt.value}
+              className={
+                "flex cursor-pointer items-start gap-3 rounded-md border px-3 py-3 transition-colors " +
+                (checked ? "border-primary bg-primary/5" : "hover:bg-muted/50")
+              }
+            >
+              <input
+                type="radio"
+                value={opt.value}
+                className="mt-1 accent-primary"
+                {...register("mode")}
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">{opt.title}</span>
+                <span className="text-xs text-muted-foreground">
+                  — {opt.description}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {mode === "fast" && (
+        <p className="text-xs text-muted-foreground">
+          快速道模式下 rerank / 查詢改寫 / HyDE 會自動關閉
+        </p>
+      )}
+    </section>
+  );
+}
+
 /** Issue #54 — 發布閘門設定卡（治理欄位，不受版控；定案 1/7/C-4 的預設值） */
 function GateSettingsSection({
   control,
@@ -702,6 +778,7 @@ export function BotDetailForm({
       mcp_servers: bot.mcp_servers ?? [],
       max_tool_calls: bot.max_tool_calls ?? 5,
       base_prompt: bot.base_prompt ?? "",
+      mode: bot.mode ?? "deep",
       gate_mode: bot.gate_mode ?? "off",
       gate_soft_threshold: bot.gate_soft_threshold ?? 0.8,
       gate_repeats: bot.gate_repeats ?? 3,
@@ -813,6 +890,7 @@ export function BotDetailForm({
       mcp_servers: bot.mcp_servers ?? [],
       max_tool_calls: bot.max_tool_calls ?? 5,
       base_prompt: bot.base_prompt ?? "",
+      mode: bot.mode ?? "deep",
       gate_mode: bot.gate_mode ?? "off",
       gate_soft_threshold: bot.gate_soft_threshold ?? 0.8,
       gate_repeats: bot.gate_repeats ?? 3,
@@ -1198,6 +1276,9 @@ export function BotDetailForm({
               },
             }}
           />
+
+          {/* Issue #66 — 推理模式 */}
+          <ModeSection register={register} watch={watch} />
 
           {/* Issue #54 — 發布閘門設定（治理欄位，不受版控） */}
           <GateSettingsSection

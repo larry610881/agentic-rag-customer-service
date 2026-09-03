@@ -11,6 +11,8 @@ export type WorkerConfig = {
   temperature: number;
   max_tokens: number;
   max_tool_calls: number;
+  /** Issue #66 — 快速道（直接檢索）：常見問題直答，複雜問題自動升級完整推理 */
+  direct_retrieval: boolean;
   enabled_mcp_ids: string[];
   knowledge_base_ids: string[];
   /** null = 繼承 Bot.enabled_tools；[] = 顯式無 tool；list = 白名單 */
@@ -30,6 +32,7 @@ export type CreateWorkerRequest = {
   temperature?: number;
   max_tokens?: number;
   max_tool_calls?: number;
+  direct_retrieval?: boolean;
   enabled_mcp_ids?: string[];
   knowledge_base_ids?: string[];
   enabled_tools?: string[] | null;

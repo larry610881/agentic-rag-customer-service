@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ModelSelect } from "@/components/shared/model-select";
 import {
@@ -283,6 +284,28 @@ function WorkerCard({
             </div>
           </div>
 
+          {/* Issue #66 — 快速道（直接檢索） */}
+          <div className="flex items-start justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+            <div className="flex flex-col gap-0.5">
+              <Label
+                htmlFor={`worker-direct-retrieval-${worker.id}`}
+                className="text-xs"
+              >
+                快速道（直接檢索）
+              </Label>
+              <p className="text-[11px] text-muted-foreground">
+                常見問題直答，複雜問題自動升級完整推理
+              </p>
+            </div>
+            <Switch
+              id={`worker-direct-retrieval-${worker.id}`}
+              checked={worker.direct_retrieval ?? false}
+              onCheckedChange={(checked) =>
+                handleFieldUpdate("direct_retrieval", checked)
+              }
+            />
+          </div>
+
           {/* Temperature + Max tokens */}
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
@@ -513,7 +536,10 @@ export function WorkersSection({
 
   const handleAdd = () => {
     createMutation.mutate(
-      { name: `Sub-agent ${(workers?.length ?? 0) + 1}` },
+      {
+        name: `Sub-agent ${(workers?.length ?? 0) + 1}`,
+        direct_retrieval: false,
+      },
       {
         onSuccess: () => toast.success("已新增 Sub-agent"),
         onError: () => toast.error("新增失敗"),
