@@ -33,6 +33,7 @@ class RefreshTokenUseCase:
         self._jwt = jwt_service
         self._users = user_repository
         self._store = refresh_store
+        self._pending: tuple[str, str] | None = None
 
     async def execute(self, refresh_token: str) -> RefreshResult:
         try:
@@ -101,7 +102,7 @@ class RefreshTokenUseCase:
         return family
 
     def _new_jti_for(self, family: str) -> str:
-        pending = getattr(self, "_pending", None)
-        if pending and pending[0] == family:
+        pending = self._pending
+        if pending is not None and pending[0] == family:
             return pending[1]
         return str(uuid4())

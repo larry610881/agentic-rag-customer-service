@@ -1,10 +1,11 @@
 import type { WidgetConfig } from "./types";
 import { ChatPanel } from "./chat/chat-panel";
+import { widgetFetch } from "./session";
 import { cls } from "./constants";
 import styles from "./styles/widget.css?inline";
 
 function reportWidgetError(apiBase: string, shortCode: string, error: { type: string; message: string; stack?: string }) {
-  fetch(`${apiBase}/api/v1/widget/${shortCode}/error`, {
+  widgetFetch(`${apiBase}/api/v1/widget/${shortCode}/error`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

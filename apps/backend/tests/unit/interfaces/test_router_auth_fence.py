@@ -24,7 +24,6 @@ AUTH_DEPENDENCIES = {
 # (method, path) → 理由。沒有理由的公開端點不准存在。
 _PREFLIGHT = "CORS preflight"
 _LINE = "LINE webhook, HMAC signature"
-_WIDGET = "anonymous widget, Origin allowlist (P4: widget token)"
 
 PUBLIC_ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/auth/login"): "login itself",
@@ -37,11 +36,7 @@ PUBLIC_ROUTES: dict[tuple[str, str], str] = {
     ("OPTIONS", "/api/v1/widget/{short_code}/config"): _PREFLIGHT,
     ("OPTIONS", "/api/v1/widget/{short_code}/error"): _PREFLIGHT,
     ("OPTIONS", "/api/v1/widget/{short_code}/feedback"): _PREFLIGHT,
-    ("GET", "/api/v1/widget/{short_code}/config"): _WIDGET,
-    ("POST", "/api/v1/widget/{short_code}/chat/stream"): _WIDGET,
-    ("POST", "/api/v1/widget/{short_code}/feedback"): _WIDGET,
-    ("POST", "/api/v1/widget/{short_code}/error"): _WIDGET,
-    ("GET", "/api/v1/widget/{short_code}/documents/{doc_id}/view"): _WIDGET,
+    ("GET", "/api/v1/widget/{short_code}/config"): "widget entry, issues token",
     ("GET", "/{full_path:path}"): "admin SPA fallback",
 }
 

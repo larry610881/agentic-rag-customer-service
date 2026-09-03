@@ -1,5 +1,5 @@
 import type { SSEEvent } from "../types";
-import { getVisitorId } from "../visitor";
+import { authHeaders, refreshWidgetToken } from "../session";
 
 /**
  * POST-based SSE client.
@@ -13,15 +13,21 @@ export function streamChat(
 ): AbortController {
   const controller = new AbortController();
 
-  fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Visitor-Id": getVisitorId(),
-    },
-    body: JSON.stringify(body),
-    signal: controller.signal,
-  })
+  const send = async (retry: boolean): Promise<Response> => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: await authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (res.status === 401 && retry) {
+      await refreshWidgetToken();
+      return send(false);
+    }
+    return res;
+  };
+
+  send(true)
     .then((res) => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       if (!res.body) throw new Error("No response body");
@@ -53,18 +59,7 @@ export function streamChat(
     })
     .catch((err: Error) => {
       if (err.name !== "AbortError") {
-        // Report to error tracking
-        fetch(`${url.replace(/\/api\/.*$/, "")}/api/v1/error-events`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source: "widget",
-            error_type: "SSEError",
-            message: err.message,
-            path: window.location.pathname,
-            user_agent: navigator.userAgent,
-          }),
-        }).catch(() => {});
+        // 錯誤回報交給 chat-panel 的 onError（走 /widget/{code}/error，帶票）
         onError(err);
       }
     });

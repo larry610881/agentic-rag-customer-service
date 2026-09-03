@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     jwt_audience: str = "agentic-rag-api"
     api_access_token_expire_seconds: int = 900
     jwt_key_id: str = "k1"  # header kid；輪替 secret 時換值
+    widget_token_expire_seconds: int = 900  # widget 短效票（P4）
 
     # Shared Provider API Keys (fallback when embedding/llm-specific keys are not set)
     openai_api_key: str = ""

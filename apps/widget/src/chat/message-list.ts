@@ -1,6 +1,6 @@
 import type { ContactCard, Source } from "../types";
 import { cls } from "../constants";
-import { getVisitorId } from "../visitor";
+import { peekWidgetToken, widgetFetch } from "../session";
 
 export interface GalleryImage {
   src: string;
@@ -198,7 +198,9 @@ export class MessageList {
         const link = document.createElement("a");
         link.className = cls("sources__link");
         link.textContent = "查看原文";
-        link.href = `${apiBase}/api/v1/widget/${shortCode}/documents/${src.document_id}/view`;
+        // 新分頁開啟無法帶 Authorization header → 以 ?wt= 帶短效票
+        const wt = encodeURIComponent(peekWidgetToken());
+        link.href = `${apiBase}/api/v1/widget/${shortCode}/documents/${src.document_id}/view?wt=${wt}`;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         item.appendChild(link);
@@ -250,14 +252,11 @@ export class MessageList {
         if (comment) body.comment = comment;
         if (tags?.length) body.tags = tags;
 
-        await fetch(
+        await widgetFetch(
           `${apiBase}/api/v1/widget/${shortCode}/feedback`,
           {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Visitor-Id": getVisitorId(),
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           },
         );

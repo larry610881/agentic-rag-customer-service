@@ -1,10 +1,21 @@
-"""Widget 公開 Chat API — 外部網站嵌入式聊天"""
+"""Widget 公開 Chat API — 外部網站嵌入式聊天（Issue #67 P4：短效 widget 票）
+
+流程：
+1. ``GET /{code}/config``：Origin 必須在 bot 白名單（白名單為空一律拒）→ 回設定 +
+   ``widget_token``（type=widget_access，綁 bot / Origin / visitor，15 分鐘）+ 伺服器
+   簽發的 ``visitor_id``。
+2. chat/stream、feedback、error、documents/view 都必須帶票（Authorization: Bearer
+   或 ``?wt=`` query，後者給新分頁開啟文件用）；票的 bot / Origin 與請求不符即拒。
+3. 訪客身分取自票，不再信任 X-Visitor-Id header。
+"""
 
 import json
 import logging
+from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -28,17 +39,21 @@ from src.container import Container
 from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
 from src.domain.knowledge.repository import DocumentRepository
+from src.infrastructure.auth.jwt_service import WIDGET_TOKEN_TYPE, JWTService
+from src.infrastructure.auth.visitor_id_signer import VisitorIdSigner
 from src.interfaces.api.streaming_errors import classify_streaming_error
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/widget", tags=["widget"])
 
+_ALLOW_HEADERS = "Content-Type, Authorization, X-Visitor-Id"
+
 
 class WidgetChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
-    metadata: dict | None = None  # 預留：未來帶身份 token 時用
+    metadata: dict | None = None  # 預留
 
 
 class WidgetFeedbackRequest(BaseModel):
@@ -67,6 +82,30 @@ class WidgetConfigResponse(BaseModel):
     greeting_messages: list[str] = []
     greeting_animation: str = "fade"
     fab_icon_url: str = ""
+    # Issue #67 P4
+    widget_token: str = ""
+    token_expires_in: int = 0
+    visitor_id: str = ""
+
+
+@dataclass
+class WidgetPrincipal:
+    bot: Bot
+    origin: str
+    visitor_id: str | None
+
+
+def request_origin(request: Request) -> str | None:
+    """Origin header；沒有（同源 GET / 新分頁開啟）則退回 Referer 的 origin。"""
+    origin = request.headers.get("origin")
+    if origin:
+        return origin
+    referer = request.headers.get("referer")
+    if referer:
+        parts = urlsplit(referer)
+        if parts.scheme and parts.netloc:
+            return f"{parts.scheme}://{parts.netloc}"
+    return None
 
 
 async def validate_widget_bot(
@@ -74,7 +113,7 @@ async def validate_widget_bot(
     origin: str | None,
     bot_repo: BotRepository,
 ) -> Bot:
-    """Validate widget access. Raises HTTPException on failure."""
+    """bot 存在、啟用、開放 widget、Origin 在白名單（白名單為空一律拒）。"""
     bot = await bot_repo.find_by_short_code(short_code)
     if bot is None:
         raise HTTPException(
@@ -91,14 +130,65 @@ async def validate_widget_bot(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Widget is not enabled for this bot",
         )
-    # CORS origin check
-    if bot.widget_allowed_origins:
-        if not origin or origin not in bot.widget_allowed_origins:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Origin not allowed",
-            )
+    if not bot.widget_allowed_origins:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Widget origin allowlist is empty",
+        )
+    if not origin or origin not in bot.widget_allowed_origins:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Origin not allowed",
+        )
     return bot
+
+
+def _bearer_or_query_token(request: Request, wt: str | None) -> str | None:
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip() or None
+    return wt or None
+
+
+@inject
+async def get_widget_principal(
+    short_code: str,
+    request: Request,
+    wt: str | None = Query(default=None),
+    bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
+    jwt_service: JWTService = Depends(Provide[Container.jwt_service]),
+) -> WidgetPrincipal:
+    """驗 widget 票：type、bot、Origin 三者都要對得上。"""
+    token = _bearer_or_query_token(request, wt)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Widget token required"
+        )
+    try:
+        payload = jwt_service.decode_token(token)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid widget token"
+        ) from None
+    if payload.get("type") != WIDGET_TOKEN_TYPE:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid widget token"
+        )
+    token_origin = payload.get("origin") or ""
+    bot = await validate_widget_bot(short_code, token_origin, bot_repo)
+    if payload.get("sub") != bot.id.value:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Widget token does not match bot",
+        )
+    origin = request_origin(request)
+    if origin is not None and origin != token_origin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Origin not allowed"
+        )
+    return WidgetPrincipal(
+        bot=bot, origin=token_origin, visitor_id=payload.get("visitor_id")
+    )
 
 
 def _widget_should_forward(
@@ -137,7 +227,8 @@ def _set_cors_headers(response, origin: str | None, bot: Bot) -> None:
     if origin and origin in bot.widget_allowed_origins:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Visitor-Id"
+        response.headers["Access-Control-Allow-Headers"] = _ALLOW_HEADERS
+        response.headers["Vary"] = "Origin"
 
 
 @router.options("/{short_code}/chat/stream")
@@ -149,19 +240,18 @@ async def widget_cors_preflight(
     short_code: str,
     request: Request,
     bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
-) -> StreamingResponse:
+) -> Response:
     """CORS preflight — dynamic allowed origin."""
     origin = request.headers.get("origin")
     bot = await bot_repo.find_by_short_code(short_code)
-
-    from starlette.responses import Response
 
     resp = Response(status_code=204)
     if bot and bot.widget_enabled and origin and origin in bot.widget_allowed_origins:
         resp.headers["Access-Control-Allow-Origin"] = origin
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Visitor-Id"
+        resp.headers["Access-Control-Allow-Headers"] = _ALLOW_HEADERS
         resp.headers["Access-Control-Max-Age"] = "3600"
+        resp.headers["Vary"] = "Origin"
     return resp
 
 
@@ -172,10 +262,28 @@ async def widget_config(
     request: Request,
     response: Response,
     bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
+    jwt_service: JWTService = Depends(Provide[Container.jwt_service]),
+    signer: VisitorIdSigner = Depends(Provide[Container.visitor_id_signer]),
 ) -> WidgetConfigResponse:
-    """Public endpoint: get bot display config."""
-    origin = request.headers.get("origin")
+    """Public entry: Origin 白名單驗證後回設定 + 短效票 + 簽發訪客身分。"""
+    origin = request_origin(request)
     bot = await validate_widget_bot(short_code, origin, bot_repo)
+    assert origin is not None  # validate_widget_bot 已保證
+
+    presented = request.headers.get("x-visitor-id")
+    raw_visitor = signer.verify(presented)
+    if raw_visitor is None:
+        signed_visitor = signer.issue()
+        raw_visitor = signer.verify(signed_visitor) or ""
+    else:
+        signed_visitor = presented or ""
+
+    token, expires_in = jwt_service.create_widget_token(
+        bot_id=bot.id.value,
+        tenant_id=bot.tenant_id,
+        origin=origin,
+        visitor_id=raw_visitor,
+    )
 
     _set_cors_headers(response, origin, bot)
 
@@ -189,6 +297,9 @@ async def widget_config(
         greeting_messages=bot.widget_greeting_messages,
         greeting_animation=bot.widget_greeting_animation,
         fab_icon_url=bot.fab_icon_url,
+        widget_token=token,
+        token_expires_in=expires_in,
+        visitor_id=signed_visitor,
     )
 
 
@@ -197,8 +308,7 @@ async def widget_config(
 async def widget_chat_stream(
     short_code: str,
     body: WidgetChatRequest,
-    request: Request,
-    bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
+    principal: WidgetPrincipal = Depends(get_widget_principal),
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
     ),
@@ -206,20 +316,15 @@ async def widget_chat_stream(
         Provide[Container.record_usage_use_case]
     ),
 ) -> StreamingResponse:
-    """Public endpoint: SSE streaming chat."""
-    origin = request.headers.get("origin")
-    bot = await validate_widget_bot(short_code, origin, bot_repo)
-
-    visitor_id = request.headers.get("x-visitor-id")
+    """SSE streaming chat（需 widget 票）。"""
+    bot = principal.bot
     command = SendMessageCommand(
         tenant_id=bot.tenant_id,
         bot_id=bot.id.value,
         message=body.message,
         conversation_id=body.conversation_id if bot.widget_keep_history else None,
-        visitor_id=visitor_id,
-        # L6：widget 端點固定通路標記——無 X-Visitor-Id 時原本為 None，trace source
-        # 會 fallback 成 "web"，通路別統計把 widget 流量算進 web。memory 身份解析
-        # 仍以 visitor_id 為 gate（_resolve_and_load_memory 先檢查 visitor_id）。
+        visitor_id=principal.visitor_id,  # 取自票，不信任 header
+        # L6：widget 端點固定通路標記——trace source 不再 fallback 成 "web"
         identity_source="widget",
     )
 
@@ -232,8 +337,7 @@ async def widget_chat_stream(
         except Exception as exc:
             logger.exception("widget.chat.stream.error")
             error_msg = classify_streaming_error(exc)
-            # L5：與 agent_router 對齊（channel parity）——標記+持久化 failed trace，
-            # 否則 widget 通路的失敗不出現在 Studio 觀測頁，該輪 trace 直接丟失。
+            # L5：與 agent_router 對齊（channel parity）——標記+持久化 failed trace
             from src.interfaces.api._streaming_failure import (
                 persist_failed_stream_trace,
             )
@@ -277,7 +381,7 @@ async def widget_chat_stream(
         event_generator(),
         media_type="text/event-stream",
     )
-    _set_cors_headers(response, origin, bot)
+    _set_cors_headers(response, principal.origin, bot)
     return response
 
 
@@ -286,17 +390,14 @@ async def widget_chat_stream(
 async def widget_feedback(
     short_code: str,
     body: WidgetFeedbackRequest,
-    request: Request,
     response: Response,
-    bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
+    principal: WidgetPrincipal = Depends(get_widget_principal),
     use_case: SubmitFeedbackUseCase = Depends(
         Provide[Container.submit_feedback_use_case]
     ),
 ) -> dict:
-    """Public endpoint: submit feedback from widget."""
-    origin = request.headers.get("origin")
-    bot = await validate_widget_bot(short_code, origin, bot_repo)
-
+    """Submit feedback from widget（需 widget 票）。"""
+    bot = principal.bot
     command = SubmitFeedbackCommand(
         tenant_id=bot.tenant_id,
         conversation_id=body.conversation_id,
@@ -308,7 +409,7 @@ async def widget_feedback(
     )
     await use_case.execute(command)
 
-    _set_cors_headers(response, origin, bot)
+    _set_cors_headers(response, principal.origin, bot)
     return {"success": True}
 
 
@@ -317,17 +418,13 @@ async def widget_feedback(
 async def widget_error_report(
     short_code: str,
     body: WidgetErrorRequest,
-    request: Request,
     response: Response,
-    bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
+    principal: WidgetPrincipal = Depends(get_widget_principal),
     use_case: ReportErrorUseCase = Depends(
         Provide[Container.report_error_use_case]
     ),
 ) -> dict:
-    """Public endpoint: report errors from widget."""
-    origin = request.headers.get("origin")
-    bot = await validate_widget_bot(short_code, origin, bot_repo)
-
+    """Report errors from widget（需 widget 票）。"""
     event = await use_case.execute(
         ReportErrorCommand(
             source="widget",
@@ -339,7 +436,7 @@ async def widget_error_report(
         )
     )
 
-    _set_cors_headers(response, origin, bot)
+    _set_cors_headers(response, principal.origin, principal.bot)
     return {"id": event.id, "fingerprint": event.fingerprint}
 
 
@@ -348,8 +445,7 @@ async def widget_error_report(
 async def widget_view_document(
     short_code: str,
     doc_id: str,
-    request: Request,
-    bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
+    principal: WidgetPrincipal = Depends(get_widget_principal),
     doc_repo: DocumentRepository = Depends(
         Provide[Container.document_repository]
     ),
@@ -357,10 +453,8 @@ async def widget_view_document(
         Provide[Container.view_document_use_case]
     ),
 ) -> Response:
-    """Public endpoint: view original document file (inline, no download)."""
-    origin = request.headers.get("origin")
-    bot = await validate_widget_bot(short_code, origin, bot_repo)
-
+    """View original document file（需 widget 票；新分頁開啟時以 ?wt= 帶票）。"""
+    bot = principal.bot
     if not bot.show_sources:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -384,5 +478,5 @@ async def widget_view_document(
             "Content-Disposition": f'inline; filename="{result.filename}"'
         },
     )
-    _set_cors_headers(resp, origin, bot)
+    _set_cors_headers(resp, principal.origin, bot)
     return resp

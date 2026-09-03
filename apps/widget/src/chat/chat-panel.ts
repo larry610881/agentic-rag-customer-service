@@ -1,6 +1,7 @@
 import type { ContactCard, Source, WidgetConfig } from "../types";
 import { cls } from "../constants";
 import { MessageList } from "./message-list";
+import { widgetFetch } from "../session";
 import { streamChat } from "./sse-client";
 import { getStatusHint, getToolLabel } from "./tool-labels";
 
@@ -120,7 +121,7 @@ export class ChatPanel {
     if (text === "test") {
       this.input.value = "";
       this.messageList.addMessage("bot", "[Test] Widget 模擬錯誤已送出");
-      fetch(`${this.apiBase}/api/v1/widget/${this.shortCode}/error`, {
+      widgetFetch(`${this.apiBase}/api/v1/widget/${this.shortCode}/error`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -242,7 +243,7 @@ export class ChatPanel {
       },
       (err) => {
         // Report connection error
-        fetch(`${this.apiBase}/api/v1/widget/${this.shortCode}/error`, {
+        widgetFetch(`${this.apiBase}/api/v1/widget/${this.shortCode}/error`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

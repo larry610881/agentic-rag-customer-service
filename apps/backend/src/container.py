@@ -392,6 +392,7 @@ from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.auth.redis_login_attempt_tracker import (
     RedisLoginAttemptTracker,
 )
+from src.infrastructure.auth.visitor_id_signer import VisitorIdSigner
 from src.infrastructure.auth.redis_token_stores import (
     RedisRefreshTokenStore,
     RedisTokenRevocationStore,
@@ -757,6 +758,15 @@ class Container(containers.DeclarativeContainer):
         allow_legacy_tokens=providers.Callable(
             lambda cfg: cfg.app_env == "development", config
         ),
+        widget_token_expire_seconds=providers.Callable(
+            lambda cfg: cfg.widget_token_expire_seconds, config
+        ),
+    )
+
+    # Issue #67 P4：widget 訪客身分由伺服器簽發
+    visitor_id_signer = providers.Singleton(
+        VisitorIdSigner,
+        secret=providers.Callable(lambda cfg: cfg.jwt_secret_key, config),
     )
 
     # Issue #67 P3：refresh 旋轉 / 撤銷狀態（Redis，fail-open）

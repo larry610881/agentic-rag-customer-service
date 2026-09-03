@@ -9,6 +9,10 @@ export interface WidgetConfig {
   greeting_messages: string[];
   greeting_animation: "fade" | "slide" | "typewriter";
   fab_icon_url?: string;
+  /** Issue #67 P4：短效 widget 票（15 分鐘）與伺服器簽發的 visitor id */
+  widget_token?: string;
+  token_expires_in?: number;
+  visitor_id?: string;
 }
 
 /** Source reference from RAG retrieval */

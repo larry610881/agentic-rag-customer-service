@@ -9,7 +9,7 @@
  */
 
 import type { WidgetConfig } from "./types";
-import { getVisitorId } from "./visitor";
+import { fetchWidgetConfig } from "./session";
 import { Widget } from "./widget";
 
 (function () {
@@ -24,16 +24,8 @@ import { Widget } from "./widget";
 
   // Derive API base URL from the script's src
   const apiBase = script.src.replace(/\/static\/widget\.js.*$/, "");
-  const configUrl = `${apiBase}/api/v1/widget/${shortCode}/config`;
-
-  // Fetch bot config then initialize widget
-  fetch(configUrl, {
-    headers: { "X-Visitor-Id": getVisitorId() },
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error(`Config fetch failed: HTTP ${res.status}`);
-      return res.json();
-    })
+  // Fetch bot config (+ widget token) then initialize widget
+  fetchWidgetConfig(apiBase, shortCode)
     .then((data: WidgetConfig) => {
       // Apply defaults for fields that may not exist in the response yet
       const config: WidgetConfig = {

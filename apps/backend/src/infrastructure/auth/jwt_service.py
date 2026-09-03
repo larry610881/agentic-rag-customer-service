@@ -17,6 +17,7 @@ from uuid import uuid4
 from jose import JWTError, jwt
 
 API_ACCESS_TOKEN_TYPE = "api_access"
+WIDGET_TOKEN_TYPE = "widget_access"
 
 
 class JWTService:
@@ -31,6 +32,7 @@ class JWTService:
         api_access_expire_seconds: int = 900,
         key_id: str = "k1",
         allow_legacy_tokens: bool = True,
+        widget_token_expire_seconds: int = 900,
     ) -> None:
         self._secret_key = secret_key
         self._algorithm = algorithm
@@ -41,6 +43,7 @@ class JWTService:
         self._api_access_expire_seconds = api_access_expire_seconds
         self._key_id = key_id
         self._allow_legacy_tokens = allow_legacy_tokens
+        self._widget_token_expire_seconds = widget_token_expire_seconds
 
     # ------------------------------------------------------------------ helpers
 
@@ -166,6 +169,27 @@ class JWTService:
             "ver": version,
         })
         return self._encode(payload), self._api_access_expire_seconds
+
+    def create_widget_token(
+        self,
+        *,
+        bot_id: str,
+        tenant_id: str,
+        origin: str,
+        visitor_id: str,
+    ) -> tuple[str, int]:
+        """widget 短效票（Issue #67 P4）：綁 bot / Origin / visitor，無 refresh。"""
+        payload = self._base_claims(
+            token_type=WIDGET_TOKEN_TYPE,
+            sub=bot_id,
+            ttl=timedelta(seconds=self._widget_token_expire_seconds),
+        )
+        payload.update({
+            "tenant_id": tenant_id,
+            "origin": origin,
+            "visitor_id": visitor_id,
+        })
+        return self._encode(payload), self._widget_token_expire_seconds
 
     # ------------------------------------------------------------------ verify
 
