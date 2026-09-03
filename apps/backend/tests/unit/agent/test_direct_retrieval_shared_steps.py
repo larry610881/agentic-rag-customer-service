@@ -49,10 +49,13 @@ def _sources(score):
     )]
 
 
-def _setup_web(context, *, direct: bool, score: float = 0.85, rerank: bool = False):
+def _setup_web(
+    context, *, direct: bool, score: float = 0.85, rerank: bool = False,
+    mode: str = "deep",
+):
     bot = Bot(
         id=BotId(value="bot-dr"), tenant_id="t1", name="DR", base_prompt="p",
-        knowledge_base_ids=["kb-faq"], rerank_enabled=rerank,
+        knowledge_base_ids=["kb-faq"], rerank_enabled=rerank, mode=mode,
     )
     worker = WorkerConfig(
         bot_id="bot-dr", name="門市服務查詢", worker_prompt="你是門市客服",
@@ -109,9 +112,9 @@ def worker_not_direct(context):
     _setup_web(context, direct=False)
 
 
-@given("一個開啟直接檢索且 bot 開啟 rerank 的 Worker")
+@given("一個 mode 為 fast 且 bot 開啟 rerank 的 Worker")
 def worker_direct_rerank(context):
-    _setup_web(context, direct=True, rerank=True)
+    _setup_web(context, direct=True, rerank=True, mode="fast")
 
 
 @when(parsers.parse('以來源 "{source}" 以非串流方式送出訊息'))

@@ -115,24 +115,41 @@
 
 ## 需求三：快速道（direct_retrieval）通用化
 
-> 背景：Issue #50/#51 的快速道（意圖命中 → 跳過 ReAct → 直接檢索 → 門檻判定 → 單次生成，失敗自動升級 ReAct）目前**只實作在 LINE 路徑**（`handle_webhook_use_case.py`），且開關 `bot_workers.direct_retrieval` 雖是 DB 欄位，**API 與前端皆未暴露**，實務上只能下 SQL 開啟。
+> 背景：Issue #50/#51 的快速道（意圖命中 → 跳過 ReAct → 直接檢索 → 門檻判定 → 單次生成，失敗自動升級 ReAct）原本**只實作在 LINE 路徑**，開關 `bot_workers.direct_retrieval` 只能下 SQL 開。
 > 原則（Larry 定案）：**所有機制、所有渠道（web/widget/LINE）都必須實作**；機制必須是可設置的，不是程式寫死。
+>
+> **2026-09-02 狀態更新（Issue #61 / #66）**：
+> - 3.1-1、3.1-2 已完成：`application/agent/direct_retrieval_service.py` 為共用服務，web/widget/LINE 共同呼叫；生成留在各通路（web 串流補發 sources 事件、LINE 圖卡）。
+> - 3.1-3 已完成：worker CRUD API 與後台表單有 `direct_retrieval` 開關。
+> - 3.1-4 定案為**兩層 profile**（見 3.3），不再只是評估。
+> - 快速道 profile 固定 raw-only（不做 rewrite / HyDE）；rerank 由 bot.mode 決定。
+> - 家樂福 POC 若不續做，本需求仍成立（快速道是「快速 bot」的引擎、精靈的落地欄位、需求四第 1 步）；僅家樂福專用的 DM 圖卡工具降為選配、`seed_carrefour_workers` 不再維護、驗收改用示範商店題組。
 
 ### 3.1 規格
 
-1. **抽共用 service**：把快速道邏輯從 `handle_webhook_use_case.py` 抽成 application 層共用服務（含：檢索＋門檻判定＋fast_prompt 組裝＋escalated 升級語意＋來源回填），`send_message_use_case.py`（web/widget）與 LINE webhook 共同呼叫。**注意既有教訓**：web/LINE 兩條 use case 已多次因重複實作而 drift（trace 持久化、prompt guard 都發生過），本次抽取是還債，不要再複製一份。
-2. **DM 圖卡等通路特化行為**保留在各通路的呼叫端（web 的 SSE 串流與 LINE 的圖卡回覆本來就不同），共用的是決策與檢索核心。
-3. **設定面補全**：`worker_router.py` 的 worker CRUD schema 加入 `direct_retrieval` 欄位；前端 worker 設定表單加開關（含說明文案：「常見問題直答，複雜問題自動升級完整推理」）；快速道的 trace 節點（direct_retrieval / escalated）在 web 通路同樣要進 AgentTraceCollector。
-4. **（評估項）bot 層級開關**：整隻 bot 皆為 FAQ 型的簡單場景，可否連意圖分類都跳過——規劃書中評估可行性與風險，不強制 v1。
-5. **與精靈串接**：精靈五件套 b 項的快速道建議，落地時直接寫入此欄位（見 2.2）。
+1. **抽共用 service** ✅：檢索＋門檻判定＋fast_prompt 組裝＋escalated 升級語意＋來源回填，web/widget/LINE 共同呼叫（plan / generate 分離：服務只回「怎麼生成」，生成由通路呼叫自己的 agent_service）。
+2. **DM 圖卡等通路特化行為**保留在各通路的呼叫端 ✅。
+3. **設定面補全** ✅：worker CRUD schema 與前端表單有 `direct_retrieval` 開關（文案：「常見問題直答，複雜問題自動升級完整推理」）；快速道 trace 節點（direct_retrieval / escalated）三通路皆進 AgentTraceCollector。
+4. **bot 層級 profile**（Issue #66，取代原「評估項」）：見 3.3。
+5. **與精靈串接**：精靈五件套 b 項改為「先建議 bot.mode，再建議個別 worker 例外」。
 
 ### 3.2 驗收
 
-- 同一 worker 開啟 direct_retrieval 後，web/widget/LINE 三通路行為一致（含升級 fallback 與 trace 記錄）。
-- 開關全程可在 admin UI 操作，不需 SQL。
-- 既有家樂福 LINE 行為零回歸（既有測試 + 快速道相關單元測試全綠）。
+- 同一 worker 開啟 direct_retrieval 後，web/widget/LINE 三通路行為一致（含升級 fallback 與 trace 記錄）✅（`direct_retrieval_shared.feature`）。
+- 開關全程可在 admin UI 操作，不需 SQL ✅（Issue #66）。
+- 既有 LINE 行為零回歸：既有測試全綠；線上實測待示範商店資料重建。
 
----
+### 3.3 快速 / 深度兩層 profile（2026-09-02 定案）
+
+| bot.mode | worker 未開 direct_retrieval | worker 開 direct_retrieval |
+|---|---|---|
+| `fast` | 一律快速道（沒有 worker 也走） | 快速道；rerank / rewrite / HyDE 一律關 |
+| `deep`（預設） | 完整 ReAct | 快速道；rerank 依 bot / worker 設定 |
+
+- `fast` 的升級語意：檢索未過門檻仍升級 ReAct，但 `max_tool_calls` 上限 2、rerank / rewrite / HyDE 關；**升級率是 KPI**（高 = 知識庫覆蓋不足，補資料而非放寬時間）。
+- 意圖分類保留（同時提供改寫查詢與攻擊判定）；只有一個 worker 時跳過選路但保留清洗（待做）。
+- `mode` 進設定快照白名單與執行時指紋（`EffectiveConfig.extra.mode`）。
+- 環境變數 `FAST_LANE_ALLOW_RERANK` 已移除（違反「可設置、不寫死」）。
 
 ## 需求四：對話管線通路統一（絞殺者遷移，獨立 phase）
 
@@ -153,12 +170,15 @@
 
 ### 4.2 遷移順序（每步獨立交付、可驗證，禁止大爆炸重寫）
 
-1. 快速道抽共用 service（＝需求三，已排最前）
-2. trace 持久化統一（兩份 `_persist_agent_trace` 合一）
-3. guard 呼叫點統一
-4. **eval 補上 LINE 通路**（目前 LINE 每輪對話完全沒有品質評估——這是功能缺口，不只是重構）
-5. usage 記帳路徑統一
-6. 收斂為 ConversationTurnPipeline + 中性事件流
+> **2026-09-02 狀態更新**：第 1 步完成（Issue #61）；第 4 步需求已變——線上每輪 LLM 自評已下線（Issue #59，從未成功寫入），改為「營運訊號（p50/p90、升級率、轉真人率、guard 攔截）＋離線 gate 回放三通路一致」（Issue #63）。新增待遷移項：EffectiveConfig 組裝（#60 兩邊各一份）、長期記憶接 LINE（M21）、閘門回放通路保真（M22）。
+
+1. 快速道抽共用 service ✅（＝需求三，Issue #61）
+2. trace 持久化統一（兩份 `_persist_agent_trace` 合一；#57 已讓節點一致、config_hash 各寫一次）
+3. guard 呼叫點統一（web 先 guard 再分類、LINE 並行——分類器先看到攻擊原文，紅隊視角的實質差異）
+4. ~~eval 補上 LINE 通路~~ → 營運訊號與離線回放三通路一致（Issue #63）
+5. usage 記帳路徑統一（LINE 仍無 config_version_id；SSE 中斷漏記 M12）
+6. EffectiveConfig 組裝、長期記憶（M21）、閘門回放保真（M22）併入共用管線
+7. 收斂為 ConversationTurnPipeline + 中性事件流
 
 ### 4.3 驗收
 

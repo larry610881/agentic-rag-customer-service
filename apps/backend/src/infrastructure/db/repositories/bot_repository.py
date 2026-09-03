@@ -130,6 +130,7 @@ class SQLAlchemyBotRepository(BotRepository):
             eval_model=model.eval_model or "",
             eval_depth=model.eval_depth or "L1",
             gate_mode=model.gate_mode or "off",
+            mode=getattr(model, "mode", None) or "deep",
             gate_soft_threshold=model.gate_soft_threshold,
             gate_repeats=model.gate_repeats,
             gate_auto_publish=model.gate_auto_publish,
@@ -261,6 +262,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.eval_model = bot.eval_model
                 existing.eval_depth = bot.eval_depth
                 existing.gate_mode = bot.gate_mode
+                existing.mode = bot.mode
                 existing.gate_soft_threshold = bot.gate_soft_threshold
                 existing.gate_repeats = bot.gate_repeats
                 existing.gate_auto_publish = bot.gate_auto_publish
@@ -350,6 +352,7 @@ class SQLAlchemyBotRepository(BotRepository):
                     eval_model=bot.eval_model,
                     eval_depth=bot.eval_depth,
                     gate_mode=bot.gate_mode,
+                    mode=bot.mode,
                     gate_soft_threshold=bot.gate_soft_threshold,
                     gate_repeats=bot.gate_repeats,
                     gate_auto_publish=bot.gate_auto_publish,

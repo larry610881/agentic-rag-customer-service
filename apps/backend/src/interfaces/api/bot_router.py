@@ -37,6 +37,7 @@ _VALID_EVAL_DEPTHS = {
 }
 _VALID_LLM_PROVIDERS = {p.value for p in ProviderName}
 _VALID_GATE_MODES = {"off", "warn", "block"}
+_VALID_BOT_MODES = {"fast", "deep"}  # Issue #66
 def _validate_intent_routes(routes: list["IntentRouteSchema"]) -> None:
     """Validate intent routes: max 10, unique names."""
     if len(routes) > 10:
@@ -126,6 +127,7 @@ class CreateBotRequest(BaseModel):
     eval_provider: str = ""
     eval_model: str = ""
     eval_depth: str = "off"
+    mode: str = "deep"  # Issue #66：fast | deep
     gate_mode: str = "off"
     gate_soft_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
     gate_repeats: int = Field(default=3, ge=1, le=10)
@@ -188,6 +190,7 @@ class UpdateBotRequest(BaseModel):
     eval_provider: str | None = None
     eval_model: str | None = None
     eval_depth: str | None = None
+    mode: str | None = None
     gate_mode: str | None = None
     gate_soft_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     gate_repeats: int | None = Field(default=None, ge=1, le=10)
@@ -253,6 +256,7 @@ class BotResponse(BaseModel):
     eval_provider: str
     eval_model: str
     eval_depth: str
+    mode: str
     gate_mode: str
     gate_soft_threshold: float
     gate_repeats: int
@@ -321,6 +325,7 @@ def _to_response(bot) -> BotResponse:
         eval_provider=bot.eval_provider,
         eval_model=bot.eval_model,
         eval_depth=bot.eval_depth,
+        mode=bot.mode,
         gate_mode=bot.gate_mode,
         gate_soft_threshold=bot.gate_soft_threshold,
         gate_repeats=bot.gate_repeats,
@@ -426,6 +431,11 @@ async def create_bot(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
         )
+    if body.mode not in _VALID_BOT_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"mode must be one of {sorted(_VALID_BOT_MODES)}",
+        )
     if body.gate_mode not in _VALID_GATE_MODES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -470,6 +480,7 @@ async def create_bot(
             eval_model=body.eval_model,
             eval_depth=body.eval_depth,
             gate_mode=body.gate_mode,
+            mode=body.mode,
             gate_soft_threshold=body.gate_soft_threshold,
             gate_repeats=body.gate_repeats,
             gate_auto_publish=body.gate_auto_publish,
@@ -607,6 +618,11 @@ async def update_bot(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
+        )
+    if body.mode is not None and body.mode not in _VALID_BOT_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"mode must be one of {sorted(_VALID_BOT_MODES)}",
         )
     if body.gate_mode is not None and body.gate_mode not in _VALID_GATE_MODES:
         raise HTTPException(

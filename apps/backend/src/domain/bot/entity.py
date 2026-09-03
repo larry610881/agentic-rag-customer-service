@@ -65,6 +65,9 @@ class ToolRagConfig:
     kb_ids: list[str] | None = None
 
 
+VALID_BOT_MODES = ("fast", "deep")
+
+
 @dataclass
 class BotLLMParams:
     temperature: float = 0.3
@@ -103,6 +106,10 @@ class Bot:
     eval_depth: str = "off"  # "off" | any combo of "L1", "L2", "L3" joined by "+"
     # Issue #54 Phase C — 發布閘門設定（治理欄位，不進 config snapshot 白名單）
     gate_mode: str = "off"  # off | warn | block
+    # Issue #66：快速 / 深度 profile。
+    # fast = 全 worker 走快速道、rerank/rewrite/HyDE 關、升級 ReAct 工具上限 2
+    # deep = 完整 ReAct，worker 可個別開快速道
+    mode: str = "deep"  # fast | deep
     gate_soft_threshold: float = 0.8
     gate_repeats: int = 3
     gate_auto_publish: bool = False

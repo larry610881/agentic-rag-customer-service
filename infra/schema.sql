@@ -201,6 +201,7 @@ CREATE TABLE public.bots (
     hyde_enabled boolean DEFAULT false NOT NULL,
     hyde_model character varying(100) DEFAULT ''::character varying NOT NULL,
     hyde_extra_hint text DEFAULT ''::text NOT NULL,
+    mode character varying(10) DEFAULT 'deep'::character varying NOT NULL,
     gate_mode character varying(10) DEFAULT 'off'::character varying NOT NULL,
     gate_soft_threshold double precision DEFAULT 0.8 NOT NULL,
     gate_repeats integer DEFAULT 3 NOT NULL,

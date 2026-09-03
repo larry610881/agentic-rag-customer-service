@@ -45,6 +45,7 @@ class CreateWorkerCommand:
     enabled_tools: list[str] | None = None
     tool_configs: dict = field(default_factory=dict)
     sort_order: int = 0
+    direct_retrieval: bool = False  # Issue #66：快速道開關進 API
     actor_user_id: str | None = None  # Issue #60：稽核 actor
 
 
@@ -65,6 +66,7 @@ class UpdateWorkerCommand:
     enabled_tools: Any = ...
     tool_configs: dict | None = None
     sort_order: int | None = None
+    direct_retrieval: bool | None = None  # Issue #66：快速道開關進 API
     actor_user_id: str | None = None  # Issue #60：稽核 actor
 
 
@@ -125,6 +127,7 @@ class CreateWorkerUseCase:
             ),
             tool_configs=_build_tool_configs(command.tool_configs),
             sort_order=command.sort_order,
+            direct_retrieval=command.direct_retrieval,
         )
         await self._repo.save(worker)
         if self._audit is not None:
@@ -177,6 +180,8 @@ class UpdateWorkerUseCase:
             worker.tool_configs = _build_tool_configs(command.tool_configs)
         if command.sort_order is not None:
             worker.sort_order = command.sort_order
+        if command.direct_retrieval is not None:
+            worker.direct_retrieval = command.direct_retrieval
         await self._repo.save(worker)
         if self._audit is not None:
             await self._audit.record(

@@ -42,6 +42,7 @@ _SCALAR_FIELDS = (
     "rerank_top_n",
     "enabled_tools",
     "max_tool_calls",
+    "mode",  # Issue #66：快速 / 深度 profile 影響行為，進快照
     "memory_enabled",
     "memory_extraction_threshold",
     "knowledge_base_ids",

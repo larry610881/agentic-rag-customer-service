@@ -54,6 +54,8 @@ class CreateWorkerRequest(BaseModel):
         default_factory=dict
     )
     sort_order: int = 0
+    # Issue #66：快速道開關（常見問題直答，複雜問題自動升級完整推理）
+    direct_retrieval: bool = False
 
 
 class UpdateWorkerRequest(BaseModel):
@@ -70,6 +72,7 @@ class UpdateWorkerRequest(BaseModel):
     enabled_tools: list[str] | None = None
     tool_configs: dict[str, WorkerToolRagConfigSchema] | None = None
     sort_order: int | None = None
+    direct_retrieval: bool | None = None
 
 
 class WorkerResponse(BaseModel):
@@ -88,6 +91,7 @@ class WorkerResponse(BaseModel):
     enabled_tools: list[str] | None
     tool_configs: dict[str, dict[str, Any]]
     sort_order: int
+    direct_retrieval: bool = False
     created_at: str
     updated_at: str
 
@@ -123,6 +127,7 @@ def _to_response(w: Any) -> WorkerResponse:
             for name, cfg in (w.tool_configs or {}).items()
         },
         sort_order=w.sort_order,
+        direct_retrieval=getattr(w, "direct_retrieval", False),
         created_at=w.created_at.isoformat(),
         updated_at=w.updated_at.isoformat(),
     )
@@ -177,6 +182,7 @@ async def create_worker(
                 for name, cfg in body.tool_configs.items()
             },
             sort_order=body.sort_order,
+            direct_retrieval=body.direct_retrieval,
         )
     )
     return _to_response(worker)
@@ -222,6 +228,7 @@ async def update_worker(
                 else None
             ),
             sort_order=body.sort_order,
+            direct_retrieval=body.direct_retrieval,
         )
     )
     if worker is None:

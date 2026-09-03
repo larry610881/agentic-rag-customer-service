@@ -7,6 +7,39 @@
 
 ---
 
+## 快速 / 深度兩層 profile — 「bot 定位」與「worker 覆寫」分層，把環境變數收回設定（2026-09-02，Issue #66）
+
+**Sprint 來源**：需求三收尾。#61 抽出共用快速道後，開關仍只能下 SQL；同時 09-02 討論定案
+「快速 bot / 深度 bot」兩類定位，而快速道旗標掛在 worker，兩者顆粒度不同。
+
+**主題**：profile 層 vs 覆寫層、升級語意的上限化、「可設置不寫死」原則的自我糾正
+
+#### 做得好的地方
+- **兩層而非二選一**：`bot.mode` 是 profile（預設值 + 鎖定），`worker.direct_retrieval` 是個別覆寫。
+  fast bot 沒有 worker 也走快速道，deep bot 的 worker 仍可單獨開。決策表寫進需求書 3.3，
+  程式與文件同一份真相。
+- **升級不是關掉而是上限化**：fast 模式檢索未過門檻仍升級 ReAct，但 `max_tool_calls` 壓到 2、
+  metadata 同步關 rerank / rewrite / HyDE。品質保險留著，延遲承諾也守住，升級率變成 KPI。
+- **把 #61 的環境變數收回來**：`FAST_LANE_ALLOW_RERANK` 全域旗標違反需求三「可設置不寫死」，
+  改成 `plan(allow_rerank=…)` 由呼叫端依 bot.mode 逐次決定；deep bot 的 worker 快速道回到
+  「依設定」，修正了 #61 對既有 LINE 行為的隱性改變。
+- **mode 進快照與指紋**：設定版本 diff 與執行時指紋都看得到 profile 切換，鑑識鏈不斷。
+
+#### 潛在隱憂
+- **bool 無法表達「未設定」**：worker.direct_retrieval 是 bool，fast 模式下無法區分「明確關」與
+  「沒設」，所以 fast 一律直答。若日後需要 fast bot 內某 worker 強制走 ReAct，要改成三態
+  → 優先級：低。
+- **單 worker 跳過選路尚未做**：分類器在單 worker 時仍做完整三合一呼叫，省不到 LLM；需求書
+  3.3 標為待做 → 優先級：中（地端小模型分類延遲出來後決定）。
+- **migration 未套**：`add_bot_mode.sql` 需三環境授權 → 交付前置。
+
+#### 延伸學習
+- **Profile / Override 分層**是設定系統的通用模式（Kubernetes 的 PodPreset vs Pod spec、
+  ESLint 的 extends vs rules）。判準：profile 只放「一組值得一起切換的預設」，覆寫只放
+  「個別例外」，兩者都要能在快照裡看見。
+
+---
+
 ## 快速道抽共用 — 「plan 與 generate 分離」讓串流通路也能用同一份快速道（2026-09-02，Issue #61）
 
 **Sprint 來源**：channel-parity 債務清單第 1 項。`direct_retrieval` 快速道只活在 LINE 轉接器

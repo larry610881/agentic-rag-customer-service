@@ -474,6 +474,7 @@ class HandleWebhookUseCase:
             tool_rag_params=tool_rag_params,
             user_message=event.message_text,
             retrieval_query=retrieval_query,
+            allow_rerank=getattr(bot, "mode", "deep") != "fast",  # Issue #66
         )
         if plan is None:
             return None
@@ -850,8 +851,9 @@ class HandleWebhookUseCase:
                 direct_retrieval=direct_retrieval_worker is not None,
             )
             result = None
+            is_fast_bot = getattr(bot, "mode", "deep") == "fast"
             if (
-                direct_retrieval_worker is not None
+                (direct_retrieval_worker is not None or is_fast_bot)
                 and self._direct_retrieval is not None
                 and kb_ids
             ):
@@ -873,6 +875,14 @@ class HandleWebhookUseCase:
                     retrieval_query=rewritten_query,
                 )
             if result is None:
+                if is_fast_bot:
+                    # Issue #66：fast profile 升級 ReAct 受約束——工具上限 2、無 rerank
+                    max_tool_calls = min(int(max_tool_calls or 5), 2)
+                    rerank_metadata = {
+                        **rerank_metadata,
+                        "rerank_enabled": False,
+                        "rag_retrieval_modes": ["raw"],
+                    }
                 result = await self._agent_service.process_message(
                     tenant_id=bot.tenant_id,
                     kb_id=kb_id,
@@ -1170,6 +1180,7 @@ class HandleWebhookUseCase:
                 max_tool_calls=int(max_tool_calls or 0),
                 guard=guard,
                 memory_enabled=bool(getattr(bot, "memory_enabled", False)),
+                extra={"mode": getattr(bot, "mode", "deep")},
             )
             config_hash = str(await self._config_fingerprint.record(effective))
             AgentTraceCollector.set_config_hash(config_hash)

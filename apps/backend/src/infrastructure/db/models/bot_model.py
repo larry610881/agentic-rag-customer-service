@@ -60,6 +60,10 @@ class BotModel(Base):
     eval_depth: Mapped[str] = mapped_column(
         String(20), nullable=False, default="L1", server_default="L1"
     )
+    # Issue #66 — 快速 / 深度 profile（migration: add_bot_mode.sql）
+    mode: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="deep", server_default="deep"
+    )
     # Issue #54 Phase C — 發布閘門設定
     gate_mode: Mapped[str] = mapped_column(
         String(10), nullable=False, default="off", server_default="off"

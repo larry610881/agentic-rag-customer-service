@@ -249,6 +249,9 @@ class SendMessageUseCase:
         cfg["customer_service_url"] = bot.customer_service_url
         # Stash bot entity + initial per-tool params (worker routing may override)
         cfg["_bot"] = bot
+        # Issue #66：bot profile；fast 時沒有 worker 也走快速道
+        cfg["mode"] = getattr(bot, "mode", "deep") or "deep"
+        cfg["_direct_retrieval"] = cfg["mode"] == "fast"
         cfg["tool_rag_params"] = build_tool_rag_params_map(bot=bot)
         cfg["mcp_servers"] = [
             {
@@ -365,7 +368,7 @@ class SendMessageUseCase:
         if self._sys_prompt_repo:
             sys_cfg = await self._sys_prompt_repo.get()
             resolved_system_prompt = bot.base_prompt or sys_cfg.system_prompt
-            # Issue #60：bot 未設 base_prompt 時靜默 fallback 到平台 prompt，鑑識要看得到
+            # Issue #60：bot 未設 base_prompt 時靜默 fallback 到平台 prompt
             cfg["_platform_prompt_fallback"] = not bool(bot.base_prompt)
 
         # Pre-assemble the full system prompt (agent services use it directly)
@@ -686,7 +689,7 @@ class SendMessageUseCase:
         # Issue #61：快速道旗標與分類器改寫查詢，供 _apply_fast_lane 使用
         cfg["_direct_retrieval"] = bool(
             getattr(matched, "direct_retrieval", False)
-        )
+        ) or cfg.get("mode") == "fast"
         cfg["_retrieval_query"] = getattr(outcome, "query", "") or ""
 
         cfg["_worker_matched_info"] = {
@@ -799,6 +802,10 @@ class SendMessageUseCase:
 
         # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
         bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
+        if bot_cfg.get("mode") == "fast":
+            # Issue #66：fast profile 壓進 agent metadata（升級 ReAct 也零額外 LLM）
+            metadata["rerank_enabled"] = False
+            metadata["rag_retrieval_modes"] = ["raw"]
 
         # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型
         attack_block = await self._check_classifier_attack(
@@ -1063,6 +1070,10 @@ class SendMessageUseCase:
 
         # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
         bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
+        if bot_cfg.get("mode") == "fast":
+            # Issue #66：fast profile 壓進 agent metadata（升級 ReAct 也零額外 LLM）
+            metadata["rerank_enabled"] = False
+            metadata["rag_retrieval_modes"] = ["raw"]
 
         # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型。
         # widget 端由 router 過濾 guard_blocked 事件（H7），只收到固定文案。
@@ -1400,6 +1411,7 @@ class SendMessageUseCase:
         bot_entity = bot_cfg.get("_bot")
         if bot_entity is None or not bot_cfg.get("kb_ids"):
             return bot_cfg, None
+        is_fast = bot_cfg.get("mode") == "fast"
         plan = await self._direct_retrieval.plan(
             tenant_id=command.tenant_id,
             bot=bot_entity,
@@ -1410,8 +1422,22 @@ class SendMessageUseCase:
             tool_rag_params=bot_cfg.get("tool_rag_params"),
             user_message=command.message,
             retrieval_query=bot_cfg.get("_retrieval_query", ""),
+            # Issue #66：fast profile 零額外 LLM；deep 的 worker 快速道依 bot 設定
+            allow_rerank=not is_fast,
         )
         if plan is None:
+            if is_fast:
+                # 升級 ReAct 但受 profile 約束：工具上限 2、無 rerank / rewrite / HyDE
+                return {
+                    **bot_cfg,
+                    "max_tool_calls": min(
+                        int(bot_cfg.get("max_tool_calls") or 5), 2
+                    ),
+                    "rerank_enabled": False,
+                    "rag_retrieval_modes": ["raw"],
+                    "query_rewrite_enabled": False,
+                    "hyde_enabled": False,
+                }, None
             return bot_cfg, None
         fast_cfg = {
             **bot_cfg,
@@ -1465,6 +1491,7 @@ class SendMessageUseCase:
                 max_tool_calls=int(bot_cfg.get("max_tool_calls") or 0),
                 guard=guard,
                 memory_enabled=bool(bot_cfg.get("memory_enabled", False)),
+                extra={"mode": bot_cfg.get("mode", "deep")},
             )
             config_hash = str(await self._config_fingerprint.record(effective))
             AgentTraceCollector.set_config_hash(config_hash)

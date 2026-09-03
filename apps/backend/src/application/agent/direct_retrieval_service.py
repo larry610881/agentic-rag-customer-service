@@ -5,8 +5,8 @@ widget 永遠付 ReAct 決策輪。抽成 application 層共用服務後，三�
 「以意圖分類產出的改寫查詢直接檢索 → 門檻判定 → 組出單次生成 prompt」。
 生成本身仍由各通路呼叫 agent_service（web 要串流），服務只回傳「怎麼生成」的 plan。
 
-快速道 profile（Issue #61 決策）：零額外 LLM——rerank / rewrite / HyDE 在快速道一律關閉
-（`settings.fast_lane_allow_rerank` 可放行 rerank，預設 False）。
+快速道 profile（Issue #61 / #66）：rewrite / HyDE 一律關（raw-only）；rerank 由呼叫端依
+bot.mode 決定——fast 一律關（零額外 LLM），deep 的 worker 快速道依 bot / worker 設定。
 """
 
 from __future__ import annotations
@@ -44,14 +44,11 @@ class DirectRetrievalService:
         self,
         query_rag_use_case: Any,
         dm_image_query_tool: Any | None = None,
-        allow_rerank: bool | None = None,
+        allow_rerank: bool = True,
     ) -> None:
         self._query_rag = query_rag_use_case
         self._dm_tool = dm_image_query_tool
-        if allow_rerank is None:
-            from src.config import settings
-
-            allow_rerank = bool(getattr(settings, "fast_lane_allow_rerank", False))
+        # 預設值；呼叫端可依 bot.mode 逐次覆寫（Issue #66）
         self._allow_rerank = allow_rerank
 
     async def plan(
@@ -66,6 +63,7 @@ class DirectRetrievalService:
         tool_rag_params: dict | None,
         user_message: str,
         retrieval_query: str = "",
+        allow_rerank: bool | None = None,
     ) -> DirectRetrievalPlan | None:
         """直接檢索 → 門檻判定 → 生成 plan。回 None 代表升級完整 ReAct。"""
         if self._query_rag is None or not kb_ids:
@@ -104,8 +102,9 @@ class DirectRetrievalService:
             if rq.get("rerank_enabled") is not None
             else bot.rerank_enabled
         )
-        if not self._allow_rerank:
-            rerank_enabled = False  # 快速道 profile：零額外 LLM
+        effective_allow = self._allow_rerank if allow_rerank is None else allow_rerank
+        if not effective_allow:
+            rerank_enabled = False  # fast profile：零額外 LLM
         try:
             rr = await self._query_rag.retrieve(QueryRAGCommand(
                 tenant_id=tenant_id,

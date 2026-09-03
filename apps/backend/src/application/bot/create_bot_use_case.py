@@ -40,6 +40,7 @@ class CreateBotCommand:
     eval_model: str = ""
     eval_depth: str = "off"
     gate_mode: str = "off"
+    mode: str = "deep"  # Issue #66
     gate_soft_threshold: float = 0.8
     gate_repeats: int = 3
     gate_auto_publish: bool = False
@@ -141,6 +142,7 @@ class CreateBotUseCase:
             eval_model=command.eval_model,
             eval_depth=command.eval_depth,
             gate_mode=command.gate_mode,
+            mode=command.mode,
             gate_soft_threshold=command.gate_soft_threshold,
             gate_repeats=command.gate_repeats,
             gate_auto_publish=command.gate_auto_publish,

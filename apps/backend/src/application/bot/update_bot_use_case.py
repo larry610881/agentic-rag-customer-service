@@ -8,6 +8,7 @@ from typing import Any
 from src.application.bot._tenant_guard import ensure_bot_tenant
 from src.application.prompt_gate.static_checks import check_prompt_fields
 from src.domain.bot.entity import (
+    VALID_BOT_MODES,
     Bot,
     BotMcpBinding,
     IntentRoute,
@@ -68,6 +69,7 @@ class UpdateBotCommand:
     eval_model: object = _UNSET
     eval_depth: object = _UNSET
     gate_mode: object = _UNSET
+    mode: object = _UNSET  # Issue #66：fast | deep
     gate_soft_threshold: object = _UNSET
     gate_repeats: object = _UNSET
     gate_auto_publish: object = _UNSET
@@ -132,12 +134,17 @@ class UpdateBotUseCase:
     @staticmethod
     def _apply_updates(bot: Bot, command: UpdateBotCommand) -> None:
         """Apply non-_UNSET fields from command to bot entity."""
+        if command.mode is not _UNSET and command.mode not in VALID_BOT_MODES:
+            raise ValidationError(
+                f"mode must be one of {list(VALID_BOT_MODES)}"
+            )
         _DIRECT_FIELDS = (
             "name", "description", "is_active",
             "bot_prompt",
             "llm_provider", "llm_model", "show_sources",
             "eval_provider", "eval_model", "eval_depth",
             "gate_mode", "gate_soft_threshold", "gate_repeats",
+            "mode",
             "gate_auto_publish", "gate_daily_limit", "gate_budget_usd",
             "max_tool_calls",
             "widget_enabled", "widget_keep_history",
