@@ -5917,3 +5917,18 @@ graph TD
 
 **延伸**：DPoP / mTLS 綁定機器票到呼叫端（防票外洩重放）；kid 已就位，下一步是雙 secret 輪替（新簽舊驗）；widget 可再加 `Sec-Fetch-Site` 檢查。
 
+## 2026-09-03 — 異常控管做成「一個 service、兩條管線各接一行」
+
+**背景**：Issue #68 P7a。紅隊複測會看重複注入 / 自動化連打有沒有反應。既有元件（Guard、分類器 is_attack、rate limiter、widget 票）各自都會擋，但彼此不記憶——同一個人連打 50 句注入，每句都被獨立擋下，系統沒有「這個人已經很可疑」的概念。
+
+**設計**：
+1. **主體 → 分數 → 等級 → 動作，四段拆開**。`AbuseSubject`（誰）、`AbusePolicy`（加多少、門檻多少、上限幾級）、`AbuseDecision`（這回合怎麼做）都在 domain；`AbuseControlService` 只做 evaluate / record 兩件事；管線只認 decision 的三個布林（conservative / fixed_reply / blocked）。加新訊號改 policy，加新動作改 decision，管線不動。
+2. **channel-parity 教訓直接套用**：send_message 與 LINE 兩條 use case 各自只加「進入前 evaluate、Guard 結果後 record」兩個呼叫點，邏輯零複製。LINE 端多的只是「怎麼回固定文案」這種 I/O 適配（符合 channel-parity 第 2 條）。
+3. **不鎖真人的機制是等級上限**：後台使用者最高 L2、API client 最高 L2，寫在 policy 的 `max_level_by_kind`，不是散在各處的 if。
+4. **fail-open 與監控模式是兩個不同的旋鈕**：儲存失效 → decision 退回 NO_ABUSE（放行）；監控模式 → 照樣計分、升級、寫稽核，但 `enforce=False` 讓三個布林全 False。新租戶先跑監控模式看誤判，再切 enforce（P7c 做成租戶設定）。
+5. **串流端點的 429 要在 headers 之前判定**：SSE 一旦開始就無法改狀態碼，所以 router 多一個 `abuse_preflight()`；use case 內部仍會再判一次（冪等），router 忘了呼叫也只是變成串流內固定文案，不會漏擋。
+
+**踩到的**：ContextVar 裡的 trace 在 `run_until_complete` 外面看不到——測試要在 task 內收 trace；`ResolvedRateLimitConfig` 有必填 `burst_size`。
+
+**下一步**：P7b widget identify() 協定與挑戰驗證、P7c 三層設定 + 後台頁、P7d IP / 租戶聚合。L2 的「回應延遲 2–3 秒」本期沒做（固定文案已不進 LLM，延遲只是拖慢攻擊腳本，先觀察是否需要）。
+

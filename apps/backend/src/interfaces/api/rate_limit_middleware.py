@@ -1,3 +1,4 @@
+
 """Rate limit middleware — pure ASGI implementation.
 
 Uses pure ASGI instead of BaseHTTPMiddleware to preserve ContextVar
@@ -6,6 +7,7 @@ propagation for streaming responses (same reason as RequestIDMiddleware).
 
 import json
 import logging
+from typing import Any
 
 from jose import JWTError, jwt
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -59,8 +61,13 @@ class RateLimitMiddleware:
         jwt_secret_key: str,
         jwt_algorithm: str = "HS256",
         global_rpm: int = 1000,
+        abuse_store: Any | None = None,
+        abuse_slow_rpm: int = 5,
     ) -> None:
         self.app = app
+        # Issue #68 P7：主體處於 L2+ 時，把該主體的每分鐘上限壓到 abuse_slow_rpm
+        self._abuse_store = abuse_store
+        self._abuse_slow_rpm = abuse_slow_rpm
         self._rate_limiter = rate_limiter
         self._config_loader = config_loader
         self._jwt_secret_key = jwt_secret_key
@@ -108,6 +115,13 @@ class RateLimitMiddleware:
                 f"rl:{tenant_id}:{user_id}:{endpoint_group}:{WINDOW_SECONDS}"
             )
             checks.append((user_key, config.per_user_requests_per_minute))
+
+        # Layer 4: Issue #68 P7 — abuse 等級（L2+）動態降速；儲存失效放行
+        abuse_key = await self._abuse_subject_key(tenant_id, user_id, scope)
+        if abuse_key:
+            checks.append(
+                (f"rl:abuse:{abuse_key}:{WINDOW_SECONDS}", self._abuse_slow_rpm)
+            )
 
         # Execute checks — strictest wins
         min_remaining = float("inf")
@@ -168,6 +182,31 @@ class RateLimitMiddleware:
             "body": body,
             "more_body": False,
         })
+
+    async def _abuse_subject_key(
+        self, tenant_id: str | None, user_id: str | None, scope: Scope
+    ) -> str | None:
+        """從身分推主體 key；只有等級 ≥ 2 才回傳（其餘回 None 不加限制）。"""
+        if self._abuse_store is None or not tenant_id or not user_id:
+            return None
+        if user_id.startswith("visitor:"):
+            kind, sid = "visitor", user_id[len("visitor:"):]
+        elif user_id.startswith("client:"):
+            kind, sid = "client", user_id[len("client:"):]
+            raw_headers = dict(scope.get("headers", []))
+            end_user = raw_headers.get(b"x-end-user-id", b"").decode()
+            if end_user:
+                kind, sid = "end_user", end_user
+        else:
+            kind, sid = "user", user_id
+        key = f"abuse:{tenant_id}:{kind}:{sid}"
+        try:
+            locked = await self._abuse_store.get_level(key)
+        except Exception:
+            return None
+        if locked is None or locked[0] < 2:
+            return None
+        return key
 
     @staticmethod
     def _client_ip(scope: Scope, headers: dict) -> str:

@@ -61,6 +61,8 @@ class AgentExecutionTrace:
     total_tokens: dict[str, Any] | None = None
     # Issue #60：這一輪實際生效設定的指紋（config_snapshots.hash）
     config_hash: str | None = None
+    # Issue #68 P7：該回合主體的異常控管等級（0–4；None = 未評估）
+    abuse_level: int | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -128,5 +130,6 @@ class AgentExecutionTrace:
             "total_ms": self.total_ms,
             "total_tokens": self.total_tokens,
             "config_hash": self.config_hash,
+            "abuse_level": self.abuse_level,
             "created_at": self.created_at.isoformat(),
         }

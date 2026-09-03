@@ -95,7 +95,8 @@ CREATE TABLE public.agent_execution_traces (
     llm_provider character varying(50) DEFAULT ''::character varying NOT NULL,
     bot_id character varying(36) DEFAULT NULL::character varying,
     outcome character varying(20),
-    config_hash character varying(64)
+    config_hash character varying(64),
+    abuse_level integer
 );
 
 

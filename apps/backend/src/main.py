@@ -271,6 +271,8 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
             jwt_secret_key=settings.jwt_secret_key,
             jwt_algorithm=settings.jwt_algorithm,
             global_rpm=settings.rate_limit_global_rpm,
+            # Issue #68 P7：L2 主體動態降速
+            abuse_store=container.abuse_score_store(),
         )
 
     # Request Timeout (between CORS and RequestID)
@@ -308,10 +310,22 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     # during the request (including by RateLimitMiddleware) is closed.
     application.add_middleware(SessionCleanupMiddleware)
 
+    from src.application.abuse.abuse_control_service import AbuseBlockedError
     from src.domain.prompt_gate.entity import (
         GateBlockedError,
         InvalidVersionTransitionError,
     )
+
+    @application.exception_handler(AbuseBlockedError)
+    async def abuse_blocked_handler(
+        request: Request, exc: AbuseBlockedError
+    ) -> JSONResponse:
+        # Issue #68 P7：中性回應，不洩漏偵測原因
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "temporarily_unavailable", "retry_after": exc.retry_after},
+            headers={"Retry-After": str(exc.retry_after)},
+        )
 
     @application.exception_handler(GateBlockedError)
     async def gate_blocked_handler(

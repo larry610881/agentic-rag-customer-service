@@ -2,9 +2,10 @@
 
 import json
 import logging
+from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -139,10 +140,21 @@ def _maybe_expose_guard(result_guard_blocked, result_guard_rule, role):
     return None, None
 
 
+def _abuse_subject_for(tenant: CurrentTenant, request_headers: Any) -> tuple[str, str]:
+    """Issue #68 P7：依呼叫者型態決定異常控管主體。"""
+    if tenant.is_api_client:
+        end_user = (request_headers.get("x-end-user-id") or "").strip()
+        if end_user:
+            return "end_user", end_user[:128]
+        return "client", tenant.client_id or ""
+    return "user", tenant.user_id or tenant.tenant_id
+
+
 @router.post("/chat", response_model=ChatResponse)
 @inject
 async def agent_chat(
     request: ChatRequest,
+    http_request: Request,
     tenant: CurrentTenant = Depends(require_scope("chat:send")),
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
@@ -157,6 +169,7 @@ async def agent_chat(
     identity_source = request.identity_source or "web"
     ensure_bot_allowed(tenant, request.bot_id)  # Issue #67：api_client bot 範圍
     _require_shadow_authorized(request, usage_ctx)
+    subject_kind, subject_id = _abuse_subject_for(tenant, http_request.headers)
     result = await use_case.execute(
         SendMessageCommand(
             tenant_id=tenant.tenant_id,
@@ -165,6 +178,8 @@ async def agent_chat(
             conversation_id=request.conversation_id,
             bot_id=request.bot_id,
             identity_source=identity_source,
+            subject_kind=subject_kind,
+            subject_id=subject_id,
             config_override=request.config_override,
             test_mode=_effective_test_mode(request),  # M9
             history_override=request.history_override,
@@ -243,6 +258,7 @@ async def agent_chat(
 @inject
 async def agent_chat_stream(
     request: ChatRequest,
+    http_request: Request,
     tenant: CurrentTenant = Depends(require_scope("chat:stream")),
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
@@ -256,6 +272,7 @@ async def agent_chat_stream(
     # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
     # 跨租戶測試流程請走系統管理專用端點（尚未實作，另立 issue）。
     _require_shadow_authorized(request, usage_ctx)
+    subject_kind, subject_id = _abuse_subject_for(tenant, http_request.headers)
     command = SendMessageCommand(
         tenant_id=tenant.tenant_id,
         kb_id=request.knowledge_base_id or "",
@@ -263,10 +280,15 @@ async def agent_chat_stream(
         conversation_id=request.conversation_id,
         bot_id=request.bot_id,
         identity_source=request.identity_source or "web",
+        subject_kind=subject_kind,
+        subject_id=subject_id,
         config_override=request.config_override,
         test_mode=_effective_test_mode(request),  # M9
         history_override=request.history_override,
     )
+
+    # Issue #68 P7：串流前先問異常等級（L3+ → 429，headers 尚未送出）
+    await use_case.abuse_preflight(command)
 
     async def event_generator():
         # Sprint A++: 只有 Studio 才看得到 guard_blocked event，end-user 介面

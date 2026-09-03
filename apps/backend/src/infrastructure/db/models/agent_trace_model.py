@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, Index, String
+from sqlalchemy import DateTime, Float, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,6 +42,8 @@ class AgentExecutionTraceModel(Base):
     outcome: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Issue #60：有效設定指紋（config_snapshots.hash）
     config_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Issue #68 P7
+    abuse_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

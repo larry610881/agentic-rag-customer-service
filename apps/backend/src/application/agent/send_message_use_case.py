@@ -9,12 +9,23 @@ from uuid import uuid4
 
 import structlog
 
+from src.application.abuse.abuse_control_service import (
+    AbuseBlockedError,
+    AbuseControlService,
+    apply_conservative_mode,
+)
 from src.application.agent.intent_classifier import IntentClassifier
 from src.application.agent.prompt_assembler import (
     assemble as assemble_prompt,
 )
 from src.application.agent.prompt_assembler import (
     inject_runtime_vars,
+)
+from src.domain.abuse.policy import (
+    NO_ABUSE,
+    AbuseDecision,
+    AbuseSubject,
+    SubjectKind,
 )
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
@@ -119,6 +130,9 @@ class SendMessageCommand:
     bot_id: str | None = None
     visitor_id: str | None = None
     identity_source: str | None = None  # "widget" | "line"
+    # Issue #68 P7：異常控管主體（router 依通路填；None = 不控管）
+    subject_kind: str | None = None
+    subject_id: str | None = None
     # Issue #54 Phase C — 影子執行（閘門驗證 / Playground）
     config_override: dict | None = None   # draft 快照 overlay（spec §13.3）
     test_mode: bool = False               # 六面隔離：不落庫、不 memory、不線上 eval
@@ -144,6 +158,7 @@ class SendMessageUseCase:
         extract_memory_use_case: "ExtractMemoryUseCase | None" = None,
         conversation_lock: ConversationLock | None = None,
         intent_classifier: IntentClassifier | None = None,
+        abuse_control: AbuseControlService | None = None,
         worker_config_repo: WorkerConfigRepository | None = None,
         prompt_guard: Any | None = None,
         tenant_repository: "TenantRepository | None" = None,
@@ -166,6 +181,7 @@ class SendMessageUseCase:
         self._load_memory = load_memory_use_case
         self._extract_memory = extract_memory_use_case
         self._intent_classifier = intent_classifier
+        self._abuse_control = abuse_control
         self._worker_config_repo = worker_config_repo
         self._conversation_lock = conversation_lock
         self._prompt_guard = prompt_guard
@@ -536,6 +552,59 @@ class SendMessageUseCase:
             )
         return history, history_context, router_context
 
+    # ── Issue #68 P7：異常使用者分級控管（三通路共用 service，這裡只接線） ──
+
+    @staticmethod
+    def _abuse_subject(command: SendMessageCommand) -> AbuseSubject | None:
+        if command.subject_kind and command.subject_id:
+            try:
+                return AbuseSubject(SubjectKind(command.subject_kind), command.subject_id)
+            except ValueError:
+                return None
+        if command.identity_source == "widget" and command.visitor_id:
+            return AbuseSubject(SubjectKind.VISITOR, command.visitor_id)
+        return None
+
+    async def abuse_preflight(self, command: SendMessageCommand) -> AbuseDecision:
+        """串流端點在送出 headers 前先問一次；L3+ 直接 raise（→ 429）。"""
+        return await self._abuse_gate(command)
+
+    async def _abuse_gate(self, command: SendMessageCommand) -> AbuseDecision:
+        subject = self._abuse_subject(command)
+        if self._abuse_control is None or subject is None or command.test_mode:
+            return NO_ABUSE
+        decision = await self._abuse_control.evaluate(command.tenant_id, subject)
+        AgentTraceCollector.set_abuse_level(int(decision.effective_level))
+        if decision.blocked:
+            raise AbuseBlockedError(decision.retry_after, decision.level)
+        return decision
+
+    async def _record_abuse(
+        self,
+        command: SendMessageCommand,
+        *,
+        guard_hit: bool = False,
+        attack: bool = False,
+        unrouted: bool = False,
+    ) -> None:
+        subject = self._abuse_subject(command)
+        if self._abuse_control is None or subject is None or command.test_mode:
+            return
+        decision = await self._abuse_control.record(
+            command.tenant_id, subject,
+            guard_hit=guard_hit, attack=attack, unrouted=unrouted,
+            channel=command.identity_source or "web",
+        )
+        AgentTraceCollector.set_abuse_level(int(decision.effective_level))
+
+    @staticmethod
+    def _apply_abuse_mode(
+        bot_cfg: dict[str, Any], decision: AbuseDecision
+    ) -> dict[str, Any]:
+        if decision.conservative:
+            return apply_conservative_mode(bot_cfg)
+        return bot_cfg
+
     async def _get_busy_reply_message(self, command: SendMessageCommand) -> str:
         """Load bot's busy_reply_message for lock rejection."""
         if command.bot_id and self._bot_repo:
@@ -615,6 +684,7 @@ class SendMessageUseCase:
         )
         matched = outcome.worker
         bot_cfg["_classifier_attack"] = outcome.is_attack
+        bot_cfg["_unrouted"] = matched is None  # Issue #68 P7：連續無法分流計分
         t_end = AgentTraceCollector.offset_ms()
         AgentTraceCollector.add_node(
             node_type="intent_classify",
@@ -725,6 +795,10 @@ class SendMessageUseCase:
         AgentTraceCollector.start(
             tenant_id=command.tenant_id, agent_mode="", bot_id=command.bot_id,
         )
+        # Issue #68 P7：L3+ raise（429）；L2 固定文案不進 LLM；L1 稍後套保守模式
+        abuse_decision = await self._abuse_gate(command)
+        if abuse_decision.fixed_reply:
+            return AgentResponse(answer=abuse_decision.reply_text)
         t_conv = AgentTraceCollector.offset_ms()
         conversation = await self._load_or_create_conversation(command)
         AgentTraceCollector.span("conversation_load", "對話載入", t_conv)
@@ -773,6 +847,7 @@ class SendMessageUseCase:
             command, conversation, metadata
         )
         if blocked is not None:
+            await self._record_abuse(command, guard_hit=True)
             return blocked
 
         history, history_context, router_context = (
@@ -812,7 +887,12 @@ class SendMessageUseCase:
             command, conversation, bot_cfg
         )
         if attack_block is not None:
+            await self._record_abuse(command, attack=True)
             return attack_block
+
+        # Issue #68 P7：正常回合也計分（連續無法分流 / 節奏），並套 L1 保守模式
+        await self._record_abuse(command, unrouted=bool(bot_cfg.get("_unrouted")))
+        bot_cfg = self._apply_abuse_mode(bot_cfg, abuse_decision)
 
         # Propagate worker routing info to agent service (for trace visualization)
         if bot_cfg.get("_worker_matched_info"):
@@ -953,6 +1033,11 @@ class SendMessageUseCase:
         AgentTraceCollector.start(
             tenant_id=command.tenant_id, agent_mode="", bot_id=command.bot_id,
         )
+        abuse_decision = await self._abuse_gate(command)  # Issue #68 P7
+        if abuse_decision.fixed_reply:
+            yield {"type": "token", "content": abuse_decision.reply_text}
+            yield {"type": "done"}
+            return
         t_conv = AgentTraceCollector.offset_ms()
         conversation = await self._load_or_create_conversation(command)
         AgentTraceCollector.span("conversation_load", "對話載入", t_conv)
@@ -1004,6 +1089,7 @@ class SendMessageUseCase:
                 dry_run=command.test_mode,  # H6
             )
             if not guard_result.passed:
+                await self._record_abuse(command, guard_hit=True)  # Issue #68 P7
                 assistant_msg = None
                 if not command.test_mode:
                     conversation.add_message("user", command.message)
@@ -1078,6 +1164,7 @@ class SendMessageUseCase:
         # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型。
         # widget 端由 router 過濾 guard_blocked 事件（H7），只收到固定文案。
         if bot_cfg.get("_classifier_attack") and self._prompt_guard:
+            await self._record_abuse(command, attack=True)  # Issue #68 P7
             gr = await self._prompt_guard.block_by_classifier(
                 message=command.message,
                 tenant_id=command.tenant_id,
@@ -1113,6 +1200,10 @@ class SendMessageUseCase:
                 atk_done["trace_nodes"] = atk_nodes
             yield atk_done
             return
+
+        # Issue #68 P7：正常回合也計分（連續無法分流 / 節奏），並套 L1 保守模式
+        await self._record_abuse(command, unrouted=bool(bot_cfg.get("_unrouted")))
+        bot_cfg = self._apply_abuse_mode(bot_cfg, abuse_decision)
 
         # Propagate worker routing info to agent service (for trace visualization)
         if bot_cfg.get("_worker_matched_info"):
@@ -1594,6 +1685,7 @@ class SendMessageUseCase:
                 total_tokens=trace.total_tokens,
                 outcome=outcome,
                 config_hash=trace.config_hash,
+                abuse_level=trace.abuse_level,
             )
             async with session_factory() as session:
                 session.add(row)

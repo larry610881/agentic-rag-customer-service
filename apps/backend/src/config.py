@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     api_access_token_expire_seconds: int = 900
     jwt_key_id: str = "k1"  # header kid；輪替 secret 時換值
     widget_token_expire_seconds: int = 900  # widget 短效票（P4）
+    # Issue #68 P7：異常使用者分級控管（enforce | monitor）
+    abuse_control_enabled: bool = True
+    abuse_control_mode: str = "enforce"
 
     # Shared Provider API Keys (fallback when embedding/llm-specific keys are not set)
     openai_api_key: str = ""

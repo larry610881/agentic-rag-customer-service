@@ -223,6 +223,13 @@ class AgentTraceCollector:
         )
 
     @staticmethod
+    def set_abuse_level(level: int | None) -> None:
+        """Issue #68 P7：把異常控管等級掛到目前 trace（無 trace 靜默跳過）。"""
+        trace = _agent_trace.get()
+        if trace is not None and level is not None:
+            trace.abuse_level = int(level)
+
+    @staticmethod
     def set_config_hash(config_hash: str | None) -> None:
         """Issue #60：把有效設定指紋掛到目前 trace（無 trace 靜默跳過）。"""
         trace = _agent_trace.get()

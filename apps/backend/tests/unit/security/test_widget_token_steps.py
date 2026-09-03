@@ -11,8 +11,13 @@ from dependency_injector import providers
 from fastapi.testclient import TestClient
 from pytest_bdd import given, parsers, scenarios, then, when
 
+from src.application.abuse.abuse_control_service import AbuseControlService
+from src.domain.abuse.policy import AbusePolicy
 from src.domain.bot.entity import Bot
 from src.domain.bot.value_objects import BotId, BotShortCode
+from src.infrastructure.abuse.in_memory_abuse_score_store import (
+    InMemoryAbuseScoreStore,
+)
 from src.infrastructure.auth.in_memory_token_stores import (
     InMemoryRefreshTokenStore,
     InMemoryTokenRevocationStore,
@@ -65,6 +70,7 @@ def app_ready(context, widget_app):
 
     send = MagicMock()
     send.execute_stream = MagicMock(side_effect=lambda cmd: _events(cmd))
+    send.abuse_preflight = AsyncMock(return_value=None)
     feedback = AsyncMock()
     error_uc = AsyncMock()
     error_uc.execute.return_value = SimpleNamespace(id="e1", fingerprint="fp")
@@ -84,6 +90,9 @@ def app_ready(context, widget_app):
         c.view_document_use_case: view,
         c.token_revocation_store: InMemoryTokenRevocationStore(),
         c.refresh_token_store: InMemoryRefreshTokenStore(),
+        c.abuse_control_service: AbuseControlService(
+            InMemoryAbuseScoreStore(), AbusePolicy()
+        ),
     }
     for provider, obj in overrides.items():
         provider.override(providers.Object(obj))

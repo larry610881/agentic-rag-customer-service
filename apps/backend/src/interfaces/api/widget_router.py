@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from src.application.abuse.abuse_control_service import AbuseControlService
 from src.application.agent.send_message_use_case import (
     SendMessageCommand,
     SendMessageUseCase,
@@ -36,6 +37,7 @@ from src.application.observability.error_event_use_cases import (
 )
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
+from src.domain.abuse.policy import AbuseSubject, SubjectKind
 from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
 from src.domain.knowledge.repository import DocumentRepository
@@ -157,6 +159,7 @@ async def get_widget_principal(
     wt: str | None = Query(default=None),
     bot_repo: BotRepository = Depends(Provide[Container.bot_repository]),
     jwt_service: JWTService = Depends(Provide[Container.jwt_service]),
+    abuse: AbuseControlService = Depends(Provide[Container.abuse_control_service]),
 ) -> WidgetPrincipal:
     """驗 widget 票：type、bot、Origin 三者都要對得上。"""
     token = _bearer_or_query_token(request, wt)
@@ -183,6 +186,13 @@ async def get_widget_principal(
         )
     origin = request_origin(request)
     if origin is not None and origin != token_origin:
+        # Issue #68 P7：票的 Origin 與請求不符 → 記一筆異常訊號（fail-open）
+        visitor = payload.get("visitor_id")
+        if visitor:
+            await abuse.record(
+                bot.tenant_id, AbuseSubject(SubjectKind.VISITOR, visitor),
+                origin_mismatch=True, channel="widget",
+            )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Origin not allowed"
         )
@@ -326,7 +336,11 @@ async def widget_chat_stream(
         visitor_id=principal.visitor_id,  # 取自票，不信任 header
         # L6：widget 端點固定通路標記——trace source 不再 fallback 成 "web"
         identity_source="widget",
+        subject_kind="visitor",
+        subject_id=principal.visitor_id or "anon",
     )
+    # Issue #68 P7：串流前先問異常等級（L3+ → 429）
+    await use_case.abuse_preflight(command)
 
     async def event_generator():
         captured: dict = {}

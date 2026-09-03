@@ -1,6 +1,7 @@
 import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
+from src.application.abuse.abuse_control_service import AbuseControlService
 from src.application.agent.direct_retrieval_service import (
     DirectRetrievalService,
 )
@@ -385,18 +386,20 @@ from src.application.usage.query_monthly_usage_use_case import QueryMonthlyUsage
 from src.application.usage.query_usage_use_case import QueryUsageUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.config import Settings
+from src.domain.abuse.policy import AbuseMode, AbusePolicy
 from src.domain.agent.team_supervisor import TeamSupervisor
 from src.domain.auth.login_attempt_tracker import LoginLockoutPolicy
+from src.infrastructure.abuse.redis_abuse_score_store import RedisAbuseScoreStore
 from src.infrastructure.auth.bcrypt_password_service import BcryptPasswordService
 from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.auth.redis_login_attempt_tracker import (
     RedisLoginAttemptTracker,
 )
-from src.infrastructure.auth.visitor_id_signer import VisitorIdSigner
 from src.infrastructure.auth.redis_token_stores import (
     RedisRefreshTokenStore,
     RedisTokenRevocationStore,
 )
+from src.infrastructure.auth.visitor_id_signer import VisitorIdSigner
 from src.infrastructure.cache.redis_cache_service import RedisCacheService
 from src.infrastructure.classification.cluster_classification_service import (
     ClusterClassificationService,
@@ -761,6 +764,21 @@ class Container(containers.DeclarativeContainer):
         widget_token_expire_seconds=providers.Callable(
             lambda cfg: cfg.widget_token_expire_seconds, config
         ),
+    )
+
+    # Issue #68 P7：異常使用者分級控管（三通路共用）
+    abuse_score_store = providers.Singleton(
+        RedisAbuseScoreStore,
+        redis_client=redis_client,
+    )
+    abuse_control_service = providers.Singleton(
+        AbuseControlService,
+        store=abuse_score_store,
+        policy=providers.Callable(
+            lambda cfg: AbusePolicy(mode=AbuseMode(cfg.abuse_control_mode)), config
+        ),
+        audit=audit_recorder,
+        enabled=providers.Callable(lambda cfg: cfg.abuse_control_enabled, config),
     )
 
     # Issue #67 P4：widget 訪客身分由伺服器簽發
@@ -2545,6 +2563,7 @@ class Container(containers.DeclarativeContainer):
     send_message_use_case = providers.Factory(
         SendMessageUseCase,
         agent_service=agent_service,
+        abuse_control=abuse_control_service,
         direct_retrieval_service=direct_retrieval_service,
         config_fingerprint=config_fingerprint_service,
         conversation_repository=conversation_repository,
@@ -2687,6 +2706,7 @@ class Container(containers.DeclarativeContainer):
     handle_webhook_use_case = providers.Factory(
         HandleWebhookUseCase,
         agent_service=agent_service,
+        abuse_control=abuse_control_service,
         direct_retrieval_service=direct_retrieval_service,
         config_fingerprint=config_fingerprint_service,
         bot_repository=bot_repository,

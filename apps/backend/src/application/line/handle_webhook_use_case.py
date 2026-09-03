@@ -13,6 +13,7 @@ from src.application.agent.prompt_assembler import inject_runtime_vars
 from src.application.agent.send_message_use_case import (
     build_tool_rag_params_map,
 )
+from src.domain.abuse.policy import CONSERVATIVE_PROMPT_SUFFIX
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.bot.entity import (
@@ -183,6 +184,7 @@ class HandleWebhookUseCase:
         worker_config_repo: Any | None = None,
         history_strategy: ConversationHistoryStrategy | None = None,
         prompt_guard: Any | None = None,
+        abuse_control: Any | None = None,
         query_rag_use_case: Any | None = None,
         dm_image_query_tool: Any | None = None,
         tenant_repository: Any | None = None,
@@ -216,6 +218,8 @@ class HandleWebhookUseCase:
         # F2（POC 問題 1）：入口端 input guard，與 intent 分類並行執行。
         # None 時退回 GuardedAgentService 咽喉點串行兜底（行為不變）。
         self._prompt_guard = prompt_guard
+        # Issue #68 P7：與 web/widget/API 共用的異常控管 service
+        self._abuse_control = abuse_control
         # Issue #50 — workflow 快速道用的檢索管線（direct_retrieval worker）
         self._query_rag = query_rag_use_case
         # 快速道的 DM 圖卡：並行呼叫 DM 工具（signed URL 產生邏輯原封重用）
@@ -588,6 +592,11 @@ class HandleWebhookUseCase:
         # Resolve conversation (timeout-based segmentation)
         conversation = await self._resolve_conversation(event.user_id, bot)
         AgentTraceCollector.span("conversation_load", "對話載入", t_conv)
+
+        # Issue #68 P7：進入回合前查異常等級（L3+ 回固定文案或靜默；L2 固定文案）
+        abuse_decision = await self._abuse_gate(bot, event, line_service)
+        if abuse_decision is None:
+            return
         t_hist = AgentTraceCollector.offset_ms()
 
         # Extract history from existing conversation
@@ -694,6 +703,7 @@ class HandleWebhookUseCase:
         direct_retrieval_worker = None
         rewritten_query = ""
         classifier_attack = False
+        unrouted_turn = False
         if self._worker_config_repo and self._intent_classifier:
             workers = await self._worker_config_repo.find_by_bot_id(
                 bot.id.value
@@ -736,6 +746,7 @@ class HandleWebhookUseCase:
                 )
                 matched, rewritten_query = outcome.worker, outcome.query
                 classifier_attack = bool(outcome.is_attack)
+                unrouted_turn = matched is None
                 t_end = AgentTraceCollector.offset_ms()
                 AgentTraceCollector.add_node(
                     node_type="intent_classify",
@@ -806,12 +817,14 @@ class HandleWebhookUseCase:
                 passed=bool(guard_result.passed),
             )
         if guard_result is not None and not guard_result.passed:
+            await self._record_abuse(bot, event, guard_hit=True)  # Issue #68 P7
             result = AgentResponse(
                 answer=guard_result.blocked_response,
                 guard_blocked="input",
                 guard_rule_matched=guard_result.rule_matched,
             )
         elif classifier_attack and self._prompt_guard is not None:
+            await self._record_abuse(bot, event, attack=True)  # Issue #68 P7
             # 前置語意閘門：分類器判純攻擊 → 與 regex 攔截同一份固定文案，
             # 不呼叫檢索與生成（攻擊句不進主模型；拒答 ≈ 分類耗時）
             blocked = await self._prompt_guard.block_by_classifier(
@@ -826,6 +839,12 @@ class HandleWebhookUseCase:
                 guard_rule_matched=blocked.rule_matched,
             )
         else:
+            # Issue #68 P7：正常回合計分 + L1 保守模式（不呼叫工具、加婉拒指令）
+            await self._record_abuse(bot, event, unrouted=unrouted_turn)
+            if abuse_decision.conservative:
+                enabled_tools = []
+                mcp_servers = []
+                system_prompt = (system_prompt or "") + CONSERVATIVE_PROMPT_SUFFIX
             if guard_result is not None:
                 # 告知 GuardedAgentService 咽喉點：input guard 已在入口跑過，
                 # 不要再付一次 LLM roundtrip（見 guarded_agent_service.py）
@@ -1057,6 +1076,7 @@ class HandleWebhookUseCase:
                         total_ms=trace.total_ms,
                         total_tokens=trace.total_tokens,
                         config_hash=trace.config_hash,
+                        abuse_level=trace.abuse_level,
                     )
                     async with self._trace_session_factory() as session:
                         session.add(row)
@@ -1188,6 +1208,53 @@ class HandleWebhookUseCase:
         except Exception:
             logger.warning("config_fingerprint.failed", exc_info=True)
             return None
+
+    # ── Issue #68 P7：異常控管接線（service 共用，這裡只做 LINE 的回覆適配） ──
+
+    async def _abuse_gate(self, bot: Bot, event: Any, line_service: Any) -> Any:
+        """回 decision；L2/L3+ 已回覆（或靜默）時回 None 讓呼叫端結束回合。"""
+        from src.domain.abuse.policy import NO_ABUSE, AbuseSubject, SubjectKind
+        from src.infrastructure.observability.agent_trace_collector import (
+            AgentTraceCollector,
+        )
+
+        if self._abuse_control is None:
+            return NO_ABUSE
+        subject = AbuseSubject(SubjectKind.LINE_USER, event.user_id)
+        decision = await self._abuse_control.evaluate(bot.tenant_id, subject)
+        AgentTraceCollector.set_abuse_level(int(decision.effective_level))
+        if decision.blocked or decision.fixed_reply:
+            policy = self._abuse_control.policy_for(bot.tenant_id)
+            if decision.blocked and policy.line_silent_on_cooldown:
+                return None
+            try:
+                await line_service.reply_text(event.reply_token, decision.reply_text)
+            except Exception:
+                logger.warning("abuse_control.line_reply_failed", exc_info=True)
+            return None
+        return decision
+
+    async def _record_abuse(
+        self,
+        bot: Bot,
+        event: Any,
+        *,
+        guard_hit: bool = False,
+        attack: bool = False,
+        unrouted: bool = False,
+    ) -> None:
+        from src.domain.abuse.policy import AbuseSubject, SubjectKind
+        from src.infrastructure.observability.agent_trace_collector import (
+            AgentTraceCollector,
+        )
+
+        if self._abuse_control is None:
+            return
+        decision = await self._abuse_control.record(
+            bot.tenant_id, AbuseSubject(SubjectKind.LINE_USER, event.user_id),
+            guard_hit=guard_hit, attack=attack, unrouted=unrouted, channel="line",
+        )
+        AgentTraceCollector.set_abuse_level(int(decision.effective_level))
 
     async def execute_for_bot(
         self,
