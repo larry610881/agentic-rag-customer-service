@@ -110,25 +110,16 @@ class AbuseControlService:
             return NO_ABUSE
         policy = self.policy_for(tenant_id)
         key = subject.key(tenant_id)
-        signals: list[AbuseSignal] = []
+        signals: list[AbuseSignal] = [
+            sig for sig, hit in (
+                (AbuseSignal.GUARD_HIT, guard_hit),
+                (AbuseSignal.ATTACK, attack),
+                (AbuseSignal.ORIGIN_MISMATCH, origin_mismatch),
+                (AbuseSignal.IDENTIFY_FAIL, identify_fail),
+            ) if hit
+        ]
         try:
-            if guard_hit:
-                signals.append(AbuseSignal.GUARD_HIT)
-            if attack:
-                signals.append(AbuseSignal.ATTACK)
-            if origin_mismatch:
-                signals.append(AbuseSignal.ORIGIN_MISMATCH)
-            if identify_fail:
-                signals.append(AbuseSignal.IDENTIFY_FAIL)
-            if await self._pacing_exceeded(key, policy):
-                signals.append(AbuseSignal.PACING)
-            if unrouted:
-                streak = await self._store.incr_counter(f"{key}:unrouted", 600)
-                if streak > policy.unrouted_free_count:
-                    signals.append(AbuseSignal.UNROUTED)
-            else:
-                await self._store.reset_counter(f"{key}:unrouted")
-
+            signals.extend(await self._behavioral_signals(key, policy, unrouted))
             delta = sum(policy.weight(s) for s in signals)
             score = await self._store.add_score(
                 key, delta, policy.decay_per_minute, policy.score_ttl_seconds
@@ -175,6 +166,21 @@ class AbuseControlService:
             )
 
     # --------------------------------------------------------------- helpers
+
+    async def _behavioral_signals(
+        self, key: str, policy: AbusePolicy, unrouted: bool
+    ) -> list[AbuseSignal]:
+        """節奏異常 + 連續無法分流（需要計數器的兩種訊號）。"""
+        found: list[AbuseSignal] = []
+        if await self._pacing_exceeded(key, policy):
+            found.append(AbuseSignal.PACING)
+        if unrouted:
+            streak = await self._store.incr_counter(f"{key}:unrouted", 600)
+            if streak > policy.unrouted_free_count:
+                found.append(AbuseSignal.UNROUTED)
+        else:
+            await self._store.reset_counter(f"{key}:unrouted")
+        return found
 
     async def _pacing_exceeded(self, key: str, policy: AbusePolicy) -> bool:
         count = await self._store.incr_counter(f"{key}:rpm", 60)
