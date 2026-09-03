@@ -13,14 +13,14 @@ from src.application.usage.usage_context import (
     UsageContext,
     resolve_usage_context,
 )
-from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.deps import CurrentTenant, authenticate
 
 __all__ = ["UsageContext", "get_usage_context"]
 
 
 async def get_usage_context(
     request: Request,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(authenticate),
 ) -> UsageContext:
     return resolve_usage_context(
         category=request.headers.get(USAGE_CATEGORY_HEADER),

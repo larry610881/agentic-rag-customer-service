@@ -1,6 +1,5 @@
 """Agent Chat API 端點"""
 
-import asyncio
 import json
 import logging
 
@@ -15,7 +14,12 @@ from src.application.agent.send_message_use_case import (
 )
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
-from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.deps import (
+    CurrentTenant,
+    ensure_bot_allowed,
+    get_current_tenant,
+    require_scope,
+)
 from src.interfaces.api.streaming_errors import classify_streaming_error
 from src.interfaces.api.usage_context import UsageContext, get_usage_context
 
@@ -139,7 +143,7 @@ def _maybe_expose_guard(result_guard_blocked, result_guard_rule, role):
 @inject
 async def agent_chat(
     request: ChatRequest,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(require_scope("chat:send")),
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
     ),
@@ -151,6 +155,7 @@ async def agent_chat(
     # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
     # 跨租戶測試流程請走系統管理專用端點（尚未實作，另立 issue）。
     identity_source = request.identity_source or "web"
+    ensure_bot_allowed(tenant, request.bot_id)  # Issue #67：api_client bot 範圍
     _require_shadow_authorized(request, usage_ctx)
     result = await use_case.execute(
         SendMessageCommand(
@@ -238,7 +243,7 @@ async def agent_chat(
 @inject
 async def agent_chat_stream(
     request: ChatRequest,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(require_scope("chat:stream")),
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
     ),
@@ -247,6 +252,7 @@ async def agent_chat_stream(
     ),
     usage_ctx: UsageContext = Depends(get_usage_context),
 ) -> StreamingResponse:
+    ensure_bot_allowed(tenant, request.bot_id)  # Issue #67：api_client bot 範圍
     # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
     # 跨租戶測試流程請走系統管理專用端點（尚未實作，另立 issue）。
     _require_shadow_authorized(request, usage_ctx)

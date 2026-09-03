@@ -24,7 +24,7 @@ from src.application.bot.validate_bot_enabled_tools import (
 from src.container import Container
 from src.domain.platform.value_objects import ProviderName
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
-from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_scope
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
 router = APIRouter(prefix="/api/v1/bots", tags=["bots"])
@@ -533,7 +533,7 @@ async def create_bot(
 @inject
 async def list_bots(
     pagination: PaginationQuery = Depends(),
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(require_scope("bots:read")),
     use_case: ListBotsUseCase = Depends(
         Provide[Container.list_bots_use_case]
     ),
@@ -561,7 +561,7 @@ async def list_bots(
 @inject
 async def get_bot(
     bot_id: str,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(require_scope("bots:read")),
     use_case: GetBotUseCase = Depends(
         Provide[Container.get_bot_use_case]
     ),

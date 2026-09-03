@@ -210,6 +210,10 @@ class RateLimitMiddleware:
         if token_type == "user_access":
             result["user_id"] = payload.get("sub")
             result["tenant_id"] = payload.get("tenant_id")
+        elif token_type == "api_access":
+            # Issue #67 P2：機器票以 client_id 當 user 維度
+            result["user_id"] = f"client:{payload.get('sub')}"
+            result["tenant_id"] = payload.get("tenant_id")
         else:
             result["tenant_id"] = payload.get("sub")
 

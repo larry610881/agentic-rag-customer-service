@@ -46,6 +46,26 @@ CREATE TABLE public.config_snapshots (
 );
 
 
+CREATE TABLE public.api_keys (
+    id character varying(36) NOT NULL,
+    tenant_id character varying(36) NOT NULL,
+    name character varying(100) NOT NULL,
+    description text DEFAULT ''::text NOT NULL,
+    secret_hash character varying(64) NOT NULL,
+    secret_salt character varying(32) NOT NULL,
+    secret_prefix character varying(16) NOT NULL,
+    scopes json DEFAULT '[]'::json NOT NULL,
+    allowed_bot_ids json DEFAULT '[]'::json NOT NULL,
+    expires_at timestamp with time zone,
+    revoked_at timestamp with time zone,
+    token_version integer DEFAULT 1 NOT NULL,
+    last_used_at timestamp with time zone,
+    created_by character varying(36),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
 CREATE TABLE public.audit_logs (
     id character varying(36) NOT NULL,
     tenant_id character varying(36),
@@ -1878,6 +1898,17 @@ ALTER TABLE ONLY public.bot_config_versions
 -- Issue #60 — config_snapshots / audit_logs 主鍵與索引
 ALTER TABLE ONLY public.config_snapshots
     ADD CONSTRAINT config_snapshots_pkey PRIMARY KEY (hash);
+ALTER TABLE ONLY public.api_keys
+    ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);
+
+
+ALTER TABLE ONLY public.api_keys
+    ADD CONSTRAINT api_keys_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+CREATE INDEX ix_api_keys_tenant_id ON public.api_keys USING btree (tenant_id);
+
+
 ALTER TABLE ONLY public.audit_logs
     ADD CONSTRAINT audit_logs_pkey PRIMARY KEY (id);
 CREATE INDEX ix_audit_logs_entity ON public.audit_logs USING btree (entity_type, entity_id, created_at);

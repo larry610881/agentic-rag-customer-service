@@ -13,7 +13,7 @@ from src.application.conversation.list_conversations_use_case import (
     ListConversationsUseCase,
 )
 from src.container import Container
-from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.deps import CurrentTenant, require_scope
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
 router = APIRouter(
@@ -50,7 +50,7 @@ class ConversationSummaryResponse(BaseModel):
 async def list_conversations(
     bot_id: str | None = None,
     pagination: PaginationQuery = Depends(),
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(require_scope("chat:history:read")),
     use_case: ListConversationsUseCase = Depends(
         Provide[Container.list_conversations_use_case]
     ),
@@ -89,7 +89,7 @@ async def list_conversations(
 @inject
 async def get_conversation(
     conversation_id: str,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(require_scope("chat:history:read")),
     use_case: GetConversationUseCase = Depends(
         Provide[Container.get_conversation_use_case]
     ),

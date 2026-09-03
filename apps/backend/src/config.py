@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 15
     jwt_refresh_token_expire_days: int = 7
+    # Issue #67：所有票帶 iss/aud；api_access（機器票）15 分鐘、不發 refresh
+    jwt_issuer: str = "agentic-rag"
+    jwt_audience: str = "agentic-rag-api"
+    api_access_token_expire_seconds: int = 900
 
     # Shared Provider API Keys (fallback when embedding/llm-specific keys are not set)
     openai_api_key: str = ""
@@ -158,6 +162,7 @@ class Settings(BaseSettings):
 
     # App
     app_env: str = "development"
+    # API key secret 前綴 ark_<env>_（見 api_key_env_label）
     app_version: str = "0.1.0"
 
     # Multi-Deploy: comma-separated module list
@@ -179,6 +184,10 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def api_key_env_label(self) -> str:
+        return {"development": "dev", "staging": "uat"}.get(self.app_env, "prod")
 
     @property
     def redis_url(self) -> str:

@@ -366,6 +366,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     # API module: tenant management, knowledge, bot, reports, etc.
     if "api" in modules:
         from src.interfaces.api.agent_router import router as agent_router
+        from src.interfaces.api.api_key_router import router as api_key_router
         from src.interfaces.api.auth_router import router as auth_router
         from src.interfaces.api.bot_router import router as bot_router
         from src.interfaces.api.conversation_router import router as conversation_router
@@ -378,6 +379,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.worker_router import router as worker_router
 
         application.include_router(auth_router)
+        application.include_router(api_key_router)
         application.include_router(tenant_router)
         application.include_router(kb_router)
         application.include_router(document_router)

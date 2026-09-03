@@ -179,11 +179,8 @@ def create_tenant_and_login(client, name: str, app=None) -> dict:
     assert resp.status_code == 201, resp.text
     tenant_id = resp.json()["id"]
 
-    token_resp = client.post(
-        "/api/v1/auth/token", json={"tenant_id": tenant_id}
-    )
-    assert token_resp.status_code == 200, token_resp.text
-    token = token_resp.json()["access_token"]
+    jwt_svc = client._app.container.jwt_service()
+    token = jwt_svc.create_tenant_token(tenant_id)
 
     return {
         "Authorization": f"Bearer {token}",

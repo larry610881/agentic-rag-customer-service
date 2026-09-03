@@ -32,7 +32,7 @@ from src.application.conversation.submit_feedback_use_case import (
 from src.container import Container
 from src.domain.bot.repository import BotRepository
 from src.domain.conversation.repository import ConversationRepository
-from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_scope
 
 router = APIRouter(
     prefix="/api/v1/feedback",
@@ -119,7 +119,7 @@ class DataRetentionResponse(BaseModel):
 @inject
 async def submit_feedback(
     body: SubmitFeedbackRequest,
-    tenant: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(require_scope("feedback:write")),
     use_case: SubmitFeedbackUseCase = Depends(
         Provide[Container.submit_feedback_use_case]
     ),

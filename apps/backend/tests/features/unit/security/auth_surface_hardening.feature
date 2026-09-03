@@ -52,20 +52,6 @@ Feature: 認證面加固 P1 (Auth Surface Hardening)
         Then 回應狀態碼為 422
         And 註冊用例不應被呼叫
 
-    # --- 開發用發票端點 ---
-
-    Scenario Outline: /auth/token 只在 development 環境存在
-        Given 已啟動的測試應用
-        And app_env 為 "<env>"
-        When 送出 POST /api/v1/auth/token 租戶 "t1"
-        Then 回應狀態碼為 <status>
-
-        Examples:
-            | env         | status |
-            | production  | 404    |
-            | staging     | 404    |
-            | development | 200    |
-
     # --- 供應商設定 router ---
 
     Scenario Outline: 供應商設定端點需要認證

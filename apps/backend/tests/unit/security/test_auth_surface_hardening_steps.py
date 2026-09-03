@@ -1,6 +1,6 @@
 """認證面加固 P1 BDD Step Definitions（Issue #67）
 
-四個入口：/auth/register 角色授權、/auth/token 限 development、
+四個入口：/auth/register 角色授權、/auth/token 改 client_credentials（見 api_access）、
 /settings/providers 與 /mcp-servers 掛認證。router 層以 create_app +
 Container provider override 驗證，不碰 DB。
 """
@@ -12,7 +12,6 @@ from dependency_injector import providers
 from fastapi.testclient import TestClient
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from src.config import settings
 from src.domain.auth.registration_policy import can_register
 from src.domain.auth.value_objects import Role
 from src.domain.platform.entity import McpServerRegistration
@@ -131,11 +130,6 @@ def with_credentials(context, role, tenant):
     context["headers"] = {"Authorization": f"Bearer {token}"}
 
 
-@given(parsers.parse('app_env 為 "{env}"'))
-def set_app_env(context, monkeypatch, env):
-    monkeypatch.setattr(settings, "app_env", env)
-
-
 @given(
     parsers.parse(
         'MCP 伺服器 "{server_id}" scope "{scope}" 租戶 "{tenants}" 啟用 {enabled}'
@@ -173,13 +167,6 @@ def register_anonymous(context, role, tenant):
 @when(parsers.parse('送出註冊角色 "{role}" 租戶 "{tenant}"'))
 def register_with_headers(context, role, tenant):
     _register(context, context["headers"], role, tenant)
-
-
-@when(parsers.parse('送出 POST /api/v1/auth/token 租戶 "{tenant}"'))
-def post_dev_token(context, tenant):
-    context["resp"] = context["client"].post(
-        "/api/v1/auth/token", json={"tenant_id": tenant}
-    )
 
 
 _BODIES = {

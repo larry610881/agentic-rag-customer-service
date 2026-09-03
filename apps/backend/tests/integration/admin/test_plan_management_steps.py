@@ -241,12 +241,10 @@ def create_tenant_login(ctx, client, tname):
     )
     assert resp.status_code == 201
     tenant_id = resp.json()["id"]
-    token_resp = client.post(
-        "/api/v1/auth/token", json={"tenant_id": tenant_id}
-    )
-    assert token_resp.status_code == 200
+    jwt_svc = client._app.container.jwt_service()
+    tenant_token = jwt_svc.create_tenant_token(tenant_id)
     ctx["user_headers"] = {
-        "Authorization": f"Bearer {token_resp.json()['access_token']}"
+        "Authorization": f"Bearer {tenant_token}"
     }
 
 

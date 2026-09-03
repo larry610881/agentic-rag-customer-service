@@ -2,6 +2,9 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from src.application.auth.api_key_use_cases import (
+    ExchangeClientCredentialsUseCase,
+)
 from src.application.auth.change_password_use_case import (
     ChangePasswordCommand,
     ChangePasswordUseCase,
@@ -19,6 +22,7 @@ from src.application.auth.register_user_use_case import (
 )
 from src.config import settings
 from src.container import Container
+from src.domain.auth.api_key import InvalidClientError, InvalidScopeError
 from src.domain.auth.registration_policy import can_register
 from src.domain.auth.value_objects import Role
 from src.domain.shared.exceptions import EntityNotFoundError
@@ -30,8 +34,18 @@ from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
-class TokenRequest(BaseModel):
-    tenant_id: str
+class ClientCredentialsRequest(BaseModel):
+    grant_type: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    scope: str | None = None
+
+
+class ClientCredentialsResponse(BaseModel):
+    access_token: str
+    token_type: str = "Bearer"
+    expires_in: int
+    scope: str
 
 
 class LoginRequest(BaseModel):
@@ -63,21 +77,44 @@ class UserResponse(BaseModel):
     tenant_id: str | None = None
 
 
-@router.post("/token", response_model=TokenResponse)
+@router.post("/token", response_model=ClientCredentialsResponse)
 @inject
 async def create_token(
-    body: TokenRequest,
-    jwt_service: JWTService = Depends(Provide[Container.jwt_service]),
-) -> TokenResponse:
-    """Dev-only endpoint: issue a JWT for a given tenant_id.
+    body: ClientCredentialsRequest,
+    use_case: ExchangeClientCredentialsUseCase = Depends(
+        Provide[Container.exchange_client_credentials_use_case]
+    ),
+) -> ClientCredentialsResponse:
+    """OAuth2 client_credentials（Issue #67 P2）。
 
-    Issue #67：非 development 環境此端點不存在（404），避免免憑證取票。
+    client_id + client_secret → api_access 票。
+
+    機器票 15 分鐘、不發 refresh；到期用 secret 再換。invalid_client 對不存在 /
+    secret 錯 / 已撤銷 / 已過期一律同一訊息。舊的「給 tenant_id 就發票」已移除。
     """
-    if settings.app_env != "development":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
-    token = jwt_service.create_tenant_token(body.tenant_id)
-    refresh = jwt_service.create_tenant_refresh_token(body.tenant_id)
-    return TokenResponse(access_token=token, refresh_token=refresh)
+    if body.grant_type != "client_credentials":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported_grant_type"
+        )
+    try:
+        result = await use_case.execute(
+            client_id=body.client_id,
+            client_secret=body.client_secret,
+            scope=body.scope,
+        )
+    except InvalidClientError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_client"
+        ) from None
+    except InvalidScopeError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="invalid_scope"
+        ) from None
+    return ClientCredentialsResponse(
+        access_token=result.access_token,
+        expires_in=result.expires_in,
+        scope=result.scope,
+    )
 
 
 @router.post("/login", response_model=TokenResponse)

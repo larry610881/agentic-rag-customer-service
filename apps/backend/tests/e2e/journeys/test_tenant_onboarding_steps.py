@@ -23,11 +23,9 @@ def create_tenant(ctx, client, admin_headers, name):
     if ctx["response"].status_code == 201:
         ctx["tenant_id"] = ctx["response"].json()["id"]
         # Get tenant token for subsequent calls
-        token_resp = client.post(
-            "/api/v1/auth/token",
-            json={"tenant_id": ctx["tenant_id"]},
+        ctx["tenant_token"] = client._app.container.jwt_service().create_tenant_token(
+            ctx["tenant_id"]
         )
-        ctx["tenant_token"] = token_resp.json()["access_token"]
         ctx["headers"] = {"Authorization": f"Bearer {ctx['tenant_token']}"}
 
 

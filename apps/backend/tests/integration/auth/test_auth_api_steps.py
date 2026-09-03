@@ -122,6 +122,7 @@ def post_login(ctx, client, account, password):
 
 @when("我以該租戶 ID 送出 POST /api/v1/auth/token")
 def post_tenant_token(ctx, client):
+    # Issue #67：舊語意（給 tenant_id 就發票）已移除；本端點只接受 client_credentials
     ctx["response"] = client.post(
         "/api/v1/auth/token",
         json={"tenant_id": ctx["tenant_id"]},

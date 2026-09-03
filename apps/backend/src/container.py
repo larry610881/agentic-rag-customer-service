@@ -1,6 +1,9 @@
 import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
+from src.application.agent.direct_retrieval_service import (
+    DirectRetrievalService,
+)
 from src.application.agent.guarded_agent_service import GuardedAgentService
 from src.application.agent.intent_classifier import IntentClassifier
 from src.application.agent.list_built_in_tools_use_case import (
@@ -11,36 +14,19 @@ from src.application.agent.tool_registry import ToolRegistry
 from src.application.agent.update_built_in_tool_scope_use_case import (
     UpdateBuiltInToolScopeUseCase,
 )
+from src.application.audit.audit_recorder import AuditRecorder, ListAuditLogsUseCase
+from src.application.auth.api_key_use_cases import (
+    AuthenticateApiClientUseCase,
+    CreateApiKeyUseCase,
+    ExchangeClientCredentialsUseCase,
+    ListApiKeysUseCase,
+    RevokeApiKeyUseCase,
+)
 from src.application.auth.change_password_use_case import ChangePasswordUseCase
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.list_users_use_case import ListUsersUseCase
 from src.application.auth.login_use_case import LoginUseCase
-from src.application.audit.audit_recorder import AuditRecorder, ListAuditLogsUseCase
-from src.application.agent.direct_retrieval_service import (
-    DirectRetrievalService,
-)
-from src.application.observability.config_fingerprint_service import (
-    ConfigFingerprintService,
-)
-from src.application.observability.config_snapshot_use_cases import (
-    DiffConfigSnapshotsUseCase,
-    GetConfigSnapshotUseCase,
-    GetConfigTimelineUseCase,
-)
-from src.infrastructure.db.repositories.audit_log_repository import (
-    SQLAlchemyAuditLogRepository,
-)
-from src.infrastructure.db.repositories.config_snapshot_repository import (
-    SQLAlchemyConfigSnapshotRepository,
-)
-from src.domain.auth.login_attempt_tracker import LoginLockoutPolicy
-from src.infrastructure.auth.redis_login_attempt_tracker import (
-    RedisLoginAttemptTracker,
-)
-from src.infrastructure.line.redis_webhook_event_deduplicator import (
-    RedisWebhookEventDeduplicator,
-)
 from src.application.auth.register_user_use_case import RegisterUserUseCase
 from src.application.auth.reset_password_use_case import ResetPasswordUseCase
 from src.application.auth.update_user_use_case import UpdateUserUseCase
@@ -243,6 +229,14 @@ from src.application.milvus.list_collections_use_case import (
     ListCollectionsUseCase as ListMilvusCollectionsUseCase,
 )
 from src.application.milvus.rebuild_index_use_case import RebuildIndexUseCase
+from src.application.observability.config_fingerprint_service import (
+    ConfigFingerprintService,
+)
+from src.application.observability.config_snapshot_use_cases import (
+    DiffConfigSnapshotsUseCase,
+    GetConfigSnapshotUseCase,
+    GetConfigTimelineUseCase,
+)
 from src.application.observability.diagnostic_rules_use_cases import (
     GetDiagnosticRulesUseCase,
     ResetDiagnosticRulesUseCase,
@@ -346,14 +340,14 @@ from src.application.pricing.list_pricing_use_case import ListPricingUseCase
 from src.application.pricing.list_recalc_history_use_case import (
     ListRecalcHistoryUseCase,
 )
-from src.application.prompt_gate.replay_use_cases import (
-    StartReplayCompareUseCase,
-)
 from src.application.prompt_gate.gate_run_use_cases import (
     CleanupOrphanGateRunsUseCase,
     GateEstimateUseCase,
     GetGateRunUseCase,
     StartGateRunUseCase,
+)
+from src.application.prompt_gate.replay_use_cases import (
+    StartReplayCompareUseCase,
 )
 from src.application.prompt_gate.version_use_cases import (
     CreateConfigVersionUseCase,
@@ -391,8 +385,12 @@ from src.application.usage.query_usage_use_case import QueryUsageUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.config import Settings
 from src.domain.agent.team_supervisor import TeamSupervisor
+from src.domain.auth.login_attempt_tracker import LoginLockoutPolicy
 from src.infrastructure.auth.bcrypt_password_service import BcryptPasswordService
 from src.infrastructure.auth.jwt_service import JWTService
+from src.infrastructure.auth.redis_login_attempt_tracker import (
+    RedisLoginAttemptTracker,
+)
 from src.infrastructure.cache.redis_cache_service import RedisCacheService
 from src.infrastructure.classification.cluster_classification_service import (
     ClusterClassificationService,
@@ -415,6 +413,12 @@ from src.infrastructure.db.engine import (
     async_session_factory as _async_session_factory,
 )
 from src.infrastructure.db.health_repository import HealthRepository
+from src.infrastructure.db.repositories.api_key_repository import (
+    SQLAlchemyApiKeyRepository,
+)
+from src.infrastructure.db.repositories.audit_log_repository import (
+    SQLAlchemyAuditLogRepository,
+)
 from src.infrastructure.db.repositories.billing_transaction_repository import (
     SQLAlchemyBillingTransactionRepository,
 )
@@ -435,6 +439,9 @@ from src.infrastructure.db.repositories.cached_worker_config_repository import (
 )
 from src.infrastructure.db.repositories.chunk_category_repository import (
     SQLAlchemyChunkCategoryRepository,
+)
+from src.infrastructure.db.repositories.config_snapshot_repository import (
+    SQLAlchemyConfigSnapshotRepository,
 )
 from src.infrastructure.db.repositories.conversation_repository import (
     SQLAlchemyConversationRepository,
@@ -490,9 +497,6 @@ from src.infrastructure.db.repositories.processing_task_repository import (
 from src.infrastructure.db.repositories.prompt_gate_run_repository import (
     SQLAlchemyPromptGateRunRepository,
 )
-from src.infrastructure.db.repositories.version_metrics_repository import (
-    SQLAlchemyVersionMetricsRepository,
-)
 from src.infrastructure.db.repositories.provider_setting_repository import (
     SQLAlchemyProviderSettingRepository,
 )
@@ -519,6 +523,9 @@ from src.infrastructure.db.repositories.usage_repository import (
 )
 from src.infrastructure.db.repositories.user_repository import (
     SQLAlchemyUserRepository,
+)
+from src.infrastructure.db.repositories.version_metrics_repository import (
+    SQLAlchemyVersionMetricsRepository,
 )
 from src.infrastructure.db.repositories.visitor_profile_repository import (
     SQLAlchemyVisitorProfileRepository,
@@ -567,6 +574,9 @@ from src.infrastructure.language_detection import (
 from src.infrastructure.line.line_messaging_service import HttpxLineMessagingService
 from src.infrastructure.line.line_messaging_service_factory import (
     HttpxLineMessagingServiceFactory,
+)
+from src.infrastructure.line.redis_webhook_event_deduplicator import (
+    RedisWebhookEventDeduplicator,
 )
 from src.infrastructure.llm.dynamic_llm_factory import (
     DynamicLLMServiceFactory,
@@ -645,6 +655,7 @@ class Container(containers.DeclarativeContainer):
         modules=[
             "src.interfaces.api.health_router",
             "src.interfaces.api.auth_router",
+            "src.interfaces.api.api_key_router",
             "src.interfaces.api.tenant_router",
             "src.interfaces.api.knowledge_base_router",
             "src.interfaces.api.document_router",
@@ -730,6 +741,11 @@ class Container(containers.DeclarativeContainer):
         ),
         refresh_token_expire_days=providers.Callable(
             lambda cfg: cfg.jwt_refresh_token_expire_days, config
+        ),
+        issuer=providers.Callable(lambda cfg: cfg.jwt_issuer, config),
+        audience=providers.Callable(lambda cfg: cfg.jwt_audience, config),
+        api_access_expire_seconds=providers.Callable(
+            lambda cfg: cfg.api_access_token_expire_seconds, config
         ),
     )
 
@@ -837,6 +853,12 @@ class Container(containers.DeclarativeContainer):
 
     user_repository = providers.Factory(
         SQLAlchemyUserRepository,
+        session=db_session,
+    )
+
+    # Issue #67 P2：租戶 API key
+    api_key_repository = providers.Factory(
+        SQLAlchemyApiKeyRepository,
         session=db_session,
     )
 
@@ -1434,6 +1456,31 @@ class Container(containers.DeclarativeContainer):
             ),
             config,
         ),
+    )
+
+    create_api_key_use_case = providers.Factory(
+        CreateApiKeyUseCase,
+        repo=api_key_repository,
+        env_label=providers.Callable(lambda cfg: cfg.api_key_env_label, config),
+        audit=audit_recorder,
+    )
+    list_api_keys_use_case = providers.Factory(
+        ListApiKeysUseCase,
+        repo=api_key_repository,
+    )
+    revoke_api_key_use_case = providers.Factory(
+        RevokeApiKeyUseCase,
+        repo=api_key_repository,
+        audit=audit_recorder,
+    )
+    exchange_client_credentials_use_case = providers.Factory(
+        ExchangeClientCredentialsUseCase,
+        repo=api_key_repository,
+        jwt_service=jwt_service,
+    )
+    authenticate_api_client_use_case = providers.Factory(
+        AuthenticateApiClientUseCase,
+        repo=api_key_repository,
     )
 
     login_use_case = providers.Factory(

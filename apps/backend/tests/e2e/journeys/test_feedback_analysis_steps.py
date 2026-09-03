@@ -37,8 +37,8 @@ def setup_tenant_and_conversation(ctx, client):
     resp = client.post("/api/v1/tenants", json={"name": "feedback-e2e"})
     assert resp.status_code == 201, resp.text
     tenant_id = resp.json()["id"]
-    token_resp = client.post("/api/v1/auth/token", json={"tenant_id": tenant_id})
-    token = token_resp.json()["access_token"]
+    jwt_svc = client._app.container.jwt_service()
+    token = jwt_svc.create_tenant_token(tenant_id)
     ctx["headers"] = {"Authorization": f"Bearer {token}", "_tenant_id": tenant_id}
 
     # Insert conversation + 2 messages directly
