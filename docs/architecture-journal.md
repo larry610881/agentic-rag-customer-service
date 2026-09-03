@@ -5899,3 +5899,21 @@ graph TD
 2. **授權矩陣寫成 Examples 表格**——9 行表格比散在 if/else 裡的規則好審、好改；紅隊看一眼就能對照。
 3. **測試不該依賴不安全的捷徑**——integration / e2e 都改用 `JWTService` 直接簽 admin 票，`/auth/token` 只剩 development 手動測試用途。P5 把 `app_env` 預設改 production 時，它就會自然消失。
 
+## 2026-09-03 — 四種主體各一種憑證：把「誰在呼叫」寫進票裡，端點只認 scope
+
+**背景**：Issue #67 P2–P5。P1 之後剩下的問題不是「沒掛認證」，而是「一張人類 JWT 什麼都能做」：外部系統要串接只能借人類帳號、widget 只靠 Origin 字串、refresh 7 天不旋轉、改密碼舊票照用。
+
+**設計**：
+1. **主體分型**——人（email+密碼 → user_access + refresh）、機器（client_id+secret → api_access，不發 refresh）、widget（Origin 白名單 → widget_access，綁 bot/Origin/visitor）、LINE（簽章）。每種票 `type` 不同，`deps.authenticate` 只負責「解析成 CurrentTenant」，授權交給端點宣告：`get_current_tenant`（人類）、`require_scope("chat:send")`（機器可進）、`get_widget_principal`（widget）。機器票進到沒宣告 scope 的端點一律 403 `insufficient_scope`——預設拒絕靠結構，不靠每支 router 記得。
+2. **撤銷不靠黑名單靠版本號**——ApiKey / User 各有 `token_version`，票帶 `ver`；撤銷或改密碼 +1。機器票每請求查 key（15 分鐘票、本來就要驗存活）；人類票不查 DB，改密碼時往 Redis 寫「user 最低 ver」並設 TTL = access 有效期，到期自然消失。一個整數就能讓所有舊票失效，比維護 jti 黑名單便宜。
+3. **refresh family 旋轉**——登入開一個 family，Redis 只記最新 jti；換票用 Lua 原子 compare-and-swap；拿舊 jti 來 = 被偷用 → 整個 family 改寫成墓碑（不是刪除，否則下一張票會被當成「未知 family」fail-open 放行——第一版就踩到這個，測試抓出來）。
+4. **widget 的祕密是「沒有祕密」**——瀏覽器端放不了 secret，能用的只有 Origin 白名單 + 短效票 + 伺服器簽發的 visitor id（HMAC，客戶端只能拿回我們發過的值）。白名單為空從「不檢查」改成「一律拒」，這是 P4 最重要的一行。
+5. **fail-open 的邊界**——Redis 掛掉時旋轉偵測與撤銷都會暫時失效（回 OK / None），與既有 login tracker、rate limiter 同一政策；代價是「Redis 故障期間被偷的 refresh 可用」，換來「Redis 故障不等於全站登出」。這條要寫進維運文件，不能默默。
+
+**教訓**：
+- **測試先於實作抓到了兩個真 bug**：墓碑（上面第 3 點）與 pytest-bdd 的 parse 貪婪匹配讓 `"{origin}" 送出聊天` 吃掉整段中文（改 `parsers.re` 精確結尾）。BDD 表格式 Examples 對授權矩陣特別好審。
+- **測試 fixture 依賴不安全捷徑是技術債**：十幾個檔案用 `/auth/token` 給 tenant_id 就發票；改成 `JWTService` 直接簽票後，這個端點才能安心改成 client_credentials。
+- **`app_env` 預設值是安全預設值**：預設 development 意味著「忘了設就是不安全」；改成 production 後，本機開發要明確宣告，錯的方向變成「忘了設就啟動不了」。
+
+**延伸**：DPoP / mTLS 綁定機器票到呼叫端（防票外洩重放）；kid 已就位，下一步是雙 secret 輪替（新簽舊驗）；widget 可再加 `Sec-Fetch-Site` 檢查。
+
