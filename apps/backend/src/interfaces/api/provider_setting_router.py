@@ -1,4 +1,8 @@
-"""Provider Settings API 端點"""
+"""Provider Settings API 端點
+
+平台層（跨租戶）設定：CRUD / 連線測試僅 system_admin；enabled-models 與
+model-registry 供租戶端建 bot / KB 選模型，需登入即可（Issue #67）。
+"""
 
 from typing import Any
 
@@ -31,6 +35,7 @@ from src.application.platform.update_provider_setting_use_case import (
 )
 from src.container import Container
 from src.domain.shared.exceptions import DuplicateEntityError, EntityNotFoundError
+from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
 
 router = APIRouter(prefix="/api/v1/settings/providers", tags=["settings"])
 
@@ -93,7 +98,9 @@ class ConnectionResultResponse(BaseModel):
 
 
 @router.get("/model-registry")
-async def get_model_registry() -> dict[str, dict[str, list[dict]]]:
+async def get_model_registry(
+    _caller: CurrentTenant = Depends(get_current_tenant),
+) -> dict[str, dict[str, list[dict]]]:
     from src.domain.platform.model_registry import DEFAULT_MODELS
     return DEFAULT_MODELS
 
@@ -134,6 +141,7 @@ def _to_response(setting) -> ProviderSettingResponse:
 @inject
 async def create_provider_setting(
     body: CreateProviderSettingRequest,
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
     use_case: CreateProviderSettingUseCase = Depends(
         Provide[Container.create_provider_setting_use_case]
     ),
@@ -162,6 +170,7 @@ async def create_provider_setting(
 @inject
 async def list_provider_settings(
     type: str | None = None,
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
     use_case: ListProviderSettingsUseCase = Depends(
         Provide[Container.list_provider_settings_use_case]
     ),
@@ -173,6 +182,7 @@ async def list_provider_settings(
 @router.get("/enabled-models", response_model=list[EnabledModelResponse])
 @inject
 async def list_enabled_models(
+    _caller: CurrentTenant = Depends(get_current_tenant),
     use_case: ListEnabledModelsUseCase = Depends(
         Provide[Container.list_enabled_models_use_case]
     ),
@@ -193,6 +203,7 @@ async def list_enabled_models(
 @inject
 async def get_provider_setting(
     setting_id: str,
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
     use_case: GetProviderSettingUseCase = Depends(
         Provide[Container.get_provider_setting_use_case]
     ),
@@ -212,6 +223,7 @@ async def get_provider_setting(
 async def update_provider_setting(
     setting_id: str,
     body: UpdateProviderSettingRequest,
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
     use_case: UpdateProviderSettingUseCase = Depends(
         Provide[Container.update_provider_setting_use_case]
     ),
@@ -244,6 +256,7 @@ async def update_provider_setting(
 @inject
 async def delete_provider_setting(
     setting_id: str,
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
     use_case: DeleteProviderSettingUseCase = Depends(
         Provide[Container.delete_provider_setting_use_case]
     ),
@@ -264,6 +277,7 @@ async def delete_provider_setting(
 @inject
 async def test_provider_connection(
     setting_id: str,
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
     use_case: CheckProviderConnectionUseCase = Depends(
         Provide[Container.check_provider_connection_use_case]
     ),

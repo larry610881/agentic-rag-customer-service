@@ -5879,3 +5879,23 @@ graph TD
 - **固定文案要由程式輸出，不是模型** — 模型「拒絕後好心摘要規範」就是軟洩漏；分類器只回代號、程式查 DB 字串，才是真固定。
 - **兩段式提交（減法 → 加法）**讓 review 與回滾都乾淨；減法 commit 的測試全綠即證明行為未變。
 - worker 切分本身不是速度成本（設定 60s 快取、~0ms）；分類那次 LLM 是為攻擊判定與 follow-up 改寫存在，拿掉 worker 也拿不掉它 — 下一個槓桿是分類降本（embedding 路由），不是合併 agent。
+
+## 2026-09-03 — 「有 DDD 分層、沒有認證分層」：四個零認證入口是怎麼留到對外開放的
+
+**現象**：另一個 session 的紅隊視角檢視，在 main 135dccc 找到四個 Critical：`/auth/register` 公開且 role 由請求帶入（任何人可自註冊成 system_admin）、`/auth/token` 給 tenant_id 就發票、`/settings/providers` 與 `/mcp-servers` 兩支 router 整支沒有任何 `Depends(get_current_tenant)`。POC 已開 allUsers invoker，等於這四個入口對全世界開著。
+**根因鏈**：
+1. **認證是每支 router 自己「記得掛」的東西**——`deps.py` 提供 `get_current_tenant` / `require_role`，但沒有全域 middleware、也沒有「所有 router 都必須掛認證」的 fence test。Platform 層（providers / MCP）是後期加的功能，開發時圖方便用 dev-mode 直打，就一路留到現在。這跟 Issue #60 的教訓同型：`wiring_config` 也是「每支 router 自己記得登記」，忘了就 500。
+2. **register 的授權規則從沒被寫成規則**——`RegisterUserUseCase` 只管「email 不重複、密碼雜湊」，誰能建誰是 HTTP 層順手帶進來的 `body.role`，等於沒有規則。
+3. **dev 便利端點沒有環境閘門**——`/auth/token` docstring 寫著 Dev-only，程式碼裡沒有任何一行檢查環境；測試 fixture 依賴它，讓它變成沒人敢動的基礎設施。
+
+**修法（Issue #67，P1）**：
+- 規則進 domain：`domain/auth/registration_policy.can_register`，純函式、9 條 Examples 表格直接對應政策矩陣。router 只做「查政策 → 403」。
+- 平台層 router 掛 `require_role("system_admin")`；租戶端真的需要的兩個讀端點（enabled-models、model-registry）降為「需登入」，因為 bot / KB 表單選模型要用。
+- MCP list 對非管理員**忽略 query 的 tenant_id、一律用票內租戶**；get 用新增的 `McpServerRegistration.is_accessible_to()` 過濾，不可用回 404（不洩漏存在性）。這條規則與 repository 的 `find_accessible` SQL 是同一件事，放在 entity 上才不會兩邊 drift。
+- `/auth/token` 非 development 回 404（不是 403——不存在的端點不該被列舉）。
+
+**教訓**：
+1. **「預設拒絕」要靠結構，不能靠記憶**——下一步應該補一個 fence test：掃所有 `*_router.py` 的端點，沒有 `get_current_tenant` / `require_role` / 明確標註 public 的就 fail。這和 `test_router_wiring_fence.py` 是同一種守門。
+2. **授權矩陣寫成 Examples 表格**——9 行表格比散在 if/else 裡的規則好審、好改；紅隊看一眼就能對照。
+3. **測試不該依賴不安全的捷徑**——integration / e2e 都改用 `JWTService` 直接簽 admin 票，`/auth/token` 只剩 development 手動測試用途。P5 把 `app_env` 預設改 production 時，它就會自然消失。
+

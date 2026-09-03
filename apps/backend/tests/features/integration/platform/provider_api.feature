@@ -46,3 +46,11 @@ Feature: Provider Settings API Integration
   Scenario: 查詢不存在的 Provider 回傳 404
     When 我送出 GET /api/v1/settings/providers/00000000-0000-0000-0000-000000000000
     Then 回應狀態碼為 404
+
+  Scenario: 無憑證查詢 Provider 列表回傳 401（Issue #67）
+    When 我無憑證送出 GET /api/v1/settings/providers
+    Then 回應狀態碼為 401
+
+  Scenario: 租戶管理員建立 Provider 回傳 403（Issue #67）
+    When 我以租戶管理員送出 POST /api/v1/settings/providers 類型 "llm" 名稱 "openai" 顯示名稱 "OpenAI"
+    Then 回應狀態碼為 403

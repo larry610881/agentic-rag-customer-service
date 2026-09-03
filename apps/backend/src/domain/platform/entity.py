@@ -73,3 +73,9 @@ class McpServerRegistration:
     updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
+
+    def is_accessible_to(self, tenant_id: str) -> bool:
+        """租戶是否可使用此伺服器（與 repository.find_accessible 同一規則）。"""
+        if not self.is_enabled:
+            return False
+        return self.scope == "global" or tenant_id in self.tenant_ids

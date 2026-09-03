@@ -5,14 +5,13 @@ exercises multiple API endpoints in sequence, simulating a complete user flow.
 """
 
 import asyncio
-import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 from dependency_injector import providers
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
-from unittest.mock import AsyncMock
 
 from src.infrastructure.cache.in_memory_cache_service import InMemoryCacheService
 from src.infrastructure.db.base import Base
@@ -182,8 +181,19 @@ def client(app) -> APIHelper:
 
 
 @pytest.fixture
-def auth_headers(client) -> dict[str, str]:
-    resp = client.post("/api/v1/tenants", json={"name": "e2e-tenant"})
+def admin_headers(app) -> dict[str, str]:
+    """system_admin JWT（Issue #67 後 register / providers 需管理員憑證）。"""
+    token = app.container.jwt_service().create_user_token(
+        user_id="admin-e2e", tenant_id=None, role="system_admin"
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def auth_headers(client, admin_headers) -> dict[str, str]:
+    resp = client.post(
+        "/api/v1/tenants", json={"name": "e2e-tenant"}, headers=admin_headers
+    )
     assert resp.status_code == 201, resp.text
     tenant_id = resp.json()["id"]
     token_resp = client.post("/api/v1/auth/token", json={"tenant_id": tenant_id})

@@ -19,7 +19,7 @@ def ctx():
 @given(
     parsers.parse('已建立 Provider "{ptype}" "{pname}" "{display}"')
 )
-def create_provider(ctx, client, ptype, pname, display):
+def create_provider(ctx, client, admin_headers, ptype, pname, display):
     resp = client.post(
         "/api/v1/settings/providers",
         json={
@@ -28,6 +28,7 @@ def create_provider(ctx, client, ptype, pname, display):
             "display_name": display,
             "api_key": "sk-test-key-12345",
         },
+        headers=admin_headers,
     )
     assert resp.status_code == 201, resp.text
     ctx["provider"] = resp.json()
@@ -44,7 +45,7 @@ def create_provider(ctx, client, ptype, pname, display):
         '名稱 "{pname}" 顯示名稱 "{display}"'
     )
 )
-def post_create_provider(ctx, client, ptype, pname, display):
+def post_create_provider(ctx, client, admin_headers, ptype, pname, display):
     ctx["response"] = client.post(
         "/api/v1/settings/providers",
         json={
@@ -53,28 +54,63 @@ def post_create_provider(ctx, client, ptype, pname, display):
             "display_name": display,
             "api_key": "sk-test-key-12345",
         },
+        headers=admin_headers,
+    )
+
+
+@when("我無憑證送出 GET /api/v1/settings/providers")
+def get_provider_list_anonymous(ctx, client):
+    ctx["response"] = client.get("/api/v1/settings/providers")
+
+
+@when(
+    parsers.parse(
+        '我以租戶管理員送出 POST /api/v1/settings/providers 類型 "{ptype}" '
+        '名稱 "{pname}" 顯示名稱 "{display}"'
+    )
+)
+def post_create_provider_as_tenant_admin(ctx, client, app, ptype, pname, display):
+    token = app.container.jwt_service().create_user_token(
+        user_id="ta-test", tenant_id="tenant-x", role="tenant_admin"
+    )
+    ctx["response"] = client.post(
+        "/api/v1/settings/providers",
+        json={
+            "provider_type": ptype,
+            "provider_name": pname,
+            "display_name": display,
+            "api_key": "sk-test-key-12345",
+        },
+        headers={"Authorization": f"Bearer {token}"},
     )
 
 
 @when("我送出 GET /api/v1/settings/providers")
-def get_provider_list(ctx, client):
-    ctx["response"] = client.get("/api/v1/settings/providers")
+def get_provider_list(ctx, client, admin_headers):
+    ctx["response"] = client.get(
+        "/api/v1/settings/providers", headers=admin_headers
+    )
 
 
 @when("我送出 GET /api/v1/settings/providers?type=llm")
-def get_provider_list_by_type(ctx, client):
-    ctx["response"] = client.get("/api/v1/settings/providers?type=llm")
+def get_provider_list_by_type(ctx, client, admin_headers):
+    ctx["response"] = client.get(
+        "/api/v1/settings/providers?type=llm", headers=admin_headers
+    )
 
 
 @when(parsers.parse("我送出 GET /api/v1/settings/providers/{provider_id}"))
-def get_provider_not_found(ctx, client, provider_id):
-    ctx["response"] = client.get(f"/api/v1/settings/providers/{provider_id}")
+def get_provider_not_found(ctx, client, admin_headers, provider_id):
+    ctx["response"] = client.get(
+        f"/api/v1/settings/providers/{provider_id}", headers=admin_headers
+    )
 
 
 @when("我用該 Provider ID 送出 GET /api/v1/settings/providers/{id}")
-def get_provider_by_id(ctx, client):
+def get_provider_by_id(ctx, client, admin_headers):
     ctx["response"] = client.get(
-        f"/api/v1/settings/providers/{ctx['provider']['id']}"
+        f"/api/v1/settings/providers/{ctx['provider']['id']}",
+        headers=admin_headers,
     )
 
 
@@ -84,17 +120,19 @@ def get_provider_by_id(ctx, client):
         '顯示名稱 "{display}"'
     )
 )
-def update_provider(ctx, client, display):
+def update_provider(ctx, client, admin_headers, display):
     ctx["response"] = client.put(
         f"/api/v1/settings/providers/{ctx['provider']['id']}",
         json={"display_name": display},
+        headers=admin_headers,
     )
 
 
 @when("我用該 Provider ID 送出 DELETE /api/v1/settings/providers/{id}")
-def delete_provider(ctx, client):
+def delete_provider(ctx, client, admin_headers):
     ctx["response"] = client.delete(
-        f"/api/v1/settings/providers/{ctx['provider']['id']}"
+        f"/api/v1/settings/providers/{ctx['provider']['id']}",
+        headers=admin_headers,
     )
 
 

@@ -1,4 +1,8 @@
-"""MCP Server Registry API 端點"""
+"""MCP Server Registry API 端點
+
+平台層註冊表：建/改/刪/discover/test-connection 僅 system_admin；list / get
+供租戶端綁定工具，非管理員只能看自己可用的（Issue #67）。
+"""
 
 from typing import Any
 
@@ -29,6 +33,7 @@ from src.domain.shared.exceptions import (
     DuplicateEntityError,
     EntityNotFoundError,
 )
+from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
 
 router = APIRouter(prefix="/api/v1/mcp-servers", tags=["mcp-registry"])
 
@@ -153,6 +158,7 @@ def _to_response(server: Any) -> McpServerResponse:
 @inject
 async def create_mcp_server(
     body: CreateMcpServerRequest,
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
     use_case: CreateMcpServerUseCase = Depends(
         Provide[Container.create_mcp_server_use_case]
     ),
@@ -190,9 +196,16 @@ async def create_mcp_server(
 @inject
 async def list_mcp_servers(
     tenant_id: str | None = Query(default=None),
+    current: CurrentTenant = Depends(get_current_tenant),
     repo: Any = Depends(Provide[Container.mcp_server_repository]),
 ) -> list[McpServerResponse]:
-    if tenant_id:
+    """system_admin 可看全部或指定租戶；其他身分一律以票內租戶查可用清單。
+
+    Issue #67：query 的 tenant_id 只對 system_admin 有效。
+    """
+    if current.role != "system_admin":
+        servers = await repo.find_accessible(current.tenant_id)
+    elif tenant_id:
         servers = await repo.find_accessible(tenant_id)
     else:
         servers = await repo.find_all()
@@ -203,9 +216,14 @@ async def list_mcp_servers(
 @inject
 async def get_mcp_server(
     server_id: str,
+    current: CurrentTenant = Depends(get_current_tenant),
     repo: Any = Depends(Provide[Container.mcp_server_repository]),
 ) -> McpServerResponse:
     server = await repo.find_by_id(server_id)
+    if server is not None and current.role != "system_admin":
+        # 非管理員只能看自己可用的；不可用視同不存在（不洩漏存在性）
+        if not server.is_accessible_to(current.tenant_id):
+            server = None
     if server is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -219,6 +237,7 @@ async def get_mcp_server(
 async def update_mcp_server(
     server_id: str,
     body: UpdateMcpServerRequest,
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
     use_case: UpdateMcpServerUseCase = Depends(
         Provide[Container.update_mcp_server_use_case]
     ),
@@ -257,6 +276,7 @@ async def update_mcp_server(
 @inject
 async def delete_mcp_server(
     server_id: str,
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
     use_case: DeleteMcpServerUseCase = Depends(
         Provide[Container.delete_mcp_server_use_case]
     ),
@@ -268,6 +288,7 @@ async def delete_mcp_server(
 @inject
 async def discover_tools(
     body: DiscoverRequest,
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
     use_case: DiscoverMcpServerUseCase = Depends(
         Provide[Container.discover_mcp_server_use_case]
     ),
@@ -299,6 +320,7 @@ async def discover_tools(
 @inject
 async def test_mcp_connection(
     server_id: str,
+    _admin: CurrentTenant = Depends(require_role("system_admin")),
     use_case: TestMcpConnectionUseCase = Depends(
         Provide[Container.test_mcp_connection_use_case]
     ),

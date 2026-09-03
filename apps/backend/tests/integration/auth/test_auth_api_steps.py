@@ -28,7 +28,7 @@ def create_tenant(ctx, client, admin_headers, name):
 @given(
     parsers.parse('已註冊使用者 "{email}" 密碼 "{password}" 關聯該租戶')
 )
-def register_user(ctx, client, email, password):
+def register_user(ctx, client, admin_headers, email, password):
     resp = client.post(
         "/api/v1/auth/register",
         json={
@@ -36,8 +36,16 @@ def register_user(ctx, client, email, password):
             "password": password,
             "tenant_id": ctx["tenant_id"],
         },
+        headers=admin_headers,
     )
     assert resp.status_code == 201, resp.text
+
+
+def _tenant_user_headers(app, tenant_id: str, role: str) -> dict[str, str]:
+    token = app.container.jwt_service().create_user_token(
+        user_id=f"{role}-test", tenant_id=tenant_id, role=role
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 
 # ---------------------------------------------------------------------------
@@ -45,20 +53,59 @@ def register_user(ctx, client, email, password):
 # ---------------------------------------------------------------------------
 
 
-@when(
-    parsers.parse(
-        '我送出 POST /api/v1/auth/register 帳號 "{email}" 密碼 "{password}" 關聯該租戶'
-    )
-)
-def post_register(ctx, client, email, password):
+def _post_register(ctx, client, email, password, headers, role="user"):
     ctx["response"] = client.post(
         "/api/v1/auth/register",
         json={
             "email": email,
             "password": password,
+            "role": role,
             "tenant_id": ctx.get("tenant_id"),
         },
+        headers=headers,
     )
+
+
+@when(
+    parsers.parse(
+        "我以系統管理員送出 POST /api/v1/auth/register "
+        '帳號 "{email}" 密碼 "{password}" 關聯該租戶'
+    )
+)
+def post_register_as_admin(ctx, client, admin_headers, email, password):
+    _post_register(ctx, client, email, password, admin_headers)
+
+
+@when(
+    parsers.parse(
+        "我無憑證送出 POST /api/v1/auth/register "
+        '帳號 "{email}" 密碼 "{password}" 關聯該租戶'
+    )
+)
+def post_register_anonymous(ctx, client, email, password):
+    _post_register(ctx, client, email, password, {})
+
+
+@when(
+    parsers.parse(
+        "我以該租戶一般使用者送出 POST /api/v1/auth/register "
+        '帳號 "{email}" 密碼 "{password}" 關聯該租戶'
+    )
+)
+def post_register_as_user(ctx, client, app, email, password):
+    headers = _tenant_user_headers(app, ctx["tenant_id"], "user")
+    _post_register(ctx, client, email, password, headers)
+
+
+@when(
+    parsers.parse(
+        "我以該租戶管理員送出 POST /api/v1/auth/register "
+        '角色 "{role}" 帳號 "{email}" 密碼 "{password}"'
+    )
+)
+def post_register_as_tenant_admin(ctx, client, app, role, email, password):
+    headers = _tenant_user_headers(app, ctx["tenant_id"], "tenant_admin")
+    _post_register(ctx, client, email, password, headers, role=role)
 
 
 @when(

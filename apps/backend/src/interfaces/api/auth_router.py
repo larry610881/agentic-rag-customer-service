@@ -1,5 +1,5 @@
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from src.application.auth.change_password_use_case import (
@@ -19,6 +19,8 @@ from src.application.auth.register_user_use_case import (
 )
 from src.config import settings
 from src.container import Container
+from src.domain.auth.registration_policy import can_register
+from src.domain.auth.value_objects import Role
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.domain.tenant.repository import TenantRepository
 from src.infrastructure.auth.jwt_service import JWTService
@@ -67,7 +69,12 @@ async def create_token(
     body: TokenRequest,
     jwt_service: JWTService = Depends(Provide[Container.jwt_service]),
 ) -> TokenResponse:
-    """Dev-only endpoint: issue a JWT for a given tenant_id."""
+    """Dev-only endpoint: issue a JWT for a given tenant_id.
+
+    Issue #67：非 development 環境此端點不存在（404），避免免憑證取票。
+    """
+    if settings.app_env != "development":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
     token = jwt_service.create_tenant_token(body.tenant_id)
     refresh = jwt_service.create_tenant_refresh_token(body.tenant_id)
     return TokenResponse(access_token=token, refresh_token=refresh)
@@ -119,11 +126,33 @@ async def login(
 @inject
 async def register(
     body: RegisterRequest,
+    current: CurrentTenant = Depends(get_current_tenant),
     use_case: RegisterUserUseCase = Depends(
         Provide[Container.register_user_use_case]
     ),
 ) -> UserResponse:
-    """Register a new user with email/password."""
+    """建立使用者（邀請制，Issue #67）。
+
+    system_admin 可建任何角色；tenant_admin 只能在自己租戶建 user / tenant_admin；
+    其餘身分 403。自助公開註冊已移除。
+    """
+    try:
+        target_role = Role(body.role)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown role: {body.role}",
+        ) from None
+    if not can_register(
+        actor_role=current.role,
+        actor_tenant_id=current.tenant_id or None,
+        target_role=target_role,
+        target_tenant_id=body.tenant_id,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not allowed to create a user with this role in this tenant",
+        )
     command = RegisterUserCommand(
         email=body.email,
         password=body.password,

@@ -16,8 +16,10 @@ def _auth(headers: dict) -> dict:
 
 
 @when(parsers.parse('我建立租戶 "{name}"'))
-def create_tenant(ctx, client, name):
-    ctx["response"] = client.post("/api/v1/tenants", json={"name": name})
+def create_tenant(ctx, client, admin_headers, name):
+    ctx["response"] = client.post(
+        "/api/v1/tenants", json={"name": name}, headers=admin_headers
+    )
     if ctx["response"].status_code == 201:
         ctx["tenant_id"] = ctx["response"].json()["id"]
         # Get tenant token for subsequent calls
@@ -30,7 +32,7 @@ def create_tenant(ctx, client, name):
 
 
 @when(parsers.parse('我為該租戶註冊管理員 "{email}" 密碼 "{password}"'))
-def register_admin(ctx, client, email, password):
+def register_admin(ctx, client, admin_headers, email, password):
     ctx["response"] = client.post(
         "/api/v1/auth/register",
         json={
@@ -39,6 +41,7 @@ def register_admin(ctx, client, email, password):
             "role": "tenant_admin",
             "tenant_id": ctx["tenant_id"],
         },
+        headers=admin_headers,
     )
 
 
@@ -57,7 +60,7 @@ def login_user(ctx, client, email, password):
         '我以租戶身分設定 LLM Provider "{pname}" 顯示名稱 "{display}"'
     )
 )
-def create_provider(ctx, client, pname, display):
+def create_provider(ctx, client, admin_headers, pname, display):
     ctx["response"] = client.post(
         "/api/v1/settings/providers",
         json={
@@ -66,12 +69,15 @@ def create_provider(ctx, client, pname, display):
             "display_name": display,
             "api_key": "sk-test-e2e-key",
         },
+        headers=admin_headers,
     )
 
 
 @when("我查詢 Provider 列表")
-def list_providers(ctx, client):
-    ctx["response"] = client.get("/api/v1/settings/providers")
+def list_providers(ctx, client, admin_headers):
+    ctx["response"] = client.get(
+        "/api/v1/settings/providers", headers=admin_headers
+    )
 
 
 @then(parsers.parse("回應狀態碼為 {code:d}"))
