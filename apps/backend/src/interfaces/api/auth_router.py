@@ -24,14 +24,11 @@ from src.application.auth.register_user_use_case import (
     RegisterUserCommand,
     RegisterUserUseCase,
 )
-from src.config import settings
 from src.container import Container
 from src.domain.auth.api_key import InvalidClientError, InvalidScopeError
 from src.domain.auth.registration_policy import can_register
 from src.domain.auth.value_objects import Role
 from src.domain.shared.exceptions import EntityNotFoundError
-from src.domain.tenant.repository import TenantRepository
-from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.logging.trace import trace_step
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 
@@ -125,25 +122,9 @@ async def create_token(
 @inject
 async def login(
     body: LoginRequest,
-    jwt_service: JWTService = Depends(Provide[Container.jwt_service]),
-    tenant_repo: TenantRepository = Depends(
-        Provide[Container.tenant_repository]
-    ),
     use_case: LoginUseCase = Depends(Provide[Container.login_use_case]),
 ) -> TokenResponse:
-    """Unified login: dev mode uses tenant name, production uses email/password."""
-    if settings.app_env == "development":
-        with trace_step("find_by_name"):
-            tenant = await tenant_repo.find_by_name(body.account)
-        if tenant is not None:
-            with trace_step("create_tenant_token"):
-                token = jwt_service.create_tenant_token(tenant.id.value)
-            with trace_step("create_tenant_refresh_token"):
-                refresh = jwt_service.create_tenant_refresh_token(tenant.id.value)
-            return TokenResponse(access_token=token, refresh_token=refresh)
-        # Fallback to email/password login in dev mode
-
-    # Production (or dev fallback): account = email, password verified via bcrypt
+    """email + 密碼登入（Issue #67 P5：development 免密碼租戶名稱登入已移除）。"""
     command = LoginCommand(email=body.account, password=body.password)
     try:
         with trace_step("login_use_case"):

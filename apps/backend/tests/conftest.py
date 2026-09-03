@@ -1,8 +1,12 @@
+import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.config import Settings
+# Issue #67 P5：app_env 預設 production；測試一律以 development 跑
+os.environ.setdefault("APP_ENV", "development")
+
+from src.config import Settings  # noqa: E402
 
 
 @pytest.fixture

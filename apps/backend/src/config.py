@@ -163,7 +163,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174"  # comma-separated allowed origins
 
     # App
-    app_env: str = "development"
+    # Issue #67 P5：預設 production（fail-closed）；本機開發請在 .env 明確設 development
+    app_env: str = "production"
     # API key secret 前綴 ark_<env>_（見 api_key_env_label）
     app_version: str = "0.1.0"
 

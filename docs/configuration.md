@@ -50,6 +50,21 @@
 
 > LLM Provider 由資料庫 `ProviderSetting` 動態驅動，無需環境變數設定。
 
+### 認證 / 安全（Issue #67）
+
+| 變數 | 預設 | 說明 |
+|------|------|------|
+| `APP_ENV` | `production` | **預設 production（fail-closed）**：預設密鑰拒絕啟動、API docs 關閉、不接受無 `iss` 的舊票。本機開發請在 `.env` 明確設 `development` |
+| `JWT_SECRET_KEY` | (dev fallback) | 非 development 必須覆寫 |
+| `JWT_ISSUER` | `agentic-rag` | 所有票的 `iss` |
+| `JWT_AUDIENCE` | `agentic-rag-api` | 所有票的 `aud` |
+| `JWT_KEY_ID` | `k1` | JWT header `kid`；輪替 secret 時換值 |
+| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | 人類 access 票 |
+| `JWT_REFRESH_TOKEN_EXPIRE_DAYS` | `7` | refresh 票（每次換票旋轉） |
+| `API_ACCESS_TOKEN_EXPIRE_SECONDS` | `900` | 機器票（client_credentials） |
+| `WIDGET_TOKEN_EXPIRE_SECONDS` | `900` | widget 短效票 |
+| `LOGIN_MAX_FAILURES` / `LOGIN_FAILURE_WINDOW_SECONDS` / `LOGIN_LOCKOUT_SECONDS` | `5` / `900` / `900` | 登入失敗鎖定 |
+
 ### E2E 測試
 
 | 變數 | 預設值 | 說明 |

@@ -1,6 +1,6 @@
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
@@ -130,11 +130,6 @@ def auth_error(context):
 # ── Router-level login tests (C19) ──
 
 
-@given(parsers.parse('app_env 為 "{env}"'))
-def set_app_env(context, env):
-    context["app_env"] = env
-
-
 @given("LoginUseCase 驗證成功回傳 token")
 def mock_login_success(context):
     mock_uc = AsyncMock()
@@ -154,48 +149,21 @@ def mock_login_failure(context):
     context["login_use_case"] = mock_uc
 
 
-@given("tenant_repo.find_by_name 回傳 None")
-def mock_tenant_not_found(context):
-    context["tenant_repo_returns_none"] = True
-
-
 @when(
     parsers.parse(
         '我透過 login API 以 account "{account}" 密碼 "{password}" 登入'
     )
 )
 def call_login_api(context, account, password):
-    mock_jwt = MagicMock()
-    mock_jwt.create_tenant_token = MagicMock(return_value="dev-token")
-    mock_jwt.create_tenant_refresh_token = MagicMock(return_value="dev-refresh")
-
-    mock_tenant_repo = AsyncMock()
-    if context.get("tenant_repo_returns_none"):
-        mock_tenant_repo.find_by_name = AsyncMock(return_value=None)
-    else:
-        mock_tenant_repo.find_by_name = AsyncMock(return_value=None)
-
     mock_uc = context.get("login_use_case", AsyncMock())
     body = LoginRequest(account=account, password=password)
-
-    context["mock_tenant_repo"] = mock_tenant_repo
-
-    with patch("src.interfaces.api.auth_router.settings") as mock_settings:
-        mock_settings.app_env = context["app_env"]
-        try:
-            result = _run(
-                login(
-                    body=body,
-                    jwt_service=mock_jwt,
-                    tenant_repo=mock_tenant_repo,
-                    use_case=mock_uc,
-                )
-            )
-            context["api_result"] = result
-            context["api_error"] = None
-        except Exception as e:
-            context["api_result"] = None
-            context["api_error"] = e
+    try:
+        result = _run(login(body=body, use_case=mock_uc))
+        context["api_result"] = result
+        context["api_error"] = None
+    except Exception as e:
+        context["api_result"] = None
+        context["api_error"] = e
 
 
 @then("應回傳 LoginUseCase 的 token")
@@ -203,11 +171,6 @@ def check_uc_token(context):
     assert context["api_result"] is not None
     assert context["api_result"].access_token == "uc-access-token"
     assert context["api_result"].refresh_token == "uc-refresh-token"
-
-
-@then("不應呼叫 tenant_repo.find_by_name")
-def check_no_tenant_lookup(context):
-    context["mock_tenant_repo"].find_by_name.assert_not_called()
 
 
 @then("應拋出 HTTP 401 錯誤")

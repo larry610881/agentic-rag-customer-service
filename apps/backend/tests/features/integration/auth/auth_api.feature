@@ -50,11 +50,10 @@ Feature: Auth API Integration
     When 我以該租戶 ID 送出 POST /api/v1/auth/token
     Then 回應狀態碼為 400
 
-  Scenario: 租戶登入（legacy）
+  Scenario: 租戶名稱免密碼登入已移除（Issue #67）
     Given 已存在租戶 "Legacy Corp"
     When 我送出 POST /api/v1/auth/login 帳號 "Legacy Corp" 密碼 "any"
-    Then 回應狀態碼為 200
-    And 回應包含 access_token
+    Then 回應狀態碼為 401
 
   Scenario: 不存在的租戶登入回傳 401
     When 我送出 POST /api/v1/auth/login 帳號 "NonExistent" 密碼 "any"

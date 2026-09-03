@@ -2,7 +2,7 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -214,22 +214,12 @@ def uc_raises_locked(context, seconds):
 
 @when(parsers.parse('我透過 login API 以 account "{account}" 密碼 "{password}" 登入'))
 def call_login_api(context, account, password):
-    mock_jwt = MagicMock()
-    mock_tenant_repo = AsyncMock()
-    mock_tenant_repo.find_by_name = AsyncMock(return_value=None)
     body = LoginRequest(account=account, password=password)
-    with patch("src.interfaces.api.auth_router.settings") as mock_settings:
-        mock_settings.app_env = "production"
-        try:
-            _run(login(
-                body=body,
-                jwt_service=mock_jwt,
-                tenant_repo=mock_tenant_repo,
-                use_case=context["login_use_case"],
-            ))
-            context["api_error"] = None
-        except Exception as e:  # noqa: BLE001
-            context["api_error"] = e
+    try:
+        _run(login(body=body, use_case=context["login_use_case"]))
+        context["api_error"] = None
+    except Exception as e:  # noqa: BLE001
+        context["api_error"] = e
 
 
 @then(parsers.parse('應拋出 HTTP {code:d} 錯誤且 Retry-After 為 "{value}"'))

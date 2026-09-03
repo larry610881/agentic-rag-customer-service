@@ -17,19 +17,34 @@ Base URL: `http://localhost:8000/api/v1`
 
 ## Auth
 
+> 憑證模型與 API 模式串接完整說明見 [`api-integration-guide.md`](api-integration-guide.md)。
+
 | Method | Path | Description | Auth |
 |--------|------|-------------|------|
-| POST | `/auth/token` | 取得 JWT Token（開發用） | No |
+| POST | `/auth/login` | email + 密碼登入，回 access（15 分）+ refresh（7 天） | No |
+| POST | `/auth/refresh` | refresh 換票（每次旋轉；重用舊票 → 整組撤銷） | No（票在 body） |
+| POST | `/auth/token` | OAuth2 `client_credentials`：API key 換 `api_access` 票 | No（client_secret 在 body） |
+| POST | `/auth/register` | 建立使用者（邀請制：system_admin 任意；tenant_admin 只能建自己租戶的 user / tenant_admin） | Yes |
+| POST | `/auth/change-password` | 變更密碼（舊 access / refresh 立即失效） | Yes |
+| POST | `/api-keys` | 建立租戶 API key（secret 只回一次） | tenant_admin / system_admin |
+| GET | `/api-keys` | 列出 API key | tenant_admin / system_admin |
+| DELETE | `/api-keys/{id}` | 撤銷 API key | tenant_admin / system_admin |
 
-**Request**
+**POST /auth/login Request**
 ```json
-{ "tenant_id": "uuid" }
+{ "account": "user@example.com", "password": "..." }
 ```
 
-**Response**
+**POST /auth/token Request / Response**
 ```json
-{ "access_token": "eyJ...", "token_type": "bearer" }
+{ "grant_type": "client_credentials", "client_id": "...", "client_secret": "ark_prod_...", "scope": "chat:send" }
 ```
+```json
+{ "access_token": "eyJ...", "token_type": "Bearer", "expires_in": 900, "scope": "chat:send" }
+```
+
+機器票（`api_access`）只能進入宣告了 scope 的端點（`chat:send`、`chat:stream`、
+`chat:history:read`、`feedback:write`、`bots:read`），其餘一律 `403 insufficient_scope`。
 
 ## Tenant
 
