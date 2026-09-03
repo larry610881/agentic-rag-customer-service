@@ -20,6 +20,7 @@ description: 每個部署環境獨立的階段旗標。Claude 依此判斷對該
 - `dev-vm`：已不存在。重建後需以最新 `infra/schema.sql` bootstrap（它已含所有 migration 的最終形狀），並補 `_applied_migrations` 紀錄。
 
 **切換記錄**：
+- 2026-09-03 — Larry 宣告 **dev-vm 退役**（project-4dc6cadb `db-services` 不再是 migration 目標）；dev 階段環境只剩 `local-docker` 與 `company-poc-vm`。同日 `add_bot_mode.sql`（Issue #66：bots.mode fast|deep）依授權套用兩環境並寫入 `_applied_migrations`（local 11 筆、company 56 筆）。
 - 2026-09-02 — `add_config_snapshots_and_audit_logs.sql`（Issue #60：config_snapshots / audit_logs 新表、traces 與 usage 的 config_hash）依 Larry 授權套用 local-docker、dev-vm、company-poc-vm 三環境，各自 `_applied_migrations` 已記錄（dev-vm / company 各 55 筆）。
 - 2026-08-20（Phase C）— local-docker 套 `gcp_sync_prompt_optimizer.sql`（eval 三表，schema.sql 原本漏掉的 drift）+ `add_gate_settings.sql` + `add_eval_gate_flags.sql` + `add_prompt_gate_runs.sql`；schema.sql 修復為可乾淨 bootstrap（0 error / 46 表，暫存 DB 實測）。⚠️ 注意：DB 目前無 seed 資料，`add_gate_settings.sql` 的 system tenant UPDATE 為 0 列——**跑 `make seed-data` 之後需補跑該 UPDATE**（冪等，可直接重放整支 migration）。
 - 2026-08-20 — dev-vm 標記為已下線（08-19 GCP 清空）；local-docker 全新重建 + Issue #54 Phase A migrations 套用。
