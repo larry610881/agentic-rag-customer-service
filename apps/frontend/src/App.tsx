@@ -34,6 +34,7 @@ const KnowledgeDetailPage = lazyWithRetry(() => import("@/pages/knowledge-detail
 const FeedbackPage = lazyWithRetry(() => import("@/pages/feedback"));
 const TokenUsagePage = lazyWithRetry(() => import("@/pages/token-usage"));
 const QuotaPage = lazyWithRetry(() => import("@/pages/quota"));
+const ApiKeysPage = lazyWithRetry(() => import("@/pages/api-keys"));
 const FeedbackBrowserPage = lazyWithRetry(() => import("@/pages/feedback-browser"));
 const FeedbackConversationPage = lazy(
   () => import("@/pages/feedback-conversation"),
@@ -121,6 +122,7 @@ export function App() {
             <Route path={ROUTES.FEEDBACK} element={<FeedbackPage />} />
             <Route path={ROUTES.TOKEN_USAGE} element={<TokenUsagePage />} />
             <Route path={ROUTES.QUOTA} element={<QuotaPage />} />
+            <Route path={ROUTES.API_KEYS} element={<ApiKeysPage />} />
             <Route
               path={ROUTES.CHANGE_PASSWORD}
               element={<ChangePasswordPage />}

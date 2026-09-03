@@ -10,6 +10,7 @@ export const ROUTES = {
   KNOWLEDGE_DETAIL: "/knowledge/:id",
   TOKEN_USAGE: "/token-usage",
   QUOTA: "/quota",
+  API_KEYS: "/api-keys",
   FEEDBACK: "/feedback",
   FEEDBACK_BROWSER: "/feedback/browser",
   FEEDBACK_CONVERSATION: "/feedback/:conversationId",

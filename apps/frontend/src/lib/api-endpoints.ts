@@ -3,6 +3,8 @@ export const API_ENDPOINTS = {
     login: "/api/v1/auth/login",
     refresh: "/api/v1/auth/refresh",
     changePassword: "/api/v1/auth/change-password",
+    /** Issue #67 — OAuth client_credentials 換 token（API 金鑰用） */
+    token: "/api/v1/auth/token",
   },
   tenants: {
     list: "/api/v1/tenants",
@@ -167,6 +169,12 @@ export const API_ENDPOINTS = {
     byBot: "/api/v1/usage/by-bot",
     daily: "/api/v1/usage/daily",
     monthly: "/api/v1/usage/monthly",
+  },
+  apiKeys: {
+    list: "/api/v1/api-keys",
+    scopes: "/api/v1/api-keys/scopes",
+    create: "/api/v1/api-keys",
+    revoke: (id: string) => `/api/v1/api-keys/${id}`,
   },
   providerSettings: {
     list: "/api/v1/settings/providers",

@@ -33,6 +33,7 @@ import {
   TrendingUp,
   Inbox,
   ClipboardList,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,10 @@ const generalNavItems = [
   { href: "/token-usage", label: "Token 用量", icon: Coins },
   { href: "/quota", label: "本月額度", icon: Wallet },
 ];
+
+// Issue #67 P2：API 金鑰只給 tenant_admin / system_admin，一般 user 不顯示
+const API_KEYS_NAV_ITEM = { href: "/api-keys", label: "API 金鑰", icon: KeyRound };
+const API_KEY_MANAGER_ROLES = new Set(["tenant_admin", "system_admin"]);
 
 // S-ConvInsights.1 follow-up: 25 項 flat list → 5 大類 collapsible
 interface NavItem {
@@ -141,6 +146,9 @@ export function Sidebar() {
   );
 
   const isSystemAdmin = role === "system_admin";
+  const tenantNavItems = API_KEY_MANAGER_ROLES.has(role ?? "")
+    ? [...generalNavItems, API_KEYS_NAV_ITEM]
+    : generalNavItems;
   const sidebarTitle = isSystemAdmin
     ? "系統管理"
     : (tenants.find((t) => t.id === tenantId)?.name ?? "AI 客服");
@@ -209,11 +217,11 @@ export function Sidebar() {
               onToggle={() => setGeneralOpen(!generalOpen)}
               isCollapsed={isCollapsed}
             />
-            {generalOpen && generalNavItems.map((item) => renderNavItem(item, pathname, isCollapsed))}
+            {generalOpen && tenantNavItems.map((item) => renderNavItem(item, pathname, isCollapsed))}
           </>
         ) : (
           <>
-            {generalNavItems.map(
+            {tenantNavItems.map(
               (item) => renderNavItem(item, pathname, isCollapsed),
             )}
           </>

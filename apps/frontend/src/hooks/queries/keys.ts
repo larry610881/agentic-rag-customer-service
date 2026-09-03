@@ -85,6 +85,12 @@ export const queryKeys = {
     monthly: (tenantId: string, startDate: string, endDate: string) =>
       ["usage", "monthly", tenantId, startDate, endDate] as const,
   },
+  apiKeys: {
+    all: (tenantId?: string) => ["api-keys", tenantId ?? "own"] as const,
+    scopes: ["api-keys", "scopes"] as const,
+    botOptions: (tenantId?: string) =>
+      ["api-keys", "bot-options", tenantId ?? "own"] as const,
+  },
   providerSettings: {
     all: ["provider-settings"] as const,
     byType: (type: string) =>
