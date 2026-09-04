@@ -43,6 +43,8 @@ export interface NotificationChannel {
   min_severity: "all" | "5xx_only" | "off";
   notify_diagnostics: boolean;
   diagnostic_severity: "critical" | "warning" | "all";
+  /** 異常控管告警（L3/L4 冷卻與封鎖、fail-open、429 突增、每日摘要），後端預設 true */
+  notify_abuse: boolean;
   updated_at: string;
   created_at: string;
 }
@@ -56,4 +58,5 @@ export interface CreateChannelPayload {
   min_severity?: string;
   notify_diagnostics?: boolean;
   diagnostic_severity?: string;
+  notify_abuse?: boolean;
 }

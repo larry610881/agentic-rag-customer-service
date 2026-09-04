@@ -319,7 +319,7 @@ class DispatchDiagnosticNotificationUseCase:
 
 
 class DispatchAbuseNotificationUseCase:
-    """Issue #68 P7c：異常控管告警 / 摘要 → notify_abuse 渠道（依 fingerprint 節流）。"""
+    """Issue #68 P7c：異常控管告警 / 摘要 → notify_abuse 渠道（依指紋節流）。"""
 
     def __init__(
         self,

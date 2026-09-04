@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Send } from "lucide-react";
@@ -60,6 +60,7 @@ interface ChannelFormData {
   min_severity: string;
   notify_diagnostics: boolean;
   diagnostic_severity: string;
+  notify_abuse: boolean;
   // Email-specific
   smtp_host: string;
   smtp_port: number;
@@ -87,6 +88,17 @@ function channelTypeBadgeVariant(
   }
 }
 
+/** Email 渠道缺 recipients 或 smtp_host 時，後端送信會略過（不失敗）；UI 提示「未設定」 */
+function isEmailConfigIncomplete(channel: NotificationChannel): boolean {
+  if (channel.channel_type !== "email") return false;
+  const cfg = channel.config ?? {};
+  const recipients = cfg.recipients;
+  const hasRecipients = Array.isArray(recipients) && recipients.length > 0;
+  const hasHost =
+    typeof cfg.smtp_host === "string" && cfg.smtp_host.trim().length > 0;
+  return !hasRecipients || !hasHost;
+}
+
 function buildConfig(data: ChannelFormData): Record<string, unknown> {
   if (data.channel_type === "email") {
     return {
@@ -105,6 +117,50 @@ function buildConfig(data: ChannelFormData): Record<string, unknown> {
   return { webhook_url: data.webhook_url };
 }
 
+function toFormData(channel?: NotificationChannel | null): ChannelFormData {
+  if (!channel) {
+    return {
+      channel_type: "slack",
+      name: "",
+      enabled: true,
+      throttle_minutes: 5,
+      min_severity: "all",
+      notify_diagnostics: false,
+      diagnostic_severity: "critical",
+      notify_abuse: true,
+      smtp_host: "",
+      smtp_port: 587,
+      smtp_use_tls: true,
+      smtp_username: "",
+      smtp_password: "",
+      from_address: "",
+      recipients: "",
+      webhook_url: "",
+    };
+  }
+  const cfg = channel.config ?? {};
+  return {
+    channel_type: channel.channel_type,
+    name: channel.name,
+    enabled: channel.enabled,
+    throttle_minutes: channel.throttle_minutes,
+    min_severity: channel.min_severity,
+    notify_diagnostics: channel.notify_diagnostics ?? false,
+    diagnostic_severity: channel.diagnostic_severity ?? "critical",
+    notify_abuse: channel.notify_abuse ?? true,
+    smtp_host: (cfg.smtp_host as string) ?? "",
+    smtp_port: (cfg.smtp_port as number) ?? 587,
+    smtp_use_tls: (cfg.smtp_use_tls as boolean) ?? true,
+    smtp_username: (cfg.smtp_username as string) ?? "",
+    smtp_password: (cfg.smtp_password as string) ?? "",
+    from_address: (cfg.from_address as string) ?? "",
+    recipients: Array.isArray(cfg.recipients)
+      ? (cfg.recipients as string[]).join(", ")
+      : "",
+    webhook_url: (cfg.webhook_url as string) ?? "",
+  };
+}
+
 function ChannelFormDialog({
   open,
   onOpenChange,
@@ -118,45 +174,13 @@ function ChannelFormDialog({
   const updateMutation = useUpdateChannel();
 
   const { register, handleSubmit, watch, control, reset } =
-    useForm<ChannelFormData>({
-      defaultValues: channel
-        ? {
-            channel_type: channel.channel_type,
-            name: channel.name,
-            enabled: channel.enabled,
-            throttle_minutes: channel.throttle_minutes,
-            min_severity: channel.min_severity,
-            notify_diagnostics: channel.notify_diagnostics ?? false,
-            diagnostic_severity: channel.diagnostic_severity ?? "critical",
-            smtp_host: (channel.config.smtp_host as string) ?? "",
-            smtp_port: (channel.config.smtp_port as number) ?? 587,
-            smtp_use_tls: (channel.config.smtp_use_tls as boolean) ?? true,
-            smtp_username: (channel.config.smtp_username as string) ?? "",
-            smtp_password: (channel.config.smtp_password as string) ?? "",
-            from_address: (channel.config.from_address as string) ?? "",
-            recipients: Array.isArray(channel.config.recipients)
-              ? (channel.config.recipients as string[]).join(", ")
-              : "",
-            webhook_url: (channel.config.webhook_url as string) ?? "",
-          }
-        : {
-            channel_type: "slack",
-            name: "",
-            enabled: true,
-            throttle_minutes: 5,
-            min_severity: "all",
-            notify_diagnostics: false,
-            diagnostic_severity: "critical",
-            smtp_host: "",
-            smtp_port: 587,
-            smtp_use_tls: true,
-            smtp_username: "",
-            smtp_password: "",
-            from_address: "",
-            recipients: "",
-            webhook_url: "",
-          },
-    });
+    useForm<ChannelFormData>({ defaultValues: toFormData(channel) });
+
+  // useForm 的 defaultValues 只在首次 mount 生效；Dialog 常駐、channel 會切換，
+  // 因此每次開啟都以當前 channel 重設表單（新增 → 預設值、編輯 → 回填）。
+  useEffect(() => {
+    if (open) reset(toFormData(channel));
+  }, [open, channel, reset]);
 
   const channelType = watch("channel_type");
 
@@ -170,6 +194,7 @@ function ChannelFormDialog({
       min_severity: data.min_severity,
       notify_diagnostics: data.notify_diagnostics,
       diagnostic_severity: data.diagnostic_severity,
+      notify_abuse: data.notify_abuse,
     };
 
     if (channel) {
@@ -318,6 +343,27 @@ function ChannelFormDialog({
             </div>
           </div>
 
+          <div className="space-y-3 border-t pt-3">
+            <h4 className="text-sm font-medium">異常控管</h4>
+            <div className="flex items-center gap-2">
+              <Controller
+                name="notify_abuse"
+                control={control}
+                render={({ field }) => (
+                  <Switch
+                    id="notify_abuse"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                )}
+              />
+              <Label htmlFor="notify_abuse">異常控管告警</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              L3/L4 冷卻與封鎖、控管失效（fail-open）、429 突增、每日摘要
+            </p>
+          </div>
+
           {channelType === "email" && (
             <div className="space-y-3 border-t pt-3">
               <h4 className="text-sm font-medium">SMTP 設定</h4>
@@ -378,9 +424,14 @@ function ChannelFormDialog({
                   placeholder={
                     channelType === "slack"
                       ? "https://hooks.slack.com/services/..."
-                      : "https://outlook.office.com/webhook/..."
+                      : "https://prod-xx.xxx.logic.azure.com/workflows/..."
                   }
                 />
+                {channelType === "teams" && (
+                  <p className="text-xs text-muted-foreground">
+                    請使用 Teams Workflows（Power Automate）「When a Teams webhook request is received」產生的 URL；舊版 Office 365 Connector Incoming Webhook 已退場。
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -448,7 +499,7 @@ export default function AdminNotificationChannelsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">通知渠道</h1>
           <p className="text-muted-foreground">
-            管理錯誤通知與 RAG 品質告警的發送渠道
+            管理錯誤通知、RAG 品質告警與異常控管告警的發送渠道
           </p>
         </div>
         <Button onClick={handleAdd}>
@@ -464,7 +515,7 @@ export default function AdminNotificationChannelsPage() {
               <TableHead>名稱</TableHead>
               <TableHead className="w-24">類型</TableHead>
               <TableHead className="w-24">狀態</TableHead>
-              <TableHead className="w-32">訂閱</TableHead>
+              <TableHead className="w-44">訂閱</TableHead>
               <TableHead className="w-32">節流（分鐘）</TableHead>
               <TableHead className="w-40">建立時間</TableHead>
               <TableHead className="w-40">操作</TableHead>
@@ -486,7 +537,19 @@ export default function AdminNotificationChannelsPage() {
             ) : (
               channels.map((ch) => (
                 <TableRow key={ch.id}>
-                  <TableCell className="font-medium">{ch.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <span>{ch.name}</span>
+                      {isEmailConfigIncomplete(ch) && (
+                        <Badge
+                          variant="outline"
+                          title="缺少收件人或 SMTP Host，送信時會略過此渠道"
+                        >
+                          未設定
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Badge variant={channelTypeBadgeVariant(ch.channel_type)}>
                       {ch.channel_type}
@@ -504,6 +567,9 @@ export default function AdminNotificationChannelsPage() {
                       )}
                       {ch.notify_diagnostics && (
                         <Badge variant="outline">診斷</Badge>
+                      )}
+                      {ch.notify_abuse && (
+                        <Badge variant="outline">異常告警</Badge>
                       )}
                     </div>
                   </TableCell>
