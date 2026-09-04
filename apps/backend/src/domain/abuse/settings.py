@@ -50,6 +50,7 @@ BOUNDS: dict[str, tuple[float, float]] = {
     "duration_l3": (300, 86400),
     "duration_l4": (3600, 86400),
     "slow_requests_per_minute": (1, 30),
+    "aggregate_weight": (1, 100),
 }
 BOOL_KEYS = frozenset({"enabled", "line_silent_on_cooldown", "ip_layer_enabled"})
 WEIGHT_KEYS = frozenset(f"weight_{s.value}" for s in AbuseSignal)

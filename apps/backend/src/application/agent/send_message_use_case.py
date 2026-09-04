@@ -133,6 +133,7 @@ class SendMessageCommand:
     # Issue #68 P7：異常控管主體（router 依通路填；None = 不控管）
     subject_kind: str | None = None
     subject_id: str | None = None
+    client_ip: str | None = None  # P7d：IP 聚合層（LINE 無）
     # Issue #54 Phase C — 影子執行（閘門驗證 / Playground）
     config_override: dict | None = None   # draft 快照 overlay（spec §13.3）
     test_mode: bool = False               # 六面隔離：不落庫、不 memory、不線上 eval
@@ -573,7 +574,9 @@ class SendMessageUseCase:
         subject = self._abuse_subject(command)
         if self._abuse_control is None or subject is None or command.test_mode:
             return NO_ABUSE
-        decision = await self._abuse_control.evaluate(command.tenant_id, subject)
+        decision = await self._abuse_control.evaluate(
+            command.tenant_id, subject, client_ip=command.client_ip
+        )
         AgentTraceCollector.set_abuse_level(int(decision.effective_level))
         if decision.blocked:
             raise AbuseBlockedError(decision.retry_after, decision.level)
@@ -594,6 +597,7 @@ class SendMessageUseCase:
             command.tenant_id, subject,
             guard_hit=guard_hit, attack=attack, unrouted=unrouted,
             channel=command.identity_source or "web",
+            client_ip=command.client_ip,
         )
         AgentTraceCollector.set_abuse_level(int(decision.effective_level))
 

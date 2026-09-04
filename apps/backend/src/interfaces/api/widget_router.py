@@ -43,6 +43,7 @@ from src.domain.bot.repository import BotRepository
 from src.domain.knowledge.repository import DocumentRepository
 from src.infrastructure.auth.jwt_service import WIDGET_TOKEN_TYPE, JWTService
 from src.infrastructure.auth.visitor_id_signer import VisitorIdSigner
+from src.interfaces.api.client_ip import client_ip_of
 from src.interfaces.api.streaming_errors import classify_streaming_error
 
 logger = logging.getLogger(__name__)
@@ -318,6 +319,7 @@ async def widget_config(
 async def widget_chat_stream(
     short_code: str,
     body: WidgetChatRequest,
+    request: Request,
     principal: WidgetPrincipal = Depends(get_widget_principal),
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
@@ -338,6 +340,7 @@ async def widget_chat_stream(
         identity_source="widget",
         subject_kind="visitor",
         subject_id=principal.visitor_id or "anon",
+        client_ip=client_ip_of(request),
     )
     # Issue #68 P7：串流前先問異常等級（L3+ → 429）
     await use_case.abuse_preflight(command)

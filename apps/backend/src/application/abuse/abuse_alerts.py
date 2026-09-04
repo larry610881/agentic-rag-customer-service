@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable
 import structlog
 
 from src.domain.abuse.events import AbuseAlertEvent, AbuseAlertKind, mask_subject_id
-from src.domain.abuse.policy import AbuseLevel, AbuseSubject
+from src.domain.abuse.policy import AbuseLevel, AbuseSubject, SubjectKind
 from src.domain.abuse.store import AbuseScoreStore
 
 logger = structlog.get_logger(__name__)
@@ -53,7 +53,8 @@ class AbuseAlertService:
         if level == AbuseLevel.SLOW:
             await self._bump_surge(tenant_id, "slowdown")
             return
-        if level < AbuseLevel.COOLDOWN:
+        # 租戶聚合層只有 L1（保守模式），但一定要告警
+        if level < AbuseLevel.COOLDOWN and subject.kind is not SubjectKind.TENANT:
             return
         await self._safe_publish(AbuseAlertEvent(
             kind=AbuseAlertKind.ESCALATION,

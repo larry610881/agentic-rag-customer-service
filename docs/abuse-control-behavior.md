@@ -98,3 +98,11 @@ Retry-After: 900
 
 生效設定在程序內快取 60 秒；後台儲存後立即清快取。設定表讀不到時退回程式預設（fail-open）。API：`GET/PUT /api/v1/admin/abuse/settings/*`、`GET /api/v1/admin/abuse/controls`、`POST /api/v1/admin/abuse/controls/release`。
 
+## 9. 聚合層：IP 最後防線與租戶保護（P7d）
+
+- 主體剛進入 L3 時，把 `aggregate_weight`（預設 12）加到兩個聚合層：**IP**（同一來源 IP）與**租戶**。聚合層分數達 L4 門檻（預設 30）才動作。
+- **IP 層**：達門檻 → L4 封鎖（預設 1 小時），該 IP 之後的任何新主體（換 visitor、換 API 終端使用者）都被拒絕。每租戶可關閉 IP 層、可設 IP 白名單；LINE 通路沒有 IP，不參與。
+- **租戶層永遠只被保護**：達門檻 → 全租戶進入保守模式（不呼叫工具、加婉拒指令）、rate limiter 把全租戶上限減半、發「租戶疑似受攻擊」告警給 Teams。不會拒絕任何人。
+- 聚合層的升級同樣寫稽核（訊號 `aggregate`）並依 TTL 自動回復；後台受控清單可看到 `ip` / `tenant` 主體並手動解除。
+- 換身分重來的攻擊者：三個主體在同一 IP 先後被冷卻，第四個身分一開始就被 IP 層擋下；正常客人若剛好共用該 IP（公司 NAT），最壞情況是被封鎖一小時，可由系統管理員解除或把該 IP 加入白名單。
+

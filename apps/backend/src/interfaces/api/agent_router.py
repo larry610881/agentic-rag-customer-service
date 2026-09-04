@@ -15,6 +15,7 @@ from src.application.agent.send_message_use_case import (
 )
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
+from src.interfaces.api.client_ip import client_ip_of
 from src.interfaces.api.deps import (
     CurrentTenant,
     ensure_bot_allowed,
@@ -180,6 +181,7 @@ async def agent_chat(
             identity_source=identity_source,
             subject_kind=subject_kind,
             subject_id=subject_id,
+            client_ip=client_ip_of(http_request),
             config_override=request.config_override,
             test_mode=_effective_test_mode(request),  # M9
             history_override=request.history_override,
@@ -282,6 +284,7 @@ async def agent_chat_stream(
         identity_source=request.identity_source or "web",
         subject_kind=subject_kind,
         subject_id=subject_id,
+        client_ip=client_ip_of(http_request),
         config_override=request.config_override,
         test_mode=_effective_test_mode(request),  # M9
         history_override=request.history_override,

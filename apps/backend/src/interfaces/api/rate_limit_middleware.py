@@ -103,10 +103,13 @@ class RateLimitMiddleware:
         global_key = f"rl:global:{endpoint_group}:{WINDOW_SECONDS}"
         checks.append((global_key, self._global_rpm))
 
-        # Layer 2: Tenant or IP
+        # Layer 2: Tenant or IP（P7d：租戶聚合層鎖定時，全租戶上限減半）
         if tenant_id:
             tenant_key = f"rl:{tenant_id}:{endpoint_group}:{WINDOW_SECONDS}"
-            checks.append((tenant_key, config.requests_per_minute))
+            tenant_rpm = config.requests_per_minute
+            if await self._tenant_protected(tenant_id):
+                tenant_rpm = max(1, tenant_rpm // 2)
+            checks.append((tenant_key, tenant_rpm))
         else:
             ip_key = f"rl:ip:{client_ip}:{endpoint_group}:{WINDOW_SECONDS}"
             checks.append((ip_key, config.requests_per_minute))
@@ -189,6 +192,17 @@ class RateLimitMiddleware:
             "body": body,
             "more_body": False,
         })
+
+    async def _tenant_protected(self, tenant_id: str) -> bool:
+        if self._abuse_store is None:
+            return False
+        try:
+            locked = await self._abuse_store.get_level(
+                f"abuse:{tenant_id}:tenant:{tenant_id}"
+            )
+        except Exception:
+            return False
+        return locked is not None and locked[0] > 0
 
     async def _abuse_subject_key(
         self, tenant_id: str | None, user_id: str | None, scope: Scope

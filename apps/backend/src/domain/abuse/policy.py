@@ -42,6 +42,7 @@ class AbuseSignal(StrEnum):
     UNROUTED = "unrouted"                # 連續 worker=None 第 3 句起每句 +1
     ORIGIN_MISMATCH = "origin_mismatch"  # widget 票 Origin 不符 +5
     IDENTIFY_FAIL = "identify_fail"      # identify() hash 驗證失敗 +2（P7b）
+    AGGREGATE = "aggregate"              # 主體達 L3 → 聚合層承接（P7d）
 
 
 class AbuseMode(StrEnum):
@@ -102,6 +103,8 @@ class AbusePolicy:
     # P7d：IP 聚合層（只當最後防線；每租戶可關、可設白名單）
     ip_layer_enabled: bool = True
     ip_allowlist: list[str] = field(default_factory=list)
+    # P7d：主體達 L3 時加到聚合層（ip / tenant）的權重；聚合層達 thresholds[4] 才動作
+    aggregate_weight: float = 12.0
 
     def level_for(self, score: float, kind: SubjectKind) -> AbuseLevel:
         level = 0

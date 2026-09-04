@@ -42,6 +42,10 @@ class AbuseAlertEvent:
     @property
     def title(self) -> str:
         if self.kind is AbuseAlertKind.ESCALATION:
+            if self.subject_kind == "tenant":
+                return "[Abuse] 租戶疑似受攻擊，已切保守模式並收緊速率"
+            if self.subject_kind == "ip":
+                return f"[Abuse L{self.level}] IP 聚合層封鎖"
             state = "封鎖" if self.level >= 4 else "冷卻"
             return f"[Abuse L{self.level}] 主體進入{state}"
         if self.kind is AbuseAlertKind.FAIL_OPEN:

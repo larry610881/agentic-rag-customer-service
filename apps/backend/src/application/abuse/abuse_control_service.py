@@ -19,6 +19,7 @@ from src.domain.abuse.policy import (
     AbusePolicy,
     AbuseSignal,
     AbuseSubject,
+    SubjectKind,
 )
 from src.domain.abuse.store import AbuseScoreStore
 from src.domain.shared.exceptions import DomainException
@@ -84,8 +85,13 @@ class AbuseControlService:
 
     # ------------------------------------------------------------------ read
 
-    async def evaluate(self, tenant_id: str, subject: AbuseSubject) -> AbuseDecision:
-        """回合開始前：目前等級（鎖優先，其次由分數推算）。失效 → 放行。"""
+    async def evaluate(
+        self, tenant_id: str, subject: AbuseSubject, *, client_ip: str | None = None
+    ) -> AbuseDecision:
+        """回合開始前：主體等級（鎖優先，其次由分數推算），再疊上 IP / 租戶聚合層。
+
+        失效 → 放行。聚合層（P7d）：IP 鎖 L4 → 拒絕；租戶鎖 L1 → 全租戶保守模式。
+        """
         if not self._enabled:
             return NO_ABUSE
         policy = await self.policy_for(tenant_id)
@@ -95,16 +101,86 @@ class AbuseControlService:
         try:
             locked = await self._store.get_level(key)
             if locked is not None and locked[0] > 0:
-                return self._decision(
-                    policy, AbuseLevel(locked[0]), retry_after=locked[1]
-                )
-            score = await self._store.get_score(key, policy.decay_per_minute)
+                level, retry_after, score = AbuseLevel(locked[0]), locked[1], 0.0
+            else:
+                score = await self._store.get_score(key, policy.decay_per_minute)
+                level, retry_after = policy.level_for(score, subject.kind), 0
+            level, retry_after = await self._apply_aggregates(
+                tenant_id, policy, level, retry_after, client_ip
+            )
         except Exception:
             logger.warning("abuse_control.store_unavailable", op="evaluate", key=key)
             await self._alert_fail_open(tenant_id, "evaluate")
             return NO_ABUSE
-        level = policy.level_for(score, subject.kind)
-        return self._decision(policy, level, score=score)
+        return self._decision(policy, level, retry_after=retry_after, score=score)
+
+    async def _apply_aggregates(
+        self,
+        tenant_id: str,
+        policy: AbusePolicy,
+        level: AbuseLevel,
+        retry_after: int,
+        client_ip: str | None,
+    ) -> tuple[AbuseLevel, int]:
+        """IP L4 鎖 → 拒絕；租戶 L1 鎖 → 至少保守模式。"""
+        if self._ip_layer_applies(policy, client_ip):
+            ip_lock = await self._store.get_level(
+                AbuseSubject(SubjectKind.IP, str(client_ip)).key(tenant_id)
+            )
+            if ip_lock is not None and ip_lock[0] >= AbuseLevel.BLOCK:
+                return AbuseLevel.BLOCK, ip_lock[1]
+        tenant_lock = await self._store.get_level(
+            AbuseSubject(SubjectKind.TENANT, tenant_id).key(tenant_id)
+        )
+        tenant_protected = tenant_lock is not None and tenant_lock[0] > 0
+        if tenant_protected and level < AbuseLevel.OBSERVE:
+            return AbuseLevel.OBSERVE, tenant_lock[1]  # type: ignore[index]
+        return level, retry_after
+
+    @staticmethod
+    def _ip_layer_applies(policy: AbusePolicy, client_ip: str | None) -> bool:
+        if not client_ip or not policy.ip_layer_enabled:
+            return False
+        return client_ip not in policy.ip_allowlist
+
+    async def _propagate(
+        self,
+        tenant_id: str,
+        policy: AbusePolicy,
+        origin: AbuseSubject,
+        client_ip: str | None,
+        channel: str,
+    ) -> None:
+        """主體剛達 L3：把 aggregate_weight 加到 IP 與租戶聚合層。
+
+        達門檻即鎖 + 稽核 + 告警。
+        """
+        targets: list[AbuseSubject] = []
+        if self._ip_layer_applies(policy, client_ip):
+            targets.append(AbuseSubject(SubjectKind.IP, str(client_ip)))
+        targets.append(AbuseSubject(SubjectKind.TENANT, tenant_id))
+        for target in targets:
+            key = target.key(tenant_id)
+            score = await self._store.add_score(
+                key, policy.aggregate_weight, policy.decay_per_minute,
+                policy.score_ttl_seconds,
+            )
+            # 聚合層門檻 = thresholds[4]；level_for 依 kind 上限（ip 4 / tenant 1）
+            if score < policy.thresholds.get(4, 30.0):
+                continue
+            new_level = policy.level_for(score, target.kind)
+            locked = await self._store.get_level(key)
+            current = AbuseLevel(locked[0]) if locked else AbuseLevel.NONE
+            if new_level > current:
+                is_ip = target.kind is SubjectKind.IP
+                duration = policy.duration_for(
+                    AbuseLevel.BLOCK if is_ip else AbuseLevel.SLOW
+                )
+                await self._store.set_level(key, int(new_level), duration)
+                await self._audit_escalation(
+                    tenant_id, target, current, new_level, score,
+                    [AbuseSignal.AGGREGATE], channel, duration,
+                )
 
     # ----------------------------------------------------------------- write
 
@@ -119,8 +195,12 @@ class AbuseControlService:
         origin_mismatch: bool = False,
         identify_fail: bool = False,
         channel: str = "",
+        client_ip: str | None = None,
     ) -> AbuseDecision:
-        """回合結束（或訊號發生）時加分；跨門檻即升級並寫稽核。失效 → 放行。"""
+        """回合結束（或訊號發生）時加分；跨門檻即升級並寫稽核。失效 → 放行。
+
+        P7d：主體剛達 L3 時把權重加到 IP / 租戶聚合層。
+        """
         if not self._enabled:
             return NO_ABUSE
         policy = await self.policy_for(tenant_id)
@@ -151,6 +231,10 @@ class AbuseControlService:
                     tenant_id, subject, current, new_level, score, signals, channel,
                     duration,
                 )
+                if new_level >= AbuseLevel.COOLDOWN and current < AbuseLevel.COOLDOWN:
+                    await self._propagate(
+                        tenant_id, policy, subject, client_ip, channel
+                    )
                 return self._decision(
                     policy, new_level, retry_after=duration, score=score,
                     reasons=tuple(s.value for s in signals),
