@@ -204,6 +204,26 @@ async def monthly_reset_task(ctx: dict) -> None:
     )
 
 
+# --- Cron Task: abuse_daily_report (Issue #68 P7c) ---
+
+async def abuse_daily_report_task(ctx: dict) -> None:
+    """每日異常控管摘要 → notify_abuse 渠道（Teams 為主）。UTC 01:15 = Taipei 09:15。"""
+    from src.application.abuse.abuse_report import BuildAbuseReportUseCase
+    from src.infrastructure.notification.dispatch_helper import (
+        dispatch_abuse_notification,
+    )
+
+    logger.info("[abuse_daily_report] start")
+    container = _new_container()
+    use_case = BuildAbuseReportUseCase(
+        audit_repo=container.audit_log_repository(),
+        store=container.abuse_score_store(),
+        publish=dispatch_abuse_notification,
+    )
+    sent = await use_case.execute()
+    logger.info(f"[abuse_daily_report] done tenants={sent}")
+
+
 # --- Cron Task: quota_alerts (S-Token-Gov.3) ---
 
 async def quota_alerts_task(ctx: dict) -> None:
@@ -342,6 +362,7 @@ class WorkerSettings:
         cron(monthly_reset_task, hour={0}, minute={5}, day={1}),
         cron(quota_alerts_task, hour={1}, minute={0}),
         cron(quota_email_dispatch_task, hour={1}, minute={30}),
+        cron(abuse_daily_report_task, hour={1}, minute={15}),
         cron(conversation_summary_scan_task, minute=set(range(60))),
         cron(drain_outbox_task, minute=set(range(60))),
     ]

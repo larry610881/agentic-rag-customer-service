@@ -2,11 +2,12 @@
 
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
 import structlog
 
+from src.domain.abuse.events import AbuseAlertEvent, AbuseAlertKind
 from src.domain.observability.diagnostic import DiagnosticEvent
 from src.domain.observability.error_event import ErrorEvent
 from src.domain.observability.notification import (
@@ -41,6 +42,7 @@ class CreateChannelCommand:
     min_severity: str = "all"
     notify_diagnostics: bool = False
     diagnostic_severity: str = "critical"
+    notify_abuse: bool = True
 
 
 class CreateChannelUseCase:
@@ -65,6 +67,7 @@ class CreateChannelUseCase:
             min_severity=command.min_severity,
             notify_diagnostics=command.notify_diagnostics,
             diagnostic_severity=command.diagnostic_severity,
+            notify_abuse=command.notify_abuse,
         )
         return await self._repo.save(channel)
 
@@ -79,6 +82,7 @@ class UpdateChannelCommand:
     min_severity: str | None = None
     notify_diagnostics: bool | None = None
     diagnostic_severity: str | None = None
+    notify_abuse: bool | None = None
 
 
 class UpdateChannelUseCase:
@@ -110,6 +114,8 @@ class UpdateChannelUseCase:
             channel.notify_diagnostics = command.notify_diagnostics
         if command.diagnostic_severity is not None:
             channel.diagnostic_severity = command.diagnostic_severity
+        if command.notify_abuse is not None:
+            channel.notify_abuse = command.notify_abuse
         channel.updated_at = datetime.now(timezone.utc)
         return await self._repo.save(channel)
 
@@ -147,10 +153,35 @@ class SendTestNotificationUseCase:
 
 
 class NotificationDispatcher:
-    """Holds sender implementations, dispatches by channel_type."""
+    """Holds sender implementations, dispatches by channel_type.
 
-    def __init__(self, senders: dict[str, NotificationSender]) -> None:
+    Issue #68 P7c：config 在此解密後交給 sender（sender 一律拿到明文 JSON）；
+    單一渠道失敗只記 log，不讓整批通知中斷。
+    """
+
+    def __init__(
+        self,
+        senders: dict[str, NotificationSender],
+        encryption_service: EncryptionService | None = None,
+    ) -> None:
         self._senders = senders
+        self._enc = encryption_service
+
+    def _with_plain_config(self, channel: NotificationChannel) -> NotificationChannel:
+        if self._enc is None or not channel.config_encrypted:
+            return channel
+        raw = channel.config_encrypted
+        try:
+            json.loads(raw)
+            return channel  # 已是明文
+        except (json.JSONDecodeError, TypeError):
+            pass
+        try:
+            plain = self._enc.decrypt(raw)
+        except Exception:
+            _logger.warning("notification.config_decrypt_failed", channel_id=channel.id)
+            return channel
+        return replace(channel, config_encrypted=plain)
 
     async def send_to_channel(
         self,
@@ -165,7 +196,14 @@ class NotificationDispatcher:
                 channel_type=channel.channel_type,
             )
             return
-        await sender.send(channel, subject, body)
+        try:
+            await sender.send(self._with_plain_config(channel), subject, body)
+        except Exception:
+            _logger.warning(
+                "notification.send_failed",
+                channel_id=channel.id, channel_type=channel.channel_type,
+                exc_info=True,
+            )
 
 
 class DispatchNotificationUseCase:
@@ -277,4 +315,54 @@ class DispatchDiagnosticNotificationUseCase:
                 f"[{h.severity}] {h.dimension}: {h.message}\n"
                 f"  Suggestion: {h.suggestion}"
             )
+        return "\n".join(lines)
+
+
+class DispatchAbuseNotificationUseCase:
+    """Issue #68 P7c：異常控管告警 / 摘要 → notify_abuse 渠道（依 fingerprint 節流）。"""
+
+    def __init__(
+        self,
+        channel_repo: NotificationChannelRepository,
+        throttle_service: NotificationThrottleService,
+        dispatcher: NotificationDispatcher,
+    ) -> None:
+        self._channel_repo = channel_repo
+        self._throttle = throttle_service
+        self._dispatcher = dispatcher
+
+    async def execute(self, event: AbuseAlertEvent) -> int:
+        sent = 0
+        try:
+            channels = await self._channel_repo.list_enabled()
+            for ch in channels:
+                if not ch.notify_abuse:
+                    continue
+                if await self._throttle.is_throttled(event.fingerprint, ch.id):
+                    continue
+                await self._dispatcher.send_to_channel(
+                    ch, event.title, self.format_body(event)
+                )
+                await self._throttle.record_sent(
+                    event.fingerprint, ch.id, ch.throttle_minutes * 60
+                )
+                sent += 1
+        except Exception:
+            _logger.warning("notification.abuse_dispatch_failed", exc_info=True)
+        return sent
+
+    @staticmethod
+    def format_body(event: AbuseAlertEvent) -> str:
+        """不含使用者原文與完整 id。"""
+        lines = [f"租戶：{event.tenant_id}", f"事件：{event.kind.value}"]
+        if event.kind is AbuseAlertKind.ESCALATION:
+            lines += [
+                f"主體：{event.subject_kind} {event.subject_masked}",
+                f"通路：{event.channel or '-'}",
+                f"等級：L{event.level}",
+                f"原因：{'、'.join(event.reasons) or '-'}",
+                f"剩餘：{event.retry_after} 秒",
+            ]
+        lines += list(event.summary_lines)
+        lines.append(f"時間：{event.created_at.isoformat(timespec='seconds')}")
         return "\n".join(lines)

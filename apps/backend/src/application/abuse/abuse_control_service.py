@@ -59,11 +59,14 @@ class AbuseControlService:
         policy: AbusePolicy | PolicyProvider,
         audit: Any | None = None,
         enabled: bool = True,
+        alerts: Any | None = None,
     ) -> None:
         self._store = store
         self._policy = policy
         self._audit = audit
         self._enabled = enabled
+        # Issue #68 P7c：L3+/fail-open/突增 告警（AbuseAlertService，永不拋例外）
+        self._alerts = alerts
 
     def policy_for(self, tenant_id: str) -> AbusePolicy:
         if callable(self._policy):
@@ -87,6 +90,7 @@ class AbuseControlService:
             score = await self._store.get_score(key, policy.decay_per_minute)
         except Exception:
             logger.warning("abuse_control.store_unavailable", op="evaluate", key=key)
+            await self._alert_fail_open(tenant_id, "evaluate")
             return NO_ABUSE
         level = policy.level_for(score, subject.kind)
         return self._decision(policy, level, score=score)
@@ -131,7 +135,8 @@ class AbuseControlService:
                 duration = policy.duration_for(new_level)
                 await self._store.set_level(key, int(new_level), duration)
                 await self._audit_escalation(
-                    tenant_id, subject, current, new_level, score, signals, channel
+                    tenant_id, subject, current, new_level, score, signals, channel,
+                    duration,
                 )
                 return self._decision(
                     policy, new_level, retry_after=duration, score=score,
@@ -150,6 +155,7 @@ class AbuseControlService:
                 "abuse_control.store_unavailable", op="record", key=key,
                 signals=[s.value for s in signals],
             )
+            await self._alert_fail_open(tenant_id, "record")
             return NO_ABUSE
 
     async def release(
@@ -220,6 +226,7 @@ class AbuseControlService:
         score: float,
         signals: list[AbuseSignal],
         channel: str,
+        policy_duration: int = 0,
     ) -> None:
         logger.warning(
             "abuse_control.escalated",
@@ -231,6 +238,16 @@ class AbuseControlService:
             signals=[s.value for s in signals],
             channel=channel,
         )
+        if self._alerts is not None:
+            try:
+                await self._alerts.escalated(
+                    tenant_id, subject, after,
+                    reasons=tuple(s.value for s in signals),
+                    retry_after=policy_duration,
+                    channel=channel,
+                )
+            except Exception:
+                logger.warning("abuse_control.alert_failed", exc_info=True)
         if self._audit is None:
             return
         try:
@@ -250,3 +267,11 @@ class AbuseControlService:
             )
         except Exception:
             logger.warning("abuse_control.audit_failed", exc_info=True)
+
+    async def _alert_fail_open(self, tenant_id: str, op: str) -> None:
+        if self._alerts is None:
+            return
+        try:
+            await self._alerts.fail_open(tenant_id, op)
+        except Exception:
+            logger.warning("abuse_control.alert_failed", exc_info=True)

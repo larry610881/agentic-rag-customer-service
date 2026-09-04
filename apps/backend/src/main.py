@@ -273,6 +273,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
             global_rpm=settings.rate_limit_global_rpm,
             # Issue #68 P7：L2 主體動態降速
             abuse_store=container.abuse_score_store(),
+            abuse_alerts=container.abuse_alert_service(),
         )
 
     # Request Timeout (between CORS and RequestID)

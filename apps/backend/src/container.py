@@ -1,6 +1,7 @@
 import redis.asyncio as aioredis
 from dependency_injector import containers, providers
 
+from src.application.abuse.abuse_alerts import AbuseAlertService
 from src.application.abuse.abuse_control_service import AbuseControlService
 from src.application.agent.direct_retrieval_service import (
     DirectRetrievalService,
@@ -601,10 +602,16 @@ from src.infrastructure.memory.llm_memory_extraction_service import (
     LLMMemoryExtractionService,
 )
 from src.infrastructure.milvus.milvus_vector_store import MilvusVectorStore
+from src.infrastructure.notification.dispatch_helper import (
+    dispatch_abuse_notification,
+)
 from src.infrastructure.notification.email_sender import EmailNotificationSender
 from src.infrastructure.notification.redis_throttle import RedisNotificationThrottle
 from src.infrastructure.notification.sendgrid_quota_alert_sender import (
     SendGridQuotaAlertSender,
+)
+from src.infrastructure.notification.teams_workflow_sender import (
+    TeamsWorkflowSender,
 )
 from src.infrastructure.outbox.handlers import build_vector_handlers
 from src.infrastructure.pricing.pricing_cache import InMemoryPricingCache
@@ -771,9 +778,15 @@ class Container(containers.DeclarativeContainer):
         RedisAbuseScoreStore,
         redis_client=redis_client,
     )
+    abuse_alert_service = providers.Singleton(
+        AbuseAlertService,
+        store=abuse_score_store,
+        publish=providers.Object(dispatch_abuse_notification),
+    )
     abuse_control_service = providers.Singleton(
         AbuseControlService,
         store=abuse_score_store,
+        alerts=abuse_alert_service,
         policy=providers.Callable(
             lambda cfg: AbusePolicy(mode=AbuseMode(cfg.abuse_control_mode)), config
         ),
@@ -2349,11 +2362,14 @@ class Container(containers.DeclarativeContainer):
         EmailNotificationSender,
     )
 
+    teams_notification_sender = providers.Singleton(TeamsWorkflowSender)
     notification_dispatcher = providers.Singleton(
         NotificationDispatcher,
         senders=providers.Dict({
             "email": email_notification_sender,
+            "teams": teams_notification_sender,
         }),
+        encryption_service=encryption_service,
     )
 
     list_channels_use_case = providers.Factory(

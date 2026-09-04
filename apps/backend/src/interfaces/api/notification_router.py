@@ -31,6 +31,7 @@ class _CreateChannelBody(BaseModel):
     min_severity: str = "all"
     notify_diagnostics: bool = False
     diagnostic_severity: str = "critical"
+    notify_abuse: bool = True
 
 
 class _UpdateChannelBody(BaseModel):
@@ -41,6 +42,7 @@ class _UpdateChannelBody(BaseModel):
     min_severity: str | None = None
     notify_diagnostics: bool | None = None
     diagnostic_severity: str | None = None
+    notify_abuse: bool | None = None
 
 
 def _channel_to_dict(ch):
@@ -53,6 +55,7 @@ def _channel_to_dict(ch):
         "min_severity": ch.min_severity,
         "notify_diagnostics": ch.notify_diagnostics,
         "diagnostic_severity": ch.diagnostic_severity,
+        "notify_abuse": ch.notify_abuse,
         "updated_at": ch.updated_at.isoformat() if ch.updated_at else None,
         "created_at": ch.created_at.isoformat() if ch.created_at else None,
     }
@@ -89,6 +92,7 @@ async def create_channel(
             min_severity=body.min_severity,
             notify_diagnostics=body.notify_diagnostics,
             diagnostic_severity=body.diagnostic_severity,
+            notify_abuse=body.notify_abuse,
         )
     )
     return _channel_to_dict(ch)
@@ -114,6 +118,7 @@ async def update_channel(
             min_severity=body.min_severity,
             notify_diagnostics=body.notify_diagnostics,
             diagnostic_severity=body.diagnostic_severity,
+            notify_abuse=body.notify_abuse,
         )
     )
     return _channel_to_dict(ch)

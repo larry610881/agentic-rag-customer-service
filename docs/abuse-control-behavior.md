@@ -64,3 +64,20 @@ Retry-After: 900
 - `agent_execution_traces.abuse_level`：該回合主體的等級（0–4），後台對話追蹤可篩選。
 - 稽核紀錄：`abuse_control` / `escalate`（含等級、分數、訊號、通路）與 `release`。
 - 應用 log：`abuse_control.escalated`、`abuse_control.store_unavailable`（fail-open 事件）。
+
+## 7. 告警與通知（P7c）
+
+通知走既有「通知渠道」（後台 → 平台運維 → 通知渠道），渠道勾選「異常控管告警」即接收：
+
+| 事件 | 觸發 | 節流 |
+|------|------|------|
+| L3 / L4 升級 | 主體進入冷卻或封鎖 | 同主體同等級依渠道 throttle_minutes |
+| fail-open | 分數儲存（Redis）不可用而放行——控管默默失效的唯一線索 | 每租戶 15 分鐘一次，並累計當日次數 |
+| 429 / 降速突增 | 每租戶 5 分鐘內速率限制 429 與 L2 觸發合計達 20 次 | 每個 5 分鐘視窗一次 |
+| 每日摘要 | 每天 09:15（台北）：各級升級次數、解除次數、fail-open 次數、Top 主體 | — |
+
+- **Teams 為第一通路**：渠道類型 `teams`，`webhook_url` 填 Teams Workflows（Power Automate）「When a Teams webhook request is received」產生的 URL；payload 為 Adaptive Card（`type=message`、`attachments[0].contentType=application/vnd.microsoft.card.adaptive`）。舊版 Office 365 Connector Incoming Webhook 已退場，不支援。
+- **Email 為第二通路**：沿用 SMTP 設定；`recipients` 未填時後台顯示「未設定」，發送時跳過並記錄，不會讓通知流程失敗。
+- 通知內容不含使用者原文與完整 id：只顯示遮罩後的主體（例 `visitor visi…56`）、通路、等級、原因摘要、剩餘時間與後台連結。
+- 單一渠道發送失敗只記 log，不影響其他渠道；「測試發送」端點對 Teams 與 Email 都可用。
+

@@ -63,11 +63,13 @@ class RateLimitMiddleware:
         global_rpm: int = 1000,
         abuse_store: Any | None = None,
         abuse_slow_rpm: int = 5,
+        abuse_alerts: Any | None = None,
     ) -> None:
         self.app = app
         # Issue #68 P7：主體處於 L2+ 時，把該主體的每分鐘上限壓到 abuse_slow_rpm
         self._abuse_store = abuse_store
         self._abuse_slow_rpm = abuse_slow_rpm
+        self._abuse_alerts = abuse_alerts  # Issue #68 P7c：429 突增告警
         self._rate_limiter = rate_limiter
         self._config_loader = config_loader
         self._jwt_secret_key = jwt_secret_key
@@ -135,6 +137,11 @@ class RateLimitMiddleware:
                     await self._send_429(
                         send, retry_after, limit,
                     )
+                    if self._abuse_alerts is not None:
+                        try:
+                            await self._abuse_alerts.rate_limited(tenant_id)
+                        except Exception:
+                            pass
                     return
                 min_remaining = min(min_remaining, result.remaining)
 

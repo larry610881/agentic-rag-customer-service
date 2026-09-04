@@ -16,6 +16,7 @@ class NotificationChannel:
     min_severity: str = "all"  # 'all' | '5xx_only' | 'off'
     notify_diagnostics: bool = False
     diagnostic_severity: str = "critical"  # 'critical' | 'warning' | 'all'
+    notify_abuse: bool = True  # Issue #68 P7c：異常控管告警 / 摘要
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 

@@ -608,7 +608,8 @@ CREATE TABLE public.notification_channels (
     notify_diagnostics boolean DEFAULT false NOT NULL,
     diagnostic_severity character varying(20) DEFAULT 'critical'::character varying NOT NULL,
     updated_at timestamp with time zone NOT NULL,
-    created_at timestamp with time zone NOT NULL
+    created_at timestamp with time zone NOT NULL,
+    notify_abuse boolean DEFAULT true NOT NULL
 );
 
 
