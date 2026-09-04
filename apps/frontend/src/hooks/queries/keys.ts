@@ -186,4 +186,12 @@ export const queryKeys = {
   auditLogs: {
     list: (filters?: object) => ["audit-logs", filters ?? {}] as const,
   },
+  // Issue #68 P7c — 異常控管
+  abuseControl: {
+    overview: ["abuse-control", "settings"] as const,
+    tenant: (tenantId: string) =>
+      ["abuse-control", "settings", "tenant", tenantId] as const,
+    controls: (tenantId?: string) =>
+      ["abuse-control", "controls", tenantId ?? "all"] as const,
+  },
 };

@@ -34,6 +34,7 @@ import {
   Inbox,
   ClipboardList,
   KeyRound,
+  ShieldAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -51,8 +52,12 @@ const generalNavItems = [
 ];
 
 // Issue #67 P2：API 金鑰只給 tenant_admin / system_admin，一般 user 不顯示
-const API_KEYS_NAV_ITEM = { href: "/api-keys", label: "API 金鑰", icon: KeyRound };
-const API_KEY_MANAGER_ROLES = new Set(["tenant_admin", "system_admin"]);
+// Issue #68 P7c：異常控管狀態（租戶唯讀）同樣只給管理角色
+const MANAGER_NAV_ITEMS = [
+  { href: "/api-keys", label: "API 金鑰", icon: KeyRound },
+  { href: "/abuse-status", label: "異常控管狀態", icon: ShieldAlert },
+];
+const MANAGER_ROLES = new Set(["tenant_admin", "system_admin"]);
 
 // S-ConvInsights.1 follow-up: 25 項 flat list → 5 大類 collapsible
 interface NavItem {
@@ -114,6 +119,7 @@ const systemAdminGroups: NavGroup[] = [
       { href: "/admin/guard-rules", label: "安全規則", icon: Shield },
       { href: "/admin/diagnostic-rules", label: "診斷規則", icon: Stethoscope },
       { href: "/admin/rate-limits", label: "速率限制", icon: Gauge },
+      { href: "/admin/abuse-control", label: "異常控管", icon: ShieldAlert },
       { href: "/admin/error-events", label: "錯誤追蹤", icon: AlertTriangle },
       { href: "/admin/audit-logs", label: "稽核紀錄", icon: ClipboardList },
     ],
@@ -146,8 +152,8 @@ export function Sidebar() {
   );
 
   const isSystemAdmin = role === "system_admin";
-  const tenantNavItems = API_KEY_MANAGER_ROLES.has(role ?? "")
-    ? [...generalNavItems, API_KEYS_NAV_ITEM]
+  const tenantNavItems = MANAGER_ROLES.has(role ?? "")
+    ? [...generalNavItems, ...MANAGER_NAV_ITEMS]
     : generalNavItems;
   const sidebarTitle = isSystemAdmin
     ? "系統管理"

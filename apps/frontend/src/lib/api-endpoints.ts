@@ -367,6 +367,20 @@ export const API_ENDPOINTS = {
     botTimeline: (botId: string, limit = 50) =>
       `/api/v1/bots/${botId}/config-timeline?limit=${limit}`,
   },
+  // Issue #68 P7c — 異常控管設定 / 受控清單
+  abuseControl: {
+    settings: "/api/v1/admin/abuse/settings",
+    updatePlatform: "/api/v1/admin/abuse/settings/platform",
+    updateProfile: (name: string) =>
+      `/api/v1/admin/abuse/settings/profiles/${encodeURIComponent(name)}`,
+    tenantSettings: (tenantId: string) =>
+      `/api/v1/admin/abuse/settings/tenants/${encodeURIComponent(tenantId)}`,
+    controls: (tenantId?: string) =>
+      tenantId
+        ? `/api/v1/admin/abuse/controls?tenant_id=${encodeURIComponent(tenantId)}`
+        : "/api/v1/admin/abuse/controls",
+    release: "/api/v1/admin/abuse/controls/release",
+  },
   auditLogs: {
     list: (params: {
       tenant_id?: string;
