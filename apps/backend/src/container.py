@@ -394,6 +394,12 @@ from src.application.usage.query_daily_usage_use_case import QueryDailyUsageUseC
 from src.application.usage.query_monthly_usage_use_case import QueryMonthlyUsageUseCase
 from src.application.usage.query_usage_use_case import QueryUsageUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
+from src.application.widget.identity_use_cases import (
+    GetIdentitySecretStatusUseCase,
+    RotateIdentitySecretUseCase,
+    UpdateIdentityPolicyUseCase,
+    VerifyWidgetIdentityUseCase,
+)
 from src.config import Settings
 from src.domain.agent.team_supervisor import TeamSupervisor
 from src.domain.auth.login_attempt_tracker import LoginLockoutPolicy
@@ -528,6 +534,9 @@ from src.infrastructure.db.repositories.rate_limit_config_repository import (
 )
 from src.infrastructure.db.repositories.system_prompt_config_repository import (
     SQLAlchemySystemPromptConfigRepository,
+)
+from src.infrastructure.db.repositories.tenant_identity_secret_repository import (
+    SQLAlchemyTenantIdentitySecretRepository,
 )
 from src.infrastructure.db.repositories.tenant_repository import (
     SQLAlchemyTenantRepository,
@@ -683,6 +692,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.auth_router",
             "src.interfaces.api.api_key_router",
             "src.interfaces.api.abuse_admin_router",
+            "src.interfaces.api.widget_identity_router",
             "src.interfaces.api.tenant_router",
             "src.interfaces.api.knowledge_base_router",
             "src.interfaces.api.document_router",
@@ -794,7 +804,8 @@ class Container(containers.DeclarativeContainer):
         store=abuse_score_store,
         publish=providers.Object(dispatch_abuse_notification),
     )
-    # P7c：設定三層（platform / profile / tenant，僅 system_admin 可改），每租戶快取 60 秒
+    # P7c：設定三層（platform / profile / tenant，僅 system_admin 可改）
+    # 每租戶快取 60 秒
     abuse_settings_repository = providers.Factory(
         SQLAlchemyAbuseSettingsRepository,
         session=db_session,
@@ -1151,6 +1162,33 @@ class Container(containers.DeclarativeContainer):
             config,
         ),
     )
+
+    # Issue #68 P7b：widget 宿主身分綁定（租戶 identity secret）
+    tenant_identity_secret_repository = providers.Factory(
+        SQLAlchemyTenantIdentitySecretRepository,
+        session=db_session,
+    )
+    get_identity_secret_status_use_case = providers.Factory(
+        GetIdentitySecretStatusUseCase, repo=tenant_identity_secret_repository,
+    )
+    rotate_identity_secret_use_case = providers.Factory(
+        RotateIdentitySecretUseCase,
+        repo=tenant_identity_secret_repository,
+        encryption=encryption_service,
+        audit=audit_recorder,
+    )
+    update_identity_policy_use_case = providers.Factory(
+        UpdateIdentityPolicyUseCase,
+        repo=tenant_identity_secret_repository,
+        audit=audit_recorder,
+    )
+    verify_widget_identity_use_case = providers.Factory(
+        VerifyWidgetIdentityUseCase,
+        repo=tenant_identity_secret_repository,
+        encryption=encryption_service,
+        abuse_control=abuse_control_service,
+    )
+
 
     error_reporter = providers.Singleton(DBErrorReporter)
 

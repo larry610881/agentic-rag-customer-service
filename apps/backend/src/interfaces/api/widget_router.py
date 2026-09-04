@@ -36,6 +36,7 @@ from src.application.observability.error_event_use_cases import (
     ReportErrorUseCase,
 )
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
+from src.application.widget.identity_use_cases import VerifyWidgetIdentityUseCase
 from src.container import Container
 from src.domain.abuse.policy import AbuseSubject, SubjectKind
 from src.domain.bot.entity import Bot
@@ -96,6 +97,13 @@ class WidgetPrincipal:
     bot: Bot
     origin: str
     visitor_id: str | None
+    end_user_id: str | None = None  # P7b：identify() 通過後的宿主使用者 id
+
+    @property
+    def subject(self) -> tuple[str, str]:
+        if self.end_user_id:
+            return "end_user", self.end_user_id
+        return "visitor", self.visitor_id or "anon"
 
 
 def request_origin(request: Request) -> str | None:
@@ -198,7 +206,8 @@ async def get_widget_principal(
             status_code=status.HTTP_403_FORBIDDEN, detail="Origin not allowed"
         )
     return WidgetPrincipal(
-        bot=bot, origin=token_origin, visitor_id=payload.get("visitor_id")
+        bot=bot, origin=token_origin, visitor_id=payload.get("visitor_id"),
+        end_user_id=payload.get("end_user_id"),
     )
 
 
@@ -246,6 +255,7 @@ def _set_cors_headers(response, origin: str | None, bot: Bot) -> None:
 @router.options("/{short_code}/config")
 @router.options("/{short_code}/feedback")
 @router.options("/{short_code}/error")
+@router.options("/{short_code}/identify")
 @inject
 async def widget_cors_preflight(
     short_code: str,
@@ -335,11 +345,12 @@ async def widget_chat_stream(
         bot_id=bot.id.value,
         message=body.message,
         conversation_id=body.conversation_id if bot.widget_keep_history else None,
-        visitor_id=principal.visitor_id,  # 取自票，不信任 header
+        # 取自票，不信任 header；identify() 通過後改用宿主 user id（記憶 / 紀錄綁定）
+        visitor_id=principal.end_user_id or principal.visitor_id,
         # L6：widget 端點固定通路標記——trace source 不再 fallback 成 "web"
         identity_source="widget",
-        subject_kind="visitor",
-        subject_id=principal.visitor_id or "anon",
+        subject_kind=principal.subject[0],
+        subject_id=principal.subject[1],
         client_ip=client_ip_of(request),
     )
     # Issue #68 P7：串流前先問異常等級（L3+ → 429）
@@ -400,6 +411,59 @@ async def widget_chat_stream(
     )
     _set_cors_headers(response, principal.origin, bot)
     return response
+
+
+class WidgetIdentifyRequest(BaseModel):
+    user_id: str
+    exp: int
+    hash: str
+    name: str | None = None
+    email: str | None = None
+
+
+class WidgetIdentifyResponse(BaseModel):
+    identified: bool
+    widget_token: str = ""
+    token_expires_in: int = 0
+    reason: str = ""
+
+
+@router.post("/{short_code}/identify", response_model=WidgetIdentifyResponse)
+@inject
+async def widget_identify(
+    short_code: str,
+    body: WidgetIdentifyRequest,
+    response: Response,
+    principal: WidgetPrincipal = Depends(get_widget_principal),
+    jwt_service: JWTService = Depends(Provide[Container.jwt_service]),
+    use_case: VerifyWidgetIdentityUseCase = Depends(
+        Provide[Container.verify_widget_identity_use_case]
+    ),
+) -> WidgetIdentifyResponse:
+    """宿主身分綁定（P7b）：hash = HMAC-SHA256(secret, f"{user_id}.{exp}")。
+
+    通過 → 換一張帶 end_user_id 的 widget 票；失敗 → 預設維持匿名（計分），
+    租戶開「強制驗證」則 403。
+    """
+    bot = principal.bot
+    verdict = await use_case.execute(
+        tenant_id=bot.tenant_id, visitor_id=principal.visitor_id,
+        user_id=body.user_id.strip()[:128], exp=body.exp, presented_hash=body.hash,
+    )
+    _set_cors_headers(response, principal.origin, bot)
+    if not verdict.verified:
+        if verdict.enforce and verdict.reason == "invalid":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="identity_required"
+            )
+        return WidgetIdentifyResponse(identified=False, reason=verdict.reason)
+    token, expires_in = jwt_service.create_widget_token(
+        bot_id=bot.id.value, tenant_id=bot.tenant_id, origin=principal.origin,
+        visitor_id=principal.visitor_id or "", end_user_id=body.user_id.strip()[:128],
+    )
+    return WidgetIdentifyResponse(
+        identified=True, widget_token=token, token_expires_in=expires_in
+    )
 
 
 @router.post("/{short_code}/feedback", status_code=201)

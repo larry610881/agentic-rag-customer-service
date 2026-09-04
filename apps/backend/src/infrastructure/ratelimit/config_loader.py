@@ -30,6 +30,12 @@ _GROUP_FALLBACKS: dict[str, ResolvedRateLimitConfig] = {
         burst_size=10,
         per_user_requests_per_minute=None,
     ),
+    # Issue #68 P7b：widget 簽發（無 JWT，按 IP）
+    "widget_issue": ResolvedRateLimitConfig(
+        requests_per_minute=30,
+        burst_size=30,
+        per_user_requests_per_minute=None,
+    ),
 }
 
 

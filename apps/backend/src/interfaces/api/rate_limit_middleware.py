@@ -37,6 +37,9 @@ WINDOW_SECONDS = 60
 
 def _resolve_endpoint_group(path: str) -> str | None:
     """Map request path to endpoint group. Returns None for exempt paths."""
+    # Issue #68 P7b：widget 簽發端點獨立群組（每 IP 節流，防換身分重置分數）
+    if path.startswith("/api/v1/widget/") and path.endswith("/config"):
+        return "widget_issue"
     for prefix, group in ENDPOINT_GROUP_MAP.items():
         if path.startswith(prefix):
             return group

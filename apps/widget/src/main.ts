@@ -9,12 +9,24 @@
  */
 
 import type { WidgetConfig } from "./types";
-import { fetchWidgetConfig } from "./session";
+import { fetchWidgetConfig, identify } from "./session";
+import type { IdentifyPayload, IdentifyResult } from "./session";
 import { Widget } from "./widget";
+
+declare global {
+  interface Window {
+    AgenticRagWidget?: {
+      identify: (payload: IdentifyPayload) => Promise<IdentifyResult>;
+    };
+  }
+}
 
 (function () {
   const script = document.currentScript as HTMLScriptElement | null;
   if (!script) return;
+
+  // 宿主 SDK：window.AgenticRagWidget.identify({ userId, exp, hash })
+  window.AgenticRagWidget = { identify };
 
   const shortCode = script.getAttribute("data-bot");
   if (!shortCode) {

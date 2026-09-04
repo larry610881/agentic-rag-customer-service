@@ -36,6 +36,7 @@ PUBLIC_ROUTES: dict[tuple[str, str], str] = {
     ("OPTIONS", "/api/v1/widget/{short_code}/config"): _PREFLIGHT,
     ("OPTIONS", "/api/v1/widget/{short_code}/error"): _PREFLIGHT,
     ("OPTIONS", "/api/v1/widget/{short_code}/feedback"): _PREFLIGHT,
+    ("OPTIONS", "/api/v1/widget/{short_code}/identify"): _PREFLIGHT,
     ("GET", "/api/v1/widget/{short_code}/config"): "widget entry, issues token",
     ("GET", "/{full_path:path}"): "admin SPA fallback",
 }

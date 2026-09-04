@@ -196,6 +196,7 @@ class AbuseControlService:
         identify_fail: bool = False,
         channel: str = "",
         client_ip: str | None = None,
+        forced_pacing: bool = False,
     ) -> AbuseDecision:
         """回合結束（或訊號發生）時加分；跨門檻即升級並寫稽核。失效 → 放行。
 
@@ -216,7 +217,9 @@ class AbuseControlService:
             ) if hit
         ]
         try:
-            signals.extend(await self._behavioral_signals(key, policy, unrouted))
+            signals.extend(
+                await self._behavioral_signals(key, policy, unrouted, forced_pacing)
+            )
             delta = sum(policy.weight(s) for s in signals)
             score = await self._store.add_score(
                 key, delta, policy.decay_per_minute, policy.score_ttl_seconds
@@ -255,6 +258,26 @@ class AbuseControlService:
             await self._alert_fail_open(tenant_id, "record")
             return NO_ABUSE
 
+    async def note_group_message(
+        self, tenant_id: str, group_id: str, user_id: str
+    ) -> bool:
+        """P7b：LINE 群組每分鐘總量超標時，只把「洗版者」算進去。
+
+        群組總量 > 上限，且該使用者在群組內這一分鐘的訊息數 ≥ max(2, 上限 // 2)
+        才回 True；其他人不受影響。失效 → False。
+        """
+        if not self._enabled:
+            return False
+        try:
+            policy = await self.policy_for(tenant_id)
+            prefix = f"abuse:{tenant_id}:line_group:{group_id}"
+            total = await self._store.incr_counter(f"{prefix}:rpm", 60)
+            mine = await self._store.incr_counter(f"{prefix}:{user_id}:rpm", 60)
+            limit = policy.line_group_max_per_minute
+            return total > limit and mine >= max(2, limit // 2)
+        except Exception:
+            return False
+
     async def release(
         self, tenant_id: str, subject: AbuseSubject, *, actor_user_id: str | None
     ) -> None:
@@ -271,11 +294,17 @@ class AbuseControlService:
     # --------------------------------------------------------------- helpers
 
     async def _behavioral_signals(
-        self, key: str, policy: AbusePolicy, unrouted: bool
+        self, key: str, policy: AbusePolicy, unrouted: bool, forced_pacing: bool = False
     ) -> list[AbuseSignal]:
-        """節奏異常 + 連續無法分流（需要計數器的兩種訊號）。"""
+        """節奏異常 + 連續無法分流（需要計數器的兩種訊號）。
+
+        forced_pacing（LINE 群組總量超標）與自身節奏共用「每分鐘只計一次」旗標。
+        """
         found: list[AbuseSignal] = []
-        if await self._pacing_exceeded(key, policy):
+        exceeded = await self._pacing_exceeded(key, policy)
+        if forced_pacing and not exceeded:
+            exceeded = await self._pacing_flag_once(key)
+        if exceeded:
             found.append(AbuseSignal.PACING)
         if unrouted:
             streak = await self._store.incr_counter(f"{key}:unrouted", 600)
@@ -289,7 +318,10 @@ class AbuseControlService:
         count = await self._store.incr_counter(f"{key}:rpm", 60)
         if count <= policy.pacing_max_per_minute:
             return False
-        # 每分鐘只計一次節奏異常
+        return await self._pacing_flag_once(key)
+
+    async def _pacing_flag_once(self, key: str) -> bool:
+        """每分鐘只計一次節奏異常。"""
         flagged = await self._store.incr_counter(f"{key}:pacing_flag", 60)
         return flagged == 1
 

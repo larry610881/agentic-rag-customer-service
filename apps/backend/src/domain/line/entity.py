@@ -13,6 +13,8 @@ class LineTextMessageEvent:
     # 舊 payload / 測試可能沒有 → 空字串表示不去重。
     webhook_event_id: str = ""
     is_redelivery: bool = False
+    # Issue #68 P7b：群組 / 聊天室 id（1:1 為 None）
+    group_id: str | None = None
 
 
 @dataclass

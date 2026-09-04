@@ -327,6 +327,7 @@ class HandleWebhookUseCase:
                 user_id = (event_data.get("source") or {}).get("userId")
                 if not user_id:
                     continue
+                source = event_data.get("source") or {}
                 events.append(
                     LineTextMessageEvent(
                         reply_token=event_data["replyToken"],
@@ -335,6 +336,7 @@ class HandleWebhookUseCase:
                         timestamp=event_data["timestamp"],
                         webhook_event_id=event_data.get("webhookEventId", ""),
                         is_redelivery=_is_redelivery(event_data),
+                        group_id=source.get("groupId") or source.get("roomId"),
                     )
                 )
         return events
@@ -1221,12 +1223,21 @@ class HandleWebhookUseCase:
         if self._abuse_control is None:
             return NO_ABUSE
         subject = AbuseSubject(SubjectKind.LINE_USER, event.user_id)
+        group_id = getattr(event, "group_id", None)
+        if group_id:
+            # P7b：群組每分鐘總量超標 → 只對這位發言者計節奏異常
+            if await self._abuse_control.note_group_message(
+                bot.tenant_id, group_id, event.user_id
+            ):
+                await self._abuse_control.record(
+                    bot.tenant_id, subject, forced_pacing=True, channel="line",
+                )
         decision = await self._abuse_control.evaluate(bot.tenant_id, subject)
         AgentTraceCollector.set_abuse_level(int(decision.effective_level))
         if decision.blocked or decision.fixed_reply:
             policy = await self._abuse_control.policy_for(bot.tenant_id)
-            if decision.blocked and policy.line_silent_on_cooldown:
-                return None
+            if group_id or (decision.blocked and policy.line_silent_on_cooldown):
+                return None  # 群組內一律靜默，不洗版
             try:
                 await line_service.reply_text(event.reply_token, decision.reply_text)
             except Exception:

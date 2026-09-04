@@ -105,6 +105,8 @@ class AbusePolicy:
     ip_allowlist: list[str] = field(default_factory=list)
     # P7d：主體達 L3 時加到聚合層（ip / tenant）的權重；聚合層達 thresholds[4] 才動作
     aggregate_weight: float = 12.0
+    # P7b：LINE 群組每分鐘總量；超過時只對洗版者計節奏異常並靜默
+    line_group_max_per_minute: int = 60
 
     def level_for(self, score: float, kind: SubjectKind) -> AbuseLevel:
         level = 0

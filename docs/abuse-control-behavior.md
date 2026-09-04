@@ -106,3 +106,11 @@ Retry-After: 900
 - 聚合層的升級同樣寫稽核（訊號 `aggregate`）並依 TTL 自動回復；後台受控清單可看到 `ip` / `tenant` 主體並手動解除。
 - 換身分重來的攻擊者：三個主體在同一 IP 先後被冷卻，第四個身分一開始就被 IP 層擋下；正常客人若剛好共用該 IP（公司 NAT），最壞情況是被封鎖一小時，可由系統管理員解除或把該 IP 加入白名單。
 
+## 10. Widget 身分階梯與通路補強（P7b）
+
+- **簽發限速**：`GET /widget/{code}/config`（簽發 widget 票與 visitor id）獨立為 `widget_issue` 群組，每 IP 每分鐘 30 次，防止換身分重置分數。
+- **宿主身分綁定 identify()**：協定與各語言範例見 [`widget-identity-protocol.md`](widget-identity-protocol.md)。通過後主體升級為 `end_user`，對話與回饋以宿主使用者 id 歸戶；簽章失敗 +2 並維持匿名，租戶開「強制驗證」才拒絕。
+- **LINE 群組**：群組每分鐘總量超過上限（預設 60，可調）時，只對「洗版者」（該分鐘在群組內發言 ≥ 上限的一半）計節奏異常；群組內 L2 以上的使用者一律靜默不回覆，避免機器人洗版。
+- **API 終端使用者**：`X-End-User-Id` 已於 P7a 接上。
+- 挑戰驗證（Turnstile / reCAPTCHA）列為後續需求 #69，待主管討論。
+

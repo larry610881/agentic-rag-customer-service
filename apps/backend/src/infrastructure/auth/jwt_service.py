@@ -177,8 +177,12 @@ class JWTService:
         tenant_id: str,
         origin: str,
         visitor_id: str,
+        end_user_id: str | None = None,
     ) -> tuple[str, int]:
-        """widget 短效票（Issue #67 P4）：綁 bot / Origin / visitor，無 refresh。"""
+        """widget 短效票（Issue #67 P4）：綁 bot / Origin / visitor，無 refresh。
+
+        P7b：identify() 通過後帶 end_user_id（主體升級為 end_user）。
+        """
         payload = self._base_claims(
             token_type=WIDGET_TOKEN_TYPE,
             sub=bot_id,
@@ -189,6 +193,8 @@ class JWTService:
             "origin": origin,
             "visitor_id": visitor_id,
         })
+        if end_user_id:
+            payload["end_user_id"] = end_user_id
         return self._encode(payload), self._widget_token_expire_seconds
 
     # ------------------------------------------------------------------ verify

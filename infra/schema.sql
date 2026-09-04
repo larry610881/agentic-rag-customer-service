@@ -803,6 +803,16 @@ CREATE TABLE public.system_prompt_configs (
 -- Name: tenants; Type: TABLE; Schema: public; Owner: -
 --
 
+CREATE TABLE public.tenant_identity_secrets (
+    tenant_id character varying(36) NOT NULL,
+    secret_encrypted text NOT NULL,
+    is_enabled boolean DEFAULT true NOT NULL,
+    enforce_verified boolean DEFAULT false NOT NULL,
+    rotated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
 CREATE TABLE public.tenants (
     id character varying(36) NOT NULL,
     name character varying(255) NOT NULL,
@@ -1917,6 +1927,14 @@ ALTER TABLE ONLY public.abuse_settings
 
 ALTER TABLE ONLY public.abuse_settings
     ADD CONSTRAINT uq_abuse_settings_scope UNIQUE (scope_kind, scope_id);
+
+
+ALTER TABLE ONLY public.tenant_identity_secrets
+    ADD CONSTRAINT tenant_identity_secrets_pkey PRIMARY KEY (tenant_id);
+
+
+ALTER TABLE ONLY public.tenant_identity_secrets
+    ADD CONSTRAINT tenant_identity_secrets_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
 ALTER TABLE ONLY public.api_keys

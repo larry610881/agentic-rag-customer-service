@@ -52,6 +52,51 @@ export async function refreshWidgetToken(): Promise<string> {
   return getWidgetToken();
 }
 
+/**
+ * 宿主身分綁定（P7b）：hash 必須由宿主後端以租戶 identity secret 計算
+ * HMAC-SHA256(secret, `${userId}.${exp}`)；前端只轉交。
+ */
+export interface IdentifyPayload {
+  userId: string;
+  exp: number; // unix seconds，最多未來 24 小時
+  hash: string;
+  name?: string;
+  email?: string;
+}
+
+export interface IdentifyResult {
+  identified: boolean;
+  reason?: string;
+}
+
+export async function identify(payload: IdentifyPayload): Promise<IdentifyResult> {
+  if (!apiBase || !shortCode) throw new Error("widget not initialized");
+  const res = await widgetFetch(`${apiBase}/api/v1/widget/${shortCode}/identify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user_id: payload.userId,
+      exp: payload.exp,
+      hash: payload.hash,
+      name: payload.name,
+      email: payload.email,
+    }),
+  });
+  if (res.status === 403) return { identified: false, reason: "identity_required" };
+  if (!res.ok) return { identified: false, reason: `HTTP ${res.status}` };
+  const data = (await res.json()) as {
+    identified: boolean;
+    widget_token?: string;
+    token_expires_in?: number;
+    reason?: string;
+  };
+  if (data.identified && data.widget_token) {
+    currentToken = data.widget_token;
+    expiresAt = Date.now() + Math.max(30, (data.token_expires_in ?? 900) - 30) * 1000;
+  }
+  return { identified: data.identified, reason: data.reason };
+}
+
 /** Headers for authenticated widget calls. */
 export async function authHeaders(
   extra: Record<string, string> = {},

@@ -324,7 +324,10 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         # Issue #68 P7：中性回應，不洩漏偵測原因
         return JSONResponse(
             status_code=429,
-            content={"detail": "temporarily_unavailable", "retry_after": exc.retry_after},
+            content={
+                "detail": "temporarily_unavailable",
+                "retry_after": exc.retry_after,
+            },
             headers={"Retry-After": str(exc.retry_after)},
         )
 
@@ -398,6 +401,11 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.abuse_admin_router import router as abuse_admin_router
 
         application.include_router(abuse_admin_router)
+        from src.interfaces.api.widget_identity_router import (
+            router as widget_identity_router,
+        )
+
+        application.include_router(widget_identity_router)
         application.include_router(tenant_router)
         application.include_router(kb_router)
         application.include_router(document_router)

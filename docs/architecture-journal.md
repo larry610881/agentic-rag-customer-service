@@ -5945,3 +5945,18 @@ graph TD
 
 **延伸**：告警去重可再加「同租戶同事件 1 小時內合併計數」；Email 供應商（SendGrid API）接上後把 SMTP 與 API 兩種寄法收成同一個 sender。
 
+## 2026-09-04 — 設定三層、聚合層、身分階梯：把「誰能改」「誰承接」「誰是誰」各放對位置
+
+**背景**：Issue #68 P7b / P7c 設定層 / P7d。Larry 對設定層的要求很明確：系統一份預設、幾個方案、每個租戶指定方案或微調，**只有系統租戶能改**。
+
+**設計**：
+1. **設定三層用一張表、一個 JSON 欄位**。`abuse_settings(scope_kind, scope_id, overrides)`：platform / profile / tenant 三種 scope 共用，只存有改的鍵。解析順序「程式預設 → 平台 → 方案 → 租戶微調」是一個純函式 `resolve_policy`，測試表格直接對照。平台硬上限（門檻不可調到等於關閉）在 `validate_overrides` 做，寫入端點只認 system_admin，租戶端點回 `editable=false`。
+2. **快取放在 provider，不放在 service**。`CachedAbusePolicyProvider` 每租戶 60 秒；更新用例儲存後只清該租戶（platform / profile 改動清全部）。DB 讀不到退回程式預設——控管設定失效不該讓聊天停擺。
+3. **聚合層是「承接」不是「懲罰」**。主體剛跨過 L3 的那一刻才把 `aggregate_weight` 加到 IP 與租戶；IP 達門檻 → L4 封鎖新主體（最後防線，可關、可白名單）；租戶達門檻 → 只做保守模式 + 速率減半 + 告警。等級上限寫在 policy 的 `max_level_by_kind`（tenant=1），不是散在 if 裡。
+4. **身分階梯的關鍵是 secret 不進前端**。identify() 的 hash 由宿主後端算，widget 只轉交；通過後換一張帶 `end_user_id` 的票，之後所有主體判定與歸戶都用票內的值。失敗預設降級而非拒絕，因為宿主整合出錯不該讓客服停擺——「強制驗證」是租戶自己選的。
+5. **LINE 群組只靜默洗版者**：群組總量超標時，只把該分鐘發言 ≥ 上限一半的使用者算進節奏異常；群組內 L2+ 一律不回覆。第一版把整個群組的下一則都算進去，測試立刻抓到「無辜的第二個人被計分」。
+
+**踩到的**：container 的 provider 是宣告順序敏感的（`encryption_service` 定義在後面，引用會 NameError）；聚合層權重 10 × 3 減去衰減會卡在 29.x < 30，改 12。
+
+**下一步**：後台「異常控管」四頁與「Widget 身分綁定」頁（前端）；挑戰驗證（#69）等主管；監控模式先跑一週再切 enforce。
+
