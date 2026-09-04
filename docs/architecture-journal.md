@@ -5932,3 +5932,16 @@ graph TD
 
 **下一步**：P7b widget identify() 協定與挑戰驗證、P7c 三層設定 + 後台頁、P7d IP / 租戶聚合。L2 的「回應延遲 2–3 秒」本期沒做（固定文案已不進 LLM，延遲只是拖慢攻擊腳本，先觀察是否需要）。
 
+## 2026-09-04 — 告警的三個層次：事件、節流、通路，各管各的
+
+**背景**：Issue #68 P7c。控管上線後最怕兩件事：它默默失效（Redis 掛了一律放行）、以及被連打時沒人知道。Larry 定 Teams 為第一通路。
+
+**設計**：
+1. **事件在 domain、節流在 application、通路在 infrastructure**。`AbuseAlertEvent` 只描述「發生了什麼」（種類、遮罩後主體、等級、摘要行），不知道 Teams 或 Email 存在；`AbuseAlertService` 決定「要不要發」（突增門檻、fail-open 冷卻）；`DispatchAbuseNotificationUseCase` 決定「發給誰」（notify_abuse 渠道 + 每渠道 throttle）；`TeamsWorkflowSender` 決定「長什麼樣」（Adaptive Card）。四層各自可測，換通路只動最外層。
+2. **fail-open 一定要有告警**。放行是正確的可用性取捨，但沒有告警的 fail-open 等於沒有控管；所以 fail-open 事件在儲存本身掛掉時也照發（計數失敗就寫「未知」），節流交給 notification 層。
+3. **遮罩要做到指紋層**。第一版把主體 key 放進節流指紋，測試抓到「事件物件裡仍有完整 id」；改成 sha256 前 12 碼。原則：任何會離開程序的字串（log、通知、指紋）都不帶原始 id。
+4. **順手修了舊債**：email sender 一直在 `json.loads` 密文，等於 email 通知從未真的送出；dispatcher 現在統一解密，並把單一渠道例外隔離，Email 未設定只是被跳過。
+5. **Teams 的坑**：Office 365 Connector Incoming Webhook 已退場，Workflows 只吃 `type=message` + Adaptive Card 附件；FactSet 用「鍵：值」自動拆，內文格式與 Email 純文字共用一份。
+
+**延伸**：告警去重可再加「同租戶同事件 1 小時內合併計數」；Email 供應商（SendGrid API）接上後把 SMTP 與 API 兩種寄法收成同一個 sender。
+
