@@ -65,7 +65,20 @@ class ToolRagConfig:
     kb_ids: list[str] | None = None
 
 
-VALID_BOT_MODES = ("fast", "deep")
+# Issue #66 fast / deep；Issue #70 kb（知識庫問答：檢索 → 單次生成，未命中回固定話術）
+VALID_BOT_MODES = ("fast", "deep", "kb")
+
+# Issue #70 — 輸出格式：text（一般，可含 Markdown）| plain_text（剝除 Markdown）|
+# json（結構化輸出，可附 output_schema）
+VALID_OUTPUT_FORMATS = ("text", "plain_text", "json")
+DEFAULT_MISS_REPLY = "很抱歉，這個問題不在我的服務範圍內，歡迎換個方式問我。"
+# JSON 格式 bot 未設定 miss_reply 時的平台預設未命中物件（無 schema 或通過 schema 時使用）
+DEFAULT_MISS_REPLY_JSON: dict = {
+    "status": "out_of_scope",
+    "category": "unclassified",
+    "answer": "",
+}
+DEFAULT_OUTPUT_TEXT_FIELD = "answer"
 
 
 @dataclass
@@ -109,7 +122,13 @@ class Bot:
     # Issue #66：快速 / 深度 profile。
     # fast = 全 worker 走快速道、rerank/rewrite/HyDE 關、升級 ReAct 工具上限 2
     # deep = 完整 ReAct，worker 可個別開快速道
-    mode: str = "deep"  # fast | deep
+    mode: str = "deep"  # fast | deep | kb
+    # Issue #70：輸出格式與未命中話術（三通路共用；進設定快照）
+    output_format: str = "text"          # text | plain_text | json
+    output_schema: dict | None = None    # output_format=json 時可附 JSON schema
+    miss_reply: str = ""                 # 空 = 系統預設（json 時為 DEFAULT_MISS_REPLY_JSON）
+    # json 輸出時文字通路（LINE / widget 對話泡泡）顯示的欄位名
+    output_text_field: str = "answer"
     gate_soft_threshold: float = 0.8
     gate_repeats: int = 3
     gate_auto_publish: bool = False

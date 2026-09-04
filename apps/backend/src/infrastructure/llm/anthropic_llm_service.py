@@ -13,6 +13,15 @@ from src.infrastructure.logging import get_logger
 logger = get_logger(__name__)
 
 
+def anthropic_output_config(response_schema: dict | None) -> dict | None:
+    """Issue #70：Messages API 原生結構化輸出 ``output_config.format``
+    （json_schema；Claude 4.5+ 支援，見 domain/llm/structured_output 能力表）。
+    json_object 級（舊模型）無對應參數 → 走 prompt 約束 + 系統驗證。"""
+    if not response_schema:
+        return None
+    return {"format": {"type": "json_schema", "schema": response_schema}}
+
+
 class AnthropicLLMService(LLMService):
     @property
     def model_name(self) -> str:
@@ -37,20 +46,27 @@ class AnthropicLLMService(LLMService):
         temperature: float = 0.7,
         max_tokens: int = 1024,
         reasoning_effort: str | None = None,
+        response_schema: dict | None = None,
+        response_json_object: bool = False,
     ):
         """Return a LangChain ChatModel using the same API key.
 
         reasoning_effort 為 OpenAI reasoning 模型專用參數，
         Anthropic 路徑接受但不使用（呼叫端簽名一致性）。
+        response_json_object（B 級）無原生參數，忽略（prompt 約束 + 驗證）。
         """
         from langchain_anthropic import ChatAnthropic
 
-        return ChatAnthropic(
-            model=self._model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            api_key=self._api_key,
-        )
+        kwargs: dict = {
+            "model": self._model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "api_key": self._api_key,
+        }
+        output_config = anthropic_output_config(response_schema)
+        if output_config is not None:
+            kwargs["output_config"] = output_config  # langchain-anthropic ≥ 1.x
+        return ChatAnthropic(**kwargs)
 
     def _build_headers(self) -> dict[str, str]:
         return {
@@ -67,6 +83,7 @@ class AnthropicLLMService(LLMService):
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        response_schema: dict | None = None,
     ) -> dict:
         content = (
             f"Context:\n{context}\n\nQuestion: {user_message}"
@@ -88,6 +105,9 @@ class AnthropicLLMService(LLMService):
         }
         if temperature is not None:
             body["temperature"] = temperature
+        output_config = anthropic_output_config(response_schema)
+        if output_config is not None:
+            body["output_config"] = output_config  # Issue #70：原生結構化輸出
         return body
 
     async def generate(

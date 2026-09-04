@@ -145,10 +145,13 @@
 |---|---|---|
 | `fast` | 一律快速道（沒有 worker 也走） | 快速道；rerank / rewrite / HyDE 一律關 |
 | `deep`（預設） | 完整 ReAct | 快速道；rerank 依 bot / worker 設定 |
+| `kb`（Issue #70，知識庫問答） | 檢索命中 → 單次生成、無任何工具；未命中 → `miss_reply`（不升級 ReAct）；工具 / 記憶 / 摘要 / 評估全關，不呼叫意圖分類 | 同左（kb 不分流，worker 設定不生效） |
 
 - `fast` 的升級語意：檢索未過門檻仍升級 ReAct，但 `max_tool_calls` 上限 2、rerank / rewrite / HyDE 關；**升級率是 KPI**（高 = 知識庫覆蓋不足，補資料而非放寬時間）。
 - 意圖分類保留（同時提供改寫查詢與攻擊判定）；只有一個 worker 時跳過選路但保留清洗（待做）。
 - `mode` 進設定快照白名單與執行時指紋（`EffectiveConfig.extra.mode`）。
+- `kb` 的成本上限：每題恰好 1 次 embedding + 1 次 LLM 呼叫（json 格式驗證失敗時最多再 1 次重試）；trace 無 `intent_classify` / `tool_call` 節點，未命中記 `kb_miss`（含 top_score / threshold）。回覆的 `structured_content.retrieval` 帶 `{top_score, chunk_count, threshold, miss}`。
+- `output_format`（text | plain_text | json）與 `miss_reply`、`output_schema`、`output_text_field` 不限 kb，三通路共用同一份 `application/agent/output_format.py` 決策（channel-parity）。
 - 環境變數 `FAST_LANE_ALLOW_RERANK` 已移除（違反「可設置、不寫死」）。
 
 ## 需求四：對話管線通路統一（絞殺者遷移，獨立 phase）

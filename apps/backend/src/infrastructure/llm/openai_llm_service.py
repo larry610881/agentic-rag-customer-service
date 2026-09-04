@@ -95,6 +95,27 @@ def reasoning_effort_allowed(model: str, effort: str) -> bool:
     return True
 
 
+def openai_response_format(
+    response_schema: dict | None, response_json_object: bool = False
+) -> dict | None:
+    """Issue #70：OpenAI 相容端點的 response_format。
+    A 級 → json_schema（strict 僅在 schema 相容時開）；B 級 → json_object。"""
+    if response_schema:
+        from src.domain.llm.structured_output import is_strict_compatible
+
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "bot_output",
+                "schema": response_schema,
+                "strict": is_strict_compatible(response_schema),
+            },
+        }
+    if response_json_object:
+        return {"type": "json_object"}
+    return None
+
+
 class OpenAILLMService(LLMService):
     @property
     def model_name(self) -> str:
@@ -120,6 +141,8 @@ class OpenAILLMService(LLMService):
         temperature: float = 0.7,
         max_tokens: int = 1024,
         reasoning_effort: str | None = None,
+        response_schema: dict | None = None,
+        response_json_object: bool = False,
     ):
         """Return a LangChain ChatModel using the same API key and base_url."""
         from langchain_openai import ChatOpenAI
@@ -157,6 +180,10 @@ class OpenAILLMService(LLMService):
                     model=self._model,
                     requested=reasoning_effort,
                 )
+        # Issue #70：結構化輸出（OpenAI / Gemini / DeepSeek / Qwen / Ollama 相容端點）
+        response_format = openai_response_format(response_schema, response_json_object)
+        if response_format is not None:
+            kwargs["model_kwargs"] = {"response_format": response_format}
         return ChatOpenAI(**kwargs)
 
     def _build_headers(self) -> dict[str, str]:

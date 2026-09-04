@@ -15,6 +15,7 @@ description: 每個部署環境獨立的階段旗標。Claude 依此判斷對該
 
 **當前主要狀態**：
 - **2026-09-04（#68）**：`add_trace_abuse_level.sql`、`add_notification_channels_notify_abuse.sql` 已套 `local-docker` 與 `company-poc-vm`（各驗證 + `_applied_migrations` 紀錄）。
+- **2026-09-04（#70）**：`add_bot_output_format.sql`（bots.output_format / output_schema / miss_reply / output_text_field）依 Larry「好 授權」套 `local-docker`（紀錄 18 筆）與 `company-poc-vm`（紀錄 63 筆），各驗證 information_schema + `_applied_migrations`（applied_by=claude-dev）。
 - **2026-09-04（#68，第二批）**：`add_abuse_settings.sql`、`add_tenant_identity_secrets.sql` 依 Larry「確定」授權已套 `local-docker`（紀錄 17 筆）與 `company-poc-vm`（紀錄 62 筆），各驗證 information_schema + `_applied_migrations` 紀錄（applied_by=claude-dev）。
 - **2026-09-03（#67）**：`add_api_keys.sql`、`add_users_token_version.sql` 已套 `local-docker` 與 `company-poc-vm`（各驗證 + `_applied_migrations` 紀錄，applied_by=claude-dev）。
 - `company-poc-vm`：**2026-08-31 首次建置**（公司 GCP `project-pic-ai-innovation-poc`，VM `poc-rag-vm-01` e2-standard-4，五容器 bind mount `/data/*`，內網 10.0.0.2）。`infra/schema.sql` bootstrap（46 表）+ 54 筆 migration 紀錄（`schema.sql-bootstrap-2026-08-31`）+ 最小 seed（2 tenants + admin@system.com + gate=TRUE）。Cloud Run `agentic-rag` rev 00004（映像 `7bf93f6-admin1`，含 admin SPA）health 200、Require auth 中。密鑰暫以 env var 注入，`rag-*` Secret Manager 已寫入待 run-SA 授權後切換。

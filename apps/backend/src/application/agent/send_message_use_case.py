@@ -15,6 +15,16 @@ from src.application.abuse.abuse_control_service import (
     apply_conservative_mode,
 )
 from src.application.agent.intent_classifier import IntentClassifier
+from src.application.agent.output_format import (
+    FinalizedAnswer,
+    OutputSpec,
+    append_prompt_suffix,
+    finalize_with_retry,
+    merge_usage,
+    resolve_miss_reply,
+    resolve_structured_llm_params,
+    retrieval_stats,
+)
 from src.application.agent.prompt_assembler import (
     assemble as assemble_prompt,
 )
@@ -113,12 +123,28 @@ def _build_structured_content(
     *,
     contact: dict[str, Any] | None,
     sources: list[dict[str, Any]] | None,
+    output: dict[str, Any] | None = None,
+    display_text: str | None = None,
+    retrieval: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """聚合 tool 產生的 rich payload。全部為空時回傳 None，
-    讓下游歷史對話可還原 contact/sources，LINE 路徑不受影響。"""
-    if not contact and not sources:
+    讓下游歷史對話可還原 contact/sources，LINE 路徑不受影響。
+
+    Issue #70：``output``（json 格式解析後物件）、``display_text``（文字通路顯示欄位）、
+    ``retrieval``（快速道 / kb 檢索統計）只在有值時加入，既有 payload 形狀不變。"""
+    if (
+        not contact and not sources
+        and output is None and not display_text and not retrieval
+    ):
         return None
-    return {"contact": contact, "sources": sources}
+    payload: dict[str, Any] = {"contact": contact, "sources": sources}
+    if output is not None:
+        payload["output"] = output
+    if display_text:
+        payload["display_text"] = display_text
+    if retrieval:
+        payload["retrieval"] = retrieval
+    return payload
 
 
 @dataclass(frozen=True)
@@ -248,6 +274,9 @@ class SendMessageUseCase:
             "temperature": bot.llm_params.temperature,
             "max_tokens": bot.llm_params.max_tokens,
             "frequency_penalty": bot.llm_params.frequency_penalty,
+            # Issue #72 前置：與 LINE 通路對齊，bot 的 reasoning_effort 一併帶入
+            # （worker 覆寫以 spread 保留此值；合法性由 provider 端 gate 判斷）
+            "reasoning_effort": bot.llm_params.reasoning_effort,
         }
         if bot.llm_provider:
             llm_params["provider_name"] = bot.llm_provider
@@ -268,7 +297,12 @@ class SendMessageUseCase:
         cfg["_bot"] = bot
         # Issue #66：bot profile；fast 時沒有 worker 也走快速道
         cfg["mode"] = getattr(bot, "mode", "deep") or "deep"
-        cfg["_direct_retrieval"] = cfg["mode"] == "fast"
+        # Issue #70：kb（知識庫問答）也走共用快速道，但未命中不升級（knowledge_only）
+        cfg["_direct_retrieval"] = cfg["mode"] in ("fast", "kb")
+        cfg["output_format"] = getattr(bot, "output_format", "text") or "text"
+        cfg["output_schema"] = getattr(bot, "output_schema", None) or None
+        cfg["miss_reply"] = getattr(bot, "miss_reply", "") or ""
+        cfg["output_text_field"] = getattr(bot, "output_text_field", "") or "answer"
         cfg["tool_rag_params"] = build_tool_rag_params_map(bot=bot)
         cfg["mcp_servers"] = [
             {
@@ -407,6 +441,8 @@ class SendMessageUseCase:
             return ""
         if not bot_cfg.get("memory_enabled", False):
             return ""
+        if bot_cfg.get("mode") == "kb":
+            return ""  # Issue #70：kb 模式記憶全關（載入與抽取皆不做）
         if not self._resolve_identity or not self._load_memory:
             return ""
 
@@ -440,6 +476,8 @@ class SendMessageUseCase:
         """Check if memory extraction should be triggered."""
         if not bot_cfg.get("memory_enabled", False):
             return False
+        if bot_cfg.get("mode") == "kb":
+            return False  # Issue #70：kb 模式不抽取記憶
         threshold = bot_cfg.get("memory_extraction_threshold", 3)
         if message_count < threshold * 2:
             return False
@@ -629,6 +667,9 @@ class SendMessageUseCase:
 
         Returns bot_cfg unchanged if no workers or no match.
         """
+        if bot_cfg.get("mode") == "kb":
+            # Issue #70：kb 模式不分流、不呼叫意圖分類（每題只有 1 次 embedding + 1 次 LLM）
+            return bot_cfg
         if not self._worker_config_repo or not self._intent_classifier:
             return bot_cfg
         bot_id = bot_cfg.get("bot_id", "")
@@ -881,7 +922,7 @@ class SendMessageUseCase:
 
         # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
         bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
-        if bot_cfg.get("mode") == "fast":
+        if bot_cfg.get("mode") in ("fast", "kb"):
             # Issue #66：fast profile 壓進 agent metadata（升級 ReAct 也零額外 LLM）
             metadata["rerank_enabled"] = False
             metadata["rag_retrieval_modes"] = ["raw"]
@@ -898,31 +939,39 @@ class SendMessageUseCase:
         await self._record_abuse(command, unrouted=bool(bot_cfg.get("_unrouted")))
         bot_cfg = self._apply_abuse_mode(bot_cfg, abuse_decision)
 
+        # Issue #70：kb 模式未命中 → 固定話術，不呼叫生成模型
+        if fast_plan is not None and getattr(fast_plan, "miss", False):
+            return await self._finalize_kb_miss(
+                command, conversation, bot_cfg, fast_plan, config_hash
+            )
+
         # Propagate worker routing info to agent service (for trace visualization)
         if bot_cfg.get("_worker_matched_info"):
             metadata["_worker_routing"] = bot_cfg["_worker_matched_info"]
 
-        t0 = time.perf_counter()
-        response = await self._agent_service.process_message(
-            tenant_id=command.tenant_id,
-            kb_id=bot_cfg["kb_id"],
-            user_message=command.message,
-            history=history,
-            kb_ids=bot_cfg["kb_ids"],
-            system_prompt=bot_cfg["system_prompt"],
-            llm_params=bot_cfg["llm_params"],
-            metadata=metadata,
-            history_context=history_context,
-            router_context=router_context,
-            enabled_tools=bot_cfg["enabled_tools"],
-            rag_top_k=bot_cfg["rag_top_k"],
-            rag_score_threshold=bot_cfg["rag_score_threshold"],
-            tool_rag_params=bot_cfg.get("tool_rag_params"),
-            customer_service_url=bot_cfg.get("customer_service_url", ""),
-            mcp_servers=bot_cfg.get("mcp_servers"),
-            max_tool_calls=bot_cfg.get("max_tool_calls", 5),
-            bot_id=bot_cfg.get("bot_id", ""),
+        # Issue #70：輸出格式（A 級 response_schema / B 級 json_object + schema 進
+        # prompt / C 級只進 prompt）——快速道與完整 ReAct 同一份決策
+        bot_cfg, out_spec = self._apply_output_format(bot_cfg)
+        gen_kwargs = self._generation_kwargs(
+            command, bot_cfg, history, history_context, router_context, metadata,
         )
+
+        t0 = time.perf_counter()
+        response = await self._agent_service.process_message(**gen_kwargs)
+
+        async def _retry(instruction: str) -> str:
+            second = await self._agent_service.process_message(**{
+                **gen_kwargs,
+                "system_prompt": append_prompt_suffix(
+                    gen_kwargs["system_prompt"], instruction
+                ),
+            })
+            merge_usage(response, second)
+            return second.answer
+
+        # json：驗證 → 失敗重試一次 → 仍失敗回未命中話術；plain_text：剝 Markdown
+        fin = await finalize_with_retry(out_spec, response.answer, retry=_retry)
+        response.answer = fin.text
         latency_ms = int((time.perf_counter() - t0) * 1000)
         if fast_plan is not None and not response.sources:
             response.sources = list(fast_plan.sources)
@@ -931,10 +980,6 @@ class SendMessageUseCase:
             [s.to_dict() for s in response.sources]
             if response.sources
             else None
-        )
-        structured_content = _build_structured_content(
-            contact=response.contact,
-            sources=retrieved_chunks,
         )
 
         tool_calls_to_save = response.tool_calls[:]
@@ -961,6 +1006,15 @@ class SendMessageUseCase:
                 # Sprint A++ Guard UX
                 response.guard_blocked = "output"
                 response.guard_rule_matched = guard_result.rule_matched
+                fin = FinalizedAnswer(text=response.answer)  # 攔截後不再是結構化輸出
+
+        structured_content = _build_structured_content(
+            contact=response.contact,
+            sources=retrieved_chunks,
+            output=fin.parsed,
+            display_text=fin.display_text,
+            retrieval=retrieval_stats(fast_plan),
+        )
 
         assistant_msg = None
         t_persist = AgentTraceCollector.offset_ms()
@@ -1160,7 +1214,7 @@ class SendMessageUseCase:
 
         # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
         bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
-        if bot_cfg.get("mode") == "fast":
+        if bot_cfg.get("mode") in ("fast", "kb"):
             # Issue #66：fast profile 壓進 agent metadata（升級 ReAct 也零額外 LLM）
             metadata["rerank_enabled"] = False
             metadata["rag_retrieval_modes"] = ["raw"]
@@ -1209,9 +1263,23 @@ class SendMessageUseCase:
         await self._record_abuse(command, unrouted=bool(bot_cfg.get("_unrouted")))
         bot_cfg = self._apply_abuse_mode(bot_cfg, abuse_decision)
 
+        # Issue #70：kb 模式未命中 → 串流固定話術，不呼叫生成模型
+        if fast_plan is not None and getattr(fast_plan, "miss", False):
+            async for miss_event in self._stream_kb_miss(
+                command, conversation, bot_cfg, fast_plan, config_hash
+            ):
+                yield miss_event
+            return
+
         # Propagate worker routing info to agent service (for trace visualization)
         if bot_cfg.get("_worker_matched_info"):
             metadata["_worker_routing"] = bot_cfg["_worker_matched_info"]
+
+        # Issue #70：輸出格式決策（與非串流同一份）
+        bot_cfg, out_spec = self._apply_output_format(bot_cfg)
+        gen_kwargs = self._generation_kwargs(
+            command, bot_cfg, history, history_context, router_context, metadata,
+        )
 
         # Stream from agent service
         full_answer = ""
@@ -1221,26 +1289,7 @@ class SendMessageUseCase:
         refund_step_value: str | None = None
 
         t0 = time.perf_counter()
-        async for event in self._agent_service.process_message_stream(
-            tenant_id=command.tenant_id,
-            kb_id=bot_cfg["kb_id"],
-            user_message=command.message,
-            history=history,
-            kb_ids=bot_cfg["kb_ids"],
-            system_prompt=bot_cfg["system_prompt"],
-            llm_params=bot_cfg["llm_params"],
-            metadata=metadata,
-            history_context=history_context,
-            router_context=router_context,
-            enabled_tools=bot_cfg["enabled_tools"],
-            rag_top_k=bot_cfg["rag_top_k"],
-            rag_score_threshold=bot_cfg["rag_score_threshold"],
-            tool_rag_params=bot_cfg.get("tool_rag_params"),
-            customer_service_url=bot_cfg.get("customer_service_url", ""),
-            mcp_servers=bot_cfg.get("mcp_servers"),
-            max_tool_calls=bot_cfg.get("max_tool_calls", 5),
-            bot_id=bot_cfg.get("bot_id", ""),
-        ):
+        async for event in self._agent_service.process_message_stream(**gen_kwargs):
             # contact event 不塞進 answer，透過 yield 傳給呼叫者
             if event["type"] == "token":
                 full_answer += event["content"]
@@ -1280,7 +1329,17 @@ class SendMessageUseCase:
                 for src in fast_plan.sources
             ]
             yield {"type": "sources", "sources": sources_list}
+        if fast_plan is not None:
+            # Issue #70：檢索統計獨立事件（done 事件由多處組裝，獨立事件最單純）
+            yield {"type": "retrieval", **(retrieval_stats(fast_plan) or {})}
         latency_ms = int((time.perf_counter() - t0) * 1000)
+
+        # Issue #70：串流不重試（token 已送出）；json 驗證結果以事件告知前端，
+        # plain_text 對累積全文剝 Markdown 後持久化（token 本身為原文，可接受）
+        fin = await finalize_with_retry(
+            out_spec, full_answer, retry=None, fallback=False
+        )
+        full_answer = fin.text
 
         # ── Prompt Guard: output check on accumulated answer (Option B) ──
         # 串流結束後檢查整段 full_answer，命中時：
@@ -1299,6 +1358,7 @@ class SendMessageUseCase:
             )
             if not output_guard.passed:
                 full_answer = output_guard.blocked_response
+                fin = FinalizedAnswer(text=full_answer)  # 攔截後不再是結構化輸出
                 yield {
                     "type": "guard_blocked",
                     "block_type": "output",
@@ -1306,10 +1366,23 @@ class SendMessageUseCase:
                     "replacement": full_answer,
                 }
 
+        if out_spec.is_json:
+            if fin.status == "valid":
+                yield {
+                    "type": "structured_output",
+                    "output": fin.parsed,
+                    "display_text": fin.display_text,
+                }
+            elif fin.status == "invalid":
+                yield {"type": "structured_output_failed", "error": fin.error}
+
         retrieved_chunks = sources_list if sources_list else None
         structured_content = _build_structured_content(
             contact=contact_payload,
             sources=retrieved_chunks,
+            output=fin.parsed,
+            display_text=fin.display_text,
+            retrieval=retrieval_stats(fast_plan),
         )
 
         # Save conversation after streaming completes
@@ -1504,7 +1577,9 @@ class SendMessageUseCase:
         if self._direct_retrieval is None or not bot_cfg.get("_direct_retrieval"):
             return bot_cfg, None
         bot_entity = bot_cfg.get("_bot")
-        if bot_entity is None or not bot_cfg.get("kb_ids"):
+        is_kb = bot_cfg.get("mode") == "kb"
+        # kb 模式沒綁知識庫也要走 plan（回未命中），其餘沒 KB 直接維持 ReAct
+        if bot_entity is None or (not bot_cfg.get("kb_ids") and not is_kb):
             return bot_cfg, None
         is_fast = bot_cfg.get("mode") == "fast"
         plan = await self._direct_retrieval.plan(
@@ -1518,7 +1593,9 @@ class SendMessageUseCase:
             user_message=command.message,
             retrieval_query=bot_cfg.get("_retrieval_query", ""),
             # Issue #66：fast profile 零額外 LLM；deep 的 worker 快速道依 bot 設定
-            allow_rerank=not is_fast,
+            # Issue #70：kb 亦零額外 LLM（rerank 關），且未命中不升級（knowledge_only）
+            allow_rerank=not is_fast and not is_kb,
+            knowledge_only=is_kb,
         )
         if plan is None:
             if is_fast:
@@ -1534,6 +1611,9 @@ class SendMessageUseCase:
                     "hyde_enabled": False,
                 }, None
             return bot_cfg, None
+        if getattr(plan, "miss", False):
+            # Issue #70：kb 未命中——呼叫端以 miss_reply 短路，不進生成模型
+            return bot_cfg, plan
         fast_cfg = {
             **bot_cfg,
             "system_prompt": plan.system_prompt,
@@ -1542,6 +1622,160 @@ class SendMessageUseCase:
             "mcp_servers": [],
         }
         return fast_cfg, plan
+
+    # ── Issue #70：輸出格式 / kb 未命中（三通路共用 helper 在 output_format.py） ──
+
+    @staticmethod
+    def _apply_output_format(
+        bot_cfg: dict[str, Any],
+    ) -> tuple[dict[str, Any], OutputSpec]:
+        """依生效的供應商 / 模型能力等級，補 llm_params 與 system prompt 後綴。"""
+        spec = OutputSpec.from_cfg(bot_cfg)
+        patch, suffix = resolve_structured_llm_params(spec)
+        if not patch and not suffix:
+            return bot_cfg, spec
+        return {
+            **bot_cfg,
+            "llm_params": {**(bot_cfg.get("llm_params") or {}), **patch},
+            "system_prompt": append_prompt_suffix(
+                bot_cfg.get("system_prompt"), suffix
+            ),
+        }, spec
+
+    @staticmethod
+    def _generation_kwargs(
+        command: SendMessageCommand,
+        bot_cfg: dict[str, Any],
+        history: list | None,
+        history_context: str,
+        router_context: str,
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        """process_message / process_message_stream 共用參數（重試時只換 system_prompt）。"""
+        return {
+            "tenant_id": command.tenant_id,
+            "kb_id": bot_cfg["kb_id"],
+            "user_message": command.message,
+            "history": history,
+            "kb_ids": bot_cfg["kb_ids"],
+            "system_prompt": bot_cfg["system_prompt"],
+            "llm_params": bot_cfg["llm_params"],
+            "metadata": metadata,
+            "history_context": history_context,
+            "router_context": router_context,
+            "enabled_tools": bot_cfg["enabled_tools"],
+            "rag_top_k": bot_cfg["rag_top_k"],
+            "rag_score_threshold": bot_cfg["rag_score_threshold"],
+            "tool_rag_params": bot_cfg.get("tool_rag_params"),
+            "customer_service_url": bot_cfg.get("customer_service_url", ""),
+            "mcp_servers": bot_cfg.get("mcp_servers"),
+            "max_tool_calls": bot_cfg.get("max_tool_calls", 5),
+            "bot_id": bot_cfg.get("bot_id", ""),
+        }
+
+    async def _finalize_kb_miss(
+        self,
+        command: SendMessageCommand,
+        conversation: Conversation,
+        bot_cfg: dict[str, Any],
+        plan: Any,
+        config_hash: str | None,
+    ) -> AgentResponse:
+        """kb 模式未命中：以未命中話術落訊息（與正常回覆同一條持久化路徑），
+        無 LLM 呼叫故無 usage；trace 已含 kb_miss 節點。"""
+        miss = resolve_miss_reply(OutputSpec.from_cfg(bot_cfg))
+        structured_content = _build_structured_content(
+            contact=None, sources=None, output=miss.parsed,
+            display_text=miss.display_text, retrieval=retrieval_stats(plan),
+        )
+        response = AgentResponse(answer=miss.text)
+        assistant_msg = None
+        t_persist = AgentTraceCollector.offset_ms()
+        if not command.test_mode:
+            conversation.add_message("user", command.message)
+            assistant_msg = conversation.add_message(
+                "assistant", miss.text, latency_ms=0,
+                structured_content=structured_content,
+            )
+            _bump_conversation_counters(conversation)
+            await self._conversation_repo.save(conversation)
+        response.conversation_id = conversation.id.value
+        response.message_id = assistant_msg.id.value if assistant_msg else None
+        trace_id, trace_nodes = await self._persist_agent_trace(
+            conversation_id=conversation.id.value,
+            message_id=response.message_id,
+            latency_ms=0,
+            source=command.identity_source or "web",
+            persist_started_ms=t_persist,
+            persist=not command.test_mode,
+        )
+        if command.test_mode:
+            response.trace_id = trace_id
+            response.trace_nodes = trace_nodes
+            return response
+        response.config_version_id = await self._resolve_current_version_id(
+            command.bot_id
+        )
+        response.config_hash = config_hash
+        return response
+
+    async def _stream_kb_miss(
+        self,
+        command: SendMessageCommand,
+        conversation: Conversation,
+        bot_cfg: dict[str, Any],
+        plan: Any,
+        config_hash: str | None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """kb 模式未命中（串流）：token 事件送話術，其餘事件與正常結束一致。"""
+        spec = OutputSpec.from_cfg(bot_cfg)
+        miss = resolve_miss_reply(spec)
+        structured_content = _build_structured_content(
+            contact=None, sources=None, output=miss.parsed,
+            display_text=miss.display_text, retrieval=retrieval_stats(plan),
+        )
+        yield {"type": "token", "content": miss.text}
+        if spec.is_json:
+            yield {
+                "type": "structured_output",
+                "output": miss.parsed,
+                "display_text": miss.display_text,
+            }
+        yield {"type": "retrieval", **(retrieval_stats(plan) or {})}
+        assistant_msg = None
+        t_persist = AgentTraceCollector.offset_ms()
+        if not command.test_mode:
+            conversation.add_message("user", command.message)
+            assistant_msg = conversation.add_message(
+                "assistant", miss.text, latency_ms=0,
+                structured_content=structured_content,
+            )
+            _bump_conversation_counters(conversation)
+            await self._conversation_repo.save(conversation)
+        _current_trace = AgentTraceCollector.current()
+        stream_trace_id = _current_trace.trace_id if _current_trace else None
+        _, stream_trace_nodes = await self._persist_agent_trace(
+            conversation_id=conversation.id.value,
+            message_id=assistant_msg.id.value if assistant_msg else None,
+            latency_ms=0,
+            source=command.identity_source or "web",
+            persist=not command.test_mode,
+            persist_started_ms=t_persist,
+        )
+        if assistant_msg is not None:
+            yield {"type": "message_id", "message_id": assistant_msg.id.value}
+            cv_id = await self._resolve_current_version_id(command.bot_id)
+            if cv_id:
+                yield {"type": "config_version", "config_version_id": cv_id}
+            if config_hash:
+                yield {"type": "config_hash", "config_hash": config_hash}
+        yield {"type": "conversation_id", "conversation_id": conversation.id.value}
+        done_event: dict[str, Any] = {"type": "done"}
+        if stream_trace_id:
+            done_event["trace_id"] = stream_trace_id
+        if command.test_mode and stream_trace_nodes is not None:
+            done_event["trace_nodes"] = stream_trace_nodes
+        yield done_event
 
     async def _fingerprint_config(
         self, command: SendMessageCommand, bot_cfg: dict[str, Any]

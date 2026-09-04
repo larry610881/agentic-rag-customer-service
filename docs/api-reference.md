@@ -152,6 +152,43 @@ Base URL: `http://localhost:8000/api/v1`
 
 `conversation_id` 為選填；首次對話不帶會自動建立，後續帶入以延續對話。
 
+**SSE 事件（`/agent/chat/stream`、widget stream；Issue #70 新增）**
+
+| type | 說明 |
+|------|------|
+| `retrieval` | 快速道 / kb 模式的檢索統計 `{top_score, chunk_count, threshold, miss}`，在 `sources` 之後、`done` 之前送出一次 |
+| `structured_output` | `output_format=json` 且驗證通過：`{output: <parsed>, display_text: <文字通路顯示欄位>}` |
+| `structured_output_failed` | `output_format=json` 但累積全文不是合法 JSON / 不符 schema：`{error}`（串流不重試，訊息內容保留原文） |
+
+訊息的 `structured_content` 同步持久化 `output` / `display_text` / `retrieval`（非串流回應亦同）。
+
+## Bot（Issue #70 新增欄位）
+
+`POST /bots`、`PUT /bots/{bot_id}`、`GET /bots/{bot_id}` 皆含以下欄位：
+
+| 欄位 | 型別 | 預設 | 說明 |
+|------|------|------|------|
+| `mode` | `fast` \| `deep` \| `kb` | `deep` | `kb` = 知識庫問答：檢索命中 → 單次生成（零工具）；未命中 → `miss_reply`；意圖分類 / 記憶 / 摘要 / 評估全關 |
+| `output_format` | `text` \| `plain_text` \| `json` | `text` | `plain_text` 會剝除 Markdown；`json` 走供應商結構化輸出（見能力等級） |
+| `output_schema` | object \| null | `null` | `json` 時可附 JSON schema（Draft 2020-12；儲存時驗證 schema 本身合法） |
+| `miss_reply` | string | `""` | 未命中話術；空 = 系統預設。`json` 格式時必須是 JSON 物件字面值（並符合 `output_schema`），空則用平台預設 `{"status":"out_of_scope","category":"unclassified","answer":""}` |
+| `output_text_field` | string（≤64） | `answer` | `json` 時文字通路（LINE 回覆、widget 泡泡）顯示的欄位；缺或非字串時顯示整段 JSON |
+
+值域錯誤回 `400`。`json` 格式在 B / C 級供應商驗證失敗會重試一次，仍失敗回 `miss_reply` 並在 trace 記 `structured_output`（status=`fallback`）節點。
+
+## LLM
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| GET | `/llm/structured-output-capability?provider=&model=` | 供應商 × 模型的 JSON 結構化輸出能力等級 | Yes（租戶使用者） |
+
+**Response**
+```json
+{ "provider": "google", "model": "gemini-3.7-flash", "tier": "native_schema", "note": "Gemini 1.5+ 支援 responseSchema：API 端保證符合 schema" }
+```
+
+`tier`：`native_schema`（A：API 原生 schema）/ `json_object`（B：只能要求 JSON 物件，schema 進 prompt、系統驗證）/ `prompt_only`（C：純 prompt 約束 + 系統驗證）。能力表核對日期 2026-09-04，維護於 `src/domain/llm/structured_output.py`。
+
 ## Conversation
 
 | Method | Path | Description | Auth |

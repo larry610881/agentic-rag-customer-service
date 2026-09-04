@@ -5974,3 +5974,22 @@ graph TD
 - 平台 bounds 未含 weight_* / max_level_*，前端硬編 0–50 / 0–4 與後端 `_normalize` 對齊；後端改上限前端不會跟。→ bounds 補齊 → 優先級：低。
 
 **延伸學習**：Sparse override（只存差異）是設定系統與 PATCH 語意的共同基礎；前端把「差異」當一等狀態，後端才不用猜哪些鍵是使用者的意圖。
+
+## 2026-09-04 — 知識庫問答模式與結構化輸出：第三個 profile、能力分級、單一 finalize 助手（Issue #70）
+
+**背景**：3D 虛擬展串接備案只要「檢索 → 一次生成 → JSON」，而既有 fast 模式未命中會升級 ReAct、輸出格式只能靠 prompt。要在不另開管線的前提下產品化「只需要知識庫查詢」的使用者。
+
+**做得好**：
+1. **第三個 profile 而非一堆開關**：`kb` = fast 檢索 + 未命中回 miss_reply（不升級、不進生成）+ 無工具 + 記憶/分類器全跳過。沿用 #66「profile 是一組值得一起切換的預設」的判準，快照白名單自動涵蓋。
+2. **能力分級放 domain，強制放 infrastructure**：`domain/llm/structured_output.py` 只回答「這家×這個模型能保證到什麼程度」（native_schema / json_object / prompt_only），provider 服務依等級決定 response_format / output_config / prompt 附 schema。UI 讀同一張表顯示徽章，前後端不會各說各話。
+3. **一個 finalize 助手、三通路共用**：剝圍欄 → 擷取第一個平衡物件 → schema 驗證 → 一次修復重試 → miss_reply，web / widget / LINE 都呼叫 `application/agent/output_format.py`；LINE 順手把自己那份 `_try_direct_retrieval` 拆掉，快速道呼叫點又少一份（channel-parity 債務 #3 前進一步）。
+4. **strict 偵測相容才開**：OpenAI/Gemini 的 strict 要求每層 additionalProperties:false + 全 required，客戶 schema 不合規會 400；`is_strict_compatible` 先判斷再決定，寧可少保證不可斷。
+5. **未命中也是資料**：每次回應帶 retrieval top_score / chunk_count / threshold / miss，門檻校準不用翻 trace。
+
+**隱憂**：
+- kb 模式跳過分類器，等於少了分類器語意攻擊閘門（regex guard 仍在）。展覽場景可接受；若 kb bot 對外開放，應讓 P7 異常控管的 attack 訊號改由輸出 guard 補。→ 優先級：中。
+- 串流路徑 JSON 無法重試（token 已送出），只標 `invalid` 事件。JSON 型 bot 建議 API 走非串流。→ 文件已註明，優先級：低。
+- Anthropic `output_config` 依 skill 文件實作但未打過真 API。→ 上線前用一把 key 實測，優先級：中。
+
+**延伸學習**：Capability-based dispatch（依能力表分派而非依供應商名 if-else）與 channel-parity 的「能力旗標」是同一個思想：把「誰能做什麼」做成資料，讓新增供應商 / 通路變成加一列而不是加一個分支。
+

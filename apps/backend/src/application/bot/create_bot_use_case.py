@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 
+from src.application.bot._output_settings import validate_output_settings
 from src.domain.bot.entity import (
     Bot,
     BotLLMParams,
@@ -40,7 +41,12 @@ class CreateBotCommand:
     eval_model: str = ""
     eval_depth: str = "off"
     gate_mode: str = "off"
-    mode: str = "deep"  # Issue #66
+    mode: str = "deep"  # Issue #66 fast | deep；Issue #70 kb
+    # Issue #70：輸出格式 / schema / 未命中話術 / 文字通路顯示欄位
+    output_format: str = "text"
+    output_schema: dict | None = None
+    miss_reply: str = ""
+    output_text_field: str = "answer"
     gate_soft_threshold: float = 0.8
     gate_repeats: int = 3
     gate_auto_publish: bool = False
@@ -95,6 +101,14 @@ class CreateBotUseCase:
         self._encryption = encryption_service
 
     async def execute(self, command: CreateBotCommand) -> Bot:
+        # Issue #70 — mode / output_format / schema / miss_reply 值域
+        validate_output_settings(
+            mode=command.mode,
+            output_format=command.output_format,
+            output_schema=command.output_schema,
+            miss_reply=command.miss_reply,
+            output_text_field=command.output_text_field,
+        )
         # Issue #43 — validate retrieval modes (at least 1)
         try:
             validate_modes(list(command.rag_retrieval_modes))
@@ -143,6 +157,10 @@ class CreateBotUseCase:
             eval_depth=command.eval_depth,
             gate_mode=command.gate_mode,
             mode=command.mode,
+            output_format=command.output_format,
+            output_schema=dict(command.output_schema) if command.output_schema else None,
+            miss_reply=command.miss_reply,
+            output_text_field=command.output_text_field,
             gate_soft_threshold=command.gate_soft_threshold,
             gate_repeats=command.gate_repeats,
             gate_auto_publish=command.gate_auto_publish,

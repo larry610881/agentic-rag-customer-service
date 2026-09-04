@@ -421,6 +421,11 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
 
         application.include_router(bot_config_version_router)
         application.include_router(worker_router)
+        # Issue #70：供應商 × 模型 → JSON 結構化輸出能力等級（前端提醒用）
+        from src.interfaces.api.llm_capability_router import (
+            router as llm_capability_router,
+        )
+        application.include_router(llm_capability_router)
 
         from src.interfaces.api.admin_router import router as admin_router
         from src.interfaces.api.feedback_router import router as feedback_router

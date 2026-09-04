@@ -64,6 +64,18 @@ class BotModel(Base):
     mode: Mapped[str] = mapped_column(
         String(10), nullable=False, default="deep", server_default="deep"
     )
+    # Issue #70 — 輸出格式 / schema / 未命中話術 / 文字通路顯示欄位
+    # （migration: add_bot_output_format.sql）
+    output_format: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="text", server_default="text"
+    )
+    output_schema: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    miss_reply: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    output_text_field: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="answer", server_default="answer"
+    )
     # Issue #54 Phase C — 發布閘門設定
     gate_mode: Mapped[str] = mapped_column(
         String(10), nullable=False, default="off", server_default="off"

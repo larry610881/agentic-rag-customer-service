@@ -361,6 +361,12 @@ class ReActAgentService(AgentService):
         temperature = params.get("temperature", 0.7)
         max_tokens = params.get("max_tokens", 1024)
         reasoning_effort = params.get("reasoning_effort")
+        # Issue #70：結構化輸出（只在有設定時傳遞，維持既有 get_chat_model 簽名相容）
+        structured: dict[str, Any] = {}
+        if params.get("response_schema"):
+            structured["response_schema"] = params["response_schema"]
+        if params.get("response_json_object"):
+            structured["response_json_object"] = True
 
         # Try dynamic resolution first
         if isinstance(self._llm_service, DynamicLLMServiceProxy) and provider:
@@ -373,6 +379,7 @@ class ReActAgentService(AgentService):
                     temperature=temperature,
                     max_tokens=max_tokens,
                     reasoning_effort=reasoning_effort,
+                    **structured,
                 )
 
         # Fallback: create ChatModel from provider/model directly
@@ -382,6 +389,7 @@ class ReActAgentService(AgentService):
             temperature=temperature,
             max_tokens=max_tokens,
             reasoning_effort=reasoning_effort,
+            **structured,
         )
 
     @staticmethod
@@ -391,15 +399,25 @@ class ReActAgentService(AgentService):
         temperature: float = 0.7,
         max_tokens: int = 1024,
         reasoning_effort: str | None = None,
+        response_schema: dict | None = None,
+        response_json_object: bool = False,
     ) -> Any:
         """Create a LangChain ChatModel from provider and model name."""
         if provider in ("anthropic", "claude"):
             from langchain_anthropic import ChatAnthropic
-            return ChatAnthropic(
-                model=model or "claude-sonnet-4-20250514",
-                temperature=temperature,
-                max_tokens=max_tokens,
+
+            from src.infrastructure.llm.anthropic_llm_service import (
+                anthropic_output_config,
             )
+            anthropic_kwargs: dict[str, Any] = {
+                "model": model or "claude-sonnet-4-20250514",
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            output_config = anthropic_output_config(response_schema)
+            if output_config is not None:
+                anthropic_kwargs["output_config"] = output_config  # Issue #70
+            return ChatAnthropic(**anthropic_kwargs)
 
         # Default to OpenAI-compatible
         import os
@@ -431,6 +449,7 @@ class ReActAgentService(AgentService):
         # 只在模型×tools 組合合法時夾帶（gpt-5 系列 tools 場景僅 'none'，
         # 線上實證 400），不合法的值靜默略過 — 寧可慢不可斷。
         from src.infrastructure.llm.openai_llm_service import (
+            openai_response_format,
             reasoning_effort_allowed,
         )
         if reasoning_effort:
@@ -442,6 +461,10 @@ class ReActAgentService(AgentService):
                     model=kwargs["model"],
                     requested=reasoning_effort,
                 )
+        # Issue #70：結構化輸出（OpenAI 相容端點）
+        response_format = openai_response_format(response_schema, response_json_object)
+        if response_format is not None:
+            kwargs["model_kwargs"] = {"response_format": response_format}
 
         return ChatOpenAI(**kwargs)
 
@@ -455,7 +478,9 @@ class ReActAgentService(AgentService):
         """Build a ReAct StateGraph with agent ↔ tools loop."""
         import time
 
-        model_with_tools = llm.bind_tools(tools)
+        # Issue #70：kb 模式零工具——不呼叫 bind_tools([])，避免送出空 tools 陣列
+        # （部分供應商對空 tools 回 400；也讓 gpt-5 系列 reasoning_effort 不被 gate 掉）
+        model_with_tools = llm.bind_tools(tools) if tools else llm
         call_count = 0
         # Track last agent_llm node_id for parent linking
         last_agent_node_id: str = ""

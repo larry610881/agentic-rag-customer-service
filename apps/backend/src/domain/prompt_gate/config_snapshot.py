@@ -10,6 +10,7 @@ overlay 還原時以 registry_id 對回現行加密值。
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 
 from src.domain.bot.entity import Bot, BotMcpBinding, ToolRagConfig
@@ -43,6 +44,11 @@ _SCALAR_FIELDS = (
     "enabled_tools",
     "max_tool_calls",
     "mode",  # Issue #66：快速 / 深度 profile 影響行為，進快照
+    # Issue #70：輸出格式 / schema / 未命中話術 / 文字欄位皆影響回覆行為，進快照
+    "output_format",
+    "output_schema",
+    "miss_reply",
+    "output_text_field",
     "memory_enabled",
     "memory_extraction_threshold",
     "knowledge_base_ids",
@@ -70,6 +76,15 @@ class SnapshotApplyResult:
 
     applied: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+
+
+def _copy_value(value: object) -> object:
+    """list / dict 欄位（如 output_schema）取副本，避免快照與實體共用可變物件。"""
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, dict):
+        return deepcopy(value)
+    return value
 
 
 def _tool_configs_to_dict(tool_configs: dict[str, ToolRagConfig]) -> dict:
@@ -109,7 +124,7 @@ def take_snapshot(bot: Bot) -> dict:
     snapshot: dict = {}
     for f in _SCALAR_FIELDS:
         value = getattr(bot, f)
-        snapshot[f] = list(value) if isinstance(value, list) else value
+        snapshot[f] = _copy_value(value)
     snapshot["llm_params"] = {
         k: getattr(bot.llm_params, k) for k in _LLM_PARAM_FIELDS
     }
@@ -148,8 +163,7 @@ def apply_snapshot(bot: Bot, snapshot: dict) -> SnapshotApplyResult:
         if f not in snapshot:
             skipped.append(f)
             continue
-        value = snapshot[f]
-        setattr(bot, f, list(value) if isinstance(value, list) else value)
+        setattr(bot, f, _copy_value(snapshot[f]))
         applied.append(f)
 
     if "llm_params" in snapshot:

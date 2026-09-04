@@ -23,6 +23,7 @@ from src.application.bot.validate_bot_enabled_tools import (
 )
 from src.container import Container
 from src.domain.platform.value_objects import ProviderName
+from src.domain.bot.entity import VALID_BOT_MODES
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_scope
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
@@ -37,7 +38,7 @@ _VALID_EVAL_DEPTHS = {
 }
 _VALID_LLM_PROVIDERS = {p.value for p in ProviderName}
 _VALID_GATE_MODES = {"off", "warn", "block"}
-_VALID_BOT_MODES = {"fast", "deep"}  # Issue #66
+_VALID_BOT_MODES = set(VALID_BOT_MODES)  # Issue #66 fast | deep；Issue #70 kb
 def _validate_intent_routes(routes: list["IntentRouteSchema"]) -> None:
     """Validate intent routes: max 10, unique names."""
     if len(routes) > 10:
@@ -127,7 +128,12 @@ class CreateBotRequest(BaseModel):
     eval_provider: str = ""
     eval_model: str = ""
     eval_depth: str = "off"
-    mode: str = "deep"  # Issue #66：fast | deep
+    mode: str = "deep"  # Issue #66：fast | deep；Issue #70：kb（知識庫問答）
+    # Issue #70：輸出格式 text | plain_text | json（json 可附 output_schema）
+    output_format: str = "text"
+    output_schema: dict | None = None
+    miss_reply: str = ""              # 空 = 系統預設；json 格式時須為 JSON 物件
+    output_text_field: str = "answer"  # json 時文字通路顯示的欄位
     gate_mode: str = "off"
     gate_soft_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
     gate_repeats: int = Field(default=3, ge=1, le=10)
@@ -190,7 +196,11 @@ class UpdateBotRequest(BaseModel):
     eval_provider: str | None = None
     eval_model: str | None = None
     eval_depth: str | None = None
-    mode: str | None = None
+    mode: str | None = None  # fast | deep | kb
+    output_format: str | None = None
+    output_schema: dict | None = None
+    miss_reply: str | None = None
+    output_text_field: str | None = None
     gate_mode: str | None = None
     gate_soft_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     gate_repeats: int | None = Field(default=None, ge=1, le=10)
@@ -257,6 +267,10 @@ class BotResponse(BaseModel):
     eval_model: str
     eval_depth: str
     mode: str
+    output_format: str
+    output_schema: dict | None
+    miss_reply: str
+    output_text_field: str
     gate_mode: str
     gate_soft_threshold: float
     gate_repeats: int
@@ -326,6 +340,10 @@ def _to_response(bot) -> BotResponse:
         eval_model=bot.eval_model,
         eval_depth=bot.eval_depth,
         mode=bot.mode,
+        output_format=bot.output_format,
+        output_schema=bot.output_schema,
+        miss_reply=bot.miss_reply,
+        output_text_field=bot.output_text_field,
         gate_mode=bot.gate_mode,
         gate_soft_threshold=bot.gate_soft_threshold,
         gate_repeats=bot.gate_repeats,
@@ -481,6 +499,10 @@ async def create_bot(
             eval_depth=body.eval_depth,
             gate_mode=body.gate_mode,
             mode=body.mode,
+            output_format=body.output_format,
+            output_schema=body.output_schema,
+            miss_reply=body.miss_reply,
+            output_text_field=body.output_text_field,
             gate_soft_threshold=body.gate_soft_threshold,
             gate_repeats=body.gate_repeats,
             gate_auto_publish=body.gate_auto_publish,

@@ -9,8 +9,18 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, TypeVar
 from uuid import uuid4
 
+from src.application.agent.output_format import (
+    OutputSpec,
+    append_prompt_suffix,
+    finalize_with_retry,
+    merge_usage,
+    resolve_miss_reply,
+    resolve_structured_llm_params,
+    retrieval_stats,
+)
 from src.application.agent.prompt_assembler import inject_runtime_vars
 from src.application.agent.send_message_use_case import (
+    _build_structured_content,
     build_tool_rag_params_map,
 )
 from src.domain.abuse.policy import CONSERVATIVE_PROMPT_SUFFIX
@@ -447,67 +457,6 @@ class HandleWebhookUseCase:
                 pb_event, bot.tenant_id, line_service
             )
 
-    async def _try_direct_retrieval(
-        self,
-        *,
-        event: LineTextMessageEvent,
-        bot: Bot,
-        kb_id: str,
-        kb_ids: list[str],
-        system_prompt: str | None,
-        llm_params: dict,
-        rerank_metadata: dict,
-        history: list | None,
-        history_context: str,
-        router_context: str,
-        enabled_tools: list[str] | None = None,
-        tool_rag_params: dict | None = None,
-        retrieval_query: str = "",
-    ) -> "AgentResponse | None":
-        """Issue #50 workflow 快速道（Issue #61 起委派共用 DirectRetrievalService）。
-
-        回傳 None 代表升級完整 ReAct（檢索 0 筆 / 低分 / 異常）。
-        """
-        if self._direct_retrieval is None:
-            return None
-        plan = await self._direct_retrieval.plan(
-            tenant_id=bot.tenant_id,
-            bot=bot,
-            kb_id=kb_id,
-            kb_ids=kb_ids,
-            system_prompt=system_prompt,
-            enabled_tools=enabled_tools,
-            tool_rag_params=tool_rag_params,
-            user_message=event.message_text,
-            retrieval_query=retrieval_query,
-            allow_rerank=getattr(bot, "mode", "deep") != "fast",  # Issue #66
-        )
-        if plan is None:
-            return None
-        # 快速道：無檢索工具可綁 → 正常情況恰好一次 LLM 呼叫；
-        # 沿用 process_message 保留 output guard / trace / parsing 全套機制
-        result = await self._agent_service.process_message(
-            tenant_id=bot.tenant_id,
-            kb_id=kb_id,
-            user_message=event.message_text,
-            kb_ids=kb_ids,
-            system_prompt=plan.system_prompt,
-            enabled_tools=plan.enabled_tools,
-            llm_params=llm_params,
-            metadata=rerank_metadata,
-            history=history,
-            history_context=history_context,
-            router_context=router_context,
-            # 轉真人工具靠這個 URL 產生聯絡卡；漏傳 → 有文字沒按鈕
-            customer_service_url=bot.customer_service_url,
-            max_tool_calls=plan.max_tool_calls,
-            bot_id=bot.id.value,  # L9：output guard_logs 補 bot 歸因
-        )
-        # 快速道的檢索來源回填（無 tool call → agent 不會帶 sources）
-        if result is not None and not result.sources:
-            result.sources = list(plan.sources)
-        return result
-
     @staticmethod
     async def _show_loading_safe(
         line_service: LineMessagingService, user_id: str
@@ -655,6 +604,10 @@ class HandleWebhookUseCase:
             llm_params["provider_name"] = bot.llm_provider
         if bot.llm_model:
             llm_params["model"] = bot.llm_model
+        # Issue #66 fast / Issue #70 kb：bot 層級 profile
+        bot_mode = getattr(bot, "mode", "deep") or "deep"
+        is_fast_bot = bot_mode == "fast"
+        is_kb_bot = bot_mode == "kb"
 
         # Resolve MCP servers from bot bindings
         mcp_servers = None
@@ -706,7 +659,8 @@ class HandleWebhookUseCase:
         rewritten_query = ""
         classifier_attack = False
         unrouted_turn = False
-        if self._worker_config_repo and self._intent_classifier:
+        # Issue #70：kb 模式不分流、不呼叫意圖分類（與 web 通路一致）
+        if self._worker_config_repo and self._intent_classifier and not is_kb_bot:
             workers = await self._worker_config_repo.find_by_bot_id(
                 bot.id.value
             )
@@ -805,6 +759,11 @@ class HandleWebhookUseCase:
 
         # ── 收斂並行 guard 結果：命中 → 不進 agent，改用 blocked 回覆，
         # 其餘下游（persist / reply / trace）與 guard 在咽喉點命中時完全一致
+        # Issue #70：快速道 / kb 檢索 plan、結構化輸出結果（各分支共用，持久化時讀）
+        plan = None
+        output_obj: dict[str, Any] | None = None
+        display_text: str | None = None
+
         guard_result = None
         if guard_task is not None:
             guard_result = await guard_task
@@ -872,30 +831,66 @@ class HandleWebhookUseCase:
                 direct_retrieval=direct_retrieval_worker is not None,
             )
             result = None
-            is_fast_bot = getattr(bot, "mode", "deep") == "fast"
+            # Issue #70：輸出格式共用決策（與 web 同一份 helper；供應商取生效值）
+            out_spec = OutputSpec.from_bot(
+                bot,
+                provider=llm_params.get("provider_name", ""),
+                model=llm_params.get("model", ""),
+            )
+            llm_patch, prompt_suffix = resolve_structured_llm_params(out_spec)
+            llm_params = {**llm_params, **llm_patch}
+            base_kwargs: dict[str, Any] = {
+                "tenant_id": bot.tenant_id,
+                "kb_id": kb_id,
+                "user_message": event.message_text,
+                "kb_ids": kb_ids,
+                "llm_params": llm_params,
+                "history": history,
+                "history_context": history_context,
+                "router_context": router_context,
+                # 轉真人工具靠這個 URL 產生聯絡卡；漏傳 → 有文字沒按鈕
+                "customer_service_url": bot.customer_service_url,
+                "bot_id": bot.id.value,  # L9：output guard_logs 補 bot 歸因
+            }
+            gen_kwargs: dict[str, Any] | None = None
             if (
-                (direct_retrieval_worker is not None or is_fast_bot)
+                (direct_retrieval_worker is not None or is_fast_bot or is_kb_bot)
                 and self._direct_retrieval is not None
-                and kb_ids
+                and (kb_ids or is_kb_bot)
             ):
-                # Issue #50 workflow 快速道：檢索過門檻 → 單次生成；
-                # 未過門檻 / 異常 → 回傳 None，落回下方完整 ReAct（升級）
-                result = await self._try_direct_retrieval(
-                    event=event,
+                # Issue #50 workflow 快速道（Issue #61 共用服務）：檢索過門檻 → 單次
+                # 生成；未過門檻 / 異常 → None → 落回完整 ReAct（升級）。
+                # Issue #70 kb：knowledge_only，未命中回 miss plan（固定話術、不生成）
+                plan = await self._direct_retrieval.plan(
+                    tenant_id=bot.tenant_id,
                     bot=bot,
                     kb_id=kb_id,
                     kb_ids=kb_ids,
                     system_prompt=system_prompt,
-                    llm_params=llm_params,
-                    rerank_metadata=rerank_metadata,
-                    history=history,
-                    history_context=history_context,
-                    router_context=router_context,
                     enabled_tools=enabled_tools,
                     tool_rag_params=tool_rag_params,
+                    user_message=event.message_text,
                     retrieval_query=rewritten_query,
+                    allow_rerank=not is_fast_bot and not is_kb_bot,  # Issue #66 / #70
+                    knowledge_only=is_kb_bot,
                 )
-            if result is None:
+                if plan is not None and getattr(plan, "miss", False):
+                    miss = resolve_miss_reply(out_spec)
+                    result = AgentResponse(answer=miss.text)
+                    output_obj, display_text = miss.parsed, miss.display_text
+                elif plan is not None:
+                    # 快速道：無檢索工具可綁 → 正常情況恰好一次 LLM 呼叫；
+                    # 沿用 process_message 保留 output guard / trace / parsing 全套機制
+                    gen_kwargs = {
+                        **base_kwargs,
+                        "system_prompt": append_prompt_suffix(
+                            plan.system_prompt, prompt_suffix
+                        ),
+                        "enabled_tools": plan.enabled_tools,
+                        "metadata": rerank_metadata,
+                        "max_tool_calls": plan.max_tool_calls,
+                    }
+            if result is None and gen_kwargs is None:
                 if is_fast_bot:
                     # Issue #66：fast profile 升級 ReAct 受約束——工具上限 2、無 rerank
                     max_tool_calls = min(int(max_tool_calls or 5), 2)
@@ -904,26 +899,38 @@ class HandleWebhookUseCase:
                         "rerank_enabled": False,
                         "rag_retrieval_modes": ["raw"],
                     }
-                result = await self._agent_service.process_message(
-                    tenant_id=bot.tenant_id,
-                    kb_id=kb_id,
-                    user_message=event.message_text,
-                    kb_ids=kb_ids,
-                    system_prompt=system_prompt,
-                    enabled_tools=enabled_tools,
-                    llm_params=llm_params,
-                    metadata=rerank_metadata,
-                    history=history,
-                    history_context=history_context,
-                    router_context=router_context,
-                    rag_top_k=bot.llm_params.rag_top_k,
-                    rag_score_threshold=bot.llm_params.rag_score_threshold,
-                    tool_rag_params=tool_rag_params,
-                    customer_service_url=bot.customer_service_url,
-                    mcp_servers=mcp_servers,
-                    max_tool_calls=max_tool_calls,
-                    bot_id=bot.id.value,  # L9：output guard_logs 補 bot 歸因
-                )
+                gen_kwargs = {
+                    **base_kwargs,
+                    "system_prompt": append_prompt_suffix(system_prompt, prompt_suffix),
+                    "enabled_tools": enabled_tools,
+                    "metadata": rerank_metadata,
+                    "rag_top_k": bot.llm_params.rag_top_k,
+                    "rag_score_threshold": bot.llm_params.rag_score_threshold,
+                    "tool_rag_params": tool_rag_params,
+                    "mcp_servers": mcp_servers,
+                    "max_tool_calls": max_tool_calls,
+                }
+            if gen_kwargs is not None:
+                result = await self._agent_service.process_message(**gen_kwargs)
+                # 快速道的檢索來源回填（無 tool call → agent 不會帶 sources）
+                if plan is not None and not result.sources:
+                    result.sources = list(plan.sources)
+                _gen = gen_kwargs
+
+                async def _retry(instruction: str) -> str:
+                    second = await self._agent_service.process_message(**{
+                        **_gen,
+                        "system_prompt": append_prompt_suffix(
+                            _gen["system_prompt"], instruction
+                        ),
+                    })
+                    merge_usage(result, second)
+                    return second.answer
+
+                # json：驗證 → 失敗重試一次 → 仍失敗回未命中話術；plain_text：剝 Markdown
+                fin = await finalize_with_retry(out_spec, result.answer, retry=_retry)
+                result.answer = fin.text
+                output_obj, display_text = fin.parsed, fin.display_text
         t1 = time.monotonic()
 
         # Issue #57：trace 不在此 finish——reply 推送與持久化也要成為節點，
@@ -949,11 +956,17 @@ class HandleWebhookUseCase:
                 s if isinstance(s, dict) else s.to_dict()
                 for s in result.sources
             ] if result.sources else None,
+            # Issue #70：json 解析物件 / 文字通路顯示欄位 / 檢索統計（與 web 同形）
+            structured_content=_build_structured_content(
+                contact=None, sources=None, output=output_obj,
+                display_text=display_text, retrieval=retrieval_stats(plan),
+            ),
         )
 
         # Build reply text — optionally append sources
         # LINE 純文字通路：清除 LLM 殘留的 Markdown 符號（prompt 約束的安全網）
-        reply_text = strip_markdown_for_line(result.answer)
+        # Issue #70：json 格式顯示 output_text_field 欄位（缺則整段 JSON）
+        reply_text = strip_markdown_for_line(display_text or result.answer)
         if bot.line_show_sources and result.sources:
             source_lines = _format_line_source_lines(result.sources)
             reply_text += "\n\n📚 參考來源：\n" + "\n".join(source_lines)

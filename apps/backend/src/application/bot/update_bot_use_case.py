@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
+from src.application.bot._output_settings import validate_output_settings
 from src.application.bot._tenant_guard import ensure_bot_tenant
 from src.application.prompt_gate.static_checks import check_prompt_fields
 from src.domain.bot.entity import (
-    VALID_BOT_MODES,
     Bot,
     BotMcpBinding,
     IntentRoute,
@@ -69,7 +69,12 @@ class UpdateBotCommand:
     eval_model: object = _UNSET
     eval_depth: object = _UNSET
     gate_mode: object = _UNSET
-    mode: object = _UNSET  # Issue #66：fast | deep
+    mode: object = _UNSET  # Issue #66：fast | deep；Issue #70：kb
+    # Issue #70：輸出格式 / schema / 未命中話術 / 文字通路顯示欄位
+    output_format: object = _UNSET
+    output_schema: object = _UNSET
+    miss_reply: object = _UNSET
+    output_text_field: object = _UNSET
     gate_soft_threshold: object = _UNSET
     gate_repeats: object = _UNSET
     gate_auto_publish: object = _UNSET
@@ -134,10 +139,20 @@ class UpdateBotUseCase:
     @staticmethod
     def _apply_updates(bot: Bot, command: UpdateBotCommand) -> None:
         """Apply non-_UNSET fields from command to bot entity."""
-        if command.mode is not _UNSET and command.mode not in VALID_BOT_MODES:
-            raise ValidationError(
-                f"mode must be one of {list(VALID_BOT_MODES)}"
-            )
+
+        def _effective(name: str) -> object:
+            val = getattr(command, name)
+            return getattr(bot, name) if val is _UNSET else val
+
+        # Issue #70：以「更新後的生效組合」驗證（例：切到 json 但既有 miss_reply
+        # 是純文字 → 拒絕），在任何欄位寫入實體之前
+        validate_output_settings(
+            mode=_effective("mode"),
+            output_format=_effective("output_format"),
+            output_schema=_effective("output_schema"),
+            miss_reply=_effective("miss_reply"),
+            output_text_field=_effective("output_text_field"),
+        )
         _DIRECT_FIELDS = (
             "name", "description", "is_active",
             "bot_prompt",
@@ -145,6 +160,7 @@ class UpdateBotUseCase:
             "eval_provider", "eval_model", "eval_depth",
             "gate_mode", "gate_soft_threshold", "gate_repeats",
             "mode",
+            "output_format", "output_schema", "miss_reply", "output_text_field",
             "gate_auto_publish", "gate_daily_limit", "gate_budget_usd",
             "max_tool_calls",
             "widget_enabled", "widget_keep_history",

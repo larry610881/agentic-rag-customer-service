@@ -131,6 +131,10 @@ class SQLAlchemyBotRepository(BotRepository):
             eval_depth=model.eval_depth or "L1",
             gate_mode=model.gate_mode or "off",
             mode=getattr(model, "mode", None) or "deep",
+            output_format=getattr(model, "output_format", None) or "text",
+            output_schema=dict(model.output_schema) if model.output_schema else None,
+            miss_reply=getattr(model, "miss_reply", None) or "",
+            output_text_field=getattr(model, "output_text_field", None) or "answer",
             gate_soft_threshold=model.gate_soft_threshold,
             gate_repeats=model.gate_repeats,
             gate_auto_publish=model.gate_auto_publish,
@@ -263,6 +267,10 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.eval_depth = bot.eval_depth
                 existing.gate_mode = bot.gate_mode
                 existing.mode = bot.mode
+                existing.output_format = bot.output_format
+                existing.output_schema = bot.output_schema
+                existing.miss_reply = bot.miss_reply
+                existing.output_text_field = bot.output_text_field
                 existing.gate_soft_threshold = bot.gate_soft_threshold
                 existing.gate_repeats = bot.gate_repeats
                 existing.gate_auto_publish = bot.gate_auto_publish
@@ -353,6 +361,10 @@ class SQLAlchemyBotRepository(BotRepository):
                     eval_depth=bot.eval_depth,
                     gate_mode=bot.gate_mode,
                     mode=bot.mode,
+                    output_format=bot.output_format,
+                    output_schema=bot.output_schema,
+                    miss_reply=bot.miss_reply,
+                    output_text_field=bot.output_text_field,
                     gate_soft_threshold=bot.gate_soft_threshold,
                     gate_repeats=bot.gate_repeats,
                     gate_auto_publish=bot.gate_auto_publish,
