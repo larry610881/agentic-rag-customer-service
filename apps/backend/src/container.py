@@ -3,6 +3,14 @@ from dependency_injector import containers, providers
 
 from src.application.abuse.abuse_alerts import AbuseAlertService
 from src.application.abuse.abuse_control_service import AbuseControlService
+from src.application.abuse.abuse_settings_use_cases import (
+    CachedAbusePolicyProvider,
+    GetAbuseSettingsOverviewUseCase,
+    GetTenantAbuseSettingsUseCase,
+    ListAbuseControlsUseCase,
+    ReleaseAbuseControlUseCase,
+    UpdateAbuseSettingsUseCase,
+)
 from src.application.agent.direct_retrieval_service import (
     DirectRetrievalService,
 )
@@ -387,7 +395,6 @@ from src.application.usage.query_monthly_usage_use_case import QueryMonthlyUsage
 from src.application.usage.query_usage_use_case import QueryUsageUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.config import Settings
-from src.domain.abuse.policy import AbuseMode, AbusePolicy
 from src.domain.agent.team_supervisor import TeamSupervisor
 from src.domain.auth.login_attempt_tracker import LoginLockoutPolicy
 from src.infrastructure.abuse.redis_abuse_score_store import RedisAbuseScoreStore
@@ -423,6 +430,9 @@ from src.infrastructure.db.engine import (
     async_session_factory as _async_session_factory,
 )
 from src.infrastructure.db.health_repository import HealthRepository
+from src.infrastructure.db.repositories.abuse_settings_repository import (
+    SQLAlchemyAbuseSettingsRepository,
+)
 from src.infrastructure.db.repositories.api_key_repository import (
     SQLAlchemyApiKeyRepository,
 )
@@ -672,6 +682,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.health_router",
             "src.interfaces.api.auth_router",
             "src.interfaces.api.api_key_router",
+            "src.interfaces.api.abuse_admin_router",
             "src.interfaces.api.tenant_router",
             "src.interfaces.api.knowledge_base_router",
             "src.interfaces.api.document_router",
@@ -783,15 +794,44 @@ class Container(containers.DeclarativeContainer):
         store=abuse_score_store,
         publish=providers.Object(dispatch_abuse_notification),
     )
+    # P7c：設定三層（platform / profile / tenant，僅 system_admin 可改），每租戶快取 60 秒
+    abuse_settings_repository = providers.Factory(
+        SQLAlchemyAbuseSettingsRepository,
+        session=db_session,
+    )
+    abuse_policy_provider = providers.Singleton(
+        CachedAbusePolicyProvider,
+        repo_factory=abuse_settings_repository.provider,
+        ttl_seconds=60,
+        base_mode_from_env=providers.Callable(
+            lambda cfg: cfg.abuse_control_mode, config
+        ),
+    )
     abuse_control_service = providers.Singleton(
         AbuseControlService,
         store=abuse_score_store,
         alerts=abuse_alert_service,
-        policy=providers.Callable(
-            lambda cfg: AbusePolicy(mode=AbuseMode(cfg.abuse_control_mode)), config
-        ),
+        policy=abuse_policy_provider,
         audit=audit_recorder,
         enabled=providers.Callable(lambda cfg: cfg.abuse_control_enabled, config),
+    )
+    get_abuse_settings_overview_use_case = providers.Factory(
+        GetAbuseSettingsOverviewUseCase, repo=abuse_settings_repository,
+    )
+    get_tenant_abuse_settings_use_case = providers.Factory(
+        GetTenantAbuseSettingsUseCase, repo=abuse_settings_repository,
+    )
+    update_abuse_settings_use_case = providers.Factory(
+        UpdateAbuseSettingsUseCase,
+        repo=abuse_settings_repository,
+        provider=abuse_policy_provider,
+        audit=audit_recorder,
+    )
+    list_abuse_controls_use_case = providers.Factory(
+        ListAbuseControlsUseCase, store=abuse_score_store,
+    )
+    release_abuse_control_use_case = providers.Factory(
+        ReleaseAbuseControlUseCase, control_service=abuse_control_service,
     )
 
     # Issue #67 P4：widget 訪客身分由伺服器簽發

@@ -98,6 +98,10 @@ class AbusePolicy:
     slow_requests_per_minute: int = 5  # L2 速率
     slow_delay_seconds: float = 2.0    # L2 回覆延遲
     line_silent_on_cooldown: bool = False
+    enabled: bool = True               # 租戶可關（fail-open 與稽核不可關）
+    # P7d：IP 聚合層（只當最後防線；每租戶可關、可設白名單）
+    ip_layer_enabled: bool = True
+    ip_allowlist: list[str] = field(default_factory=list)
 
     def level_for(self, score: float, kind: SubjectKind) -> AbuseLevel:
         level = 0

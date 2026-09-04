@@ -5,8 +5,8 @@
 儲存失效一律 fail-open（放行、記 log）。升級寫 AuditRecorder。
 """
 
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 import structlog
 
@@ -27,6 +27,7 @@ logger = structlog.get_logger(__name__)
 
 AUDIT_ENTITY = "abuse_control"
 PolicyProvider = Callable[[str], AbusePolicy]
+AsyncPolicyProvider = Callable[[str], Awaitable[AbusePolicy]]
 
 
 class AbuseBlockedError(DomainException):
@@ -56,7 +57,7 @@ class AbuseControlService:
     def __init__(
         self,
         store: AbuseScoreStore,
-        policy: AbusePolicy | PolicyProvider,
+        policy: AbusePolicy | PolicyProvider | Any,
         audit: Any | None = None,
         enabled: bool = True,
         alerts: Any | None = None,
@@ -68,10 +69,18 @@ class AbuseControlService:
         # Issue #68 P7c：L3+/fail-open/突增 告警（AbuseAlertService，永不拋例外）
         self._alerts = alerts
 
-    def policy_for(self, tenant_id: str) -> AbusePolicy:
-        if callable(self._policy):
-            return self._policy(tenant_id)
-        return self._policy
+    async def policy_for(self, tenant_id: str) -> AbusePolicy:
+        """同步 policy / 同步 provider / 非同步 provider（P7c：每租戶設定三層）皆可。"""
+        source = self._policy
+        if hasattr(source, "policy_for"):
+            resolved = await source.policy_for(tenant_id)  # CachedAbusePolicyProvider
+            return cast(AbusePolicy, resolved)
+        if callable(source):
+            result = source(tenant_id)
+            if hasattr(result, "__await__"):
+                result = await result
+            return cast(AbusePolicy, result)
+        return cast(AbusePolicy, source)
 
     # ------------------------------------------------------------------ read
 
@@ -79,7 +88,9 @@ class AbuseControlService:
         """回合開始前：目前等級（鎖優先，其次由分數推算）。失效 → 放行。"""
         if not self._enabled:
             return NO_ABUSE
-        policy = self.policy_for(tenant_id)
+        policy = await self.policy_for(tenant_id)
+        if not policy.enabled:
+            return NO_ABUSE
         key = subject.key(tenant_id)
         try:
             locked = await self._store.get_level(key)
@@ -112,7 +123,9 @@ class AbuseControlService:
         """回合結束（或訊號發生）時加分；跨門檻即升級並寫稽核。失效 → 放行。"""
         if not self._enabled:
             return NO_ABUSE
-        policy = self.policy_for(tenant_id)
+        policy = await self.policy_for(tenant_id)
+        if not policy.enabled:
+            return NO_ABUSE
         key = subject.key(tenant_id)
         signals: list[AbuseSignal] = [
             sig for sig, hit in (

@@ -79,6 +79,16 @@ CREATE TABLE public.audit_logs (
 );
 
 
+CREATE TABLE public.abuse_settings (
+    id character varying(36) NOT NULL,
+    scope_kind character varying(20) NOT NULL,
+    scope_id character varying(64) NOT NULL,
+    overrides json DEFAULT '{}'::json NOT NULL,
+    updated_by character varying(36),
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
 CREATE TABLE public.agent_execution_traces (
     id character varying(36) NOT NULL,
     trace_id character varying(36) NOT NULL,
@@ -1901,6 +1911,14 @@ ALTER TABLE ONLY public.bot_config_versions
 -- Issue #60 — config_snapshots / audit_logs 主鍵與索引
 ALTER TABLE ONLY public.config_snapshots
     ADD CONSTRAINT config_snapshots_pkey PRIMARY KEY (hash);
+ALTER TABLE ONLY public.abuse_settings
+    ADD CONSTRAINT abuse_settings_pkey PRIMARY KEY (id);
+
+
+ALTER TABLE ONLY public.abuse_settings
+    ADD CONSTRAINT uq_abuse_settings_scope UNIQUE (scope_kind, scope_id);
+
+
 ALTER TABLE ONLY public.api_keys
     ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);
 

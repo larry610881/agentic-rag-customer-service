@@ -76,3 +76,17 @@ class InMemoryAbuseScoreStore(AbuseScoreStore):
     async def reset_counter(self, key: str) -> None:
         self._check()
         self._counters.pop(key, None)
+
+    async def list_locked(self, prefix: str) -> list[tuple[str, int, int]]:
+        self._check()
+        now = self._clock()
+        out: list[tuple[str, int, int]] = []
+        for lvl_key, (level, until) in list(self._levels.items()):
+            if not lvl_key.startswith(prefix):
+                continue
+            remaining = until - now
+            if remaining <= 0:
+                self._levels.pop(lvl_key, None)
+                continue
+            out.append((lvl_key[: -len(":lvl")], level, int(remaining) or 1))
+        return out

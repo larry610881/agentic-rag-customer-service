@@ -395,6 +395,9 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
 
         application.include_router(auth_router)
         application.include_router(api_key_router)
+        from src.interfaces.api.abuse_admin_router import router as abuse_admin_router
+
+        application.include_router(abuse_admin_router)
         application.include_router(tenant_router)
         application.include_router(kb_router)
         application.include_router(document_router)

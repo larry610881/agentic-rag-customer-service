@@ -69,3 +69,15 @@ class RedisAbuseScoreStore(AbuseScoreStore):
 
     async def reset_counter(self, key: str) -> None:
         await self._redis.delete(key)
+
+    async def list_locked(self, prefix: str) -> list[tuple[str, int, int]]:
+        out: list[tuple[str, int, int]] = []
+        async for raw_key in self._redis.scan_iter(match=f"{prefix}*:lvl", count=200):
+            key = raw_key.decode() if isinstance(raw_key, bytes) else str(raw_key)
+            raw = await self._redis.get(key)
+            if raw is None:
+                continue
+            ttl = await self._redis.ttl(key)
+            level = int(raw.decode() if isinstance(raw, bytes) else raw)
+            out.append((key[: -len(":lvl")], level, max(1, int(ttl or 0))))
+        return out

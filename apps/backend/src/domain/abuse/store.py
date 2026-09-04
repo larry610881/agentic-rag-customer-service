@@ -34,4 +34,9 @@ class AbuseScoreStore(ABC):
     async def incr_counter(self, key: str, ttl_seconds: int) -> int: ...
 
     @abstractmethod
+    async def list_locked(self, prefix: str) -> list[tuple[str, int, int]]:
+        """列出 prefix 底下所有等級鎖：(主體 key, level, 剩餘秒)。"""
+        ...
+
+    @abstractmethod
     async def reset_counter(self, key: str) -> None: ...

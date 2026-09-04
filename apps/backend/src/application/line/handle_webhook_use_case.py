@@ -1224,7 +1224,7 @@ class HandleWebhookUseCase:
         decision = await self._abuse_control.evaluate(bot.tenant_id, subject)
         AgentTraceCollector.set_abuse_level(int(decision.effective_level))
         if decision.blocked or decision.fixed_reply:
-            policy = self._abuse_control.policy_for(bot.tenant_id)
+            policy = await self._abuse_control.policy_for(bot.tenant_id)
             if decision.blocked and policy.line_silent_on_cooldown:
                 return None
             try:
