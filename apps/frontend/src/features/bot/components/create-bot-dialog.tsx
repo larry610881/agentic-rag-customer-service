@@ -15,10 +15,21 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useCreateBot } from "@/hooks/queries/use-bots";
+import type { CreateBotRequest } from "@/types/bot";
+import {
+  CREATE_BOT_PRESET_LABELS,
+  KB_QA_BOT_PRESET,
+  type CreateBotPreset,
+} from "@/features/bot/bot-presets";
+
+const PRESET_OPTIONS: CreateBotPreset[] = ["default", "kb_qa"];
 
 const createBotSchema = z.object({
   name: z.string().min(1, "請輸入名稱"),
   description: z.string().optional(),
+  // Issue #70 — 快速範本；default 維持原本建立路徑（不帶額外欄位）。
+  // 不用 .default()：zod v4 會讓 input/output 型別分歧、zodResolver 型別報錯，改以 defaultValues 給值。
+  preset: z.enum(["default", "kb_qa"]),
 });
 
 type CreateBotFormValues = z.infer<typeof createBotSchema>;
@@ -31,14 +42,22 @@ export function CreateBotDialog() {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<CreateBotFormValues>({
     resolver: zodResolver(createBotSchema),
+    defaultValues: { preset: "default" },
   });
+  const preset = watch("preset");
 
   const onSubmit = (data: CreateBotFormValues) => {
+    const payload: CreateBotRequest = {
+      name: data.name,
+      description: data.description,
+      ...(data.preset === "kb_qa" ? KB_QA_BOT_PRESET : {}),
+    };
     createMutation.mutate(
-      { name: data.name, description: data.description },
+      payload,
       {
         onSuccess: () => {
           reset();
@@ -79,6 +98,42 @@ export function CreateBotDialog() {
               {...register("description")}
               placeholder="描述機器人的用途..."
             />
+          </div>
+          {/* Issue #70 — 快速範本 */}
+          <div className="flex flex-col gap-2">
+            <Label>快速範本</Label>
+            <div
+              role="radiogroup"
+              aria-label="快速範本"
+              className="grid gap-2 sm:grid-cols-2"
+            >
+              {PRESET_OPTIONS.map((opt) => {
+                const meta = CREATE_BOT_PRESET_LABELS[opt];
+                const checked = preset === opt;
+                return (
+                  <label
+                    key={opt}
+                    className={
+                      "flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 transition-colors " +
+                      (checked ? "border-primary bg-primary/5" : "hover:bg-muted/50")
+                    }
+                  >
+                    <input
+                      type="radio"
+                      value={opt}
+                      className="mt-1 accent-primary"
+                      {...register("preset")}
+                    />
+                    <span className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium">{meta.label}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {meta.hint}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
           <Button type="submit" disabled={createMutation.isPending}>
             {createMutation.isPending ? "建立中..." : "建立"}

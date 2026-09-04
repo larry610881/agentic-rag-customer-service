@@ -67,11 +67,34 @@ import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
 import type {
   Bot,
   BotMode,
+  BotOutputSchema,
+  OutputFormat,
   RetrievalMode,
   ToolRagConfig,
   UpdateBotRequest,
 } from "@/types/bot";
-import { RETRIEVAL_MODES } from "@/types/bot";
+import { OUTPUT_FORMATS, RETRIEVAL_MODES } from "@/types/bot";
+import {
+  DEFAULT_MISS_REPLY,
+  DEFAULT_MISS_REPLY_JSON,
+  KB_MODE_RECOMMENDED_SCORE_THRESHOLD,
+  KB_MODE_THRESHOLD_HINT,
+  OUTPUT_FORMAT_LABELS,
+} from "@/features/bot/output-format-labels";
+import {
+  OUTPUT_SCHEMA_TEMPLATES,
+  OUTPUT_SCHEMA_TEMPLATE_HINT,
+  extractSchemaPropertyNames,
+  serializeOutputSchema,
+} from "@/features/bot/output-schema-templates";
+import { StructuredOutputCapabilityBadge } from "./structured-output-capability-badge";
+
+/** 純文字通路顯示欄位的預設值（schema 有 answer 時優先） */
+const DEFAULT_OUTPUT_TEXT_FIELD = "answer";
+
+/** 原生 select 的外觀對齊 Input（Radix Select 在 jsdom 不可測，且此處選項來自 schema 動態產生） */
+const NATIVE_SELECT_CLASS =
+  "h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
 import type { McpToolInfo } from "@/types/mcp";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { McpBindingsSection } from "./mcp-bindings-section";
@@ -138,8 +161,14 @@ const botFormSchema = z.object({
   ),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
   base_prompt: z.string().default(""),
-  // Issue #66 — 推理模式（fast = 快速道 / deep = 深度道）
-  mode: z.enum(["fast", "deep"]).default("deep"),
+  // Issue #66 / #70 — 推理模式（fast = 快速道 / deep = 深度道 / kb = 知識庫問答）
+  mode: z.enum(["fast", "deep", "kb"]).default("deep"),
+  // Issue #70 — 未命中話術（空 = 平台預設）；output_format=json 時須為合法 JSON
+  miss_reply: z.string().max(1000).default(""),
+  // Issue #70 — 輸出格式；schema 以文字保存於表單，送出時才 parse 成物件
+  output_format: z.enum(["text", "plain_text", "json"]).default("text"),
+  output_schema_text: z.string().default(""),
+  output_text_field: z.string().max(100).default(DEFAULT_OUTPUT_TEXT_FIELD),
   // Issue #54 — 發布閘門設定（治理欄位）
   gate_mode: z.enum(["off", "warn", "block"]).default("off"),
   gate_soft_threshold: z.coerce.number().min(0).max(1).default(0.8),
@@ -192,9 +221,48 @@ const botFormSchema = z.object({
   hyde_extra_hint: z.string().max(2000).default(""),
   tool_configs: z.record(z.string(), toolRagConfigSchema).default({}),
   customer_service_url: z.string().default(""),
-});
+})
+  .superRefine((data, ctx) => {
+    if (data.output_format !== "json") return;
+    if (data.output_schema_text.trim() && !parseJsonObject(data.output_schema_text)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["output_schema_text"],
+        message: "JSON schema 必須是合法的 JSON 物件",
+      });
+    }
+    if (data.miss_reply.trim() && !isValidJson(data.miss_reply)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["miss_reply"],
+        message: "必須是合法 JSON",
+      });
+    }
+  });
 
 type BotFormValues = z.infer<typeof botFormSchema>;
+
+/** 解析成 JSON 物件（非陣列 / null / 純量）；失敗回 null */
+function parseJsonObject(text: string): BotOutputSchema | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as BotOutputSchema;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function isValidJson(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 interface BotDetailFormProps {
   bot: Bot;
@@ -503,6 +571,7 @@ function PlatformDatasetCases({
 type ModeSectionProps = {
   register: UseFormRegister<BotFormValues>;
   watch: UseFormWatch<BotFormValues>;
+  errors: FieldErrors<BotFormValues>;
 };
 
 const BOT_MODE_OPTIONS: {
@@ -520,11 +589,19 @@ const BOT_MODE_OPTIONS: {
     title: "深度道（deep）",
     description: "完整多步推理，可用全部工具與 rerank",
   },
+  {
+    value: "kb",
+    title: "知識庫問答（kb）",
+    description:
+      "只做檢索與一次生成，不用工具、不升級；未命中回固定話術；記憶 / 摘要 / 評估自動關閉",
+  },
 ];
 
-/** Issue #66 — 推理模式（fast = 快速道 / deep = 深度道） */
-function ModeSection({ register, watch }: ModeSectionProps) {
+/** Issue #66 / #70 — 推理模式（fast = 快速道 / deep = 深度道 / kb = 知識庫問答） */
+function ModeSection({ register, watch, errors }: ModeSectionProps) {
   const mode = watch("mode");
+  const outputFormat = watch("output_format");
+  const missReplyIsJson = outputFormat === "json";
   return (
     <section className="flex flex-col gap-4 rounded-lg border p-4">
       <div>
@@ -536,7 +613,7 @@ function ModeSection({ register, watch }: ModeSectionProps) {
       <div
         role="radiogroup"
         aria-label="推理模式"
-        className="grid gap-3 md:grid-cols-2"
+        className="grid gap-3 md:grid-cols-3"
       >
         {BOT_MODE_OPTIONS.map((opt) => {
           const checked = mode === opt.value;
@@ -568,6 +645,207 @@ function ModeSection({ register, watch }: ModeSectionProps) {
         <p className="text-xs text-muted-foreground">
           快速道模式下 rerank / 查詢改寫 / HyDE 會自動關閉
         </p>
+      )}
+      {mode === "kb" && (
+        <div className="flex flex-col gap-2 rounded-md border bg-muted/20 px-3 py-3">
+          <Label htmlFor="bot-miss-reply">未命中話術</Label>
+          <Textarea
+            id="bot-miss-reply"
+            rows={3}
+            placeholder={
+              missReplyIsJson ? DEFAULT_MISS_REPLY_JSON : DEFAULT_MISS_REPLY
+            }
+            {...register("miss_reply")}
+          />
+          {errors.miss_reply && (
+            <p className="text-sm text-destructive">
+              {errors.miss_reply.message}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {missReplyIsJson
+              ? "JSON 輸出時話術本身必須是合法 JSON（留空用系統預設）"
+              : "檢索分數低於門檻時直接回這段文字，不會升級推理；留空使用系統預設話術"}
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+type OutputFormatSectionProps = {
+  register: UseFormRegister<BotFormValues>;
+  watch: UseFormWatch<BotFormValues>;
+  setValue: UseFormSetValue<BotFormValues>;
+  errors: FieldErrors<BotFormValues>;
+};
+
+/** Issue #70 — 輸出格式（text / plain_text / json）+ JSON schema + 供應商能力等級提示 */
+function OutputFormatSection({
+  register,
+  watch,
+  setValue,
+  errors,
+}: OutputFormatSectionProps) {
+  const outputFormat = watch("output_format");
+  const provider = watch("llm_provider");
+  const model = watch("llm_model");
+  const schemaText = watch("output_schema_text") ?? "";
+  const outputTextField = watch("output_text_field") ?? "";
+  const [templateId, setTemplateId] = useState<string>(
+    OUTPUT_SCHEMA_TEMPLATES[0]?.id ?? "",
+  );
+
+  // schema 頂層 properties → 通路顯示欄位的候選；以 join 後字串當 effect key 避免每次 render 觸發
+  const propertyNames = extractSchemaPropertyNames(schemaText);
+  const propertyKey = propertyNames.join("\u0000");
+  useEffect(() => {
+    if (outputFormat !== "json") return;
+    const names = propertyKey ? propertyKey.split("\u0000") : [];
+    if (names.length === 0 || names.includes(outputTextField)) return;
+    const next = names.includes(DEFAULT_OUTPUT_TEXT_FIELD)
+      ? DEFAULT_OUTPUT_TEXT_FIELD
+      : names[0];
+    setValue("output_text_field", next, { shouldDirty: true });
+  }, [outputFormat, propertyKey, outputTextField, setValue]);
+
+  const handleApplyTemplate = () => {
+    const tpl = OUTPUT_SCHEMA_TEMPLATES.find((t) => t.id === templateId);
+    if (!tpl) return;
+    setValue("output_schema_text", serializeOutputSchema(tpl.schema), {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  };
+  return (
+    <section className="flex flex-col gap-4 rounded-lg border p-4">
+      <div>
+        <h3 className="text-lg font-semibold">輸出格式</h3>
+        <p className="text-xs text-muted-foreground">
+          決定回覆內容的格式；JSON 會走供應商的結構化輸出，能力依模型而異。
+        </p>
+      </div>
+      <div
+        role="radiogroup"
+        aria-label="輸出格式"
+        className="grid gap-3 md:grid-cols-3"
+      >
+        {OUTPUT_FORMATS.map((fmt: OutputFormat) => {
+          const meta = OUTPUT_FORMAT_LABELS[fmt];
+          const checked = outputFormat === fmt;
+          return (
+            <label
+              key={fmt}
+              className={
+                "flex cursor-pointer items-start gap-3 rounded-md border px-3 py-3 transition-colors " +
+                (checked ? "border-primary bg-primary/5" : "hover:bg-muted/50")
+              }
+            >
+              <input
+                type="radio"
+                value={fmt}
+                className="mt-1 accent-primary"
+                {...register("output_format")}
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">{meta.label}</span>
+                <span className="text-xs text-muted-foreground">
+                  — {meta.hint}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {outputFormat === "json" && (
+        <div className="flex flex-col gap-3 rounded-md border bg-muted/20 px-3 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label htmlFor="bot-output-schema">JSON schema（選填）</Label>
+            <StructuredOutputCapabilityBadge
+              provider={provider}
+              model={model}
+            />
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex min-w-56 flex-1 flex-col gap-1">
+              <Label htmlFor="bot-output-schema-template" className="text-xs">
+                範本
+              </Label>
+              <select
+                id="bot-output-schema-template"
+                className={NATIVE_SELECT_CLASS}
+                value={templateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+              >
+                {OUTPUT_SCHEMA_TEMPLATES.map((tpl) => (
+                  <option key={tpl.id} value={tpl.id}>
+                    {tpl.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleApplyTemplate}
+              disabled={!templateId}
+            >
+              套用範本
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {OUTPUT_SCHEMA_TEMPLATE_HINT}
+          </p>
+          <Textarea
+            id="bot-output-schema"
+            rows={8}
+            className="font-mono text-xs"
+            placeholder={'{\n  "type": "object",\n  "properties": {\n    "answer": { "type": "string" }\n  },\n  "required": ["answer"]\n}'}
+            {...register("output_schema_text")}
+          />
+          {errors.output_schema_text && (
+            <p className="text-sm text-destructive">
+              {errors.output_schema_text.message}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            留空 = 只要求合法 JSON，不驗證欄位。原生 schema 等級的模型會把 schema
+            傳給供應商；其他等級由系統驗證並重試一次。
+          </p>
+
+          {/* 通路顯示欄位 — schema 有 properties 時用下拉，否則自由輸入 */}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="bot-output-text-field">通路顯示欄位</Label>
+            {propertyNames.length > 0 ? (
+              <select
+                id="bot-output-text-field"
+                className={NATIVE_SELECT_CLASS}
+                {...register("output_text_field")}
+              >
+                {propertyNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                id="bot-output-text-field"
+                placeholder={DEFAULT_OUTPUT_TEXT_FIELD}
+                {...register("output_text_field")}
+              />
+            )}
+            {errors.output_text_field && (
+              <p className="text-sm text-destructive">
+                {errors.output_text_field.message}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              LINE / widget 等純文字通路顯示此欄位的內容；API 回完整 JSON
+            </p>
+          </div>
+        </div>
       )}
     </section>
   );
@@ -779,6 +1057,12 @@ export function BotDetailForm({
       max_tool_calls: bot.max_tool_calls ?? 5,
       base_prompt: bot.base_prompt ?? "",
       mode: bot.mode ?? "deep",
+      miss_reply: bot.miss_reply ?? "",
+      output_format: bot.output_format ?? "text",
+      output_schema_text: bot.output_schema
+        ? serializeOutputSchema(bot.output_schema)
+        : "",
+      output_text_field: bot.output_text_field ?? DEFAULT_OUTPUT_TEXT_FIELD,
       gate_mode: bot.gate_mode ?? "off",
       gate_soft_threshold: bot.gate_soft_threshold ?? 0.8,
       gate_repeats: bot.gate_repeats ?? 3,
@@ -891,6 +1175,12 @@ export function BotDetailForm({
       max_tool_calls: bot.max_tool_calls ?? 5,
       base_prompt: bot.base_prompt ?? "",
       mode: bot.mode ?? "deep",
+      miss_reply: bot.miss_reply ?? "",
+      output_format: bot.output_format ?? "text",
+      output_schema_text: bot.output_schema
+        ? serializeOutputSchema(bot.output_schema)
+        : "",
+      output_text_field: bot.output_text_field ?? DEFAULT_OUTPUT_TEXT_FIELD,
       gate_mode: bot.gate_mode ?? "off",
       gate_soft_threshold: bot.gate_soft_threshold ?? 0.8,
       gate_repeats: bot.gate_repeats ?? 3,
@@ -949,8 +1239,15 @@ export function BotDetailForm({
       return;
     }
     const originsStr = data.widget_allowed_origins as string;
+    const { output_schema_text, ...rest } = data;
+    // Issue #70 — schema 只在 json 格式有意義；zod 已保證非空時可 parse 成物件
+    const output_schema: BotOutputSchema | null =
+      data.output_format === "json" && output_schema_text.trim()
+        ? parseJsonObject(output_schema_text)
+        : null;
     const payload = {
-      ...data,
+      ...rest,
+      output_schema,
       widget_allowed_origins: originsStr
         ? originsStr
             .split("\n")
@@ -1277,8 +1574,16 @@ export function BotDetailForm({
             }}
           />
 
-          {/* Issue #66 — 推理模式 */}
-          <ModeSection register={register} watch={watch} />
+          {/* Issue #66 / #70 — 推理模式 */}
+          <ModeSection register={register} watch={watch} errors={errors} />
+
+          {/* Issue #70 — 輸出格式 */}
+          <OutputFormatSection
+            register={register}
+            watch={watch}
+            setValue={setValue}
+            errors={errors}
+          />
 
           {/* Issue #54 — 發布閘門設定（治理欄位，不受版控） */}
           <GateSettingsSection
@@ -1463,6 +1768,25 @@ export function BotDetailForm({
                   {errors.rag_score_threshold && (
                     <p className="text-sm text-destructive">
                       {errors.rag_score_threshold.message}
+                    </p>
+                  )}
+                  {watch("mode") === "kb" && (
+                    <p
+                      data-testid="kb-threshold-hint"
+                      data-tone={
+                        Number(watch("rag_score_threshold")) <
+                        KB_MODE_RECOMMENDED_SCORE_THRESHOLD
+                          ? "warning"
+                          : "info"
+                      }
+                      className={
+                        Number(watch("rag_score_threshold")) <
+                        KB_MODE_RECOMMENDED_SCORE_THRESHOLD
+                          ? "text-xs text-amber-700 dark:text-amber-300"
+                          : "text-xs text-muted-foreground"
+                      }
+                    >
+                      {KB_MODE_THRESHOLD_HINT}
                     </p>
                   )}
                 </div>

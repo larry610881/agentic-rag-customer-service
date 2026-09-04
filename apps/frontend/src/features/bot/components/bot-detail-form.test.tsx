@@ -1,10 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/test-utils";
 import { BotDetailForm } from "@/features/bot/components/bot-detail-form";
 import { mockBot } from "@/test/fixtures/bot";
 import { useAuthStore } from "@/stores/use-auth-store";
+import type { StructuredOutputCapability } from "@/types/llm-capability";
+
+// Issue #70 — 能力等級 hook 以 vi.mock 隔離，各測試自行指定 tier
+const { mockCapability } = vi.hoisted(() => ({ mockCapability: vi.fn() }));
+
+vi.mock("@/hooks/queries/use-structured-output-capability", () => ({
+  useStructuredOutputCapability: (provider?: string, model?: string) =>
+    mockCapability(provider, model),
+}));
+
+function capabilityResult(
+  tier: StructuredOutputCapability["tier"],
+  note = "",
+) {
+  return {
+    data: { provider: "openai", model: "gpt-5", tier, note },
+    isLoading: false,
+    isError: false,
+  };
+}
 
 // Mock useBuiltInTools hook — 避免 API call 拖慢/失敗
 vi.mock("@/hooks/queries/use-built-in-tools", () => ({
@@ -33,6 +53,11 @@ describe("BotDetailForm", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCapability.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+    });
     useAuthStore.setState({
       token: "test-token",
       tenantId: "tenant-1",
@@ -457,4 +482,353 @@ describe("BotDetailForm", () => {
   // dropped in commit 9f62f01. KB binding lives on the "能力" tab and is
   // covered by other test files.
 
+  // Issue #70 — 知識庫問答模式 + 輸出格式 + 能力等級提示
+  describe("kb mode & output format (Issue #70)", () => {
+    const renderForm = (bot = mockBot) =>
+      renderWithProviders(
+        <BotDetailForm
+          bot={bot}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+
+    it("should offer 知識庫問答 option and only show 未命中話術 for kb", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      const kbRadio = screen.getByRole("radio", { name: /知識庫問答（kb）/ });
+      expect(kbRadio).not.toBeChecked();
+      expect(screen.queryByLabelText("未命中話術")).not.toBeInTheDocument();
+      await user.click(kbRadio);
+      expect(kbRadio).toBeChecked();
+      const missReply = screen.getByLabelText("未命中話術");
+      expect(missReply).toHaveAttribute(
+        "placeholder",
+        "很抱歉，這個問題不在我的服務範圍內，歡迎換個方式問我。",
+      );
+      await user.click(screen.getByRole("radio", { name: /深度道（deep）/ }));
+      expect(screen.queryByLabelText("未命中話術")).not.toBeInTheDocument();
+    });
+
+    it("should reflect bot.mode = kb and miss_reply from server", () => {
+      renderForm({ ...mockBot, mode: "kb", miss_reply: "請洽客服" });
+      expect(screen.getByRole("radio", { name: /知識庫問答（kb）/ })).toBeChecked();
+      expect(screen.getByLabelText("未命中話術")).toHaveValue("請洽客服");
+    });
+
+    it("should default output_format to text and show schema textarea only for json", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      expect(screen.getByRole("radio", { name: /^一般/ })).toBeChecked();
+      expect(screen.queryByLabelText("JSON schema（選填）")).not.toBeInTheDocument();
+      await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+      expect(screen.getByLabelText("JSON schema（選填）")).toBeInTheDocument();
+      await user.click(screen.getByRole("radio", { name: /純文字/ }));
+      expect(screen.queryByLabelText("JSON schema（選填）")).not.toBeInTheDocument();
+    });
+
+    it("should prefill schema textarea from bot.output_schema", async () => {
+      renderForm({
+        ...mockBot,
+        output_format: "json",
+        output_schema: { type: "object" },
+      });
+      expect(screen.getByRole("radio", { name: /^JSON/ })).toBeChecked();
+      expect(screen.getByLabelText("JSON schema（選填）")).toHaveValue(
+        JSON.stringify({ type: "object" }, null, 2),
+      );
+    });
+
+    it("should block submit when JSON schema is not a valid JSON object", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+      const schemaInput = screen.getByLabelText("JSON schema（選填）");
+      await user.click(schemaInput);
+      await user.paste("{not json");
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      expect(
+        await screen.findByText("JSON schema 必須是合法的 JSON 物件"),
+      ).toBeInTheDocument();
+      expect(mockOnSave).not.toHaveBeenCalled();
+    });
+
+    it("should block submit when JSON schema parses to a non-object", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+      await user.click(screen.getByLabelText("JSON schema（選填）"));
+      await user.paste("[1, 2]");
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      expect(
+        await screen.findByText("JSON schema 必須是合法的 JSON 物件"),
+      ).toBeInTheDocument();
+      expect(mockOnSave).not.toHaveBeenCalled();
+    });
+
+    it("should include mode / output_format / output_schema / miss_reply in payload", async () => {
+      const user = userEvent.setup();
+      mockCapability.mockReturnValue(capabilityResult("native_schema"));
+      renderForm();
+      await user.click(screen.getByRole("radio", { name: /知識庫問答（kb）/ }));
+      await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+      await user.click(screen.getByLabelText("未命中話術"));
+      await user.paste('{"status":"out_of_scope"}');
+      await user.click(screen.getByLabelText("JSON schema（選填）"));
+      await user.paste('{"type":"object","required":["answer"]}');
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      const payload = mockOnSave.mock.calls[0][0];
+      expect(payload.mode).toBe("kb");
+      expect(payload.output_format).toBe("json");
+      expect(payload.output_schema).toEqual({
+        type: "object",
+        required: ["answer"],
+      });
+      expect(payload.miss_reply).toBe('{"status":"out_of_scope"}');
+      expect(payload).not.toHaveProperty("output_schema_text");
+    });
+
+    it("should send output_schema null when schema is empty or format is not json", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("radio", { name: /純文字/ }));
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      const payload = mockOnSave.mock.calls[0][0];
+      expect(payload.output_format).toBe("plain_text");
+      expect(payload.output_schema).toBeNull();
+      expect(payload.miss_reply).toBe("");
+      expect(payload.mode).toBe("deep");
+    });
+
+    it("should switch 未命中話術 placeholder / helper text when output_format is json", async () => {
+      const user = userEvent.setup();
+      renderForm({ ...mockBot, mode: "kb" });
+      await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+      expect(screen.getByLabelText("未命中話術")).toHaveAttribute(
+        "placeholder",
+        '{"status":"out_of_scope","category":"unclassified","answer":""}',
+      );
+      expect(
+        screen.getByText("JSON 輸出時話術本身必須是合法 JSON（留空用系統預設）"),
+      ).toBeInTheDocument();
+    });
+
+    it("should block submit when output_format is json and miss_reply is not valid JSON", async () => {
+      const user = userEvent.setup();
+      renderForm({ ...mockBot, mode: "kb" });
+      await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+      await user.click(screen.getByLabelText("未命中話術"));
+      await user.paste("不是 JSON");
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      expect(await screen.findByText("必須是合法 JSON")).toBeInTheDocument();
+      expect(mockOnSave).not.toHaveBeenCalled();
+    });
+
+    it("should allow empty miss_reply with json output_format", async () => {
+      const user = userEvent.setup();
+      renderForm({ ...mockBot, mode: "kb" });
+      await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      expect(mockOnSave.mock.calls[0][0].miss_reply).toBe("");
+    });
+
+    describe("schema templates & display field", () => {
+      const THREE_WAY_SCHEMA = {
+        type: "object",
+        additionalProperties: false,
+        required: ["status", "category", "answer"],
+        properties: {
+          status: { type: "string", enum: ["km", "out_of_scope"] },
+          category: {
+            type: "string",
+            enum: ["product-exhibit", "marketing", "store-ops", "unclassified"],
+          },
+          answer: { type: "string" },
+        },
+      };
+
+      it("should fill the schema textarea with the selected template and parse it on save", async () => {
+        const user = userEvent.setup();
+        renderForm();
+        await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+        expect(screen.getByLabelText("JSON schema（選填）")).toHaveValue("");
+        await user.selectOptions(
+          screen.getByLabelText("範本"),
+          "三分流（status / category / answer）",
+        );
+        await user.click(screen.getByRole("button", { name: "套用範本" }));
+        const textarea = screen.getByLabelText("JSON schema（選填）");
+        expect(JSON.parse((textarea as HTMLTextAreaElement).value)).toEqual(
+          THREE_WAY_SCHEMA,
+        );
+        expect(
+          screen.getByText("必填欄位與 enum 都在 schema 裡定義，供應商依能力等級強制或驗證"),
+        ).toBeInTheDocument();
+        await user.click(screen.getByRole("button", { name: /儲存/ }));
+        expect(mockOnSave).toHaveBeenCalledTimes(1);
+        expect(mockOnSave.mock.calls[0][0].output_schema).toEqual(THREE_WAY_SCHEMA);
+      });
+
+      it("should show 通路顯示欄位 as a plain input when schema has no properties", async () => {
+        const user = userEvent.setup();
+        renderForm();
+        expect(screen.queryByLabelText("通路顯示欄位")).not.toBeInTheDocument();
+        await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+        const field = screen.getByLabelText("通路顯示欄位");
+        expect(field.tagName).toBe("INPUT");
+        expect(field).toHaveValue("answer");
+        expect(
+          screen.getByText("LINE / widget 等純文字通路顯示此欄位的內容；API 回完整 JSON"),
+        ).toBeInTheDocument();
+      });
+
+      it("should offer schema property names as select options and default to answer", async () => {
+        const user = userEvent.setup();
+        renderForm();
+        await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+        await user.click(screen.getByRole("button", { name: "套用範本" }));
+        const select = screen.getByLabelText("通路顯示欄位");
+        expect(select.tagName).toBe("SELECT");
+        expect(
+          screen.getAllByRole("option").filter((o) => o.closest("select") === select)
+            .map((o) => o.textContent),
+        ).toEqual(["status", "category", "answer"]);
+        expect(select).toHaveValue("answer");
+      });
+
+      it("should fall back to the first property when schema has no answer", async () => {
+        const user = userEvent.setup();
+        renderForm();
+        await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+        await user.click(screen.getByLabelText("JSON schema（選填）"));
+        await user.paste('{"type":"object","properties":{"reply":{"type":"string"},"score":{"type":"number"}}}');
+        await waitFor(() =>
+          expect(screen.getByLabelText("通路顯示欄位")).toHaveValue("reply"),
+        );
+      });
+
+      it("should include the chosen output_text_field in the payload", async () => {
+        const user = userEvent.setup();
+        renderForm();
+        await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+        await user.click(screen.getByRole("button", { name: "套用範本" }));
+        await user.selectOptions(screen.getByLabelText("通路顯示欄位"), "category");
+        await user.click(screen.getByRole("button", { name: /儲存/ }));
+        expect(mockOnSave).toHaveBeenCalledTimes(1);
+        expect(mockOnSave.mock.calls[0][0].output_text_field).toBe("category");
+      });
+
+      it("should prefill output_text_field from the bot", async () => {
+        const user = userEvent.setup();
+        renderForm({
+          ...mockBot,
+          output_format: "json",
+          output_schema: THREE_WAY_SCHEMA,
+          output_text_field: "status",
+        });
+        expect(screen.getByLabelText("通路顯示欄位")).toHaveValue("status");
+        await user.click(screen.getByRole("button", { name: /儲存/ }));
+        expect(mockOnSave.mock.calls[0][0].output_text_field).toBe("status");
+      });
+    });
+
+    describe("kb threshold hint", () => {
+      const HINT =
+        "知識庫問答模式建議 0.5 以上（Milvus COSINE 相似度 0–1，預設 0.3 偏鬆）；低於門檻直接回未命中話術，不會升級";
+
+      it("should not show the hint for non-kb modes", async () => {
+        const user = userEvent.setup();
+        renderForm();
+        await user.click(screen.getByRole("tab", { name: "能力" }));
+        expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+      });
+
+      it("should show the hint in amber when kb threshold is below 0.5", async () => {
+        const user = userEvent.setup();
+        renderForm({ ...mockBot, mode: "kb", rag_score_threshold: 0.3 });
+        await user.click(screen.getByRole("tab", { name: "能力" }));
+        const hint = screen.getByText(HINT);
+        // data-tone 是唯一可觀察的語氣標記（顏色屬樣式），故以 testid/attr 驗證
+        expect(hint).toHaveAttribute("data-tone", "warning");
+        expect(hint.className).toContain("text-amber");
+      });
+
+      it("should show the hint in neutral tone when kb threshold is >= 0.5", async () => {
+        const user = userEvent.setup();
+        renderForm({ ...mockBot, mode: "kb", rag_score_threshold: 0.6 });
+        await user.click(screen.getByRole("tab", { name: "能力" }));
+        const hint = screen.getByText(HINT);
+        expect(hint).toHaveAttribute("data-tone", "info");
+        expect(hint.className).not.toContain("text-amber");
+      });
+
+      it("should not block submit when kb threshold is below 0.5", async () => {
+        const user = userEvent.setup();
+        renderForm({ ...mockBot, mode: "kb", rag_score_threshold: 0.3 });
+        await user.click(screen.getByRole("button", { name: /儲存/ }));
+        expect(mockOnSave).toHaveBeenCalledTimes(1);
+        expect(mockOnSave.mock.calls[0][0].rag_score_threshold).toBe(0.3);
+      });
+    });
+
+    describe("capability badge", () => {
+      const openJson = async (user: ReturnType<typeof userEvent.setup>) => {
+        await user.click(screen.getByRole("radio", { name: /^JSON/ }));
+        return screen.getByRole("status", { name: "結構化輸出能力" });
+      };
+
+      it("should query the hook with the form's current provider/model", async () => {
+        const user = userEvent.setup();
+        mockCapability.mockReturnValue(capabilityResult("native_schema"));
+        renderForm();
+        await openJson(user);
+        expect(mockCapability).toHaveBeenCalledWith("openai", "gpt-5");
+      });
+
+      it("should render green 原生 schema badge with note for native_schema", async () => {
+        const user = userEvent.setup();
+        mockCapability.mockReturnValue(
+          capabilityResult("native_schema", "OpenAI response_format json_schema"),
+        );
+        renderForm();
+        const badge = await openJson(user);
+        expect(badge).toHaveTextContent("原生 schema");
+        expect(badge.className).toContain("emerald");
+        expect(
+          screen.getByText("OpenAI response_format json_schema"),
+        ).toBeInTheDocument();
+      });
+
+      it("should render amber badge for json_object", async () => {
+        const user = userEvent.setup();
+        mockCapability.mockReturnValue(capabilityResult("json_object"));
+        renderForm();
+        const badge = await openJson(user);
+        expect(badge).toHaveTextContent("僅保證 JSON，欄位由系統驗證並重試一次");
+        expect(badge.className).toContain("amber");
+      });
+
+      it("should render red badge for prompt_only", async () => {
+        const user = userEvent.setup();
+        mockCapability.mockReturnValue(capabilityResult("prompt_only"));
+        renderForm();
+        const badge = await openJson(user);
+        expect(badge).toHaveTextContent("無格式保證，僅靠提示詞");
+        expect(badge.className).toContain("red");
+      });
+
+      it("should render neutral 請先選擇模型 when provider/model are empty", async () => {
+        const user = userEvent.setup();
+        renderForm({ ...mockBot, llm_provider: "", llm_model: "" });
+        const badge = await openJson(user);
+        expect(badge).toHaveTextContent("請先選擇模型");
+        expect(badge.className).not.toMatch(/emerald|amber|red/);
+      });
+    });
+  });
 });

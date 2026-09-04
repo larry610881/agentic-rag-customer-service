@@ -194,6 +194,13 @@ export const API_ENDPOINTS = {
   mcp: {
     discover: "/api/v1/mcp/discover",
   },
+  // Issue #70 — 供應商 × 模型的結構化輸出能力等級
+  llm: {
+    structuredOutputCapability: (provider: string, model: string) => {
+      const qs = new URLSearchParams({ provider, model });
+      return `/api/v1/llm/structured-output-capability?${qs.toString()}`;
+    },
+  },
   adminTools: {
     list: "/api/v1/admin/tools",
     update: (name: string) => `/api/v1/admin/tools/${name}`,

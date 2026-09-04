@@ -131,6 +131,11 @@ export const queryKeys = {
   systemPrompts: {
     all: ["system-prompts"] as const,
   },
+  // Issue #70 — 結構化輸出能力等級
+  llm: {
+    structuredOutputCapability: (provider: string, model: string) =>
+      ["llm", "structured-output-capability", provider, model] as const,
+  },
   mcpRegistry: {
     all: ["mcp-registry"] as const,
     detail: (id: string) => ["mcp-registry", id] as const,

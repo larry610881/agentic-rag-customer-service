@@ -10,13 +10,25 @@ export type RetrievalMode = "raw" | "rewrite" | "hyde";
 export const RETRIEVAL_MODES: RetrievalMode[] = ["raw", "rewrite", "hyde"];
 
 /**
- * Issue #66 — Bot 推理模式。
+ * Issue #66 / #70 — Bot 推理模式。
  * fast：常見問題直答（快速道），升級推理時工具最多 2 次，rerank / 查詢改寫 / HyDE 自動關閉。
  * deep：完整多步推理，可用全部工具與 rerank。
+ * kb：知識庫問答（檢索 → 單次生成），不用工具、不升級；未命中回固定話術。
  */
-export type BotMode = "fast" | "deep";
+export type BotMode = "fast" | "deep" | "kb";
 
-export const BOT_MODES: BotMode[] = ["fast", "deep"];
+export const BOT_MODES: BotMode[] = ["fast", "deep", "kb"];
+
+/**
+ * Issue #70 — 回覆輸出格式。
+ * text：一般（保留 Markdown）；plain_text：自動移除 Markdown 符號；json：結構化輸出（可附 schema）。
+ */
+export type OutputFormat = "text" | "plain_text" | "json";
+
+export const OUTPUT_FORMATS: OutputFormat[] = ["text", "plain_text", "json"];
+
+/** Issue #70 — output_format=json 時的 JSON schema（任意 JSON 物件） */
+export type BotOutputSchema = Record<string, unknown>;
 
 /**
  * Per-tool RAG 參數覆蓋。
@@ -80,8 +92,18 @@ export interface Bot {
   gate_daily_limit: number;
   gate_budget_usd: number;
   gate_excluded_cases: string[];
-  /** Issue #66 — 推理模式（fast = 快速道 / deep = 深度道） */
+  /** Issue #66 / #70 — 推理模式（fast = 快速道 / deep = 深度道 / kb = 知識庫問答） */
   mode: BotMode;
+  /** Issue #70 — 輸出格式（預設 text） */
+  output_format?: OutputFormat;
+  /** Issue #70 — JSON schema；僅 output_format=json 時有意義 */
+  output_schema?: BotOutputSchema | null;
+  /** Issue #70 — 未命中話術；空字串 = 平台預設文案 */
+  miss_reply?: string;
+  /** Issue #70 — JSON 輸出時純文字通路顯示的欄位（預設 answer） */
+  output_text_field?: string;
+  /** 長期記憶開關 */
+  memory_enabled?: boolean;
   mcp_servers: McpServerConfig[];
   max_tool_calls: number;
   base_prompt: string;
@@ -146,8 +168,18 @@ export interface CreateBotRequest {
   gate_daily_limit?: number;
   gate_budget_usd?: number;
   gate_excluded_cases?: string[];
-  /** Issue #66 — 推理模式（fast = 快速道 / deep = 深度道） */
+  /** Issue #66 / #70 — 推理模式（fast = 快速道 / deep = 深度道 / kb = 知識庫問答） */
   mode?: BotMode;
+  /** Issue #70 — 輸出格式 */
+  output_format?: OutputFormat;
+  /** Issue #70 — JSON schema；僅 output_format=json 時有意義 */
+  output_schema?: BotOutputSchema | null;
+  /** Issue #70 — 未命中話術；空字串 = 平台預設文案 */
+  miss_reply?: string;
+  /** Issue #70 — JSON 輸出時純文字通路顯示的欄位（預設 answer） */
+  output_text_field?: string;
+  /** 長期記憶開關 */
+  memory_enabled?: boolean;
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
   base_prompt?: string;
@@ -208,8 +240,18 @@ export interface UpdateBotRequest {
   gate_daily_limit?: number;
   gate_budget_usd?: number;
   gate_excluded_cases?: string[];
-  /** Issue #66 — 推理模式（fast = 快速道 / deep = 深度道） */
+  /** Issue #66 / #70 — 推理模式（fast = 快速道 / deep = 深度道 / kb = 知識庫問答） */
   mode?: BotMode;
+  /** Issue #70 — 輸出格式 */
+  output_format?: OutputFormat;
+  /** Issue #70 — JSON schema；僅 output_format=json 時有意義 */
+  output_schema?: BotOutputSchema | null;
+  /** Issue #70 — 未命中話術；空字串 = 平台預設文案 */
+  miss_reply?: string;
+  /** Issue #70 — JSON 輸出時純文字通路顯示的欄位（預設 answer） */
+  output_text_field?: string;
+  /** 長期記憶開關 */
+  memory_enabled?: boolean;
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
   base_prompt?: string;

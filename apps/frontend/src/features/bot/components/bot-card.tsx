@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useDeleteBot } from "@/hooks/queries/use-bots";
 import type { Bot } from "@/types/bot";
+import { BOT_MODE_BADGE_LABELS } from "@/features/bot/output-format-labels";
 
 interface BotCardProps {
   bot: Bot;
@@ -47,7 +48,7 @@ export function BotCard({ bot }: BotCardProps) {
                   {bot.knowledge_base_ids.length} KB
                 </Badge>
                 <Badge variant="outline" title="推理模式">
-                  {bot.mode === "fast" ? "快速" : "深度"}
+                  {BOT_MODE_BADGE_LABELS[bot.mode] ?? "深度"}
                 </Badge>
                 <Button
                   variant="ghost"

@@ -42,6 +42,11 @@ describe("BotCard", () => {
     expect(screen.getByText("快速")).toBeInTheDocument();
   });
 
+  it("should show 知識庫 badge for kb mode (Issue #70)", () => {
+    renderWithProviders(<BotCard bot={{ ...mockBot, mode: "kb" }} />);
+    expect(screen.getByText("知識庫")).toBeInTheDocument();
+  });
+
   it("should link to bot detail page", () => {
     renderWithProviders(<BotCard bot={mockBot} />);
     const link = screen.getByRole("link");
