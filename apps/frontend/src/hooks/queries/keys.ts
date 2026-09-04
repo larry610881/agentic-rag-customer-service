@@ -194,4 +194,9 @@ export const queryKeys = {
     controls: (tenantId?: string) =>
       ["abuse-control", "controls", tenantId ?? "all"] as const,
   },
+  // Issue #68 P7b — Widget 宿主身分綁定
+  widgetIdentity: {
+    status: (tenantId?: string) =>
+      ["widget-identity", "status", tenantId ?? "own"] as const,
+  },
 };

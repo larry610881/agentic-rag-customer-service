@@ -13,6 +13,7 @@ export const ROUTES = {
   API_KEYS: "/api-keys",
   FEEDBACK: "/feedback",
   ABUSE_STATUS: "/abuse-status",
+  WIDGET_IDENTITY: "/widget-identity",
   FEEDBACK_BROWSER: "/feedback/browser",
   FEEDBACK_CONVERSATION: "/feedback/:conversationId",
   SETTINGS: "/settings",

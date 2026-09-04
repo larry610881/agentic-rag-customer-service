@@ -381,6 +381,17 @@ export const API_ENDPOINTS = {
         : "/api/v1/admin/abuse/controls",
     release: "/api/v1/admin/abuse/controls/release",
   },
+  // Issue #68 P7b — Widget 宿主身分綁定；system_admin 必帶 tenant_id，tenant_admin 省略
+  widgetIdentity: {
+    secret: (tenantId?: string) =>
+      tenantId
+        ? `/api/v1/widget-identity/secret?tenant_id=${encodeURIComponent(tenantId)}`
+        : "/api/v1/widget-identity/secret",
+    rotate: (tenantId?: string) =>
+      tenantId
+        ? `/api/v1/widget-identity/secret/rotate?tenant_id=${encodeURIComponent(tenantId)}`
+        : "/api/v1/widget-identity/secret/rotate",
+  },
   auditLogs: {
     list: (params: {
       tenant_id?: string;

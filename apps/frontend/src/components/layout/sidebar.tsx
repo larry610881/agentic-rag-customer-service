@@ -35,6 +35,7 @@ import {
   ClipboardList,
   KeyRound,
   ShieldAlert,
+  IdCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -53,9 +54,11 @@ const generalNavItems = [
 
 // Issue #67 P2：API 金鑰只給 tenant_admin / system_admin，一般 user 不顯示
 // Issue #68 P7c：異常控管狀態（租戶唯讀）同樣只給管理角色
+// Issue #68 P7b：Widget 宿主身分綁定 secret 管理
 const MANAGER_NAV_ITEMS = [
   { href: "/api-keys", label: "API 金鑰", icon: KeyRound },
   { href: "/abuse-status", label: "異常控管狀態", icon: ShieldAlert },
+  { href: "/widget-identity", label: "Widget 身分綁定", icon: IdCard },
 ];
 const MANAGER_ROLES = new Set(["tenant_admin", "system_admin"]);
 

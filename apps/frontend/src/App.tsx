@@ -40,6 +40,7 @@ const FeedbackConversationPage = lazy(
   () => import("@/pages/feedback-conversation"),
 );
 const AbuseStatusPage = lazyWithRetry(() => import("@/pages/abuse-status"));
+const WidgetIdentityPage = lazyWithRetry(() => import("@/pages/widget-identity"));
 const ProvidersSettingsPage = lazyWithRetry(() => import("@/pages/settings-providers"));
 const AdminLogsPage = lazyWithRetry(() => import("@/pages/admin-logs"));
 const AdminKnowledgeBasesPage = lazy(
@@ -127,6 +128,8 @@ export function App() {
             <Route path={ROUTES.API_KEYS} element={<ApiKeysPage />} />
             {/* Issue #68 P7c：租戶端唯讀的異常控管狀態（tenant_admin / system_admin） */}
             <Route path={ROUTES.ABUSE_STATUS} element={<AbuseStatusPage />} />
+            {/* Issue #68 P7b：Widget 宿主身分綁定 secret 管理（tenant_admin / system_admin） */}
+            <Route path={ROUTES.WIDGET_IDENTITY} element={<WidgetIdentityPage />} />
             <Route
               path={ROUTES.CHANGE_PASSWORD}
               element={<ChangePasswordPage />}
