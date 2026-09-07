@@ -3,8 +3,10 @@ import { apiFetch } from "@/lib/api-client";
 import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import { queryKeys } from "@/hooks/queries/keys";
 import { useAuthStore } from "@/stores/use-auth-store";
+import type { TenantQuotaBillingFields } from "@/types/billing";
 
-export interface TenantQuota {
+/** Issue #74：billing_mode / 用盡策略 / 點數欄位見 `TenantQuotaBillingFields` */
+export interface TenantQuota extends TenantQuotaBillingFields {
   cycle_year_month: string; // "YYYY-MM"
   plan_name: string;
   base_total: number;

@@ -104,6 +104,11 @@ export function useStudioStreaming(callbacks: StudioStreamCallbacks = {}) {
           });
         }
 
+        // Issue #74：額度用盡與 error 同路徑（節點標失敗 + 顯示文案）
+        if (event.type === "quota_exhausted" && typeof event.content === "string") {
+          callbacks.onFailedNode?.({ node_id: "", error_message: event.content });
+        }
+
         if (event.type === "done" && typeof event.trace_id === "string") {
           callbacks.onTraceComplete?.(event.trace_id);
         }

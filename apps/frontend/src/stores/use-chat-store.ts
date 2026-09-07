@@ -31,6 +31,8 @@ interface ChatState {
     blockType: "input" | "output",
     ruleMatched: string | null,
   ) => void;
+  /** Issue #74 — SSE `quota_exhausted`：把當前 assistant 訊息換成被擋文案並標記 */
+  setAssistantQuotaExhausted: (content: string) => void;
   setMessageFeedback: (messageId: string, rating: "thumbs_up" | "thumbs_down" | undefined) => void;
   selectBot: (id: string, name: string) => void;
   clearBot: () => void;
@@ -153,6 +155,15 @@ export const useChatStore = create<ChatState>((set) => ({
         };
       }
       return { messages };
+    }),
+  setAssistantQuotaExhausted: (content) =>
+    set((state) => {
+      const messages = [...state.messages];
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg && lastMsg.role === "assistant") {
+        messages[messages.length - 1] = { ...lastMsg, content, quotaExhausted: true };
+      }
+      return { messages, toolHint: null };
     }),
   setMessageFeedback: (messageId, rating) =>
     set((state) => ({

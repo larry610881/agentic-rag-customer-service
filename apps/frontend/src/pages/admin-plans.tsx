@@ -12,6 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePlans, useDeletePlan } from "@/hooks/queries/use-plans";
 import { PlanFormDialog } from "@/features/admin/components/plan-form-dialog";
+import { BillingSettingsCard } from "@/features/billing/components/billing-settings-card";
+import {
+  billingModeLabel,
+  exhaustionPolicyLabel,
+  formatPoints,
+} from "@/features/billing/billing-labels";
 import type { Plan } from "@/types/plan";
 
 function formatTokens(n: number): string {
@@ -66,7 +72,7 @@ export default function AdminPlansPage() {
         <div>
           <h1 className="text-2xl font-bold">方案管理</h1>
           <p className="text-muted-foreground">
-            設定月度基礎額度 / 加值包配置 / 價格 — 供租戶綁定使用
+            設定月度基礎額度 / 加值包配置 / 價格 / 計價模式 / 用盡策略 — 供租戶綁定使用
           </p>
         </div>
         <Button onClick={handleCreate}>
@@ -74,6 +80,9 @@ export default function AdminPlansPage() {
           新增方案
         </Button>
       </div>
+
+      {/* Issue #74 — 平台匯率 */}
+      <BillingSettingsCard />
 
       {isLoading ? (
         <p className="text-muted-foreground">載入中...</p>
@@ -85,10 +94,12 @@ export default function AdminPlansPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>名稱</TableHead>
+                <TableHead>計價</TableHead>
                 <TableHead>月基礎額度</TableHead>
                 <TableHead>加值包</TableHead>
                 <TableHead>月費</TableHead>
                 <TableHead>加值價</TableHead>
+                <TableHead>用盡策略</TableHead>
                 <TableHead>狀態</TableHead>
                 <TableHead>說明</TableHead>
                 <TableHead className="w-[140px]">操作</TableHead>
@@ -98,13 +109,34 @@ export default function AdminPlansPage() {
               {plans.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell className="font-medium">{p.name}</TableCell>
-                  <TableCell>{formatTokens(p.base_monthly_tokens)}</TableCell>
-                  <TableCell>{formatTokens(p.addon_pack_tokens)}</TableCell>
+                  <TableCell>
+                    <Badge variant={p.billing_mode === "points" ? "default" : "outline"}>
+                      {billingModeLabel(p.billing_mode)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {p.billing_mode === "points"
+                      ? `${formatPoints(p.monthly_points)} 點`
+                      : formatTokens(p.base_monthly_tokens)}
+                  </TableCell>
+                  <TableCell>
+                    {p.billing_mode === "points"
+                      ? `${formatPoints(p.addon_pack_points)} 點`
+                      : formatTokens(p.addon_pack_tokens)}
+                  </TableCell>
                   <TableCell>
                     {Number(p.base_price).toLocaleString()} {p.currency}
                   </TableCell>
                   <TableCell>
                     {Number(p.addon_price).toLocaleString()} {p.currency}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {exhaustionPolicyLabel(p.exhaustion_policy)}
+                    {p.tenant_may_change_policy && (
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        （租戶可改）
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {p.is_active ? (

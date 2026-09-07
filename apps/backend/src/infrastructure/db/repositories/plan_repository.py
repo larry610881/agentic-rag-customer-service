@@ -27,6 +27,15 @@ class SQLAlchemyPlanRepository(PlanRepository):
             currency=m.currency,
             description=m.description,
             is_active=m.is_active,
+            billing_mode=m.billing_mode,
+            monthly_points=m.monthly_points,
+            addon_pack_points=m.addon_pack_points,
+            default_category_multiplier=m.default_category_multiplier,
+            exhaustion_policy=m.exhaustion_policy,
+            tenant_may_change_policy=m.tenant_may_change_policy,
+            auto_topup_monthly_cap=m.auto_topup_monthly_cap,
+            grace_percent=m.grace_percent,
+            block_message=m.block_message,
             created_at=m.created_at,
             updated_at=m.updated_at,
         )
@@ -43,6 +52,15 @@ class SQLAlchemyPlanRepository(PlanRepository):
                 existing.currency = plan.currency
                 existing.description = plan.description
                 existing.is_active = plan.is_active
+                existing.billing_mode = plan.billing_mode
+                existing.monthly_points = plan.monthly_points
+                existing.addon_pack_points = plan.addon_pack_points
+                existing.default_category_multiplier = plan.default_category_multiplier
+                existing.exhaustion_policy = plan.exhaustion_policy
+                existing.tenant_may_change_policy = plan.tenant_may_change_policy
+                existing.auto_topup_monthly_cap = plan.auto_topup_monthly_cap
+                existing.grace_percent = plan.grace_percent
+                existing.block_message = plan.block_message
                 existing.updated_at = datetime.now(timezone.utc)
             else:
                 model = PlanModel(
@@ -55,6 +73,15 @@ class SQLAlchemyPlanRepository(PlanRepository):
                     currency=plan.currency,
                     description=plan.description,
                     is_active=plan.is_active,
+                    billing_mode=plan.billing_mode,
+                    monthly_points=plan.monthly_points,
+                    addon_pack_points=plan.addon_pack_points,
+                    default_category_multiplier=plan.default_category_multiplier,
+                    exhaustion_policy=plan.exhaustion_policy,
+                    tenant_may_change_policy=plan.tenant_may_change_policy,
+                    auto_topup_monthly_cap=plan.auto_topup_monthly_cap,
+                    grace_percent=plan.grace_percent,
+                    block_message=plan.block_message,
                     created_at=plan.created_at,
                     updated_at=plan.updated_at,
                 )

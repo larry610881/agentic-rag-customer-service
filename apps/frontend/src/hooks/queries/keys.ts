@@ -6,6 +6,8 @@ export const queryKeys = {
   plans: {
     all: ["plans"] as const,
     detail: (id: string) => ["plans", "detail", id] as const,
+    // Issue #74 — 類別倍率表
+    multipliers: (id: string) => ["plans", id, "multipliers"] as const,
   },
   pricing: {
     all: ["pricing"] as const,
@@ -117,6 +119,8 @@ export const queryKeys = {
       ["admin", "quota-events", tenantId, page, pageSize] as const,
     billingDashboard: (start: string, end: string, topN: number) =>
       ["admin", "billing", "dashboard", start, end, topN] as const,
+    // Issue #74 — 平台匯率
+    billingSettings: ["admin", "billing", "settings"] as const,
     conversationSearch: (
       mode: "keyword" | "semantic",
       query: string,

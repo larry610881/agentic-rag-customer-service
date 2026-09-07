@@ -8,17 +8,29 @@
 
 即不可能 drift。取代原本的 GetTenantQuotaUseCase / ListAllTenantsQuotasUseCase
 計算邏輯。
+
+Issue #74：快照加 `billing_mode` / `exhaustion_policy` / `effective_policy`；
+點數制方案另回 `points_total / points_used / points_remaining`
+（= plan.monthly_points + SUM(topups.amount_points) − SUM(usage.points)）。
+token 欄位維持不動（系統管理員兩者都看）。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
+from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from src.application.ledger.ensure_ledger_use_case import EnsureLedgerUseCase
+from src.domain.billing.exhaustion import DEFAULT_BLOCK_MESSAGE
 from src.domain.ledger.topup_repository import TokenLedgerTopupRepository
+from src.domain.plan.entity import BillingMode, ExhaustionPolicy
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.domain.tenant.repository import TenantRepository
 from src.domain.usage.repository import UsageRepository
+
+if TYPE_CHECKING:
+    from src.application.billing.billing_context import CachedBillingContextProvider
 
 
 @dataclass(frozen=True)
@@ -33,6 +45,17 @@ class TenantQuotaSnapshot:
     total_audit_in_cycle: int  # SUM(usage_records) 不 filter
     total_billable_in_cycle: int  # SUM(usage_records) with included_categories filter
     included_categories: list[str] | None
+    # Issue #74 — 雙軌計價 + 用盡策略（預設值 = 既有租戶行為不變）
+    billing_mode: str = BillingMode.TOKEN
+    exhaustion_policy: str = ExhaustionPolicy.AUTO_TOPUP  # 方案預設
+    effective_policy: str = ExhaustionPolicy.AUTO_TOPUP  # 租戶覆寫後
+    tenant_may_change_policy: bool = False
+    grace_percent: Decimal = field(default_factory=lambda: Decimal("0"))
+    block_message: str = DEFAULT_BLOCK_MESSAGE
+    points_total: int = 0
+    points_used: int = 0
+    points_remaining: int = 0
+    category_multipliers: dict[str, float] = field(default_factory=dict)
 
 
 class ComputeTenantQuotaUseCase:
@@ -42,11 +65,13 @@ class ComputeTenantQuotaUseCase:
         ensure_ledger: EnsureLedgerUseCase,
         usage_repository: UsageRepository,
         topup_repository: TokenLedgerTopupRepository,
+        billing_context: "CachedBillingContextProvider | None" = None,
     ) -> None:
         self._tenant_repo = tenant_repository
         self._ensure_ledger = ensure_ledger
         self._usage_repo = usage_repository
         self._topup_repo = topup_repository
+        self._billing_context = billing_context
 
     async def execute(
         self, tenant_id: str, cycle: str | None = None
@@ -90,7 +115,7 @@ class ComputeTenantQuotaUseCase:
         base_remaining = base_total - base_used
         addon_remaining = topup_sum - overage
 
-        return TenantQuotaSnapshot(
+        snapshot = TenantQuotaSnapshot(
             tenant_id=tenant_id,
             cycle_year_month=target_cycle,
             plan_name=plan_name,
@@ -101,4 +126,35 @@ class ComputeTenantQuotaUseCase:
             total_audit_in_cycle=audit_total,
             total_billable_in_cycle=billable_total,
             included_categories=tenant.included_categories,
+        )
+        if self._billing_context is None:
+            return snapshot
+        return await self._with_billing(snapshot, tenant_id, target_cycle)
+
+    async def _with_billing(
+        self, snapshot: TenantQuotaSnapshot, tenant_id: str, cycle: str
+    ) -> TenantQuotaSnapshot:
+        """Issue #74：疊上計價模式 / 策略；點數制再算點數欄位。"""
+        assert self._billing_context is not None
+        ctx = await self._billing_context.for_tenant(tenant_id)
+        if ctx is None or ctx.plan is None:
+            return snapshot
+        plan = ctx.plan
+        points_total = points_used = 0
+        if plan.is_points_mode:
+            points_used = await self._usage_repo.sum_points_in_cycle(tenant_id, cycle)
+            topup_points = await self._topup_repo.sum_points_in_cycle(tenant_id, cycle)
+            points_total = plan.monthly_points + topup_points
+        return replace(
+            snapshot,
+            billing_mode=plan.billing_mode,
+            exhaustion_policy=plan.exhaustion_policy,
+            effective_policy=ctx.effective_policy,
+            tenant_may_change_policy=plan.tenant_may_change_policy,
+            grace_percent=Decimal(plan.grace_percent),
+            block_message=ctx.block_message,
+            category_multipliers=ctx.multipliers_view(),
+            points_total=points_total,
+            points_used=points_used,
+            points_remaining=points_total - points_used,
         )

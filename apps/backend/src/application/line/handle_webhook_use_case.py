@@ -203,8 +203,11 @@ class HandleWebhookUseCase:
         event_deduplicator: Any | None = None,
         config_fingerprint: Any | None = None,
         direct_retrieval_service: Any | None = None,
+        quota_preflight: Any | None = None,
     ):
         self._agent_service = agent_service
+        # Issue #74：共用配額預檢（與 web/widget 同一份；LINE 只做文字回覆適配）
+        self._quota_preflight = quota_preflight
         self._bot_repository = bot_repository
         self._tenant_repo = tenant_repository  # M19：router_model tenant fallback
         self._intent_classifier = intent_classifier
@@ -548,6 +551,8 @@ class HandleWebhookUseCase:
         # Issue #68 P7：進入回合前查異常等級（L3+ 回固定文案或靜默；L2 固定文案）
         abuse_decision = await self._abuse_gate(bot, event, line_service)
         if abuse_decision is None:
+            return
+        if await self._quota_gate(bot, event, line_service):  # Issue #74
             return
         t_hist = AgentTraceCollector.offset_ms()
 
@@ -1227,6 +1232,21 @@ class HandleWebhookUseCase:
             return None
 
     # ── Issue #68 P7：異常控管接線（service 共用，這裡只做 LINE 的回覆適配） ──
+
+    async def _quota_gate(self, bot: Bot, event: Any, line_service: Any) -> bool:
+        """Issue #74：用完即擋 → 回固定文案並回 True 讓呼叫端結束回合。"""
+        if self._quota_preflight is None:
+            return False
+        decision = await self._quota_preflight.check(
+            bot.tenant_id, UsageCategory.CHAT_LINE.value
+        )
+        if decision.allowed:
+            return False
+        try:
+            await line_service.reply_text(event.reply_token, decision.message)
+        except Exception:
+            logger.warning("quota_preflight.line_reply_failed", exc_info=True)
+        return True
 
     async def _abuse_gate(self, bot: Bot, event: Any, line_service: Any) -> Any:
         """回 decision；L2/L3+ 已回覆（或靜默）時回 None 讓呼叫端結束回合。"""

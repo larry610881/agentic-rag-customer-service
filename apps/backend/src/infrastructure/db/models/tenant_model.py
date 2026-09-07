@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,6 +40,13 @@ class TenantModel(Base):
     )
     default_intent_model: Mapped[str] = mapped_column(
         String(100), nullable=False, default="", server_default=""
+    )
+    # Issue #74：額度用盡策略 / 被擋文案覆寫（NULL = 沿用方案）
+    exhaustion_policy_override: Mapped[str | None] = mapped_column(
+        String(12), nullable=True, default=None
+    )
+    block_message_override: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
     )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,

@@ -88,7 +88,9 @@ class StartRunUseCase:
         encryption_service=None,
         record_usage_factory=None,
         create_version_factory=None,
+        quota_preflight=None,
     ) -> None:
+        self._quota_preflight = quota_preflight  # Issue #74
         self._dataset_repo = eval_dataset_repository
         self._run_manager = run_manager
         self._db_url = db_url
@@ -109,6 +111,11 @@ class StartRunUseCase:
             raise EntityNotFoundError("EvalDataset", command.dataset_id)
         # C7：跨租戶對他人題集啟動 run 會把題集 snapshot 寫進可見 iterations → 404
         ensure_dataset_read(dataset, command.tenant_id, command.role)
+        # Issue #74：用完即擋 → 跑批不啟動（同 QuotaExhaustedError）
+        if self._quota_preflight is not None:
+            await self._quota_preflight.ensure_allowed(
+                command.tenant_id, UsageCategory.PROMPT_OPTIMIZE.value
+            )
 
         # Snapshot dataset data before spawning background task
         dataset_snapshot = {

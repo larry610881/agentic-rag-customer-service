@@ -34,6 +34,16 @@ class ModelPricing:
     created_by: str = ""
     created_at: datetime = field(default_factory=_now)
     note: str | None = None
+    # Issue #74：模型點數表（每千 token；None = 未設，改由平台匯率換算）
+    points_per_1k_input: float | None = None
+    points_per_1k_output: float | None = None
+
+    @property
+    def has_points(self) -> bool:
+        return (
+            self.points_per_1k_input is not None
+            and self.points_per_1k_output is not None
+        )
 
     def is_active_at(self, at: datetime) -> bool:
         if at < self.effective_from:

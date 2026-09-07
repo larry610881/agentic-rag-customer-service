@@ -39,6 +39,7 @@ from src.domain.abuse.policy import (
 )
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
+from src.domain.billing.exhaustion import QuotaExhaustedError
 from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
 from src.domain.bot.tool_rag_resolver import resolve_tool_rag_params
@@ -54,6 +55,7 @@ from src.domain.platform.repository import SystemPromptConfigRepository
 from src.domain.platform.services import EncryptionService
 from src.domain.shared.concurrency import ConversationLock
 from src.domain.shared.exceptions import DomainException
+from src.domain.usage.category import UsageCategory
 from src.infrastructure.observability.agent_trace_collector import (
     AgentTraceCollector,
 )
@@ -93,6 +95,12 @@ if TYPE_CHECKING:
     from src.domain.tenant.repository import TenantRepository
 
 logger = structlog.get_logger(__name__)
+
+# Issue #74：通路轉接器宣告的身分來源 → 用量類別（預檢與記帳同一張表）
+_IDENTITY_SOURCE_CATEGORY: dict[str, str] = {
+    "widget": UsageCategory.CHAT_WIDGET.value,
+    "line": UsageCategory.CHAT_LINE.value,
+}
 
 _REFUND_METADATA_MARKER = "__refund_metadata"
 
@@ -190,6 +198,7 @@ class SendMessageUseCase:
         prompt_guard: Any | None = None,
         tenant_repository: "TenantRepository | None" = None,
         config_version_repository: Any | None = None,
+        quota_preflight: Any | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -214,6 +223,8 @@ class SendMessageUseCase:
         self._prompt_guard = prompt_guard
         self._tenant_repo = tenant_repository
         self._config_version_repo = config_version_repository
+        # Issue #74：共用配額預檢（web / widget / LINE / 背景任務同一份）
+        self._quota_preflight = quota_preflight
 
     def _build_lock_key(self, command: SendMessageCommand) -> str:
         """Build a lock key for the conversation."""
@@ -607,6 +618,20 @@ class SendMessageUseCase:
             return AbuseSubject(SubjectKind.VISITOR, command.visitor_id)
         return None
 
+    @staticmethod
+    def _usage_category(command: SendMessageCommand) -> str:
+        return _IDENTITY_SOURCE_CATEGORY.get(
+            command.identity_source or "", UsageCategory.CHAT_WEB.value
+        )
+
+    async def _quota_gate(self, command: SendMessageCommand) -> None:
+        """Issue #74：用完即擋 → raise QuotaExhaustedError（影子執行不檢查）。"""
+        if self._quota_preflight is None or command.test_mode:
+            return
+        await self._quota_preflight.ensure_allowed(
+            command.tenant_id, self._usage_category(command)
+        )
+
     async def abuse_preflight(self, command: SendMessageCommand) -> AbuseDecision:
         """串流端點在送出 headers 前先問一次；L3+ 直接 raise（→ 429）。"""
         return await self._abuse_gate(command)
@@ -849,6 +874,7 @@ class SendMessageUseCase:
         abuse_decision = await self._abuse_gate(command)
         if abuse_decision.fixed_reply:
             return AgentResponse(answer=abuse_decision.reply_text)
+        await self._quota_gate(command)  # Issue #74：402 quota_exhausted
         t_conv = AgentTraceCollector.offset_ms()
         conversation = await self._load_or_create_conversation(command)
         AgentTraceCollector.span("conversation_load", "對話載入", t_conv)
@@ -1102,6 +1128,12 @@ class SendMessageUseCase:
         abuse_decision = await self._abuse_gate(command)  # Issue #68 P7
         if abuse_decision.fixed_reply:
             yield {"type": "token", "content": abuse_decision.reply_text}
+            yield {"type": "done"}
+            return
+        try:
+            await self._quota_gate(command)  # Issue #74
+        except QuotaExhaustedError as exc:
+            yield {"type": "quota_exhausted", "content": exc.message}
             yield {"type": "done"}
             return
         t_conv = AgentTraceCollector.offset_ms()

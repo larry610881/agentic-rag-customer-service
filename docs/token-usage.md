@@ -66,8 +66,24 @@
 （web / LINE 在 trace 啟動時已帶 bot）；仍為 None 則不歸屬（`/search`、管理端）。
 `HistoryStrategyConfig.bot_id`、`ExtractMemoryCommand.bot_id` 由通路 / worker 傳入。
 
+## 點數欄位與雙軌計價（Issue #74）
+
+`token_usage_records` 新增兩欄：
+
+| 欄位 | 說明 |
+|---|---|
+| `points` | 記帳當下依租戶方案換算的點數。方案 `billing_mode=token`（預設）恆為 0；`points` 時：模型點數表（`model_pricing.points_per_1k_*`，輸入側含 cache tokens）優先，否則 `ceil(estimated_cost / usd_per_point)`，再乘類別倍率（`plan_category_multipliers`，未列類別用方案預設倍率）後無條件進位；倍率 0 → 0 點但 token 紀錄仍在 |
+| `reasoning_tokens` | 推理 token（#72 的 `TokenUsage.reasoning_tokens`），為 output 的子集標注，不進 total、不另計價 |
+
+規則：
+- **token 永遠是事實來源**，點數只是換算層；配額判斷依方案模式擇一（token 制看 `base/addon remaining`，點數制看 `points_remaining = monthly_points + SUM(topups.amount_points) − SUM(usage.points)`）。
+- **切換方案不重算歷史**：`points` 是寫入當下的值，改方案 / 倍率 / 匯率只影響之後的紀錄（pricing recalc 只回溯 `estimated_cost`，不動 `points`）。
+- 計價脈絡（方案 / 倍率表 / 匯率）走 `CachedBillingContextProvider` 60 秒快取；寫入方案 / 倍率 / 匯率 / 租戶策略時失效。
+- 額度用盡策略獨立於模式：`auto_topup`（自動加購，受 `auto_topup_monthly_cap`）或 `block`（`QuotaPreflightService` 共用預檢，三通路 + 背景任務單點；被擋不產生任何 usage）。
+- 用量統計（`/usage`、`/usage/by-bot`、`/usage/daily`、`/usage/monthly`）點數欄位與 token 並列；點數制租戶頁只看點數，系統管理員兩者都看。
+
 ## 尚未處理
 
-- `reasoning_tokens` 有算無存（#72）→ 併 #74 的 usage_records 改表。
+- ~~`reasoning_tokens` 有算無存（#72）~~ → #74 已落 `token_usage_records.reasoning_tokens`。
 - 前端 `usage-categories.ts` 的 label 需補 `query_embedding`、`dm_metadata`（本 Issue 不動前端）。
 - ~~OCR 引擎為 singleton，`last_*` 累計屬性在並行 reprocess 時可能互相污染~~ → #78 已改為每份文件各自的 `OcrUsageTally`，引擎 `last_*` 僅為相容保留、管線不再讀取。

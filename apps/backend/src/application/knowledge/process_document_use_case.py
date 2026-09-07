@@ -1,5 +1,6 @@
 import asyncio
 import time
+from typing import Any
 
 from src.application.knowledge._ocr_pipeline import ocr_image, select_ocr_engine
 from src.application.knowledge._pipeline_accounting import (
@@ -7,6 +8,7 @@ from src.application.knowledge._pipeline_accounting import (
     record_embedding_usage,
     record_ocr_usage,
 )
+from src.application.knowledge._quota_gate import quota_blocked_for_document
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.domain.knowledge.repository import (
     DocumentRepository,
@@ -69,7 +71,9 @@ class ProcessDocumentUseCase:
         chunk_context_service: ChunkContextService | None = None,
         tenant_repository: TenantRepository | None = None,
         text_splitter_overrides: dict[str, TextSplitterService] | None = None,
+        quota_preflight: Any | None = None,
     ) -> None:
+        self._quota_preflight = quota_preflight  # Issue #74
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
         self._kb_repo = knowledge_base_repository
@@ -116,6 +120,18 @@ class ProcessDocumentUseCase:
                 kb_id=document.kb_id,
                 filename=document.filename,
             )
+
+            # Issue #74：用完即擋 → 不啟動，狀態 quota_exhausted
+            if await quota_blocked_for_document(
+                quota_preflight=self._quota_preflight,
+                doc_repo=self._doc_repo,
+                task_repo=self._task_repo,
+                document_id=document_id,
+                tenant_id=document.tenant_id,
+                task_id=task_id,
+                log=log,
+            ):
+                return
 
             # Update doc → processing
             await self._doc_repo.update_status(

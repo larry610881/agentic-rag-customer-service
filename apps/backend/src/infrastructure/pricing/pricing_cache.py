@@ -12,10 +12,12 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from datetime import datetime
+from decimal import Decimal
 from typing import Callable
 
 import structlog
 
+from src.domain.billing.points import ModelPoints
 from src.domain.pricing.entity import ModelPricing
 from src.domain.pricing.repository import ModelPricingRepository
 
@@ -72,15 +74,33 @@ class InMemoryPricingCache:
         provider 找第一個匹配（RecordUsageUseCase 目前已有 `lookup_model` 剝
         前綴邏輯，此方法兼容兩種 shape）。
         """
+        chosen = self._pick_version(model_spec, at)
+        return chosen.rate.as_calculate_usage_dict() if chosen else None
+
+    def lookup_points(
+        self, model_spec: str, at: datetime
+    ) -> ModelPoints | None:
+        """Issue #74：回傳生效版本的模型點數表；未設（NULL）回 None。"""
+        chosen = self._pick_version(model_spec, at)
+        if chosen is None or not chosen.has_points:
+            return None
+        return ModelPoints(
+            points_per_1k_input=Decimal(str(chosen.points_per_1k_input)),
+            points_per_1k_output=Decimal(str(chosen.points_per_1k_output)),
+        )
+
+    def _pick_version(
+        self, model_spec: str, at: datetime
+    ) -> ModelPricing | None:
         provider, model_id = _parse_model_spec(model_spec)
         if provider is not None:
             versions = self._index.get((provider, model_id), [])
-            return _pick_at(versions, at)
+            return _pick_version_at(versions, at)
 
         # 無 provider 前綴 → 掃所有 (*, model_id)
         for (_, mid), versions in self._index.items():
             if mid == model_id:
-                result = _pick_at(versions, at)
+                result = _pick_version_at(versions, at)
                 if result is not None:
                     return result
         return None
@@ -93,9 +113,9 @@ def _parse_model_spec(model_spec: str) -> tuple[str | None, str]:
     return None, model_spec
 
 
-def _pick_at(
+def _pick_version_at(
     versions: list[ModelPricing], at: datetime
-) -> dict[str, float] | None:
+) -> ModelPricing | None:
     """從已排序的 version list 中找 at 時點的生效版本。"""
     chosen: ModelPricing | None = None
     for v in versions:
@@ -104,4 +124,11 @@ def _pick_at(
         if v.effective_to is not None and v.effective_to <= at:
             continue
         chosen = v
+    return chosen
+
+
+def _pick_at(
+    versions: list[ModelPricing], at: datetime
+) -> dict[str, float] | None:
+    chosen = _pick_version_at(versions, at)
     return chosen.rate.as_calculate_usage_dict() if chosen else None

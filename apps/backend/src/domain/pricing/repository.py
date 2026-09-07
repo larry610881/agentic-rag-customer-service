@@ -55,6 +55,15 @@ class ModelPricingRepository(ABC):
         self, pricing_id: str, effective_to: datetime
     ) -> None: ...
 
+    async def update_points(
+        self,
+        pricing_id: str,
+        points_per_1k_input: float | None,
+        points_per_1k_output: float | None,
+    ) -> None:
+        """Issue #74：設定 / 清除該版本的模型點數表（點數是獨立軸，可改）。"""
+        raise NotImplementedError
+
 
 class PricingRecalcAuditRepository(ABC):
     @abstractmethod

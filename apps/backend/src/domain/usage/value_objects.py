@@ -14,6 +14,9 @@ class UsageSummary:
     total_cost: float = 0.0
     by_model: dict[str, int] = field(default_factory=dict)
     by_request_type: dict[str, int] = field(default_factory=dict)
+    # Issue #74：點數欄位與 token 並列（token 制方案恆為 0）
+    total_points: int = 0
+    by_request_type_points: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,7 @@ class BotUsageStat:
     total_tokens: int
     estimated_cost: float
     message_count: int
+    points: int = 0  # Issue #74
 
 
 @dataclass(frozen=True)
@@ -55,6 +59,7 @@ class DailyUsageStat:
     message_count: int
     # Issue #54 Phase B — by_category 分組時填入；預設彙總列為 None
     request_type: str | None = None
+    points: int = 0  # Issue #74
 
 
 @dataclass(frozen=True)
@@ -69,3 +74,4 @@ class MonthlyUsageStat:
     message_count: int
     # Issue #54 Phase B — by_category 分組時填入；預設彙總列為 None
     request_type: str | None = None
+    points: int = 0  # Issue #74

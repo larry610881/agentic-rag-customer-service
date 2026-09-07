@@ -6,6 +6,7 @@ import { CreateTenantDialog } from "@/features/admin/components/create-tenant-di
 import { PaginationControls } from "@/components/shared/pagination-controls";
 import { usePagination } from "@/hooks/use-pagination";
 import type { Tenant } from "@/types/auth";
+import { exhaustionPolicyLabel } from "@/features/billing/billing-labels";
 import {
   Table,
   TableBody,
@@ -60,6 +61,7 @@ export default function AdminTenantsPage() {
                 <TableHead>名稱</TableHead>
                 <TableHead>方案</TableHead>
                 <TableHead>月 Token 上限</TableHead>
+                <TableHead>用盡策略</TableHead>
                 <TableHead>建立時間</TableHead>
                 <TableHead className="w-[80px]">操作</TableHead>
               </TableRow>
@@ -75,6 +77,15 @@ export default function AdminTenantsPage() {
                     {tenant.monthly_token_limit != null
                       ? tenant.monthly_token_limit.toLocaleString()
                       : "不限制"}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {tenant.exhaustion_policy_override ? (
+                      <Badge variant="secondary">
+                        {exhaustionPolicyLabel(tenant.exhaustion_policy_override)}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">沿用方案</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {formatDate(tenant.created_at)}

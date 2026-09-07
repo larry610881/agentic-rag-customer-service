@@ -26,6 +26,7 @@ class TokenLedgerTopup:
     tenant_id: str = ""
     cycle_year_month: str = ""  # "YYYY-MM"
     amount: int = 0  # 正=加值，負=退款/手動扣
+    amount_points: int = 0  # Issue #74：點數制加購（token 制為 0）
     reason: str = REASON_AUTO_TOPUP
     pricing_version: str | None = None
     created_at: datetime = field(

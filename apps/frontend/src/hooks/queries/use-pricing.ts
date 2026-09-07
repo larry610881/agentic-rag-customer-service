@@ -11,6 +11,7 @@ import type {
   ExecuteRecalcResult,
   ModelPricing,
   PricingRecalcAudit,
+  UpdatePricingPointsRequest,
 } from "@/types/pricing";
 
 type ListFilters = { provider?: string; category?: string };
@@ -41,6 +42,24 @@ export function useCreatePricing() {
       apiFetch<ModelPricing>(
         API_ENDPOINTS.pricing.create,
         { method: "POST", body: JSON.stringify(data) },
+        token ?? undefined,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.pricing.all });
+    },
+  });
+}
+
+/** Issue #74 — PUT /admin/pricing/{id} 只改點數欄位 */
+export function useUpdatePricingPoints() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdatePricingPointsRequest }) =>
+      apiFetch<ModelPricing>(
+        API_ENDPOINTS.pricing.update(id),
+        { method: "PUT", body: JSON.stringify(data) },
         token ?? undefined,
       ),
     onSuccess: () => {

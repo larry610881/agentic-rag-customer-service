@@ -1,6 +1,7 @@
 from src.infrastructure.db.models.agent_trace_model import (
     AgentExecutionTraceModel,
 )
+from src.infrastructure.db.models.billing_settings_model import BillingSettingsModel
 from src.infrastructure.db.models.billing_transaction_model import (
     BillingTransactionModel,
 )
@@ -46,6 +47,9 @@ from src.infrastructure.db.models.notification_channel_model import (
     NotificationChannelModel,
 )
 from src.infrastructure.db.models.outbox_event_model import OutboxEventModel
+from src.infrastructure.db.models.plan_category_multiplier_model import (
+    PlanCategoryMultiplierModel,
+)
 from src.infrastructure.db.models.plan_model import PlanModel
 from src.infrastructure.db.models.processing_task_model import ProcessingTaskModel
 from src.infrastructure.db.models.prompt_opt_run_model import PromptOptRunModel
@@ -106,10 +110,12 @@ __all__ = [
     "GuardLogModel",
     "GuardRulesConfigModel",
     "PlanModel",
+    "PlanCategoryMultiplierModel",
     "PromptOptRunModel",
     "TokenLedgerModel",
     "TokenLedgerTopupModel",
     "BillingTransactionModel",
+    "BillingSettingsModel",
     "QuotaAlertLogModel",
     "ModelPricingModel",
     "PricingRecalcAuditModel",

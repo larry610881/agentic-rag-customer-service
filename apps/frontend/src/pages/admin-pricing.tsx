@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, RotateCcw, Power } from "lucide-react";
+import { Plus, RotateCcw, Power, Coins } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -17,6 +17,7 @@ import {
 import { PricingCreateDialog } from "@/features/admin/components/pricing-create-dialog";
 import { PricingRecalcWizard } from "@/features/admin/components/pricing-recalc-wizard";
 import { PricingHistoryTable } from "@/features/admin/components/pricing-history-table";
+import { PricingPointsDialog } from "@/features/admin/components/pricing-points-dialog";
 import type { ModelPricing } from "@/types/pricing";
 
 function isCurrentlyActive(p: ModelPricing): boolean {
@@ -31,11 +32,23 @@ function formatPrice(n: number): string {
   return `$${n.toFixed(n < 0.1 ? 4 : 2)}`;
 }
 
+/** Issue #74：每千 token 點數；兩者皆空 = 用平台匯率換算 */
+function formatPointsPer1k(p: ModelPricing): string {
+  const inp = p.points_per_1k_input ?? null;
+  const out = p.points_per_1k_output ?? null;
+  if (inp === null && out === null) return "匯率換算";
+  const fmt = (v: number | null) => (v === null ? "—" : String(v));
+  return `${fmt(inp)} / ${fmt(out)}`;
+}
+
 export default function AdminPricingPage() {
   const { data: pricings, isLoading } = useListPricing();
   const deactivate = useDeactivatePricing();
   const [createOpen, setCreateOpen] = useState(false);
   const [recalcOpen, setRecalcOpen] = useState(false);
+  // Issue #74 — 編輯點數
+  const [pointsTarget, setPointsTarget] = useState<ModelPricing | null>(null);
+  const [pointsOpen, setPointsOpen] = useState(false);
 
   const handleDeactivate = async (p: ModelPricing) => {
     if (
@@ -94,10 +107,11 @@ export default function AdminPricingPage() {
                 <TableHead>Input</TableHead>
                 <TableHead>Output</TableHead>
                 <TableHead>Cache R / W</TableHead>
+                <TableHead>點數 / 1K (in / out)</TableHead>
                 <TableHead>Effective</TableHead>
                 <TableHead>狀態</TableHead>
                 <TableHead>Note</TableHead>
-                <TableHead className="w-[100px]">操作</TableHead>
+                <TableHead className="w-[120px]">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -114,6 +128,9 @@ export default function AdminPricingPage() {
                     <TableCell className="text-xs text-muted-foreground">
                       {formatPrice(p.cache_read_price)} /{" "}
                       {formatPrice(p.cache_creation_price)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatPointsPer1k(p)}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {new Date(p.effective_from).toLocaleString()}
@@ -137,16 +154,30 @@ export default function AdminPricingPage() {
                       {p.note ?? "—"}
                     </TableCell>
                     <TableCell>
-                      {active && (
+                      <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="停用此版本"
-                          onClick={() => handleDeactivate(p)}
+                          title="編輯點數"
+                          aria-label={`編輯點數 ${p.model_id}`}
+                          onClick={() => {
+                            setPointsTarget(p);
+                            setPointsOpen(true);
+                          }}
                         >
-                          <Power className="h-4 w-4 text-destructive" />
+                          <Coins className="h-4 w-4" />
                         </Button>
-                      )}
+                        {active && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="停用此版本"
+                            onClick={() => handleDeactivate(p)}
+                          >
+                            <Power className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -168,6 +199,11 @@ export default function AdminPricingPage() {
       <PricingRecalcWizard
         open={recalcOpen}
         onOpenChange={setRecalcOpen}
+      />
+      <PricingPointsDialog
+        pricing={pointsTarget}
+        open={pointsOpen}
+        onOpenChange={setPointsOpen}
       />
     </div>
   );

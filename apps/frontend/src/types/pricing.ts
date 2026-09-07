@@ -8,6 +8,9 @@ export interface ModelPricing {
   output_price: number;
   cache_read_price: number;
   cache_creation_price: number;
+  /** Issue #74：每千 token 點數；null = 用平台匯率（usd_per_point）換算 */
+  points_per_1k_input?: number | null;
+  points_per_1k_output?: number | null;
   effective_from: string;
   effective_to: string | null;
   created_by: string;
@@ -24,8 +27,17 @@ export interface CreatePricingRequest {
   output_price: number;
   cache_read_price: number;
   cache_creation_price: number;
+  /** Issue #74：留空（null）則用平台匯率換算 */
+  points_per_1k_input?: number | null;
+  points_per_1k_output?: number | null;
   effective_from: string;
   note: string;
+}
+
+/** Issue #74 — PUT /admin/pricing/{id}：兩欄同時給值或同時 null（清除），否則 422 */
+export interface UpdatePricingPointsRequest {
+  points_per_1k_input: number | null;
+  points_per_1k_output: number | null;
 }
 
 export interface DryRunRecalcRequest {

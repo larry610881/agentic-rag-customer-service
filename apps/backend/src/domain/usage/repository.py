@@ -97,6 +97,12 @@ class UsageRepository(ABC):
             end = datetime(int(year), int(month) + 1, 1, tzinfo=timezone.utc)
         return await self.sum_tokens_in_range(tenant_id, start, end)
 
+    async def sum_points_in_cycle(
+        self, tenant_id: str, cycle_year_month: str
+    ) -> int:
+        """Issue #74：SUM(points) for (tenant, YYYY-MM)。點數制配額用。"""
+        raise NotImplementedError
+
     @abstractmethod
     async def sum_billable_tokens_in_cycle(
         self,

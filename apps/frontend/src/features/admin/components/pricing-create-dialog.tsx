@@ -26,9 +26,18 @@ const DEFAULT_FORM = {
   output_price: 0,
   cache_read_price: 0,
   cache_creation_price: 0,
+  // Issue #74 — 每千 token 點數（字串保存，空字串 = null → 用平台匯率換算）
+  points_per_1k_input: "",
+  points_per_1k_output: "",
   effective_from: "", // datetime-local string
   note: "",
 };
+
+/** 空白 → null；否則轉數字（非數字回 NaN 由呼叫端擋） */
+function parseOptionalPoints(raw: string): number | null {
+  const text = raw.trim();
+  return text === "" ? null : Number(text);
+}
 
 function toIsoUtc(localDatetime: string): string {
   // datetime-local input gives e.g. "2026-04-22T12:34"
@@ -68,6 +77,19 @@ export function PricingCreateDialog({
       setError("請選擇生效時間");
       return;
     }
+    const pointsIn = parseOptionalPoints(form.points_per_1k_input);
+    const pointsOut = parseOptionalPoints(form.points_per_1k_output);
+    if ((pointsIn === null) !== (pointsOut === null)) {
+      setError("輸入 / 輸出點數需同時填寫，或同時留空（改用平台匯率換算）");
+      return;
+    }
+    if (
+      (pointsIn !== null && (!Number.isFinite(pointsIn) || pointsIn < 0)) ||
+      (pointsOut !== null && (!Number.isFinite(pointsOut) || pointsOut < 0))
+    ) {
+      setError("每千 token 點數必須是 ≥ 0 的數字，或留空");
+      return;
+    }
 
     try {
       await createMutation.mutateAsync({
@@ -79,6 +101,8 @@ export function PricingCreateDialog({
         output_price: Number(form.output_price),
         cache_read_price: Number(form.cache_read_price),
         cache_creation_price: Number(form.cache_creation_price),
+        points_per_1k_input: pointsIn,
+        points_per_1k_output: pointsOut,
         effective_from: toIsoUtc(form.effective_from),
         note: form.note,
       });
@@ -204,6 +228,39 @@ export function PricingCreateDialog({
                 }
               />
             </div>
+          </div>
+
+          {/* Issue #74 — 點數制換算表 */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="points_per_1k_input">每千 token 輸入點數</Label>
+              <Input
+                id="points_per_1k_input"
+                type="number"
+                step="0.0001"
+                min="0"
+                value={form.points_per_1k_input}
+                onChange={(e) =>
+                  setForm({ ...form, points_per_1k_input: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label htmlFor="points_per_1k_output">每千 token 輸出點數</Label>
+              <Input
+                id="points_per_1k_output"
+                type="number"
+                step="0.0001"
+                min="0"
+                value={form.points_per_1k_output}
+                onChange={(e) =>
+                  setForm({ ...form, points_per_1k_output: e.target.value })
+                }
+              />
+            </div>
+            <p className="col-span-2 text-xs text-muted-foreground">
+              留空則用平台匯率換算
+            </p>
           </div>
 
           <div>

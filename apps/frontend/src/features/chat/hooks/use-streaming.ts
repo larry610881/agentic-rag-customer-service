@@ -7,6 +7,7 @@ import { useChatStore } from "@/stores/use-chat-store";
 import { getToolLabel } from "@/constants/tool-labels";
 import type { ContactCard, Source, ToolCallInfo } from "@/types/chat";
 import { API_BASE } from "@/lib/api-config";
+import { DEFAULT_BLOCK_MESSAGE } from "@/features/billing/billing-labels";
 
 const getToolHint = (toolName: string): string =>
   `\u{1f50d} ${getToolLabel(toolName)} 使用中`;
@@ -41,6 +42,7 @@ export function useStreaming() {
     setToolHint,
     setAssistantMessageId,
     setAssistantGuardBlocked,
+    setAssistantQuotaExhausted,
   } = useChatStore();
 
   const sendMessage = useCallback(
@@ -146,6 +148,16 @@ export function useStreaming() {
             if (blockType === "output" && typeof event.replacement === "string") {
               replaceAssistantContent(event.replacement as string);
             }
+            break;
+          }
+          case "quota_exhausted": {
+            // Issue #74：用完即擋 — 後端送固定文案後接 done；以通知樣式取代回覆
+            setHintThrottled(null);
+            const content =
+              typeof event.content === "string" && event.content
+                ? event.content
+                : DEFAULT_BLOCK_MESSAGE;
+            setAssistantQuotaExhausted(content);
             break;
           }
           case "error":

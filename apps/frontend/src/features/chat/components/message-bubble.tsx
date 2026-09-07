@@ -1,5 +1,5 @@
 import { AnimatePresence } from "framer-motion";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/use-chat-store";
 import type { ChatMessage } from "@/types/chat";
@@ -23,7 +23,10 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
   const conversationId = useChatStore((s) => s.conversationId);
 
   const showHint = !isUser && isLast && isStreaming && !!toolHint && !message.content;
-  const showFeedback = !isUser && message.content && !(isLast && isStreaming);
+  // Issue #74：額度用盡通知 — 不是 AI 回覆，不給回饋按鈕
+  const isQuotaExhausted = !isUser && !!message.quotaExhausted;
+  const showFeedback =
+    !isUser && message.content && !(isLast && isStreaming) && !isQuotaExhausted;
   // Sprint A++ Guard UX: 被攔截時樣式與 banner（僅 Studio 收得到此 flag）
   const isGuardBlocked = !isUser && !!message.guardBlocked;
 
@@ -38,9 +41,20 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
             ? "bg-primary text-primary-foreground"
             : isGuardBlocked
               ? "bg-orange-50 text-foreground border border-orange-400 dark:bg-orange-950/30 dark:border-orange-700"
-              : "bg-muted/80 text-foreground border border-border",
+              : isQuotaExhausted
+                ? "bg-amber-50 text-foreground border border-amber-400 dark:bg-amber-950/30 dark:border-amber-700"
+                : "bg-muted/80 text-foreground border border-border",
         )}
       >
+        {isQuotaExhausted && (
+          <div
+            role="status"
+            className="mb-2 flex items-center gap-2 rounded-md bg-amber-100 px-2 py-1.5 text-xs font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+          >
+            <Wallet className="h-3.5 w-3.5 shrink-0" />
+            本月額度已用完，服務暫停
+          </div>
+        )}
         {isGuardBlocked && message.guardBlocked && (
           <div className="mb-2 flex items-start gap-2 rounded-md bg-orange-100 px-2 py-1.5 text-xs text-orange-900 dark:bg-orange-900/40 dark:text-orange-200">
             <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0" />

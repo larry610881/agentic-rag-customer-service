@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
@@ -21,6 +21,10 @@ class TokenLedgerTopupModel(Base):
     )
     cycle_year_month: Mapped[str] = mapped_column(String(7), nullable=False)
     amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # Issue #74：點數制加購（token 制為 0）
+    amount_points: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     reason: Mapped[str] = mapped_column(String(32), nullable=False)
     pricing_version: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(

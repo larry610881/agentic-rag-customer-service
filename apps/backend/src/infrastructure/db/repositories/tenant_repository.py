@@ -25,6 +25,8 @@ class SQLAlchemyTenantRepository(TenantRepository):
             default_classification_model=model.default_classification_model,
             default_summary_model=model.default_summary_model,
             default_intent_model=model.default_intent_model,
+            exhaustion_policy_override=model.exhaustion_policy_override,
+            block_message_override=model.block_message_override,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -43,6 +45,8 @@ class SQLAlchemyTenantRepository(TenantRepository):
                 default_classification_model=tenant.default_classification_model,
                 default_summary_model=tenant.default_summary_model,
                 default_intent_model=tenant.default_intent_model,
+                exhaustion_policy_override=tenant.exhaustion_policy_override,
+                block_message_override=tenant.block_message_override,
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
             )

@@ -21,6 +21,9 @@ class Tenant:
     # S-KB-Followup.2: intent_classify / conversation_summary 的 tenant default
     default_summary_model: str = ""
     default_intent_model: str = ""
+    # Issue #74：額度用盡策略 / 被擋文案覆寫（None = 沿用方案）
+    exhaustion_policy_override: str | None = None
+    block_message_override: str | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

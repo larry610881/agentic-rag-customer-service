@@ -56,6 +56,13 @@ class UsageRecordModel(Base):
         String(36), nullable=True
     )
     config_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Issue #74：點數制換算結果（token 制為 0）與推理 token 標注（#72）
+    points: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    reasoning_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
         nullable=False,

@@ -211,4 +211,72 @@ describe("TenantConfigDialog", () => {
 
     expect(screen.queryByLabelText("其他")).not.toBeInTheDocument();
   });
+
+  // ---- Issue #74: 額度用盡策略覆寫 ----
+
+  it("未觸碰覆寫欄位 → PATCH body 不含 exhaustion_policy_override / block_message_override", async () => {
+    const spy = registerPatchSpy();
+    const user = userEvent.setup();
+    renderWithProviders(
+      <TenantConfigDialog
+        tenant={mockTenant}
+        open={true}
+        onOpenChange={mockOnOpenChange}
+      />,
+    );
+    expect(screen.getByLabelText("額度用盡策略覆寫")).toHaveValue("");
+
+    await user.click(screen.getByRole("button", { name: "儲存" }));
+    await waitFor(() => expect(spy.lastBody).not.toBeNull());
+
+    expect(spy.lastBody).not.toHaveProperty("exhaustion_policy_override");
+    expect(spy.lastBody).not.toHaveProperty("block_message_override");
+  });
+
+  it("選「用完即擋」+ 填被擋文案 → PATCH body 帶兩個覆寫鍵", async () => {
+    const spy = registerPatchSpy();
+    const user = userEvent.setup();
+    renderWithProviders(
+      <TenantConfigDialog
+        tenant={mockTenant}
+        open={true}
+        onOpenChange={mockOnOpenChange}
+      />,
+    );
+
+    await user.selectOptions(screen.getByLabelText("額度用盡策略覆寫"), "block");
+    await user.type(screen.getByLabelText("被擋文案覆寫"), "本店額度已用完");
+    await user.click(screen.getByRole("button", { name: "儲存" }));
+    await waitFor(() => expect(spy.lastBody).not.toBeNull());
+
+    expect(spy.lastBody!.exhaustion_policy_override).toBe("block");
+    expect(spy.lastBody!.block_message_override).toBe("本店額度已用完");
+  });
+
+  it("既有覆寫改回「沿用方案」→ PATCH body.exhaustion_policy_override 為 null", async () => {
+    const spy = registerPatchSpy();
+    const user = userEvent.setup();
+    const tenantWithOverride: Tenant = {
+      ...mockTenant,
+      exhaustion_policy_override: "block",
+      block_message_override: "舊文案",
+    };
+    renderWithProviders(
+      <TenantConfigDialog
+        tenant={tenantWithOverride}
+        open={true}
+        onOpenChange={mockOnOpenChange}
+      />,
+    );
+    expect(screen.getByLabelText("額度用盡策略覆寫")).toHaveValue("block");
+    expect(screen.getByLabelText("被擋文案覆寫")).toHaveValue("舊文案");
+
+    await user.selectOptions(screen.getByLabelText("額度用盡策略覆寫"), "");
+    await user.clear(screen.getByLabelText("被擋文案覆寫"));
+    await user.click(screen.getByRole("button", { name: "儲存" }));
+    await waitFor(() => expect(spy.lastBody).not.toBeNull());
+
+    expect(spy.lastBody).toHaveProperty("exhaustion_policy_override", null);
+    expect(spy.lastBody).toHaveProperty("block_message_override", null);
+  });
 });

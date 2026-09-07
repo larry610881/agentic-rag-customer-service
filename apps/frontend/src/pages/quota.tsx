@@ -1,11 +1,18 @@
+import { useState } from "react";
 import type { Variants } from "framer-motion";
 import { motion } from "framer-motion";
-import { Wallet } from "lucide-react";
+import { ChevronDown, ChevronRight, Coins, Wallet } from "lucide-react";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { useTenantQuota } from "@/hooks/queries/use-tenant-quota";
+import type { TenantQuota } from "@/hooks/queries/use-tenant-quota";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Card,
   CardHeader,
@@ -14,6 +21,12 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { getCategoryLabel } from "@/constants/usage-categories";
+import { QuotaPolicyCard } from "@/features/billing/components/quota-policy-card";
+import {
+  billingModeLabel,
+  formatPoints,
+  usedPercent,
+} from "@/features/billing/billing-labels";
 
 const containerVariants: Variants = {
   hidden: {},
@@ -33,15 +46,169 @@ function formatTokens(n: number): string {
   return n.toLocaleString();
 }
 
-export default function QuotaPage() {
-  const tenantId = useAuthStore((s) => s.tenantId);
-  const { data, isLoading, isError } = useTenantQuota(tenantId);
-
+/** Token 制三張卡（點數制時收進「詳細 token」） */
+function TokenMeterCards({ data }: { data: TenantQuota }) {
   const baseUsedPct =
-    data && data.base_total > 0
+    data.base_total > 0
       ? ((data.base_total - data.base_remaining) / data.base_total) * 100
       : 0;
   const baseAlert = baseUsedPct >= 80;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardDescription>{data.cycle_year_month}</CardDescription>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            本月已用
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-3xl font-bold">
+            {formatTokens(data.total_billable_in_cycle)}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            計費 tokens（= Base 已扣量）
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Base 餘額（{data.plan_name}）
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Progress
+            value={Math.min(100, Math.round(baseUsedPct))}
+            className="h-2"
+          />
+          <div
+            className={
+              baseAlert
+                ? "text-sm font-medium text-orange-600"
+                : "text-sm text-muted-foreground"
+            }
+          >
+            {formatTokens(data.base_remaining)} /{" "}
+            {formatTokens(data.base_total)}
+          </div>
+          {baseAlert && (
+            <p className="text-xs text-orange-600">
+              Base 額度已使用 {Math.round(baseUsedPct)}%，請留意
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Addon 餘額
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div
+            className={
+              data.addon_remaining < 0
+                ? "text-3xl font-bold text-destructive"
+                : "text-3xl font-bold"
+            }
+          >
+            {data.addon_remaining > 0 ? "+" : ""}
+            {formatTokens(data.addon_remaining)}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            超用會持續累積；是否自動補包依下方「額度用盡策略」
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/** Issue #74 — 點數制：已用 / 總額 / 剩餘 */
+function PointsMeterCards({ data }: { data: TenantQuota }) {
+  const total = data.points_total ?? 0;
+  const used = data.points_used ?? 0;
+  const remaining = data.points_remaining ?? total - used;
+  const pct = usedPercent(used, total);
+  const alert = pct >= 80;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardDescription>{data.cycle_year_month}</CardDescription>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            本月已用點數
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-3xl font-bold">{formatPoints(used)}</div>
+          <p className="text-xs text-muted-foreground">
+            依類別倍率換算後的點數
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            點數餘額（{data.plan_name}）
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Progress value={pct} className="h-2" aria-label="點數使用率" />
+          <div
+            className={
+              alert
+                ? "text-sm font-medium text-orange-600"
+                : "text-sm text-muted-foreground"
+            }
+          >
+            {formatPoints(remaining)} / {formatPoints(total)}
+          </div>
+          {alert && (
+            <p className="text-xs text-orange-600">
+              點數已使用 {pct}%，請留意
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            剩餘點數
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div
+            className={
+              remaining < 0
+                ? "text-3xl font-bold text-destructive"
+                : "text-3xl font-bold"
+            }
+          >
+            {formatPoints(remaining)}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            token 永遠是事實來源；點數為寫入當下換算
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function QuotaPage() {
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const { data, isLoading, isError } = useTenantQuota(tenantId);
+  const [tokenDetailOpen, setTokenDetailOpen] = useState(false);
+
+  const isPoints = data?.billing_mode === "points";
 
   return (
     <motion.div
@@ -51,7 +218,15 @@ export default function QuotaPage() {
       animate="show"
     >
       <motion.div variants={itemVariants}>
-        <h1 className="text-2xl font-bold tracking-tight">本月額度</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">本月額度</h1>
+          {data && (
+            <Badge variant="outline" className="gap-1">
+              <Coins className="h-3 w-3" />
+              {billingModeLabel(data.billing_mode)}
+            </Badge>
+          )}
+        </div>
         <p className="text-muted-foreground">
           {data ? `${data.cycle_year_month} 用量與餘額` : "載入中…"}
         </p>
@@ -77,78 +252,30 @@ export default function QuotaPage() {
         </div>
       ) : (
         <>
-          <motion.div
-            variants={itemVariants}
-            className="grid gap-4 md:grid-cols-3"
-          >
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>{data.cycle_year_month}</CardDescription>
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  本月已用
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">
-                  {formatTokens(data.total_billable_in_cycle)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  計費 tokens（= Base 已扣量）
-                </p>
-              </CardContent>
-            </Card>
+          <motion.div variants={itemVariants}>
+            {isPoints ? <PointsMeterCards data={data} /> : <TokenMeterCards data={data} />}
+          </motion.div>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Base 餘額（{data.plan_name}）
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Progress
-                  value={Math.min(100, Math.round(baseUsedPct))}
-                  className="h-2"
-                />
-                <div
-                  className={
-                    baseAlert
-                      ? "text-sm font-medium text-orange-600"
-                      : "text-sm text-muted-foreground"
-                  }
-                >
-                  {formatTokens(data.base_remaining)} /{" "}
-                  {formatTokens(data.base_total)}
-                </div>
-                {baseAlert && (
-                  <p className="text-xs text-orange-600">
-                    Base 額度已使用 {Math.round(baseUsedPct)}%，請留意
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+          {isPoints && (
+            <motion.div variants={itemVariants}>
+              <Collapsible open={tokenDetailOpen} onOpenChange={setTokenDetailOpen}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium">
+                  {tokenDetailOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                  詳細 token
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3">
+                  <TokenMeterCards data={data} />
+                </CollapsibleContent>
+              </Collapsible>
+            </motion.div>
+          )}
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Addon 餘額
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div
-                  className={
-                    data.addon_remaining < 0
-                      ? "text-3xl font-bold text-destructive"
-                      : "text-3xl font-bold"
-                  }
-                >
-                  {data.addon_remaining > 0 ? "+" : ""}
-                  {formatTokens(data.addon_remaining)}
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  POC 階段超用會持續累積，月初將自動補 10M（規劃中）
-                </p>
-              </CardContent>
-            </Card>
+          <motion.div variants={itemVariants}>
+            <QuotaPolicyCard quota={data} tenantId={tenantId} />
           </motion.div>
 
           <motion.div variants={itemVariants}>

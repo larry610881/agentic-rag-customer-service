@@ -13,6 +13,9 @@ from src.application.tenant.create_tenant_use_case import (
 )
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
+from src.application.tenant.update_tenant_billing_policy_use_case import (
+    UpdateTenantBillingPolicyUseCase,
+)
 from src.application.tenant.update_tenant_use_case import (
     UpdateTenantCommand,
     UpdateTenantUseCase,
@@ -22,6 +25,7 @@ from src.domain.shared.exceptions import (
     DomainException,
     DuplicateEntityError,
     EntityNotFoundError,
+    ValidationError,
 )
 from src.domain.tenant.entity import Tenant
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
@@ -62,6 +66,37 @@ class TenantQuotaResponse(BaseModel):
     total_remaining: int
     total_billable_in_cycle: int  # 取代 total_used_in_cycle（breaking rename）
     included_categories: list[str] | None = None
+    # Issue #74：雙軌計價 + 用盡策略（token 制租戶 points_* 恆 0）
+    billing_mode: str = "token"
+    exhaustion_policy: str = "auto_topup"  # 方案預設
+    effective_policy: str = "auto_topup"  # 租戶覆寫後生效
+    tenant_may_change_policy: bool = False
+    grace_percent: float = 0.0
+    block_message: str = ""
+    points_total: int = 0
+    points_used: int = 0
+    points_remaining: int = 0
+
+
+class UpdateTenantBillingPolicyRequest(BaseModel):
+    """Issue #74：null = 沿用方案（清除覆寫）。"""
+
+    exhaustion_policy: str | None = None
+    block_message: str | None = None
+
+
+class TenantBillingPolicyResponse(BaseModel):
+    tenant_id: str
+    exhaustion_policy_override: str | None = None
+    block_message_override: str | None = None
+    effective_policy: str
+    block_message: str
+    tenant_may_change_policy: bool
+
+
+def _resolve_tenant_alias(tenant_id: str, caller: CurrentTenant) -> str:
+    """Issue #74：`me` 代表呼叫者自己的租戶。"""
+    return caller.tenant_id if tenant_id == "me" else tenant_id
 
 
 class TenantResponse(BaseModel):
@@ -229,6 +264,7 @@ async def get_tenant_quota(
     保證 base_total - base_remaining ≡ min(billable, base_total)（零 drift）。
     若本月 ledger 不存在會自動建立（從 plan + 上月 addon carryover）。
     """
+    tenant_id = _resolve_tenant_alias(tenant_id, tenant)
     if tenant.role != "system_admin" and tenant.tenant_id != tenant_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -249,4 +285,60 @@ async def get_tenant_quota(
         total_remaining=result.total_remaining,
         total_billable_in_cycle=result.total_billable_in_cycle,
         included_categories=result.included_categories,
+        billing_mode=result.billing_mode,
+        exhaustion_policy=result.exhaustion_policy,
+        effective_policy=result.effective_policy,
+        tenant_may_change_policy=result.tenant_may_change_policy,
+        grace_percent=float(result.grace_percent),
+        block_message=result.block_message,
+        points_total=result.points_total,
+        points_used=result.points_used,
+        points_remaining=result.points_remaining,
+    )
+
+
+@router.put("/{tenant_id}/billing-policy", response_model=TenantBillingPolicyResponse)
+@inject
+async def update_tenant_billing_policy(
+    tenant_id: str,
+    body: UpdateTenantBillingPolicyRequest,
+    caller: CurrentTenant = Depends(require_role("system_admin", "tenant_admin")),
+    use_case: UpdateTenantBillingPolicyUseCase = Depends(
+        Provide[Container.update_tenant_billing_policy_use_case]
+    ),
+) -> TenantBillingPolicyResponse:
+    """Issue #74：額度用盡策略覆寫。tenant_admin 只能改自己且方案須允許（否則 403）。"""
+    tenant_id = _resolve_tenant_alias(tenant_id, caller)
+    if caller.role != "system_admin" and caller.tenant_id != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot change other tenant's billing policy",
+        )
+    try:
+        view = await use_case.execute(
+            tenant_id=tenant_id,
+            exhaustion_policy=body.exhaustion_policy,
+            block_message=body.block_message,
+            actor_role=caller.role,
+            actor_user_id=caller.user_id,
+        )
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+        ) from None
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message
+        ) from None
+    return TenantBillingPolicyResponse(
+        tenant_id=view.tenant_id,
+        exhaustion_policy_override=view.exhaustion_policy_override,
+        block_message_override=view.block_message_override,
+        effective_policy=view.effective_policy,
+        block_message=view.block_message,
+        tenant_may_change_policy=view.tenant_may_change_policy,
     )

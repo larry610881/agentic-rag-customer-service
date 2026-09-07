@@ -6,6 +6,7 @@ from src.application.knowledge._pipeline_accounting import (
     record_embedding_usage,
     record_ocr_usage,
 )
+from src.application.knowledge._quota_gate import quota_blocked_for_document
 from src.domain.knowledge.entity import ProcessingTask
 from src.domain.knowledge.repository import (
     DocumentRepository,
@@ -46,7 +47,9 @@ class ReprocessDocumentUseCase:
         tenant_repository=None,
         chunk_context_service=None,  # for api_key_resolver in child rename
         text_splitter_overrides: dict[str, TextSplitterService] | None = None,
+        quota_preflight=None,
     ) -> None:
+        self._quota_preflight = quota_preflight  # Issue #74
         self._doc_repo = document_repository
         self._task_repo = processing_task_repository
         self._kb_repo = knowledge_base_repository
@@ -127,6 +130,18 @@ class ReprocessDocumentUseCase:
         document = await self._doc_repo.find_by_id(document_id)
         if document is None:
             raise ValueError(f"Document '{document_id}' not found")
+
+        # Issue #74：用完即擋 → 不啟動，狀態 quota_exhausted
+        if await quota_blocked_for_document(
+            quota_preflight=self._quota_preflight,
+            doc_repo=self._doc_repo,
+            task_repo=self._task_repo,
+            document_id=document_id,
+            tenant_id=document.tenant_id,
+            task_id=task_id,
+            log=log,
+        ):
+            return
 
         # Mark as processing
         await self._doc_repo.update_status(document_id, "processing")

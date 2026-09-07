@@ -312,10 +312,21 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     application.add_middleware(SessionCleanupMiddleware)
 
     from src.application.abuse.abuse_control_service import AbuseBlockedError
+    from src.domain.billing.exhaustion import QuotaExhaustedError
     from src.domain.prompt_gate.entity import (
         GateBlockedError,
         InvalidVersionTransitionError,
     )
+
+    @application.exception_handler(QuotaExhaustedError)
+    async def quota_exhausted_handler(
+        request: Request, exc: QuotaExhaustedError
+    ) -> JSONResponse:
+        # Issue #74：用完即擋（web / widget / 背景任務 API 入口共用）
+        return JSONResponse(
+            status_code=402,
+            content={"detail": "quota_exhausted", "message": exc.message},
+        )
 
     @application.exception_handler(AbuseBlockedError)
     async def abuse_blocked_handler(
@@ -486,6 +497,11 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.plan_router import router as plan_router
 
         application.include_router(plan_router)
+        from src.interfaces.api.billing_admin_router import (
+            router as billing_admin_router,
+        )
+
+        application.include_router(billing_admin_router)
 
         from src.interfaces.api.mcp_router import router as mcp_router
         from src.interfaces.api.mcp_server_router import router as mcp_server_router

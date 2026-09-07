@@ -27,6 +27,9 @@ class UsageSummaryResponse(BaseModel):
     total_cost: float
     by_model: dict[str, int]
     by_request_type: dict[str, int]
+    # Issue #74：點數欄位與 token 並列（token 制恆 0）
+    total_points: int = 0
+    by_request_type_points: dict[str, int] = {}
 
 
 @router.get("", response_model=UsageSummaryResponse)
@@ -52,6 +55,8 @@ async def get_usage_summary(
         total_cost=summary.total_cost,
         by_model=summary.by_model,
         by_request_type=summary.by_request_type,
+        total_points=summary.total_points,
+        by_request_type_points=summary.by_request_type_points,
     )
 
 
@@ -65,6 +70,7 @@ class BotUsageStatResponse(BaseModel):
     total_tokens: int
     estimated_cost: float
     message_count: int
+    points: int = 0  # Issue #74
 
 
 class DailyUsageStatResponse(BaseModel):
@@ -75,6 +81,7 @@ class DailyUsageStatResponse(BaseModel):
     estimated_cost: float
     message_count: int
     request_type: str | None = None  # by_category=true 時填入
+    points: int = 0  # Issue #74
 
 
 @router.get("/by-bot", response_model=list[BotUsageStatResponse])
@@ -113,6 +120,7 @@ async def get_usage_by_bot(
             total_tokens=s.total_tokens,
             estimated_cost=s.estimated_cost,
             message_count=s.message_count,
+            points=s.points,
         )
         for s in stats
     ]
@@ -155,6 +163,7 @@ async def get_daily_usage(
             estimated_cost=s.estimated_cost,
             message_count=s.message_count,
             request_type=s.request_type,
+            points=s.points,
         )
         for s in stats
     ]
@@ -168,6 +177,7 @@ class MonthlyUsageStatResponse(BaseModel):
     estimated_cost: float
     message_count: int
     request_type: str | None = None  # by_category=true 時填入
+    points: int = 0  # Issue #74
 
 
 @router.get("/monthly", response_model=list[MonthlyUsageStatResponse])
@@ -207,6 +217,7 @@ async def get_monthly_usage(
             estimated_cost=s.estimated_cost,
             message_count=s.message_count,
             request_type=s.request_type,
+            points=s.points,
         )
         for s in stats
     ]

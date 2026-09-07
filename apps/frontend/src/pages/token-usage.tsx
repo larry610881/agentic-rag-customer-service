@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useBotUsage, useDailyUsage, useMonthlyUsage } from "@/hooks/queries/use-usage";
+import { useTenantQuota } from "@/hooks/queries/use-tenant-quota";
+import { useAuthStore } from "@/stores/use-auth-store";
 import { TokenPeriodSelector } from "@/features/feedback/components/token-period-selector";
 import { UsageSummaryCards } from "@/features/usage/components/usage-summary-cards";
 import { UsageTrendLineChart } from "@/features/usage/components/usage-daily-line-chart";
@@ -70,6 +72,10 @@ export default function TokenUsagePage() {
   const byCategory = mode === "month" && category !== "all";
 
   const botUsage = useBotUsage(startDate, endDate);
+  // Issue #74 — 點數制租戶多顯示「總點數」
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const quota = useTenantQuota(tenantId);
+  const showPoints = quota.data?.billing_mode === "points";
   const dailyUsage = useDailyUsage(startDate, endDate, byCategory);
   const monthlyUsage = useMonthlyUsage(startDate, endDate);
 
@@ -120,7 +126,11 @@ export default function TokenUsagePage() {
       </motion.div>
 
       <motion.div variants={itemVariants}>
-        <UsageSummaryCards data={botUsage.data} isLoading={botUsage.isLoading} />
+        <UsageSummaryCards
+          data={botUsage.data}
+          isLoading={botUsage.isLoading}
+          showPoints={showPoints}
+        />
       </motion.div>
 
       <motion.div variants={itemVariants}>

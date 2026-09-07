@@ -20,6 +20,12 @@ class TokenLedgerTopupRepository(ABC):
         """SUM(amount) for (tenant, cycle). Return 0 if no records."""
         ...
 
+    async def sum_points_in_cycle(
+        self, tenant_id: str, cycle_year_month: str
+    ) -> int:
+        """Issue #74：SUM(amount_points) for (tenant, cycle). Return 0 if none."""
+        raise NotImplementedError
+
     @abstractmethod
     async def find_in_cycle(
         self, tenant_id: str, cycle_year_month: str

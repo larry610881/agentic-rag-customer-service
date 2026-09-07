@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from src.application.billing.points_estimate import estimate_points
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.domain.prompt_gate.assertion_severity import resolve_severity
 from src.domain.prompt_gate.entity import (
@@ -29,6 +30,7 @@ from src.domain.shared.exceptions import (
     DomainException,
     EntityNotFoundError,
 )
+from src.domain.usage.category import UsageCategory
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +92,9 @@ class StartGateRunUseCase:
         # 背景任務用 provider factories（延遲 resolve，綁新 session）
         gate_run_repo_factory=None,
         version_repo_factory=None,
+        quota_preflight=None,
     ) -> None:
+        self._quota_preflight = quota_preflight  # Issue #74
         self._bot_repo = bot_repository
         self._tenant_repo = tenant_repository
         self._version_repo = version_repository
@@ -203,6 +207,11 @@ class StartGateRunUseCase:
         if bot.gate_mode == "off":
             raise GatePreconditionError(
                 "gate_mode_off", "此 bot 的 gate_mode 為 off"
+            )
+        # Issue #74：用完即擋 → 跑批不啟動（同 QuotaExhaustedError）
+        if self._quota_preflight is not None:
+            await self._quota_preflight.ensure_allowed(
+                tenant_id, UsageCategory.EVAL_GATE.value
             )
 
         version = await self._version_repo.find_by_id(version_id, tenant_id)
@@ -624,9 +633,11 @@ class GateEstimateUseCase:
         self,
         bot_repository,
         eval_dataset_repository,
+        billing_context=None,
     ) -> None:
         self._bot_repo = bot_repository
         self._eval_dataset_repo = eval_dataset_repository
+        self._billing_context = billing_context  # Issue #74
 
     async def execute(self, tenant_id: str, bot_id: str) -> dict:
         bot = await self._bot_repo.find_by_id(bot_id)
@@ -649,8 +660,14 @@ class GateEstimateUseCase:
         estimate = StartGateRunUseCase._estimate(
             cases, bot.gate_repeats, bot.llm_model
         )
+        # Issue #74：點數制租戶另回估算點數（token 制 est_points=0）
+        billing = await estimate_points(
+            self._billing_context, tenant_id, UsageCategory.EVAL_GATE.value,
+            float(estimate.get("est_cost", 0) or 0),
+        )
         return {
             **estimate,
+            **billing,
             "dataset_ids": dataset_ids,
             "has_custom_enabled": has_custom,
             "excluded_platform_cases": excluded_applied,

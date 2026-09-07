@@ -163,6 +163,31 @@ reprocess 可用 `ocr_model` 參數覆寫本次（不寫回 KB）。API key 一�
 |------|------|
 | `LLM_PRICING_JSON` | `{"model": {"input": price_per_1m, "output": price_per_1m}}` |
 
+### Billing（Issue #74：雙軌計價 + 額度用盡策略）
+
+計價相關設定**全部在資料庫 / 後台**，無環境變數：
+
+| 層級 | 設定 | 位置 | 說明 |
+|------|------|------|------|
+| 方案 | `billing_mode` | `plans`（`/admin/plans`） | `token`（預設）或 `points`；token 永遠是事實來源，點數是記帳當下的換算層 |
+| 方案 | `monthly_points` / `addon_pack_points` | `plans` | 點數制的每月基本點數 / 加購包點數；月費沿用 `base_price` |
+| 方案 | `default_category_multiplier` + 倍率表 | `plans` + `plan_category_multipliers` | 用量類別 → 倍率（例：對話 1.0、精靈 0、評估 0.5）；未列類別用預設倍率；倍率 0 不扣點但仍記 token |
+| 方案 | `exhaustion_policy` | `plans` | `auto_topup`（預設，額度用盡自動加購）或 `block`（用完即擋）；**獨立於計價模式** |
+| 方案 | `tenant_may_change_policy` | `plans` | 租戶管理員能否自改策略（預設 false → `PUT /tenants/{id}/billing-policy` 回 403） |
+| 方案 | `auto_topup_monthly_cap` | `plans` | 自動展延每月次數上限；`0` = 不限（預設） |
+| 方案 | `grace_percent` | `plans` | `block` 策略的寬限百分比（以月基礎額度計）；預設 `0` |
+| 方案 / 租戶 | `block_message` / `block_message_override` | `plans` / `tenants` | 被擋固定文案：租戶覆寫 → 方案 → 平台預設常數 |
+| 租戶 | `exhaustion_policy_override` | `tenants` | `NULL` = 沿用方案 |
+| 平台 | `usd_per_point` | `billing_settings`（`/admin/billing/settings`） | 1 點 = X USD；模型未設點數表時由美元換算；預設 `0.001` |
+| 模型 | `points_per_1k_input` / `points_per_1k_output` | `model_pricing`（`PUT /admin/pricing/{id}`） | 模型點數表（每千 token；輸入側含 cache tokens）；優先於平台匯率 |
+
+換算順序：模型點數表 → 否則 `ceil(cost_usd / usd_per_point)` → × 類別倍率 → 無條件進位。
+
+用盡預檢：`QuotaPreflightService`（web / widget / LINE / 文件處理 / 評估跑批共用），
+Redis 快取 30 秒（key `quota:pre:{tenant}`，寫入用量後失效）；Redis / DB 不可用時 fail-open 放行。
+被擋回應：web / widget `402 {"detail":"quota_exhausted","message":…}`（串流為 `quota_exhausted` 事件）、
+LINE 回固定文字、文件狀態 `quota_exhausted`。
+
 ## Provider 設定
 
 > LLM Provider 現由資料庫 `ProviderSetting` 動態管理（後台 UI 設定），不再需要環境變數。

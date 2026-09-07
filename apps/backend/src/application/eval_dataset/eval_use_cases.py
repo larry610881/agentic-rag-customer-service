@@ -5,9 +5,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from src.application.billing.points_estimate import estimate_points
 from src.application.eval_dataset._tenant_guard import ensure_dataset_read
 from src.domain.eval_dataset.repository import EvalDatasetRepository
 from src.domain.shared.exceptions import EntityNotFoundError
+from src.domain.usage.category import UsageCategory
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +197,7 @@ class EstimateCostCommand:
     max_iterations: int = 20
     patience: int = 5
     budget: int = 200
+    tenant_id: str = ""  # Issue #74：估算點數用（空 = 不換算）
 
 
 # Fallback cost per call if model not found in registry
@@ -260,11 +263,13 @@ class EstimateCostUseCase:
         bot_repository=None,
         system_prompt_config_repository=None,
         get_avg_chunk_size=None,
+        billing_context=None,
     ) -> None:
         self._dataset_repo = eval_dataset_repository
         self._bot_repo = bot_repository
         self._prompt_config_repo = system_prompt_config_repository
         self._get_avg_chunk_size = get_avg_chunk_size  # callable(tenant_id) -> int
+        self._billing_context = billing_context  # Issue #74
 
     async def execute(self, command: EstimateCostCommand) -> dict:
         dataset = await self._dataset_repo.find_by_id(command.dataset_id)
@@ -311,7 +316,14 @@ class EstimateCostUseCase:
         )
         max_cost = baseline_cost + max_iterations * cost_per_iteration
 
+        # Issue #74：點數制租戶另回估算點數（以 max_estimate.cost 換算；token 制 0）
+        billing = await estimate_points(
+            self._billing_context, command.tenant_id,
+            UsageCategory.PROMPT_OPTIMIZE.value, max_cost,
+        )
+
         return {
+            **billing,
             "dataset_id": command.dataset_id,
             "dataset_name": dataset.name,
             "num_cases": num_cases,

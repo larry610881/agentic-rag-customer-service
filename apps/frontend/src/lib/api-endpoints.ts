@@ -11,6 +11,8 @@ export const API_ENDPOINTS = {
     create: "/api/v1/tenants",
     config: (id: string) => `/api/v1/tenants/${id}/config`,
     quota: (id: string) => `/api/v1/tenants/${id}/quota`,
+    /** Issue #74 — 租戶自改用盡策略（方案允許時）；id 可為 "me" */
+    billingPolicy: (id: string) => `/api/v1/tenants/${id}/billing-policy`,
   },
   plans: {
     list: "/api/v1/admin/plans",
@@ -21,11 +23,15 @@ export const API_ENDPOINTS = {
       `/api/v1/admin/plans/${id}${force ? "?force=true" : ""}`,
     assign: (planName: string, tenantId: string) =>
       `/api/v1/admin/plans/${planName}/assign/${tenantId}`,
+    /** Issue #74 — 類別倍率表（GET 讀 / PUT 整份取代） */
+    multipliers: (id: string) => `/api/v1/admin/plans/${id}/multipliers`,
   },
   pricing: {
     list: "/api/v1/admin/pricing",
     create: "/api/v1/admin/pricing",
     deactivate: (id: string) => `/api/v1/admin/pricing/${id}/deactivate`,
+    /** Issue #74 — 只更新 points_per_1k_input / output */
+    update: (id: string) => `/api/v1/admin/pricing/${id}`,
     recalculateDryRun: "/api/v1/admin/pricing/recalculate:dry-run",
     recalculateExecute: "/api/v1/admin/pricing/recalculate:execute",
     recalcHistory: "/api/v1/admin/pricing/recalculate-history",
@@ -268,6 +274,8 @@ export const API_ENDPOINTS = {
         ? `/api/v1/admin/billing/dashboard?${tail}`
         : "/api/v1/admin/billing/dashboard";
     },
+    /** Issue #74 — 平台匯率（usd_per_point） */
+    settings: "/api/v1/admin/billing/settings",
   },
   adminConversations: {
     search: (params: {

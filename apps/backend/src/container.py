@@ -41,6 +41,11 @@ from src.application.auth.refresh_token_use_case import RefreshTokenUseCase
 from src.application.auth.register_user_use_case import RegisterUserUseCase
 from src.application.auth.reset_password_use_case import ResetPasswordUseCase
 from src.application.auth.update_user_use_case import UpdateUserUseCase
+from src.application.billing.billing_context import CachedBillingContextProvider
+from src.application.billing.billing_settings_use_cases import (
+    GetBillingSettingsUseCase,
+    UpdateBillingSettingsUseCase,
+)
 from src.application.billing.get_billing_dashboard_use_case import (
     GetBillingDashboardUseCase,
 )
@@ -53,6 +58,7 @@ from src.application.billing.process_quota_alerts_use_case import (
 from src.application.billing.quota_email_dispatch_use_case import (
     QuotaEmailDispatchUseCase,
 )
+from src.application.billing.quota_preflight import QuotaPreflightService
 from src.application.billing.topup_addon_use_case import TopupAddonUseCase
 from src.application.bot.create_bot_use_case import CreateBotUseCase
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
@@ -294,6 +300,10 @@ from src.application.plan.create_plan_use_case import CreatePlanUseCase
 from src.application.plan.delete_plan_use_case import DeletePlanUseCase
 from src.application.plan.get_plan_use_case import GetPlanUseCase
 from src.application.plan.list_plans_use_case import ListPlansUseCase
+from src.application.plan.plan_multipliers_use_cases import (
+    GetPlanMultipliersUseCase,
+    ReplacePlanMultipliersUseCase,
+)
 from src.application.plan.update_plan_use_case import UpdatePlanUseCase
 from src.application.platform.create_provider_setting_use_case import (
     CreateProviderSettingUseCase,
@@ -351,6 +361,9 @@ from src.application.pricing.list_pricing_use_case import ListPricingUseCase
 from src.application.pricing.list_recalc_history_use_case import (
     ListRecalcHistoryUseCase,
 )
+from src.application.pricing.update_pricing_points_use_case import (
+    UpdatePricingPointsUseCase,
+)
 from src.application.prompt_gate.gate_run_use_cases import (
     CleanupOrphanGateRunsUseCase,
     GateEstimateUseCase,
@@ -388,6 +401,9 @@ from src.application.security.prompt_guard_service import PromptGuardService
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
+from src.application.tenant.update_tenant_billing_policy_use_case import (
+    UpdateTenantBillingPolicyUseCase,
+)
 from src.application.tenant.update_tenant_use_case import UpdateTenantUseCase
 from src.application.usage.query_bot_usage_use_case import QueryBotUsageUseCase
 from src.application.usage.query_daily_usage_use_case import QueryDailyUsageUseCase
@@ -444,6 +460,9 @@ from src.infrastructure.db.repositories.api_key_repository import (
 )
 from src.infrastructure.db.repositories.audit_log_repository import (
     SQLAlchemyAuditLogRepository,
+)
+from src.infrastructure.db.repositories.billing_settings_repository import (
+    SQLAlchemyBillingSettingsRepository,
 )
 from src.infrastructure.db.repositories.billing_transaction_repository import (
     SQLAlchemyBillingTransactionRepository,
@@ -513,6 +532,9 @@ from src.infrastructure.db.repositories.optimization_run_repository import (
 )
 from src.infrastructure.db.repositories.outbox_event_repository import (
     SQLAlchemyOutboxEventRepository,
+)
+from src.infrastructure.db.repositories.plan_category_multiplier_repository import (
+    SQLAlchemyPlanCategoryMultiplierRepository,
 )
 from src.infrastructure.db.repositories.plan_repository import (
     SQLAlchemyPlanRepository,
@@ -717,6 +739,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.admin_conv_summary_router",
             "src.interfaces.api.admin_conversation_insights_router",
             "src.interfaces.api.plan_router",
+            "src.interfaces.api.billing_admin_router",
             "src.interfaces.api.knowledge_base_router",
             "src.interfaces.api.mcp_router",
             "src.interfaces.api.mcp_server_router",
@@ -1056,6 +1079,23 @@ class Container(containers.DeclarativeContainer):
     token_ledger_topup_repository = providers.Factory(
         SQLAlchemyTokenLedgerTopupRepository,
         session=db_session,
+    )
+
+    # Issue #74：方案類別倍率 / 平台計價設定 / 租戶計價脈絡快取（60 秒）
+    plan_category_multiplier_repository = providers.Factory(
+        SQLAlchemyPlanCategoryMultiplierRepository,
+        session=db_session,
+    )
+    billing_settings_repository = providers.Factory(
+        SQLAlchemyBillingSettingsRepository,
+        session=db_session,
+    )
+    billing_context_provider = providers.Singleton(
+        CachedBillingContextProvider,
+        tenant_repo_factory=tenant_repository.provider,
+        plan_repo_factory=plan_repository.provider,
+        multiplier_repo_factory=plan_category_multiplier_repository.provider,
+        settings_repo_factory=billing_settings_repository.provider,
     )
 
     # S-Token-Gov.3: Billing + QuotaAlert repositories
@@ -1448,11 +1488,28 @@ class Container(containers.DeclarativeContainer):
     create_plan_use_case = providers.Factory(
         CreatePlanUseCase,
         plan_repository=plan_repository,
+        audit=audit_recorder,  # Issue #74
     )
 
     update_plan_use_case = providers.Factory(
         UpdatePlanUseCase,
         plan_repository=plan_repository,
+        audit=audit_recorder,  # Issue #74
+        billing_context=billing_context_provider,
+    )
+
+    # Issue #74：方案類別倍率表
+    get_plan_multipliers_use_case = providers.Factory(
+        GetPlanMultipliersUseCase,
+        plan_repository=plan_repository,
+        multiplier_repository=plan_category_multiplier_repository,
+    )
+    replace_plan_multipliers_use_case = providers.Factory(
+        ReplacePlanMultipliersUseCase,
+        plan_repository=plan_repository,
+        multiplier_repository=plan_category_multiplier_repository,
+        billing_context=billing_context_provider,
+        audit=audit_recorder,
     )
 
     delete_plan_use_case = providers.Factory(
@@ -1480,6 +1537,13 @@ class Container(containers.DeclarativeContainer):
     deactivate_pricing_use_case = providers.Factory(
         DeactivatePricingUseCase,
         repo=model_pricing_repository,
+    )
+
+    # Issue #74：模型點數表
+    update_pricing_points_use_case = providers.Factory(
+        UpdatePricingPointsUseCase,
+        repo=model_pricing_repository,
+        audit=audit_recorder,
     )
 
     dry_run_recalculate_use_case = providers.Factory(
@@ -1782,6 +1846,31 @@ class Container(containers.DeclarativeContainer):
         ensure_ledger=ensure_ledger_use_case,
         usage_repository=usage_repository,
         topup_repository=token_ledger_topup_repository,
+        billing_context=billing_context_provider,  # Issue #74
+    )
+
+    # Issue #74：用完即擋的共用預檢（三通路 + 背景任務單點；Redis 30 秒、fail-open）
+    quota_preflight_service = providers.Singleton(
+        QuotaPreflightService,
+        compute_quota_factory=compute_tenant_quota_use_case.provider,
+        redis_client=redis_client,
+    )
+    get_billing_settings_use_case = providers.Factory(
+        GetBillingSettingsUseCase, repo=billing_settings_repository,
+    )
+    update_billing_settings_use_case = providers.Factory(
+        UpdateBillingSettingsUseCase,
+        repo=billing_settings_repository,
+        billing_context=billing_context_provider,
+        audit=audit_recorder,
+    )
+    update_tenant_billing_policy_use_case = providers.Factory(
+        UpdateTenantBillingPolicyUseCase,
+        tenant_repository=tenant_repository,
+        plan_repository=plan_repository,
+        billing_context=billing_context_provider,
+        quota_preflight=quota_preflight_service,
+        audit=audit_recorder,
     )
 
     # S-Ledger-Unification P4 + Tier 1 T1.1: topup_addon 寫 append-only log
@@ -1874,6 +1963,9 @@ class Container(containers.DeclarativeContainer):
         plan_repository=plan_repository,
         # S-Pricing.1: cache miss 時才 fallback 到 DEFAULT_MODELS
         pricing_cache=pricing_cache,
+        # Issue #74：點數換算脈絡 + 寫入後預檢快取失效
+        billing_context=billing_context_provider,
+        quota_preflight=quota_preflight_service,
     )
 
     # S-KB-Studio.1: re-embed 需要 record_usage 注入，故必須在 record_usage_use_case 之後
@@ -1910,6 +2002,7 @@ class Container(containers.DeclarativeContainer):
         record_usage_use_case=record_usage_use_case,
         chunk_context_service=chunk_context_service,
         tenant_repository=tenant_repository,
+        quota_preflight=quota_preflight_service,  # Issue #74
     )
 
     split_pdf_use_case = providers.Factory(
@@ -1946,6 +2039,7 @@ class Container(containers.DeclarativeContainer):
         record_usage_use_case=record_usage_use_case,
         tenant_repository=tenant_repository,
         chunk_context_service=chunk_context_service,
+        quota_preflight=quota_preflight_service,  # Issue #74
     )
 
     classification_service = providers.Factory(
@@ -2303,6 +2397,7 @@ class Container(containers.DeclarativeContainer):
         # 背景任務：.provider 延遲 resolve（independent_session_scope 內綁新 session）
         gate_run_repo_factory=prompt_gate_run_repository.provider,
         version_repo_factory=bot_config_version_repository.provider,
+        quota_preflight=quota_preflight_service,  # Issue #74
     )
 
     get_gate_run_use_case = providers.Factory(
@@ -2314,6 +2409,7 @@ class Container(containers.DeclarativeContainer):
         GateEstimateUseCase,
         bot_repository=bot_repository,
         eval_dataset_repository=eval_dataset_repository,
+        billing_context=billing_context_provider,  # Issue #74
     )
 
     get_version_metrics_use_case = providers.Factory(
@@ -2333,6 +2429,7 @@ class Container(containers.DeclarativeContainer):
         encryption_service=encryption_service,
         gate_run_repo_factory=prompt_gate_run_repository.provider,
         record_usage_factory=record_usage_use_case.provider,
+        quota_preflight=quota_preflight_service,  # Issue #74
     )
 
     cleanup_orphan_gate_runs_use_case = providers.Factory(
@@ -2552,6 +2649,7 @@ class Container(containers.DeclarativeContainer):
         eval_dataset_repository=eval_dataset_repository,
         bot_repository=bot_repository,
         system_prompt_config_repository=system_prompt_config_repository,
+        billing_context=billing_context_provider,  # Issue #74
         get_avg_chunk_size=providers.Factory(
             _AvgChunkSizeProvider, session=db_session,
         ),
@@ -2588,6 +2686,7 @@ class Container(containers.DeclarativeContainer):
         record_usage_factory=record_usage_use_case.provider,
         # Issue #54 Phase D — 優化產出建 draft（同 .provider 延遲 resolve 模式）
         create_version_factory=create_config_version_use_case.provider,
+        quota_preflight=quota_preflight_service,  # Issue #74
     )
 
     list_runs_use_case = providers.Factory(
@@ -2690,6 +2789,7 @@ class Container(containers.DeclarativeContainer):
         prompt_guard=prompt_guard_service,
         tenant_repository=tenant_repository,
         config_version_repository=bot_config_version_repository,
+        quota_preflight=quota_preflight_service,  # Issue #74
     )
 
     # --- Platform: Provider Settings ---
@@ -2844,4 +2944,5 @@ class Container(containers.DeclarativeContainer):
         dm_image_query_tool=dm_image_query_tool,
         tenant_repository=tenant_repository,  # M19：router_model tenant fallback
         encryption_service=encryption_service,  # L10：快取憑證加密
+        quota_preflight=quota_preflight_service,  # Issue #74
     )

@@ -9,6 +9,12 @@ import { usePlans } from "@/hooks/queries/use-plans";
 import { useTenantQuota } from "@/hooks/queries/use-tenant-quota";
 import { USAGE_CATEGORIES } from "@/constants/usage-categories";
 import type { Tenant } from "@/types/auth";
+import type { ExhaustionPolicy } from "@/types/billing";
+import {
+  TENANT_POLICY_OVERRIDE_OPTIONS,
+  exhaustionPolicyLabel,
+} from "@/features/billing/billing-labels";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +46,9 @@ interface UpdateTenantConfigBody {
   monthly_token_limit: number | null;
   included_categories?: string[] | null;
   prompt_gate_enabled?: boolean;
+  /** Issue #74：只在使用者變更時送；null = 沿用方案 */
+  exhaustion_policy_override?: ExhaustionPolicy | null;
+  block_message_override?: string | null;
 }
 
 function formatTokens(n: number): string {
@@ -61,6 +70,9 @@ export function TenantConfigDialog({
   const [categoriesEnabled, setCategoriesEnabled] = useState(false);
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
   const [gateEnabled, setGateEnabled] = useState(false);
+  // Issue #74 — 用盡策略覆寫（"" = 沿用方案）
+  const [policyOverride, setPolicyOverride] = useState<"" | ExhaustionPolicy>("");
+  const [blockMessageOverride, setBlockMessageOverride] = useState("");
 
   const { data: plans } = usePlans(false);
   // S-Token-Gov.2: 載入本月用量
@@ -104,6 +116,8 @@ export function TenantConfigDialog({
         setSelectedCats(new Set(USAGE_CATEGORIES.map((c) => c.value)));
       }
       setGateEnabled(tenant.prompt_gate_enabled ?? false);
+      setPolicyOverride(tenant.exhaustion_policy_override ?? "");
+      setBlockMessageOverride(tenant.block_message_override ?? "");
       setShowAdvanced(false);
     }
   }, [open, tenant]);
@@ -125,6 +139,16 @@ export function TenantConfigDialog({
       body.included_categories = categoriesEnabled
         ? Array.from(selectedCats)
         : null;
+    }
+    // Issue #74：覆寫欄位只在有變更時送，未觸碰不帶 key（維持後端既有值）
+    const initialPolicy = tenant?.exhaustion_policy_override ?? "";
+    if (policyOverride !== initialPolicy) {
+      body.exhaustion_policy_override = policyOverride === "" ? null : policyOverride;
+    }
+    const initialMessage = tenant?.block_message_override ?? "";
+    if (blockMessageOverride.trim() !== initialMessage.trim()) {
+      body.block_message_override =
+        blockMessageOverride.trim() === "" ? null : blockMessageOverride.trim();
     }
     mutation.mutate(body);
   };
@@ -259,6 +283,44 @@ export function TenantConfigDialog({
               checked={gateEnabled}
               onCheckedChange={setGateEnabled}
             />
+          </div>
+
+          {/* Issue #74：額度用盡策略覆寫（system_admin） */}
+          <div className="space-y-3 rounded-md border p-3">
+            <div className="space-y-2">
+              <Label htmlFor="exhaustion-policy-override">額度用盡策略覆寫</Label>
+              <select
+                id="exhaustion-policy-override"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                value={policyOverride}
+                onChange={(e) =>
+                  setPolicyOverride(e.target.value as "" | ExhaustionPolicy)
+                }
+              >
+                {TENANT_POLICY_OVERRIDE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                沿用方案 = 依方案預設
+                {selectedPlan?.exhaustion_policy
+                  ? `（目前方案：${exhaustionPolicyLabel(selectedPlan.exhaustion_policy)}）`
+                  : ""}
+                ；指定後不受方案與租戶自改影響
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="block-message-override">被擋文案覆寫</Label>
+              <Textarea
+                id="block-message-override"
+                rows={2}
+                value={blockMessageOverride}
+                placeholder="留空 = 沿用方案文案"
+                onChange={(e) => setBlockMessageOverride(e.target.value)}
+              />
+            </div>
           </div>
 
           {/* S-Token-Gov.2: 進階 — 自訂計費 categories（漸進式 disclosure） */}

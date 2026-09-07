@@ -21,6 +21,10 @@ from src.infrastructure.db.models.model_pricing_model import (
 )
 
 
+def _opt_float(value: Decimal | None) -> float | None:
+    return float(value) if value is not None else None
+
+
 def _to_entity(m: ModelPricingModel) -> ModelPricing:
     return ModelPricing(
         id=m.id,
@@ -39,6 +43,8 @@ def _to_entity(m: ModelPricingModel) -> ModelPricing:
         created_by=m.created_by,
         created_at=m.created_at,
         note=m.note,
+        points_per_1k_input=_opt_float(m.points_per_1k_input),
+        points_per_1k_output=_opt_float(m.points_per_1k_output),
     )
 
 
@@ -65,8 +71,36 @@ class SQLAlchemyModelPricingRepository(ModelPricingRepository):
                 created_by=pricing.created_by,
                 created_at=pricing.created_at,
                 note=pricing.note,
+                points_per_1k_input=(
+                    Decimal(str(pricing.points_per_1k_input))
+                    if pricing.points_per_1k_input is not None else None
+                ),
+                points_per_1k_output=(
+                    Decimal(str(pricing.points_per_1k_output))
+                    if pricing.points_per_1k_output is not None else None
+                ),
             )
             self._session.add(model)
+
+    async def update_points(
+        self,
+        pricing_id: str,
+        points_per_1k_input: float | None,
+        points_per_1k_output: float | None,
+    ) -> None:
+        """Issue #74：點數表為獨立軸，直接更新該版本。"""
+        async with atomic(self._session):
+            model = await self._session.get(ModelPricingModel, pricing_id)
+            if model is None:
+                raise ValueError(f"pricing {pricing_id} not found")
+            model.points_per_1k_input = (
+                Decimal(str(points_per_1k_input))
+                if points_per_1k_input is not None else None
+            )
+            model.points_per_1k_output = (
+                Decimal(str(points_per_1k_output))
+                if points_per_1k_output is not None else None
+            )
 
     async def find_by_id(self, pricing_id: str) -> ModelPricing | None:
         model = await self._session.get(ModelPricingModel, pricing_id)

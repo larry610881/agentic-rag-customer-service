@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from src.application.prompt_gate.gate_run_use_cases import (
@@ -104,7 +103,9 @@ class StartReplayCompareUseCase:
         api_base_url: str = "http://localhost:8000",
         gate_run_repo_factory=None,
         record_usage_factory=None,
+        quota_preflight=None,
     ) -> None:
+        self._quota_preflight = quota_preflight  # Issue #74
         self._bot_repo = bot_repository
         self._version_repo = version_repository
         self._gate_run_repo = gate_run_repository
@@ -145,6 +146,11 @@ class StartReplayCompareUseCase:
         bot = await self._bot_repo.find_by_id(bot_id)
         if bot is None or bot.tenant_id != tenant_id:
             raise EntityNotFoundError("Bot", bot_id)
+        # Issue #74：用完即擋 → 回放不啟動（同 QuotaExhaustedError）
+        if self._quota_preflight is not None:
+            await self._quota_preflight.ensure_allowed(
+                tenant_id, UsageCategory.EVAL_GATE.value
+            )
 
         candidate = await self._version_repo.find_by_id(version_id, tenant_id)
         if candidate is None or candidate.bot_id != bot_id:

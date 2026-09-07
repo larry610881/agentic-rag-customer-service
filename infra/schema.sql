@@ -111,6 +111,18 @@ CREATE TABLE public.agent_execution_traces (
 
 
 --
+-- Name: billing_settings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.billing_settings (
+    id character varying(8) DEFAULT 'default'::character varying NOT NULL,
+    usd_per_point numeric(12,6) DEFAULT 0.001 NOT NULL,
+    updated_by character varying(36),
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: billing_transactions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -602,6 +614,8 @@ CREATE TABLE public.model_pricing (
     created_by character varying(100) NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     note text,
+    points_per_1k_input numeric(10,4),
+    points_per_1k_output numeric(10,4),
     CONSTRAINT chk_effective_range CHECK (((effective_to IS NULL) OR (effective_to > effective_from))),
     CONSTRAINT chk_prices_non_negative CHECK (((input_price >= (0)::numeric) AND (output_price >= (0)::numeric) AND (cache_read_price >= (0)::numeric) AND (cache_creation_price >= (0)::numeric)))
 );
@@ -667,7 +681,27 @@ CREATE TABLE public.plans (
     description text,
     is_active boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    billing_mode character varying(10) DEFAULT 'token'::character varying NOT NULL,
+    monthly_points integer DEFAULT 0 NOT NULL,
+    addon_pack_points integer DEFAULT 0 NOT NULL,
+    default_category_multiplier numeric(6,3) DEFAULT 1 NOT NULL,
+    exhaustion_policy character varying(12) DEFAULT 'auto_topup'::character varying NOT NULL,
+    tenant_may_change_policy boolean DEFAULT false NOT NULL,
+    auto_topup_monthly_cap integer DEFAULT 0 NOT NULL,
+    grace_percent numeric(5,2) DEFAULT 0 NOT NULL,
+    block_message text DEFAULT ''::text NOT NULL
+);
+
+
+--
+-- Name: plan_category_multipliers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.plan_category_multipliers (
+    plan_id character varying(36) NOT NULL,
+    usage_category character varying(20) NOT NULL,
+    multiplier numeric(6,3) NOT NULL
 );
 
 
@@ -830,7 +864,9 @@ CREATE TABLE public.tenants (
     included_categories jsonb,
     default_summary_model character varying(100) DEFAULT ''::character varying NOT NULL,
     default_intent_model character varying(100) DEFAULT ''::character varying NOT NULL,
-    prompt_gate_enabled boolean DEFAULT false NOT NULL
+    prompt_gate_enabled boolean DEFAULT false NOT NULL,
+    exhaustion_policy_override character varying(12),
+    block_message_override text
 );
 
 
@@ -852,7 +888,8 @@ CREATE TABLE public.token_ledger_topups (
     amount bigint NOT NULL,
     reason character varying(32) NOT NULL,
     pricing_version character varying(32),
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    amount_points integer DEFAULT 0 NOT NULL
 );
 
 
@@ -895,7 +932,9 @@ CREATE TABLE public.token_usage_records (
     kb_id character varying(36),
     run_id character varying(36),
     config_version_id character varying(36),
-    config_hash character varying(64)
+    config_hash character varying(64),
+    points integer DEFAULT 0 NOT NULL,
+    reasoning_tokens integer DEFAULT 0 NOT NULL
 );
 
 
@@ -1172,6 +1211,30 @@ ALTER TABLE ONLY public.plans
 
 ALTER TABLE ONLY public.plans
     ADD CONSTRAINT plans_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: plan_category_multipliers plan_category_multipliers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plan_category_multipliers
+    ADD CONSTRAINT plan_category_multipliers_pkey PRIMARY KEY (plan_id, usage_category);
+
+
+--
+-- Name: plan_category_multipliers plan_category_multipliers_plan_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plan_category_multipliers
+    ADD CONSTRAINT plan_category_multipliers_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES public.plans(id) ON DELETE CASCADE;
+
+
+--
+-- Name: billing_settings billing_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.billing_settings
+    ADD CONSTRAINT billing_settings_pkey PRIMARY KEY (id);
 
 
 --

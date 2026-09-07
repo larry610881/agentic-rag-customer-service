@@ -23,6 +23,7 @@ class SQLAlchemyTokenLedgerTopupRepository(TokenLedgerTopupRepository):
             tenant_id=m.tenant_id,
             cycle_year_month=m.cycle_year_month,
             amount=m.amount,
+            amount_points=getattr(m, "amount_points", 0) or 0,
             reason=m.reason,
             pricing_version=m.pricing_version,
             created_at=m.created_at,
@@ -35,6 +36,7 @@ class SQLAlchemyTokenLedgerTopupRepository(TokenLedgerTopupRepository):
                 tenant_id=topup.tenant_id,
                 cycle_year_month=topup.cycle_year_month,
                 amount=topup.amount,
+                amount_points=topup.amount_points,
                 reason=topup.reason,
                 pricing_version=topup.pricing_version,
                 created_at=topup.created_at,
@@ -47,6 +49,18 @@ class SQLAlchemyTokenLedgerTopupRepository(TokenLedgerTopupRepository):
     ) -> int:
         stmt = select(
             func.coalesce(func.sum(TokenLedgerTopupModel.amount), 0)
+        ).where(
+            TokenLedgerTopupModel.tenant_id == tenant_id,
+            TokenLedgerTopupModel.cycle_year_month == cycle_year_month,
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
+
+    async def sum_points_in_cycle(
+        self, tenant_id: str, cycle_year_month: str
+    ) -> int:
+        stmt = select(
+            func.coalesce(func.sum(TokenLedgerTopupModel.amount_points), 0)
         ).where(
             TokenLedgerTopupModel.tenant_id == tenant_id,
             TokenLedgerTopupModel.cycle_year_month == cycle_year_month,

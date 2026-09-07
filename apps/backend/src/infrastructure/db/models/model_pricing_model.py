@@ -56,6 +56,13 @@ class ModelPricingModel(Base):
         TZDateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Issue #74：模型點數表（每千 token；NULL = 未設，改由平台匯率換算）
+    points_per_1k_input: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4), nullable=True
+    )
+    points_per_1k_output: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4), nullable=True
+    )
 
     __table_args__ = (
         CheckConstraint(

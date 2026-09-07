@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { MessageSquare, Hash, FileText } from "lucide-react";
+import { MessageSquare, Hash, FileText, Coins } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { BotUsageStat } from "@/types/token-usage";
@@ -8,11 +8,15 @@ import { isChatType } from "@/types/token-usage";
 interface UsageSummaryCardsProps {
   data: BotUsageStat[] | undefined;
   isLoading: boolean;
+  /** Issue #74 — 租戶為點數制時多顯示「總點數」卡 */
+  showPoints?: boolean;
 }
 
-export function UsageSummaryCards({ data, isLoading }: UsageSummaryCardsProps) {
+const EMPTY = { chatCount: 0, ocrCount: 0, totalTokens: 0, totalCost: 0, totalPoints: 0 };
+
+export function UsageSummaryCards({ data, isLoading, showPoints = false }: UsageSummaryCardsProps) {
   const summary = useMemo(() => {
-    if (!data?.length) return { chatCount: 0, ocrCount: 0, totalTokens: 0, totalCost: 0 };
+    if (!data?.length) return EMPTY;
     return data.reduce(
       (acc, row) => ({
         chatCount: acc.chatCount + (isChatType(row.request_type) ? row.message_count : 0),
@@ -21,8 +25,9 @@ export function UsageSummaryCards({ data, isLoading }: UsageSummaryCardsProps) {
         // 與本月額度頁 total_used_in_cycle 對齊；原本 input+output 漏算 cache tokens
         totalTokens: acc.totalTokens + row.total_tokens,
         totalCost: acc.totalCost + row.estimated_cost,
+        totalPoints: acc.totalPoints + (row.points ?? 0),
       }),
-      { chatCount: 0, ocrCount: 0, totalTokens: 0, totalCost: 0 },
+      EMPTY,
     );
   }, [data]);
 
@@ -30,11 +35,15 @@ export function UsageSummaryCards({ data, isLoading }: UsageSummaryCardsProps) {
     { title: "對話次數", value: summary.chatCount.toLocaleString(), icon: MessageSquare },
     { title: "文件處理次數", value: summary.ocrCount.toLocaleString(), icon: FileText },
     { title: "總 Tokens", value: summary.totalTokens.toLocaleString(), icon: Hash },
+    ...(showPoints
+      ? [{ title: "總點數", value: summary.totalPoints.toLocaleString(), icon: Coins }]
+      : []),
   ];
+  const gridCols = cards.length === 4 ? "sm:grid-cols-4" : "sm:grid-cols-3";
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className={`grid gap-4 ${gridCols}`}>
         {cards.map((c) => (
           <Card key={c.title}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -48,7 +57,7 @@ export function UsageSummaryCards({ data, isLoading }: UsageSummaryCardsProps) {
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
+    <div className={`grid gap-4 ${gridCols}`}>
       {cards.map((c) => (
         <Card key={c.title}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">

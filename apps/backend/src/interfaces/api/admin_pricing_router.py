@@ -29,6 +29,10 @@ from src.application.pricing.list_pricing_use_case import ListPricingUseCase
 from src.application.pricing.list_recalc_history_use_case import (
     ListRecalcHistoryUseCase,
 )
+from src.application.pricing.update_pricing_points_use_case import (
+    UpdatePricingPointsCommand,
+    UpdatePricingPointsUseCase,
+)
 from src.container import Container
 from src.domain.pricing.entity import ModelPricing, PricingRecalcAudit
 from src.domain.pricing.value_objects import PricingCategory
@@ -61,6 +65,16 @@ class PricingResponse(BaseModel):
     created_by: str
     created_at: datetime
     note: str | None
+    # Issue #74：模型點數表（每千 token；null = 未設，改由平台匯率換算）
+    points_per_1k_input: float | None = None
+    points_per_1k_output: float | None = None
+
+
+class UpdatePricingPointsRequest(BaseModel):
+    """Issue #74：兩欄需同時給值或同時為 null（清除）。"""
+
+    points_per_1k_input: float | None = Field(default=None, ge=0)
+    points_per_1k_output: float | None = Field(default=None, ge=0)
 
 
 class CreatePricingRequest(BaseModel):
@@ -135,6 +149,8 @@ def _to_response(p: ModelPricing) -> PricingResponse:
         created_by=p.created_by,
         created_at=p.created_at,
         note=p.note,
+        points_per_1k_input=p.points_per_1k_input,
+        points_per_1k_output=p.points_per_1k_output,
     )
 
 
@@ -208,6 +224,38 @@ async def create_pricing(
         ) from exc
 
     # 刷新 in-memory cache，讓新價立即生效
+    await cache.refresh()
+    return _to_response(pricing)
+
+
+@router.put("/{pricing_id}", response_model=PricingResponse)
+@inject
+async def update_pricing_points(
+    pricing_id: str,
+    body: UpdatePricingPointsRequest,
+    admin: CurrentTenant = Depends(require_role("system_admin")),
+    use_case: UpdatePricingPointsUseCase = Depends(
+        Provide[Container.update_pricing_points_use_case]
+    ),
+    cache: InMemoryPricingCache = Depends(Provide[Container.pricing_cache]),
+) -> PricingResponse:
+    """Issue #74：設定 / 清除該版本的模型點數表（美元價仍 append-only）。"""
+    try:
+        pricing = await use_case.execute(
+            UpdatePricingPointsCommand(
+                pricing_id=pricing_id,
+                points_per_1k_input=body.points_per_1k_input,
+                points_per_1k_output=body.points_per_1k_output,
+                actor_user_id=admin.user_id,
+            )
+        )
+    except ValueError as exc:
+        code = (
+            status.HTTP_404_NOT_FOUND
+            if "not found" in str(exc)
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
     await cache.refresh()
     return _to_response(pricing)
 

@@ -57,4 +57,6 @@ export interface ChatMessage {
   guardBlocked?: "input" | "output";
   /** 命中的規則 / 關鍵字內容 — 供 admin 驗證規則配得對 */
   guardRuleMatched?: string;
+  /** Issue #74 — 額度用盡（用完即擋）：content 為固定文案，以通知樣式呈現 */
+  quotaExhausted?: boolean;
 }

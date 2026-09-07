@@ -656,7 +656,7 @@ async def run_single_eval(
 @inject
 async def estimate_cost(
     body: EstimateCostRequest,
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: EstimateCostUseCase = Depends(
         Provide[Container.estimate_cost_use_case]
     ),
@@ -670,6 +670,7 @@ async def estimate_cost(
         max_iterations=body.max_iterations,
         patience=body.patience,
         budget=body.budget,
+        tenant_id=tenant.tenant_id,  # Issue #74：點數制估算
     )
     try:
         return await use_case.execute(command)

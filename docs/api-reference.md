@@ -59,6 +59,58 @@ Base URL: `http://localhost:8000/api/v1`
 { "name": "My Store", "plan": "free" }
 ```
 
+### Tenant 配額 / 計價策略（Issue #74）
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| GET | `/tenants/{tenant_id}/quota` | 本月配額快照（`tenant_id` 可用 `me`） | Yes（本租戶或 system_admin） |
+| PUT | `/tenants/{tenant_id}/billing-policy` | 額度用盡策略覆寫（`tenant_id` 可用 `me`） | system_admin / tenant_admin（方案須允許，否則 403） |
+
+**GET /tenants/{tenant_id}/quota Response**（token 欄位不變，新增下列欄位）
+```json
+{
+  "cycle_year_month": "2026-09", "plan_name": "pro",
+  "base_total": 1000000, "base_remaining": 900000, "addon_remaining": 0,
+  "total_remaining": 900000, "total_billable_in_cycle": 100000,
+  "included_categories": null,
+  "billing_mode": "points",
+  "exhaustion_policy": "auto_topup",
+  "effective_policy": "block",
+  "tenant_may_change_policy": true,
+  "grace_percent": 0.0,
+  "block_message": "本月額度已用完…",
+  "points_total": 600, "points_used": 120, "points_remaining": 480
+}
+```
+`billing_mode="token"` 時 `points_*` 恆為 0；點數制租戶頁只顯示點數，系統管理員兩者都看。
+
+**PUT /tenants/{tenant_id}/billing-policy Request / Response**
+```json
+{ "exhaustion_policy": "block", "block_message": "額度已用完，請聯繫客服" }
+```
+（`null` = 清除覆寫、沿用方案）
+```json
+{
+  "tenant_id": "uuid", "exhaustion_policy_override": "block",
+  "block_message_override": "額度已用完，請聯繫客服",
+  "effective_policy": "block", "block_message": "額度已用完，請聯繫客服",
+  "tenant_may_change_policy": true
+}
+```
+
+### 被擋回應（用完即擋）
+
+| 通路 | 回應 |
+|------|------|
+| web / widget（非串流） | `402 {"detail": "quota_exhausted", "message": "<文案>"}` |
+| web / widget（SSE） | `{"type": "quota_exhausted", "content": "<文案>"}` 之後 `{"type": "done"}` |
+| LINE | 回覆文案文字 |
+| 文件處理 / 重處理 | 文件狀態 `quota_exhausted`、任務 `failed`（error_message = 文案） |
+| 評估 / 閘門 / 回放跑批 | `402 quota_exhausted` |
+
+**估算端點的點數欄位**：`GET /bots/{bot_id}/prompt-gate/estimate` 與 `POST /eval-datasets/estimate`
+回應新增 `billing_mode`（`token`|`points`）與 `est_points`（點數制：`ceil(est_cost / usd_per_point) × 類別倍率`；token 制恆 0）。
+
 ## Knowledge Base
 
 | Method | Path | Description | Auth |
@@ -268,9 +320,44 @@ trace 的 `agent_llm` 節點記 `reasoning_effort_requested`（bot 設定值）�
   "total_tokens": 8000,
   "total_cost": 0.05,
   "by_model": {},
-  "by_request_type": {}
+  "by_request_type": {},
+  "total_points": 0,
+  "by_request_type_points": {}
 }
 ```
+`/usage/by-bot`、`/usage/daily`、`/usage/monthly` 每列另有 `points`（Issue #74；token 制恆 0）。
+
+## Admin Billing（Issue #74，system_admin）
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/billing/settings` | 平台點數匯率 |
+| PUT | `/admin/billing/settings` | 更新匯率（寫稽核 `billing_settings`） |
+| GET | `/admin/plans/{plan_id}/multipliers` | 方案類別倍率表 |
+| PUT | `/admin/plans/{plan_id}/multipliers` | 整批取代倍率表（寫稽核 `plan`） |
+| PUT | `/admin/pricing/{pricing_id}` | 模型點數表（寫稽核 `model_pricing`） |
+
+**Billing settings**
+```json
+{ "usd_per_point": 0.001, "updated_by": "user-id|null", "updated_at": "ISO" }
+```
+PUT body：`{ "usd_per_point": 0.002 }`
+
+**Plan multipliers**（PUT body 只需 `multipliers`；未列類別回落 `default_category_multiplier`；類別必須是 `UsageCategory` 值）
+```json
+{ "plan_id": "uuid", "default_category_multiplier": 1, "multipliers": { "chat_web": 1, "eval_gate": 0.5, "auto_classification": 0 } }
+```
+
+**Pricing points**（PUT body：兩欄同時給值或同時 `null` 清除）
+```json
+{ "points_per_1k_input": 10, "points_per_1k_output": 30 }
+```
+回傳完整 `PricingResponse`（新增 `points_per_1k_input` / `points_per_1k_output`）。
+
+**Plans（`/admin/plans` CRUD）新增欄位**：`billing_mode`（`token`|`points`）、`monthly_points`、`addon_pack_points`、
+`default_category_multiplier`、`exhaustion_policy`（`auto_topup`|`block`）、`tenant_may_change_policy`、
+`auto_topup_monthly_cap`（0 = 不限）、`grace_percent`（0–100）、`block_message`。POST 全部可選（預設 token / auto_topup），
+PATCH 逐欄可選；所有變更寫稽核（entity_type `plan`）。
 
 ## LINE Webhook
 

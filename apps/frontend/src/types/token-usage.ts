@@ -71,6 +71,8 @@ export interface BotUsageStat {
   total_tokens: number;
   estimated_cost: number;
   message_count: number;
+  /** Issue #74 — 點數制換算後的點數（token 制為 0） */
+  points?: number;
 }
 
 // Token-Gov.6: category label 的 single source of truth 移至 constants/usage-categories.ts
@@ -101,6 +103,8 @@ export interface DailyUsageStat {
   message_count: number;
   /** Issue #54 Phase E — 帶 by_category=true 查詢時才有（每列一個 category） */
   request_type?: string | null;
+  /** Issue #74 */
+  points?: number;
 }
 
 export interface MonthlyUsageStat {
@@ -110,4 +114,6 @@ export interface MonthlyUsageStat {
   total_tokens: number;
   estimated_cost: number;
   message_count: number;
+  /** Issue #74 */
+  points?: number;
 }

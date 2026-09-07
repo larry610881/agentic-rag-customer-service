@@ -30,6 +30,10 @@ class UsageRecord:
     config_version_id: str | None = None
     # Issue #60：生成當下實際生效設定的指紋
     config_hash: str | None = None
+    # Issue #74：記帳當下依租戶方案換算的點數（token 制方案為 0）；
+    # reasoning_tokens 為 output 的子集標注（#72），不進 total_tokens。
+    points: int = 0
+    reasoning_tokens: int = 0
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

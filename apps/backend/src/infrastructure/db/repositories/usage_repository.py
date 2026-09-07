@@ -28,6 +28,19 @@ _TOTAL_TOKENS_EXPR = (
 )
 
 
+def _cycle_range(cycle_year_month: str) -> tuple[datetime, datetime]:
+    """'YYYY-MM' → [start, end) UTC。"""
+    from datetime import timezone
+
+    year, month = cycle_year_month.split("-")
+    start = datetime(int(year), int(month), 1, tzinfo=timezone.utc)
+    if int(month) == 12:
+        end = datetime(int(year) + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        end = datetime(int(year), int(month) + 1, 1, tzinfo=timezone.utc)
+    return start, end
+
+
 class SQLAlchemyUsageRepository(UsageRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -51,6 +64,8 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 run_id=record.run_id,
                 config_version_id=record.config_version_id,
                 config_hash=record.config_hash,
+                points=record.points,
+                reasoning_tokens=record.reasoning_tokens,
                 created_at=record.created_at,
             )
             self._session.add(model)
@@ -92,6 +107,8 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 run_id=r.run_id,
                 config_version_id=r.config_version_id,
                 config_hash=getattr(r, "config_hash", None),
+                points=getattr(r, "points", 0) or 0,
+                reasoning_tokens=getattr(r, "reasoning_tokens", 0) or 0,
                 created_at=r.created_at,
             )
             for r in rows
@@ -109,13 +126,18 @@ class SQLAlchemyUsageRepository(UsageRepository):
         total_output = sum(r.output_tokens for r in records)
         total_tokens = sum(r.total_tokens for r in records)
         total_cost = sum(r.estimated_cost for r in records)
+        total_points = sum(r.points for r in records)  # Issue #74
 
         by_model: dict[str, int] = {}
         by_request_type: dict[str, int] = {}
+        by_request_type_points: dict[str, int] = {}
         for r in records:
             by_model[r.model] = by_model.get(r.model, 0) + r.total_tokens
             by_request_type[r.request_type] = (
                 by_request_type.get(r.request_type, 0) + r.total_tokens
+            )
+            by_request_type_points[r.request_type] = (
+                by_request_type_points.get(r.request_type, 0) + r.points
             )
 
         return UsageSummary(
@@ -126,6 +148,8 @@ class SQLAlchemyUsageRepository(UsageRepository):
             total_cost=total_cost,
             by_model=by_model,
             by_request_type=by_request_type,
+            total_points=total_points,
+            by_request_type_points=by_request_type_points,
         )
 
     async def get_model_cost_stats(
@@ -190,6 +214,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 # Token-Gov.6: total_tokens 欄位已刪，改 SQL expression 動態加總
                 func.sum(_TOTAL_TOKENS_EXPR).label("sum_total"),
                 func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
+                func.sum(UsageRecordModel.points).label("sum_points"),  # Issue #74
             )
             .outerjoin(BotModel, UsageRecordModel.bot_id == BotModel.id)
             .where(UsageRecordModel.tenant_id == tenant_id)
@@ -217,6 +242,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 total_tokens=row.sum_total or 0,
                 estimated_cost=round(float(row.sum_cost or 0), 4),
                 message_count=row.cnt,
+                points=int(row.sum_points or 0),
             )
             for row in result.all()
         ]
@@ -238,6 +264,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
             # Token-Gov.6: total_tokens 欄位已刪，改 SQL expression 動態加總
             func.sum(_TOTAL_TOKENS_EXPR).label("sum_total"),
             func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
+            func.sum(UsageRecordModel.points).label("sum_points"),  # Issue #74
         ]
         # Issue #54 Phase B — 可選按分類分組（預設彙總，向後相容）
         if by_category:
@@ -264,6 +291,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 estimated_cost=round(float(row.sum_cost or 0), 4),
                 message_count=row.cnt,
                 request_type=row.req_type if by_category else None,
+                points=int(row.sum_points or 0),
             )
             for row in result.all()
         ]
@@ -285,6 +313,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
             # Token-Gov.6: total_tokens 欄位已刪，改 SQL expression 動態加總
             func.sum(_TOTAL_TOKENS_EXPR).label("sum_total"),
             func.sum(UsageRecordModel.estimated_cost).label("sum_cost"),
+            func.sum(UsageRecordModel.points).label("sum_points"),  # Issue #74
         ]
         # Issue #54 Phase B — 可選按分類分組（預設彙總，向後相容）
         if by_category:
@@ -311,6 +340,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 estimated_cost=round(float(row.sum_cost or 0), 4),
                 message_count=row.cnt,
                 request_type=row.req_type if by_category else None,
+                points=int(row.sum_points or 0),
             )
             for row in result.all()
         ]
@@ -334,6 +364,21 @@ class SQLAlchemyUsageRepository(UsageRepository):
         result = await self._session.execute(stmt)
         value = result.scalar_one()
         return int(value) if value is not None else 0
+
+    async def sum_points_in_cycle(
+        self, tenant_id: str, cycle_year_month: str
+    ) -> int:
+        """Issue #74：SUM(points) for (tenant, cycle)。點數制配額用。"""
+        start, end = _cycle_range(cycle_year_month)
+        stmt = select(
+            func.coalesce(func.sum(UsageRecordModel.points), 0)
+        ).where(
+            UsageRecordModel.tenant_id == tenant_id,
+            UsageRecordModel.created_at >= start,
+            UsageRecordModel.created_at < end,
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one() or 0)
 
     async def sum_billable_tokens_in_cycle(
         self,

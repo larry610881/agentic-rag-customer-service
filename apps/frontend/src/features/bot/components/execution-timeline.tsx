@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Activity,
   ShieldAlert,
+  Wallet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -37,6 +38,7 @@ const TYPE_LABELS: Record<string, string> = {
   done: "完成",
   error: "錯誤",
   guard_blocked: "🛡️ 攔截",
+  quota_exhausted: "💳 額度用盡",
 };
 
 const TYPE_ICONS: Record<string, LucideIcon> = {
@@ -50,6 +52,7 @@ const TYPE_ICONS: Record<string, LucideIcon> = {
   done: CheckCircle2,
   error: AlertTriangle,
   guard_blocked: ShieldAlert,
+  quota_exhausted: Wallet,
 };
 
 function eventToCard(event: SSEEvent): TimelineCardSpec | null {
@@ -89,6 +92,9 @@ function eventToCard(event: SSEEvent): TimelineCardSpec | null {
     tone = "success";
   } else if (event.type === "error" && typeof event.message === "string") {
     detail = event.message as string;
+    tone = "warn";
+  } else if (event.type === "quota_exhausted") {
+    detail = typeof event.content === "string" ? event.content : "額度已用完";
     tone = "warn";
   } else if (event.type === "guard_blocked") {
     // Sprint A++ Guard UX: 攔截事件最顯眼 — danger tone 強紅 + ring

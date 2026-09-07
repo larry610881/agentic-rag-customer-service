@@ -1,3 +1,5 @@
+import type { ExhaustionPolicy } from "@/types/billing";
+
 export interface TokenResponse {
   access_token: string;
   refresh_token: string;
@@ -19,6 +21,9 @@ export interface Tenant {
   default_intent_model?: string;
   /** Issue #54 Phase E — Prompt 發布閘門（後端預設 false） */
   prompt_gate_enabled: boolean;
+  /** Issue #74：用盡策略覆寫；null = 沿用方案（system_admin 才可改） */
+  exhaustion_policy_override?: ExhaustionPolicy | null;
+  block_message_override?: string | null;
   created_at: string;
   updated_at: string;
 }
