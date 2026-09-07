@@ -34,7 +34,7 @@
 | `hyde` | HyDE 假答案 | `application/rag/_hyde_generator.py` → `_aux_llm_accounting.py` | ✅ | — |
 | `history_summary` | summary_recent 歷史摘要 | `infrastructure/conversation/summary_recent_strategy.py` | ✅ | — |
 | `memory_extraction` | 長期記憶萃取 | `application/memory/extract_memory_use_case.py` | ✅ | — |
-| `ocr` | 文件 OCR（process / reprocess） | `application/knowledge/_pipeline_accounting.py` | — | ✅ |
+| `ocr` | 文件 OCR（process / reprocess）；`model` 為實際引擎 spec（`anthropic:claude-sonnet-4-6` / `google:gemini-3.7-flash` …，依 KB → 租戶 → `OCR_DEFAULT_MODEL` 決定，#78） | `application/knowledge/_pipeline_accounting.py` | — | ✅ |
 | `contextual_retrieval` | Contextual retrieval（process / reprocess） | `application/knowledge/_pipeline_accounting.py` | — | ✅ |
 | `embedding` | 文件 ingest / reprocess / reembed 的 embedding；對話摘要 embedding；管理端語意搜尋（SYSTEM tenant） | `_pipeline_accounting.py`、`reembed_chunk_use_case.py`、`generate_summary_use_case.py`、`search_conversations_use_case.py`、`admin_conv_summary_router.py` | 摘要 ✅ | ingest ✅ |
 | `pdf_rename` | PDF 子頁 LLM 命名 | `application/knowledge/_child_rename.py` | — | ✅ |
@@ -48,7 +48,7 @@
 
 | 路徑 | 類別 | 用量來源 | 狀態（#73 後） |
 |---|---|---|---|
-| 文件處理：OCR / contextual / embedding | `ocr` / `contextual_retrieval` / `embedding` | OCR、contextual：服務 `last_*` 累計屬性；embedding：`EmbeddingResult` | ✅ 三筆 |
+| 文件處理：OCR / contextual / embedding | `ocr` / `contextual_retrieval` / `embedding` | OCR：每份文件自己的 `OcrUsageTally`（引擎 `*_with_usage` 結果，#78）；contextual：服務 `last_*` 累計屬性；embedding：`EmbeddingResult` | ✅ 三筆 |
 | 文件重處理：OCR / contextual / embedding | 同上 | 同上（共用 `_pipeline_accounting`） | ✅ 三筆（之前 0 筆） |
 | 每輪對話檢索（web / widget / LINE / 快速道 / LangGraph 工具） | `query_embedding` | `EmbeddingResult`；快取命中 0 筆 | ✅ 帶 bot_id |
 | `/search`（unified search） | `query_embedding` | 同上 | ✅（無 bot） |
@@ -70,4 +70,4 @@
 
 - `reasoning_tokens` 有算無存（#72）→ 併 #74 的 usage_records 改表。
 - 前端 `usage-categories.ts` 的 label 需補 `query_embedding`、`dm_metadata`（本 Issue 不動前端）。
-- OCR 引擎為 singleton，`last_*` 累計屬性在並行 reprocess 時可能互相污染（既有設計）。
+- ~~OCR 引擎為 singleton，`last_*` 累計屬性在並行 reprocess 時可能互相污染~~ → #78 已改為每份文件各自的 `OcrUsageTally`，引擎 `last_*` 僅為相容保留、管線不再讀取。

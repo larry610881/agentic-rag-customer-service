@@ -84,6 +84,31 @@ thinking token 明細（計入 `output_tokens`），故為 0。`token_usage_reco
 | Sonnet 5 | **不送**（只收預設值，非預設 400） |
 | Opus 4.6 / Sonnet 4.6、4.5 / 4.x / 3.x、未知模型 | 直傳 |
 
+### OCR（Issue #78）
+
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `OCR_DEFAULT_MODEL` | `anthropic:claude-sonnet-4-6` | 環境預設 OCR 引擎 spec；KB 與租戶都沒設定時使用 |
+
+**引擎**（`src/infrastructure/file_parser/ocr_engines/`，由 `DynamicOcrEngineFactory` 依 spec 建立、同 spec 共用實例）：
+
+| spec 供應商 | 引擎 | 端點 | 備註 |
+|-------------|------|------|------|
+| `anthropic` | `ClaudeVisionOcrEngine`（Anthropic SDK） | Messages API | Sonnet 4.6 最穩；Haiku 4.5 曾有小幻覺 |
+| `google` | `OpenAICompatVisionOcrEngine` | `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` | Gemini 3.7 Flash 較省（家樂福資料重建用）；頁面分類走 `response_format` json_schema |
+| `openai` / `openrouter` / `litellm` | `OpenAICompatVisionOcrEngine` | 各自 `_BASE_URLS`（同 `llm_caller`） | 影像以 `image_url` data URL（base64，png / jpeg / webp 自動判斷）附上；prompt 額外加「不可補字、看不清楚留空、不得推測數字」 |
+
+**spec 格式**：`provider:model`（例 `google:gemini-3.7-flash`）。無 `provider:` 前綴視為 `anthropic`；
+空字串 = 未設定（沿用上層）。KB 建立 / 更新與租戶預設儲存時驗證供應商，不支援者回 400。
+
+**優先序**：`KB.ocr_model` → 租戶 `default_ocr_model` → `OCR_DEFAULT_MODEL`；
+reprocess 可用 `ocr_model` 參數覆寫本次（不寫回 KB）。API key 一律由 `DynamicLLMFactory.resolve_api_key`
+解析（DB 加密設定優先，退回 `.env` 的 `<PROVIDER>_API_KEY`）；缺 key 或 401/403 時文件失敗訊息形如
+`Gemini auth error: ...` / `Claude auth error: ...`。
+
+用量記帳：每份文件各自累計（`OcrUsageTally`），`token_usage_records.model` 記實際 spec，
+並行文件不互相污染（見 `docs/token-usage.md`）。
+
 ### 認證 / 安全（Issue #67）
 
 | 變數 | 預設 | 說明 |

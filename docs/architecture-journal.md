@@ -6071,3 +6071,20 @@ graph TD
 
 **延伸學習**：稽核的價值取決於「受影響者能否自助查到」；只給平台管理員看的稽核是事後鑑識，給租戶看的稽核才是治理。
 
+## 2026-09-07 — OCR 從「一個單例引擎」到「依知識庫選引擎」（Issue #78）
+
+**背景**：Larry 重建家樂福資料不想用 Claude token，且 Haiku 4.5 曾有小幻覺。程式裡 OCR 只有 Claude 引擎、container 單例固定模型，知識庫的 ocr_model 從未生效。
+
+**做得好**：
+1. **一個相容引擎吃四家**：OpenAI 相容 chat completions 的 image_url 協定讓 google / openai / openrouter / litellm 共用同一份程式，供應商差異只剩 base_url 與 key；Gemini 頁面分類走 #70 的能力表拿 json_schema。
+2. **選引擎與選 LLM 同一套規則**：`provider:model` spec、KB → 租戶 → env 三層、key 走既有 resolver、per-spec 快取；使用者在同一個 ModelSelect 裡選，沒有第二套心智模型。
+3. **用量從屬性改成回傳值**：`*_with_usage` 回 OcrPageResult，每份文件自己一個 tally，單例 `last_*` 計數在併發重處理下交叉汙染的老問題順手解掉；usage 的 model 欄位是實際 spec，成本比較才有意義。
+4. **抽出重複的圖片分支**：process 與 reprocess 各自 70 行的 image OCR 分支收成 `_ocr_pipeline.ocr_image`，reprocess 的 ocr_model 覆寫第一次真的生效。
+
+**隱憂**：
+- Gemini 引擎只在單元測試以假回應驗過，未打真 API；抑制幻覺指令效果要靠 Larry 的 5 頁 DM 比對。→ 優先級：高（部署後第一件事）。
+- 同步 `parse()` 路徑仍靠 legacy `last_*` 讀數（domain 介面回 str 帶不了 tally）。→ 下次動 parser 介面時一併改 → 優先級：低。
+- 頁面分類在 prompt_only 等級的供應商靠寬鬆解析，錯分會影響 DM 型錄流程。→ 優先級：低。
+
+**延伸學習**：Provider abstraction 的判準是「新增一家要動幾個檔案」；把差異壓到設定表（base_url、能力等級）而非類別階層，是 #70 能力表與 #72 對應表之後第三次用同一招。
+

@@ -30,7 +30,7 @@ from src.domain.knowledge.repository import (
     ChunkCategoryRepository,
     KnowledgeBaseRepository,
 )
-from src.domain.shared.exceptions import EntityNotFoundError
+from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
@@ -148,20 +148,25 @@ async def create_knowledge_base(
         Provide[Container.create_knowledge_base_use_case]
     ),
 ) -> KnowledgeBaseResponse:
-    kb = await use_case.execute(
-        CreateKnowledgeBaseCommand(
-            tenant_id=tenant.tenant_id,
-            name=body.name,
-            description=body.description,
-            ocr_mode=body.ocr_mode,
-            ocr_model=body.ocr_model,
-            context_model=body.context_model,
-            classification_model=body.classification_model,
-            chunk_strategy=body.chunk_strategy,
-            ocr_slice_grid=body.ocr_slice_grid,
-            dm_metadata_model=body.dm_metadata_model,
+    try:
+        kb = await use_case.execute(
+            CreateKnowledgeBaseCommand(
+                tenant_id=tenant.tenant_id,
+                name=body.name,
+                description=body.description,
+                ocr_mode=body.ocr_mode,
+                ocr_model=body.ocr_model,
+                context_model=body.context_model,
+                classification_model=body.classification_model,
+                chunk_strategy=body.chunk_strategy,
+                ocr_slice_grid=body.ocr_slice_grid,
+                dm_metadata_model=body.dm_metadata_model,
+            )
         )
-    )
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=e.message
+        ) from None
     return _kb_to_response(kb)
 
 
@@ -251,6 +256,10 @@ async def update_knowledge_base(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=e.message,
+        ) from None
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=e.message
         ) from None
     kb = await kb_repo.find_by_id(kb_id)
     return _kb_to_response(kb)

@@ -64,7 +64,13 @@ const CHUNK_STRATEGY_OPTIONS = [
 ] as const;
 
 const MODEL_FIELDS = [
-  { key: "ocr_model" as const, label: "OCR 解析", emptyLabel: "系統預設" },
+  {
+    key: "ocr_model" as const,
+    label: "OCR 解析",
+    emptyLabel: "系統預設",
+    // Issue #78：OCR 引擎多供應商（anthropic / google / openai / openrouter / litellm）
+    hint: "Gemini 3.7 Flash 較省；Claude 4.6 系列最穩",
+  },
   { key: "context_model" as const, label: "上下文生成", emptyLabel: "系統預設" },
   { key: "classification_model" as const, label: "自動分類", emptyLabel: "系統預設" },
   // Issue #47 L3: DM metadata 抽取（KB 全 docs done 後自動 trigger）
@@ -200,6 +206,9 @@ export function CreateKbDialog() {
                     allowEmpty
                     emptyLabel={field.emptyLabel}
                   />
+                  {"hint" in field && (
+                    <p className="text-xs text-muted-foreground">{field.hint}</p>
+                  )}
                 </div>
               ))}
               <div className="flex flex-col gap-1">

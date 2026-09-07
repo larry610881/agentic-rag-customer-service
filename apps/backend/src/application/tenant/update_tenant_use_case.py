@@ -18,6 +18,7 @@ router 應透過 Pydantic `model_fields_set` 判斷 client 是否顯式傳入。
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.domain.knowledge.ocr_model_spec import validate_ocr_model_spec
 from src.domain.plan.repository import PlanRepository
 from src.domain.shared.exceptions import DomainException, EntityNotFoundError
 from src.domain.tenant.entity import Tenant
@@ -93,7 +94,10 @@ class UpdateTenantUseCase:
         if command.prompt_gate_enabled is not _UNSET:
             tenant.prompt_gate_enabled = bool(command.prompt_gate_enabled)
         if command.default_ocr_model is not _UNSET:
-            tenant.default_ocr_model = command.default_ocr_model
+            # Issue #78：provider:model；供應商不支援 → ValidationError
+            tenant.default_ocr_model = validate_ocr_model_spec(
+                command.default_ocr_model or ""
+            )
         if command.default_context_model is not _UNSET:
             tenant.default_context_model = command.default_context_model
         if command.default_classification_model is not _UNSET:

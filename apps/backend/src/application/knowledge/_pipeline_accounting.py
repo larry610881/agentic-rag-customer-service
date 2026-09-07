@@ -1,12 +1,15 @@
-"""文件管線（process / reprocess）共用的用量記帳 helper（Issue #73）
+"""文件管線（process / reprocess）共用的用量記帳 helper（Issue #73 / #78）
 
 過去只有 ``ProcessDocumentUseCase`` 記 OCR / contextual retrieval / embedding，
 ``ReprocessDocumentUseCase`` 整條管線沒入帳。兩個 use case 現在都呼叫這裡的
 函式，記帳規則只有一份，避免再 drift。
 
-OCR 與 contextual retrieval 的用量仍來自服務物件的 ``last_*`` 累計屬性
-（既有 stateful 約定，見 architecture-journal「累計屬性 Pattern」）；
-embedding 改走 ``EmbeddingResult``（供應商回傳）。
+- OCR：用量來自每份文件自己的 :class:`OcrUsageTally`（Issue #78，引擎每次呼叫
+  回傳 token 數與實際 ``provider:model``；不再讀引擎的 ``last_*`` 共用計數器，
+  並行文件不會互相污染）。
+- Contextual retrieval：仍來自服務物件的 ``last_*`` 累計屬性（既有 stateful 約定，
+  見 architecture-journal「累計屬性 Pattern」）。
+- Embedding：``EmbeddingResult``（供應商回傳）。
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from src.application.usage.embedding_accounting import account_embedding
+from src.domain.knowledge.value_objects import OcrUsageTally
 from src.domain.rag.services import EmbeddingResult
 from src.domain.rag.value_objects import TokenUsage
 from src.domain.usage.category import UsageCategory
@@ -25,25 +29,11 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-_DEFAULT_OCR_MODEL = "claude-haiku-4-5-20251001"
-
 
 def _int_attr(source: Any, name: str) -> int:
     """讀服務物件的整數累計屬性；缺少或非 int（例如 mock）一律視為 0。"""
     value = getattr(source, name, 0)
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
-
-
-def reset_llm_counters(source: Any) -> None:
-    """OCR 引擎為 singleton，直接呼叫引擎前先歸零累計屬性。"""
-    for name in (
-        "last_input_tokens",
-        "last_output_tokens",
-        "last_cache_read_tokens",
-        "last_cache_creation_tokens",
-    ):
-        if isinstance(getattr(source, name, None), int):
-            setattr(source, name, 0)
 
 
 async def _record(
@@ -76,24 +66,36 @@ async def _record(
 async def record_ocr_usage(
     record_usage: "RecordUsageUseCase | None",
     *,
-    source: Any,
+    usage: OcrUsageTally,
     tenant_id: str,
     kb_id: str,
+    fallback_model: str = "",
+    legacy_source: Any = None,
 ) -> None:
-    """``source`` 為 file parser 或 OCR 引擎（兩者都有 last_* 累計屬性）。"""
-    in_tok = _int_attr(source, "last_input_tokens")
-    out_tok = _int_attr(source, "last_output_tokens")
+    """OCR 用量：``usage.model`` 為實際 spec（例 ``google:gemini-3.7-flash``）。
+
+    ``legacy_source``：只在走同步 ``FileParserService.parse()``（回傳純字串、
+    無法帶 tally）時傳入 file parser；tally 為空才退回讀其 ``last_*`` 累計屬性，
+    維持 #73「花了 token 就必有一筆 usage」對舊式 parser 的保證。
+    """
+    in_tok, out_tok, model = usage.input_tokens, usage.output_tokens, usage.model
+    if in_tok + out_tok <= 0 and legacy_source is not None:
+        in_tok = _int_attr(legacy_source, "last_input_tokens")
+        out_tok = _int_attr(legacy_source, "last_output_tokens")
+        legacy_model = getattr(legacy_source, "last_model", "")
+        model = legacy_model if isinstance(legacy_model, str) else ""
     if in_tok + out_tok <= 0:
         return
-    model = getattr(source, "last_model", "") or getattr(source, "_model", "")
-    if not isinstance(model, str) or not model:
-        model = _DEFAULT_OCR_MODEL
     await _record(
         record_usage,
         category=UsageCategory.OCR,
         tenant_id=tenant_id,
         kb_id=kb_id,
-        usage=TokenUsage(model=model, input_tokens=in_tok, output_tokens=out_tok),
+        usage=TokenUsage(
+            model=model or fallback_model or "unknown",
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+        ),
     )
 
 

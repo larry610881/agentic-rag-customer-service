@@ -92,6 +92,11 @@ class Settings(BaseSettings):
     # LLM
     llm_max_tokens: int = 1024
 
+    # OCR（Issue #78）：環境預設引擎 spec（KB.ocr_model / 租戶 default_ocr_model
+    # 皆空時用）。格式 provider:model；anthropic → Claude Vision，
+    # google / openai / openrouter / litellm → OpenAI 相容視覺端點
+    ocr_default_model: str = "anthropic:claude-sonnet-4-6"
+
     # E2E testing: E2E_MODE=true → FakeLLM + MetaSupervisor (no real LLM calls)
     e2e_mode: bool = False
 

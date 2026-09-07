@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from src.domain.knowledge.entity import KnowledgeBase
+from src.domain.knowledge.ocr_model_spec import validate_ocr_model_spec
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.knowledge.value_objects import KnowledgeBaseId
 
@@ -32,7 +33,8 @@ class CreateKnowledgeBaseUseCase:
             name=command.name,
             description=command.description,
             ocr_mode=command.ocr_mode,
-            ocr_model=command.ocr_model,
+            # Issue #78：provider:model；供應商不支援 → ValidationError
+            ocr_model=validate_ocr_model_spec(command.ocr_model),
             context_model=command.context_model,
             classification_model=command.classification_model,
             chunk_strategy=command.chunk_strategy,

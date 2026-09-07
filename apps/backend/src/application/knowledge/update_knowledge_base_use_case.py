@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from src.application.knowledge._admin_kb_check import ensure_kb_accessible
+from src.domain.knowledge.ocr_model_spec import validate_ocr_model_spec
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 
 
@@ -38,7 +39,12 @@ class UpdateKnowledgeBaseUseCase:
                 "name": command.name,
                 "description": command.description,
                 "ocr_mode": command.ocr_mode,
-                "ocr_model": command.ocr_model,
+                # Issue #78：provider:model；供應商不支援 → ValidationError
+                "ocr_model": (
+                    validate_ocr_model_spec(command.ocr_model)
+                    if command.ocr_model is not None
+                    else None
+                ),
                 "context_model": command.context_model,
                 "classification_model": command.classification_model,
                 "chunk_strategy": command.chunk_strategy,

@@ -576,8 +576,8 @@ from src.infrastructure.embedding.fake_embedding_service import (
 from src.infrastructure.embedding.openai_embedding_service import (
     OpenAIEmbeddingService,
 )
-from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import (
-    ClaudeVisionOcrEngine,
+from src.infrastructure.file_parser.ocr_engines.factory import (
+    DynamicOcrEngineFactory,
 )
 from src.infrastructure.file_parser.ocr_file_parser_service import (
     OcrFileParserService,
@@ -1207,19 +1207,25 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
-    _ocr_engine = providers.Singleton(
-        ClaudeVisionOcrEngine,
-        api_key=config.provided.anthropic_api_key,
-        # Sonnet 4.6 OCR 準確度遠勝 Haiku（DM 裝飾字體 / 緊密小字差異明顯）
-        # 成本：DM 每頁約 $0.005（vs Haiku $0.001），accuracy 換成本是值得的
-        # 之前 Haiku 把「紫檀筷」OCR 成「茶槽杯」typical 形似字誤判
-        # ⚠️ 待後續：應讓 ProcessDocumentUseCase 讀 KB.ocr_model 動態決定
-        model="claude-sonnet-4-6",
+    # Issue #78：OCR 引擎依 spec 動態選擇（KB.ocr_model → 租戶 default_ocr_model
+    # → OCR_DEFAULT_MODEL）。anthropic → Claude Vision；google / openai /
+    # openrouter / litellm → OpenAI 相容視覺端點。同 spec 共用引擎實例。
+    # Sonnet 4.6 OCR 準確度遠勝 Haiku（DM 裝飾字體 / 緊密小字差異明顯），
+    # Gemini 3.7 Flash 較省（家樂福資料重建用）。
+    _ocr_engine_factory = providers.Singleton(
+        DynamicOcrEngineFactory,
+        default_spec=config.provided.ocr_default_model,
+    )
+
+    # 舊 alias：環境預設 spec 對應的引擎（其他消費者不必改）
+    ocr_engine = providers.Callable(
+        lambda factory: factory.engine_for(factory.default_spec),
+        _ocr_engine_factory,
     )
 
     file_parser_service = providers.Singleton(
         OcrFileParserService,
-        ocr_engine=_ocr_engine,
+        engine_factory=_ocr_engine_factory,
     )
 
     language_detection_service = providers.Singleton(
@@ -1390,8 +1396,9 @@ class Container(containers.DeclarativeContainer):
         factory=_llm_factory,
     )
 
-    # Wire OCR engine's api_key_resolver to _llm_factory (lazy — defined after _ocr_engine)
-    _ocr_engine.add_kwargs(
+    # Wire OCR engine factory's api_key_resolver to _llm_factory
+    # (lazy — defined after _ocr_engine_factory)
+    _ocr_engine_factory.add_kwargs(
         api_key_resolver=providers.Callable(
             lambda factory: factory.resolve_api_key,
             _llm_factory,

@@ -837,7 +837,7 @@ class ReprocessRequest(BaseModel):
     chunk_overlap: int | None = None
     chunk_strategy: str | None = None
     # 暫時性 KB 設定覆寫（只影響這次 reprocess，不寫回 KB）。
-    # ocr_model 收下但 reserved（OCR engine 是 Singleton 暫不支援 per-call override）。
+    # ocr_model：本次 reprocess 的引擎 spec 覆寫（provider:model，Issue #78）。
     ocr_mode: str | None = None
     ocr_model: str | None = None
     context_model: str | None = None

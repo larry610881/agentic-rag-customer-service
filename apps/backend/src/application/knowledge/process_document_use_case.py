@@ -1,11 +1,11 @@
 import asyncio
 import time
 
+from src.application.knowledge._ocr_pipeline import ocr_image, select_ocr_engine
 from src.application.knowledge._pipeline_accounting import (
     record_context_usage,
     record_embedding_usage,
     record_ocr_usage,
-    reset_llm_counters,
 )
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.domain.knowledge.repository import (
@@ -24,6 +24,7 @@ from src.domain.knowledge.services import (
     TextPreprocessor,
     TextSplitterService,
 )
+from src.domain.knowledge.value_objects import OcrUsageTally
 from src.domain.rag.services import EmbeddingService, VectorStore
 from src.domain.tenant.repository import TenantRepository
 from src.infrastructure.logging import get_logger
@@ -163,78 +164,36 @@ class ProcessDocumentUseCase:
             if raw_content:
                 t0 = time.perf_counter()
 
-                # OCR 用量來源：影像路徑直接打引擎（singleton，先歸零累計屬性）；
-                # PDF / 一般路徑經 file parser（parse 內部自行歸零）。
-                ocr_usage_source = self._file_parser
+                # Issue #78：引擎依 KB.ocr_model → 租戶 default_ocr_model →
+                # 環境預設動態選擇；用量累加到本次文件自己的 tally。
+                ocr_usage = OcrUsageTally()
+                ocr_legacy_source = None
+                ocr_engine, ocr_spec = (
+                    await select_ocr_engine(
+                        self._file_parser,
+                        kb=kb,
+                        tenant_repo=self._tenant_repo,
+                        tenant_id=document.tenant_id,
+                    )
+                    if needs_ocr
+                    else (None, "")
+                )
 
                 # PNG/image: single page OCR (child of split PDF)
-                if document.content_type.startswith("image/") and hasattr(self._file_parser, "_ocr"):
-                    ocr_engine = self._file_parser._ocr
-                    ocr_usage_source = ocr_engine
-                    reset_llm_counters(ocr_engine)
-                    from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import (
-                        OCR_PROMPTS,
-                    )
-                    from src.infrastructure.file_parser.sliced_ocr_helper import (
-                        ocr_image_sliced,
-                    )
+                if (
+                    document.content_type.startswith("image/")
+                    and ocr_engine is not None
+                ):
                     # KB.ocr_slice_grid 空 = 不切片；"2x3" / "3x2" 啟用切片 OCR
                     # 提升 rare brand char 辨識率（薈/樟腦/萃這類）
                     slice_grid = getattr(kb, "ocr_slice_grid", "") if kb else ""
-
-                    from src.infrastructure.file_parser.ocr_engines import (  # noqa: E501
-                        claude_vision_ocr as cv,
+                    content = await ocr_image(
+                        ocr_engine,
+                        raw_content,
+                        ocr_mode=ocr_mode,
+                        slice_grid=slice_grid,
+                        usage=ocr_usage,
                     )
-                    if ocr_mode == "auto" and hasattr(
-                        ocr_engine, "ocr_page_auto_dispatch"
-                    ):
-                        # KB.ocr_mode='auto'：走 page-type dispatcher（每頁
-                        # classify→catalog/promotion/mixed/cover prompt）。
-                        if slice_grid:
-                            # auto + slice：先 classify 整圖拿 page_type，再用
-                            # 對應 prompt 對每個 tile OCR（加切片補充規則）。
-                            page_type = await ocr_engine.classify_page_type(
-                                raw_content
-                            )
-                            base_prompt = cv._PAGE_TYPE_PROMPTS.get(
-                                page_type, OCR_PROMPTS.get("general", "")
-                            )
-                            prompt = cv._SLICE_AWARE_PREFIX + base_prompt
-
-                            async def _ocr_tile(tile_bytes: bytes) -> str:
-                                return await ocr_engine.ocr_page(
-                                    tile_bytes, prompt=prompt
-                                )
-
-                            content = await ocr_image_sliced(
-                                raw_content, slice_grid, _ocr_tile
-                            )
-                        else:
-                            _page_type, content = (
-                                await ocr_engine.ocr_page_auto_dispatch(
-                                    raw_content
-                                )
-                            )
-                    else:
-                        base_prompt = OCR_PROMPTS.get(
-                            ocr_mode, OCR_PROMPTS.get("general", "")
-                        )
-                        # 啟用切片時加切片補充規則 prefix
-                        prompt = (
-                            cv._SLICE_AWARE_PREFIX + base_prompt
-                            if slice_grid
-                            else base_prompt
-                        )
-
-                        async def _ocr_tile(tile_bytes: bytes) -> str:
-                            return await ocr_engine.ocr_page(
-                                tile_bytes, prompt=prompt
-                            )
-
-                        # ocr_image_sliced grid="" 時直接呼叫 callback 整圖
-                        content = await ocr_image_sliced(
-                            raw_content, slice_grid, _ocr_tile
-                        )
                     await _update_progress(task_id, 70)
 
                 # PDF: use async path with progress callback (no DB held)
@@ -251,8 +210,12 @@ class ProcessDocumentUseCase:
                         raw_content,
                         ocr_mode=ocr_mode,
                         on_progress=_on_progress,
+                        engine=ocr_engine,
+                        usage=ocr_usage,
                     )
                 else:
+                    # 同步 parse() 回純字串、無法帶 tally → 記帳退回 last_*（#73 相容）
+                    ocr_legacy_source = self._file_parser
                     content = await asyncio.to_thread(
                         self._file_parser.parse,
                         raw_content,
@@ -276,12 +239,15 @@ class ProcessDocumentUseCase:
 
                 await self._doc_repo.update_content(document_id, content)
 
-                # Record OCR token usage（Issue #73：與 reprocess 共用 helper）
+                # Record OCR token usage（Issue #73：與 reprocess 共用 helper；
+                # #78：model 為實際 spec）
                 await record_ocr_usage(
                     self._record_usage,
-                    source=ocr_usage_source,
+                    usage=ocr_usage,
                     tenant_id=document.tenant_id,
                     kb_id=document.kb_id,
+                    fallback_model=ocr_spec,
+                    legacy_source=ocr_legacy_source,
                 )
             else:
                 # Fallback for legacy documents without raw_content

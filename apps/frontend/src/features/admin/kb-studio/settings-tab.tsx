@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ModelSelect } from "@/components/shared/model-select";
 import {
   Select,
   SelectContent,
@@ -50,7 +51,9 @@ const MODEL_FIELDS = [
   {
     key: "ocr_model" as const,
     label: "OCR 解析",
-    hint: "PDF / 圖片 OCR 用的視覺模型（建議 Sonnet 4.6 / Haiku 4.5）",
+    // Issue #78：OCR 引擎多供應商 — anthropic 走 Claude Vision，google / openai /
+    // openrouter / litellm 走 OpenAI 相容視覺端點；空 = 租戶預設 → 環境預設
+    hint: "PDF / 圖片 OCR 用的視覺模型。Gemini 3.7 Flash 較省；Claude 4.6 系列最穩。空 = 租戶預設",
   },
   {
     key: "context_model" as const,
@@ -262,25 +265,15 @@ export function SettingsTab({ kbId }: SettingsTabProps) {
         {MODEL_FIELDS.map((field) => (
           <div key={field.key} className="space-y-1.5">
             <Label htmlFor={`kb-${field.key}`}>{field.label}</Label>
-            <Select
+            <ModelSelect
+              id={`kb-${field.key}`}
               value={modelValues[field.key] || NONE_VALUE}
               onValueChange={setters[field.key]}
-            >
-              <SelectTrigger id={`kb-${field.key}`}>
-                <SelectValue placeholder="系統預設" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE_VALUE}>系統預設</SelectItem>
-                {(enabledModels ?? []).map((m) => {
-                  const spec = `${m.provider_name}:${m.model_id}`;
-                  return (
-                    <SelectItem key={spec} value={spec}>
-                      {m.display_name || spec}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+              enabledModels={enabledModels}
+              placeholder="系統預設"
+              allowEmpty
+              emptyLabel="系統預設"
+            />
             <p className="text-xs text-muted-foreground">{field.hint}</p>
           </div>
         ))}

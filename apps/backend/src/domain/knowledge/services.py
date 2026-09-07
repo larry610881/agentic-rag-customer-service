@@ -5,6 +5,7 @@ import re
 import unicodedata
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Any
 
 from src.domain.knowledge.entity import Chunk
 from src.domain.knowledge.value_objects import QualityScore
@@ -18,6 +19,26 @@ class FileParserService(ABC):
 
     @abstractmethod
     def supported_types(self) -> set[str]: ...
+
+
+class OcrEngineSelector(ABC):
+    """依 model spec 選 OCR 引擎的 port（Issue #78）。
+
+    Infrastructure 的 file parser 實作此介面；Application 只認這個抽象，
+    以 ``KB.ocr_model → 租戶 default_ocr_model → 環境預設`` 的優先序決定 spec。
+    """
+
+    @abstractmethod
+    def resolve_ocr_spec(
+        self, kb_ocr_model: str, tenant_default_ocr_model: str
+    ) -> str:
+        """回傳正規化的 ``provider:model`` spec（永遠非空）。"""
+        ...
+
+    @abstractmethod
+    def ocr_engine_for(self, spec: str) -> Any:
+        """回傳該 spec 對應的 OCR 引擎（同 spec 共用實例）。"""
+        ...
 
 
 class DocumentFileStorageService(ABC):

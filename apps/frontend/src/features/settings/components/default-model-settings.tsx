@@ -11,7 +11,12 @@ import { API_ENDPOINTS } from "@/lib/api-endpoints";
 import type { Tenant } from "@/types/auth";
 
 const MODEL_FIELDS = [
-  { key: "default_ocr_model", label: "OCR 解析" },
+  {
+    key: "default_ocr_model",
+    label: "OCR 解析",
+    // Issue #78：OCR 引擎多供應商；KB 未設定時用此預設，再退回環境預設
+    hint: "Gemini 3.7 Flash 較省；Claude 4.6 系列最穩",
+  },
   { key: "default_context_model", label: "上下文生成（Contextual Retrieval）" },
   { key: "default_classification_model", label: "自動分類" },
   // S-KB-Followup.2
@@ -106,6 +111,9 @@ export function DefaultModelSettings() {
             allowEmpty
             emptyLabel="未設定"
           />
+          {"hint" in field && (
+            <p className="text-xs text-muted-foreground">{field.hint}</p>
+          )}
         </div>
       ))}
 
