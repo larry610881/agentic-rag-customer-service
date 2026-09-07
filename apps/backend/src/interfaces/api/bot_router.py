@@ -3,7 +3,7 @@
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 
 from src.application.bot.create_bot_use_case import (
@@ -12,6 +12,10 @@ from src.application.bot.create_bot_use_case import (
 )
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
+from src.application.bot.list_bot_audit_logs_use_case import (
+    BotAuditChange,
+    ListBotAuditLogsUseCase,
+)
 from src.application.bot.list_bots_use_case import ListBotsUseCase
 from src.application.bot.update_bot_use_case import UpdateBotCommand, UpdateBotUseCase
 from src.application.bot.upload_bot_icon_use_case import (
@@ -25,7 +29,12 @@ from src.container import Container
 from src.domain.platform.value_objects import ProviderName
 from src.domain.bot.entity import VALID_BOT_MODES, VALID_REASONING_EFFORTS
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
-from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_scope
+from src.interfaces.api.deps import (
+    CurrentTenant,
+    get_current_tenant,
+    require_role,
+    require_scope,
+)
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
 router = APIRouter(prefix="/api/v1/bots", tags=["bots"])
@@ -768,3 +777,65 @@ async def delete_bot_icon(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=e.message,
         ) from None
+
+
+# ── Issue #71：租戶端變更紀錄 ──
+
+
+def _change_to_dict(change: BotAuditChange) -> dict[str, Any]:
+    if change.is_long_text:
+        return {
+            "field": change.field,
+            "before_len": change.before_len,
+            "after_len": change.after_len,
+            "changed": True,
+        }
+    return {"field": change.field, "before": change.before, "after": change.after}
+
+
+@router.get("/{bot_id}/audit-logs")
+@inject
+async def list_bot_audit_logs(
+    bot_id: str,
+    limit: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=200),
+    tenant: CurrentTenant = Depends(require_role("tenant_admin", "system_admin")),
+    use_case: ListBotAuditLogsUseCase = Depends(
+        Provide[Container.list_bot_audit_logs_use_case]
+    ),
+) -> dict[str, Any]:
+    """bot 範圍的稽核紀錄：誰在何時改了哪些欄位（長文字欄位只回字數）。
+    非本租戶的 bot 視同不存在（404）；system_admin 可跨租戶。"""
+    try:
+        page = await use_case.execute(
+            bot_id,
+            tenant_id=tenant.tenant_id,
+            role=tenant.role,
+            limit=limit,
+            cursor=cursor,
+        )
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.message,
+        ) from None
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid cursor",
+        ) from None
+    return {
+        "items": [
+            {
+                "id": e.id,
+                "action": e.action,
+                "actor_user_id": e.actor_user_id,
+                "actor_email": e.actor_email,
+                "source": e.source,
+                "created_at": e.created_at.isoformat(),
+                "changes": [_change_to_dict(c) for c in e.changes],
+            }
+            for e in page.items
+        ],
+        "next_cursor": page.next_cursor,
+    }

@@ -1,0 +1,178 @@
+"""租戶端 Bot 變更紀錄（Issue #71）
+
+system_admin 的 /audit-logs 存整列 before/after，tenant_admin 沒有入口，導致
+「模型被改了不知道誰改」。此 use case 以 bot 為範圍回稽核紀錄：
+- 歸屬檢查與 GetBot 一致（跨租戶視同不存在 → 404，不洩漏存在性）
+- changed_fields 轉成扁平的 changes 清單；llm_params 展平一層為 `llm_params.<子欄位>`
+- 長文字欄位（提示詞類）只回字數，不回全文（全文走 system_admin 稽核頁）
+- actor_email 由 user repository 補齊（查無使用者 → None）
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
+
+from src.application.bot._tenant_guard import ensure_bot_tenant
+from src.domain.audit.entity import (
+    AuditEntry,
+    AuditLogRepository,
+    encode_audit_cursor,
+)
+from src.domain.auth.repository import UserRepository
+from src.domain.bot.repository import BotRepository
+from src.domain.shared.exceptions import EntityNotFoundError
+
+BOT_ENTITY_TYPE = "bot"
+
+# 只回字數的長文字欄位（與 config_snapshot.PROMPT_FIELDS 的提示詞類一致）
+LONG_TEXT_FIELDS = frozenset({
+    "bot_prompt",
+    "base_prompt",
+    "memory_extraction_prompt",
+})
+
+# 展平一層的巢狀欄位
+NESTED_FIELDS = frozenset({"llm_params"})
+
+DEFAULT_LIMIT = 20
+MAX_LIMIT = 100
+
+
+@dataclass(frozen=True)
+class BotAuditChange:
+    field: str
+    before: Any = None
+    after: Any = None
+    before_len: int | None = None
+    after_len: int | None = None
+    # 長文字欄位：只標記有變更 + 字數，不附全文
+    changed: bool = True
+
+    @property
+    def is_long_text(self) -> bool:
+        return self.before_len is not None or self.after_len is not None
+
+
+@dataclass(frozen=True)
+class BotAuditLogEntry:
+    id: str
+    action: str
+    actor_user_id: str | None
+    actor_email: str | None
+    created_at: datetime
+    source: str
+    changes: list[BotAuditChange] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class BotAuditLogPage:
+    items: list[BotAuditLogEntry]
+    next_cursor: str | None = None
+
+
+def _text_len(value: Any) -> int:
+    return len(value) if isinstance(value, str) else 0
+
+
+def _long_text_change(name: str, before: Any, after: Any) -> BotAuditChange:
+    return BotAuditChange(
+        field=name,
+        before_len=_text_len(before),
+        after_len=_text_len(after),
+        changed=True,
+    )
+
+
+def build_changes(changed_fields: dict[str, Any] | None) -> list[BotAuditChange]:
+    """稽核列的 changed_fields（{field: {before, after}}）→ 扁平 changes 清單。"""
+    changes: list[BotAuditChange] = []
+    for name in sorted(changed_fields or {}):
+        raw = (changed_fields or {})[name]
+        if not isinstance(raw, dict):
+            continue
+        before, after = raw.get("before"), raw.get("after")
+        if name in NESTED_FIELDS:
+            b_map = before if isinstance(before, dict) else {}
+            a_map = after if isinstance(after, dict) else {}
+            for sub in sorted(set(b_map) | set(a_map)):
+                if b_map.get(sub) != a_map.get(sub):
+                    changes.append(BotAuditChange(
+                        field=f"{name}.{sub}",
+                        before=b_map.get(sub),
+                        after=a_map.get(sub),
+                    ))
+            continue
+        if name in LONG_TEXT_FIELDS:
+            changes.append(_long_text_change(name, before, after))
+            continue
+        changes.append(BotAuditChange(field=name, before=before, after=after))
+    return changes
+
+
+class ListBotAuditLogsUseCase:
+    def __init__(
+        self,
+        bot_repository: BotRepository,
+        audit_log_repository: AuditLogRepository,
+        user_repository: UserRepository | None = None,
+    ) -> None:
+        self._bot_repo = bot_repository
+        self._audit_repo = audit_log_repository
+        self._user_repo = user_repository
+
+    async def execute(
+        self,
+        bot_id: str,
+        *,
+        tenant_id: str,
+        role: str | None,
+        limit: int = DEFAULT_LIMIT,
+        cursor: str | None = None,
+    ) -> BotAuditLogPage:
+        bot = await self._bot_repo.find_by_id(bot_id)
+        if bot is None:
+            raise EntityNotFoundError("Bot", bot_id)
+        ensure_bot_tenant(bot, tenant_id, role)
+
+        limit = max(1, min(limit, MAX_LIMIT))
+        # 多取一筆判斷是否還有下一頁
+        entries = await self._audit_repo.find_by_entity(
+            entity_type=BOT_ENTITY_TYPE,
+            entity_id=bot.id.value,
+            limit=limit + 1,
+            cursor=cursor,
+        )
+        has_more = len(entries) > limit
+        page_entries = entries[:limit]
+        emails = await self._resolve_actor_emails(page_entries)
+        items = [
+            BotAuditLogEntry(
+                id=e.id,
+                action=e.action,
+                actor_user_id=e.actor_user_id,
+                actor_email=emails.get(e.actor_user_id or ""),
+                created_at=e.created_at,
+                source=e.source,
+                changes=build_changes(e.changed_fields),
+            )
+            for e in page_entries
+        ]
+        next_cursor = (
+            encode_audit_cursor(page_entries[-1]) if has_more and page_entries else None
+        )
+        return BotAuditLogPage(items=items, next_cursor=next_cursor)
+
+    async def _resolve_actor_emails(
+        self, entries: list[AuditEntry]
+    ) -> dict[str, str]:
+        """同一頁的 actor 通常只有一兩位，逐一查即可（查無 → 略過）。"""
+        if self._user_repo is None:
+            return {}
+        emails: dict[str, str] = {}
+        for actor_id in {e.actor_user_id for e in entries if e.actor_user_id}:
+            user = await self._user_repo.find_by_id(actor_id)
+            if user is not None:
+                emails[actor_id] = user.email.value
+        return emails

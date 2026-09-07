@@ -58,6 +58,9 @@ from src.application.bot.create_bot_use_case import CreateBotUseCase
 from src.application.bot.delete_bot_use_case import DeleteBotUseCase
 from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.bot.list_all_bots_use_case import ListAllBotsUseCase
+from src.application.bot.list_bot_audit_logs_use_case import (
+    ListBotAuditLogsUseCase,
+)
 from src.application.bot.list_bots_use_case import ListBotsUseCase
 from src.application.bot.update_bot_use_case import UpdateBotUseCase
 from src.application.bot.upload_bot_icon_use_case import UploadBotIconUseCase
@@ -2228,6 +2231,14 @@ class Container(containers.DeclarativeContainer):
     get_bot_use_case = providers.Factory(
         GetBotUseCase,
         bot_repository=bot_repository,
+    )
+
+    # Issue #71：租戶端 bot 變更紀錄（tenant_admin / system_admin）
+    list_bot_audit_logs_use_case = providers.Factory(
+        ListBotAuditLogsUseCase,
+        bot_repository=bot_repository,
+        audit_log_repository=audit_log_repository,
+        user_repository=user_repository,
     )
 
     update_bot_use_case = providers.Factory(

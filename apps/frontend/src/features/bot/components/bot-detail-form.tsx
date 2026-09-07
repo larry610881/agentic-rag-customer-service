@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   useForm,
   useFieldArray,
   Controller,
   type Control,
+  type DefaultValues,
   type FieldErrors,
   type UseFormRegister,
   type UseFormSetValue,
@@ -88,6 +89,11 @@ import {
   serializeOutputSchema,
 } from "@/features/bot/output-schema-templates";
 import { StructuredOutputCapabilityBadge } from "./structured-output-capability-badge";
+import {
+  describeBotChange,
+  diffBotValues,
+  type BotFieldDiff,
+} from "@/features/bot/bot-field-labels";
 
 /** 純文字通路顯示欄位的預設值（schema 有 answer 時優先） */
 const DEFAULT_OUTPUT_TEXT_FIELD = "answer";
@@ -262,6 +268,118 @@ function isValidJson(text: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Issue #71：表單初始值由 bot 建立（defaultValues / reset / 儲存前 diff 基準共用） */
+function buildFormValues(bot: Bot): DefaultValues<BotFormValues> {
+  return {
+    name: bot.name,
+    description: bot.description,
+    is_active: bot.is_active,
+    bot_prompt: bot.bot_prompt,
+    knowledge_base_ids: bot.knowledge_base_ids,
+    enabled_tools: bot.enabled_tools,
+    llm_provider: bot.llm_provider,
+    llm_model: bot.llm_model,
+    temperature: bot.temperature,
+    max_tokens: bot.max_tokens,
+    history_limit: bot.history_limit,
+    frequency_penalty: bot.frequency_penalty,
+    reasoning_effort: bot.reasoning_effort,
+    rag_top_k: bot.rag_top_k,
+    rag_score_threshold: bot.rag_score_threshold,
+    show_sources: bot.show_sources,
+    eval_provider: bot.eval_provider ?? "",
+    eval_model: bot.eval_model ?? "",
+    eval_depth: bot.eval_depth ?? "off",
+    mcp_servers: bot.mcp_servers ?? [],
+    max_tool_calls: bot.max_tool_calls ?? 5,
+    base_prompt: bot.base_prompt ?? "",
+    mode: bot.mode ?? "deep",
+    miss_reply: bot.miss_reply ?? "",
+    output_format: bot.output_format ?? "text",
+    output_schema_text: bot.output_schema
+      ? serializeOutputSchema(bot.output_schema)
+      : "",
+    output_text_field: bot.output_text_field ?? DEFAULT_OUTPUT_TEXT_FIELD,
+    gate_mode: bot.gate_mode ?? "off",
+    gate_soft_threshold: bot.gate_soft_threshold ?? 0.8,
+    gate_repeats: bot.gate_repeats ?? 3,
+    gate_auto_publish: bot.gate_auto_publish ?? false,
+    gate_daily_limit: bot.gate_daily_limit ?? 20,
+    gate_budget_usd: bot.gate_budget_usd ?? 1.0,
+    gate_excluded_cases: bot.gate_excluded_cases ?? [],
+    widget_enabled: bot.widget_enabled ?? false,
+    widget_allowed_origins: (bot.widget_allowed_origins ?? []).join("\n"),
+    widget_keep_history: bot.widget_keep_history ?? true,
+    widget_welcome_message: bot.widget_welcome_message ?? "",
+    widget_placeholder_text: bot.widget_placeholder_text ?? "",
+    widget_greeting_messages: bot.widget_greeting_messages ?? [],
+    widget_greeting_animation: bot.widget_greeting_animation ?? "fade",
+    rerank_enabled: bot.rerank_enabled ?? false,
+    rerank_model: bot.rerank_model ?? "",
+    rerank_top_n: bot.rerank_top_n ?? 20,
+    rag_retrieval_modes: bot.rag_retrieval_modes ?? ["raw"],
+    query_rewrite_enabled: bot.query_rewrite_enabled ?? false,
+    query_rewrite_model: bot.query_rewrite_model ?? "",
+    query_rewrite_extra_hint: bot.query_rewrite_extra_hint ?? "",
+    hyde_enabled: bot.hyde_enabled ?? false,
+    hyde_model: bot.hyde_model ?? "",
+    hyde_extra_hint: bot.hyde_extra_hint ?? "",
+    intent_routes: bot.intent_routes ?? [],
+    router_model: bot.router_model ?? "",
+    summary_model: bot.summary_model ?? "",
+    busy_reply_message:
+      bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
+    line_channel_secret: bot.line_channel_secret,
+    line_channel_access_token: bot.line_channel_access_token,
+    line_show_sources: bot.line_show_sources ?? false,
+    tool_configs: bot.tool_configs ?? {},
+    customer_service_url: bot.customer_service_url ?? "",
+  };
+}
+
+/** 表單值 → PUT payload（Issue #70 schema 文字轉物件；允許來源逐行拆陣列） */
+function buildPayload(data: BotFormValues) {
+  const originsStr = data.widget_allowed_origins as string;
+  const { output_schema_text, ...rest } = data;
+  // Issue #70 — schema 只在 json 格式有意義；zod 已保證非空時可 parse 成物件
+  const output_schema: BotOutputSchema | null =
+    data.output_format === "json" && output_schema_text.trim()
+      ? parseJsonObject(output_schema_text)
+      : null;
+  return {
+    ...rest,
+    output_schema,
+    widget_allowed_origins: originsStr
+      ? originsStr
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [],
+  };
+}
+
+type BotSavePayload = ReturnType<typeof buildPayload>;
+
+/**
+ * Issue #71：儲存前 diff 的基準 = 表單「未動過」時會送出的 payload。
+ * 走同一條 zod parse（coerce / strip 未知鍵）避免把 API 多帶的欄位誤判成變更。
+ */
+function baselinePayload(bot: Bot): Record<string, unknown> {
+  const raw = buildFormValues(bot);
+  const parsed = botFormSchema.safeParse(raw);
+  return buildPayload(
+    parsed.success ? parsed.data : (raw as BotFormValues),
+  ) as Record<string, unknown>;
+}
+
+/** 簡述最多列出的項目數，其餘以「另 N 項」摘要 */
+const CHANGE_SUMMARY_MAX_ITEMS = 8;
+
+interface PendingSave {
+  payload: BotSavePayload;
+  changes: BotFieldDiff[];
 }
 
 interface BotDetailFormProps {
@@ -1022,6 +1140,9 @@ export function BotDetailForm({
   const [activeTab, setActiveTab] = useState<string>(TAB_KEYS.LLM_PROMPT);
   const [playgroundOpen, setPlaygroundOpen] = useState(false);
   const navigate = useNavigate();
+  // Issue #71 — 儲存前變更簡述
+  const [pendingSave, setPendingSave] = useState<PendingSave | null>(null);
+  const baseline = useMemo(() => baselinePayload(bot), [bot]);
 
   const {
     register,
@@ -1033,71 +1154,7 @@ export function BotDetailForm({
     formState: { errors },
   } = useForm<BotFormValues>({
     resolver: zodResolver(botFormSchema),
-    defaultValues: {
-      name: bot.name,
-      description: bot.description,
-      is_active: bot.is_active,
-      bot_prompt: bot.bot_prompt,
-      knowledge_base_ids: bot.knowledge_base_ids,
-      enabled_tools: bot.enabled_tools,
-      llm_provider: bot.llm_provider,
-      llm_model: bot.llm_model,
-      temperature: bot.temperature,
-      max_tokens: bot.max_tokens,
-      history_limit: bot.history_limit,
-      frequency_penalty: bot.frequency_penalty,
-      reasoning_effort: bot.reasoning_effort,
-      rag_top_k: bot.rag_top_k,
-      rag_score_threshold: bot.rag_score_threshold,
-      show_sources: bot.show_sources,
-      eval_provider: bot.eval_provider ?? "",
-      eval_model: bot.eval_model ?? "",
-      eval_depth: bot.eval_depth ?? "off",
-      mcp_servers: bot.mcp_servers ?? [],
-      max_tool_calls: bot.max_tool_calls ?? 5,
-      base_prompt: bot.base_prompt ?? "",
-      mode: bot.mode ?? "deep",
-      miss_reply: bot.miss_reply ?? "",
-      output_format: bot.output_format ?? "text",
-      output_schema_text: bot.output_schema
-        ? serializeOutputSchema(bot.output_schema)
-        : "",
-      output_text_field: bot.output_text_field ?? DEFAULT_OUTPUT_TEXT_FIELD,
-      gate_mode: bot.gate_mode ?? "off",
-      gate_soft_threshold: bot.gate_soft_threshold ?? 0.8,
-      gate_repeats: bot.gate_repeats ?? 3,
-      gate_auto_publish: bot.gate_auto_publish ?? false,
-      gate_daily_limit: bot.gate_daily_limit ?? 20,
-      gate_budget_usd: bot.gate_budget_usd ?? 1.0,
-      gate_excluded_cases: bot.gate_excluded_cases ?? [],
-      widget_enabled: bot.widget_enabled ?? false,
-      widget_allowed_origins: (bot.widget_allowed_origins ?? []).join("\n"),
-      widget_keep_history: bot.widget_keep_history ?? true,
-      widget_welcome_message: bot.widget_welcome_message ?? "",
-      widget_placeholder_text: bot.widget_placeholder_text ?? "",
-      widget_greeting_messages: bot.widget_greeting_messages ?? [],
-      widget_greeting_animation: bot.widget_greeting_animation ?? "fade",
-      rerank_enabled: bot.rerank_enabled ?? false,
-      rerank_model: bot.rerank_model ?? "",
-      rerank_top_n: bot.rerank_top_n ?? 20,
-      rag_retrieval_modes: bot.rag_retrieval_modes ?? ["raw"],
-      query_rewrite_enabled: bot.query_rewrite_enabled ?? false,
-      query_rewrite_model: bot.query_rewrite_model ?? "",
-      query_rewrite_extra_hint: bot.query_rewrite_extra_hint ?? "",
-      hyde_enabled: bot.hyde_enabled ?? false,
-      hyde_model: bot.hyde_model ?? "",
-      hyde_extra_hint: bot.hyde_extra_hint ?? "",
-      intent_routes: bot.intent_routes ?? [],
-      router_model: bot.router_model ?? "",
-      summary_model: bot.summary_model ?? "",
-      busy_reply_message:
-        bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
-      line_channel_secret: bot.line_channel_secret,
-      line_channel_access_token: bot.line_channel_access_token,
-      line_show_sources: bot.line_show_sources ?? false,
-      tool_configs: bot.tool_configs ?? {},
-      customer_service_url: bot.customer_service_url ?? "",
-    },
+    defaultValues: buildFormValues(bot),
   });
 
   // Legacy: intent_routes field array (Workers tab replaces this UI)
@@ -1151,72 +1208,22 @@ export function BotDetailForm({
   }, [bot.mcp_servers]);
 
   useEffect(() => {
-    reset({
-      name: bot.name,
-      description: bot.description,
-      is_active: bot.is_active,
-      bot_prompt: bot.bot_prompt,
-      knowledge_base_ids: bot.knowledge_base_ids,
-      enabled_tools: bot.enabled_tools,
-      llm_provider: bot.llm_provider,
-      llm_model: bot.llm_model,
-      temperature: bot.temperature,
-      max_tokens: bot.max_tokens,
-      history_limit: bot.history_limit,
-      frequency_penalty: bot.frequency_penalty,
-      reasoning_effort: bot.reasoning_effort,
-      rag_top_k: bot.rag_top_k,
-      rag_score_threshold: bot.rag_score_threshold,
-      show_sources: bot.show_sources,
-      eval_provider: bot.eval_provider ?? "",
-      eval_model: bot.eval_model ?? "",
-      eval_depth: bot.eval_depth ?? "off",
-      mcp_servers: bot.mcp_servers ?? [],
-      max_tool_calls: bot.max_tool_calls ?? 5,
-      base_prompt: bot.base_prompt ?? "",
-      mode: bot.mode ?? "deep",
-      miss_reply: bot.miss_reply ?? "",
-      output_format: bot.output_format ?? "text",
-      output_schema_text: bot.output_schema
-        ? serializeOutputSchema(bot.output_schema)
-        : "",
-      output_text_field: bot.output_text_field ?? DEFAULT_OUTPUT_TEXT_FIELD,
-      gate_mode: bot.gate_mode ?? "off",
-      gate_soft_threshold: bot.gate_soft_threshold ?? 0.8,
-      gate_repeats: bot.gate_repeats ?? 3,
-      gate_auto_publish: bot.gate_auto_publish ?? false,
-      gate_daily_limit: bot.gate_daily_limit ?? 20,
-      gate_budget_usd: bot.gate_budget_usd ?? 1.0,
-      gate_excluded_cases: bot.gate_excluded_cases ?? [],
-      widget_enabled: bot.widget_enabled ?? false,
-      widget_allowed_origins: (bot.widget_allowed_origins ?? []).join("\n"),
-      widget_keep_history: bot.widget_keep_history ?? true,
-      widget_welcome_message: bot.widget_welcome_message ?? "",
-      widget_placeholder_text: bot.widget_placeholder_text ?? "",
-      widget_greeting_messages: bot.widget_greeting_messages ?? [],
-      widget_greeting_animation: bot.widget_greeting_animation ?? "fade",
-      rerank_enabled: bot.rerank_enabled ?? false,
-      rerank_model: bot.rerank_model ?? "",
-      rerank_top_n: bot.rerank_top_n ?? 20,
-      rag_retrieval_modes: bot.rag_retrieval_modes ?? ["raw"],
-      query_rewrite_enabled: bot.query_rewrite_enabled ?? false,
-      query_rewrite_model: bot.query_rewrite_model ?? "",
-      query_rewrite_extra_hint: bot.query_rewrite_extra_hint ?? "",
-      hyde_enabled: bot.hyde_enabled ?? false,
-      hyde_model: bot.hyde_model ?? "",
-      hyde_extra_hint: bot.hyde_extra_hint ?? "",
-      intent_routes: bot.intent_routes ?? [],
-      router_model: bot.router_model ?? "",
-      summary_model: bot.summary_model ?? "",
-      busy_reply_message:
-        bot.busy_reply_message ?? "小編正在努力回覆中，請稍等一下喔～",
-      line_channel_secret: bot.line_channel_secret,
-      line_channel_access_token: bot.line_channel_access_token,
-      line_show_sources: bot.line_show_sources ?? false,
-      tool_configs: bot.tool_configs ?? {},
-      customer_service_url: bot.customer_service_url ?? "",
-    });
+    reset(buildFormValues(bot));
   }, [bot, reset]);
+
+  const persist = async (payload: BotSavePayload) => {
+    try {
+      await onSave(payload);
+      toast.success("機器人設定已儲存");
+    } catch (err) {
+      // Issue #54 — 閘門啟用時版控欄位直改會 409，導引走版本 API
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : "儲存失敗，請稍後再試";
+      toast.error(msg);
+    }
+  };
 
   const onSubmit = async (data: BotFormValues) => {
     if (data.enabled_tools.length === 0) {
@@ -1238,34 +1245,20 @@ export function BotDetailForm({
       setActiveTab(TAB_KEYS.CAPABILITIES);
       return;
     }
-    const originsStr = data.widget_allowed_origins as string;
-    const { output_schema_text, ...rest } = data;
-    // Issue #70 — schema 只在 json 格式有意義；zod 已保證非空時可 parse 成物件
-    const output_schema: BotOutputSchema | null =
-      data.output_format === "json" && output_schema_text.trim()
-        ? parseJsonObject(output_schema_text)
-        : null;
-    const payload = {
-      ...rest,
-      output_schema,
-      widget_allowed_origins: originsStr
-        ? originsStr
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [],
-    };
-    try {
-      await onSave(payload);
-      toast.success("機器人設定已儲存");
-    } catch (err) {
-      // Issue #54 — 閘門啟用時版控欄位直改會 409，導引走版本 API
-      const msg =
-        err instanceof Error && err.message
-          ? err.message
-          : "儲存失敗，請稍後再試";
-      toast.error(msg);
+    const payload = buildPayload(data);
+    // Issue #71 — 有變更先出簡述確認（內容 = 實際寫入的 payload）；無變更直接存
+    const changes = diffBotValues(baseline, payload as Record<string, unknown>);
+    if (changes.length === 0) {
+      await persist(payload);
+      return;
     }
+    setPendingSave({ payload, changes });
+  };
+
+  const confirmPendingSave = async () => {
+    const pending = pendingSave;
+    setPendingSave(null);
+    if (pending) await persist(pending.payload);
   };
 
   const onInvalid = (errs: FieldErrors<BotFormValues>) => {
@@ -2638,6 +2631,44 @@ export function BotDetailForm({
               <AlertDialogCancel>取消</AlertDialogCancel>
               <AlertDialogAction variant="destructive" onClick={onDelete}>
                 確定刪除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog
+          open={pendingSave !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingSave(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>確認變更</AlertDialogTitle>
+              <AlertDialogDescription>
+                以下 {pendingSave?.changes.length ?? 0} 項設定將被更新，儲存後會留下變更紀錄。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <ul
+              className="max-h-64 space-y-1 overflow-y-auto text-sm"
+              data-testid="bot-change-summary"
+            >
+              {(pendingSave?.changes ?? [])
+                .slice(0, CHANGE_SUMMARY_MAX_ITEMS)
+                .map((change) => (
+                  <li key={change.field} className="break-all">
+                    {describeBotChange(change)}
+                  </li>
+                ))}
+              {(pendingSave?.changes.length ?? 0) > CHANGE_SUMMARY_MAX_ITEMS && (
+                <li className="text-muted-foreground">
+                  …另 {(pendingSave?.changes.length ?? 0) - CHANGE_SUMMARY_MAX_ITEMS} 項
+                </li>
+              )}
+            </ul>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={() => void confirmPendingSave()}>
+                確認儲存
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

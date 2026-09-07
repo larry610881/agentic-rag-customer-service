@@ -82,6 +82,10 @@ export function useUpdateBot() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.configVersions.list(variables.botId),
       });
+      // Issue #71：儲存後變更紀錄要立刻看到這一筆
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.bots.auditLogs(variables.botId),
+      });
     },
   });
 }

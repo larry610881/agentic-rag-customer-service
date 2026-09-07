@@ -6010,3 +6010,19 @@ graph TD
 
 **延伸學習**：Requested vs effective 是設定系統的通用原則（Kubernetes 的 spec vs status）：使用者要的與系統實際做的分開存，除錯才有落差可查。
 
+## 2026-09-07 — 讓被稽核的人看得到稽核：租戶範圍的變更紀錄與儲存前簡述（Issue #71）
+
+**背景**：bot 儲存早就寫 audit_logs（誰、何時、前後完整設定），但只有 system_admin 的稽核頁看得到，租戶自己「模型被改了不知道誰改」。
+
+**做得好**：
+1. **不加表、不加欄位**：重用 audit_logs，只補一個 `find_by_entity` keyset 查詢與租戶範圍守門（重用 `ensure_bot_tenant`，跨租戶回 404 不洩漏存在）。
+2. **diff 在伺服器算、標籤在前端翻**：後端只回 {field, before, after}（llm_params 攤平一層、長文字只報字數），前端一張 `bot-field-labels` 對照表同時服務「儲存前確認」與「變更紀錄」，兩處措辭一致。
+3. **儲存前確認只在有差異時出現**：baseline 用同一個 buildPayload 算，API 多回的欄位不會製造假差異；沒改就直接存，不打擾。
+
+**隱憂**：
+- worker 稽核列 tenant_id 為 None 且無 bot_id，租戶端看不到 worker 變更。→ 下次動 audit 寫入時補 tenant_id + parent_id → 優先級：中。
+- 稽核值在寫入時截斷 2000 字，長 prompt 的字數差是截斷後的值。→ 優先級：低。
+- 變更通知（模型 / 提示詞被改通知租戶管理員）未做。→ 可接既有通知渠道 → 優先級：低。
+
+**延伸學習**：稽核的價值取決於「受影響者能否自助查到」；只給平台管理員看的稽核是事後鑑識，給租戶看的稽核才是治理。
+

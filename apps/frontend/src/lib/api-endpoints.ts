@@ -146,6 +146,14 @@ export const API_ENDPOINTS = {
     workers: (botId: string) => `/api/v1/bots/${botId}/workers`,
     worker: (botId: string, workerId: string) =>
       `/api/v1/bots/${botId}/workers/${workerId}`,
+    // Issue #71 — 租戶端變更紀錄（keyset 分頁）
+    auditLogs: (botId: string, params: { limit?: number; cursor?: string } = {}) => {
+      const qs = new URLSearchParams();
+      if (params.limit !== undefined) qs.set("limit", String(params.limit));
+      if (params.cursor) qs.set("cursor", params.cursor);
+      const q = qs.toString();
+      return `/api/v1/bots/${botId}/audit-logs${q ? `?${q}` : ""}`;
+    },
   },
   conversations: {
     list: (botId?: string | null) =>

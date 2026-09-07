@@ -26,6 +26,11 @@ function capabilityResult(
   };
 }
 
+/** Issue #71 — 有變更時儲存會先出「確認變更」簡述；此 helper 按下確認 */
+async function confirmSave(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: "確認儲存" }));
+}
+
 // Mock useBuiltInTools hook — 避免 API call 拖慢/失敗
 vi.mock("@/hooks/queries/use-built-in-tools", () => ({
   useBuiltInTools: () => ({
@@ -473,6 +478,7 @@ describe("BotDetailForm", () => {
       );
       await user.click(screen.getByRole("radio", { name: /快速道（fast）/ }));
       await user.click(screen.getByRole("button", { name: /儲存/ }));
+      await confirmSave(user);
       expect(mockOnSave).toHaveBeenCalledTimes(1);
       expect(mockOnSave.mock.calls[0][0].mode).toBe("fast");
     });
@@ -579,6 +585,7 @@ describe("BotDetailForm", () => {
       await user.click(screen.getByLabelText("JSON schema（選填）"));
       await user.paste('{"type":"object","required":["answer"]}');
       await user.click(screen.getByRole("button", { name: /儲存/ }));
+      await confirmSave(user);
       expect(mockOnSave).toHaveBeenCalledTimes(1);
       const payload = mockOnSave.mock.calls[0][0];
       expect(payload.mode).toBe("kb");
@@ -596,6 +603,7 @@ describe("BotDetailForm", () => {
       renderForm();
       await user.click(screen.getByRole("radio", { name: /純文字/ }));
       await user.click(screen.getByRole("button", { name: /儲存/ }));
+      await confirmSave(user);
       expect(mockOnSave).toHaveBeenCalledTimes(1);
       const payload = mockOnSave.mock.calls[0][0];
       expect(payload.output_format).toBe("plain_text");
@@ -633,6 +641,7 @@ describe("BotDetailForm", () => {
       renderForm({ ...mockBot, mode: "kb" });
       await user.click(screen.getByRole("radio", { name: /^JSON/ }));
       await user.click(screen.getByRole("button", { name: /儲存/ }));
+      await confirmSave(user);
       expect(mockOnSave).toHaveBeenCalledTimes(1);
       expect(mockOnSave.mock.calls[0][0].miss_reply).toBe("");
     });
@@ -670,6 +679,7 @@ describe("BotDetailForm", () => {
           screen.getByText("必填欄位與 enum 都在 schema 裡定義，供應商依能力等級強制或驗證"),
         ).toBeInTheDocument();
         await user.click(screen.getByRole("button", { name: /儲存/ }));
+        await confirmSave(user);
         expect(mockOnSave).toHaveBeenCalledTimes(1);
         expect(mockOnSave.mock.calls[0][0].output_schema).toEqual(THREE_WAY_SCHEMA);
       });
@@ -719,6 +729,7 @@ describe("BotDetailForm", () => {
         await user.click(screen.getByRole("button", { name: "套用範本" }));
         await user.selectOptions(screen.getByLabelText("通路顯示欄位"), "category");
         await user.click(screen.getByRole("button", { name: /儲存/ }));
+        await confirmSave(user);
         expect(mockOnSave).toHaveBeenCalledTimes(1);
         expect(mockOnSave.mock.calls[0][0].output_text_field).toBe("category");
       });
@@ -880,6 +891,7 @@ describe("BotDetailForm", () => {
       await user.click(await screen.findByRole("option", { name: "關閉（none）" }));
       expect(trigger).toHaveTextContent("關閉（none）");
       await user.click(screen.getByRole("button", { name: /儲存/ }));
+      await confirmSave(user);
       expect(mockOnSave).toHaveBeenCalledTimes(1);
       expect(mockOnSave.mock.calls[0][0].reasoning_effort).toBe("none");
     });
@@ -889,6 +901,77 @@ describe("BotDetailForm", () => {
       renderForm();
       await user.click(screen.getByRole("button", { name: /儲存/ }));
       expect(mockOnSave.mock.calls[0][0].reasoning_effort).toBe("medium");
+    });
+  });
+
+  // Issue #71 — 儲存前變更簡述確認
+  describe("save confirmation summary (Issue #71)", () => {
+    const renderForm = (bot = mockBot) =>
+      renderWithProviders(
+        <BotDetailForm
+          bot={bot}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+
+    it("saves directly without a dialog when nothing changed", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("確認變更")).not.toBeInTheDocument();
+    });
+
+    it("lists the changed fields and saves the same payload on confirm", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      const nameInput = screen.getByLabelText("名稱");
+      await user.clear(nameInput);
+      await user.type(nameInput, "New Name");
+      await user.click(screen.getByRole("radio", { name: /快速道（fast）/ }));
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+
+      expect(await screen.findByText("確認變更")).toBeInTheDocument();
+      const summary = screen.getByTestId("bot-change-summary");
+      expect(summary).toHaveTextContent("名稱：Customer Service Bot → New Name");
+      expect(summary).toHaveTextContent("推理模式：深度 → 快速");
+      expect(summary.querySelectorAll("li")).toHaveLength(2);
+      expect(mockOnSave).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "確認儲存" }));
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      const payload = mockOnSave.mock.calls[0][0];
+      expect(payload.name).toBe("New Name");
+      expect(payload.mode).toBe("fast");
+    });
+
+    it("does not save when the summary is cancelled", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("radio", { name: /快速道（fast）/ }));
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      await screen.findByText("確認變更");
+      await user.click(screen.getByRole("button", { name: "取消" }));
+      expect(mockOnSave).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(screen.queryByText("確認變更")).not.toBeInTheDocument(),
+      );
+    });
+
+    it("describes prompt edits by character delta instead of full text", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("tab", { name: /LLM.*Prompt/i }));
+      const prompt = screen.getByLabelText("Bot 自訂指令");
+      await user.click(prompt);
+      await user.paste("12345");
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      const summary = await screen.findByTestId("bot-change-summary");
+      expect(summary).toHaveTextContent("Bot 自訂指令：已修改（+5 字）");
+      expect(summary).not.toHaveTextContent("You are a helpful customer service bot.");
     });
   });
 });

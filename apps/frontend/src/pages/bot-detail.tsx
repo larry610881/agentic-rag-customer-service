@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
+import { BotAuditLogList } from "@/features/bot/components/bot-audit-log-list";
 import { BotDetailForm } from "@/features/bot/components/bot-detail-form";
 import { useBot, useUpdateBot, useDeleteBot } from "@/hooks/queries/use-bots";
 import { PageBreadcrumb } from "@/components/shared/page-breadcrumb";
@@ -57,6 +58,18 @@ export default function BotDetailPage() {
         isSaving={updateBot.isPending}
         isDeleting={deleteBot.isPending}
       />
+      {/* Issue #71 — 租戶端變更紀錄：誰在何時改了哪些欄位 */}
+      <section className="flex flex-col gap-3 border-t pt-6" aria-labelledby="bot-audit-heading">
+        <div>
+          <h3 id="bot-audit-heading" className="text-lg font-semibold">
+            變更紀錄
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            此機器人的設定變更歷程（提示詞類只顯示字數增減）
+          </p>
+        </div>
+        <BotAuditLogList botId={bot.id} />
+      </section>
     </div>
   );
 }

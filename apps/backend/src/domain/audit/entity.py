@@ -33,6 +33,25 @@ class AuditEntry:
     )
 
 
+_CURSOR_SEP = "|"
+
+
+def encode_audit_cursor(entry: AuditEntry) -> str:
+    """Issue #71：keyset 分頁游標 = `<created_at ISO>|<id>`（時間相同時以 id 決勝）。"""
+    return f"{entry.created_at.isoformat()}{_CURSOR_SEP}{entry.id}"
+
+
+def decode_audit_cursor(cursor: str) -> tuple[datetime, str]:
+    """解析游標；格式錯誤 raise ValueError（interfaces 層轉 422）。"""
+    ts_text, sep, entry_id = cursor.partition(_CURSOR_SEP)
+    if not sep or not entry_id:
+        raise ValueError("invalid audit cursor")
+    ts = datetime.fromisoformat(ts_text)
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts, entry_id
+
+
 class AuditLogRepository(ABC):
     @abstractmethod
     async def append(self, entry: AuditEntry) -> None: ...
@@ -47,3 +66,16 @@ class AuditLogRepository(ABC):
         limit: int = 50,
         offset: int = 0,
     ) -> list[AuditEntry]: ...
+
+    @abstractmethod
+    async def find_by_entity(
+        self,
+        *,
+        entity_type: str,
+        entity_id: str,
+        limit: int,
+        cursor: str | None = None,
+    ) -> list[AuditEntry]:
+        """Issue #71：單一實體的稽核紀錄，新→舊，keyset 分頁。
+        cursor 為 ``encode_audit_cursor`` 產物；帶入時只回比它更舊的列。"""
+        ...

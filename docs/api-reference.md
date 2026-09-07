@@ -184,6 +184,41 @@ Base URL: `http://localhost:8000/api/v1`
 
 trace 的 `agent_llm` 節點記 `reasoning_effort_requested`（bot 設定值）與 `reasoning_effort_effective`（實際送出值；被丟棄時為 `provider_default`）；節點 `token_usage.reasoning_tokens` 與 trace `total_tokens.reasoning_tokens` 記推理 token 數（已含在 `output_tokens` 內，只標注不另計價）。串流 `usage` 事件同樣多 `reasoning_tokens` 欄位。
 
+## Bot 變更紀錄（Issue #71）
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| GET | `/bots/{bot_id}/audit-logs?limit=&cursor=` | bot 範圍的設定變更稽核：誰在何時改了哪些欄位 | Yes（`tenant_admin` / `system_admin`） |
+
+- 租戶範圍：bot 不屬於呼叫者租戶 → `404`（不洩漏存在性）；`system_admin` 可跨租戶。
+- `limit` 1–100（預設 20）；keyset 分頁，`next_cursor` 非 null 時帶回 `cursor` 取下一頁（格式錯誤回 `422`）。
+- 只涵蓋 `entity_type=bot` 的稽核列；Worker 的稽核列（`entity_type=worker`）不帶 bot 關聯欄位，暫不併入，仍可在 system_admin 的 `/audit-logs` 以 `entity_type=worker` 查詢。
+- `changes` 由伺服端把稽核列的 `changed_fields` 攤平：`llm_params` 展開一層為 `llm_params.temperature`；提示詞類長文字欄位（`bot_prompt` / `base_prompt` / `memory_extraction_prompt`）只回字數（`before_len` / `after_len`，以稽核列存放的字串計，超過 2000 字者已截斷），全文請至 system_admin 稽核頁。
+
+**Response**
+```json
+{
+  "items": [
+    {
+      "id": "…",
+      "action": "update",
+      "actor_user_id": "…",
+      "actor_email": "admin@example.com",
+      "source": "api",
+      "created_at": "2026-09-07T10:00:00+00:00",
+      "changes": [
+        { "field": "llm_model", "before": "gpt-4o", "after": "gemini-3.7-flash" },
+        { "field": "llm_params.temperature", "before": 0.3, "after": 0.7 },
+        { "field": "bot_prompt", "before_len": 20, "after_len": 140, "changed": true }
+      ]
+    }
+  ],
+  "next_cursor": "2026-09-07T10:00:00+00:00|<id>"
+}
+```
+
+`actor_email` 查無使用者（已刪除）時為 `null`。
+
 ## LLM
 
 | Method | Path | Description | Auth |
