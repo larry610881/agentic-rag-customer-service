@@ -15,6 +15,7 @@ description: 每個部署環境獨立的階段旗標。Claude 依此判斷對該
 
 **當前主要狀態**：
 - **2026-09-04（#68）**：`add_trace_abuse_level.sql`、`add_notification_channels_notify_abuse.sql` 已套 `local-docker` 與 `company-poc-vm`（各驗證 + `_applied_migrations` 紀錄）。
+- **2026-09-07（#74 / #75 / #77，六支）**：`add_plans_billing_mode.sql`、`add_plan_category_multipliers_and_model_points.sql`、`add_tenants_exhaustion_policy.sql`、`add_usage_points_reasoning_tokens.sql`、`add_guard_settings.sql`、`add_audit_parent_entity_and_config_change_notify.sql` 依 Larry「確定」授權逐支套 `local-docker`（紀錄 24 筆）與 `company-poc-vm`（紀錄 69 筆），各驗證 21 欄 / 3 表 / 1 索引 + `_applied_migrations`（applied_by=claude-dev）。
 - **2026-09-04（#70）**：`add_bot_output_format.sql`（bots.output_format / output_schema / miss_reply / output_text_field）依 Larry「好 授權」套 `local-docker`（紀錄 18 筆）與 `company-poc-vm`（紀錄 63 筆），各驗證 information_schema + `_applied_migrations`（applied_by=claude-dev）。
 - **2026-09-04（#68，第二批）**：`add_abuse_settings.sql`、`add_tenant_identity_secrets.sql` 依 Larry「確定」授權已套 `local-docker`（紀錄 17 筆）與 `company-poc-vm`（紀錄 62 筆），各驗證 information_schema + `_applied_migrations` 紀錄（applied_by=claude-dev）。
 - **2026-09-03（#67）**：`add_api_keys.sql`、`add_users_token_version.sql` 已套 `local-docker` 與 `company-poc-vm`（各驗證 + `_applied_migrations` 紀錄，applied_by=claude-dev）。
