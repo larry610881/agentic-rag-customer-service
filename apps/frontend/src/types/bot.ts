@@ -74,7 +74,7 @@ export interface Bot {
   max_tokens: number;
   history_limit: number;
   frequency_penalty: number;
-  reasoning_effort: "low" | "medium" | "high";
+  reasoning_effort: "none" | "low" | "medium" | "high";
   rag_top_k: number;
   rag_score_threshold: number;
   enabled_tools: string[];
@@ -150,7 +150,7 @@ export interface CreateBotRequest {
   max_tokens?: number;
   history_limit?: number;
   frequency_penalty?: number;
-  reasoning_effort?: "low" | "medium" | "high";
+  reasoning_effort?: "none" | "low" | "medium" | "high";
   rag_top_k?: number;
   rag_score_threshold?: number;
   enabled_tools?: string[];
@@ -222,7 +222,7 @@ export interface UpdateBotRequest {
   max_tokens?: number;
   history_limit?: number;
   frequency_penalty?: number;
-  reasoning_effort?: "low" | "medium" | "high";
+  reasoning_effort?: "none" | "low" | "medium" | "high";
   rag_top_k?: number;
   rag_score_threshold?: number;
   enabled_tools?: string[];

@@ -468,7 +468,7 @@
 | 聯想等級 | `temperature` | 0 ~ 1（步進 0.1） | `0.3` | Slider | 越低越精準，越高越發散 |
 | 關聯歷史 | 應用層截斷長度 | 0 ~ 35 | `10` | Slider | 帶入對話歷史的訊息數上限 |
 | 回覆長度上限 | `max_tokens` | 128 ~ 4096 | `1024` | Slider | 單次回覆最大 token 數 |
-| 推理深度 | `reasoning_effort` | low / medium / high | `medium` | Select | 越深延遲越高但品質更好 |
+| 推理深度 | `reasoning_effort` | none / low / medium / high | `medium` | Select | `none` = 關閉 thinking；越深延遲越高但品質更好（各供應商對應見 `configuration.md`） |
 | 重複懲罰 | `frequency_penalty` | 0 ~ 1（步進 0.1） | `0` | Slider | 減少重複用詞 |
 
 ### 8.2 系統級參數（`.env` 設定，不暴露給使用者）

@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from src.domain.bot.value_objects import BotId, BotShortCode
+from src.domain.shared.exceptions import ValidationError
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,18 @@ VALID_BOT_MODES = ("fast", "deep", "kb")
 # Issue #70 — 輸出格式：text（一般，可含 Markdown）| plain_text（剝除 Markdown）|
 # json（結構化輸出，可附 output_schema）
 VALID_OUTPUT_FORMATS = ("text", "plain_text", "json")
+# Issue #72 — 推理強度（thinking）：none = 關閉。各供應商實際送出值見
+# infrastructure/llm/reasoning_effort.py（docs/configuration.md「推理強度」節）
+VALID_REASONING_EFFORTS = ("none", "low", "medium", "high")
+
+
+def validate_reasoning_effort(value: object) -> str:
+    """值域檢查（create / update use case 共用）；回傳合法字串。"""
+    if not isinstance(value, str) or value not in VALID_REASONING_EFFORTS:
+        raise ValidationError(
+            f"reasoning_effort must be one of {list(VALID_REASONING_EFFORTS)}"
+        )
+    return value
 DEFAULT_MISS_REPLY = "很抱歉，這個問題不在我的服務範圍內，歡迎換個方式問我。"
 # JSON 格式 bot 未設定 miss_reply 時的平台預設未命中物件（無 schema 或通過 schema 時使用）
 DEFAULT_MISS_REPLY_JSON: dict = {
@@ -87,9 +100,11 @@ class BotLLMParams:
     max_tokens: int = 1024
     history_limit: int = 10
     frequency_penalty: float = 0.0
-    # none | low | medium | high。注意：gpt-5 系列 + function tools
-    # （agent 路徑必綁）在 chat completions 只接受 'none'，其他值會被
-    # gate 略過（openai_llm_service.reasoning_effort_allowed，Issue #49）
+    # none | low | medium | high（VALID_REASONING_EFFORTS）。注意：gpt-5 系列
+    # + function tools（agent 路徑必綁）在 chat completions 只接受 'none'，
+    # 其他值會被 gate 略過（openai_llm_service.reasoning_effort_allowed，
+    # Issue #49）；Anthropic none → 不帶 thinking，low/medium/high → adaptive
+    # thinking + output_config.effort（Issue #72）
     reasoning_effort: str = "medium"
     rag_top_k: int = 5
     rag_score_threshold: float = 0.3

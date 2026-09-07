@@ -5993,3 +5993,20 @@ graph TD
 
 **延伸學習**：Capability-based dispatch（依能力表分派而非依供應商名 if-else）與 channel-parity 的「能力旗標」是同一個思想：把「誰能做什麼」做成資料，讓新增供應商 / 通路變成加一列而不是加一個分支。
 
+## 2026-09-04 — 推理強度「關閉」與 requested / effective 分離（Issue #72）
+
+**背景**：後台推理強度只有低/中/高，gpt-5 系列綁工具時只接受 none，UI 卻選不到；web/widget 路徑根本沒把值傳下去（只有 LINE 有）；Anthropic 整個忽略。Larry 問「按鈕能不能關 thinking」，答案原本是不能。
+
+**做得好**：
+1. **值域先於行為**：`VALID_REASONING_EFFORTS` 放 domain，create/update/router 同一份驗證；UI 的 none 只是多一個選項。
+2. **requested 與 effective 分開記**：gate 丟掉的值不再是黑箱，trace 節點同時帶 `reasoning_effort_requested` 與 `_effective`（`provider_default` 表示被丟掉），指紋與稽核記 requested。以後「為什麼延遲變了」可以直接對照。
+3. **供應商對應是一張表**：`infrastructure/llm/reasoning_effort.py` 集中 OpenAI / Gemini / Anthropic 各代模型的合法組合，Anthropic Opus 5 必須明確 disabled、Fable/Mythos 不能 disabled 這種細節查文件寫死在表裡，不散在呼叫點。
+4. **reasoning_tokens 不加欄位**：進 trace 既有的 JSON（node token_usage 與 total_tokens），不算進 total、不計價（OpenAI 的 completion_tokens 已含），零 migration。
+
+**隱憂**：
+- Anthropic 4.6+ 的既有 bot（預設 medium）從「不帶 thinking」變成「adaptive + effort=medium」，行為與延遲會變。→ 部署前用真 key 打一次，必要時把既有 Anthropic bot 批次改 none → 優先級：中。
+- `token_usage_records` 沒有 reasoning_tokens（無 JSON 欄位，不想為此開 migration），帳務層看不到推理成本。→ 下次動 usage 表時一併加 → 優先級：低。
+- Anthropic 仍送 temperature，Opus 4.7+ 會拒絕；不在本次範圍。→ 優先級：中。
+
+**延伸學習**：Requested vs effective 是設定系統的通用原則（Kubernetes 的 spec vs status）：使用者要的與系統實際做的分開存，除錯才有落差可查。
+

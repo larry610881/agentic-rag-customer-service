@@ -23,7 +23,7 @@ from src.application.bot.validate_bot_enabled_tools import (
 )
 from src.container import Container
 from src.domain.platform.value_objects import ProviderName
-from src.domain.bot.entity import VALID_BOT_MODES
+from src.domain.bot.entity import VALID_BOT_MODES, VALID_REASONING_EFFORTS
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_scope
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
@@ -39,6 +39,7 @@ _VALID_EVAL_DEPTHS = {
 _VALID_LLM_PROVIDERS = {p.value for p in ProviderName}
 _VALID_GATE_MODES = {"off", "warn", "block"}
 _VALID_BOT_MODES = set(VALID_BOT_MODES)  # Issue #66 fast | deep；Issue #70 kb
+_VALID_REASONING_EFFORTS = set(VALID_REASONING_EFFORTS)  # Issue #72 none 可關閉
 def _validate_intent_routes(routes: list["IntentRouteSchema"]) -> None:
     """Validate intent routes: max 10, unique names."""
     if len(routes) > 10:
@@ -454,6 +455,14 @@ async def create_bot(
             status_code=400,
             detail=f"mode must be one of {sorted(_VALID_BOT_MODES)}",
         )
+    if body.reasoning_effort not in _VALID_REASONING_EFFORTS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "reasoning_effort must be one of "
+                f"{sorted(_VALID_REASONING_EFFORTS)}"
+            ),
+        )
     if body.gate_mode not in _VALID_GATE_MODES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -645,6 +654,17 @@ async def update_bot(
         raise HTTPException(
             status_code=400,
             detail=f"mode must be one of {sorted(_VALID_BOT_MODES)}",
+        )
+    if (
+        body.reasoning_effort is not None
+        and body.reasoning_effort not in _VALID_REASONING_EFFORTS
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "reasoning_effort must be one of "
+                f"{sorted(_VALID_REASONING_EFFORTS)}"
+            ),
         )
     if body.gate_mode is not None and body.gate_mode not in _VALID_GATE_MODES:
         raise HTTPException(

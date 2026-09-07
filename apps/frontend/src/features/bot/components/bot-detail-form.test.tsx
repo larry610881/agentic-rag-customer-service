@@ -831,4 +831,64 @@ describe("BotDetailForm", () => {
       });
     });
   });
+
+  // Issue #72 — 推理強度可關閉（none）
+  describe("reasoning effort none (Issue #72)", () => {
+    // jsdom 沒有 Pointer Capture API；Radix Select 的 trigger / item 會呼叫它
+    beforeEach(() => {
+      Element.prototype.hasPointerCapture ??= () => false;
+      Element.prototype.setPointerCapture ??= () => {};
+      Element.prototype.releasePointerCapture ??= () => {};
+    });
+
+    const renderForm = (bot = mockBot) =>
+      renderWithProviders(
+        <BotDetailForm
+          bot={bot}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+
+    it("should show the provider mapping hint under the reasoning select", () => {
+      renderForm();
+      expect(
+        screen.getByText(/gpt-5 系列綁工具時只有「關閉」會生效/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Anthropic\s*選「關閉」不帶 thinking/)).toBeInTheDocument();
+    });
+
+    it("should accept bot.reasoning_effort = none and keep it in the payload", async () => {
+      const user = userEvent.setup();
+      renderForm({ ...mockBot, reasoning_effort: "none" });
+      expect(screen.getByRole("combobox", { name: "推理強度" })).toHaveTextContent(
+        "關閉（none）",
+      );
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      expect(mockOnSave.mock.calls[0][0].reasoning_effort).toBe("none");
+    });
+
+    it("should offer 關閉（none）as an option and submit it", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      const trigger = screen.getByRole("combobox", { name: "推理強度" });
+      expect(trigger).toHaveTextContent("中");
+      await user.click(trigger);
+      await user.click(await screen.findByRole("option", { name: "關閉（none）" }));
+      expect(trigger).toHaveTextContent("關閉（none）");
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      expect(mockOnSave.mock.calls[0][0].reasoning_effort).toBe("none");
+    });
+
+    it("should keep existing medium unchanged when untouched", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      expect(mockOnSave.mock.calls[0][0].reasoning_effort).toBe("medium");
+    });
+  });
 });

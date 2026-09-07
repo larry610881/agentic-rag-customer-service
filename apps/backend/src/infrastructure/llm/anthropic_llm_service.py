@@ -13,6 +13,80 @@ from src.infrastructure.logging import get_logger
 logger = get_logger(__name__)
 
 
+# === Issue #72：推理強度 → Anthropic thinking / output_config.effort 對應 ======
+#
+# 依 claude-api skill（Thinking & Effort 快速參考）：
+# - Opus 4.6 / Sonnet 4.6 起支援 adaptive thinking（{"type": "adaptive"}）與
+#   output_config.effort；更舊的模型（3.x / 4 / 4.1 / 4.5 / Haiku 4.5）送
+#   adaptive 或 effort 會被 API 拒絕 → 一律丟棄（維持供應商預設）。
+# - Opus 5 / Sonnet 5 省略 thinking 時**預設就會思考**，關閉須明確送
+#   {"type": "disabled"}（effort ≤ high 時合法；本專案最高只送 high）。
+# - Opus 4.8 / 4.7 / 4.6 與更舊模型省略 thinking = 不思考 → none 時不帶參數即可。
+# - Fable 5 / Mythos 5 系列 thinking 永遠開啟，disabled 回 400 → none 無法生效，丟棄。
+_ANTHROPIC_ADAPTIVE_PREFIXES = (
+    "claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-5",
+    "claude-sonnet-4-6", "claude-sonnet-5",
+    "claude-fable-5", "claude-mythos-5",
+)
+_ANTHROPIC_THINKING_DEFAULT_ON_PREFIXES = ("claude-opus-5", "claude-sonnet-5")
+_ANTHROPIC_THINKING_ALWAYS_ON_PREFIXES = ("claude-fable-5", "claude-mythos-5")
+_ANTHROPIC_EFFORTS = ("low", "medium", "high")
+
+
+def _has_prefix(model: str, prefixes: tuple[str, ...]) -> bool:
+    return any(model.startswith(p) for p in prefixes)
+
+
+def anthropic_thinking_config(
+    model: str, reasoning_effort: str | None
+) -> tuple[dict | None, str | None, str | None]:
+    """把 bot 的 reasoning_effort 對應成 Anthropic 參數。
+
+    回傳 (thinking, output_effort, effective)：
+    - thinking：Messages API `thinking` 物件（None = 不帶）
+    - output_effort：`output_config.effort` 值（None = 不帶）
+    - effective：實際生效值（"none" / "low" / "medium" / "high"；None = 丟棄，
+      維持供應商預設）。呼叫端據此記 trace 與 `llm.reasoning_effort.dropped`。
+    """
+    if not reasoning_effort:
+        return None, None, None
+    if reasoning_effort == "none":
+        if _has_prefix(model, _ANTHROPIC_THINKING_ALWAYS_ON_PREFIXES):
+            return None, None, None  # 無法關閉
+        if _has_prefix(model, _ANTHROPIC_THINKING_DEFAULT_ON_PREFIXES):
+            return {"type": "disabled"}, None, "none"
+        return None, None, "none"  # 省略 = 不思考
+    if reasoning_effort in _ANTHROPIC_EFFORTS and _has_prefix(
+        model, _ANTHROPIC_ADAPTIVE_PREFIXES
+    ):
+        return {"type": "adaptive"}, reasoning_effort, reasoning_effort
+    return None, None, None
+
+
+def anthropic_chat_model_kwargs(
+    model: str, reasoning_effort: str | None
+) -> dict:
+    """langchain_anthropic.ChatAnthropic 建構參數（thinking / reasoning_effort）。
+
+    ChatAnthropic 1.7：`thinking` 直傳 Messages API；`reasoning_effort`
+    （alias effort）寫入 `output_config.effort`。丟棄時記 log。
+    """
+    thinking, effort, effective = anthropic_thinking_config(model, reasoning_effort)
+    if reasoning_effort and effective is None:
+        logger.warning(
+            "llm.reasoning_effort.dropped",
+            model=model,
+            requested=reasoning_effort,
+            provider="anthropic",
+        )
+    kwargs: dict = {}
+    if thinking is not None:
+        kwargs["thinking"] = thinking
+    if effort is not None:
+        kwargs["reasoning_effort"] = effort
+    return kwargs
+
+
 def anthropic_output_config(response_schema: dict | None) -> dict | None:
     """Issue #70：Messages API 原生結構化輸出 ``output_config.format``
     （json_schema；Claude 4.5+ 支援，見 domain/llm/structured_output 能力表）。
@@ -20,6 +94,13 @@ def anthropic_output_config(response_schema: dict | None) -> dict | None:
     if not response_schema:
         return None
     return {"format": {"type": "json_schema", "schema": response_schema}}
+
+
+def _first_text_block(content: list) -> str:
+    for block in content:
+        if isinstance(block, dict) and block.get("type", "text") == "text":
+            return str(block.get("text", ""))
+    return ""
 
 
 class AnthropicLLMService(LLMService):
@@ -51,8 +132,9 @@ class AnthropicLLMService(LLMService):
     ):
         """Return a LangChain ChatModel using the same API key.
 
-        reasoning_effort 為 OpenAI reasoning 模型專用參數，
-        Anthropic 路徑接受但不使用（呼叫端簽名一致性）。
+        Issue #72：reasoning_effort 對應 thinking / output_config.effort
+        （anthropic_thinking_config）；不合法的組合丟棄並記
+        `llm.reasoning_effort.dropped`。
         response_json_object（B 級）無原生參數，忽略（prompt 約束 + 驗證）。
         """
         from langchain_anthropic import ChatAnthropic
@@ -63,6 +145,7 @@ class AnthropicLLMService(LLMService):
             "max_tokens": max_tokens,
             "api_key": self._api_key,
         }
+        kwargs.update(anthropic_chat_model_kwargs(self._model, reasoning_effort))
         output_config = anthropic_output_config(response_schema)
         if output_config is not None:
             kwargs["output_config"] = output_config  # langchain-anthropic ≥ 1.x
@@ -84,6 +167,7 @@ class AnthropicLLMService(LLMService):
         temperature: float | None = None,
         max_tokens: int | None = None,
         response_schema: dict | None = None,
+        reasoning_effort: str | None = None,
     ) -> dict:
         content = (
             f"Context:\n{context}\n\nQuestion: {user_message}"
@@ -108,6 +192,21 @@ class AnthropicLLMService(LLMService):
         output_config = anthropic_output_config(response_schema)
         if output_config is not None:
             body["output_config"] = output_config  # Issue #70：原生結構化輸出
+        # Issue #72：推理強度 → thinking / output_config.effort
+        thinking, effort, effective = anthropic_thinking_config(
+            self._model, reasoning_effort
+        )
+        if reasoning_effort and effective is None:
+            logger.warning(
+                "llm.reasoning_effort.dropped",
+                model=self._model,
+                requested=reasoning_effort,
+                provider="anthropic",
+            )
+        if thinking is not None:
+            body["thinking"] = thinking
+        if effort is not None:
+            body.setdefault("output_config", {})["effort"] = effort
         return body
 
     async def generate(
@@ -121,8 +220,8 @@ class AnthropicLLMService(LLMService):
         frequency_penalty: float | None = None,
         reasoning_effort: str | None = None,
     ) -> LLMResult:
-        # Anthropic API does not support frequency_penalty / reasoning_effort
-        # (OpenAI-only hint) — both ignored
+        # Anthropic API does not support frequency_penalty (OpenAI-only hint) — ignored.
+        # Issue #72：reasoning_effort 對應 thinking / effort（_build_body）
         log = logger.bind(model=self._model)
         log.debug("llm.anthropic.request")
         start = time.perf_counter()
@@ -130,6 +229,7 @@ class AnthropicLLMService(LLMService):
         body = self._build_body(
             system_prompt, user_message, context,
             temperature=temperature, max_tokens=max_tokens,
+            reasoning_effort=reasoning_effort,
         )
         try:
             resp = await self._client.post(
@@ -139,7 +239,8 @@ class AnthropicLLMService(LLMService):
             )
             resp.raise_for_status()
             data = resp.json()
-            text = data["content"][0]["text"]
+            # Issue #72：thinking 開啟時 content[0] 可能是 thinking 區塊 → 取第一個 text
+            text = _first_text_block(data.get("content") or [])
             usage_data = data.get("usage", {})
             cache_read = usage_data.get("cache_read_input_tokens", 0)
             cache_creation = usage_data.get("cache_creation_input_tokens", 0)

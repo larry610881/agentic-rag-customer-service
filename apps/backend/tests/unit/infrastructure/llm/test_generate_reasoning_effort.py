@@ -180,3 +180,94 @@ def test_classifier_no_retry_without_router_model():
     assert matched is None
     assert rewritten == ""
     assert mock_llm.generate.await_count == 1
+
+
+# ── Issue #72：Anthropic 對應 / reasoning_tokens ──
+
+
+def _make_anthropic(model: str, content: list) -> tuple:
+    from src.infrastructure.llm.anthropic_llm_service import AnthropicLLMService
+
+    svc = AnthropicLLMService(api_key="sk-ant-test", model=model)
+    mock_client = MagicMock()
+    mock_client.post = AsyncMock(return_value=httpx.Response(
+        status_code=200,
+        json={"content": content, "usage": {"input_tokens": 5, "output_tokens": 7}},
+        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+    ))
+    svc._client = mock_client
+    return svc, mock_client.post
+
+
+def test_anthropic_generate_none_on_opus5_sends_thinking_disabled():
+    svc, post = _make_anthropic("claude-opus-5", [{"type": "text", "text": "ok"}])
+    _run(svc.generate(
+        system_prompt="s", user_message="q", context="", reasoning_effort="none",
+    ))
+    body = post.await_args.kwargs["json"]
+    assert body["thinking"] == {"type": "disabled"}
+    assert "output_config" not in body
+
+
+def test_anthropic_generate_none_on_legacy_model_omits_thinking():
+    svc, post = _make_anthropic(
+        "claude-sonnet-4-20250514", [{"type": "text", "text": "ok"}]
+    )
+    _run(svc.generate(
+        system_prompt="s", user_message="q", context="", reasoning_effort="none",
+    ))
+    body = post.await_args.kwargs["json"]
+    assert "thinking" not in body
+    assert "output_config" not in body
+
+
+def test_anthropic_generate_effort_on_legacy_model_is_dropped():
+    """pre-4.6 模型不收 adaptive / effort → 丟棄，維持供應商預設。"""
+    svc, post = _make_anthropic("claude-haiku-4-5", [{"type": "text", "text": "ok"}])
+    _run(svc.generate(
+        system_prompt="s", user_message="q", context="", reasoning_effort="high",
+    ))
+    body = post.await_args.kwargs["json"]
+    assert "thinking" not in body
+    assert "output_config" not in body
+
+
+def test_anthropic_generate_with_thinking_block_returns_text():
+    svc, _ = _make_anthropic("claude-opus-5", [
+        {"type": "thinking", "thinking": "想一下"},
+        {"type": "text", "text": "答案"},
+    ])
+    result = _run(svc.generate(
+        system_prompt="s", user_message="q", context="", reasoning_effort="medium",
+    ))
+    assert result.text == "答案"
+
+
+def test_openai_generate_records_reasoning_tokens():
+    svc = OpenAILLMService(api_key="sk-test", model="gpt-5-nano")
+    mock_client = MagicMock()
+    mock_client.post = AsyncMock(return_value=httpx.Response(
+        status_code=200,
+        json={
+            "choices": [{"message": {"content": "商品查詢"}}],
+            "usage": {
+                "prompt_tokens": 100, "completion_tokens": 30,
+                "completion_tokens_details": {"reasoning_tokens": 12},
+            },
+        },
+        request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+    ))
+    svc._client = mock_client
+    result = _run(svc.generate(
+        system_prompt="分類", user_message="q", context="", reasoning_effort="none",
+    ))
+    assert result.usage.reasoning_tokens == 12
+    assert result.usage.output_tokens == 30
+
+
+def test_openai_generate_without_details_defaults_reasoning_zero():
+    svc, _ = _make_service("gpt-5-nano")
+    result = _run(svc.generate(
+        system_prompt="分類", user_message="q", context="", reasoning_effort="none",
+    ))
+    assert result.usage.reasoning_tokens == 0

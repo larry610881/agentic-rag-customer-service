@@ -103,11 +103,14 @@ class AgentExecutionTrace:
 
         input_sum = 0
         output_sum = 0
+        reasoning_sum = 0
         cost_sum = 0.0
         for node in self.nodes:
             usage = node.token_usage or {}
             input_sum += int(usage.get("input_tokens") or 0)
             output_sum += int(usage.get("output_tokens") or 0)
+            # Issue #72：reasoning 已含在 output 內，只彙整供實證 thinking 是否發生
+            reasoning_sum += int(usage.get("reasoning_tokens") or 0)
             cost_sum += float(usage.get("estimated_cost") or 0.0)
 
         if input_sum > 0 or output_sum > 0 or cost_sum > 0.0:
@@ -117,6 +120,9 @@ class AgentExecutionTrace:
                 "total": input_sum + output_sum,
                 "estimated_cost": round(cost_sum, 6),
             }
+            # 只在有推理 token 時附上，維持既有 total_tokens 形狀不變
+            if reasoning_sum > 0:
+                self.total_tokens["reasoning_tokens"] = reasoning_sum
 
     def to_dict(self) -> dict[str, Any]:
         return {

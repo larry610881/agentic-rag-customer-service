@@ -10,6 +10,7 @@ def calculate_usage(
     pricing: dict[str, dict[str, float]],
     cache_read_tokens: int = 0,
     cache_creation_tokens: int = 0,
+    reasoning_tokens: int = 0,
 ) -> TokenUsage:
     """根據模型定價計算 token 使用量與成本。
 
@@ -46,4 +47,5 @@ def calculate_usage(
         estimated_cost=estimated_cost,
         cache_read_tokens=cache_read_tokens,
         cache_creation_tokens=cache_creation_tokens,
+        reasoning_tokens=reasoning_tokens,
     )

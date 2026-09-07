@@ -38,8 +38,10 @@ from src.infrastructure.langgraph.transfer_to_human_tool import (
 from src.infrastructure.langgraph.usage import (
     build_usage_event,
     extract_usage_from_langchain_messages,
+    reasoning_tokens_of_metadata,
 )
 from src.infrastructure.llm.dynamic_llm_factory import DynamicLLMServiceProxy
+from src.infrastructure.llm.reasoning_effort import describe_reasoning_effort
 from src.infrastructure.observability.agent_trace_collector import (
     AgentTraceCollector,
 )
@@ -407,6 +409,7 @@ class ReActAgentService(AgentService):
             from langchain_anthropic import ChatAnthropic
 
             from src.infrastructure.llm.anthropic_llm_service import (
+                anthropic_chat_model_kwargs,
                 anthropic_output_config,
             )
             anthropic_kwargs: dict[str, Any] = {
@@ -414,6 +417,11 @@ class ReActAgentService(AgentService):
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
+            # Issue #72：none → 不帶 thinking（Opus 5 / Sonnet 5 明確 disabled）；
+            # low/medium/high → adaptive thinking + output_config.effort
+            anthropic_kwargs.update(
+                anthropic_chat_model_kwargs(anthropic_kwargs["model"], reasoning_effort)
+            )
             output_config = anthropic_output_config(response_schema)
             if output_config is not None:
                 anthropic_kwargs["output_config"] = output_config  # Issue #70
@@ -449,12 +457,16 @@ class ReActAgentService(AgentService):
         # 只在模型×tools 組合合法時夾帶（gpt-5 系列 tools 場景僅 'none'，
         # 線上實證 400），不合法的值靜默略過 — 寧可慢不可斷。
         from src.infrastructure.llm.openai_llm_service import (
+            normalize_reasoning_effort,
             openai_response_format,
             reasoning_effort_allowed,
         )
         if reasoning_effort:
             if reasoning_effort_allowed(kwargs["model"], reasoning_effort):
-                kwargs["reasoning_effort"] = reasoning_effort
+                # Issue #72：與 get_chat_model 一致（Gemini minimal → low）
+                kwargs["reasoning_effort"] = normalize_reasoning_effort(
+                    kwargs["model"], reasoning_effort
+                )
             else:
                 logger.warning(
                     "llm.reasoning_effort.dropped",
@@ -474,9 +486,16 @@ class ReActAgentService(AgentService):
         system_prompt: str | None,
         llm: Any,
         max_tool_calls: int,
+        llm_meta: dict[str, Any] | None = None,
     ) -> Any:
-        """Build a ReAct StateGraph with agent ↔ tools loop."""
+        """Build a ReAct StateGraph with agent ↔ tools loop.
+
+        llm_meta（Issue #72）：掛到每個 agent_llm 節點的 metadata，例如
+        reasoning_effort_requested / reasoning_effort_effective。
+        """
         import time
+
+        _llm_meta: dict[str, Any] = dict(llm_meta or {})
 
         # Issue #70：kb 模式零工具——不呼叫 bind_tools([])，避免送出空 tools 陣列
         # （部分供應商對空 tools 回 400；也讓 gpt-5 系列 reasoning_effort 不被 gate 掉）
@@ -526,6 +545,8 @@ class ReActAgentService(AgentService):
                 node_token_usage = {
                     "input_tokens": um.get("input_tokens", 0),
                     "output_tokens": um.get("output_tokens", 0),
+                    # Issue #72：實證這一輪是否真的在 thinking（含在 output 內）
+                    "reasoning_tokens": reasoning_tokens_of_metadata(um),
                 }
                 model_name = ""
                 if hasattr(response, "response_metadata"):
@@ -570,6 +591,7 @@ class ReActAgentService(AgentService):
                     tool_calls=[tc["name"] for tc in response.tool_calls],
                     llm_input=llm_input_text,
                     llm_output=str(response.tool_calls),
+                    **_llm_meta,
                 )
             else:
                 content_preview = ""
@@ -597,6 +619,7 @@ class ReActAgentService(AgentService):
                     answer_preview=content_preview,
                     llm_input=llm_input_text,
                     llm_output=llm_output_text,
+                    **_llm_meta,
                 )
 
             return {"messages": [response]}
@@ -798,7 +821,8 @@ class ReActAgentService(AgentService):
             # 4. Build and execute ReAct graph
             assembled_prompt = system_prompt or assemble_prompt("", "react")
             graph = self._build_react_graph(
-                tools, assembled_prompt, llm, max_tool_calls
+                tools, assembled_prompt, llm, max_tool_calls,
+                llm_meta=describe_reasoning_effort(llm_params),
             )
 
             # Build input messages
@@ -946,7 +970,8 @@ class ReActAgentService(AgentService):
             llm = await self._resolve_llm_model(llm_params)
             assembled_prompt = system_prompt or assemble_prompt("", "react")
             graph = self._build_react_graph(
-                tools, assembled_prompt, llm, max_tool_calls
+                tools, assembled_prompt, llm, max_tool_calls,
+                llm_meta=describe_reasoning_effort(llm_params),
             )
 
             input_messages: list = []

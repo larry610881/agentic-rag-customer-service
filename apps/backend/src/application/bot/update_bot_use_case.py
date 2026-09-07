@@ -15,6 +15,7 @@ from src.domain.bot.entity import (
     McpServerConfig,
     McpToolMeta,
     ToolRagConfig,
+    validate_reasoning_effort,
 )
 from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
@@ -279,6 +280,9 @@ class UpdateBotUseCase:
             for k in _LLM_FIELDS
             if getattr(command, k) is not _UNSET
         }
+        # Issue #72：推理強度值域（none | low | medium | high）
+        if "reasoning_effort" in llm_changes:
+            validate_reasoning_effort(llm_changes["reasoning_effort"])
         if llm_changes:
             bot.llm_params = replace(bot.llm_params, **llm_changes)
 

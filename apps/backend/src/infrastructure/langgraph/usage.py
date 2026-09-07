@@ -21,6 +21,7 @@ def extract_usage_from_langchain_messages(
     total_output = 0
     total_cache_read = 0
     total_cache_creation = 0
+    total_reasoning = 0
     model_name = "unknown"
 
     for msg in messages:
@@ -31,6 +32,8 @@ def extract_usage_from_langchain_messages(
             continue
         total_input += meta.get("input_tokens", 0)
         total_output += meta.get("output_tokens", 0)
+        # Issue #72：LangChain 把 reasoning 放在 output_token_details.reasoning
+        total_reasoning += reasoning_tokens_of_metadata(meta)
 
         # Extract cache tokens from LangChain input_token_details
         details = meta.get("input_token_details") or {}
@@ -63,7 +66,17 @@ def extract_usage_from_langchain_messages(
         output_tokens=total_output,
         cache_read_tokens=total_cache_read,
         cache_creation_tokens=total_cache_creation,
+        reasoning_tokens=total_reasoning,
     )
+
+
+def reasoning_tokens_of_metadata(meta: dict[str, Any] | None) -> int:
+    """AIMessage.usage_metadata → output_token_details.reasoning（缺省 0）。"""
+    details = (meta or {}).get("output_token_details") or {}
+    try:
+        return int(details.get("reasoning") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def extract_usage_from_accumulated(acc: dict[str, Any]) -> TokenUsage | None:
@@ -77,6 +90,7 @@ def extract_usage_from_accumulated(acc: dict[str, Any]) -> TokenUsage | None:
         estimated_cost=acc.get("estimated_cost", 0.0),
         cache_read_tokens=acc.get("cache_read_tokens", 0),
         cache_creation_tokens=acc.get("cache_creation_tokens", 0),
+        reasoning_tokens=acc.get("reasoning_tokens", 0),
     )
 
 
@@ -93,4 +107,5 @@ def build_usage_event(usage: TokenUsage | None) -> dict[str, Any] | None:
         "estimated_cost": usage.estimated_cost,
         "cache_read_tokens": usage.cache_read_tokens,
         "cache_creation_tokens": usage.cache_creation_tokens,
+        "reasoning_tokens": usage.reasoning_tokens,
     }

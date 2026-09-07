@@ -141,7 +141,7 @@ const botFormSchema = z.object({
   max_tokens: z.coerce.number().int().min(128).max(4096),
   history_limit: z.coerce.number().int().min(0).max(35),
   frequency_penalty: z.coerce.number().min(0).max(1),
-  reasoning_effort: z.enum(["low", "medium", "high"]),
+  reasoning_effort: z.enum(["none", "low", "medium", "high"]),
   rag_top_k: z.coerce.number().int().min(1).max(20),
   rag_score_threshold: z.coerce.number().min(0).max(1),
   show_sources: z.boolean(),
@@ -1515,6 +1515,7 @@ export function BotDetailForm({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="none">關閉（none）</SelectItem>
                         <SelectItem value="low">低</SelectItem>
                         <SelectItem value="medium">中</SelectItem>
                         <SelectItem value="high">高</SelectItem>
@@ -1522,6 +1523,10 @@ export function BotDetailForm({
                     </Select>
                   )}
                 />
+                <p className="text-xs text-muted-foreground">
+                  gpt-5 系列綁工具時只有「關閉」會生效，其他值沿用供應商預設；Anthropic
+                  選「關閉」不帶 thinking
+                </p>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">

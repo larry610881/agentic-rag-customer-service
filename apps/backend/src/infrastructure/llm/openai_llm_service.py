@@ -43,6 +43,15 @@ def _extract_unsupported_param(resp: httpx.Response) -> str | None:
     return None
 
 
+def _reasoning_tokens_of(usage_data: dict) -> int:
+    """Issue #72：讀 `usage.completion_tokens_details.reasoning_tokens`。"""
+    details = usage_data.get("completion_tokens_details") or {}
+    try:
+        return int(details.get("reasoning_tokens") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _needs_max_completion_tokens(model: str) -> bool:
     return any(model.startswith(p) for p in _NEW_PARAM_PREFIXES)
 
@@ -245,7 +254,9 @@ class OpenAILLMService(LLMService):
         # 若不壓 reasoning，完成預算會被內部 reasoning 燒光 → content 空字串。
         # 僅 reasoning 模型夾帶；值不合法時由下方 learn-and-strip 剝除兜底。
         if reasoning_effort and supports_reasoning_effort(self._model):
-            body["reasoning_effort"] = reasoning_effort
+            body["reasoning_effort"] = normalize_reasoning_effort(
+                self._model, reasoning_effort
+            )
         # 已知此 model 不支援的參數直接預剝（learn-and-strip cache）
         for param in _UNSUPPORTED_PARAMS.get(self._model, ()):  # noqa: B007
             body.pop(param, None)
@@ -296,12 +307,15 @@ class OpenAILLMService(LLMService):
                 cache_read = cached
                 input_tokens = raw_input - cache_read
 
+            # Issue #72：reasoning token（含在 completion_tokens 內，只標注不另計）
+            reasoning_tokens = _reasoning_tokens_of(usage_data)
             usage = calculate_usage(
                 model=self._model,
                 input_tokens=input_tokens,
                 output_tokens=usage_data.get("completion_tokens", 0),
                 pricing=self._pricing,
                 cache_read_tokens=cache_read,
+                reasoning_tokens=reasoning_tokens,
             )
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
             log.info(
@@ -310,6 +324,7 @@ class OpenAILLMService(LLMService):
                 input_tokens=input_tokens,
                 output_tokens=usage_data.get("completion_tokens", 0),
                 cache_read_tokens=cache_read,
+                reasoning_tokens=reasoning_tokens,
             )
             return LLMResult(text=text, usage=usage)
         except httpx.HTTPStatusError as e:
@@ -394,8 +409,10 @@ class OpenAILLMService(LLMService):
                             output_tokens=u.get("completion_tokens", 0),
                             pricing=self._pricing,
                             cache_read_tokens=_cr,
+                            reasoning_tokens=_reasoning_tokens_of(u),
                         )
                         usage_collector["model"] = usage.model
+                        usage_collector["reasoning_tokens"] = usage.reasoning_tokens
                         usage_collector["input_tokens"] = usage.input_tokens
                         usage_collector["output_tokens"] = usage.output_tokens
                         usage_collector["total_tokens"] = usage.total_tokens

@@ -50,6 +50,29 @@
 
 > LLM Provider 由資料庫 `ProviderSetting` 動態驅動，無需環境變數設定。
 
+#### 推理強度（thinking）各供應商對應
+
+Bot 的 `reasoning_effort`（`none` / `low` / `medium` / `high`，預設 `medium`）三通路共用，
+但各供應商能接受的參數不同；不合法的組合一律丟棄（維持供應商預設）並記
+`llm.reasoning_effort.dropped`，trace 的 `agent_llm` 節點以 `reasoning_effort_effective =
+provider_default` 標示。對應表（`src/infrastructure/llm/`，2026-09-04 依 claude-api skill 核對）：
+
+| 供應商 / 模型 | `none` | `low` / `medium` / `high` |
+|---------------|--------|---------------------------|
+| OpenAI gpt-5.x（agent 路徑必綁 function tools） | 直傳 `reasoning_effort=none` | **丟棄**（chat completions + tools 只收 `none`，2026-07-21 線上 400 實證） |
+| OpenAI o-series | 直傳 | 直傳 |
+| OpenAI gpt-4o 系（非 reasoning 模型） | 丟棄 | 丟棄 |
+| Gemini（OpenAI 相容端點） | 直傳 `none` | 直傳（`minimal` → `low`） |
+| Anthropic Opus 5 / Sonnet 5（省略即思考） | `thinking: {type: "disabled"}` | `thinking: {type: "adaptive"}` + `output_config.effort` |
+| Anthropic Opus 4.6 / 4.7 / 4.8、Sonnet 4.6 | 不帶 `thinking`（省略 = 不思考） | `thinking: {type: "adaptive"}` + `output_config.effort` |
+| Anthropic Fable 5 / Mythos 5（thinking 永遠開） | 丟棄（`disabled` 回 400） | `adaptive` + `output_config.effort` |
+| Anthropic 更舊模型（3.x / 4 / 4.1 / 4.5、Haiku 4.5） | 不帶 `thinking` | 丟棄（不支援 adaptive / effort） |
+
+推理 token：OpenAI `usage.completion_tokens_details.reasoning_tokens`、LangChain
+`usage_metadata.output_token_details.reasoning` → 記入 trace 節點 `token_usage.reasoning_tokens`
+與 trace `total_tokens.reasoning_tokens`、串流 `usage` 事件；Anthropic Messages API 不回傳
+thinking token 明細（計入 `output_tokens`），故為 0。`token_usage_records` 無此欄位（不新增 migration）。
+
 ### 認證 / 安全（Issue #67）
 
 | 變數 | 預設 | 說明 |

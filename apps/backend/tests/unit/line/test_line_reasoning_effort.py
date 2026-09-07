@@ -127,3 +127,62 @@ def test_openai_llm_service_get_chat_model_default_none():
     svc = OpenAILLMService(api_key="sk-test", model="gpt-5.4")
     model = svc.get_chat_model()
     assert model.reasoning_effort is None
+
+
+# ── Issue #72：關閉（none）三通路對等 ──
+
+
+def test_webhook_passes_none_reasoning_effort_to_agent():
+    """Bot 設定 none（關閉 thinking）時，LINE 通路 llm_params 應帶 none。"""
+    bot = Bot(
+        tenant_id="tenant-re",
+        name="RE Bot",
+        line_channel_secret="secret-re",
+        line_channel_access_token="token-re",
+        knowledge_base_ids=["kb-re"],
+        llm_params=BotLLMParams(reasoning_effort="none"),
+    )
+    mock_bot_repo = AsyncMock()
+    mock_bot_repo.find_by_short_code = AsyncMock(return_value=bot)
+    mock_line_service = AsyncMock()
+    mock_line_service.verify_signature = AsyncMock(return_value=True)
+    mock_factory = MagicMock()
+    mock_factory.create = MagicMock(return_value=mock_line_service)
+    mock_agent = AsyncMock()
+    mock_agent.process_message = AsyncMock(
+        return_value=AgentResponse(answer="OK")
+    )
+
+    use_case = HandleWebhookUseCase(
+        agent_service=mock_agent,
+        bot_repository=mock_bot_repo,
+        line_service_factory=mock_factory,
+    )
+    _run(use_case.execute_for_bot("RE01", BODY, "sig"))
+
+    llm_params = mock_agent.process_message.call_args.kwargs["llm_params"]
+    assert llm_params.get("reasoning_effort") == "none"
+
+
+def test_create_chat_model_anthropic_none_disables_thinking_on_opus5(monkeypatch):
+    """Anthropic Opus 5 預設會思考 → none 必須明確送 thinking disabled。"""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    model = ReActAgentService._create_chat_model(
+        provider="anthropic",
+        model="claude-opus-5",
+        reasoning_effort="none",
+    )
+    assert model.thinking == {"type": "disabled"}
+    assert model.reasoning_effort is None
+
+
+def test_create_chat_model_anthropic_effort_uses_adaptive_thinking(monkeypatch):
+    """Anthropic 4.6+：low/medium/high → adaptive thinking + output_config.effort。"""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    model = ReActAgentService._create_chat_model(
+        provider="anthropic",
+        model="claude-opus-4-8",
+        reasoning_effort="low",
+    )
+    assert model.thinking == {"type": "adaptive"}
+    assert model.reasoning_effort == "low"

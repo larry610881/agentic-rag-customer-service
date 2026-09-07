@@ -176,6 +176,14 @@ Base URL: `http://localhost:8000/api/v1`
 
 值域錯誤回 `400`。`json` 格式在 B / C 級供應商驗證失敗會重試一次，仍失敗回 `miss_reply` 並在 trace 記 `structured_output`（status=`fallback`）節點。
 
+## Bot（Issue #72：推理強度可關閉）
+
+| 欄位 | 型別 | 預設 | 說明 |
+|------|------|------|------|
+| `reasoning_effort` | `none` \| `low` \| `medium` \| `high` | `medium` | 推理強度（thinking）。`none` = 關閉。web / widget / LINE 三通路一致帶入生成模型；實際送出值依供應商對應（見 `docs/configuration.md`「推理強度（thinking）各供應商對應」）。值域錯誤回 `400` |
+
+trace 的 `agent_llm` 節點記 `reasoning_effort_requested`（bot 設定值）與 `reasoning_effort_effective`（實際送出值；被丟棄時為 `provider_default`）；節點 `token_usage.reasoning_tokens` 與 trace `total_tokens.reasoning_tokens` 記推理 token 數（已含在 `output_tokens` 內，只標注不另計價）。串流 `usage` 事件同樣多 `reasoning_tokens` 欄位。
+
 ## LLM
 
 | Method | Path | Description | Auth |

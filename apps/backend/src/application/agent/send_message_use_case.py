@@ -756,6 +756,8 @@ class SendMessageUseCase:
         # M17：temperature/max_tokens 賦值原本在 provider/model 條件內 → worker 沿用
         # bot 模型（不指定 provider/model）時 web 忽略 worker 的取樣參數，但 LINE 無條件
         # 套用 → 同一 worker 兩通路取樣參數/回覆長度不同。移出條件，與 LINE 對齊。
+        # Issue #72：worker 沒有自己的 reasoning_effort 欄位 → 以 spread 沿用 bot 的值
+        # （含 none），與 LINE 的就地覆寫行為一致；合法性交由 provider 端 gate。
         cfg["llm_params"] = {
             **(cfg.get("llm_params") or {}),
             **(

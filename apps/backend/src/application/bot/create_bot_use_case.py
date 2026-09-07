@@ -11,6 +11,7 @@ from src.domain.bot.entity import (
     McpServerConfig,
     McpToolMeta,
     ToolRagConfig,
+    validate_reasoning_effort,
 )
 from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
@@ -115,6 +116,8 @@ class CreateBotUseCase:
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
         retrieval_modes = normalize_modes(list(command.rag_retrieval_modes))
+        # Issue #72：推理強度值域（none | low | medium | high）
+        validate_reasoning_effort(command.reasoning_effort)
 
         # Build MCP bindings with encrypted env_values
         mcp_bindings = []

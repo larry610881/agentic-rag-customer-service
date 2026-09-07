@@ -61,6 +61,10 @@ class TokenUsage:
     estimated_cost: float = 0.0
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
+    # Issue #72：推理（thinking）token 數。OpenAI 的 completion_tokens 已包含
+    # reasoning，故此欄位只是 output_tokens 的「子集標注」，不進 total_tokens、
+    # 不另計價；用途是實證模型這一輪是否真的在思考。
+    reasoning_tokens: int = 0
 
     @property
     def total_tokens(self) -> int:
