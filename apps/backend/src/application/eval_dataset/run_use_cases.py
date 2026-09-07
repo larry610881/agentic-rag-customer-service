@@ -11,6 +11,7 @@ from src.domain.bot.repository import BotRepository
 from src.domain.eval_dataset.repository import EvalDatasetRepository
 from src.domain.eval_dataset.run_repository import OptimizationRunRepository
 from src.domain.shared.exceptions import EntityNotFoundError
+from src.domain.usage.category import UsageCategory
 from src.infrastructure.prompt_optimizer.run_manager import (
     RunManager,
     RunProgress,
@@ -383,7 +384,7 @@ class StartRunUseCase:
                         record_usage = self._record_usage_factory()
                         await record_usage.execute(
                             tenant_id=command.tenant_id,
-                            request_type="prompt_optimize",
+                            request_type=UsageCategory.PROMPT_OPTIMIZE.value,
                             usage=usage,
                             bot_id=bot_id_for_usage,
                             run_id=run_id,

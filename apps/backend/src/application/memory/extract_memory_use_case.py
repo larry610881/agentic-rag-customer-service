@@ -20,11 +20,16 @@ class ExtractMemoryCommand:
     conversation_id: str
     messages: list[dict[str, str]]  # [{"role": "user", "content": "..."}, ...]
     extraction_prompt: str = ""
+    # Issue #73：萃取用量歸屬到觸發對話的 bot（None = 未提供）
+    bot_id: str | None = None
 
 
 class ExtractMemoryUseCase:
     async def _record_extraction_usage(
-        self, tenant_id: str, usage_collector: dict[str, Any]
+        self,
+        tenant_id: str,
+        usage_collector: dict[str, Any],
+        bot_id: str | None = None,
     ) -> None:
         usage = usage_collector.get("usage")
         if self._record_usage is None or usage is None:
@@ -36,6 +41,7 @@ class ExtractMemoryUseCase:
                 tenant_id=tenant_id,
                 request_type=UsageCategory.MEMORY_EXTRACTION.value,
                 usage=usage,
+                bot_id=bot_id,
             )
         except Exception:
             logger.warning("memory.extraction.usage_record_failed", exc_info=True)
@@ -71,7 +77,9 @@ class ExtractMemoryUseCase:
             extraction_prompt=command.extraction_prompt,
             usage_collector=usage_collector,
         )
-        await self._record_extraction_usage(command.tenant_id, usage_collector)
+        await self._record_extraction_usage(
+            command.tenant_id, usage_collector, bot_id=command.bot_id or None
+        )
 
         if not extracted:
             logger.debug(

@@ -142,7 +142,7 @@ def execute_record_use_case(context):
     use_case = RecordUsageUseCase(usage_repository=context["mock_repo"])
     _run(use_case.execute(
         tenant_id="tenant-001",
-        request_type="rag",  # Token-Gov: 白名單需 UsageCategory enum value
+        request_type="chat_web",  # Token-Gov 白名單；Issue #73 起 rag 已 deprecated
         usage=context["usage"],
     ))
 

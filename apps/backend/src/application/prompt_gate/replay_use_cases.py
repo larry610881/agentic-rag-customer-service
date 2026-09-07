@@ -28,6 +28,7 @@ from src.domain.prompt_gate.replay import (
     consistent_verdict,
 )
 from src.domain.shared.exceptions import EntityNotFoundError
+from src.domain.usage.category import UsageCategory
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +254,7 @@ class StartReplayCompareUseCase:
                     record_usage = self._record_usage_factory()
                     await record_usage.execute(
                         tenant_id=tenant_id,
-                        request_type="eval_gate",
+                        request_type=UsageCategory.EVAL_GATE.value,
                         usage=usage,
                         bot_id=bot_id,
                         run_id=run_id,

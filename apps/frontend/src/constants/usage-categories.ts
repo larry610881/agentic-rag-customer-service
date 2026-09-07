@@ -28,6 +28,13 @@ export const USAGE_CATEGORIES: readonly UsageCategoryDef[] = [
   { value: "pdf_rename", label: "PDF 子頁命名", shortLabel: "PDF 命名" },
   { value: "auto_classification", label: "自動分類", shortLabel: "自動分類" },
   { value: "intent_classify", label: "意圖分類", shortLabel: "意圖" },
+  // Issue #73：查詢 embedding / DM 中繼資料 / 輔助 LLM 類別補齊
+  { value: "query_embedding", label: "查詢向量嵌入", shortLabel: "查詢嵌入" },
+  { value: "dm_metadata", label: "DM 中繼資料抽取", shortLabel: "DM 資料" },
+  { value: "query_rewrite", label: "查詢改寫", shortLabel: "改寫" },
+  { value: "hyde", label: "HyDE 假設回答", shortLabel: "HyDE" },
+  { value: "memory_extraction", label: "記憶抽取", shortLabel: "記憶" },
+  { value: "history_summary", label: "歷史壓縮摘要", shortLabel: "歷史摘要" },
   // S-Gov.6b: 對話 LLM 摘要（cron 行為，POC 預設不計入 quota）
   { value: "conversation_summary", label: "對話 LLM 摘要", shortLabel: "摘要" },
   // Issue #54 Phase B — Eval token 分流（三分類獨立記帳，租戶自付）

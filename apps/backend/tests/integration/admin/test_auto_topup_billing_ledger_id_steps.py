@@ -144,7 +144,7 @@ def record_usage_step(ctx, n, tname):
     ctx["current_tenant"] = tname
     _run(uc.execute(
         tenant_id=tenant_id,
-        request_type="rag",
+        request_type="chat_web",  # Issue #73：rag 已 deprecated（僅供讀取）
         usage=TokenUsage(
             model="test",
             input_tokens=n,

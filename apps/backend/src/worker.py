@@ -85,6 +85,7 @@ async def extract_memory_task(
     conversation_id: str,
     messages: list[dict],
     extraction_prompt: str,
+    bot_id: str = "",  # Issue #73：用量歸屬（舊 job 沒帶 → 空字串）
 ) -> None:
     """記憶萃取：從對話中提取使用者記憶事實。"""
     from src.application.memory.extract_memory_use_case import ExtractMemoryCommand
@@ -99,6 +100,7 @@ async def extract_memory_task(
                 conversation_id=conversation_id,
                 messages=messages,
                 extraction_prompt=extraction_prompt,
+                bot_id=bot_id or None,
             )
         )
 

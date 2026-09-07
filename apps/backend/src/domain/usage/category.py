@@ -11,12 +11,14 @@ from enum import Enum
 
 class UsageCategory(str, Enum):
     # 既有路徑（已接 RecordUsageUseCase）
+    # Issue #73：`rag` / `guard` 已無生產者 → deprecated。保留成員是為了讀取
+    # 歷史 usage_records（查詢 / 報表相容），RecordUsageUseCase 拒絕新寫入。
     RAG = "rag"
     CHAT_WEB = "chat_web"
     CHAT_WIDGET = "chat_widget"
     CHAT_LINE = "chat_line"
     OCR = "ocr"
-    EMBEDDING = "embedding"
+    EMBEDDING = "embedding"            # 文件 ingest / reembed / 摘要與管理端 embedding
     GUARD = "guard"
     # Token-Gov.0 新增（修漏網用）
     RERANK = "rerank"
@@ -35,5 +37,14 @@ class UsageCategory(str, Enum):
     HYDE = "hyde"
     MEMORY_EXTRACTION = "memory_extraction"
     HISTORY_SUMMARY = "history_summary"    # summary_recent 歷史策略的摘要呼叫
+    # Issue #73 — 記帳缺口
+    QUERY_EMBEDDING = "query_embedding"    # 每輪檢索的查詢 embedding（帶 bot_id）
+    DM_METADATA = "dm_metadata"            # DM 中繼資料抽取（原借 auto_classification）
     # OTHER 已刪 — src/ 零 caller 是 dead code；UI 不再提供「其他」checkbox。
     # RecordUsageUseCase 入口會白名單拒絕非此 enum 的字串。
+
+
+# 已淘汰、只供讀取歷史紀錄的類別；RecordUsageUseCase 拒絕以這些值新寫入。
+DEPRECATED_CATEGORIES: frozenset[str] = frozenset(
+    {UsageCategory.RAG.value, UsageCategory.GUARD.value}
+)

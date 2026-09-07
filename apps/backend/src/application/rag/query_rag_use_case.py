@@ -7,16 +7,23 @@ from typing import Any
 
 from src.application.rag._hyde_generator import generate_hyde
 from src.application.rag._query_rewriter import rewrite_query
+from src.application.usage.embedding_accounting import account_embedding
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.rag.retrieval_mode import (
     RetrievalMode,
     normalize_modes,
     validate_modes,
 )
-from src.domain.rag.services import EmbeddingService, LLMService, VectorStore
+from src.domain.rag.services import (
+    EmbeddingResult,
+    EmbeddingService,
+    LLMService,
+    VectorStore,
+)
 from src.domain.rag.text_normalization import normalize_query_variants
 from src.domain.rag.value_objects import Source
 from src.domain.shared.exceptions import EntityNotFoundError, NoRelevantKnowledgeError
+from src.domain.usage.category import UsageCategory
 from src.infrastructure.logging import get_logger
 from src.infrastructure.observability.agent_trace_collector import AgentTraceCollector
 from src.infrastructure.rag.llm_reranker import llm_rerank
@@ -55,6 +62,15 @@ class QueryRAGCommand:
     # Producer-specific keys (e.g. actor_role) live in `extra` JSON and are
     # not yet supported here — Phase 4 work.
     extra_filters: dict[str, Any] | None = None
+    # Issue #73 — 查詢 embedding / rerank / rewrite / HyDE 用量歸屬的 bot。
+    # None 時退回 AgentTraceCollector 當前 trace 的 bot_id（LangGraph 工具路徑
+    # 由通路在 trace 啟動時提供），仍為 None 則不歸屬（例如 /search、無 bot）。
+    bot_id: str | None = None
+
+
+def _trace_bot_id() -> str | None:
+    trace = AgentTraceCollector.current()
+    return getattr(trace, "bot_id", None) or None
 
 
 @dataclass(frozen=True)
@@ -85,7 +101,7 @@ class QueryRAGUseCase:
         self._record_usage = record_usage
 
     async def _resolve_mode_queries(
-        self, command: QueryRAGCommand, modes: list[str]
+        self, command: QueryRAGCommand, modes: list[str], bot_id: str | None
     ) -> dict[str, str]:
         """為每個 mode 解析出實際送 embed 的 query 字串。
 
@@ -107,6 +123,7 @@ class QueryRAGUseCase:
                     api_key_resolver=self._api_key_resolver,
                     record_usage=self._record_usage,
                     tenant_id=command.tenant_id,
+                    bot_id=bot_id,
                 ),
             ))
         if RetrievalMode.HYDE.value in modes:
@@ -120,6 +137,7 @@ class QueryRAGUseCase:
                     api_key_resolver=self._api_key_resolver,
                     record_usage=self._record_usage,
                     tenant_id=command.tenant_id,
+                    bot_id=bot_id,
                 ),
             ))
 
@@ -133,6 +151,23 @@ class QueryRAGUseCase:
             for (mode, _), text in zip(gen_tasks, results, strict=True):
                 mode_queries[mode] = text or command.query
         return mode_queries
+
+    async def _account_query_embeddings(
+        self,
+        tenant_id: str,
+        embed_results: list[EmbeddingResult],
+        bot_id: str | None,
+    ) -> None:
+        """Issue #73：查詢 embedding 單點記帳——web / widget / LINE / search /
+        Playground 全走這裡（channel-parity）。快取命中沒花 token 不入帳。"""
+        for embed_result in embed_results:
+            await account_embedding(
+                self._record_usage,
+                tenant_id=tenant_id,
+                result=embed_result,
+                category=UsageCategory.QUERY_EMBEDDING,
+                bot_id=bot_id,
+            )
 
     async def retrieve(self, command: QueryRAGCommand) -> RetrieveResult:
         """只做 embed + search，不呼叫 LLM。供 Agent tool 使用。
@@ -158,9 +193,12 @@ class QueryRAGUseCase:
             if kb is None:
                 raise EntityNotFoundError("KnowledgeBase", kid)
 
+        # Issue #73：用量歸屬的 bot（command 明確給 > trace 上下文 > 無）
+        bot_id = command.bot_id or _trace_bot_id()
+
         # 1. 為每個 mode 產出實際 query 字串（rewrite/hyde 並行 LLM call）
         t0 = time.perf_counter()
-        mode_queries = await self._resolve_mode_queries(command, modes)
+        mode_queries = await self._resolve_mode_queries(command, modes, bot_id)
         gen_ms = int((time.perf_counter() - t0) * 1000)
 
         # 2. 為每條 query 並行 embed
@@ -168,18 +206,23 @@ class QueryRAGUseCase:
         ordered_modes = [m for m in modes if m in mode_queries]
         # 異體字/全形正規化只作用於 embedding 輸入（週→周 等），
         # 不改 mode_queries 本身（trace 與 rerank 仍看使用者原文）
-        query_vectors_list = await asyncio.gather(
+        embed_results = await asyncio.gather(
             *(
-                self._embedding_service.embed_query(
+                self._embedding_service.embed_query_with_usage(
                     normalize_query_variants(mode_queries[m])
                 )
                 for m in ordered_modes
             )
         )
-        mode_vectors: dict[str, list[float]] = dict(
-            zip(ordered_modes, query_vectors_list, strict=True)
-        )
+        mode_vectors: dict[str, list[float]] = {
+            m: r.vectors[0]
+            for m, r in zip(ordered_modes, embed_results, strict=True)
+        }
         embed_ms = int((time.perf_counter() - t0) * 1000)
+
+        await self._account_query_embeddings(
+            command.tenant_id, list(embed_results), bot_id
+        )
 
         search_limit = (
             command.rerank_top_n
@@ -296,6 +339,7 @@ class QueryRAGUseCase:
                 top_k=final_k,
                 record_usage=self._record_usage,
                 tenant_id=command.tenant_id,
+                bot_id=bot_id,
             )
             results = []
             for rc in reranked:

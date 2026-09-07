@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from src.application.usage.embedding_accounting import account_embedding
 from src.domain.knowledge.repository import (
     DocumentRepository,
     KnowledgeBaseRepository,
 )
 from src.domain.rag.services import EmbeddingService, VectorStore
-from src.domain.rag.value_objects import TokenUsage
 from src.domain.usage.category import UsageCategory
 
 if TYPE_CHECKING:
@@ -76,7 +76,7 @@ class ReEmbedChunkUseCase:
             else chunk.content
         )
         try:
-            vectors = await self._embed.embed_texts([embed_text])
+            embed_result = await self._embed.embed_texts_with_usage([embed_text])
         except Exception:
             logger.error(
                 "chunk.reembed.embedding_failed",
@@ -85,7 +85,7 @@ class ReEmbedChunkUseCase:
             )
             return
 
-        vector = vectors[0]
+        vector = embed_result.vectors[0]
         # Milvus payload 必含 tenant_id（安全紅線）
         # KnowledgeBaseId VO unwrap — 防禦 prod (VO) / test (str) 雙路徑
         kb_id_str = kb.id.value if hasattr(kb.id, "value") else str(kb.id)
@@ -105,28 +105,14 @@ class ReEmbedChunkUseCase:
             payload=payload,
         )
 
-        # Record embedding token usage (單 chunk 只算該筆 input token 數約略)
-        if self._record_usage is not None:
-            # embedding 只有 input token，無 output / cache
-            usage = TokenUsage(
-                model=getattr(self._embed, "model_name", "embedding"),
-                input_tokens=len(embed_text),  # 簡估；實際由 service 回傳 tokens 更準
-                output_tokens=0,
-                estimated_cost=0.0,
-            )
-            try:
-                await self._record_usage.execute(
-                    tenant_id=chunk.tenant_id,
-                    request_type=UsageCategory.EMBEDDING.value,
-                    usage=usage,
-                    kb_id=kb_id_str,
-                )
-            except Exception:
-                logger.warning(
-                    "chunk.reembed.record_usage_failed",
-                    chunk_id=command.chunk_id,
-                    exc_info=True,
-                )
+        # Record embedding token usage（Issue #73：改用供應商回傳，不再以字元數估算）
+        await account_embedding(
+            self._record_usage,
+            tenant_id=chunk.tenant_id,
+            result=embed_result,
+            category=UsageCategory.EMBEDDING,
+            kb_id=kb_id_str,
+        )
 
         logger.info(
             "kb_studio.chunk.reembed",

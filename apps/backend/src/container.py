@@ -276,9 +276,6 @@ from src.application.observability.notification_use_cases import (
     SendTestNotificationUseCase,
     UpdateChannelUseCase,
 )
-from src.application.observability.rag_evaluation_use_case import (
-    RAGEvaluationUseCase,
-)
 from src.application.outbox.admin_use_cases import (
     AbandonOutboxEventUseCase,
     BulkRequeueDeadLetterUseCase,
@@ -2350,11 +2347,8 @@ class Container(containers.DeclarativeContainer):
     )
 
     # --- Observability: RAG Evaluation ---
-
-    rag_evaluation_use_case = providers.Factory(
-        RAGEvaluationUseCase,
-        llm_service=llm_service,
-    )
+    # Issue #73：RAGEvaluationUseCase 無呼叫者、四處 generate 無記帳無 trace，
+    # 且線上評估已於 2026-09-03 決定下線 → 連同 use case 一併移除。
 
     # --- Observability: Diagnostic Rules ---
 

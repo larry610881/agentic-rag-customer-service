@@ -60,6 +60,7 @@ class DmImageQueryTool:
         kb_ids: list[str] | None = None,
         top_k: int = 5,
         score_threshold: float = 0.3,
+        bot_id: str | None = None,  # Issue #73：用量歸屬（未給退回 trace 上下文）
     ) -> dict[str, Any]:
         # 1. RAG retrieve（支援 multi-KB；空 kb_ids 退回 single kb_id）
         try:
@@ -71,6 +72,7 @@ class DmImageQueryTool:
                     query=query,
                     top_k=top_k,
                     score_threshold=score_threshold,
+                    bot_id=bot_id,
                 ),
             )
         except NoRelevantKnowledgeError:

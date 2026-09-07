@@ -24,9 +24,13 @@ from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.domain.rag.value_objects import TokenUsage
 from src.domain.tenant.entity import Tenant
 from src.domain.tenant.value_objects import TenantId
-from src.domain.usage.category import UsageCategory
+from src.domain.usage.category import DEPRECATED_CATEGORIES, UsageCategory
 
 ALL_CATEGORIES = sorted(c.value for c in UsageCategory)
+# Issue #73：deprecated 類別（rag / guard）只供讀取歷史紀錄，寫入會被拒絕；
+# 「無條件寫 usage_records」的契約只對仍有生產者的類別成立。
+# 拒絕行為由 usage_accounting_coverage.feature「已淘汰的類別拒絕新寫入」守門。
+ACTIVE_CATEGORIES = [c for c in ALL_CATEGORIES if c not in DEPRECATED_CATEGORIES]
 
 EXPECTED_CATEGORIES: set[str] = {
     "rag",
@@ -51,6 +55,9 @@ EXPECTED_CATEGORIES: set[str] = {
     "memory_extraction",
     "history_summary",
     "playground",
+    # Issue #73 — 記帳缺口：查詢 embedding 獨立類別、DM 中繼資料獨立類別
+    "query_embedding",
+    "dm_metadata",
 }
 
 FIXED_TOKENS = 12345
@@ -123,7 +130,7 @@ def _make_use_case(
 # --------------------------------------------------------------------------
 # Case A — audit 永遠寫（不分 category, 不分 filter）
 # --------------------------------------------------------------------------
-@pytest.mark.parametrize("category", ALL_CATEGORIES)
+@pytest.mark.parametrize("category", ACTIVE_CATEGORIES)
 def test_usage_record_saved_regardless_of_category(category):
     tenant = _make_tenant(included=[category])  # 有 filter
     uc, usage_repo, _, _ = _make_use_case(tenant)
@@ -135,7 +142,7 @@ def test_usage_record_saved_regardless_of_category(category):
     usage_repo.save.assert_awaited_once()
 
 
-@pytest.mark.parametrize("category", ALL_CATEGORIES)
+@pytest.mark.parametrize("category", ACTIVE_CATEGORIES)
 def test_usage_record_saved_when_category_excluded(category):
     """即使 category 被 include list 排除，usage_records 仍寫（審計不漏）。"""
     tenant = _make_tenant(included=[])  # 全部不計入
@@ -183,7 +190,7 @@ def test_triggers_topup_when_base_and_addon_exhausted():
     )
     _run(uc.execute(
         tenant_id="test-tenant",
-        request_type="rag",
+        request_type="chat_web",  # Issue #73：rag 已 deprecated，改用有生產者的類別
         usage=_make_usage(),
     ))
     topup.execute.assert_awaited_once()
@@ -202,7 +209,7 @@ def test_does_not_trigger_topup_when_base_has_balance():
     )
     _run(uc.execute(
         tenant_id="test-tenant",
-        request_type="rag",
+        request_type="chat_web",  # Issue #73：rag 已 deprecated，改用有生產者的類別
         usage=_make_usage(),
     ))
     topup.execute.assert_not_called()
@@ -215,7 +222,7 @@ def test_does_not_trigger_topup_when_addon_still_positive():
     )
     _run(uc.execute(
         tenant_id="test-tenant",
-        request_type="rag",
+        request_type="chat_web",  # Issue #73：rag 已 deprecated，改用有生產者的類別
         usage=_make_usage(),
     ))
     topup.execute.assert_not_called()
@@ -245,7 +252,7 @@ def test_topup_hook_failure_does_not_break_audit(monkeypatch):
 
     _run(uc.execute(
         tenant_id="test-tenant",
-        request_type="rag",
+        request_type="chat_web",  # Issue #73：rag 已 deprecated，改用有生產者的類別
         usage=_make_usage(),
     ))
 

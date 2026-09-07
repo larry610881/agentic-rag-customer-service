@@ -3,7 +3,7 @@ import time
 
 import httpx
 
-from src.domain.rag.services import EmbeddingService
+from src.domain.rag.services import EmbeddingResult, EmbeddingService
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -34,13 +34,17 @@ class OpenAIEmbeddingService(EmbeddingService):
         self._retry_after_multiplier = retry_after_multiplier
         self._min_batch_size = min_batch_size
         self._client = httpx.AsyncClient(timeout=self._timeout)
+        # 舊約定（Issue #73 前）保留給尚未改走 EmbeddingResult 的觀測用途；
+        # 記帳一律以 embed_*_with_usage 回傳的 EmbeddingResult 為準。
         self.last_total_tokens: int = 0
 
-    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+    async def embed_texts_with_usage(self, texts: list[str]) -> EmbeddingResult:
+        """批次 embedding；total_tokens 為各批次 API 回傳 usage 的總和。"""
         self.last_total_tokens = 0
         if not texts:
-            return []
+            return EmbeddingResult(vectors=[], model=self._model, total_tokens=0)
         all_embeddings: list[list[float]] = []
+        total_tokens = 0
         effective_batch_size = self._batch_size
         i = 0
         batch_num = 0
@@ -55,8 +59,11 @@ class OpenAIEmbeddingService(EmbeddingService):
                 chunk_count=len(batch),
                 batch_size=effective_batch_size,
             )
-            embeddings, was_rate_limited = await self._embed_batch_with_retry(batch)
+            embeddings, batch_tokens, was_rate_limited = (
+                await self._embed_batch_with_retry(batch)
+            )
             all_embeddings.extend(embeddings)
+            total_tokens += batch_tokens
             if was_rate_limited and effective_batch_size > self._min_batch_size:
                 new_size = max(effective_batch_size // 2, self._min_batch_size)
                 logger.warning(
@@ -66,11 +73,17 @@ class OpenAIEmbeddingService(EmbeddingService):
                 )
                 effective_batch_size = new_size
             i += len(batch)
-        return all_embeddings
+        self.last_total_tokens = total_tokens
+        return EmbeddingResult(
+            vectors=all_embeddings, model=self._model, total_tokens=total_tokens,
+        )
+
+    async def embed_query_with_usage(self, text: str) -> EmbeddingResult:
+        return await self.embed_texts_with_usage([text])
 
     async def _embed_batch_with_retry(
         self, texts: list[str]
-    ) -> tuple[list[list[float]], bool]:
+    ) -> tuple[list[list[float]], int, bool]:
         log = logger.bind(
             model=self._model,
             base_url=self._base_url,
@@ -79,8 +92,8 @@ class OpenAIEmbeddingService(EmbeddingService):
         was_rate_limited = False
         for attempt in range(self._max_retries):
             try:
-                result = await self._call_api(texts, log)
-                return result, was_rate_limited
+                result, tokens = await self._call_api(texts, log)
+                return result, tokens, was_rate_limited
             except ValueError:
                 # API key 空字串等 config error → 不 retry，重試 5 次也救不回
                 # 必須由人介入修 ProviderSetting 才能解
@@ -157,20 +170,15 @@ class OpenAIEmbeddingService(EmbeddingService):
             resp.raise_for_status()
             data = resp.json()
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
-            usage = data.get("usage", {})
-            total_tokens = usage.get("total_tokens", 0)
-            self.last_total_tokens += total_tokens
+            usage = data.get("usage") or {}
+            total_tokens = int(usage.get("total_tokens") or 0)
             log.info(
                 "embedding.done",
                 latency_ms=elapsed_ms,
                 total_tokens=total_tokens,
             )
-            return [item["embedding"] for item in data["data"]]
+            return [item["embedding"] for item in data["data"]], total_tokens
         except Exception:
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
             log.exception("embedding.failed", latency_ms=elapsed_ms)
             raise
-
-    async def embed_query(self, text: str) -> list[float]:
-        results = await self.embed_texts([text])
-        return results[0]

@@ -58,6 +58,7 @@ from src.domain.shared.exceptions import (
     AuthorizationError,
     EntityNotFoundError,
 )
+from src.domain.usage.category import UsageCategory
 from src.infrastructure.line.flex_contact_builder import build_contact_flex
 from src.infrastructure.line.flex_image_carousel_builder import (
     build_image_carousel,
@@ -564,6 +565,7 @@ class HandleWebhookUseCase:
                 history_limit=bot.llm_params.history_limit,
                 recent_turns=3,
                 tenant_id=bot.tenant_id,
+                bot_id=bot.id.value,  # Issue #73：history_summary 用量歸屬
             )
             ctx = await self._history_strategy.process(history, cfg)
             history_context = ctx.respond_context
@@ -1104,7 +1106,7 @@ class HandleWebhookUseCase:
                 try:
                     await self._record_usage.execute(
                         tenant_id=bot.tenant_id,
-                        request_type="chat_line",
+                        request_type=UsageCategory.CHAT_LINE.value,
                         config_hash=config_hash,
                         usage=result.usage,
                         bot_id=bot.id.value,

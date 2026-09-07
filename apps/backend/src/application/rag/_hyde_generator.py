@@ -79,6 +79,7 @@ async def generate_hyde(
     api_key_resolver=None,
     record_usage=None,
     tenant_id: str = "",
+    bot_id: str | None = None,
 ) -> str:
     """Generate hypothetical answer for HyDE retrieval.
 
@@ -94,6 +95,7 @@ async def generate_hyde(
     """
     from src.application.rag._aux_llm_accounting import account_aux_llm
     from src.domain.llm.prompt_block import BlockRole, PromptBlock
+    from src.domain.usage.category import UsageCategory
     from src.infrastructure.llm.llm_caller import call_llm
     from src.infrastructure.observability.agent_trace_collector import (
         AgentTraceCollector,
@@ -140,11 +142,12 @@ async def generate_hyde(
         await account_aux_llm(
             result,
             label="hyde",
-            category="hyde",
+            category=UsageCategory.HYDE.value,
             tenant_id=tenant_id,
             record_usage=record_usage,
             start_ms=start_ms,
             llm_input=llm_input,
+            bot_id=bot_id,
         )
         answer = result.text.strip().strip('"').strip("「").strip("」")
         return answer or raw_query

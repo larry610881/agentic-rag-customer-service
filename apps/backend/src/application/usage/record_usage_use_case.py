@@ -16,7 +16,7 @@ import structlog
 from src.domain.platform.model_registry import DEFAULT_MODELS
 from src.domain.rag.pricing import calculate_usage
 from src.domain.rag.value_objects import TokenUsage
-from src.domain.usage.category import UsageCategory
+from src.domain.usage.category import DEPRECATED_CATEGORIES, UsageCategory
 from src.domain.usage.entity import UsageRecord
 from src.domain.usage.repository import UsageRepository
 
@@ -70,6 +70,12 @@ class RecordUsageUseCase:
             raise ValueError(
                 f"request_type={request_type!r} is not a valid UsageCategory. "
                 f"Valid values: {sorted(_VALID_CATEGORIES)}"
+            )
+        # Issue #73：deprecated 類別只供讀取歷史紀錄，不得再產生新帳
+        if request_type in DEPRECATED_CATEGORIES:
+            raise ValueError(
+                f"request_type={request_type!r} is deprecated and no longer "
+                "accepts new usage records"
             )
 
         cost = usage.estimated_cost

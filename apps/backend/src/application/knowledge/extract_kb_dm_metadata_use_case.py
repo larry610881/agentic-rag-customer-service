@@ -242,7 +242,7 @@ class ExtractKBDMMetadataUseCase:
 
         await self._record_usage.execute(
             tenant_id=tenant_id,
-            request_type=UsageCategory.AUTO_CLASSIFICATION.value,  # 暫用既有 category
+            request_type=UsageCategory.DM_METADATA.value,  # Issue #73：獨立類別
             usage=TokenUsage(
                 model=self._extractor.last_model,
                 input_tokens=self._extractor.last_input_tokens,

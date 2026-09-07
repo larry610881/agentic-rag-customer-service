@@ -55,6 +55,8 @@ class RAGQueryTool:
         hyde_model: str | None = None,
         hyde_extra_hint: str | None = None,
         bot_system_prompt: str | None = None,
+        # Issue #73：用量歸屬；未給時 QueryRAGUseCase 退回 trace 上下文的 bot_id
+        bot_id: str | None = None,
     ) -> dict[str, Any]:
         t0 = time.perf_counter()
         trace = None
@@ -94,6 +96,7 @@ class RAGQueryTool:
                     hyde_model=hyde_model or "",
                     hyde_extra_hint=hyde_extra_hint or "",
                     bot_system_prompt=bot_system_prompt or "",
+                    bot_id=bot_id,
                 )
             )
 

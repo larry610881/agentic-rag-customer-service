@@ -26,6 +26,8 @@ class HistoryStrategyConfig:
     router_context_limit: int = 3
     # Issue #59：summary_recent 的摘要 LLM 呼叫要記帳，需要知道租戶
     tenant_id: str = ""
+    # Issue #73：摘要用量歸屬到 bot（None = 通路未提供）
+    bot_id: str | None = None
 
 
 class ConversationHistoryStrategy(ABC):

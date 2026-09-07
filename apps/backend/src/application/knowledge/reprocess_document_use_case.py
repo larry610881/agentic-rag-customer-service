@@ -1,5 +1,11 @@
 import asyncio
 
+from src.application.knowledge._pipeline_accounting import (
+    record_context_usage,
+    record_embedding_usage,
+    record_ocr_usage,
+    reset_llm_counters,
+)
 from src.domain.knowledge.entity import ProcessingTask
 from src.domain.knowledge.repository import (
     DocumentRepository,
@@ -172,11 +178,17 @@ class ReprocessDocumentUseCase:
 
             # Re-parse from raw_content if available, else fallback to existing content
             if raw_content:
+                # OCR 用量來源（對齊 process_document）：影像路徑直接打引擎；
+                # PDF / 一般路徑經 file parser。
+                ocr_usage_source = self._file_parser
+
                 # PNG/image (PDF child pages): file_parser.parse 不支援 image/*
                 if document.content_type.startswith("image/") and hasattr(
                     self._file_parser, "_ocr"
                 ):
                     ocr_engine = self._file_parser._ocr
+                    ocr_usage_source = ocr_engine
+                    reset_llm_counters(ocr_engine)
                     from src.infrastructure.file_parser.ocr_engines import (
                         claude_vision_ocr,
                     )
@@ -269,6 +281,14 @@ class ReprocessDocumentUseCase:
                     )
                     log.info("document.reparse.done")
                 await self._doc_repo.update_content(document_id, content)
+
+                # Issue #73：reprocess 的 OCR 過去完全沒入帳
+                await record_ocr_usage(
+                    self._record_usage,
+                    source=ocr_usage_source,
+                    tenant_id=document.tenant_id,
+                    kb_id=document.kb_id,
+                )
             else:
                 content = document.content
 
@@ -387,6 +407,14 @@ class ReprocessDocumentUseCase:
                     enriched=sum(1 for c in chunks if c.context_text),
                     total=len(chunks),
                 )
+                # Issue #73：reprocess 的 contextual retrieval 過去沒入帳
+                await record_context_usage(
+                    self._record_usage,
+                    context_service=self._context_service,
+                    tenant_id=document.tenant_id,
+                    kb_id=document.kb_id,
+                    fallback_model=effective_context_model,
+                )
 
             # Save new chunks（含 context_text 一併寫入）
             await self._doc_repo.save_chunks(chunks)
@@ -396,7 +424,15 @@ class ReprocessDocumentUseCase:
                 f"{c.context_text}\n\n{c.content}" if c.context_text else c.content
                 for c in chunks
             ]
-            vectors = await self._embedding.embed_texts(texts)
+            embed_result = await self._embedding.embed_texts_with_usage(texts)
+            vectors = embed_result.vectors
+            # Issue #73：reprocess 的 embedding 過去沒入帳；用量來自供應商回傳
+            await record_embedding_usage(
+                self._record_usage,
+                result=embed_result,
+                tenant_id=document.tenant_id,
+                kb_id=document.kb_id,
+            )
 
             vector_size = len(vectors[0]) if vectors else 3072
             await self._vector_store.ensure_collection(collection, vector_size)

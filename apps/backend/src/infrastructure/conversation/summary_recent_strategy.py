@@ -77,7 +77,9 @@ class SummaryRecentStrategy(ConversationHistoryStrategy):
         old_messages = messages[:-recent_count]
         recent_messages = messages[-recent_count:]
 
-        summary = await self._summarize(old_messages, tenant_id=cfg.tenant_id)
+        summary = await self._summarize(
+            old_messages, tenant_id=cfg.tenant_id, bot_id=cfg.bot_id
+        )
         recent_text = _format_messages(recent_messages)
 
         respond_context = f"[對話摘要] {summary}\n\n{recent_text}"
@@ -91,7 +93,10 @@ class SummaryRecentStrategy(ConversationHistoryStrategy):
         )
 
     async def _summarize(
-        self, messages: list[Message], tenant_id: str = ""
+        self,
+        messages: list[Message],
+        tenant_id: str = "",
+        bot_id: str | None = None,
     ) -> str:
         cache_key = f"conv_summary:{len(messages)}:{messages[-1].id.value}"
 
@@ -116,6 +121,7 @@ class SummaryRecentStrategy(ConversationHistoryStrategy):
                     tenant_id=tenant_id,
                     request_type=UsageCategory.HISTORY_SUMMARY.value,
                     usage=result.usage,
+                    bot_id=bot_id,
                 )
             except Exception:
                 logger.warning("history_summary.usage_record_failed", exc_info=True)

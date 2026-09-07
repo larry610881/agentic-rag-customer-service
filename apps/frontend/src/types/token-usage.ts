@@ -28,6 +28,7 @@ const KB_REQUEST_TYPES = new Set([
   "auto_classification",
   "pdf_rename",
   "embedding",
+  "dm_metadata",
 ]);
 
 export interface UsageSourceInfo {

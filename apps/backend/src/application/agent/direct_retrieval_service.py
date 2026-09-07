@@ -104,6 +104,12 @@ def _escalate_or_miss(
     return None
 
 
+def _bot_id_of(bot: Any) -> str | None:
+    """Bot 實體的 id 值（BotId VO）；缺少或非字串（測試替身）視為未提供。"""
+    value = getattr(getattr(bot, "id", None), "value", None)
+    return value if isinstance(value, str) and value else None
+
+
 class DirectRetrievalService:
     def __init__(
         self,
@@ -191,6 +197,7 @@ class DirectRetrievalService:
                 rerank_model=rq.get("rerank_model") or bot.rerank_model,
                 rerank_top_n=rq.get("rerank_top_n") or bot.rerank_top_n,
                 retrieval_modes=["raw"],  # 快速道不做 rewrite / HyDE
+                bot_id=_bot_id_of(bot),  # Issue #73：查詢 embedding / rerank 歸屬
             ))
         except Exception:
             logger.warning("direct_retrieval.error", exc_info=True)

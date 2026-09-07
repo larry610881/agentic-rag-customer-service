@@ -525,6 +525,7 @@ class SendMessageUseCase:
                 conversation.id.value,
                 recent_messages,
                 bot_cfg.get("memory_extraction_prompt", ""),
+                conversation.bot_id or "",  # Issue #73：memory_extraction 用量歸屬
             )
         except Exception:
             logger.warning("memory.extraction_dispatch_failed", exc_info=True)
@@ -534,6 +535,7 @@ class SendMessageUseCase:
         history: list | None,
         history_limit: int | None,
         tenant_id: str = "",
+        bot_id: str | None = None,
     ) -> tuple[list | None, str, str]:
         """Process history via strategy, return (history, ctx, router).
 
@@ -549,6 +551,7 @@ class SendMessageUseCase:
                 history_limit=history_limit or 10,
                 recent_turns=3,
                 tenant_id=tenant_id,
+                bot_id=bot_id,  # Issue #73：history_summary 用量歸屬
             )
             ctx = await self._history_strategy.process(
                 history, strategy_config
@@ -899,7 +902,10 @@ class SendMessageUseCase:
 
         history, history_context, router_context = (
             await self._resolve_history(
-                history, bot_cfg["history_limit"], tenant_id=command.tenant_id
+                history,
+                bot_cfg["history_limit"],
+                tenant_id=command.tenant_id,
+                bot_id=command.bot_id,
             )
         )
 
@@ -1191,7 +1197,10 @@ class SendMessageUseCase:
 
         history, history_context, router_context = (
             await self._resolve_history(
-                history, bot_cfg["history_limit"], tenant_id=command.tenant_id
+                history,
+                bot_cfg["history_limit"],
+                tenant_id=command.tenant_id,
+                bot_id=command.bot_id,
             )
         )
 

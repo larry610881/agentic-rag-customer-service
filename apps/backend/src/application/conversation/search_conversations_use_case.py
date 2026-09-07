@@ -13,11 +13,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from src.application.usage.embedding_accounting import account_embedding
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.domain.conversation.entity import Conversation
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.rag.services import EmbeddingService
-from src.domain.rag.value_objects import TokenUsage
 from src.domain.tenant.repository import TenantRepository
 from src.domain.usage.category import UsageCategory
 from src.infrastructure.milvus.milvus_vector_store import MilvusVectorStore
@@ -88,24 +88,15 @@ class SearchConversationsUseCase:
         score_threshold: float = 0.3,
     ) -> list[ConversationSearchResultItem]:
         # Step 1: embed query（admin 操作 token 歸 SYSTEM tenant）
-        query_vector = await self._embedding.embed_query(query)
-        embedding_tokens = int(
-            getattr(self._embedding, "last_total_tokens", 0) or 0
+        # Issue #73：用量來自 EmbeddingResult（過去讀包裝層沒轉發的屬性永遠 0）
+        embed_result = await self._embedding.embed_query_with_usage(query)
+        query_vector = embed_result.vectors[0]
+        await account_embedding(
+            self._record_usage,
+            tenant_id=_SYSTEM_TENANT_ID,
+            result=embed_result,
+            category=UsageCategory.EMBEDDING,
         )
-        embedding_model = str(
-            getattr(self._embedding, "_model", "text-embedding-3-large")
-        )
-        if embedding_tokens > 0:
-            await self._record_usage.execute(
-                tenant_id=_SYSTEM_TENANT_ID,
-                request_type=UsageCategory.EMBEDDING.value,
-                usage=TokenUsage(
-                    model=embedding_model,
-                    input_tokens=embedding_tokens,
-                    output_tokens=0,
-                ),
-                bot_id=None,
-            )
 
         # Step 2: Milvus search
         try:

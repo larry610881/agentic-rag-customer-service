@@ -7,6 +7,51 @@
 
 ---
 
+## 記帳缺口 — 「結果物件取代可變屬性」讓包裝層無法再靜默漏帳（2026-09-07，Issue #73）
+
+**Sprint 來源**：點數制（#74）前置。09-07 全路徑盤點發現 embedding 幾乎全部沒入帳、
+reprocess 整條管線沒入帳、查詢 embedding 沒入帳、輔助 LLM 沒 bot_id。
+
+**主題**：Decorator 與 stateful 介面的相容性、記帳單點化（channel-parity）、deprecated enum 的讀寫分離
+
+#### 做得好的地方
+- **根因不是「忘了寫記帳」，是介面設計**：`last_total_tokens` 是服務物件上的可變屬性，
+  `CachedEmbeddingService` / `DynamicEmbeddingServiceProxy` 這兩層 decorator 不轉發它，三處
+  記帳程式碼存在卻永遠寫 0。改成 `embed_*_with_usage() -> EmbeddingResult(vectors, model,
+  total_tokens, cache_hit)`：用量隨回傳值走，包裝層只要透傳物件，再多包幾層也不會漏。
+  舊 `embed_texts` / `embed_query` 變成 ABC 的具體方法（呼叫 with_usage 再丟棄用量），
+  實作只需提供 with_usage 一對，既有呼叫端零修改。
+- **抽象方法放在 with_usage 而不是給預設實作**：若給 ABC 一個「回 total_tokens=0」的預設，
+  漏實作會再度變成靜默零帳——正是這次修的 bug 類型。寧可讓漏實作在實例化時就炸。
+- **記帳單點**：查詢 embedding 記在 `QueryRAGUseCase.retrieve` 一處，web / widget / LINE /
+  快速道 / LangGraph 工具 / `/search` / Playground 全部經過；`bot_id` 取「command 明確給 →
+  `AgentTraceCollector` 當前 trace → None」三層 fallback，LangGraph 工具路徑不必改
+  `react_agent_service` 也能歸屬。
+- **兩個共用 helper 取代複製**：`account_embedding`（fail-open、快取命中不入帳）與
+  `_pipeline_accounting`（OCR / contextual / embedding），process 與 reprocess 呼叫同一份，
+  對齊後不會再 drift。
+- **deprecated 類別讀寫分離**：`rag` / `guard` 留在 enum（歷史紀錄查得到），
+  `RecordUsageUseCase` 拒絕新寫入；靜態守門 scenario 掃 `src/` 的 `request_type="…"` 字面值
+  並要求每個未淘汰類別都有 `UsageCategory.X` 引用，enum 加值就會被測試逼著接生產者。
+
+#### 潛在隱憂
+- **OCR / contextual 仍走 `last_*` 累計屬性**：OCR 引擎是 singleton，並行 reprocess 會互相
+  污染計數。這次只把 embedding 換成結果物件；OCR 引擎的 `ocr_page` 也應回傳 usage
+  → 併下一次 OCR 引擎改造 → 優先級：中。
+- **trace-context fallback 是隱式耦合**：`QueryRAGUseCase` 依賴 `AgentTraceCollector`
+  的 ContextVar 拿 bot_id，測試必須 `start()/finish()`。等 `ConversationTurnPipeline`
+  落地後應改由管線顯式傳入 → 優先級：低。
+- **前端 label 未同步**：`usage-categories.ts` 缺 `query_embedding` / `dm_metadata`，
+  後台會顯示 raw value → 併 #74 前端 → 優先級：低。
+
+#### 延伸學習
+- **Result object vs. stateful side channel**：把「副產物」（用量、快取命中）放進回傳值而非
+  物件屬性，是 decorator / proxy 友善的介面設計；`ConversationSummaryResult` 早就這樣做。
+- **Template Method 反向用法**：ABC 的具體方法委派給抽象方法（`embed_texts` → `embed_texts_with_usage`），
+  讓「舊介面」成為「新介面」的薄殼，是漸進式介面遷移的常用手法。
+- 若想深入：搜尋 "Decorator pattern transparent forwarding pitfalls"、"Tell, don't ask" 與
+  "Strangler fig interface migration"。
+
 ## 快速 / 深度兩層 profile — 「bot 定位」與「worker 覆寫」分層，把環境變數收回設定（2026-09-02，Issue #66）
 
 **Sprint 來源**：需求三收尾。#61 抽出共用快速道後，開關仍只能下 SQL；同時 09-02 討論定案

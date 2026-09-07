@@ -8,7 +8,7 @@ import json
 from src.config import Settings
 from src.domain.platform.services import EncryptionService
 from src.domain.platform.value_objects import ProviderName, ProviderType
-from src.domain.rag.services import EmbeddingService
+from src.domain.rag.services import EmbeddingResult, EmbeddingService
 from src.domain.shared.cache_service import CacheService
 from src.infrastructure.logging import get_logger
 
@@ -127,6 +127,14 @@ class DynamicEmbeddingServiceProxy(EmbeddingService):
 
     def __init__(self, factory: DynamicEmbeddingServiceFactory) -> None:
         self._factory = factory
+
+    async def embed_texts_with_usage(self, texts: list[str]) -> EmbeddingResult:
+        service = await self._factory.get_service()
+        return await service.embed_texts_with_usage(texts)
+
+    async def embed_query_with_usage(self, text: str) -> EmbeddingResult:
+        service = await self._factory.get_service()
+        return await service.embed_query_with_usage(text)
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         service = await self._factory.get_service()

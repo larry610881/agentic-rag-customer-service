@@ -13,7 +13,7 @@ from src.domain.knowledge.repository import (
     KnowledgeBaseRepository,
 )
 from src.domain.knowledge.value_objects import ChunkId, DocumentId
-from src.domain.rag.services import EmbeddingService, VectorStore
+from src.domain.rag.services import EmbeddingResult, EmbeddingService, VectorStore
 from src.domain.rag.value_objects import SearchResult
 
 
@@ -288,21 +288,30 @@ class FakeVectorStore(VectorStore):
 
 class FakeEmbeddingService(EmbeddingService):
     model_name = "fake-embed"
+    tokens_per_text = 5  # Issue #73：記帳路徑用的固定假用量
 
     def __init__(self) -> None:
         self.calls = 0
         self.should_fail = False
 
-    async def embed_texts(self, texts):
+    async def embed_texts_with_usage(self, texts):
         self.calls += 1
         if self.should_fail:
             raise RuntimeError("simulated embedding failure")
-        return [[0.1] * 3072 for _ in texts]
+        return EmbeddingResult(
+            vectors=[[0.1] * 3072 for _ in texts],
+            model=self.model_name,
+            total_tokens=self.tokens_per_text * len(texts),
+        )
 
-    async def embed_query(self, text):
+    async def embed_query_with_usage(self, text):
         if self.should_fail:
             raise RuntimeError("simulated embedding failure")
-        return [0.1] * 3072
+        return EmbeddingResult(
+            vectors=[[0.1] * 3072],
+            model=self.model_name,
+            total_tokens=self.tokens_per_text,
+        )
 
 
 def make_kb(kb_id: str, tenant_id: str = "T001") -> KnowledgeBase:

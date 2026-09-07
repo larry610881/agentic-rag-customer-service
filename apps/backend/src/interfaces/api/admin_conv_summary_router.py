@@ -16,8 +16,13 @@ from src.application.conversation.list_conv_summaries_use_case import (
     ListConvSummariesQuery,
     ListConvSummariesUseCase,
 )
+from src.application.conversation.search_conversations_use_case import (
+    _SYSTEM_TENANT_ID,
+)
+from src.application.usage.embedding_accounting import account_embedding
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
+from src.domain.usage.category import UsageCategory
 from src.interfaces.api.deps import CurrentTenant, require_role
 
 logger = logging.getLogger(__name__)
@@ -106,13 +111,22 @@ async def search_summaries(
     admin: CurrentTenant = Depends(require_role("system_admin", "tenant_admin")),
     vector_store=Depends(Provide[Container.vector_store]),
     embedding_service=Depends(Provide[Container.embedding_service]),
+    record_usage=Depends(Provide[Container.record_usage_use_case]),
 ) -> dict:
     if admin.role == "tenant_admin" and admin.tenant_id != body.tenant_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="not found"
         )
     # 薄 wrapper：直接呼叫既有 search_conv_summaries
-    query_vector = await embedding_service.embed_query(body.query)
+    # Issue #73：admin 操作的 embedding 歸帳 SYSTEM tenant（同 search_conversations）
+    embed_result = await embedding_service.embed_query_with_usage(body.query)
+    query_vector = embed_result.vectors[0]
+    await account_embedding(
+        record_usage,
+        tenant_id=_SYSTEM_TENANT_ID,
+        result=embed_result,
+        category=UsageCategory.EMBEDDING,
+    )
     results = await vector_store.search_conv_summaries(
         query_vector=query_vector,
         tenant_id=body.tenant_id,

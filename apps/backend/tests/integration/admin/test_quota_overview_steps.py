@@ -110,7 +110,7 @@ def seed_usage(ctx, tname, n):
     _run(
         record_usage.execute(
             tenant_id=tenant_id,
-            request_type="rag",
+            request_type="chat_web",  # Issue #73：rag 已 deprecated（僅供讀取）
             usage=TokenUsage(
                 model="test",
                 input_tokens=n,

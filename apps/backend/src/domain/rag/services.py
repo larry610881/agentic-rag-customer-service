@@ -1,16 +1,42 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 from src.domain.rag.value_objects import LLMResult, SearchResult
 
 
+@dataclass(frozen=True)
+class EmbeddingResult:
+    """Embedding 呼叫結果 + 供應商回傳的用量（Issue #73）
+
+    記帳一律以此物件為準，不再靠服務物件上的 ``last_*`` 可變屬性——
+    包裝層（快取 / 動態代理）透傳此物件即可，不會再出現「記帳程式碼存在
+    但因包裝層沒轉發屬性而永遠寫 0」的靜默漏帳。
+
+    - ``total_tokens``：供應商回傳的 token 數（embedding 只有 input）
+    - ``cache_hit``：查詢向量命中快取 → 沒花 token，呼叫端不得入帳
+    """
+
+    vectors: list[list[float]]
+    model: str
+    total_tokens: int = 0
+    cache_hit: bool = False
+
+
 class EmbeddingService(ABC):
     @abstractmethod
-    async def embed_texts(self, texts: list[str]) -> list[list[float]]: ...
+    async def embed_texts_with_usage(self, texts: list[str]) -> EmbeddingResult: ...
 
     @abstractmethod
-    async def embed_query(self, text: str) -> list[float]: ...
+    async def embed_query_with_usage(self, text: str) -> EmbeddingResult: ...
+
+    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        """不需要記帳的呼叫端沿用；用量由 with_usage 版本回傳後丟棄。"""
+        return (await self.embed_texts_with_usage(texts)).vectors
+
+    async def embed_query(self, text: str) -> list[float]:
+        return (await self.embed_query_with_usage(text)).vectors[0]
 
 
 class VectorStore(ABC):

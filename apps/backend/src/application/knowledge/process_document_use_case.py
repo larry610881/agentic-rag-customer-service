@@ -1,6 +1,12 @@
 import asyncio
 import time
 
+from src.application.knowledge._pipeline_accounting import (
+    record_context_usage,
+    record_embedding_usage,
+    record_ocr_usage,
+    reset_llm_counters,
+)
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.domain.knowledge.repository import (
     DocumentRepository,
@@ -19,9 +25,7 @@ from src.domain.knowledge.services import (
     TextSplitterService,
 )
 from src.domain.rag.services import EmbeddingService, VectorStore
-from src.domain.rag.value_objects import TokenUsage
 from src.domain.tenant.repository import TenantRepository
-from src.domain.usage.category import UsageCategory
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -159,9 +163,15 @@ class ProcessDocumentUseCase:
             if raw_content:
                 t0 = time.perf_counter()
 
+                # OCR 用量來源：影像路徑直接打引擎（singleton，先歸零累計屬性）；
+                # PDF / 一般路徑經 file parser（parse 內部自行歸零）。
+                ocr_usage_source = self._file_parser
+
                 # PNG/image: single page OCR (child of split PDF)
                 if document.content_type.startswith("image/") and hasattr(self._file_parser, "_ocr"):
                     ocr_engine = self._file_parser._ocr
+                    ocr_usage_source = ocr_engine
+                    reset_llm_counters(ocr_engine)
                     from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import (
                         OCR_PROMPTS,
                     )
@@ -266,22 +276,13 @@ class ProcessDocumentUseCase:
 
                 await self._doc_repo.update_content(document_id, content)
 
-                # Record OCR token usage if applicable
-                if self._record_usage and hasattr(self._file_parser, "last_input_tokens"):
-                    in_tok = self._file_parser.last_input_tokens
-                    out_tok = self._file_parser.last_output_tokens
-                    if in_tok > 0 or out_tok > 0:
-                        model = getattr(self._file_parser, "last_model", "claude-haiku-4-5-20251001")
-                        await self._record_usage.execute(
-                            tenant_id=document.tenant_id,
-                            request_type="ocr",
-                            usage=TokenUsage(
-                                model=model,
-                                input_tokens=in_tok,
-                                output_tokens=out_tok,
-                            ),
-                            kb_id=document.kb_id,
-                        )
+                # Record OCR token usage（Issue #73：與 reprocess 共用 helper）
+                await record_ocr_usage(
+                    self._record_usage,
+                    source=ocr_usage_source,
+                    tenant_id=document.tenant_id,
+                    kb_id=document.kb_id,
+                )
             else:
                 # Fallback for legacy documents without raw_content
                 content = document.content
@@ -435,34 +436,13 @@ class ProcessDocumentUseCase:
 
                 # Token-Gov.0: 記錄 contextual retrieval token 用量
                 # S-LLM-Cache.1: 加上 cache_read / cache_creation 欄位
-                if self._record_usage and getattr(
-                    self._context_service, "last_input_tokens", 0
-                ) + getattr(
-                    self._context_service, "last_output_tokens", 0
-                ) > 0:
-                    ctx_in = self._context_service.last_input_tokens
-                    ctx_out = self._context_service.last_output_tokens
-                    ctx_cache_read = getattr(
-                        self._context_service, "last_cache_read_tokens", 0
-                    )
-                    ctx_cache_creation = getattr(
-                        self._context_service, "last_cache_creation_tokens", 0
-                    )
-                    ctx_model = getattr(
-                        self._context_service, "last_model", context_model
-                    )
-                    await self._record_usage.execute(
-                        tenant_id=document.tenant_id,
-                        request_type=UsageCategory.CONTEXTUAL_RETRIEVAL.value,
-                        usage=TokenUsage(
-                            model=ctx_model,
-                            input_tokens=ctx_in,
-                            output_tokens=ctx_out,
-                            cache_read_tokens=ctx_cache_read,
-                            cache_creation_tokens=ctx_cache_creation,
-                        ),
-                        kb_id=document.kb_id,
-                    )
+                await record_context_usage(
+                    self._record_usage,
+                    context_service=self._context_service,
+                    tenant_id=document.tenant_id,
+                    kb_id=document.kb_id,
+                    fallback_model=context_model,
+                )
 
                 await _update_progress(task_id, 73)
 
@@ -484,25 +464,23 @@ class ProcessDocumentUseCase:
                 f"{c.context_text}\n\n{c.content}" if c.context_text else c.content
                 for c in chunks
             ]
-            vectors = await self._embedding.embed_texts(texts)
+            embed_result = await self._embedding.embed_texts_with_usage(texts)
+            vectors = embed_result.vectors
             embed_ms = round((time.perf_counter() - t0) * 1000)
-            log.info("document.embed.done", vector_count=len(vectors), duration_ms=embed_ms)
+            log.info(
+                "document.embed.done",
+                vector_count=len(vectors),
+                duration_ms=embed_ms,
+                total_tokens=embed_result.total_tokens,
+            )
 
-            # Record embedding token usage
-            if self._record_usage and hasattr(self._embedding, "last_total_tokens"):
-                embed_tokens = self._embedding.last_total_tokens
-                if embed_tokens > 0:
-                    embed_model = getattr(self._embedding, "_model", "text-embedding-3-large")
-                    await self._record_usage.execute(
-                        tenant_id=document.tenant_id,
-                        request_type="embedding",
-                        usage=TokenUsage(
-                            model=embed_model,
-                            input_tokens=embed_tokens,
-                            output_tokens=0,
-                        ),
-                        kb_id=document.kb_id,
-                    )
+            # Record embedding token usage（Issue #73：用量來自供應商回傳）
+            await record_embedding_usage(
+                self._record_usage,
+                result=embed_result,
+                tenant_id=document.tenant_id,
+                kb_id=document.kb_id,
+            )
 
             # 90% — upserting vectors
             await _update_progress(task_id, 90)

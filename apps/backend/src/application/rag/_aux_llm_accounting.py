@@ -25,6 +25,7 @@ async def account_aux_llm(
     record_usage: Any | None,
     start_ms: float,
     llm_input: str,
+    bot_id: str | None = None,
 ) -> None:
     token_usage = {
         "model": result.model,
@@ -61,6 +62,7 @@ async def account_aux_llm(
                 cache_read_tokens=result.cache_read_tokens,
                 cache_creation_tokens=result.cache_creation_tokens,
             ),
+            bot_id=bot_id,
         )
     except Exception:
         logger.warning("aux_llm.usage_record_failed", label=label, exc_info=True)

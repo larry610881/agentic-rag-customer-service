@@ -17,7 +17,7 @@ import hashlib
 import struct
 import time
 
-from src.domain.rag.services import EmbeddingService
+from src.domain.rag.services import EmbeddingResult, EmbeddingService
 from src.domain.shared.cache_service import CacheService
 from src.infrastructure.logging import get_logger
 
@@ -63,26 +63,23 @@ class CachedEmbeddingService(EmbeddingService):
         digest = hashlib.sha256(f"{self._model}\x00{text}".encode()).hexdigest()
         return f"{_KEY_PREFIX}:{digest}"
 
-    async def embed_query(self, text: str) -> list[float]:
-        normalized = text.strip()
-        key = self._key(normalized)
-        start = time.perf_counter()
-
+    async def _lookup(self, key: str, start: float) -> list[float] | None:
         cached = await self._cache.get(key)
-        if cached is not None:
-            try:
-                vector = decode_vector(cached)
-            except (ValueError, binascii.Error):
-                logger.warning("embedding_cache.corrupted", key=key)
-            else:
-                logger.info(
-                    "embedding_cache.hit",
-                    key=key,
-                    latency_ms=round((time.perf_counter() - start) * 1000, 1),
-                )
-                return vector
+        if cached is None:
+            return None
+        try:
+            vector = decode_vector(cached)
+        except (ValueError, binascii.Error):
+            logger.warning("embedding_cache.corrupted", key=key)
+            return None
+        logger.info(
+            "embedding_cache.hit",
+            key=key,
+            latency_ms=round((time.perf_counter() - start) * 1000, 1),
+        )
+        return vector
 
-        vector = await self._inner.embed_query(normalized)
+    async def _store(self, key: str, vector: list[float], start: float) -> None:
         try:
             await self._cache.set(
                 key, encode_vector(vector), ttl_seconds=self._ttl_seconds
@@ -94,7 +91,39 @@ class CachedEmbeddingService(EmbeddingService):
             key=key,
             latency_ms=round((time.perf_counter() - start) * 1000, 1),
         )
+
+    async def embed_query_with_usage(self, text: str) -> EmbeddingResult:
+        """命中 → cache_hit=True、total_tokens=0（沒花 token，呼叫端不入帳）；
+        未命中 → 透傳內層的 EmbeddingResult（供應商回傳用量）。"""
+        normalized = text.strip()
+        key = self._key(normalized)
+        start = time.perf_counter()
+
+        vector = await self._lookup(key, start)
+        if vector is not None:
+            return EmbeddingResult(
+                vectors=[vector], model=self._model, total_tokens=0, cache_hit=True,
+            )
+
+        result = await self._inner.embed_query_with_usage(normalized)
+        await self._store(key, result.vectors[0], start)
+        return result
+
+    async def embed_query(self, text: str) -> list[float]:
+        normalized = text.strip()
+        key = self._key(normalized)
+        start = time.perf_counter()
+
+        vector = await self._lookup(key, start)
+        if vector is not None:
+            return vector
+
+        vector = await self._inner.embed_query(normalized)
+        await self._store(key, vector, start)
         return vector
+
+    async def embed_texts_with_usage(self, texts: list[str]) -> EmbeddingResult:
+        return await self._inner.embed_texts_with_usage(texts)
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return await self._inner.embed_texts(texts)

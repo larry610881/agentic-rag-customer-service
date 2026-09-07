@@ -81,6 +81,7 @@ async def rewrite_query(
     api_key_resolver=None,
     record_usage=None,
     tenant_id: str = "",
+    bot_id: str | None = None,
 ) -> str:
     """Use LLM to rewrite query for better vector retrieval.
 
@@ -95,6 +96,7 @@ async def rewrite_query(
     """
     from src.application.rag._aux_llm_accounting import account_aux_llm
     from src.domain.llm.prompt_block import BlockRole, PromptBlock
+    from src.domain.usage.category import UsageCategory
     from src.infrastructure.llm.llm_caller import call_llm
     from src.infrastructure.observability.agent_trace_collector import (
         AgentTraceCollector,
@@ -141,11 +143,12 @@ async def rewrite_query(
         await account_aux_llm(
             result,
             label="query_rewrite",
-            category="query_rewrite",
+            category=UsageCategory.QUERY_REWRITE.value,
             tenant_id=tenant_id,
             record_usage=record_usage,
             start_ms=start_ms,
             llm_input=llm_input,
+            bot_id=bot_id,
         )
         rewritten = result.text.strip().strip('"').strip("「").strip("」")
         return rewritten or raw_query

@@ -21,6 +21,7 @@ from src.application.rag.query_rag_use_case import (
     QueryRAGCommand,
     QueryRAGUseCase,
 )
+from src.application.usage.embedding_accounting import account_embedding
 from src.domain.knowledge.repository import KnowledgeBaseRepository
 from src.domain.rag.retrieval_mode import normalize_modes
 from src.domain.rag.services import EmbeddingService, VectorStore
@@ -28,6 +29,7 @@ from src.domain.shared.exceptions import (
     EntityNotFoundError,  # noqa: F401  # 保留供 caller import 兼容
     NoRelevantKnowledgeError,
 )
+from src.domain.usage.category import UsageCategory
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -170,6 +172,7 @@ class TestRetrievalUseCase:
             hyde_model=command.hyde_model,
             hyde_extra_hint=command.hyde_extra_hint,
             bot_system_prompt=bot_system_prompt,
+            bot_id=command.bot_id or None,
         )
 
         chunk_hits: list[RetrievalHit] = []
@@ -204,7 +207,16 @@ class TestRetrievalUseCase:
         ref_query = mode_queries.get("rewrite") or mode_queries.get(
             "raw"
         ) or command.query
-        query_vector = await self._embed.embed_query(ref_query)
+        embed_result = await self._embed.embed_query_with_usage(ref_query)
+        query_vector = embed_result.vectors[0]
+        # Issue #73：Playground 的額外 embed 過去有注入 record_usage 卻沒用
+        await account_embedding(
+            self._record_usage,
+            tenant_id=effective_tenant_id,
+            result=embed_result,
+            category=UsageCategory.QUERY_EMBEDDING,
+            bot_id=command.bot_id or None,
+        )
 
         if command.include_conv_summaries:
             search_limit = (

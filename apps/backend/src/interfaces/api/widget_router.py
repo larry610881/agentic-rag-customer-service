@@ -42,6 +42,7 @@ from src.domain.abuse.policy import AbuseSubject, SubjectKind
 from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
 from src.domain.knowledge.repository import DocumentRepository
+from src.domain.usage.category import UsageCategory
 from src.infrastructure.auth.jwt_service import WIDGET_TOKEN_TYPE, JWTService
 from src.infrastructure.auth.visitor_id_signer import VisitorIdSigner
 from src.interfaces.api.client_ip import client_ip_of
@@ -395,7 +396,7 @@ async def widget_chat_stream(
                 try:
                     await record_usage.execute(
                         tenant_id=bot.tenant_id,
-                        request_type="chat_widget",
+                        request_type=UsageCategory.CHAT_WIDGET.value,
                         usage=usage,
                         bot_id=bot.id.value,
                         message_id=captured.get("message_id"),  # H8

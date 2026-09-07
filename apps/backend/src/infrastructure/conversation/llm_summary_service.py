@@ -72,23 +72,16 @@ class LLMConversationSummaryService(ConversationSummaryService):
         if not summary_text:
             raise RuntimeError("LLM returned empty summary")
 
-        # Step 2: embed summary
-        embedding = await self._embedding.embed_query(summary_text)
-
-        # Step 3: 從 embedding service 抓 token usage（既有 stateful 約定）
-        embedding_tokens = int(
-            getattr(self._embedding, "last_total_tokens", 0) or 0
-        )
-        embedding_model = str(
-            getattr(self._embedding, "_model", "text-embedding-3-large")
-        )
+        # Step 2: embed summary — Issue #73：用量來自 EmbeddingResult（供應商回傳），
+        # 過去讀包裝層沒轉發的 last_total_tokens 永遠 0 → embedding 從未入帳
+        embed_result = await self._embedding.embed_query_with_usage(summary_text)
 
         return ConversationSummaryResult(
             summary=summary_text,
-            embedding=embedding,
+            embedding=embed_result.vectors[0],
             summary_input_tokens=llm_result.usage.input_tokens,
             summary_output_tokens=llm_result.usage.output_tokens,
             summary_model=llm_result.usage.model,
-            embedding_tokens=embedding_tokens,
-            embedding_model=embedding_model,
+            embedding_tokens=0 if embed_result.cache_hit else embed_result.total_tokens,
+            embedding_model=embed_result.model,
         )
