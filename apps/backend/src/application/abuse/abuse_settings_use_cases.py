@@ -4,13 +4,15 @@
 **只有 system_admin 能改**，tenant_admin 只能看自己生效中的設定與受控清單。
 """
 
-import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any
 
 import structlog
 
+from src.application.settings.layered_provider import (
+    CachedLayeredProvider,
+    LayeredSettingsWriter,
+)
 from src.domain.abuse.events import mask_subject_id
 from src.domain.abuse.policy import AbusePolicy, AbuseSubject, SubjectKind
 from src.domain.abuse.settings import (
@@ -35,8 +37,13 @@ logger = structlog.get_logger(__name__)
 AUDIT_ENTITY = "abuse_settings"
 
 
-class CachedAbusePolicyProvider:
-    """每租戶生效 policy，程序內快取 60 秒；DB 失效退回預設（fail-open）。"""
+class CachedAbusePolicyProvider(CachedLayeredProvider[AbusePolicy]):
+    """每租戶生效 policy，程序內快取 60 秒；DB 失效退回預設（fail-open）。
+
+    快取 / TTL / 失效機制在 CachedLayeredProvider（Issue #75 抽共用）。
+    """
+
+    log_event = "abuse_settings.load_failed"
 
     def __init__(
         self,
@@ -44,31 +51,16 @@ class CachedAbusePolicyProvider:
         ttl_seconds: int = 60,
         base_mode_from_env: str | None = None,
     ) -> None:
-        self._repo_factory = repo_factory
-        self._ttl = ttl_seconds
-        self._cache: dict[str, tuple[AbusePolicy, float]] = {}
+        super().__init__(repo_factory, ttl_seconds)
         self._env_mode = base_mode_from_env
 
-    def invalidate(self, tenant_id: str | None = None) -> None:
-        if tenant_id is None:
-            self._cache.clear()
-        else:
-            self._cache.pop(tenant_id, None)
-
     async def policy_for(self, tenant_id: str) -> AbusePolicy:
-        cached = self._cache.get(tenant_id)
-        if cached and cached[1] > time.monotonic():
-            return cached[0]
-        try:
-            policy = await self._load(tenant_id)
-        except Exception:
-            logger.warning("abuse_settings.load_failed", tenant_id=tenant_id)
-            policy = AbusePolicy()
-        self._cache[tenant_id] = (policy, time.monotonic() + self._ttl)
-        return policy
+        return await self.resolve(tenant_id)
 
-    async def _load(self, tenant_id: str) -> AbusePolicy:
-        repo: AbuseSettingsRepository = self._repo_factory()
+    def _fallback(self, key: str) -> AbusePolicy:
+        return AbusePolicy()
+
+    async def _load(self, repo: AbuseSettingsRepository, tenant_id: str) -> AbusePolicy:  # type: ignore[override]
         platform = await repo.get(SCOPE_PLATFORM, PLATFORM_SCOPE_ID)
         tenant = await repo.get(SCOPE_TENANT, tenant_id)
         profiles = {p.scope_id: p.overrides for p in await repo.list_profiles()}
@@ -143,8 +135,9 @@ class UpdateAbuseSettingsUseCase:
         audit: Any | None = None,
     ) -> None:
         self._repo = repo
-        self._provider = provider
-        self._audit = audit
+        self._writer = LayeredSettingsWriter(
+            repo, AbuseSettings, AUDIT_ENTITY, provider=provider, audit=audit,
+        )
 
     async def execute(
         self,
@@ -157,8 +150,6 @@ class UpdateAbuseSettingsUseCase:
     ) -> AbuseSettings:
         if scope_kind not in (SCOPE_PLATFORM, SCOPE_PROFILE, SCOPE_TENANT):
             raise ValidationError("scope_kind must be platform, profile or tenant")
-        if scope_kind == SCOPE_PLATFORM:
-            scope_id = PLATFORM_SCOPE_ID
         clean = validate_overrides(overrides)
         if scope_kind == SCOPE_TENANT and profile is not None:
             known = set(BUILTIN_PROFILES) | {
@@ -170,29 +161,11 @@ class UpdateAbuseSettingsUseCase:
         elif PROFILE_KEY in clean and scope_kind != SCOPE_TENANT:
             raise ValidationError("profile can only be assigned at tenant scope")
 
-        existing = await self._repo.get(scope_kind, scope_id)
-        before = dict(existing.overrides) if existing else {}
-        settings = AbuseSettings(
+        saved: AbuseSettings = await self._writer.write(
             scope_kind=scope_kind, scope_id=scope_id, overrides=clean,
-            updated_by=actor_user_id, updated_at=datetime.now(timezone.utc),
-            id=existing.id if existing else AbuseSettings(
-                scope_kind=scope_kind, scope_id=scope_id
-            ).id,
+            actor_user_id=actor_user_id,
         )
-        await self._repo.save(settings)
-        if self._provider is not None:
-            self._provider.invalidate(None if scope_kind != SCOPE_TENANT else scope_id)
-        if self._audit is not None:
-            await self._audit.record(
-                entity_type=AUDIT_ENTITY,
-                entity_id=f"{scope_kind}:{scope_id}",
-                action="update",
-                before=before,
-                after=clean,
-                actor_user_id=actor_user_id,
-                tenant_id=scope_id if scope_kind == SCOPE_TENANT else None,
-            )
-        return settings
+        return saved
 
 
 @dataclass(frozen=True)

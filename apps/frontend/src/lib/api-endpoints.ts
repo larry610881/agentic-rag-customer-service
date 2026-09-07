@@ -404,6 +404,19 @@ export const API_ENDPOINTS = {
         : "/api/v1/admin/abuse/controls",
     release: "/api/v1/admin/abuse/controls/release",
   },
+  // Issue #75 — 防護階段三層設定（system_admin 寫；/guard/effective 租戶讀）
+  guardStages: {
+    settings: "/api/v1/admin/guard/settings",
+    updatePlatform: "/api/v1/admin/guard/settings/platform",
+    updateProfile: (name: string) =>
+      `/api/v1/admin/guard/settings/profiles/${encodeURIComponent(name)}`,
+    /** GET（tenant_admin 讀自己 / system_admin 任意）與 PUT（system_admin）同一路徑 */
+    tenantSettings: (tenantId: string) =>
+      `/api/v1/admin/guard/settings/tenants/${encodeURIComponent(tenantId)}`,
+    /** bot_id 必填 */
+    effective: (botId: string) =>
+      `/api/v1/guard/effective?bot_id=${encodeURIComponent(botId)}`,
+  },
   // Issue #68 P7b — Widget 宿主身分綁定；system_admin 必帶 tenant_id，tenant_admin 省略
   widgetIdentity: {
     secret: (tenantId?: string) =>

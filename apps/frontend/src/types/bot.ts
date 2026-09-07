@@ -104,6 +104,8 @@ export interface Bot {
   output_text_field?: string;
   /** 長期記憶開關 */
   memory_enabled?: boolean;
+  /** Issue #75 — 防護階段；null = 繼承租戶有效值，只能在其上加嚴 */
+  guard_stages?: string[] | null;
   mcp_servers: McpServerConfig[];
   max_tool_calls: number;
   base_prompt: string;
@@ -180,6 +182,8 @@ export interface CreateBotRequest {
   output_text_field?: string;
   /** 長期記憶開關 */
   memory_enabled?: boolean;
+  /** Issue #75 — 防護階段；null = 繼承租戶有效值，只能在其上加嚴 */
+  guard_stages?: string[] | null;
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
   base_prompt?: string;
@@ -252,6 +256,8 @@ export interface UpdateBotRequest {
   output_text_field?: string;
   /** 長期記憶開關 */
   memory_enabled?: boolean;
+  /** Issue #75 — 防護階段；null = 繼承租戶有效值，只能在其上加嚴 */
+  guard_stages?: string[] | null;
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
   base_prompt?: string;

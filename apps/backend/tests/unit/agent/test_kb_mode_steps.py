@@ -197,10 +197,14 @@ def retrieve_called(context, n):
     assert context["query_rag"].retrieve.await_count == n
 
 
-@then("意圖分類器不應被呼叫")
-def classifier_not_called(context):
-    context["classifier"].classify_sanitize.assert_not_awaited()
+@then("意圖分類器不應以分流方式被呼叫（Issue #75：僅不帶 worker 的攻擊判定）")
+def classifier_not_routed(context):
+    # Issue #70：kb 模式不分流；Issue #75：classifier_attack 階段（平台預設開）
+    # 仍以不帶 worker 的 attack_only 方式呼叫一次，只做攻擊判定
     context["classifier"].classify.assert_not_awaited()
+    for call in context["classifier"].classify_sanitize.await_args_list:
+        assert call.kwargs.get("workers") == []
+        assert call.kwargs.get("attack_only") is True
 
 
 @then(parsers.parse('回覆內容應為 "{text}"'))

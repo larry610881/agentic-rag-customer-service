@@ -4,6 +4,7 @@
  */
 
 import { isLongTextChange, type BotAuditChange } from "@/types/bot-audit-log";
+import { guardStageLabel } from "@/features/guard-stages/guard-stage-labels";
 
 /** 前端儲存前 diff 的單一欄位（值取自表單基準與送出 payload） */
 export interface BotFieldDiff {
@@ -60,6 +61,8 @@ export const BOT_FIELD_LABELS: Record<string, string> = {
   show_sources: "顯示來源",
   // 記憶
   memory_enabled: "長期記憶",
+  // 防護
+  guard_stages: "防護階段",
   memory_extraction_threshold: "記憶萃取門檻",
   // 評估
   eval_provider: "評估供應商",
@@ -174,6 +177,9 @@ export function formatBotFieldValue(key: string, value: unknown): string {
     return value ? "啟用" : "停用";
   }
   if (typeof value === "boolean") return value ? "開" : "關";
+  if (leaf === "guard_stages" && Array.isArray(value)) {
+    return value.map((v) => guardStageLabel(String(v))).join("、");
+  }
   const enumMap = ENUM_LABELS[leaf];
   if (enumMap && typeof value === "string") return enumMap[value] ?? value;
   if (Array.isArray(value)) {

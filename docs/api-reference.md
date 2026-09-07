@@ -244,7 +244,7 @@ trace 的 `agent_llm` 節點記 `reasoning_effort_requested`（bot 設定值）�
 
 - 租戶範圍：bot 不屬於呼叫者租戶 → `404`（不洩漏存在性）；`system_admin` 可跨租戶。
 - `limit` 1–100（預設 20）；keyset 分頁，`next_cursor` 非 null 時帶回 `cursor` 取下一頁（格式錯誤回 `422`）。
-- 只涵蓋 `entity_type=bot` 的稽核列；Worker 的稽核列（`entity_type=worker`）不帶 bot 關聯欄位，暫不併入，仍可在 system_admin 的 `/audit-logs` 以 `entity_type=worker` 查詢。
+- 涵蓋 `entity_type=bot` 的稽核列，以及（Issue #75）平台對該租戶的防護階段變更（`entity_type=guard_settings`、`entity_id=tenant:<tenant_id>`），後者 `actor_label` 為 `"平台"`；Worker 的稽核列（`entity_type=worker`）不帶 bot 關聯欄位，暫不併入，仍可在 system_admin 的 `/audit-logs` 以 `entity_type=worker` 查詢。
 - `changes` 由伺服端把稽核列的 `changed_fields` 攤平：`llm_params` 展開一層為 `llm_params.temperature`；提示詞類長文字欄位（`bot_prompt` / `base_prompt` / `memory_extraction_prompt`）只回字數（`before_len` / `after_len`，以稽核列存放的字串計，超過 2000 字者已截斷），全文請至 system_admin 稽核頁。
 
 **Response**
@@ -256,6 +256,8 @@ trace 的 `agent_llm` 節點記 `reasoning_effort_requested`（bot 設定值）�
       "action": "update",
       "actor_user_id": "…",
       "actor_email": "admin@example.com",
+      "actor_label": null,
+      "entity_type": "bot",
       "source": "api",
       "created_at": "2026-09-07T10:00:00+00:00",
       "changes": [
@@ -269,7 +271,24 @@ trace 的 `agent_llm` 節點記 `reasoning_effort_requested`（bot 設定值）�
 }
 ```
 
-`actor_email` 查無使用者（已刪除）時為 `null`。
+`actor_email` 查無使用者（已刪除）時為 `null`。`actor_label` 只在 `source=platform`（系統管理員改此租戶的防護階段）時為 `"平台"`，其餘 `null`。
+
+## 防護階段三層設定（Issue #75）
+
+> 完整規則見 `docs/guard-stages.md`。
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| GET | `/admin/guard/settings` | 總覽：平台覆寫、方案、預設有效值、`stages`、`required_floor_default`、`allowed_keys` | `system_admin` |
+| PUT | `/admin/guard/settings/platform` | `{"overrides": {"stages": [...], "required_stages": [...]}}` | `system_admin` |
+| PUT | `/admin/guard/settings/profiles/{name}` | `{"overrides": {"stages": [...]}}` | `system_admin` |
+| GET | `/admin/guard/settings/tenants/{tenant_id}` | 該租戶的 `profile` / `overrides` / `locked` / `effective` / `editable` | `system_admin`；`tenant_admin` 僅本租戶（他租戶 `403`） |
+| PUT | `/admin/guard/settings/tenants/{tenant_id}` | `{"profile": "...", "overrides": {"stages": [...]}, "locked": bool}` | `system_admin` |
+| GET | `/guard/effective?bot_id=` | 某 bot 的有效防護：`stages` / `required` / `locked` / `source_map` / `profile` / `bot_stages` / `available_stages` | `tenant_admin` / `system_admin`；跨租戶 `404` |
+
+- 階段：`regex_input`、`classifier_attack`、`output_guard`、`abuse_scoring`、`local_classifier`（預留）。未知階段、各層不允許的鍵（`required_stages` 僅 platform；`locked` / `profile` 僅 tenant）回 `422`。
+- `POST /bots`、`PUT /bots/{bot_id}`、`GET /bots/{bot_id}` 多 `guard_stages: string[] | null`（`null` = 繼承租戶有效值）；必須是租戶有效集合的超集，租戶被鎖定時不得自設（`422`）。
+- 每次寫入都寫稽核（`entity_type=guard_settings`）；system_admin 改 tenant scope 時 `source=platform`，租戶在 `GET /bots/{bot_id}/audit-logs` 看得到（`actor_label="平台"`）。
 
 ## LLM
 

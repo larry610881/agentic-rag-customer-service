@@ -28,6 +28,10 @@ export interface BotAuditLogEntry {
   action: "create" | "update" | "delete" | "reset" | string;
   actor_user_id: string | null;
   actor_email: string | null;
+  /** Issue #75 — 平台（system_admin）對該租戶的防護階段變更標「平台」 */
+  actor_label?: string | null;
+  /** Issue #75 — bot | guard_settings（租戶 scope 的防護設定變更） */
+  entity_type?: "bot" | "guard_settings" | string;
   source: string | null;
   created_at: string;
   changes: BotAuditChange[];

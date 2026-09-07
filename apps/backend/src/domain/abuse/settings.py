@@ -6,21 +6,33 @@
 - 設定以 JSON 覆寫存放（只存有改的鍵），套用時合併到 AbusePolicy。
 """
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from abc import abstractmethod
+from dataclasses import dataclass, replace
 from typing import Any
-from uuid import uuid4
 
 from src.domain.abuse.policy import AbuseMode, AbusePolicy, AbuseSignal, SubjectKind
+from src.domain.settings.layered import (
+    DEFAULT_PROFILE,
+    PLATFORM_SCOPE_ID,
+    PROFILE_KEY,
+    SCOPE_PLATFORM,
+    SCOPE_PROFILE,
+    SCOPE_TENANT,
+    LayeredSettings,
+    LayeredSettingsRepository,
+    resolve_layers,
+    validate_profile_name,
+)
 from src.domain.shared.exceptions import ValidationError
 
-SCOPE_PLATFORM = "platform"   # 系統預設（system_admin）
-SCOPE_PROFILE = "profile"     # 方案（standard / strict / lenient …，system_admin）
-SCOPE_TENANT = "tenant"       # 個別租戶：指定方案 + 微調（system_admin）
-PLATFORM_SCOPE_ID = "*"
-PROFILE_KEY = "profile"       # tenant overrides 內的特殊鍵：採用哪個方案
-DEFAULT_PROFILE = "standard"
+# scope / 方案挑選等三層共用機制自 Issue #75 起抽到 domain/settings/layered.py，
+# 此處保留同名常數供既有呼叫端 import。
+__all__ = [
+    "SCOPE_PLATFORM", "SCOPE_PROFILE", "SCOPE_TENANT", "PLATFORM_SCOPE_ID",
+    "PROFILE_KEY", "DEFAULT_PROFILE", "BUILTIN_PROFILES", "BOUNDS", "ALLOWED_KEYS",
+    "AbuseSettings", "AbuseSettingsRepository", "validate_overrides",
+    "apply_overrides", "resolve_policy", "policy_view",
+]
 
 # 內建方案（可被 DB 的 profile 列覆寫或新增）
 BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
@@ -63,18 +75,11 @@ ALLOWED_KEYS = (
 
 
 @dataclass
-class AbuseSettings:
-    """一層覆寫（platform 或 tenant）。overrides 只含有改的鍵。"""
-
-    scope_kind: str
-    scope_id: str
-    overrides: dict[str, Any] = field(default_factory=dict)
-    id: str = field(default_factory=lambda: str(uuid4()))
-    updated_by: str | None = None
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+class AbuseSettings(LayeredSettings):
+    """一層覆寫（platform / profile / tenant）。overrides 只含有改的鍵。"""
 
 
-class AbuseSettingsRepository(ABC):
+class AbuseSettingsRepository(LayeredSettingsRepository):
     @abstractmethod
     async def get(self, scope_kind: str, scope_id: str) -> AbuseSettings | None: ...
 
@@ -100,9 +105,7 @@ def validate_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
 
 def _normalize(key: str, value: Any) -> Any:
     if key == PROFILE_KEY:
-        if not isinstance(value, str) or not value.strip():
-            raise ValidationError("profile must be a non-empty name")
-        return value.strip()
+        return validate_profile_name(value)
     if key == "mode":
         if value not in (AbuseMode.MONITOR.value, AbuseMode.ENFORCE.value):
             raise ValidationError("mode must be monitor or enforce")
@@ -166,18 +169,12 @@ def resolve_policy(
     profiles: dict[str, dict[str, Any]] | None = None,
 ) -> AbusePolicy:
     """預設 → 平台 → 方案（租戶指定，預設 standard）→ 租戶微調。"""
-    all_profiles = dict(BUILTIN_PROFILES)
-    all_profiles.update(profiles or {})
-    policy = AbusePolicy()
-    if platform is not None:
-        policy = apply_overrides(policy, platform.overrides)
-    profile_name = DEFAULT_PROFILE
-    if tenant is not None and tenant.overrides.get(PROFILE_KEY):
-        profile_name = str(tenant.overrides[PROFILE_KEY])
-    policy = apply_overrides(policy, all_profiles.get(profile_name, {}))
-    if tenant is not None:
-        policy = apply_overrides(policy, tenant.overrides)
-    return policy
+    layers = resolve_layers(
+        platform, tenant, profiles, builtin_profiles=BUILTIN_PROFILES,
+    )
+    policy = apply_overrides(AbusePolicy(), layers.platform)
+    policy = apply_overrides(policy, layers.profile)
+    return apply_overrides(policy, layers.tenant)
 
 
 def policy_view(policy: AbusePolicy) -> dict[str, Any]:

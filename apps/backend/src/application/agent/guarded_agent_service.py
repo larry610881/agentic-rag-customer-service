@@ -23,9 +23,11 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
+from src.application.security.guard_pipeline import stages_from_metadata
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
 from src.domain.conversation.entity import Message
+from src.domain.security.guard_stages import STAGE_OUTPUT_GUARD, STAGE_REGEX_INPUT
 
 
 class GuardedAgentService(AgentService):
@@ -73,7 +75,13 @@ class GuardedAgentService(AgentService):
         # H6：影子執行（test_mode）不寫 guard_logs 生產表
         dry_run_guard = bool((metadata or {}).get("_dry_run_guard"))
         already_checked = bool((metadata or {}).get("_input_guard_checked"))
-        if self._prompt_guard is not None and not already_checked:
+        # Issue #75：入口端已解析有效防護階段並放進 metadata；清單裡沒有的階段
+        # 在咽喉點也不跑（否則租戶 / 平台關掉的階段會在這裡被偷偷補回來）。
+        # 未帶清單（舊接線 / 新通路）→ None → 全部跑，契約不變。
+        stages = stages_from_metadata(metadata)
+        input_enabled = stages is None or STAGE_REGEX_INPUT in stages
+        output_enabled = stages is None or STAGE_OUTPUT_GUARD in stages
+        if self._prompt_guard is not None and not already_checked and input_enabled:
             guard_result = await self._prompt_guard.check_input(
                 user_message,
                 tenant_id=tenant_id,
@@ -109,7 +117,7 @@ class GuardedAgentService(AgentService):
         )
 
         # ── Output guard（命中則以 blocked_response 取代原文）──
-        if self._prompt_guard is not None and response.answer:
+        if self._prompt_guard is not None and response.answer and output_enabled:
             output_guard = await self._prompt_guard.check_output(
                 response.answer,
                 tenant_id=tenant_id,

@@ -138,6 +138,9 @@ class Bot:
     # fast = 全 worker 走快速道、rerank/rewrite/HyDE 關、升級 ReAct 工具上限 2
     # deep = 完整 ReAct，worker 可個別開快速道
     mode: str = "deep"  # fast | deep | kb
+    # Issue #75：bot 層防護階段覆寫；None = 繼承租戶有效值，list 只能是有效值的超集
+    #（只能加不能減；租戶被平台鎖定時忽略）。名稱見 domain/security/guard_stages.STAGES
+    guard_stages: list[str] | None = None
     # Issue #70：輸出格式與未命中話術（三通路共用；進設定快照）
     output_format: str = "text"          # text | plain_text | json
     output_schema: dict | None = None    # output_format=json 時可附 JSON schema

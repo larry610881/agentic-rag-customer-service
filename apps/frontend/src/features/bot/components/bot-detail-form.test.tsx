@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/test-utils";
 import { BotDetailForm } from "@/features/bot/components/bot-detail-form";
 import { mockBot } from "@/test/fixtures/bot";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { StructuredOutputCapability } from "@/types/llm-capability";
+import type { GuardEffectiveView } from "@/types/guard-stages";
 
 // Issue #70 — 能力等級 hook 以 vi.mock 隔離，各測試自行指定 tier
 const { mockCapability } = vi.hoisted(() => ({ mockCapability: vi.fn() }));
@@ -29,6 +30,40 @@ function capabilityResult(
 /** Issue #71 — 有變更時儲存會先出「確認變更」簡述；此 helper 按下確認 */
 async function confirmSave(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole("button", { name: "確認儲存" }));
+}
+
+// Issue #75 — 防護階段有效值以 vi.mock 隔離，各測試自行指定底線 / 租戶啟用 / 鎖定
+const { mockGuardEffective } = vi.hoisted(() => ({ mockGuardEffective: vi.fn() }));
+
+vi.mock("@/hooks/queries/use-guard-stages", () => ({
+  useGuardEffective: (botId?: string) => mockGuardEffective(botId),
+}));
+
+function guardEffectiveResult(
+  overrides: Partial<GuardEffectiveView> = {},
+): { data: GuardEffectiveView; isLoading: boolean; isError: boolean } {
+  return {
+    data: {
+      tenant_id: "tenant-1",
+      bot_id: "bot-1",
+      stages: ["regex_input", "output_guard"],
+      required: ["regex_input"],
+      locked: false,
+      source_map: { regex_input: "required", output_guard: "tenant" },
+      profile: "standard",
+      bot_stages: null,
+      available_stages: [
+        "regex_input",
+        "classifier_attack",
+        "output_guard",
+        "abuse_scoring",
+        "local_classifier",
+      ],
+      ...overrides,
+    },
+    isLoading: false,
+    isError: false,
+  };
 }
 
 // Mock useBuiltInTools hook — 避免 API call 拖慢/失敗
@@ -63,6 +98,7 @@ describe("BotDetailForm", () => {
       isLoading: false,
       isError: false,
     });
+    mockGuardEffective.mockReturnValue(guardEffectiveResult());
     useAuthStore.setState({
       token: "test-token",
       tenantId: "tenant-1",
@@ -972,6 +1008,143 @@ describe("BotDetailForm", () => {
       const summary = await screen.findByTestId("bot-change-summary");
       expect(summary).toHaveTextContent("Bot 自訂指令：已修改（+5 字）");
       expect(summary).not.toHaveTextContent("You are a helpful customer service bot.");
+    });
+  });
+
+  // Issue #75 — 防護階段：bot 只能在租戶有效值之上加嚴
+  describe("guard stages (Issue #75)", () => {
+    function renderForm(bot = mockBot) {
+      return renderWithProviders(
+        <BotDetailForm
+          bot={bot}
+          onSave={mockOnSave}
+          onDelete={mockOnDelete}
+          isSaving={false}
+          isDeleting={false}
+        />,
+      );
+    }
+
+    it("should query effective stages with the bot id and prefill from them", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("tab", { name: "能力" }));
+      expect(mockGuardEffective).toHaveBeenCalledWith("bot-1");
+
+      const section = screen.getByText("防護階段").closest("section")!;
+      expect(within(section).getByLabelText("正則輸入防護")).toBeChecked();
+      expect(within(section).getByLabelText("輸出防護")).toBeChecked();
+      expect(within(section).getByLabelText("分類器攻擊判定")).not.toBeChecked();
+      expect(within(section).getByText("底線")).toBeInTheDocument();
+      expect(within(section).getByText("租戶啟用")).toBeInTheDocument();
+    });
+
+    it("should prefill bot-added stages from effective source_map as Bot 加嚴", async () => {
+      mockGuardEffective.mockReturnValue(
+        guardEffectiveResult({
+          stages: ["regex_input", "classifier_attack", "output_guard"],
+          source_map: { regex_input: "required", classifier_attack: "bot", output_guard: "tenant" },
+          bot_stages: ["regex_input", "classifier_attack", "output_guard"],
+        }),
+      );
+      const user = userEvent.setup();
+      renderForm({ ...mockBot, guard_stages: ["regex_input", "classifier_attack", "output_guard"] });
+      await user.click(screen.getByRole("tab", { name: "能力" }));
+      const section = screen.getByText("防護階段").closest("section")!;
+      const classifier = within(section).getByLabelText("分類器攻擊判定");
+      expect(classifier).toBeChecked();
+      expect(classifier).toBeEnabled();
+      expect(within(section).getByText("Bot 加嚴")).toBeInTheDocument();
+    });
+
+    it("should not allow unchecking required or tenant-enabled stages", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("tab", { name: "能力" }));
+      const section = screen.getByText("防護階段").closest("section")!;
+
+      const required = within(section).getByLabelText("正則輸入防護");
+      const inherited = within(section).getByLabelText("輸出防護");
+      expect(required).toBeDisabled();
+      expect(inherited).toBeDisabled();
+      await user.click(required);
+      expect(required).toBeChecked();
+      // 預留階段不可勾
+      expect(within(section).getByLabelText("地端小模型判定")).toBeDisabled();
+      // 可加開的階段仍可操作
+      expect(within(section).getByLabelText("分類器攻擊判定")).toBeEnabled();
+    });
+
+    it("should make everything read-only with a hint when locked", async () => {
+      mockGuardEffective.mockReturnValue(guardEffectiveResult({ locked: true }));
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("tab", { name: "能力" }));
+      const section = screen.getByText("防護階段").closest("section")!;
+
+      expect(within(section).getByTestId("guard-stages-locked-hint")).toHaveTextContent(
+        "由系統管理員設定",
+      );
+      for (const cb of within(section).getAllByRole("checkbox")) {
+        expect(cb).toBeDisabled();
+      }
+    });
+
+    it("should drop a persisted guard_stages from payload when locked (backend rejects it)", async () => {
+      mockGuardEffective.mockReturnValue(guardEffectiveResult({ locked: true }));
+      const user = userEvent.setup();
+      renderForm({ ...mockBot, guard_stages: ["regex_input", "classifier_attack", "output_guard"] });
+      await user.click(screen.getByRole("tab", { name: "能力" }));
+      await user.click(screen.getByRole("tab", { name: /LLM.*Prompt/i }));
+      await user.click(screen.getByRole("radio", { name: /快速道（fast）/ }));
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      await confirmSave(user);
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      expect("guard_stages" in mockOnSave.mock.calls[0][0]).toBe(false);
+    });
+
+    it("should omit guard_stages from payload when untouched", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("tab", { name: "能力" }));
+      // 改別的欄位觸發變更確認，防護階段未動
+      await user.click(screen.getByRole("tab", { name: /LLM.*Prompt/i }));
+      await user.click(screen.getByRole("radio", { name: /快速道（fast）/ }));
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      await confirmSave(user);
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      expect("guard_stages" in mockOnSave.mock.calls[0][0]).toBe(false);
+    });
+
+    it("should send guard_stages containing the added stage on top of effective ones", async () => {
+      const user = userEvent.setup();
+      renderForm();
+      await user.click(screen.getByRole("tab", { name: "能力" }));
+      const section = screen.getByText("防護階段").closest("section")!;
+      await user.click(within(section).getByLabelText("分類器攻擊判定"));
+      expect(within(section).getByText("Bot 加嚴")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /儲存/ }));
+      const summary = await screen.findByRole("alertdialog");
+      expect(summary).toHaveTextContent("防護階段");
+      expect(summary).toHaveTextContent("分類器攻擊判定");
+      await confirmSave(user);
+
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      expect(mockOnSave.mock.calls[0][0].guard_stages).toEqual([
+        "regex_input",
+        "classifier_attack",
+        "output_guard",
+      ]);
+    });
+
+    it("should show the kb-mode classifier hint only in kb mode", async () => {
+      const user = userEvent.setup();
+      renderForm({ ...mockBot, mode: "kb" });
+      await user.click(screen.getByRole("tab", { name: "能力" }));
+      expect(
+        screen.getByText("知識庫問答模式預設不跑分類器；對外 bot 建議勾選分類器攻擊判定"),
+      ).toBeInTheDocument();
     });
   });
 });

@@ -89,6 +89,16 @@ CREATE TABLE public.abuse_settings (
 );
 
 
+CREATE TABLE public.guard_settings (
+    id character varying(36) NOT NULL,
+    scope_kind character varying(20) NOT NULL,
+    scope_id character varying(64) NOT NULL,
+    overrides json DEFAULT '{}'::json NOT NULL,
+    updated_by character varying(36),
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
 CREATE TABLE public.agent_execution_traces (
     id character varying(36) NOT NULL,
     trace_id character varying(36) NOT NULL,
@@ -245,6 +255,7 @@ CREATE TABLE public.bots (
     hyde_model character varying(100) DEFAULT ''::character varying NOT NULL,
     hyde_extra_hint text DEFAULT ''::text NOT NULL,
     mode character varying(10) DEFAULT 'deep'::character varying NOT NULL,
+    guard_stages json,
     output_format character varying(20) DEFAULT 'text'::character varying NOT NULL,
     output_schema json,
     miss_reply text DEFAULT ''::text NOT NULL,
@@ -1994,6 +2005,14 @@ ALTER TABLE ONLY public.abuse_settings
 
 ALTER TABLE ONLY public.abuse_settings
     ADD CONSTRAINT uq_abuse_settings_scope UNIQUE (scope_kind, scope_id);
+
+
+ALTER TABLE ONLY public.guard_settings
+    ADD CONSTRAINT guard_settings_pkey PRIMARY KEY (id);
+
+
+ALTER TABLE ONLY public.guard_settings
+    ADD CONSTRAINT uq_guard_settings_scope UNIQUE (scope_kind, scope_id);
 
 
 ALTER TABLE ONLY public.tenant_identity_secrets

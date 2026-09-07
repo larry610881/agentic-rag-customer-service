@@ -397,6 +397,13 @@ from src.application.security.guard_rules_use_cases import (
     ResetGuardRulesUseCase,
     UpdateGuardRulesUseCase,
 )
+from src.application.security.guard_settings_use_cases import (
+    CachedGuardProvider,
+    GetEffectiveGuardUseCase,
+    GetGuardOverviewUseCase,
+    GetTenantGuardUseCase,
+    UpdateGuardSettingsUseCase,
+)
 from src.application.security.prompt_guard_service import PromptGuardService
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
@@ -508,6 +515,9 @@ from src.infrastructure.db.repositories.feedback_repository import (
 )
 from src.infrastructure.db.repositories.guard_log_repository import (
     SQLAlchemyGuardLogRepository,
+)
+from src.infrastructure.db.repositories.guard_settings_repository import (
+    SQLAlchemyGuardSettingsRepository,
 )
 from src.infrastructure.db.repositories.guard_rules_config_repository import (
     SQLAlchemyGuardRulesConfigRepository,
@@ -714,6 +724,7 @@ class Container(containers.DeclarativeContainer):
             "src.interfaces.api.auth_router",
             "src.interfaces.api.api_key_router",
             "src.interfaces.api.abuse_admin_router",
+            "src.interfaces.api.guard_settings_router",
             "src.interfaces.api.widget_identity_router",
             "src.interfaces.api.tenant_router",
             "src.interfaces.api.knowledge_base_router",
@@ -867,6 +878,30 @@ class Container(containers.DeclarativeContainer):
     )
     release_abuse_control_use_case = providers.Factory(
         ReleaseAbuseControlUseCase, control_service=abuse_control_service,
+    )
+
+    # Issue #75：防護階段三層設定（platform / profile / tenant + bot 覆寫）
+    # 每租戶快取 60 秒；DB 失效 fail-safe 全開。寫入僅 system_admin。
+    guard_settings_repository = providers.Factory(
+        SQLAlchemyGuardSettingsRepository,
+        session=db_session,
+    )
+    guard_provider = providers.Singleton(
+        CachedGuardProvider,
+        repo_factory=guard_settings_repository.provider,
+        ttl_seconds=60,
+    )
+    get_guard_overview_use_case = providers.Factory(
+        GetGuardOverviewUseCase, repo=guard_settings_repository,
+    )
+    get_tenant_guard_use_case = providers.Factory(
+        GetTenantGuardUseCase, repo=guard_settings_repository,
+    )
+    update_guard_settings_use_case = providers.Factory(
+        UpdateGuardSettingsUseCase,
+        repo=guard_settings_repository,
+        provider=guard_provider,
+        audit=audit_recorder,
     )
 
     # Issue #67 P4：widget 訪客身分由伺服器簽發
@@ -2314,6 +2349,7 @@ class Container(containers.DeclarativeContainer):
         CreateBotUseCase,
         bot_repository=bot_repository,
         encryption_service=encryption_service,
+        guard_provider=guard_provider,  # Issue #75
     )
 
     list_bots_use_case = providers.Factory(
@@ -2339,9 +2375,17 @@ class Container(containers.DeclarativeContainer):
         user_repository=user_repository,
     )
 
+    # Issue #75：租戶端讀 bot 有效防護
+    get_effective_guard_use_case = providers.Factory(
+        GetEffectiveGuardUseCase,
+        bot_repository=bot_repository,
+        provider=guard_provider,
+    )
+
     update_bot_use_case = providers.Factory(
         UpdateBotUseCase,
         audit=audit_recorder,
+        guard_provider=guard_provider,  # Issue #75
         bot_repository=bot_repository,
         cache_service=cache_service,
         encryption_service=encryption_service,
@@ -2790,6 +2834,7 @@ class Container(containers.DeclarativeContainer):
         tenant_repository=tenant_repository,
         config_version_repository=bot_config_version_repository,
         quota_preflight=quota_preflight_service,  # Issue #74
+        guard_provider=guard_provider,  # Issue #75
     )
 
     # --- Platform: Provider Settings ---
@@ -2945,4 +2990,5 @@ class Container(containers.DeclarativeContainer):
         tenant_repository=tenant_repository,  # M19：router_model tenant fallback
         encryption_service=encryption_service,  # L10：快取憑證加密
         quota_preflight=quota_preflight_service,  # Issue #74
+        guard_provider=guard_provider,  # Issue #75
     )

@@ -62,6 +62,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ChevronDown } from "lucide-react";
 import { useKnowledgeBases } from "@/hooks/queries/use-knowledge-bases";
+import { useGuardEffective } from "@/hooks/queries/use-guard-stages";
+import { GuardStageChecklist } from "@/features/guard-stages/components/guard-stage-checklist";
+import {
+  GUARD_LOCKED_HINT,
+  KB_MODE_GUARD_HINT,
+  guardSourceLabel,
+  sortGuardStages,
+} from "@/features/guard-stages/guard-stage-labels";
 import { useBuiltInTools } from "@/hooks/queries/use-built-in-tools";
 import { ModelSelect } from "@/components/shared/model-select";
 import { useEnabledModels } from "@/hooks/queries/use-provider-settings";
@@ -227,6 +235,8 @@ const botFormSchema = z.object({
   hyde_extra_hint: z.string().max(2000).default(""),
   tool_configs: z.record(z.string(), toolRagConfigSchema).default({}),
   customer_service_url: z.string().default(""),
+  // Issue #75 — 防護階段；null = 繼承租戶有效值（payload 省略），有值 = bot 在其上加嚴
+  guard_stages: z.array(z.string()).nullable().default(null),
 })
   .superRefine((data, ctx) => {
     if (data.output_format !== "json") return;
@@ -336,13 +346,14 @@ function buildFormValues(bot: Bot): DefaultValues<BotFormValues> {
     line_show_sources: bot.line_show_sources ?? false,
     tool_configs: bot.tool_configs ?? {},
     customer_service_url: bot.customer_service_url ?? "",
+    guard_stages: bot.guard_stages ?? null,
   };
 }
 
 /** 表單值 → PUT payload（Issue #70 schema 文字轉物件；允許來源逐行拆陣列） */
 function buildPayload(data: BotFormValues) {
   const originsStr = data.widget_allowed_origins as string;
-  const { output_schema_text, ...rest } = data;
+  const { output_schema_text, guard_stages, ...rest } = data;
   // Issue #70 — schema 只在 json 格式有意義；zod 已保證非空時可 parse 成物件
   const output_schema: BotOutputSchema | null =
     data.output_format === "json" && output_schema_text.trim()
@@ -350,6 +361,8 @@ function buildPayload(data: BotFormValues) {
       : null;
   return {
     ...rest,
+    // Issue #75 — 未動過（null = 繼承）就不送，避免把繼承凍結成明確清單
+    ...(guard_stages ? { guard_stages: sortGuardStages(guard_stages) } : {}),
     output_schema,
     widget_allowed_origins: originsStr
       ? originsStr
@@ -380,6 +393,95 @@ const CHANGE_SUMMARY_MAX_ITEMS = 8;
 interface PendingSave {
   payload: BotSavePayload;
   changes: BotFieldDiff[];
+}
+
+/**
+ * Issue #75 — 防護階段：bot 只能在租戶有效值之上加嚴。
+ * GET /guard/effective?bot_id= 回的 stages 已含 bot 加嚴（來源 bot）；來源非 bot 的 = 租戶層基底，
+ * 一律勾選且不可取消；鎖定時全部唯讀且不送 guard_stages（後端鎖定時拒收）。
+ * 表單值 null = 繼承；使用者加開後才存明確清單（= 基底 ∪ 加開，後端驗超集）。
+ */
+type GuardStagesSectionProps = {
+  botId: string;
+  /** null = 未動過（繼承租戶有效值） */
+  value: string[] | null;
+  /** 原始 bot.guard_stages；用來判斷「改回與基底相同」時是否還原為 null */
+  persisted: string[] | null | undefined;
+  mode: BotMode;
+  onChange: (next: string[] | null) => void;
+};
+
+function GuardStagesSection({ botId, value, persisted, mode, onChange }: GuardStagesSectionProps) {
+  const effective = useGuardEffective(botId);
+  const data = effective.data;
+  const locked = data?.locked ?? false;
+  const required = data?.required ?? [];
+  const baseStages = (data?.stages ?? []).filter((s) => data?.source_map[s] !== "bot");
+  const botAdditions = (data?.stages ?? []).filter((s) => data?.source_map[s] === "bot");
+  const selected = sortGuardStages([...baseStages, ...(value ?? botAdditions)]);
+
+  // 鎖定時後端拒收 guard_stages → 表單值還原為 null（payload 省略）
+  useEffect(() => {
+    if (locked && value !== null) onChange(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locked]);
+
+  const sourceOf = (stage: string): string | undefined => {
+    if (required.includes(stage)) return "底線";
+    if (baseStages.includes(stage)) return guardSourceLabel(data?.source_map[stage]);
+    if (selected.includes(stage)) return "Bot 加嚴";
+    return undefined;
+  };
+
+  const handleToggle = (stage: string, checked: boolean) => {
+    const additions = sortGuardStages(
+      (checked ? [...selected, stage] : selected.filter((s) => s !== stage)).filter(
+        (s) => !baseStages.includes(s),
+      ),
+    );
+    // 原本繼承且加開清單清空 → 還原為 null（維持繼承，不送 payload）
+    if (additions.length === 0 && !persisted) {
+      onChange(null);
+      return;
+    }
+    onChange(sortGuardStages([...baseStages, ...additions]));
+  };
+
+  return (
+    <section className="flex flex-col gap-4">
+      <h3 className="text-lg font-semibold">防護階段</h3>
+      <p className="text-sm text-muted-foreground">
+        對話管線各段防護。底線與租戶已啟用的階段不可關閉；此處只能替這個機器人加開。
+      </p>
+      {mode === "kb" && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+          {KB_MODE_GUARD_HINT}
+        </p>
+      )}
+      {effective.isLoading ? (
+        <p className="text-sm text-muted-foreground">載入中…</p>
+      ) : effective.isError || !data ? (
+        <p className="text-sm text-destructive">無法載入防護階段設定</p>
+      ) : (
+        <>
+          {locked && (
+            <p className="text-xs text-muted-foreground" data-testid="guard-stages-locked-hint">
+              已鎖定：{GUARD_LOCKED_HINT}，此處唯讀。
+            </p>
+          )}
+          <GuardStageChecklist
+            idPrefix="bot-guard"
+            stages={data.available_stages}
+            selected={selected}
+            disabledAll={locked}
+            isDisabled={(s) => required.includes(s) || baseStages.includes(s)}
+            badgeOf={sourceOf}
+            onToggle={handleToggle}
+          />
+        </>
+      )}
+    </section>
+  );
 }
 
 interface BotDetailFormProps {
@@ -2111,6 +2213,21 @@ export function BotDetailForm({
               關閉後，對話回覆將不會顯示「參考來源」區塊。
             </p>
           </section>
+
+          {/* Issue #75 — 防護階段（bot 只能在租戶有效值之上加嚴） */}
+          <Controller
+            name="guard_stages"
+            control={control}
+            render={({ field }) => (
+              <GuardStagesSection
+                botId={bot.id}
+                value={field.value ?? null}
+                persisted={bot.guard_stages}
+                mode={watch("mode")}
+                onChange={(next) => field.onChange(next)}
+              />
+            )}
+          />
         </TabsContent>
 
         {/* ================================================================ */}

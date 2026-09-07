@@ -15,6 +15,7 @@ from src.application.abuse.abuse_control_service import (
     apply_conservative_mode,
 )
 from src.application.agent.intent_classifier import IntentClassifier
+from src.application.security.guard_pipeline import GuardPipeline
 from src.application.agent.output_format import (
     FinalizedAnswer,
     OutputSpec,
@@ -53,6 +54,7 @@ from src.domain.conversation.history_strategy import (
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.platform.repository import SystemPromptConfigRepository
 from src.domain.platform.services import EncryptionService
+from src.domain.security.guard_stages import EffectiveGuard
 from src.domain.shared.concurrency import ConversationLock
 from src.domain.shared.exceptions import DomainException
 from src.domain.usage.category import UsageCategory
@@ -199,6 +201,7 @@ class SendMessageUseCase:
         tenant_repository: "TenantRepository | None" = None,
         config_version_repository: Any | None = None,
         quota_preflight: Any | None = None,
+        guard_provider: Any | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -225,6 +228,19 @@ class SendMessageUseCase:
         self._config_version_repo = config_version_repository
         # Issue #74：共用配額預檢（web / widget / LINE / 背景任務同一份）
         self._quota_preflight = quota_preflight
+        # Issue #75：防護階段閘門的 provider（web / widget / LINE 同一份 helper；
+        # 未注入時全部階段開啟 = #75 之前的行為）
+        self._guard_provider = guard_provider
+
+    @property
+    def _guard_pipeline(self) -> GuardPipeline:
+        """Issue #75：無狀態閘門，每次依當下的 guard / provider / classifier 組成
+        （測試會在建構後換掉 _prompt_guard，或以 __new__ 略過 __init__）。"""
+        return GuardPipeline(
+            getattr(self, "_prompt_guard", None),
+            getattr(self, "_guard_provider", None),
+            getattr(self, "_intent_classifier", None),
+        )
 
     def _build_lock_key(self, command: SendMessageCommand) -> str:
         """Build a lock key for the conversation."""
@@ -634,11 +650,16 @@ class SendMessageUseCase:
 
     async def abuse_preflight(self, command: SendMessageCommand) -> AbuseDecision:
         """串流端點在送出 headers 前先問一次；L3+ 直接 raise（→ 429）。"""
-        return await self._abuse_gate(command)
+        guard = await self._guard_pipeline.effective(command.tenant_id)
+        return await self._abuse_gate(command, guard)
 
-    async def _abuse_gate(self, command: SendMessageCommand) -> AbuseDecision:
+    async def _abuse_gate(
+        self, command: SendMessageCommand, guard: EffectiveGuard
+    ) -> AbuseDecision:
         subject = self._abuse_subject(command)
         if self._abuse_control is None or subject is None or command.test_mode:
+            return NO_ABUSE
+        if not self._guard_pipeline.abuse_enabled(guard):  # Issue #75：階段關閉
             return NO_ABUSE
         decision = await self._abuse_control.evaluate(
             command.tenant_id, subject, client_ip=command.client_ip
@@ -651,6 +672,7 @@ class SendMessageUseCase:
     async def _record_abuse(
         self,
         command: SendMessageCommand,
+        guard: EffectiveGuard,
         *,
         guard_hit: bool = False,
         attack: bool = False,
@@ -658,6 +680,8 @@ class SendMessageUseCase:
     ) -> None:
         subject = self._abuse_subject(command)
         if self._abuse_control is None or subject is None or command.test_mode:
+            return
+        if not self._guard_pipeline.abuse_enabled(guard):  # Issue #75：階段關閉
             return
         decision = await self._abuse_control.record(
             command.tenant_id, subject,
@@ -690,13 +714,28 @@ class SendMessageUseCase:
         router_context: str,
         tenant_id: str = "",
         test_mode: bool = False,
+        guard: EffectiveGuard | None = None,
     ) -> dict[str, Any]:
         """Worker routing: classify → override bot_cfg with worker settings.
 
         Returns bot_cfg unchanged if no workers or no match.
         """
+        if guard is None:
+            guard = await self._guard_pipeline.effective(
+                tenant_id, bot_cfg.get("_bot")
+            )
         if bot_cfg.get("mode") == "kb":
-            # Issue #70：kb 模式不分流、不呼叫意圖分類（每題只有 1 次 embedding + 1 次 LLM）
+            # Issue #70：kb 模式不分流；Issue #75：「分類器攻擊判定」仍是可勾選階段，
+            # 開啟時不帶 worker 只做攻擊判定（關閉時每題只有 1 次 embedding + 1 次 LLM）
+            bot_cfg["_classifier_attack"] = await self._guard_pipeline.kb_attack_check(
+                guard,
+                message=message,
+                router_context=router_context,
+                router_model=bot_cfg.get("router_model", ""),
+                tenant_id=tenant_id,
+                bot_id=bot_cfg.get("bot_id") or None,
+                test_mode=test_mode,
+            )
             return bot_cfg
         if not self._worker_config_repo or not self._intent_classifier:
             return bot_cfg
@@ -756,7 +795,10 @@ class SendMessageUseCase:
             test_mode=test_mode,  # M14：影子執行不記生產 token
         )
         matched = outcome.worker
-        bot_cfg["_classifier_attack"] = outcome.is_attack
+        # Issue #75：classifier_attack 階段關閉時忽略分類器的攻擊判定
+        bot_cfg["_classifier_attack"] = self._guard_pipeline.classifier_attack(
+            guard, outcome.is_attack
+        )
         bot_cfg["_unrouted"] = matched is None  # Issue #68 P7：連續無法分流計分
         t_end = AgentTraceCollector.offset_ms()
         AgentTraceCollector.add_node(
@@ -870,8 +912,10 @@ class SendMessageUseCase:
         AgentTraceCollector.start(
             tenant_id=command.tenant_id, agent_mode="", bot_id=command.bot_id,
         )
+        # Issue #75：本回合的有效防護階段（租戶層；bot 層在 bot 設定載入後疊加）
+        guard = await self._guard_pipeline.effective(command.tenant_id)
         # Issue #68 P7：L3+ raise（429）；L2 固定文案不進 LLM；L1 稍後套保守模式
-        abuse_decision = await self._abuse_gate(command)
+        abuse_decision = await self._abuse_gate(command, guard)
         if abuse_decision.fixed_reply:
             return AgentResponse(answer=abuse_decision.reply_text)
         await self._quota_gate(command)  # Issue #74：402 quota_exhausted
@@ -886,6 +930,8 @@ class SendMessageUseCase:
         t_bot = AgentTraceCollector.offset_ms()
         bot_cfg = await self._load_bot_config(command)
         AgentTraceCollector.span("bot_load", "Bot 設定載入", t_bot)
+        guard = self._guard_pipeline.overlay_bot(guard, bot_cfg.get("_bot"))
+        self._guard_pipeline.annotate(guard, metadata)
 
         # Inject rerank config into metadata for RAG tool
         metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
@@ -920,10 +966,10 @@ class SendMessageUseCase:
         # classifier 已經把 user_message 餵給 LLM → prompt injection 已經
         # compromise 那層 LLM。提前到任何 LLM-touching helper 之前。
         blocked = await self._check_input_guard(
-            command, conversation, metadata
+            command, conversation, metadata, guard
         )
         if blocked is not None:
-            await self._record_abuse(command, guard_hit=True)
+            await self._record_abuse(command, guard, guard_hit=True)
             return blocked
 
         history, history_context, router_context = (
@@ -949,7 +995,17 @@ class SendMessageUseCase:
             bot_cfg, command.message, router_context,
             tenant_id=command.tenant_id,
             test_mode=command.test_mode,  # M14：影子執行不記生產分類 token
+            guard=guard,
         )
+
+        # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型。
+        # Issue #75：kb 模式的攻擊判定也在此短路（不進檢索 / 生成）
+        attack_block = await self._check_classifier_attack(
+            command, conversation, bot_cfg, guard
+        )
+        if attack_block is not None:
+            await self._record_abuse(command, guard, attack=True)
+            return attack_block
 
         # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）
         config_hash = await self._fingerprint_config(command, bot_cfg)
@@ -961,16 +1017,10 @@ class SendMessageUseCase:
             metadata["rerank_enabled"] = False
             metadata["rag_retrieval_modes"] = ["raw"]
 
-        # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型
-        attack_block = await self._check_classifier_attack(
-            command, conversation, bot_cfg
-        )
-        if attack_block is not None:
-            await self._record_abuse(command, attack=True)
-            return attack_block
-
         # Issue #68 P7：正常回合也計分（連續無法分流 / 節奏），並套 L1 保守模式
-        await self._record_abuse(command, unrouted=bool(bot_cfg.get("_unrouted")))
+        await self._record_abuse(
+            command, guard, unrouted=bool(bot_cfg.get("_unrouted"))
+        )
         bot_cfg = self._apply_abuse_mode(bot_cfg, abuse_decision)
 
         # Issue #70：kb 模式未命中 → 固定話術，不呼叫生成模型
@@ -1025,16 +1075,17 @@ class SendMessageUseCase:
                 }
             )
 
-        # ── Prompt Guard: output check ──
-        if self._prompt_guard:
-            guard_result = await self._prompt_guard.check_output(
-                response.answer,
-                tenant_id=command.tenant_id,
-                bot_id=command.bot_id,
-                user_id=command.visitor_id,
-                user_message=command.message,
-                dry_run=command.test_mode,  # H6
-            )
+        # ── Prompt Guard: output check（Issue #75：output_guard 階段關閉時不跑）──
+        guard_result = await self._guard_pipeline.check_output(
+            guard,
+            response.answer,
+            tenant_id=command.tenant_id,
+            bot_id=command.bot_id,
+            user_id=command.visitor_id,
+            user_message=command.message,
+            dry_run=command.test_mode,  # H6
+        )
+        if guard_result is not None:
             if not guard_result.passed:
                 response.answer = guard_result.blocked_response
                 # Sprint A++ Guard UX
@@ -1125,7 +1176,8 @@ class SendMessageUseCase:
         AgentTraceCollector.start(
             tenant_id=command.tenant_id, agent_mode="", bot_id=command.bot_id,
         )
-        abuse_decision = await self._abuse_gate(command)  # Issue #68 P7
+        guard = await self._guard_pipeline.effective(command.tenant_id)  # Issue #75
+        abuse_decision = await self._abuse_gate(command, guard)  # Issue #68 P7
         if abuse_decision.fixed_reply:
             yield {"type": "token", "content": abuse_decision.reply_text}
             yield {"type": "done"}
@@ -1147,6 +1199,8 @@ class SendMessageUseCase:
         t_bot = AgentTraceCollector.offset_ms()
         bot_cfg = await self._load_bot_config(command)
         AgentTraceCollector.span("bot_load", "Bot 設定載入", t_bot)
+        guard = self._guard_pipeline.overlay_bot(guard, bot_cfg.get("_bot"))
+        self._guard_pipeline.annotate(guard, metadata)
 
         # Inject rerank config into metadata for RAG tool
         metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
@@ -1178,16 +1232,20 @@ class SendMessageUseCase:
         # 之前擺在 _resolve_worker_config 之後，但 worker routing 的 intent
         # classifier 已經把 user_message 餵給 LLM → prompt injection 已經
         # compromise 那層 LLM。提前到任何 LLM-touching helper 之前。
-        if self._prompt_guard:
-            guard_result = await self._prompt_guard.check_input(
-                command.message,
-                tenant_id=command.tenant_id,
-                bot_id=command.bot_id,
-                user_id=command.visitor_id,
-                dry_run=command.test_mode,  # H6
-            )
+        # Issue #75：regex_input 階段關閉時 pipeline 回 None（視同通過）
+        guard_result = await self._guard_pipeline.check_input(
+            guard,
+            command.message,
+            tenant_id=command.tenant_id,
+            bot_id=command.bot_id,
+            user_id=command.visitor_id,
+            dry_run=command.test_mode,  # H6
+        )
+        if guard_result is not None:
+            if guard_result.passed:
+                metadata["_input_guard_checked"] = True  # F1：咽喉點不重跑
             if not guard_result.passed:
-                await self._record_abuse(command, guard_hit=True)  # Issue #68 P7
+                await self._record_abuse(command, guard, guard_hit=True)  # Issue #68 P7
                 assistant_msg = None
                 if not command.test_mode:
                     conversation.add_message("user", command.message)
@@ -1250,29 +1308,24 @@ class SendMessageUseCase:
             bot_cfg, command.message, router_context,
             tenant_id=command.tenant_id,
             test_mode=command.test_mode,  # M14：影子執行不記生產分類 token
+            guard=guard,
         )
-
-        # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）
-        config_hash = await self._fingerprint_config(command, bot_cfg)
-
-        # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
-        bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
-        if bot_cfg.get("mode") in ("fast", "kb"):
-            # Issue #66：fast profile 壓進 agent metadata（升級 ReAct 也零額外 LLM）
-            metadata["rerank_enabled"] = False
-            metadata["rag_retrieval_modes"] = ["raw"]
 
         # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型。
         # widget 端由 router 過濾 guard_blocked 事件（H7），只收到固定文案。
-        if bot_cfg.get("_classifier_attack") and self._prompt_guard:
-            await self._record_abuse(command, attack=True)  # Issue #68 P7
-            gr = await self._prompt_guard.block_by_classifier(
+        # Issue #75：kb 模式的攻擊判定也在此短路（不進檢索 / 生成）
+        gr = None
+        if bot_cfg.get("_classifier_attack"):
+            gr = await self._guard_pipeline.block_by_classifier(
+                guard,
                 message=command.message,
                 tenant_id=command.tenant_id,
                 bot_id=command.bot_id,
                 user_id=command.visitor_id,
                 dry_run=command.test_mode,  # H6
             )
+        if gr is not None:
+            await self._record_abuse(command, guard, attack=True)  # Issue #68 P7
             attack_msg = None
             if not command.test_mode:
                 conversation.add_message("user", command.message)
@@ -1302,8 +1355,20 @@ class SendMessageUseCase:
             yield atk_done
             return
 
+        # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）
+        config_hash = await self._fingerprint_config(command, bot_cfg)
+
+        # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
+        bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
+        if bot_cfg.get("mode") in ("fast", "kb"):
+            # Issue #66：fast profile 壓進 agent metadata（升級 ReAct 也零額外 LLM）
+            metadata["rerank_enabled"] = False
+            metadata["rag_retrieval_modes"] = ["raw"]
+
         # Issue #68 P7：正常回合也計分（連續無法分流 / 節奏），並套 L1 保守模式
-        await self._record_abuse(command, unrouted=bool(bot_cfg.get("_unrouted")))
+        await self._record_abuse(
+            command, guard, unrouted=bool(bot_cfg.get("_unrouted"))
+        )
         bot_cfg = self._apply_abuse_mode(bot_cfg, abuse_decision)
 
         # Issue #70：kb 模式未命中 → 串流固定話術，不呼叫生成模型
@@ -1390,15 +1455,17 @@ class SendMessageUseCase:
         # - emit guard_blocked 事件給 Studio 前端，前端覆寫對話泡泡
         # - 端使用者(widget/LINE)透過 router sanitize 拿不到此事件，
         #   即時看到原文無法擋（keyword-based guard 的天花板，已記在 docs）
-        if self._prompt_guard and full_answer:
-            output_guard = await self._prompt_guard.check_output(
-                full_answer,
-                tenant_id=command.tenant_id,
-                bot_id=command.bot_id,
-                user_id=command.visitor_id,
-                user_message=command.message,
-                dry_run=command.test_mode,  # H6
-            )
+        # Issue #75：output_guard 階段關閉時 pipeline 回 None
+        output_guard = await self._guard_pipeline.check_output(
+            guard,
+            full_answer,
+            tenant_id=command.tenant_id,
+            bot_id=command.bot_id,
+            user_id=command.visitor_id,
+            user_message=command.message,
+            dry_run=command.test_mode,  # H6
+        )
+        if output_guard is not None:
             if not output_guard.passed:
                 full_answer = output_guard.blocked_response
                 fin = FinalizedAnswer(text=full_answer)  # 攔截後不再是結構化輸出
@@ -1531,18 +1598,24 @@ class SendMessageUseCase:
         return Conversation(tenant_id=command.tenant_id, bot_id=command.bot_id)
 
     async def _check_input_guard(
-        self, command: SendMessageCommand, conversation, metadata: dict
+        self,
+        command: SendMessageCommand,
+        conversation,
+        metadata: dict,
+        guard: EffectiveGuard,
     ) -> AgentResponse | None:
-        """Input guard 前置檢查；攔截時回傳攔截回應（test_mode 不落庫）。"""
-        if not self._prompt_guard:
-            return None
-        guard_result = await self._prompt_guard.check_input(
+        """Input guard 前置檢查；攔截時回傳攔截回應（test_mode 不落庫）。
+        Issue #75：regex_input 階段關閉 → pipeline 回 None → 視同通過。"""
+        guard_result = await self._guard_pipeline.check_input(
+            guard,
             command.message,
             tenant_id=command.tenant_id,
             bot_id=command.bot_id,
             user_id=command.visitor_id,
             dry_run=command.test_mode,  # H6
         )
+        if guard_result is None:
+            return None
         if guard_result.passed:
             # F1（POC 問題 1）：input guard 已在此跑過並通過 — 帶標記讓
             # GuardedAgentService 咽喉點跳過重複的 input guard LLM roundtrip
@@ -1553,23 +1626,31 @@ class SendMessageUseCase:
         )
 
     async def _check_classifier_attack(
-        self, command: SendMessageCommand, conversation, bot_cfg: dict
+        self,
+        command: SendMessageCommand,
+        conversation,
+        bot_cfg: dict,
+        guard: EffectiveGuard,
     ) -> AgentResponse | None:
         """H11：分類器判純攻擊 → 與 regex guard 同一份固定文案短路（web/widget）。
 
         worker routing 的 classify_sanitize 在 _resolve_worker_config 已把 is_attack
-        暫存於 bot_cfg；此處走 block_by_classifier（與 LINE block_by_classifier 同副作用
-        與文案）並回傳攔截回應。無 workers / 非攻擊 / 無 guard → None。
+        暫存於 bot_cfg（Issue #75：階段關閉時已被壓成 False）；此處走
+        block_by_classifier（與 LINE 同副作用與文案）並回傳攔截回應。
+        無 workers / 非攻擊 / 無 guard / 階段關閉 → None。
         """
-        if not bot_cfg.get("_classifier_attack") or not self._prompt_guard:
+        if not bot_cfg.get("_classifier_attack"):
             return None
-        guard_result = await self._prompt_guard.block_by_classifier(
+        guard_result = await self._guard_pipeline.block_by_classifier(
+            guard,
             message=command.message,
             tenant_id=command.tenant_id,
             bot_id=command.bot_id,
             user_id=command.visitor_id,
             dry_run=command.test_mode,  # H6
         )
+        if guard_result is None:
+            return None
         return await self._finalize_input_block(
             command, conversation, guard_result
         )

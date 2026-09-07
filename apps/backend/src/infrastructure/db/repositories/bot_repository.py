@@ -65,6 +65,12 @@ def _tool_configs_to_dict(
     return out
 
 
+def _guard_stages_from_model(model: BotModel) -> list[str] | None:
+    """Issue #75：bots.guard_stages（JSON NULL = 繼承）→ list[str] | None。"""
+    raw = getattr(model, "guard_stages", None)
+    return [str(s) for s in raw] if isinstance(raw, list) else None
+
+
 class SQLAlchemyBotRepository(BotRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -131,6 +137,7 @@ class SQLAlchemyBotRepository(BotRepository):
             eval_depth=model.eval_depth or "L1",
             gate_mode=model.gate_mode or "off",
             mode=getattr(model, "mode", None) or "deep",
+            guard_stages=_guard_stages_from_model(model),
             output_format=getattr(model, "output_format", None) or "text",
             output_schema=dict(model.output_schema) if model.output_schema else None,
             miss_reply=getattr(model, "miss_reply", None) or "",
@@ -267,6 +274,9 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.eval_depth = bot.eval_depth
                 existing.gate_mode = bot.gate_mode
                 existing.mode = bot.mode
+                existing.guard_stages = (
+                    list(bot.guard_stages) if bot.guard_stages is not None else None
+                )
                 existing.output_format = bot.output_format
                 existing.output_schema = bot.output_schema
                 existing.miss_reply = bot.miss_reply
@@ -361,6 +371,9 @@ class SQLAlchemyBotRepository(BotRepository):
                     eval_depth=bot.eval_depth,
                     gate_mode=bot.gate_mode,
                     mode=bot.mode,
+                    guard_stages=(
+                        list(bot.guard_stages) if bot.guard_stages is not None else None
+                    ),
                     output_format=bot.output_format,
                     output_schema=bot.output_schema,
                     miss_reply=bot.miss_reply,

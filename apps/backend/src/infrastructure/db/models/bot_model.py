@@ -76,6 +76,8 @@ class BotModel(Base):
     output_text_field: Mapped[str] = mapped_column(
         String(64), nullable=False, default="answer", server_default="answer"
     )
+    # Issue #75 — bot 層防護階段覆寫（NULL = 繼承租戶有效值）
+    guard_stages: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Issue #54 Phase C — 發布閘門設定
     gate_mode: Mapped[str] = mapped_column(
         String(10), nullable=False, default="off", server_default="off"

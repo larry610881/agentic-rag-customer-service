@@ -6106,3 +6106,21 @@ graph TD
 
 **延伸學習**：計價系統把「度量」「換算」「策略」分層（metering / rating / policy）是電信計費的老架構；token 是 metering、points 是 rating、exhaustion_policy 是 policy，三層各自可換。
 
+## 2026-09-07 — 防護階段三層設定：從「寫死的三段」到「可組裝但有底線」（Issue #75）
+
+**背景**：正則防護、分類器攻擊判定、輸出防護寫死在管線裡；#70 的 kb 模式跳過分類器，等於少一道閘門。Larry 定案：系統管底線、租戶只能加嚴、系統可鎖定、誰改都稽核。
+
+**做得好**：
+1. **先抽通用再長第二個**：abuse_settings 的 scope / resolve / cache / update / audit 骨架抽成 `domain/settings/layered` 與 `application/settings/layered_provider`，abuse 改用後 85 個測試零修改；guard 是第一個消費者，之後 onboarding、通知偏好都能套。
+2. **加嚴單向**：resolve 規則是「底線 ∪ 方案 ∪ 租戶加開 ∪ bot 加開」，任何一層都拿不掉底線；鎖定時忽略租戶與 bot。安全設定的資料模型本身就不允許降級，不靠 UI 擋。
+3. **失敗方向反過來**：其他設定 DB 失效退回預設，防護設定 DB 失效退回「全開」；fail-open 與 fail-safe 依風險方向選，不是一律 fail-open。
+4. **kb 模式攻擊判定拆成一個 stage**：`classify_sanitize(workers=[], attack_only=True)` 只判攻擊不分流，展覽帳號用 exhibition 方案關掉；安全預設放在「開」那邊。
+5. **稽核帶來源**：系統管理員改租戶設定，該租戶變更紀錄看得到、操作者標「平台」。
+
+**隱憂**：
+- 有效預覽分頁對每個租戶各發一次請求（N 次）；租戶多了要補 bulk 端點 → 優先級：低。
+- `local_classifier` 只是預留值，地端小模型接上前是 no-op；UI 顯示「即將推出」 → 優先級：低。
+- `GuardPipeline` 從 application 匯入 `AgentTraceCollector`（infrastructure），沿用既有先例但仍是分層侵蝕 → 隨管線統一（需求四）一起清 → 優先級：中。
+
+**延伸學習**：Policy floor 模式（下層只能比上層更嚴）在 IAM 的 SCP / permission boundary 是同一個概念：把「不可放寬」做進解析函式，而不是靠審核流程。
+

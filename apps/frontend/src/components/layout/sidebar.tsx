@@ -35,6 +35,7 @@ import {
   ClipboardList,
   KeyRound,
   ShieldAlert,
+  ShieldCheck,
   IdCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -58,6 +59,7 @@ const generalNavItems = [
 const MANAGER_NAV_ITEMS = [
   { href: "/api-keys", label: "API 金鑰", icon: KeyRound },
   { href: "/abuse-status", label: "異常控管狀態", icon: ShieldAlert },
+  { href: "/guard-status", label: "防護階段", icon: ShieldCheck },
   { href: "/widget-identity", label: "Widget 身分綁定", icon: IdCard },
 ];
 const MANAGER_ROLES = new Set(["tenant_admin", "system_admin"]);
@@ -123,6 +125,7 @@ const systemAdminGroups: NavGroup[] = [
       { href: "/admin/diagnostic-rules", label: "診斷規則", icon: Stethoscope },
       { href: "/admin/rate-limits", label: "速率限制", icon: Gauge },
       { href: "/admin/abuse-control", label: "異常控管", icon: ShieldAlert },
+      { href: "/admin/guard-control", label: "防護階段", icon: ShieldCheck },
       { href: "/admin/error-events", label: "錯誤追蹤", icon: AlertTriangle },
       { href: "/admin/audit-logs", label: "稽核紀錄", icon: ClipboardList },
     ],

@@ -40,6 +40,7 @@ const FeedbackConversationPage = lazy(
   () => import("@/pages/feedback-conversation"),
 );
 const AbuseStatusPage = lazyWithRetry(() => import("@/pages/abuse-status"));
+const GuardStatusPage = lazyWithRetry(() => import("@/pages/guard-status"));
 const WidgetIdentityPage = lazyWithRetry(() => import("@/pages/widget-identity"));
 const ProvidersSettingsPage = lazyWithRetry(() => import("@/pages/settings-providers"));
 const AdminLogsPage = lazyWithRetry(() => import("@/pages/admin-logs"));
@@ -73,6 +74,7 @@ const AdminErrorEventsPage = lazyWithRetry(() => import("@/pages/admin-error-eve
 const AdminNotificationChannelsPage = lazyWithRetry(() => import("@/pages/admin-notification-channels"));
 const AdminAuditLogsPage = lazyWithRetry(() => import("@/pages/admin-audit-logs"));
 const AdminAbuseControlPage = lazyWithRetry(() => import("@/pages/admin-abuse-control"));
+const AdminGuardControlPage = lazyWithRetry(() => import("@/pages/admin-guard-control"));
 const AdminPromptOptimizerPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer"));
 const AdminPromptOptimizerStartPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-start"));
 const AdminPromptOptimizerDatasetsPage = lazyWithRetry(() => import("@/pages/admin-prompt-optimizer-datasets"));
@@ -128,6 +130,8 @@ export function App() {
             <Route path={ROUTES.API_KEYS} element={<ApiKeysPage />} />
             {/* Issue #68 P7c：租戶端唯讀的異常控管狀態（tenant_admin / system_admin） */}
             <Route path={ROUTES.ABUSE_STATUS} element={<AbuseStatusPage />} />
+            {/* Issue #75：租戶端唯讀的防護階段生效狀態（tenant_admin / system_admin） */}
+            <Route path={ROUTES.GUARD_STATUS} element={<GuardStatusPage />} />
             {/* Issue #68 P7b：Widget 宿主身分綁定 secret 管理（tenant_admin / system_admin） */}
             <Route path={ROUTES.WIDGET_IDENTITY} element={<WidgetIdentityPage />} />
             <Route
@@ -269,6 +273,10 @@ export function App() {
             <Route
               path={ROUTES.ADMIN_ABUSE_CONTROL}
               element={<AdminAbuseControlPage />}
+            />
+            <Route
+              path={ROUTES.ADMIN_GUARD_CONTROL}
+              element={<AdminGuardControlPage />}
             />
             <Route
               path={ROUTES.ADMIN_PROMPT_OPTIMIZER}

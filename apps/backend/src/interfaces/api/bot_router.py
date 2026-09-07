@@ -139,6 +139,8 @@ class CreateBotRequest(BaseModel):
     eval_model: str = ""
     eval_depth: str = "off"
     mode: str = "deep"  # Issue #66：fast | deep；Issue #70：kb（知識庫問答）
+    # Issue #75：bot 層防護階段（None = 繼承租戶有效值；只能是有效值的超集）
+    guard_stages: list[str] | None = None
     # Issue #70：輸出格式 text | plain_text | json（json 可附 output_schema）
     output_format: str = "text"
     output_schema: dict | None = None
@@ -207,6 +209,7 @@ class UpdateBotRequest(BaseModel):
     eval_model: str | None = None
     eval_depth: str | None = None
     mode: str | None = None  # fast | deep | kb
+    guard_stages: list[str] | None = None  # Issue #75：None = 繼承租戶有效值
     output_format: str | None = None
     output_schema: dict | None = None
     miss_reply: str | None = None
@@ -277,6 +280,7 @@ class BotResponse(BaseModel):
     eval_model: str
     eval_depth: str
     mode: str
+    guard_stages: list[str] | None = None  # Issue #75
     output_format: str
     output_schema: dict | None
     miss_reply: str
@@ -350,6 +354,7 @@ def _to_response(bot) -> BotResponse:
         eval_model=bot.eval_model,
         eval_depth=bot.eval_depth,
         mode=bot.mode,
+        guard_stages=bot.guard_stages,
         output_format=bot.output_format,
         output_schema=bot.output_schema,
         miss_reply=bot.miss_reply,
@@ -517,6 +522,7 @@ async def create_bot(
             eval_depth=body.eval_depth,
             gate_mode=body.gate_mode,
             mode=body.mode,
+            guard_stages=body.guard_stages,
             output_format=body.output_format,
             output_schema=body.output_schema,
             miss_reply=body.miss_reply,
@@ -831,6 +837,8 @@ async def list_bot_audit_logs(
                 "action": e.action,
                 "actor_user_id": e.actor_user_id,
                 "actor_email": e.actor_email,
+                "actor_label": e.actor_label,  # Issue #75："平台" | null
+                "entity_type": e.entity_type,  # bot | guard_settings
                 "source": e.source,
                 "created_at": e.created_at.isoformat(),
                 "changes": [_change_to_dict(c) for c in e.changes],

@@ -98,6 +98,10 @@ Retry-After: 900
 
 生效設定在程序內快取 60 秒；後台儲存後立即清快取。設定表讀不到時退回程式預設（fail-open）。API：`GET/PUT /api/v1/admin/abuse/settings/*`、`GET /api/v1/admin/abuse/controls`、`POST /api/v1/admin/abuse/controls/release`。
 
+### 8.1 防護階段（Issue #75）
+
+`abuse_scoring`（本文件的計分與查級）自 Issue #75 起是「防護階段」之一，與 `regex_input` / `classifier_attack` / `output_guard` 一樣走三層設定（系統底線 / 方案 / 租戶 + bot 加嚴、鎖定、全稽核），且預設在**系統底線**內、任何租戶關不掉。三層機制與 abuse_settings 共用（`domain/settings/layered.py`）；規則、API 與管線閘門見 `docs/guard-stages.md`。
+
 ## 9. 聚合層：IP 最後防線與租戶保護（P7d）
 
 - 主體剛進入 L3 時，把 `aggregate_weight`（預設 12）加到兩個聚合層：**IP**（同一來源 IP）與**租戶**。聚合層分數達 L4 門檻（預設 30）才動作。

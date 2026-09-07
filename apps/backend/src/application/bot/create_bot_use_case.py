@@ -1,7 +1,9 @@
 """建立機器人用例"""
 
 from dataclasses import dataclass, field
+from typing import Any
 
+from src.application.bot._guard_stages import validate_bot_guard_stages_for_tenant
 from src.application.bot._output_settings import validate_output_settings
 from src.domain.bot.entity import (
     Bot,
@@ -43,6 +45,7 @@ class CreateBotCommand:
     eval_depth: str = "off"
     gate_mode: str = "off"
     mode: str = "deep"  # Issue #66 fast | deep；Issue #70 kb
+    guard_stages: list[str] | None = None  # Issue #75：None = 繼承租戶有效值
     # Issue #70：輸出格式 / schema / 未命中話術 / 文字通路顯示欄位
     output_format: str = "text"
     output_schema: dict | None = None
@@ -97,11 +100,18 @@ class CreateBotUseCase:
         self,
         bot_repository: BotRepository,
         encryption_service: EncryptionService | None = None,
+        guard_provider: Any | None = None,
     ) -> None:
         self._bot_repo = bot_repository
         self._encryption = encryption_service
+        # Issue #75：bot guard_stages 超集規則需要租戶有效防護（None 時只驗階段名）
+        self._guard_provider = guard_provider
 
     async def execute(self, command: CreateBotCommand) -> Bot:
+        # Issue #75：guard_stages 只能是租戶有效值的超集；鎖定時不得自設
+        guard_stages = await validate_bot_guard_stages_for_tenant(
+            command.guard_stages, command.tenant_id, self._guard_provider
+        )
         # Issue #70 — mode / output_format / schema / miss_reply 值域
         validate_output_settings(
             mode=command.mode,
@@ -160,6 +170,7 @@ class CreateBotUseCase:
             eval_depth=command.eval_depth,
             gate_mode=command.gate_mode,
             mode=command.mode,
+            guard_stages=guard_stages,
             output_format=command.output_format,
             output_schema=dict(command.output_schema) if command.output_schema else None,
             miss_reply=command.miss_reply,

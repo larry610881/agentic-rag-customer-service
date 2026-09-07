@@ -6,6 +6,9 @@ system_admin 的 /audit-logs 存整列 before/after，tenant_admin 沒有入口�
 - changed_fields 轉成扁平的 changes 清單；llm_params 展平一層為 `llm_params.<子欄位>`
 - 長文字欄位（提示詞類）只回字數，不回全文（全文走 system_admin 稽核頁）
 - actor_email 由 user repository 補齊（查無使用者 → None）
+- Issue #75：併入平台對該租戶的防護階段變更（entity_type=guard_settings、
+  entity_id=tenant:<tenant_id>）；source=platform 的列 actor_label 標「平台」，
+  讓租戶看得到「是平台改了我的防護」
 """
 
 from __future__ import annotations
@@ -25,6 +28,9 @@ from src.domain.bot.repository import BotRepository
 from src.domain.shared.exceptions import EntityNotFoundError
 
 BOT_ENTITY_TYPE = "bot"
+GUARD_ENTITY_TYPE = "guard_settings"   # Issue #75：租戶 scope 的防護階段變更
+SOURCE_PLATFORM = "platform"
+PLATFORM_ACTOR_LABEL = "平台"
 
 # 只回字數的長文字欄位（與 config_snapshot.PROMPT_FIELDS 的提示詞類一致）
 LONG_TEXT_FIELDS = frozenset({
@@ -64,6 +70,9 @@ class BotAuditLogEntry:
     created_at: datetime
     source: str
     changes: list[BotAuditChange] = field(default_factory=list)
+    entity_type: str = BOT_ENTITY_TYPE
+    # Issue #75：平台（system_admin）對此租戶的變更 → "平台"；其餘 None（顯示 email）
+    actor_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -137,12 +146,19 @@ class ListBotAuditLogsUseCase:
         ensure_bot_tenant(bot, tenant_id, role)
 
         limit = max(1, min(limit, MAX_LIMIT))
+        # Issue #75：平台對此租戶的防護階段變更（同一 keyset cursor 套在兩個來源上，
+        # 各取 limit+1 再合併排序，next_cursor 仍指向本頁最後一筆）
+        guard_entries = await self._find_entries(
+            GUARD_ENTITY_TYPE, f"tenant:{bot.tenant_id}", limit, cursor
+        )
         # 多取一筆判斷是否還有下一頁
-        entries = await self._audit_repo.find_by_entity(
-            entity_type=BOT_ENTITY_TYPE,
-            entity_id=bot.id.value,
-            limit=limit + 1,
-            cursor=cursor,
+        bot_entries = await self._find_entries(
+            BOT_ENTITY_TYPE, bot.id.value, limit, cursor
+        )
+        entries = sorted(
+            [*bot_entries, *guard_entries],
+            key=lambda e: (e.created_at, e.id),
+            reverse=True,
         )
         has_more = len(entries) > limit
         page_entries = entries[:limit]
@@ -156,6 +172,10 @@ class ListBotAuditLogsUseCase:
                 created_at=e.created_at,
                 source=e.source,
                 changes=build_changes(e.changed_fields),
+                entity_type=e.entity_type,
+                actor_label=(
+                    PLATFORM_ACTOR_LABEL if e.source == SOURCE_PLATFORM else None
+                ),
             )
             for e in page_entries
         ]
@@ -163,6 +183,18 @@ class ListBotAuditLogsUseCase:
             encode_audit_cursor(page_entries[-1]) if has_more and page_entries else None
         )
         return BotAuditLogPage(items=items, next_cursor=next_cursor)
+
+    async def _find_entries(
+        self, entity_type: str, entity_id: str, limit: int, cursor: str | None
+    ) -> list[AuditEntry]:
+        """單一實體的稽核列（多取一筆判斷下一頁）；只留符合 entity_type 的列。"""
+        entries = await self._audit_repo.find_by_entity(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            limit=limit + 1,
+            cursor=cursor,
+        )
+        return [e for e in entries if e.entity_type == entity_type]
 
     async def _resolve_actor_emails(
         self, entries: list[AuditEntry]

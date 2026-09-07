@@ -23,6 +23,7 @@ from src.application.agent.send_message_use_case import (
     _build_structured_content,
     build_tool_rag_params_map,
 )
+from src.application.security.guard_pipeline import GuardPipeline
 from src.domain.abuse.policy import CONSERVATIVE_PROMPT_SUFFIX
 from src.domain.agent.entity import AgentResponse
 from src.domain.agent.services import AgentService
@@ -204,6 +205,7 @@ class HandleWebhookUseCase:
         config_fingerprint: Any | None = None,
         direct_retrieval_service: Any | None = None,
         quota_preflight: Any | None = None,
+        guard_provider: Any | None = None,
     ):
         self._agent_service = agent_service
         # Issue #74：共用配額預檢（與 web/widget 同一份；LINE 只做文字回覆適配）
@@ -234,6 +236,8 @@ class HandleWebhookUseCase:
         self._prompt_guard = prompt_guard
         # Issue #68 P7：與 web/widget/API 共用的異常控管 service
         self._abuse_control = abuse_control
+        # Issue #75：防護階段閘門的 provider（與 web/widget 同一份 helper；未注入時全開）
+        self._guard_provider = guard_provider
         # Issue #50 — workflow 快速道用的檢索管線（direct_retrieval worker）
         self._query_rag = query_rag_use_case
         # 快速道的 DM 圖卡：並行呼叫 DM 工具（signed URL 產生邏輯原封重用）
@@ -256,6 +260,16 @@ class HandleWebhookUseCase:
                 dm_image_query_tool=dm_image_query_tool,
             )
         self._direct_retrieval = direct_retrieval_service
+
+    @property
+    def _guard_pipeline(self) -> GuardPipeline:
+        """Issue #75：無狀態閘門，每次依當下的 guard / provider / classifier 組成
+        （測試會在建構後換掉 _prompt_guard）。"""
+        return GuardPipeline(
+            getattr(self, "_prompt_guard", None),
+            getattr(self, "_guard_provider", None),
+            getattr(self, "_intent_classifier", None),
+        )
 
     async def _dedupe_events(self, events: list[_E]) -> list[_E]:
         """過濾已認領（重送）的事件；無 webhook_event_id 的事件一律保留。"""
@@ -548,8 +562,10 @@ class HandleWebhookUseCase:
         conversation = await self._resolve_conversation(event.user_id, bot)
         AgentTraceCollector.span("conversation_load", "對話載入", t_conv)
 
+        # Issue #75：本回合的有效防護階段（租戶層 + bot 層），三通路同一份 helper
+        guard = await self._guard_pipeline.effective(bot.tenant_id, bot)
         # Issue #68 P7：進入回合前查異常等級（L3+ 回固定文案或靜默；L2 固定文案）
-        abuse_decision = await self._abuse_gate(bot, event, line_service)
+        abuse_decision = await self._abuse_gate(bot, event, line_service, guard)
         if abuse_decision is None:
             return
         if await self._quota_gate(bot, event, line_service):  # Issue #74
@@ -636,16 +652,20 @@ class HandleWebhookUseCase:
             "rerank_model": bot.rerank_model,
             "rerank_top_n": bot.rerank_top_n,
         }
+        # Issue #75：trace 節點 + agent metadata 帶有效階段（咽喉點依此跳過關閉的階段）
+        self._guard_pipeline.annotate(guard, rerank_metadata)
 
         # ── Input guard 與 intent 分類「並行」執行（F2，POC 問題 1）──
         # 兩者都是阻塞 LLM 呼叫，串行要付兩段延遲。權衡（Larry 2026-07-16 核可）：
         # 並行代表 classifier 會在 guard 判定前收到原文一次，但 classifier
         # 輸出僅為 worker 選擇（enum），且 guard 命中時其結果直接丟棄。
+        # Issue #75：regex_input 階段關閉時 pipeline 直接回 None（不建 task）
         guard_task: asyncio.Task[Any] | None = None
         t_guard0 = AgentTraceCollector.offset_ms()
-        if self._prompt_guard is not None:
+        if self._guard_pipeline.regex_input_enabled(guard):
             guard_task = asyncio.create_task(
-                self._prompt_guard.check_input(
+                self._guard_pipeline.check_input(
+                    guard,
                     event.message_text,
                     tenant_id=bot.tenant_id,
                     bot_id=bot.id.value,
@@ -708,7 +728,10 @@ class HandleWebhookUseCase:
                     bot_id=bot.id.value,
                 )
                 matched, rewritten_query = outcome.worker, outcome.query
-                classifier_attack = bool(outcome.is_attack)
+                # Issue #75：classifier_attack 階段關閉時忽略分類器的攻擊判定
+                classifier_attack = self._guard_pipeline.classifier_attack(
+                    guard, outcome.is_attack
+                )
                 unrouted_turn = matched is None
                 t_end = AgentTraceCollector.offset_ms()
                 AgentTraceCollector.add_node(
@@ -764,6 +787,18 @@ class HandleWebhookUseCase:
                         llm_model=matched.llm_model,
                     )
 
+        # Issue #75：kb 模式不分流，但「分類器攻擊判定」仍是可勾選階段——
+        # 開啟時不帶 worker 只做攻擊判定（與 web 通路同一份 helper）
+        if is_kb_bot:
+            classifier_attack = await self._guard_pipeline.kb_attack_check(
+                guard,
+                message=event.message_text,
+                router_context=router_context,
+                router_model=bot.router_model,
+                tenant_id=bot.tenant_id,
+                bot_id=bot.id.value,
+            )
+
         # ── 收斂並行 guard 結果：命中 → 不進 agent，改用 blocked 回覆，
         # 其餘下游（persist / reply / trace）與 guard 在咽喉點命中時完全一致
         # Issue #70：快速道 / kb 檢索 plan、結構化輸出結果（各分支共用，持久化時讀）
@@ -784,23 +819,26 @@ class HandleWebhookUseCase:
                 parallel=True,
                 passed=bool(guard_result.passed),
             )
-        if guard_result is not None and not guard_result.passed:
-            await self._record_abuse(bot, event, guard_hit=True)  # Issue #68 P7
-            result = AgentResponse(
-                answer=guard_result.blocked_response,
-                guard_blocked="input",
-                guard_rule_matched=guard_result.rule_matched,
-            )
-        elif classifier_attack and self._prompt_guard is not None:
-            await self._record_abuse(bot, event, attack=True)  # Issue #68 P7
+        blocked = None
+        if classifier_attack:
             # 前置語意閘門：分類器判純攻擊 → 與 regex 攔截同一份固定文案，
             # 不呼叫檢索與生成（攻擊句不進主模型；拒答 ≈ 分類耗時）
-            blocked = await self._prompt_guard.block_by_classifier(
+            blocked = await self._guard_pipeline.block_by_classifier(
+                guard,
                 message=event.message_text,
                 tenant_id=bot.tenant_id,
                 bot_id=bot.id.value,
                 user_id=event.user_id,
             )
+        if guard_result is not None and not guard_result.passed:
+            await self._record_abuse(bot, event, guard, guard_hit=True)  # Issue #68 P7
+            result = AgentResponse(
+                answer=guard_result.blocked_response,
+                guard_blocked="input",
+                guard_rule_matched=guard_result.rule_matched,
+            )
+        elif blocked is not None:
+            await self._record_abuse(bot, event, guard, attack=True)  # Issue #68 P7
             result = AgentResponse(
                 answer=blocked.blocked_response,
                 guard_blocked="input",
@@ -808,7 +846,7 @@ class HandleWebhookUseCase:
             )
         else:
             # Issue #68 P7：正常回合計分 + L1 保守模式（不呼叫工具、加婉拒指令）
-            await self._record_abuse(bot, event, unrouted=unrouted_turn)
+            await self._record_abuse(bot, event, guard, unrouted=unrouted_turn)
             if abuse_decision.conservative:
                 enabled_tools = []
                 mcp_servers = []
@@ -1248,7 +1286,9 @@ class HandleWebhookUseCase:
             logger.warning("quota_preflight.line_reply_failed", exc_info=True)
         return True
 
-    async def _abuse_gate(self, bot: Bot, event: Any, line_service: Any) -> Any:
+    async def _abuse_gate(
+        self, bot: Bot, event: Any, line_service: Any, guard: Any = None
+    ) -> Any:
         """回 decision；L2/L3+ 已回覆（或靜默）時回 None 讓呼叫端結束回合。"""
         from src.domain.abuse.policy import NO_ABUSE, AbuseSubject, SubjectKind
         from src.infrastructure.observability.agent_trace_collector import (
@@ -1257,6 +1297,8 @@ class HandleWebhookUseCase:
 
         if self._abuse_control is None:
             return NO_ABUSE
+        if guard is not None and not self._guard_pipeline.abuse_enabled(guard):
+            return NO_ABUSE  # Issue #75：abuse_scoring 階段關閉
         subject = AbuseSubject(SubjectKind.LINE_USER, event.user_id)
         group_id = getattr(event, "group_id", None)
         if group_id:
@@ -1284,6 +1326,7 @@ class HandleWebhookUseCase:
         self,
         bot: Bot,
         event: Any,
+        guard: Any = None,
         *,
         guard_hit: bool = False,
         attack: bool = False,
@@ -1296,6 +1339,8 @@ class HandleWebhookUseCase:
 
         if self._abuse_control is None:
             return
+        if guard is not None and not self._guard_pipeline.abuse_enabled(guard):
+            return  # Issue #75：abuse_scoring 階段關閉
         decision = await self._abuse_control.record(
             bot.tenant_id, AbuseSubject(SubjectKind.LINE_USER, event.user_id),
             guard_hit=guard_hit, attack=attack, unrouted=unrouted, channel="line",

@@ -412,6 +412,11 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         from src.interfaces.api.abuse_admin_router import router as abuse_admin_router
 
         application.include_router(abuse_admin_router)
+        from src.interfaces.api.guard_settings_router import (
+            router as guard_settings_router,
+        )
+
+        application.include_router(guard_settings_router)
         from src.interfaces.api.widget_identity_router import (
             router as widget_identity_router,
         )

@@ -205,6 +205,14 @@ export const queryKeys = {
     controls: (tenantId?: string) =>
       ["abuse-control", "controls", tenantId ?? "all"] as const,
   },
+  // Issue #75 — 防護階段
+  guardStages: {
+    all: ["guard-stages"] as const,
+    overview: ["guard-stages", "settings"] as const,
+    tenant: (tenantId: string) =>
+      ["guard-stages", "settings", "tenant", tenantId] as const,
+    effective: (botId: string) => ["guard-stages", "effective", botId] as const,
+  },
   // Issue #68 P7b — Widget 宿主身分綁定
   widgetIdentity: {
     status: (tenantId?: string) =>

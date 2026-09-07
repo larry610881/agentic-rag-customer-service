@@ -44,6 +44,7 @@ _SCALAR_FIELDS = (
     "enabled_tools",
     "max_tool_calls",
     "mode",  # Issue #66：快速 / 深度 profile 影響行為，進快照
+    "guard_stages",  # Issue #75：bot 層防護階段覆寫影響管線行為，進快照
     # Issue #70：輸出格式 / schema / 未命中話術 / 文字欄位皆影響回覆行為，進快照
     "output_format",
     "output_schema",

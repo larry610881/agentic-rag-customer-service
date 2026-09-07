@@ -8,7 +8,7 @@ Feature: 知識庫問答模式 — bot mode kb (Knowledge-Only Mode)
         When 以 web 送出訊息
         Then Agent 應以空工具集被呼叫
         And 共用檢索應被呼叫 1 次
-        And 意圖分類器不應被呼叫
+        And 意圖分類器不應以分流方式被呼叫（Issue #75：僅不帶 worker 的攻擊判定）
 
     Scenario: kb bot 檢索未命中 — 回未命中話術且不呼叫生成模型
         Given 一個 mode 為 "kb" 且未命中話術為 "這個問題不在我的服務範圍內" 的 bot，檢索分數 0.10

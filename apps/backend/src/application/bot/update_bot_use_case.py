@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
+from src.application.bot._guard_stages import validate_bot_guard_stages_for_tenant
 from src.application.bot._output_settings import validate_output_settings
 from src.application.bot._tenant_guard import ensure_bot_tenant
 from src.application.prompt_gate.static_checks import check_prompt_fields
@@ -71,6 +72,7 @@ class UpdateBotCommand:
     eval_depth: object = _UNSET
     gate_mode: object = _UNSET
     mode: object = _UNSET  # Issue #66：fast | deep；Issue #70：kb
+    guard_stages: object = _UNSET  # Issue #75：None = 繼承租戶有效值
     # Issue #70：輸出格式 / schema / 未命中話術 / 文字通路顯示欄位
     output_format: object = _UNSET
     output_schema: object = _UNSET
@@ -127,8 +129,11 @@ class UpdateBotUseCase:
         tenant_repository=None,
         eval_dataset_repository=None,
         audit: Any | None = None,
+        guard_provider: Any | None = None,
     ) -> None:
         self._bot_repo = bot_repository
+        # Issue #75：bot guard_stages 超集規則需要租戶有效防護（None 時只驗階段名）
+        self._guard_provider = guard_provider
         self._cache_service = cache_service
         self._encryption = encryption_service
         self._version_repo = version_repository
@@ -413,6 +418,12 @@ class UpdateBotUseCase:
 
         # Capture old bindings before update (may contain encrypted env_values)
         old_bindings_map = {b.registry_id: b for b in bot.mcp_bindings}
+
+        # Issue #75：guard_stages 只能是租戶有效值的超集；鎖定時不得自設
+        if command.guard_stages is not _UNSET:
+            bot.guard_stages = await validate_bot_guard_stages_for_tenant(
+                command.guard_stages, bot.tenant_id, self._guard_provider
+            )
 
         self._apply_updates(bot, command)
 

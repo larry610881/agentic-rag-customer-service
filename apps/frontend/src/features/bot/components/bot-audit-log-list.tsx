@@ -22,7 +22,13 @@ export const BOT_AUDIT_ACTION_LABEL: Record<string, string> = {
   reset: "重設",
 };
 
+/** Issue #75 — 非 bot 本體的變更（例如平台改了租戶的防護設定）以實體標籤區分 */
+const ENTITY_TYPE_LABEL: Record<string, string> = {
+  guard_settings: "防護設定（平台）",
+};
+
 function actorLabel(entry: BotAuditLogEntry): string {
+  if (entry.actor_label) return entry.actor_label;
   if (entry.actor_email) return entry.actor_email;
   if (entry.actor_user_id) return `${entry.actor_user_id.slice(0, 8)}…`;
   return "系統";
@@ -69,6 +75,11 @@ function EntryRow({ entry }: { entry: BotAuditLogEntry }) {
         <Badge variant="outline" className="text-xs">
           {BOT_AUDIT_ACTION_LABEL[entry.action] ?? entry.action}
         </Badge>
+        {entry.entity_type && ENTITY_TYPE_LABEL[entry.entity_type] && (
+          <Badge variant="secondary" className="text-xs">
+            {ENTITY_TYPE_LABEL[entry.entity_type]}
+          </Badge>
+        )}
         {count > 0 ? (
           <Button
             type="button"

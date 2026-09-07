@@ -88,6 +88,38 @@ describe("BotAuditLogList", () => {
     expect(detail).not.toHaveTextContent("xxxxxxxxxx");
   });
 
+  it("shows 平台 as actor and a 防護設定（平台）badge for guard_settings entries (Issue #75)", () => {
+    mockUseBotAuditLogs.mockReturnValue(
+      hookResult({
+        data: {
+          pages: [
+            {
+              items: [
+                {
+                  id: "log-guard",
+                  action: "update",
+                  actor_user_id: "sys-admin-1",
+                  actor_email: "root@example.com",
+                  actor_label: "平台",
+                  entity_type: "guard_settings",
+                  source: "platform",
+                  created_at: "2026-09-07T12:00:00+00:00",
+                  changes: [{ field: "locked", before: false, after: true }],
+                },
+              ],
+              next_cursor: null,
+            },
+          ],
+          pageParams: [undefined],
+        },
+      }),
+    );
+    renderWithProviders(<BotAuditLogList botId="bot-1" />);
+    expect(screen.getByText("平台")).toBeInTheDocument();
+    expect(screen.queryByText("root@example.com")).not.toBeInTheDocument();
+    expect(screen.getByText("防護設定（平台）")).toBeInTheDocument();
+  });
+
   it("shows an empty state when there are no entries", () => {
     mockUseBotAuditLogs.mockReturnValue(
       hookResult({ data: { pages: [{ items: [], next_cursor: null }], pageParams: [] } }),
