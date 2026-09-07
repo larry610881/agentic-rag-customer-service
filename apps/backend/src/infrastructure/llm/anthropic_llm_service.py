@@ -8,6 +8,7 @@ import httpx
 from src.domain.rag.pricing import calculate_usage
 from src.domain.rag.services import LLMService
 from src.domain.rag.value_objects import LLMResult
+from src.infrastructure.llm.reasoning_effort import sampling_params_allowed
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -87,6 +88,35 @@ def anthropic_chat_model_kwargs(
     return kwargs
 
 
+def anthropic_sampling_kwargs(
+    model: str,
+    *,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    top_k: int | None = None,
+) -> dict:
+    """Issue #76：依模型決定實際送出的取樣參數（Messages API / ChatAnthropic 共用）。
+
+    `sampling_params_allowed(model)` 為 False（Opus 4.7 / 4.8 / Opus 5 / Fable 5 /
+    Mythos 送任一即 400；Sonnet 5 只收預設值）時全部不帶，每個被丟棄的參數記
+    `llm.temperature.dropped`（欄位 param 標示 temperature / top_p / top_k）。
+    None 表示呼叫端本來就沒要求，不帶也不記錄。
+    """
+    requested = {"temperature": temperature, "top_p": top_p, "top_k": top_k}
+    present = {k: v for k, v in requested.items() if v is not None}
+    if not present or sampling_params_allowed(model):
+        return present
+    for param, value in present.items():
+        logger.warning(
+            "llm.temperature.dropped",
+            model=model,
+            param=param,
+            requested=value,
+            provider="anthropic",
+        )
+    return {}
+
+
 def anthropic_output_config(response_schema: dict | None) -> dict | None:
     """Issue #70：Messages API 原生結構化輸出 ``output_config.format``
     （json_schema；Claude 4.5+ 支援，見 domain/llm/structured_output 能力表）。
@@ -135,16 +165,18 @@ class AnthropicLLMService(LLMService):
         Issue #72：reasoning_effort 對應 thinking / output_config.effort
         （anthropic_thinking_config）；不合法的組合丟棄並記
         `llm.reasoning_effort.dropped`。
+        Issue #76：temperature 只在 `sampling_params_allowed` 的模型帶
+        （Opus 4.7+ / Opus 5 / Fable 5 / Sonnet 5 不帶，記 `llm.temperature.dropped`）。
         response_json_object（B 級）無原生參數，忽略（prompt 約束 + 驗證）。
         """
         from langchain_anthropic import ChatAnthropic
 
         kwargs: dict = {
             "model": self._model,
-            "temperature": temperature,
             "max_tokens": max_tokens,
             "api_key": self._api_key,
         }
+        kwargs.update(anthropic_sampling_kwargs(self._model, temperature=temperature))
         kwargs.update(anthropic_chat_model_kwargs(self._model, reasoning_effort))
         output_config = anthropic_output_config(response_schema)
         if output_config is not None:
@@ -187,8 +219,8 @@ class AnthropicLLMService(LLMService):
             ],
             "messages": [{"role": "user", "content": content}],
         }
-        if temperature is not None:
-            body["temperature"] = temperature
+        # Issue #76：Opus 4.7+ / Opus 5 / Fable 5 / Sonnet 5 不帶 temperature
+        body.update(anthropic_sampling_kwargs(self._model, temperature=temperature))
         output_config = anthropic_output_config(response_schema)
         if output_config is not None:
             body["output_config"] = output_config  # Issue #70：原生結構化輸出

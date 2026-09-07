@@ -411,12 +411,17 @@ class ReActAgentService(AgentService):
             from src.infrastructure.llm.anthropic_llm_service import (
                 anthropic_chat_model_kwargs,
                 anthropic_output_config,
+                anthropic_sampling_kwargs,
             )
             anthropic_kwargs: dict[str, Any] = {
                 "model": model or "claude-sonnet-4-20250514",
-                "temperature": temperature,
                 "max_tokens": max_tokens,
             }
+            # Issue #76：Opus 4.7+ / Opus 5 / Fable 5 / Sonnet 5 不帶 temperature
+            # （送了 400），丟棄時記 llm.temperature.dropped
+            anthropic_kwargs.update(anthropic_sampling_kwargs(
+                anthropic_kwargs["model"], temperature=temperature,
+            ))
             # Issue #72：none → 不帶 thinking（Opus 5 / Sonnet 5 明確 disabled）；
             # low/medium/high → adaptive thinking + output_config.effort
             anthropic_kwargs.update(

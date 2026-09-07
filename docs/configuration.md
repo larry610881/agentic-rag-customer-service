@@ -73,6 +73,17 @@ provider_default` 標示。對應表（`src/infrastructure/llm/`，2026-09-04 �
 與 trace `total_tokens.reasoning_tokens`、串流 `usage` 事件；Anthropic Messages API 不回傳
 thinking token 明細（計入 `output_tokens`），故為 0。`token_usage_records` 無此欄位（不新增 migration）。
 
+取樣參數（Issue #76，`reasoning_effort.sampling_params_allowed`，2026-09-07 依 claude-api skill
+`shared/error-codes.md` / `shared/model-migration.md` 核對）：bot 的 `temperature` 只在模型接受時才送，
+不接受時三條路徑（raw `_build_body`、`get_chat_model`、`react_agent_service._create_chat_model`）
+一律不帶並記 `llm.temperature.dropped`（欄位 `model` / `param` / `requested`）；`top_p` / `top_k` 同規則。
+
+| Anthropic 模型 | `temperature` / `top_p` / `top_k` |
+|----------------|-----------------------------------|
+| Opus 4.7 / 4.8、Opus 5、Fable 5 / 5.1、Mythos | **不送**（送任一即 400） |
+| Sonnet 5 | **不送**（只收預設值，非預設 400） |
+| Opus 4.6 / Sonnet 4.6、4.5 / 4.x / 3.x、未知模型 | 直傳 |
+
 ### 認證 / 安全（Issue #67）
 
 | 變數 | 預設 | 說明 |
