@@ -17,6 +17,7 @@ class NotificationChannel:
     notify_diagnostics: bool = False
     diagnostic_severity: str = "critical"  # 'critical' | 'warning' | 'all'
     notify_abuse: bool = True  # Issue #68 P7c：異常控管告警 / 摘要
+    notify_config_change: bool = False  # Issue #77：bot / worker / 防護設定變更
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 

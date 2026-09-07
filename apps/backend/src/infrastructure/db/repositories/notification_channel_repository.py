@@ -32,6 +32,7 @@ class SQLAlchemyNotificationChannelRepository(NotificationChannelRepository):
             notify_diagnostics=m.notify_diagnostics,
             diagnostic_severity=m.diagnostic_severity,
             notify_abuse=m.notify_abuse,
+            notify_config_change=m.notify_config_change,
             updated_at=m.updated_at,
             created_at=m.created_at,
         )
@@ -53,6 +54,7 @@ class SQLAlchemyNotificationChannelRepository(NotificationChannelRepository):
                 existing.notify_diagnostics = channel.notify_diagnostics
                 existing.diagnostic_severity = channel.diagnostic_severity
                 existing.notify_abuse = channel.notify_abuse
+                existing.notify_config_change = channel.notify_config_change
                 existing.updated_at = datetime.now(timezone.utc)
             else:
                 self._session.add(
@@ -67,6 +69,7 @@ class SQLAlchemyNotificationChannelRepository(NotificationChannelRepository):
                         notify_diagnostics=channel.notify_diagnostics,
                         diagnostic_severity=channel.diagnostic_severity,
                         notify_abuse=channel.notify_abuse,
+                        notify_config_change=channel.notify_config_change,
                         updated_at=channel.updated_at,
                         created_at=channel.created_at,
                     )

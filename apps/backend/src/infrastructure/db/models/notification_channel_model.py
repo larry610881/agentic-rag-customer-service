@@ -28,6 +28,10 @@ class NotificationChannelModel(Base):
     notify_abuse: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
+    # Issue #77：bot / worker / 租戶防護設定變更通知
+    notify_config_change: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     diagnostic_severity: Mapped[str] = mapped_column(
         String(20), nullable=False, default="critical", server_default="critical"
     )

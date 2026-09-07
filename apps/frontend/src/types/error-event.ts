@@ -45,6 +45,8 @@ export interface NotificationChannel {
   diagnostic_severity: "critical" | "warning" | "all";
   /** 異常控管告警（L3/L4 冷卻與封鎖、fail-open、429 突增、每日摘要），後端預設 true */
   notify_abuse: boolean;
+  /** Issue #77 — 設定變更通知（模型 / 提示詞等被修改時），後端預設 false */
+  notify_config_change: boolean;
   updated_at: string;
   created_at: string;
 }
@@ -59,4 +61,5 @@ export interface CreateChannelPayload {
   notify_diagnostics?: boolean;
   diagnostic_severity?: string;
   notify_abuse?: boolean;
+  notify_config_change?: boolean;
 }

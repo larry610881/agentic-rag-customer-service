@@ -37,6 +37,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   IdCard,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,8 @@ const MANAGER_NAV_ITEMS = [
   { href: "/abuse-status", label: "異常控管狀態", icon: ShieldAlert },
   { href: "/guard-status", label: "防護階段", icon: ShieldCheck },
   { href: "/widget-identity", label: "Widget 身分綁定", icon: IdCard },
+  // Issue #77：租戶設定（設定變更通知）
+  { href: "/tenant-settings", label: "租戶設定", icon: Settings },
 ];
 const MANAGER_ROLES = new Set(["tenant_admin", "system_admin"]);
 

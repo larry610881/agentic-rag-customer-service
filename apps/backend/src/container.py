@@ -408,6 +408,10 @@ from src.application.security.prompt_guard_service import PromptGuardService
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
+from src.application.tenant.notification_preferences_use_cases import (
+    GetTenantNotificationPreferencesUseCase,
+    UpdateTenantNotificationPreferencesUseCase,
+)
 from src.application.tenant.update_tenant_billing_policy_use_case import (
     UpdateTenantBillingPolicyUseCase,
 )
@@ -655,6 +659,7 @@ from src.infrastructure.memory.llm_memory_extraction_service import (
 from src.infrastructure.milvus.milvus_vector_store import MilvusVectorStore
 from src.infrastructure.notification.dispatch_helper import (
     dispatch_abuse_notification,
+    dispatch_config_change_notification,
 )
 from src.infrastructure.notification.email_sender import EmailNotificationSender
 from src.infrastructure.notification.redis_throttle import RedisNotificationThrottle
@@ -802,6 +807,8 @@ class Container(containers.DeclarativeContainer):
     audit_recorder = providers.Singleton(
         AuditRecorder,
         session_factory=trace_session_factory,
+        # Issue #77：稽核成功寫入後 fire-and-forget 設定變更通知（fail-open）
+        on_recorded=providers.Object(dispatch_config_change_notification),
     )
 
     jwt_service = providers.Singleton(
@@ -1004,22 +1011,26 @@ class Container(containers.DeclarativeContainer):
         repo=worker_config_repository,
     )
 
+    # Issue #77：worker 稽核帶 tenant_id（自 bot 解析）與 parent=bot
     create_worker_use_case = providers.Factory(
         CreateWorkerUseCase,
         audit=audit_recorder,
         repo=worker_config_repository,
+        bot_repository=bot_repository,
     )
 
     update_worker_use_case = providers.Factory(
         UpdateWorkerUseCase,
         audit=audit_recorder,
         repo=worker_config_repository,
+        bot_repository=bot_repository,
     )
 
     delete_worker_use_case = providers.Factory(
         DeleteWorkerUseCase,
         audit=audit_recorder,
         repo=worker_config_repository,
+        bot_repository=bot_repository,
     )
 
     user_repository = providers.Factory(
@@ -1908,6 +1919,17 @@ class Container(containers.DeclarativeContainer):
         audit=audit_recorder,
     )
 
+    # Issue #77：租戶設定變更通知偏好
+    get_tenant_notification_preferences_use_case = providers.Factory(
+        GetTenantNotificationPreferencesUseCase,
+        tenant_repository=tenant_repository,
+    )
+    update_tenant_notification_preferences_use_case = providers.Factory(
+        UpdateTenantNotificationPreferencesUseCase,
+        tenant_repository=tenant_repository,
+        audit=audit_recorder,
+    )
+
     # S-Ledger-Unification P4 + Tier 1 T1.1: topup_addon 寫 append-only log
     # + 注入 ledger_repository 以 fetch 真實 ledger.id 進 BillingTransaction（FK 合規）
     topup_addon_use_case = providers.Factory(
@@ -2373,6 +2395,7 @@ class Container(containers.DeclarativeContainer):
         bot_repository=bot_repository,
         audit_log_repository=audit_log_repository,
         user_repository=user_repository,
+        worker_repository=worker_config_repository,  # Issue #77：worker 列名稱
     )
 
     # Issue #75：租戶端讀 bot 有效防護

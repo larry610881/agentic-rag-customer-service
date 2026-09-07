@@ -42,6 +42,9 @@ async def list_audit_logs(
                 "changed_fields": e.changed_fields,
                 "source": e.source,
                 "created_at": e.created_at.isoformat(),
+                # Issue #77：worker 列 → ("bot", bot_id)；其餘 null
+                "parent_entity_type": e.parent_entity_type,
+                "parent_entity_id": e.parent_entity_id,
             }
             for e in entries
         ],

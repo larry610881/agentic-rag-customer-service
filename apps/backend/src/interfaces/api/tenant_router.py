@@ -13,6 +13,11 @@ from src.application.tenant.create_tenant_use_case import (
 )
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
+from src.application.tenant.notification_preferences_use_cases import (
+    GetTenantNotificationPreferencesUseCase,
+    TenantNotificationPreferencesView,
+    UpdateTenantNotificationPreferencesUseCase,
+)
 from src.application.tenant.update_tenant_billing_policy_use_case import (
     UpdateTenantBillingPolicyUseCase,
 )
@@ -92,6 +97,39 @@ class TenantBillingPolicyResponse(BaseModel):
     effective_policy: str
     block_message: str
     tenant_may_change_policy: bool
+
+
+class UpdateNotificationPreferencesRequest(BaseModel):
+    """Issue #77：要通知的欄位群組；null = 平台預設（model + prompt）；
+    [] = 完全關閉。"""
+
+    config_change_notify_fields: list[str] | None = None
+
+
+class NotifyGroupOptionResponse(BaseModel):
+    key: str
+    label: str
+
+
+class TenantNotificationPreferencesResponse(BaseModel):
+    tenant_id: str
+    config_change_notify_fields: list[str] | None = None
+    effective_fields: list[str]
+    available_groups: list[NotifyGroupOptionResponse]
+
+
+def _preferences_response(
+    view: TenantNotificationPreferencesView,
+) -> TenantNotificationPreferencesResponse:
+    return TenantNotificationPreferencesResponse(
+        tenant_id=view.tenant_id,
+        config_change_notify_fields=view.fields,
+        effective_fields=view.effective,
+        available_groups=[
+            NotifyGroupOptionResponse(key=g.key, label=g.label)
+            for g in view.available_groups
+        ],
+    )
 
 
 def _resolve_tenant_alias(tenant_id: str, caller: CurrentTenant) -> str:
@@ -342,3 +380,71 @@ async def update_tenant_billing_policy(
         block_message=view.block_message,
         tenant_may_change_policy=view.tenant_may_change_policy,
     )
+
+
+@router.get(
+    "/{tenant_id}/notification-preferences",
+    response_model=TenantNotificationPreferencesResponse,
+)
+@inject
+async def get_tenant_notification_preferences(
+    tenant_id: str,
+    caller: CurrentTenant = Depends(require_role("system_admin", "tenant_admin")),
+    use_case: GetTenantNotificationPreferencesUseCase = Depends(
+        Provide[Container.get_tenant_notification_preferences_use_case]
+    ),
+) -> TenantNotificationPreferencesResponse:
+    """Issue #77：租戶設定變更通知偏好（`tenant_id` 可用 `me`；
+    tenant_admin 只能讀自己）。"""
+    tenant_id = _resolve_tenant_alias(tenant_id, caller)
+    if caller.role != "system_admin" and caller.tenant_id != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot read other tenant's notification preferences",
+        )
+    try:
+        view = await use_case.execute(tenant_id=tenant_id)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
+    return _preferences_response(view)
+
+
+@router.put(
+    "/{tenant_id}/notification-preferences",
+    response_model=TenantNotificationPreferencesResponse,
+)
+@inject
+async def update_tenant_notification_preferences(
+    tenant_id: str,
+    body: UpdateNotificationPreferencesRequest,
+    caller: CurrentTenant = Depends(require_role("system_admin", "tenant_admin")),
+    use_case: UpdateTenantNotificationPreferencesUseCase = Depends(
+        Provide[Container.update_tenant_notification_preferences_use_case]
+    ),
+) -> TenantNotificationPreferencesResponse:
+    """Issue #77：tenant_admin 只能改自己（他租戶 403）；未知群組 422；
+    每次寫入留稽核。"""
+    tenant_id = _resolve_tenant_alias(tenant_id, caller)
+    try:
+        view = await use_case.execute(
+            tenant_id=tenant_id,
+            groups=body.config_change_notify_fields,
+            actor_role=caller.role,
+            actor_tenant_id=caller.tenant_id,
+            actor_user_id=caller.user_id,
+        )
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+        ) from None
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        ) from None
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message
+        ) from None
+    return _preferences_response(view)

@@ -32,7 +32,7 @@
 | 平台 | `guard_settings(platform, "*")` | `stages`、`required_stages` | 底線與預設；只有 system_admin 可改 |
 | 方案 | `guard_settings(profile, <name>)` | `stages` | 給租戶一組預設集合（可少於平台預設，但底線由聯集保證） |
 | 租戶 | `guard_settings(tenant, <tenant_id>)` | `stages`、`profile`、`locked` | **只能加不能減**；`locked=true` 時忽略租戶與 bot 覆寫；只有 system_admin 可改 |
-| bot | `bots.guard_stages`（JSON，NULL = 繼承） | 清單 | 儲存時驗證必須是租戶有效集合的**超集**；租戶被鎖定時不得自設（422） |
+| bot | `bots.guard_stages`（JSON，NULL = 繼承） | 清單 | 儲存時驗證必須是租戶有效集合的**超集**；租戶被鎖定時不得自設（400，走 bot_router 的 ValidationError handler） |
 
 - 未知階段名 → `422 Unknown guard stage`。
 - `required_stages` 只准在 platform；`locked` / `profile` 只准在 tenant。
@@ -81,7 +81,7 @@ web / widget（`SendMessageUseCase` execute + stream）與 LINE（`HandleWebhook
 | GET | `/api/v1/admin/guard/settings/tenants/{tenant_id}` | system_admin / 本租戶 tenant_admin | 該租戶的方案、覆寫、鎖定、有效值、`editable` |
 | PUT | `/api/v1/admin/guard/settings/tenants/{tenant_id}` | system_admin | `{"profile": "...", "overrides": {"stages": [...]}, "locked": true\|false}` |
 | GET | `/api/v1/guard/effective?bot_id=` | tenant_admin / system_admin | 某 bot 的有效防護（跨租戶 → 404） |
-| POST / PUT | `/api/v1/bots` / `/api/v1/bots/{bot_id}` | 既有 | 多 `guard_stages: string[] \| null` 欄位（超集規則；鎖定時 422） |
+| POST / PUT | `/api/v1/bots` / `/api/v1/bots/{bot_id}` | 既有 | 多 `guard_stages: string[] \| null` 欄位（超集規則；鎖定時 400） |
 
 `/api/v1/guard/effective` 回應：
 

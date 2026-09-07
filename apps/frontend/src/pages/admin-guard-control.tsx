@@ -220,6 +220,9 @@ function ProfileEditor({
 
   const dirty = isNew || !sameSet(stages, initial);
   const isBuiltin = overview.builtin_profiles.includes(name);
+  // 內建方案存 overrides: {} 會以 DB 空列蓋掉內建定義（merge_profiles 同名以 DB 為準），
+  // 例如 exhibition 會變成跟 standard 一樣 → 不提供還原，只能改清單
+  const canReset = hasOwnStages && !isBuiltin;
 
   const save = (next: { stages?: string[] }, successMsg: string) =>
     mutation.mutate(
@@ -251,7 +254,7 @@ function ProfileEditor({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {hasOwnStages && (
+          {canReset && (
             <Button
               type="button"
               size="sm"

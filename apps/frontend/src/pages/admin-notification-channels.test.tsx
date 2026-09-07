@@ -38,6 +38,7 @@ const TEAMS_CHANNEL: NotificationChannel = {
   notify_diagnostics: false,
   diagnostic_severity: "critical",
   notify_abuse: false,
+  notify_config_change: true,
   updated_at: "2026-09-01T08:00:00Z",
   created_at: "2026-09-01T08:00:00Z",
 };
@@ -53,6 +54,7 @@ const EMAIL_INCOMPLETE: NotificationChannel = {
   notify_diagnostics: true,
   diagnostic_severity: "warning",
   notify_abuse: true,
+  notify_config_change: false,
   updated_at: "2026-09-01T08:00:00Z",
   created_at: "2026-09-01T08:00:00Z",
 };
@@ -151,6 +153,56 @@ describe("AdminNotificationChannelsPage", () => {
     expect(updateMutate.mock.calls[0][0]).toMatchObject({
       id: "ch-teams",
       data: { notify_abuse: true },
+    });
+  });
+
+  it("新增渠道：設定變更通知預設關閉且 payload 帶 notify_config_change: false（Issue #77）", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AdminNotificationChannelsPage />);
+
+    await user.click(screen.getByRole("button", { name: "新增渠道" }));
+    const dialog = screen.getByRole("dialog");
+    const configSwitch = within(dialog).getByRole("switch", { name: "設定變更通知" });
+    expect(configSwitch).toHaveAttribute("aria-checked", "false");
+    expect(
+      within(dialog).getByText("模型 / 提示詞等設定被修改時通知此渠道"),
+    ).toBeInTheDocument();
+
+    await user.type(within(dialog).getByPlaceholderText("例：Slack #alerts"), "x");
+    await user.click(within(dialog).getByRole("button", { name: "建立" }));
+    expect(createMutate.mock.calls[0][0]).toMatchObject({ notify_config_change: false });
+  });
+
+  it("新增渠道：開啟設定變更通知後 payload 為 true", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AdminNotificationChannelsPage />);
+
+    await user.click(screen.getByRole("button", { name: "新增渠道" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("switch", { name: "設定變更通知" }));
+    await user.type(within(dialog).getByPlaceholderText("例：Slack #alerts"), "y");
+    await user.click(within(dialog).getByRole("button", { name: "建立" }));
+    expect(createMutate.mock.calls[0][0]).toMatchObject({ notify_config_change: true });
+  });
+
+  it("編輯渠道：回填 notify_config_change 並包含在更新 payload；列表顯示「設定變更」", async () => {
+    const user = userEvent.setup();
+    setChannels([TEAMS_CHANNEL]);
+    renderWithProviders(<AdminNotificationChannelsPage />);
+
+    const row = screen.getByRole("row", { name: /Teams 營運群/ });
+    expect(within(row).getByText("設定變更")).toBeInTheDocument();
+
+    await user.click(within(row).getAllByRole("button")[0]);
+    const dialog = screen.getByRole("dialog");
+    const configSwitch = within(dialog).getByRole("switch", { name: "設定變更通知" });
+    expect(configSwitch).toHaveAttribute("aria-checked", "true");
+    await user.click(configSwitch);
+    await user.click(within(dialog).getByRole("button", { name: "更新" }));
+
+    expect(updateMutate.mock.calls[0][0]).toMatchObject({
+      id: "ch-teams",
+      data: { notify_config_change: false },
     });
   });
 

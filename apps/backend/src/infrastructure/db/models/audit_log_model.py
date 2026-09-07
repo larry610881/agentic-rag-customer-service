@@ -24,8 +24,15 @@ class AuditLogModel(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+    # Issue #77：所屬上層實體（worker → bot），租戶端 bot 變更紀錄據此併入
+    parent_entity_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    parent_entity_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     __table_args__ = (
         Index("ix_audit_logs_entity", "entity_type", "entity_id", "created_at"),
         Index("ix_audit_logs_tenant_created", "tenant_id", "created_at"),
+        Index(
+            "ix_audit_logs_parent",
+            "parent_entity_type", "parent_entity_id", "created_at",
+        ),
     )

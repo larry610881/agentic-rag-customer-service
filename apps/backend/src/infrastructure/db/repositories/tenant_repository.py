@@ -27,6 +27,7 @@ class SQLAlchemyTenantRepository(TenantRepository):
             default_intent_model=model.default_intent_model,
             exhaustion_policy_override=model.exhaustion_policy_override,
             block_message_override=model.block_message_override,
+            config_change_notify_fields=model.config_change_notify_fields,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -47,6 +48,7 @@ class SQLAlchemyTenantRepository(TenantRepository):
                 default_intent_model=tenant.default_intent_model,
                 exhaustion_policy_override=tenant.exhaustion_policy_override,
                 block_message_override=tenant.block_message_override,
+                config_change_notify_fields=tenant.config_change_notify_fields,
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
             )

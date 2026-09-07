@@ -43,6 +43,7 @@ class CreateChannelCommand:
     notify_diagnostics: bool = False
     diagnostic_severity: str = "critical"
     notify_abuse: bool = True
+    notify_config_change: bool = False  # Issue #77
 
 
 class CreateChannelUseCase:
@@ -68,6 +69,7 @@ class CreateChannelUseCase:
             notify_diagnostics=command.notify_diagnostics,
             diagnostic_severity=command.diagnostic_severity,
             notify_abuse=command.notify_abuse,
+            notify_config_change=command.notify_config_change,
         )
         return await self._repo.save(channel)
 
@@ -83,6 +85,7 @@ class UpdateChannelCommand:
     notify_diagnostics: bool | None = None
     diagnostic_severity: str | None = None
     notify_abuse: bool | None = None
+    notify_config_change: bool | None = None  # Issue #77
 
 
 class UpdateChannelUseCase:
@@ -98,26 +101,23 @@ class UpdateChannelUseCase:
         channel = await self._repo.get_by_id(command.channel_id)
         if channel is None:
             raise EntityNotFoundError("NotificationChannel", command.channel_id)
-        if command.name is not None:
-            channel.name = command.name
-        if command.enabled is not None:
-            channel.enabled = command.enabled
         if command.config is not None:
             channel.config_encrypted = self._enc.encrypt(
                 json.dumps(command.config)
             )
-        if command.throttle_minutes is not None:
-            channel.throttle_minutes = command.throttle_minutes
-        if command.min_severity is not None:
-            channel.min_severity = command.min_severity
-        if command.notify_diagnostics is not None:
-            channel.notify_diagnostics = command.notify_diagnostics
-        if command.diagnostic_severity is not None:
-            channel.diagnostic_severity = command.diagnostic_severity
-        if command.notify_abuse is not None:
-            channel.notify_abuse = command.notify_abuse
+        # 純量欄位：None = 不更新
+        for name in self._SCALAR_FIELDS:
+            value = getattr(command, name)
+            if value is not None:
+                setattr(channel, name, value)
         channel.updated_at = datetime.now(timezone.utc)
         return await self._repo.save(channel)
+
+    _SCALAR_FIELDS = (
+        "name", "enabled", "throttle_minutes", "min_severity",
+        "notify_diagnostics", "diagnostic_severity", "notify_abuse",
+        "notify_config_change",  # Issue #77
+    )
 
 
 class DeleteChannelUseCase:

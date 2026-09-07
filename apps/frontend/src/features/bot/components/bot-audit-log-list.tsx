@@ -11,6 +11,10 @@ import {
   describeLengthChange,
   formatBotFieldValue,
 } from "@/features/bot/bot-field-labels";
+import {
+  formatWorkerFieldValue,
+  workerFieldLabel,
+} from "@/features/bot/worker-field-labels";
 import { useBotAuditLogs } from "@/hooks/queries/use-bot-audit-logs";
 import { formatDateTime } from "@/lib/format-date";
 import { isLongTextChange, type BotAuditChange, type BotAuditLogEntry } from "@/types/bot-audit-log";
@@ -22,10 +26,29 @@ export const BOT_AUDIT_ACTION_LABEL: Record<string, string> = {
   reset: "重設",
 };
 
-/** Issue #75 — 非 bot 本體的變更（例如平台改了租戶的防護設定）以實體標籤區分 */
-const ENTITY_TYPE_LABEL: Record<string, string> = {
-  guard_settings: "防護設定（平台）",
-};
+/**
+ * Issue #75 / #77 — 非 bot 本體的變更以實體標籤區分：
+ * 平台改了租戶的防護設定 → 「防護設定（平台）」；worker → 「worker：<名稱>」。
+ * bot 本體不顯示標籤（entity_type 缺省時視為 bot，相容舊資料）。
+ */
+export function entityBadgeLabel(entry: BotAuditLogEntry): string | null {
+  switch (entry.entity_type) {
+    case "guard_settings":
+      return "防護設定（平台）";
+    case "worker":
+      return entry.entity_name ? `worker：${entry.entity_name}` : "worker";
+    default:
+      return null;
+  }
+}
+
+/** worker 列用 worker 欄位對照表，其餘沿用 bot 對照表 */
+function fieldFormatters(entry: BotAuditLogEntry) {
+  if (entry.entity_type === "worker") {
+    return { label: workerFieldLabel, format: formatWorkerFieldValue };
+  }
+  return { label: botFieldLabel, format: formatBotFieldValue };
+}
 
 function actorLabel(entry: BotAuditLogEntry): string {
   if (entry.actor_label) return entry.actor_label;
@@ -34,8 +57,15 @@ function actorLabel(entry: BotAuditLogEntry): string {
   return "系統";
 }
 
-function ChangeRow({ change }: { change: BotAuditChange }) {
-  const label = botFieldLabel(change.field);
+function ChangeRow({
+  change,
+  entry,
+}: {
+  change: BotAuditChange;
+  entry: BotAuditLogEntry;
+}) {
+  const { label: labelOf, format } = fieldFormatters(entry);
+  const label = labelOf(change.field);
   if (isLongTextChange(change)) {
     return (
       <li className="flex flex-wrap items-baseline gap-x-2 text-sm">
@@ -50,11 +80,11 @@ function ChangeRow({ change }: { change: BotAuditChange }) {
     <li className="flex flex-wrap items-baseline gap-x-2 text-sm">
       <span className="font-medium">{label}</span>
       <span className="break-all font-mono text-xs text-muted-foreground line-through">
-        {formatBotFieldValue(change.field, change.before)}
+        {format(change.field, change.before)}
       </span>
       <span aria-hidden="true">→</span>
       <span className="break-all font-mono text-xs">
-        {formatBotFieldValue(change.field, change.after)}
+        {format(change.field, change.after)}
       </span>
     </li>
   );
@@ -63,6 +93,7 @@ function ChangeRow({ change }: { change: BotAuditChange }) {
 function EntryRow({ entry }: { entry: BotAuditLogEntry }) {
   const [open, setOpen] = useState(false);
   const count = entry.changes.length;
+  const entityBadge = entityBadgeLabel(entry);
   return (
     <li className="rounded-md border p-3" data-testid={`bot-audit-row-${entry.id}`}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -75,9 +106,9 @@ function EntryRow({ entry }: { entry: BotAuditLogEntry }) {
         <Badge variant="outline" className="text-xs">
           {BOT_AUDIT_ACTION_LABEL[entry.action] ?? entry.action}
         </Badge>
-        {entry.entity_type && ENTITY_TYPE_LABEL[entry.entity_type] && (
+        {entityBadge && (
           <Badge variant="secondary" className="text-xs">
-            {ENTITY_TYPE_LABEL[entry.entity_type]}
+            {entityBadge}
           </Badge>
         )}
         {count > 0 ? (
@@ -106,7 +137,7 @@ function EntryRow({ entry }: { entry: BotAuditLogEntry }) {
           data-testid={`bot-audit-detail-${entry.id}`}
         >
           {entry.changes.map((c) => (
-            <ChangeRow key={c.field} change={c} />
+            <ChangeRow key={c.field} change={c} entry={entry} />
           ))}
         </ul>
       )}

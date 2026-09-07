@@ -65,6 +65,8 @@ Base URL: `http://localhost:8000/api/v1`
 |--------|------|-------------|------|
 | GET | `/tenants/{tenant_id}/quota` | 本月配額快照（`tenant_id` 可用 `me`） | Yes（本租戶或 system_admin） |
 | PUT | `/tenants/{tenant_id}/billing-policy` | 額度用盡策略覆寫（`tenant_id` 可用 `me`） | system_admin / tenant_admin（方案須允許，否則 403） |
+| GET | `/tenants/{tenant_id}/notification-preferences` | 設定變更通知偏好：目前勾選的欄位群組 + 生效清單 + 可選群組（Issue #77；`tenant_id` 可用 `me`） | system_admin / tenant_admin（他租戶 403） |
+| PUT | `/tenants/{tenant_id}/notification-preferences` | 設定「哪些欄位群組變更要通知」（Issue #77） | system_admin / tenant_admin（他租戶 403） |
 
 **GET /tenants/{tenant_id}/quota Response**（token 欄位不變，新增下列欄位）
 ```json
@@ -97,6 +99,27 @@ Base URL: `http://localhost:8000/api/v1`
   "tenant_may_change_policy": true
 }
 ```
+
+**GET / PUT /tenants/{tenant_id}/notification-preferences（Issue #77）**
+
+PUT Request（`null` = 平台預設 `["model","prompt"]`；`[]` = 完全關閉；未知群組回 `422`）
+```json
+{ "config_change_notify_fields": ["model", "prompt", "knowledge", "tools", "guard"] }
+```
+Response（GET / PUT 相同）
+```json
+{
+  "tenant_id": "uuid",
+  "config_change_notify_fields": ["model", "prompt"],
+  "effective_fields": ["model", "prompt"],
+  "available_groups": [
+    { "key": "model", "label": "模型" }, { "key": "prompt", "label": "提示詞" },
+    { "key": "knowledge", "label": "知識庫" }, { "key": "tools", "label": "工具" },
+    { "key": "guard", "label": "防護" }
+  ]
+}
+```
+每次 PUT 寫稽核（`entity_type=tenant_notification`）。通知的觸發、內容與渠道設定見 `docs/abuse-control-behavior.md` §7.1。
 
 ### 被擋回應（用完即擋）
 
@@ -244,8 +267,9 @@ trace 的 `agent_llm` 節點記 `reasoning_effort_requested`（bot 設定值）�
 
 - 租戶範圍：bot 不屬於呼叫者租戶 → `404`（不洩漏存在性）；`system_admin` 可跨租戶。
 - `limit` 1–100（預設 20）；keyset 分頁，`next_cursor` 非 null 時帶回 `cursor` 取下一頁（格式錯誤回 `422`）。
-- 涵蓋 `entity_type=bot` 的稽核列，以及（Issue #75）平台對該租戶的防護階段變更（`entity_type=guard_settings`、`entity_id=tenant:<tenant_id>`），後者 `actor_label` 為 `"平台"`；Worker 的稽核列（`entity_type=worker`）不帶 bot 關聯欄位，暫不併入，仍可在 system_admin 的 `/audit-logs` 以 `entity_type=worker` 查詢。
-- `changes` 由伺服端把稽核列的 `changed_fields` 攤平：`llm_params` 展開一層為 `llm_params.temperature`；提示詞類長文字欄位（`bot_prompt` / `base_prompt` / `memory_extraction_prompt`）只回字數（`before_len` / `after_len`，以稽核列存放的字串計，超過 2000 字者已截斷），全文請至 system_admin 稽核頁。
+- 涵蓋 `entity_type=bot` 的稽核列、（Issue #75）平台對該租戶的防護階段變更（`entity_type=guard_settings`、`entity_id=tenant:<tenant_id>`，`actor_label` 為 `"平台"`），以及（Issue #77）該 bot 底下 worker 的稽核列（`entity_type=worker`；稽核列以 `parent_entity_type=bot` / `parent_entity_id=<bot_id>` 連結，與 bot 列同一 keyset 查詢聯集）。worker 列多 `entity_id`（worker id）與 `entity_name`（worker 名稱：取目前的 worker，已刪除則取稽核快照中的 `name`；查無為 `null`），bot / guard 列兩者皆 `null`。
+- `changes` 由伺服端把稽核列的 `changed_fields` 攤平：`llm_params` 展開一層為 `llm_params.temperature`；提示詞類長文字欄位（`bot_prompt` / `base_prompt` / `memory_extraction_prompt` / `worker_prompt`）只回字數（`before_len` / `after_len`，以稽核列存放的字串計，超過 2000 字者已截斷），全文請至 system_admin 稽核頁。worker 列的其餘欄位（`name` / `description` / `llm_provider` / `llm_model` / `temperature` / `max_tokens` / `max_tool_calls` / `enabled_mcp_ids` / `knowledge_base_ids` / `enabled_tools` / `tool_configs` / `direct_retrieval` / `sort_order`）照原值回。
+- system_admin 的 `GET /audit-logs` 每列多 `parent_entity_type` / `parent_entity_id`（worker 列為 `bot` / `<bot_id>`，其餘 `null`）。
 
 **Response**
 ```json
@@ -258,12 +282,30 @@ trace 的 `agent_llm` 節點記 `reasoning_effort_requested`（bot 設定值）�
       "actor_email": "admin@example.com",
       "actor_label": null,
       "entity_type": "bot",
+      "entity_id": null,
+      "entity_name": null,
       "source": "api",
       "created_at": "2026-09-07T10:00:00+00:00",
       "changes": [
         { "field": "llm_model", "before": "gpt-4o", "after": "gemini-3.7-flash" },
         { "field": "llm_params.temperature", "before": 0.3, "after": 0.7 },
         { "field": "bot_prompt", "before_len": 20, "after_len": 140, "changed": true }
+      ]
+    },
+    {
+      "id": "…",
+      "action": "update",
+      "actor_user_id": "…",
+      "actor_email": "admin@example.com",
+      "actor_label": null,
+      "entity_type": "worker",
+      "entity_id": "w-001",
+      "entity_name": "門市",
+      "source": "api",
+      "created_at": "2026-09-07T09:58:00+00:00",
+      "changes": [
+        { "field": "knowledge_base_ids", "before": ["kb-a"], "after": ["kb-b"] },
+        { "field": "worker_prompt", "before_len": 10, "after_len": 300, "changed": true }
       ]
     }
   ],
@@ -287,7 +329,7 @@ trace 的 `agent_llm` 節點記 `reasoning_effort_requested`（bot 設定值）�
 | GET | `/guard/effective?bot_id=` | 某 bot 的有效防護：`stages` / `required` / `locked` / `source_map` / `profile` / `bot_stages` / `available_stages` | `tenant_admin` / `system_admin`；跨租戶 `404` |
 
 - 階段：`regex_input`、`classifier_attack`、`output_guard`、`abuse_scoring`、`local_classifier`（預留）。未知階段、各層不允許的鍵（`required_stages` 僅 platform；`locked` / `profile` 僅 tenant）回 `422`。
-- `POST /bots`、`PUT /bots/{bot_id}`、`GET /bots/{bot_id}` 多 `guard_stages: string[] | null`（`null` = 繼承租戶有效值）；必須是租戶有效集合的超集，租戶被鎖定時不得自設（`422`）。
+- `POST /bots`、`PUT /bots/{bot_id}`、`GET /bots/{bot_id}` 多 `guard_stages: string[] | null`（`null` = 繼承租戶有效值）；必須是租戶有效集合的超集，租戶被鎖定時不得自設（`400`，bot_router 的 ValidationError handler；guard settings 端點本身的驗證錯誤為 `422`）。
 - 每次寫入都寫稽核（`entity_type=guard_settings`）；system_admin 改 tenant scope 時 `source=platform`，租戶在 `GET /bots/{bot_id}/audit-logs` 看得到（`actor_label="平台"`）。
 
 ## LLM

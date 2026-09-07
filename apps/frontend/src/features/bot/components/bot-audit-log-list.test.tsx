@@ -120,6 +120,55 @@ describe("BotAuditLogList", () => {
     expect(screen.getByText("防護設定（平台）")).toBeInTheDocument();
   });
 
+  it("shows a worker badge with its name and formats worker changes via the worker label map (Issue #77)", async () => {
+    const user = userEvent.setup();
+    mockUseBotAuditLogs.mockReturnValue(
+      hookResult({
+        data: {
+          pages: [
+            {
+              items: [
+                {
+                  id: "log-worker",
+                  action: "update",
+                  actor_user_id: "u-001",
+                  actor_email: "admin@example.com",
+                  entity_type: "worker",
+                  entity_name: "退貨流程",
+                  source: "api",
+                  created_at: "2026-09-07T12:00:00+00:00",
+                  changes: [
+                    { field: "worker_prompt", before_len: 10, after_len: 40, changed: true },
+                    { field: "enabled_tools", before: null, after: ["rag_query"] },
+                    { field: "direct_retrieval", before: false, after: true },
+                  ],
+                },
+              ],
+              next_cursor: null,
+            },
+          ],
+          pageParams: [undefined],
+        },
+      }),
+    );
+    renderWithProviders(<BotAuditLogList botId="bot-1" />);
+    expect(screen.getByText("worker：退貨流程")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /3 個欄位/ }));
+    const detail = screen.getByTestId("bot-audit-detail-log-worker");
+    expect(detail).toHaveTextContent("專屬提示詞");
+    expect(detail).toHaveTextContent("已修改（+30 字）");
+    expect(detail).toHaveTextContent("繼承 Bot");
+    expect(detail).toHaveTextContent("rag_query");
+    expect(detail).toHaveTextContent("快速道（直接檢索）");
+  });
+
+  it("renders no entity badge for plain bot entries", () => {
+    mockUseBotAuditLogs.mockReturnValue(hookResult());
+    renderWithProviders(<BotAuditLogList botId="bot-1" />);
+    expect(screen.queryByText(/^worker/)).not.toBeInTheDocument();
+    expect(screen.queryByText("防護設定（平台）")).not.toBeInTheDocument();
+  });
+
   it("shows an empty state when there are no entries", () => {
     mockUseBotAuditLogs.mockReturnValue(
       hookResult({ data: { pages: [{ items: [], next_cursor: null }], pageParams: [] } }),

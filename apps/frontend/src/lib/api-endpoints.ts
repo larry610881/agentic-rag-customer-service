@@ -13,6 +13,9 @@ export const API_ENDPOINTS = {
     quota: (id: string) => `/api/v1/tenants/${id}/quota`,
     /** Issue #74 — 租戶自改用盡策略（方案允許時）；id 可為 "me" */
     billingPolicy: (id: string) => `/api/v1/tenants/${id}/billing-policy`,
+    /** Issue #77 — 設定變更通知偏好（GET / PUT）；id 可為 "me" */
+    notificationPreferences: (id: string) =>
+      `/api/v1/tenants/${encodeURIComponent(id)}/notification-preferences`,
   },
   plans: {
     list: "/api/v1/admin/plans",

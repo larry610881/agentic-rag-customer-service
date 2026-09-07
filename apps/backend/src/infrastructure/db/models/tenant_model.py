@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -47,6 +47,10 @@ class TenantModel(Base):
     )
     block_message_override: Mapped[str | None] = mapped_column(
         Text, nullable=True, default=None
+    )
+    # Issue #77：設定變更通知的欄位群組；NULL = 平台預設（model, prompt）
+    config_change_notify_fields: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=True, default=None
     )
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,

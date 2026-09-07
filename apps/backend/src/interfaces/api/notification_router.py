@@ -32,6 +32,7 @@ class _CreateChannelBody(BaseModel):
     notify_diagnostics: bool = False
     diagnostic_severity: str = "critical"
     notify_abuse: bool = True
+    notify_config_change: bool = False  # Issue #77
 
 
 class _UpdateChannelBody(BaseModel):
@@ -43,6 +44,7 @@ class _UpdateChannelBody(BaseModel):
     notify_diagnostics: bool | None = None
     diagnostic_severity: str | None = None
     notify_abuse: bool | None = None
+    notify_config_change: bool | None = None  # Issue #77
 
 
 def _channel_to_dict(ch):
@@ -56,6 +58,7 @@ def _channel_to_dict(ch):
         "notify_diagnostics": ch.notify_diagnostics,
         "diagnostic_severity": ch.diagnostic_severity,
         "notify_abuse": ch.notify_abuse,
+        "notify_config_change": ch.notify_config_change,
         "updated_at": ch.updated_at.isoformat() if ch.updated_at else None,
         "created_at": ch.created_at.isoformat() if ch.created_at else None,
     }
@@ -93,6 +96,7 @@ async def create_channel(
             notify_diagnostics=body.notify_diagnostics,
             diagnostic_severity=body.diagnostic_severity,
             notify_abuse=body.notify_abuse,
+            notify_config_change=body.notify_config_change,
         )
     )
     return _channel_to_dict(ch)
@@ -119,6 +123,7 @@ async def update_channel(
             notify_diagnostics=body.notify_diagnostics,
             diagnostic_severity=body.diagnostic_severity,
             notify_abuse=body.notify_abuse,
+            notify_config_change=body.notify_config_change,
         )
     )
     return _channel_to_dict(ch)

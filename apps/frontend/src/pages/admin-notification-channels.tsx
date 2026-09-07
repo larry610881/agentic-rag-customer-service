@@ -61,6 +61,7 @@ interface ChannelFormData {
   notify_diagnostics: boolean;
   diagnostic_severity: string;
   notify_abuse: boolean;
+  notify_config_change: boolean;
   // Email-specific
   smtp_host: string;
   smtp_port: number;
@@ -128,6 +129,7 @@ function toFormData(channel?: NotificationChannel | null): ChannelFormData {
       notify_diagnostics: false,
       diagnostic_severity: "critical",
       notify_abuse: true,
+      notify_config_change: false,
       smtp_host: "",
       smtp_port: 587,
       smtp_use_tls: true,
@@ -148,6 +150,7 @@ function toFormData(channel?: NotificationChannel | null): ChannelFormData {
     notify_diagnostics: channel.notify_diagnostics ?? false,
     diagnostic_severity: channel.diagnostic_severity ?? "critical",
     notify_abuse: channel.notify_abuse ?? true,
+    notify_config_change: channel.notify_config_change ?? false,
     smtp_host: (cfg.smtp_host as string) ?? "",
     smtp_port: (cfg.smtp_port as number) ?? 587,
     smtp_use_tls: (cfg.smtp_use_tls as boolean) ?? true,
@@ -195,6 +198,7 @@ function ChannelFormDialog({
       notify_diagnostics: data.notify_diagnostics,
       diagnostic_severity: data.diagnostic_severity,
       notify_abuse: data.notify_abuse,
+      notify_config_change: data.notify_config_change,
     };
 
     if (channel) {
@@ -364,6 +368,27 @@ function ChannelFormDialog({
             </p>
           </div>
 
+          <div className="space-y-3 border-t pt-3">
+            <h4 className="text-sm font-medium">設定變更通知</h4>
+            <div className="flex items-center gap-2">
+              <Controller
+                name="notify_config_change"
+                control={control}
+                render={({ field }) => (
+                  <Switch
+                    id="notify_config_change"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                )}
+              />
+              <Label htmlFor="notify_config_change">設定變更通知</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              模型 / 提示詞等設定被修改時通知此渠道
+            </p>
+          </div>
+
           {channelType === "email" && (
             <div className="space-y-3 border-t pt-3">
               <h4 className="text-sm font-medium">SMTP 設定</h4>
@@ -499,7 +524,7 @@ export default function AdminNotificationChannelsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">通知渠道</h1>
           <p className="text-muted-foreground">
-            管理錯誤通知、RAG 品質告警與異常控管告警的發送渠道
+            管理錯誤通知、RAG 品質告警、異常控管告警與設定變更通知的發送渠道
           </p>
         </div>
         <Button onClick={handleAdd}>
@@ -570,6 +595,9 @@ export default function AdminNotificationChannelsPage() {
                       )}
                       {ch.notify_abuse && (
                         <Badge variant="outline">異常告警</Badge>
+                      )}
+                      {ch.notify_config_change && (
+                        <Badge variant="outline">設定變更</Badge>
                       )}
                     </div>
                   </TableCell>

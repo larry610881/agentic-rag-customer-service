@@ -4,9 +4,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.domain.bot.entity import ToolRagConfig
+from src.domain.bot.repository import BotRepository
 from src.domain.bot.worker_config import WorkerConfig
 from src.domain.bot.worker_repository import WorkerConfigRepository
 from src.domain.shared.exceptions import EntityNotFoundError
+
+# Issue #77：worker 稽核列連結所屬 bot（租戶端 bot 變更紀錄據此併入）
+PARENT_ENTITY_TYPE = "bot"
 
 
 def _build_tool_configs(
@@ -105,10 +109,47 @@ def _worker_view(w: WorkerConfig | None) -> dict | None:
     }
 
 
-class CreateWorkerUseCase:
-    def __init__(self, repo: WorkerConfigRepository, audit: Any | None = None) -> None:
+class _WorkerAuditMixin:
+    """Issue #77：worker 稽核帶 tenant_id（自所屬 bot 解析）與 parent=bot。"""
+
+    _audit: Any | None
+    _bot_repo: BotRepository | None
+
+    async def _record(
+        self,
+        *,
+        worker_id: str,
+        bot_id: str | None,
+        action: str,
+        before: dict | None,
+        after: dict | None,
+        actor_user_id: str | None,
+    ) -> None:
+        if self._audit is None:
+            return
+        tenant_id: str | None = None
+        if bot_id and self._bot_repo is not None:
+            bot = await self._bot_repo.find_by_id(bot_id)
+            tenant_id = bot.tenant_id if bot is not None else None
+        await self._audit.record(
+            entity_type="worker", entity_id=worker_id, action=action,
+            before=before, after=after, actor_user_id=actor_user_id,
+            tenant_id=tenant_id,
+            parent_entity_type=PARENT_ENTITY_TYPE if bot_id else None,
+            parent_entity_id=bot_id or None,
+        )
+
+
+class CreateWorkerUseCase(_WorkerAuditMixin):
+    def __init__(
+        self,
+        repo: WorkerConfigRepository,
+        audit: Any | None = None,
+        bot_repository: BotRepository | None = None,
+    ) -> None:
         self._repo = repo
         self._audit = audit
+        self._bot_repo = bot_repository
 
     async def execute(
         self, command: CreateWorkerCommand
@@ -134,19 +175,24 @@ class CreateWorkerUseCase:
             direct_retrieval=command.direct_retrieval,
         )
         await self._repo.save(worker)
-        if self._audit is not None:
-            await self._audit.record(
-                entity_type="worker", entity_id=worker.id, action="create",
-                before=None, after=_worker_view(worker),
-                actor_user_id=command.actor_user_id,
-            )
+        await self._record(
+            worker_id=worker.id, bot_id=worker.bot_id, action="create",
+            before=None, after=_worker_view(worker),
+            actor_user_id=command.actor_user_id,
+        )
         return worker
 
 
-class UpdateWorkerUseCase:
-    def __init__(self, repo: WorkerConfigRepository, audit: Any | None = None) -> None:
+class UpdateWorkerUseCase(_WorkerAuditMixin):
+    def __init__(
+        self,
+        repo: WorkerConfigRepository,
+        audit: Any | None = None,
+        bot_repository: BotRepository | None = None,
+    ) -> None:
         self._repo = repo
         self._audit = audit
+        self._bot_repo = bot_repository
 
     async def execute(
         self, command: UpdateWorkerCommand
@@ -189,19 +235,24 @@ class UpdateWorkerUseCase:
         if command.direct_retrieval is not None:
             worker.direct_retrieval = command.direct_retrieval
         await self._repo.save(worker)
-        if self._audit is not None:
-            await self._audit.record(
-                entity_type="worker", entity_id=worker.id, action="update",
-                before=before, after=_worker_view(worker),
-                actor_user_id=command.actor_user_id,
-            )
+        await self._record(
+            worker_id=worker.id, bot_id=worker.bot_id, action="update",
+            before=before, after=_worker_view(worker),
+            actor_user_id=command.actor_user_id,
+        )
         return worker
 
 
-class DeleteWorkerUseCase:
-    def __init__(self, repo: WorkerConfigRepository, audit: Any | None = None) -> None:
+class DeleteWorkerUseCase(_WorkerAuditMixin):
+    def __init__(
+        self,
+        repo: WorkerConfigRepository,
+        audit: Any | None = None,
+        bot_repository: BotRepository | None = None,
+    ) -> None:
         self._repo = repo
         self._audit = audit
+        self._bot_repo = bot_repository
 
     async def execute(
         self,
@@ -220,8 +271,9 @@ class DeleteWorkerUseCase:
         elif self._audit is not None:
             before = _worker_view(await self._repo.find_by_id(worker_id))
         await self._repo.delete(worker_id)
-        if self._audit is not None:
-            await self._audit.record(
-                entity_type="worker", entity_id=worker_id, action="delete",
-                before=before, after=None, actor_user_id=actor_user_id,
-            )
+        await self._record(
+            worker_id=worker_id,
+            bot_id=bot_id or (before or {}).get("bot_id"),
+            action="delete",
+            before=before, after=None, actor_user_id=actor_user_id,
+        )

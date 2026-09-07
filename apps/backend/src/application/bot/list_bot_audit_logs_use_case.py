@@ -9,6 +9,9 @@ system_admin 的 /audit-logs 存整列 before/after，tenant_admin 沒有入口�
 - Issue #75：併入平台對該租戶的防護階段變更（entity_type=guard_settings、
   entity_id=tenant:<tenant_id>）；source=platform 的列 actor_label 標「平台」，
   讓租戶看得到「是平台改了我的防護」
+- Issue #77：併入該 bot 底下 worker 的稽核列（parent_entity=("bot", bot_id)，
+  與 bot 列同一 keyset 查詢聯集）；worker 列附 entity_name（worker 名稱：先查
+  目前的 worker，已刪除則取稽核快照中的 name），worker_prompt 同樣只回字數
 """
 
 from __future__ import annotations
@@ -25,9 +28,11 @@ from src.domain.audit.entity import (
 )
 from src.domain.auth.repository import UserRepository
 from src.domain.bot.repository import BotRepository
+from src.domain.bot.worker_repository import WorkerConfigRepository
 from src.domain.shared.exceptions import EntityNotFoundError
 
 BOT_ENTITY_TYPE = "bot"
+WORKER_ENTITY_TYPE = "worker"          # Issue #77：bot 底下的 worker
 GUARD_ENTITY_TYPE = "guard_settings"   # Issue #75：租戶 scope 的防護階段變更
 SOURCE_PLATFORM = "platform"
 PLATFORM_ACTOR_LABEL = "平台"
@@ -37,6 +42,7 @@ LONG_TEXT_FIELDS = frozenset({
     "bot_prompt",
     "base_prompt",
     "memory_extraction_prompt",
+    "worker_prompt",  # Issue #77：worker 列
 })
 
 # 展平一層的巢狀欄位
@@ -73,6 +79,9 @@ class BotAuditLogEntry:
     entity_type: str = BOT_ENTITY_TYPE
     # Issue #75：平台（system_admin）對此租戶的變更 → "平台"；其餘 None（顯示 email）
     actor_label: str | None = None
+    # Issue #77：worker 列的 entity_id / 名稱（UI 顯示「worker：門市」）；bot 列為 None
+    entity_id: str | None = None
+    entity_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +101,15 @@ def _long_text_change(name: str, before: Any, after: Any) -> BotAuditChange:
         after_len=_text_len(after),
         changed=True,
     )
+
+
+def _snapshot_name(entry: AuditEntry) -> str | None:
+    """已刪除的 worker：取稽核列快照中的 name（delete 列 before、create 列 after）。"""
+    raw = (entry.changed_fields or {}).get("name")
+    if not isinstance(raw, dict):
+        return None
+    name = raw.get("after") or raw.get("before")
+    return name if isinstance(name, str) and name else None
 
 
 def build_changes(changed_fields: dict[str, Any] | None) -> list[BotAuditChange]:
@@ -126,10 +144,12 @@ class ListBotAuditLogsUseCase:
         bot_repository: BotRepository,
         audit_log_repository: AuditLogRepository,
         user_repository: UserRepository | None = None,
+        worker_repository: WorkerConfigRepository | None = None,
     ) -> None:
         self._bot_repo = bot_repository
         self._audit_repo = audit_log_repository
         self._user_repo = user_repository
+        self._worker_repo = worker_repository
 
     async def execute(
         self,
@@ -151,9 +171,15 @@ class ListBotAuditLogsUseCase:
         guard_entries = await self._find_entries(
             GUARD_ENTITY_TYPE, f"tenant:{bot.tenant_id}", limit, cursor
         )
-        # 多取一筆判斷是否還有下一頁
-        bot_entries = await self._find_entries(
-            BOT_ENTITY_TYPE, bot.id.value, limit, cursor
+        # Issue #77：bot 列 ∪ 其 worker 列（parent=bot）單一 keyset 查詢；
+        # 多取一筆判斷下一頁
+        bot_entries = await self._audit_repo.find_by_entity_or_parent(
+            entity_type=BOT_ENTITY_TYPE,
+            entity_id=bot.id.value,
+            parent_entity_type=BOT_ENTITY_TYPE,
+            parent_entity_id=bot.id.value,
+            limit=limit + 1,
+            cursor=cursor,
         )
         entries = sorted(
             [*bot_entries, *guard_entries],
@@ -163,6 +189,7 @@ class ListBotAuditLogsUseCase:
         has_more = len(entries) > limit
         page_entries = entries[:limit]
         emails = await self._resolve_actor_emails(page_entries)
+        worker_names = await self._resolve_worker_names(bot.id.value, page_entries)
         items = [
             BotAuditLogEntry(
                 id=e.id,
@@ -175,6 +202,13 @@ class ListBotAuditLogsUseCase:
                 entity_type=e.entity_type,
                 actor_label=(
                     PLATFORM_ACTOR_LABEL if e.source == SOURCE_PLATFORM else None
+                ),
+                entity_id=(
+                    e.entity_id if e.entity_type == WORKER_ENTITY_TYPE else None
+                ),
+                entity_name=(
+                    worker_names.get(e.entity_id) or _snapshot_name(e)
+                    if e.entity_type == WORKER_ENTITY_TYPE else None
                 ),
             )
             for e in page_entries
@@ -195,6 +229,17 @@ class ListBotAuditLogsUseCase:
             cursor=cursor,
         )
         return [e for e in entries if e.entity_type == entity_type]
+
+    async def _resolve_worker_names(
+        self, bot_id: str, entries: list[AuditEntry]
+    ) -> dict[str, str]:
+        """Issue #77：本頁有 worker 列才查一次 bot 的 worker 清單（id → 名稱）。"""
+        if self._worker_repo is None or not any(
+            e.entity_type == WORKER_ENTITY_TYPE for e in entries
+        ):
+            return {}
+        workers = await self._worker_repo.find_by_bot_id(bot_id)
+        return {w.id: w.name for w in workers if w.name}
 
     async def _resolve_actor_emails(
         self, entries: list[AuditEntry]

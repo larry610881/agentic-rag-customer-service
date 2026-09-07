@@ -75,7 +75,9 @@ CREATE TABLE public.audit_logs (
     action character varying(20) NOT NULL,
     changed_fields json,
     source character varying(20) DEFAULT 'api'::character varying NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    parent_entity_type character varying(40),
+    parent_entity_id character varying(100)
 );
 
 
@@ -648,7 +650,8 @@ CREATE TABLE public.notification_channels (
     diagnostic_severity character varying(20) DEFAULT 'critical'::character varying NOT NULL,
     updated_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone NOT NULL,
-    notify_abuse boolean DEFAULT true NOT NULL
+    notify_abuse boolean DEFAULT true NOT NULL,
+    notify_config_change boolean DEFAULT false NOT NULL
 );
 
 
@@ -877,7 +880,8 @@ CREATE TABLE public.tenants (
     default_intent_model character varying(100) DEFAULT ''::character varying NOT NULL,
     prompt_gate_enabled boolean DEFAULT false NOT NULL,
     exhaustion_policy_override character varying(12),
-    block_message_override text
+    block_message_override text,
+    config_change_notify_fields json
 );
 
 
@@ -2038,4 +2042,6 @@ ALTER TABLE ONLY public.audit_logs
     ADD CONSTRAINT audit_logs_pkey PRIMARY KEY (id);
 CREATE INDEX ix_audit_logs_entity ON public.audit_logs USING btree (entity_type, entity_id, created_at);
 CREATE INDEX ix_audit_logs_tenant_created ON public.audit_logs USING btree (tenant_id, created_at);
+-- Issue #77 — worker 稽核列連結所屬 bot
+CREATE INDEX ix_audit_logs_parent ON public.audit_logs USING btree (parent_entity_type, parent_entity_id, created_at);
 CREATE INDEX ix_agent_execution_traces_bot_config_hash ON public.agent_execution_traces USING btree (bot_id, config_hash);

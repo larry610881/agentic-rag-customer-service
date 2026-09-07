@@ -236,6 +236,10 @@ describe("AdminGuardControlPage", () => {
     const exhibition = screen.getByTestId("guard-profile-exhibition");
     expect(within(exhibition).getByText("內建")).toBeInTheDocument();
     expect(within(exhibition).getByLabelText("分類器攻擊判定")).not.toBeChecked();
+    // 內建方案不可「還原」：存空 overrides 會用 DB 空列蓋掉內建定義
+    expect(
+      within(exhibition).queryByRole("button", { name: "還原為沿用系統預設" }),
+    ).not.toBeInTheDocument();
 
     const strict = screen.getByTestId("guard-profile-strict");
     expect(within(strict).getByText("自訂")).toBeInTheDocument();

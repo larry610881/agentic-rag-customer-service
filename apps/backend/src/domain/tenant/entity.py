@@ -24,6 +24,9 @@ class Tenant:
     # Issue #74：額度用盡策略 / 被擋文案覆寫（None = 沿用方案）
     exhaustion_policy_override: str | None = None
     block_message_override: str | None = None
+    # Issue #77：設定變更通知的欄位群組（model / prompt / knowledge / tools / guard）
+    # None = 平台預設（見 domain.observability.config_change.DEFAULT_NOTIFY_GROUPS）
+    config_change_notify_fields: list[str] | None = None
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

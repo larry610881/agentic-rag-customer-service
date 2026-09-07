@@ -2,6 +2,9 @@ export const queryKeys = {
   tenants: {
     all: ["tenants"] as const,
     quota: (id: string) => ["tenants", id, "quota"] as const,
+    // Issue #77 — 設定變更通知偏好（id 可為 "me"）
+    notificationPreferences: (id: string) =>
+      ["tenants", id, "notification-preferences"] as const,
   },
   plans: {
     all: ["plans"] as const,

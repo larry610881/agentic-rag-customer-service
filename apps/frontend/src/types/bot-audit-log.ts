@@ -30,8 +30,13 @@ export interface BotAuditLogEntry {
   actor_email: string | null;
   /** Issue #75 — 平台（system_admin）對該租戶的防護階段變更標「平台」 */
   actor_label?: string | null;
-  /** Issue #75 — bot | guard_settings（租戶 scope 的防護設定變更） */
-  entity_type?: "bot" | "guard_settings" | string;
+  /**
+   * Issue #75 — bot | guard_settings（租戶 scope 的防護設定變更）
+   * Issue #77 — worker（bot 底下的分流子機器人，併入所屬 bot 的紀錄）
+   */
+  entity_type?: "bot" | "worker" | "guard_settings" | string;
+  /** Issue #77 — worker 列帶 worker 名稱（bot / guard_settings 列為 null） */
+  entity_name?: string | null;
   source: string | null;
   created_at: string;
   changes: BotAuditChange[];

@@ -27,6 +27,9 @@ class AuditEntry:
     actor_user_id: str | None = None
     tenant_id: str | None = None
     source: str = SOURCE_API
+    # Issue #77：所屬上層實體（worker → ("bot", bot_id)），讓租戶端 bot 變更紀錄併入
+    parent_entity_type: str | None = None
+    parent_entity_id: str | None = None
     id: str = field(default_factory=lambda: str(uuid4()))
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
@@ -78,4 +81,19 @@ class AuditLogRepository(ABC):
     ) -> list[AuditEntry]:
         """Issue #71：單一實體的稽核紀錄，新→舊，keyset 分頁。
         cursor 為 ``encode_audit_cursor`` 產物；帶入時只回比它更舊的列。"""
+        ...
+
+    @abstractmethod
+    async def find_by_entity_or_parent(
+        self,
+        *,
+        entity_type: str,
+        entity_id: str,
+        parent_entity_type: str,
+        parent_entity_id: str,
+        limit: int,
+        cursor: str | None = None,
+    ) -> list[AuditEntry]:
+        """Issue #77：實體本身的列 ∪ 以它為 parent 的列（bot ∪ 其 worker），
+        單一 keyset 查詢，新→舊（created_at desc, id desc）。"""
         ...

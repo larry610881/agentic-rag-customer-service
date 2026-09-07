@@ -1,4 +1,4 @@
-from sqlalchemy import and_, or_, select
+from sqlalchemy import Select, and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.audit.entity import (
@@ -26,6 +26,8 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
                 changed_fields=entry.changed_fields,
                 source=entry.source,
                 created_at=entry.created_at,
+                parent_entity_type=entry.parent_entity_type,
+                parent_entity_id=entry.parent_entity_id,
             ))
 
     async def list_entries(
@@ -64,6 +66,38 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
             AuditLogModel.entity_type == entity_type,
             AuditLogModel.entity_id == entity_id,
         )
+        return await self._keyset_page(stmt, limit, cursor)
+
+    async def find_by_entity_or_parent(
+        self,
+        *,
+        entity_type: str,
+        entity_id: str,
+        parent_entity_type: str,
+        parent_entity_id: str,
+        limit: int,
+        cursor: str | None = None,
+    ) -> list[AuditEntry]:
+        """Issue #77：實體本身 ∪ 以它為 parent 的列（bot ∪ 其 worker），
+        單一 keyset 查詢。"""
+        stmt = select(AuditLogModel).where(
+            or_(
+                and_(
+                    AuditLogModel.entity_type == entity_type,
+                    AuditLogModel.entity_id == entity_id,
+                ),
+                and_(
+                    AuditLogModel.parent_entity_type == parent_entity_type,
+                    AuditLogModel.parent_entity_id == parent_entity_id,
+                ),
+            )
+        )
+        return await self._keyset_page(stmt, limit, cursor)
+
+    async def _keyset_page(
+        self, stmt: Select[tuple[AuditLogModel]], limit: int, cursor: str | None
+    ) -> list[AuditEntry]:
+        """新→舊（created_at desc, id desc）；cursor 之後只取更舊的列。"""
         if cursor is not None:
             ts, last_id = decode_audit_cursor(cursor)
             stmt = stmt.where(
@@ -94,4 +128,6 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
             changed_fields=r.changed_fields or {},
             source=r.source,
             created_at=r.created_at,
+            parent_entity_type=r.parent_entity_type,
+            parent_entity_id=r.parent_entity_id,
         )

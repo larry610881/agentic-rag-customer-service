@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import structlog
@@ -39,14 +40,22 @@ def diff_views(before: dict | None, after: dict | None) -> dict[str, dict[str, A
     return changed
 
 
+AuditHook = Callable[[AuditEntry], Awaitable[None]]
+
+
 class AuditRecorder:
+    """``on_recorded``（Issue #77）：稽核列成功寫入後的掛勾（設定變更通知）。
+    掛勾失敗只記 warning，絕不讓管理操作失敗。"""
+
     def __init__(
         self,
         repository: AuditLogRepository | None = None,
         session_factory: Any | None = None,
+        on_recorded: AuditHook | None = None,
     ) -> None:
         self._repo = repository
         self._session_factory = session_factory
+        self._on_recorded = on_recorded
 
     async def _append(self, entry: AuditEntry) -> None:
         if self._repo is not None:
@@ -72,6 +81,8 @@ class AuditRecorder:
         actor_user_id: str | None,
         tenant_id: str | None = None,
         source: str = SOURCE_API,
+        parent_entity_type: str | None = None,
+        parent_entity_id: str | None = None,
     ) -> AuditEntry | None:
         changed = diff_views(before, after)
         if not changed and action == "update":
@@ -84,6 +95,8 @@ class AuditRecorder:
             actor_user_id=actor_user_id,
             tenant_id=tenant_id,
             source=source,
+            parent_entity_type=parent_entity_type,
+            parent_entity_id=parent_entity_id,
         )
         try:
             await self._append(entry)
@@ -95,7 +108,22 @@ class AuditRecorder:
                 action=action,
                 exc_info=True,
             )
+            return entry
+        await self._notify(entry)
         return entry
+
+    async def _notify(self, entry: AuditEntry) -> None:
+        if self._on_recorded is None:
+            return
+        try:
+            await self._on_recorded(entry)
+        except Exception:
+            logger.warning(
+                "audit.on_recorded_failed",
+                entity_type=entry.entity_type,
+                entity_id=entry.entity_id,
+                exc_info=True,
+            )
 
 
 class ListAuditLogsUseCase:

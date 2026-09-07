@@ -343,7 +343,12 @@ def bot_with_mixed_audit(ctx, bot_id, tenant_id, target):
             return [guard_entry]
         return []
 
+    async def _find_union(**kw):
+        # Issue #77：bot 列 ∪ 其 worker 列改走單一 keyset 查詢
+        return [bot_entry] if kw["entity_type"] == "bot" else []
+
     audit_repo.find_by_entity = AsyncMock(side_effect=_find)
+    audit_repo.find_by_entity_or_parent = AsyncMock(side_effect=_find_union)
     user_repo = AsyncMock(spec=UserRepository)
     user_repo.find_by_id = AsyncMock(return_value=None)
     ctx["audit_uc"] = ListBotAuditLogsUseCase(

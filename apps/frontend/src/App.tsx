@@ -42,6 +42,7 @@ const FeedbackConversationPage = lazy(
 const AbuseStatusPage = lazyWithRetry(() => import("@/pages/abuse-status"));
 const GuardStatusPage = lazyWithRetry(() => import("@/pages/guard-status"));
 const WidgetIdentityPage = lazyWithRetry(() => import("@/pages/widget-identity"));
+const TenantSettingsPage = lazyWithRetry(() => import("@/pages/tenant-settings"));
 const ProvidersSettingsPage = lazyWithRetry(() => import("@/pages/settings-providers"));
 const AdminLogsPage = lazyWithRetry(() => import("@/pages/admin-logs"));
 const AdminKnowledgeBasesPage = lazy(
@@ -134,6 +135,8 @@ export function App() {
             <Route path={ROUTES.GUARD_STATUS} element={<GuardStatusPage />} />
             {/* Issue #68 P7b：Widget 宿主身分綁定 secret 管理（tenant_admin / system_admin） */}
             <Route path={ROUTES.WIDGET_IDENTITY} element={<WidgetIdentityPage />} />
+            {/* Issue #77：租戶設定（設定變更通知偏好；tenant_admin / system_admin） */}
+            <Route path={ROUTES.TENANT_SETTINGS} element={<TenantSettingsPage />} />
             <Route
               path={ROUTES.CHANGE_PASSWORD}
               element={<ChangePasswordPage />}

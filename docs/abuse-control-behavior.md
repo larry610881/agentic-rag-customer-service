@@ -81,6 +81,25 @@ Retry-After: 900
 - 通知內容不含使用者原文與完整 id：只顯示遮罩後的主體（例 `visitor visi…56`）、通路、等級、原因摘要、剩餘時間與後台連結。
 - 單一渠道發送失敗只記 log，不影響其他渠道；「測試發送」端點對 Teams 與 Email 都可用。
 
+### 7.1 設定變更通知（Issue #77）
+
+同一套通知渠道也可接收「設定變更」：渠道勾選「設定變更」（`notify_config_change`，預設關）後，
+bot / worker / 租戶防護設定的每一筆稽核寫入成功後，若變更欄位觸及租戶勾選的欄位群組，就送一則通知。
+
+| 群組 | 涵蓋欄位（節錄） |
+|------|------------------|
+| 模型 `model` | `llm_provider` / `llm_model` / `llm_params`（含 temperature、max_tokens、reasoning_effort）、分流 / 摘要 / 改寫 / 重排模型；worker 的 `temperature` / `max_tokens` |
+| 提示詞 `prompt` | `bot_prompt` / `base_prompt` / `worker_prompt` / `memory_extraction_prompt` / 改寫與 HyDE 補充提示 / `miss_reply` |
+| 知識庫 `knowledge` | `knowledge_base_ids` / 檢索模式與參數 / 重排開關 / `tool_configs` / 記憶開關 |
+| 工具 `tools` | `enabled_tools` / `mcp_bindings`（worker 為 `enabled_mcp_ids`）/ `max_tool_calls` / `intent_routes` / `direct_retrieval` |
+| 防護 `guard` | `guard_stages` / `mode` / `output_format` / `output_schema`；租戶防護設定（`guard_settings`）的所有鍵 |
+
+- **租戶決定要不要收**：`PUT /api/v1/tenants/{tenant_id}/notification-preferences`（tenant_admin 只能改自己，system_admin 可改任一租戶）。`null` = 平台預設（模型 + 提示詞）；`[]` = 完全關閉。名稱 / 描述 / 排序等未列入群組的欄位永不通知。
+- **平台的變更也通知**：系統管理員改租戶的 bot / worker / 防護設定，同樣通知該租戶，操作者顯示「平台」（不顯示管理員 email）；租戶自己的管理員顯示 email。
+- **內容**：主旨 `[設定變更] <租戶>：機器人「<名稱>」已更新`（worker 顯示「worker「門市」」、防護顯示「租戶防護設定」）；內文為 `租戶 / 對象 / 操作者 / 變更群組 / 時間` 加逐欄位 `欄位：前 → 後`（Teams 轉 FactSet）。提示詞類長文字只顯示字數（`10 字 → 300 字`），不外洩全文；單一值超過 60 字截斷；超過 12 個欄位只列前 12 個。
+- **fail-open、不節流**：通知在稽核成功寫入後以 fire-and-forget 派發（`AuditRecorder.on_recorded`），任何失敗只記 `notification.config_change_dispatch_failed`，絕不讓儲存失敗；設定變更是離散事件，每筆都通知，不套 throttle。
+- 所有渠道都是平台層（system_admin 管理），通知內容以租戶名稱區分來源；目前沒有「只送給某租戶自己的渠道」。
+
 ## 8. 設定三層與方案（P7c 設定層）
 
 **只有系統管理員能改**；租戶管理員只能在「異常控管狀態」頁看到自己生效中的設定與受控清單。

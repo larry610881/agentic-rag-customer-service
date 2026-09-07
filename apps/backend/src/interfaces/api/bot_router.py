@@ -838,7 +838,10 @@ async def list_bot_audit_logs(
                 "actor_user_id": e.actor_user_id,
                 "actor_email": e.actor_email,
                 "actor_label": e.actor_label,  # Issue #75："平台" | null
-                "entity_type": e.entity_type,  # bot | guard_settings
+                "entity_type": e.entity_type,  # bot | worker | guard_settings
+                # Issue #77：worker 列的 id / 名稱（UI 顯示「worker：門市」）
+                "entity_id": e.entity_id,
+                "entity_name": e.entity_name,
                 "source": e.source,
                 "created_at": e.created_at.isoformat(),
                 "changes": [_change_to_dict(c) for c in e.changes],

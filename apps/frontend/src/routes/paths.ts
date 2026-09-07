@@ -15,6 +15,7 @@ export const ROUTES = {
   ABUSE_STATUS: "/abuse-status",
   GUARD_STATUS: "/guard-status",
   WIDGET_IDENTITY: "/widget-identity",
+  TENANT_SETTINGS: "/tenant-settings",
   FEEDBACK_BROWSER: "/feedback/browser",
   FEEDBACK_CONVERSATION: "/feedback/:conversationId",
   SETTINGS: "/settings",

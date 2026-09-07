@@ -6124,3 +6124,19 @@ graph TD
 
 **延伸學習**：Policy floor 模式（下層只能比上層更嚴）在 IAM 的 SCP / permission boundary 是同一個概念：把「不可放寬」做進解析函式，而不是靠審核流程。
 
+## 2026-09-07 — 稽核的樹狀連結與「變更即通知」（Issue #77）
+
+**背景**：worker 的稽核列沒有 tenant_id 也沒有所屬 bot，租戶端看不到；設定被改沒人知道。
+
+**做得好**：
+1. **稽核列加 parent 而不是加 bot_id**：`parent_entity_type / parent_entity_id` 是通用的樹狀連結，worker → bot 只是第一個用例，之後 KB 的文件、bot 的版本都能掛；單一 keyset 查詢做 entity ∪ parent，不用兩次查再合併。
+2. **通知掛在稽核後面，不掛在用例裡**：`AuditRecorder.on_recorded` 在成功寫入後觸發、無 diff 不觸發、失敗不影響儲存；任何會寫稽核的變更自動具備通知能力，不用逐個用例補。
+3. **通知以欄位群組為單位**：model / prompt / knowledge / tools / guard 五組，租戶勾組不勾欄，預設只通知 model 與 prompt；長文字只報字數，通知內容不會外洩提示詞。
+
+**隱憂**：
+- 通知是請求路徑上直接 await Teams webhook（10 秒逾時），管理員儲存會等它。→ 改走 outbox 或 create_task → 優先級：中。
+- notification_channels 是平台級沒有 tenant_id，「租戶的渠道」目前等於「平台開了 notify_config_change 的渠道 + 租戶群組偏好」；多租戶各自渠道要另開需求 → 優先級：中。
+- 一次改多個欄位只發一則（正確），但短時間多次儲存會多則；無節流 → 優先級：低。
+
+**延伸學習**：Audit-triggered side effects（稽核即事件源）是把「誰改了什麼」變成一等事件流的起點；下一步是讓 outbox 消費稽核事件，通知、快取失效、指紋重算都從同一條流出來。
+
