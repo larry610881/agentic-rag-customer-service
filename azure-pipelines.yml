@@ -1,13 +1,13 @@
 # =============================================================================
 # Agentic RAG Customer Service — Azure DevOps 多階段管線
 #
-#   CI（每個 PR / push）→ Package（只有 main）→ Release（環境核准後部署）
+#   CI（每個 PR / push）→ Package（只有 main）→ Release（自動部署，無人工閘門）
 #
 # 前置設定見 docs/azure-devops-setup.md：
 #   - 安全檔案 `gcp-sa-key.json`（GCP 服務帳號金鑰，Library → Secure files）
 #   - 變數群組 `agentic-rag-gcp`（GCP_PROJECT_ID / GCP_REGION / WORKER_* 等非祕密）
 #   - 變數群組 `agentic-rag-runtime`（Cloud Run 執行期祕密，全部標記為 secret）
-#   - Environment `poc`（加核准人 → 這就是「release 閘門」）
+#   - Environment `poc`（只留部署歷史；**不要加 approvals**，加了就變成要人核准）
 # =============================================================================
 
 trigger:
@@ -205,11 +205,13 @@ stages:
             displayName: 建置並推送映像
 
   # ---------------------------------------------------------------------------
-  # Stage 3：Release — 部署 Cloud Run + 重啟 VM worker
-  #   deployment job 綁 Environment `poc`，核准人在 Azure DevOps 上按核准才會跑。
+  # Stage 3：Release — 全自動，無人工閘門
+  #   main 上的 push 一路跑到底：CI → Package → 部署 Cloud Run → 同步並重啟 VM worker。
+  #   Environment `poc` 只用來留部署歷史與稽核紀錄，**不要**在上面加 approvals，
+  #   一加就變成要人按核准（要臨時擋住上線時才加）。
   # ---------------------------------------------------------------------------
   - stage: Release
-    displayName: 發布到 POC
+    displayName: 自動部署到 POC
     dependsOn: Package
     condition: succeeded()
     jobs:
@@ -220,10 +222,14 @@ stages:
           runOnce:
             deploy:
               steps:
-                - checkout: self
+                - checkout: none
 
                 - template: infra/azure-pipelines/steps-gcp-auth.yml
 
+                # 用 --update-env-vars 而非 --set-env-vars：後者會把服務上「這份清單以外」
+                # 的環境變數全部清掉。線上實際存在但不在此清單的變數（例如
+                # EMBEDDING_PROVIDER）會被靜默移除，症狀是嵌入模型突然走回預設供應商。
+                # 要刪變數時用 --remove-env-vars 明確指名。
                 - script: |
                     set -euo pipefail
                     IMAGE="$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(arRepo)/$(serviceName):$(imageTag)"
@@ -238,7 +244,7 @@ stages:
                       --min-instances=1 --max-instances=5 \
                       --vpc-connector=db-connector \
                       --vpc-egress=private-ranges-only \
-                      --set-env-vars="^@^APP_ENV=production@LOG_LEVEL=INFO@DATABASE_URL_OVERRIDE=$(DATABASE_URL_OVERRIDE)@REDIS_URL_OVERRIDE=$(REDIS_URL_OVERRIDE)@MILVUS_URI=$(MILVUS_URI)@JWT_SECRET_KEY=$(JWT_SECRET_KEY)@ENCRYPTION_MASTER_KEY=$(ENCRYPTION_MASTER_KEY)@STORAGE_BACKEND=$(STORAGE_BACKEND)@GCS_BUCKET_NAME=$(GCS_BUCKET_NAME)@CORS_ORIGINS=$(CORS_ORIGINS)@RATE_LIMIT_ENABLED=$(RATE_LIMIT_ENABLED)"
+                      --update-env-vars="^@^APP_ENV=production@LOG_LEVEL=INFO@DATABASE_URL_OVERRIDE=$(DATABASE_URL_OVERRIDE)@REDIS_URL_OVERRIDE=$(REDIS_URL_OVERRIDE)@MILVUS_URI=$(MILVUS_URI)@JWT_SECRET_KEY=$(JWT_SECRET_KEY)@ENCRYPTION_MASTER_KEY=$(ENCRYPTION_MASTER_KEY)@STORAGE_BACKEND=$(STORAGE_BACKEND)@GCS_BUCKET_NAME=$(GCS_BUCKET_NAME)@EMBEDDING_PROVIDER=$(EMBEDDING_PROVIDER)@RATE_LIMIT_ENABLED=$(RATE_LIMIT_ENABLED)"
                   displayName: gcloud run deploy
 
                 - script: |
@@ -258,37 +264,72 @@ stages:
                   displayName: 健康檢查（失敗即整條 Release 紅燈）
 
       - deployment: worker
-        displayName: 重啟 VM 上的 arq worker
+        displayName: 同步並重啟 VM 上的 arq worker
         dependsOn: cloudrun
         environment: poc
         strategy:
           runOnce:
             deploy:
               steps:
-                - checkout: none
+                # 需要完整歷史才能做 bundle
+                - checkout: self
+                  fetchDepth: 0
 
                 - template: infra/azure-pipelines/steps-gcp-auth.yml
 
-                # worker 是 long-lived process（無 HTTP），跑在 GCE VM 上用 systemd 管理，
-                # 與 Cloud Run 不同部署路徑。不重啟的後果：worker 永遠跑舊 code，
-                # 新功能「Cloud Run 有但背景作業跑不到」，且不會有任何錯誤訊息。
+                # worker 是 long-lived process（無 HTTP），跑在 GCE VM 上由 systemd 管理，
+                # 與 Cloud Run 是兩條部署路徑。漏掉它的後果：worker 永遠跑舊 code，
+                # 「Cloud Run 有新功能但背景作業跑不到」，而且完全沒有錯誤訊息。
+                #
+                # 程式碼傳遞用 git bundle + scp，不叫 VM 自己 git pull：
+                #   1) VM 的 origin 指向 GitHub，改由 Azure 觸發後 pull 會拿到落後的 code；
+                #   2) 讓 VM 有能力拉 Azure repo 就得在 VM 上放一份長期 PAT；
+                #   3) bundle 綁的是本次建置的 commit，跟 Cloud Run 跑的映像保證同一份原始碼。
                 - script: |
                     set -euo pipefail
+                    SHA="$(Build.SourceVersion)"
+                    git bundle create /tmp/deploy.bundle "$SHA"
+                    gcloud compute scp /tmp/deploy.bundle \
+                      $(WORKER_VM_NAME):/tmp/deploy.bundle \
+                      --zone=$(WORKER_VM_ZONE) --tunnel-through-iap \
+                      --project=$(GCP_PROJECT_ID) --quiet
+                  displayName: 打包 commit 並傳到 VM
+
+                - script: |
+                    set -euo pipefail
+                    SHA="$(Build.SourceVersion)"
                     gcloud compute ssh $(WORKER_VM_NAME) \
                       --zone=$(WORKER_VM_ZONE) --tunnel-through-iap \
                       --project=$(GCP_PROJECT_ID) --quiet \
-                      --command='
+                      --command="
                         set -euo pipefail
-                        sudo -u '"$(WORKER_VM_USER)"' bash -lc "
-                          cd '"$(WORKER_REPO_PATH)"'
-                          git fetch --quiet origin main
-                          git reset --hard origin/main
+                        sudo chmod 0644 /tmp/deploy.bundle
+                        sudo -u $(WORKER_VM_USER) bash -lc '
+                          cd $(WORKER_REPO_PATH)
+                          git fetch --quiet /tmp/deploy.bundle $SHA
+                          git reset --hard $SHA
                           echo HEAD: \$(git rev-parse --short HEAD)
                           cd apps/backend
                           \$HOME/.local/bin/uv sync --quiet
-                        "
+                        '
+                        rm -f /tmp/deploy.bundle
                         sudo systemctl restart arq-worker.service
                         sleep 3
                         sudo systemctl is-active arq-worker.service
-                      '
-                  displayName: git pull + uv sync + systemctl restart
+                      "
+                  displayName: 還原 commit + uv sync + 重啟 arq-worker
+
+                - script: |
+                    set -euo pipefail
+                    SHA="$(Build.SourceVersion)"
+                    OUT=$(gcloud compute ssh $(WORKER_VM_NAME) \
+                      --zone=$(WORKER_VM_ZONE) --tunnel-through-iap \
+                      --project=$(GCP_PROJECT_ID) --quiet \
+                      --command="sudo -u $(WORKER_VM_USER) bash -lc 'cd $(WORKER_REPO_PATH) && git rev-parse HEAD'")
+                    echo "VM HEAD: $OUT"
+                    echo "本次建置: $SHA"
+                    case "$OUT" in
+                      *"$SHA"*) echo "==> worker 已在本次建置的 commit" ;;
+                      *) echo "##vso[task.logissue type=error]worker 未落在預期 commit"; exit 1 ;;
+                    esac
+                  displayName: 驗證 worker 已更新到本次 commit
