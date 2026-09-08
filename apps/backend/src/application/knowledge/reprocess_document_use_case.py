@@ -173,6 +173,14 @@ class ReprocessDocumentUseCase:
                     )
                 except FileNotFoundError:
                     pass
+                except Exception as storage_exc:  # noqa: BLE001
+                    # 2026-09-08：GCS 權限等非「找不到」錯誤 → 有資料庫副本就用副本
+                    if not document.raw_content:
+                        raise
+                    log.warning(
+                        "document.file_storage.load_failed_fallback_db",
+                        error=str(storage_exc)[:200],
+                    )
             if raw_content is None:
                 raw_content = document.raw_content
 

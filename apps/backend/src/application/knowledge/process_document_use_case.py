@@ -147,6 +147,17 @@ class ProcessDocumentUseCase:
                     )
                 except FileNotFoundError:
                     log.warning("document.file_storage.missing")
+                except Exception as storage_exc:  # noqa: BLE001
+                    # 2026-09-08：GCS 權限 / 網路等非「找不到」錯誤（POC VM worker SA 403）。
+                    # 資料庫若有原始內容副本就用副本繼續，不讓一次儲存端故障卡死整批文件；
+                    # 沒有副本（簽名網址直傳）才視為真失敗。
+                    if document.raw_content:
+                        log.warning(
+                            "document.file_storage.load_failed_fallback_db",
+                            error=str(storage_exc)[:200],
+                        )
+                    else:
+                        raise
             if raw_content is None:
                 raw_content = document.raw_content
 

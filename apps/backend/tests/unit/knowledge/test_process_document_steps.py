@@ -253,3 +253,33 @@ def task_details_returned(context):
     assert result is not None
     assert result.id.value == context["task_id"]
     assert result.status == "completed"
+
+
+@given("文件有儲存路徑且檔案儲存讀取時拋出權限錯誤")
+def storage_permission_error(context, mock_doc_repo, mock_file_storage):
+    """回歸：POC VM worker SA 對 GCS 403 → 過去整批文件失敗（2026-09-08）。"""
+    doc = mock_doc_repo.find_by_id.return_value
+    context["document"] = doc
+    doc.storage_path = "t1/doc-1/faq.txt"
+    mock_file_storage.load = AsyncMock(
+        side_effect=RuntimeError("403 storage.objects.get denied")
+    )
+
+
+@given("文件有儲存路徑、沒有原始內容副本且檔案儲存讀取時拋出權限錯誤")
+def storage_permission_error_no_copy(context, mock_doc_repo, mock_file_storage):
+    doc = mock_doc_repo.find_by_id.return_value
+    context["document"] = doc
+    doc.storage_path = "t1/doc-1/faq.txt"
+    doc.raw_content = b""
+    mock_file_storage.load = AsyncMock(
+        side_effect=RuntimeError("403 storage.objects.get denied")
+    )
+
+
+@then("解析器收到的是資料庫的原始內容")
+def parser_got_db_copy(context, mock_file_parser):
+    assert mock_file_parser.parse.called
+    first_arg = mock_file_parser.parse.call_args[0][0]
+    assert first_arg == context["document"].raw_content
+

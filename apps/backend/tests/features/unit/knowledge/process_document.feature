@@ -33,3 +33,18 @@ Feature: Process Document
     Given 一個已存在的處理任務
     When 查詢該任務狀態
     Then 回傳任務詳細資訊
+
+  Scenario: 檔案儲存讀取失敗但資料庫有原始內容時改用副本繼續處理
+    Given 一個待處理的文件和處理任務
+    And 文件有儲存路徑且檔案儲存讀取時拋出權限錯誤
+    When 執行文件處理
+    Then 任務狀態變為 "completed"
+    And 文件狀態變為 "processed"
+    And 解析器收到的是資料庫的原始內容
+
+  Scenario: 檔案儲存讀取失敗且資料庫沒有原始內容時處理失敗
+    Given 一個待處理的文件和處理任務
+    And 文件有儲存路徑、沒有原始內容副本且檔案儲存讀取時拋出權限錯誤
+    When 執行文件處理
+    Then 文件狀態變為 "failed"
+
