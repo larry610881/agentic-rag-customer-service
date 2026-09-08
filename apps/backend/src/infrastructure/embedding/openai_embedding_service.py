@@ -178,6 +178,18 @@ class OpenAIEmbeddingService(EmbeddingService):
                 total_tokens=total_tokens,
             )
             return [item["embedding"] for item in data["data"]], total_tokens
+        except httpx.HTTPStatusError as e:
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
+            # 2026-09-08：把供應商回的錯誤本文記下來（Gemini 400 只看狀態碼查不出原因）
+            log.exception(
+                "embedding.failed",
+                latency_ms=elapsed_ms,
+                status=e.response.status_code,
+                body=e.response.text[:300],
+                model=self._model,
+                dimensions=self._dimensions,
+            )
+            raise
         except Exception:
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
             log.exception("embedding.failed", latency_ms=elapsed_ms)
