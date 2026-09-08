@@ -83,6 +83,29 @@ def _backfill_tool_output(
                 return
 
 
+def merge_history_into_system(
+    system_prompt: str | None, history_context: str | None
+) -> str | None:
+    """把對話歷史併進**單一** system prompt（Issue #87）。
+
+    原本歷史是另外送一個 `SystemMessage`，於是多輪時會有兩個 system message。
+    OpenAI 接受多個，**Gemini 的 OpenAI 相容層把 system 映射到單一
+    `systemInstruction` 欄位，兩個只會留下一個**——留下歷史、丟掉含檢索內容的
+    系統提示。實測 Gemini 第 2 輪起 input token 從 900+ 掉到 92–457，答案改用
+    常識作答（會說「我沒有您所在平台的資訊」），而 `sources` 仍有 5 筆：
+    檢索有跑，只是沒進 prompt。不報錯、不空白，是最難發現的失效。
+
+    合併而不是改用 Human/AI 訊息序列，是因為前者改動最小且對所有供應商語意一致；
+    真正的多輪訊息序列留待對話管線統一時一併處理（channel-parity 債務第 8 項）。
+    """
+    if not history_context:
+        return system_prompt
+    history_block = f"[對話歷史]\n{history_context}"
+    if not system_prompt:
+        return history_block
+    return f"{system_prompt}\n\n{history_block}"
+
+
 class ReActAgentService(AgentService):
     def __init__(
         self,
@@ -866,19 +889,16 @@ class ReActAgentService(AgentService):
             llm = await self._resolve_llm_model(llm_params, with_tools=bool(tools))
 
             # 4. Build and execute ReAct graph
-            assembled_prompt = system_prompt or assemble_prompt("", "react")
+            assembled_prompt = merge_history_into_system(
+                system_prompt or assemble_prompt("", "react"), history_context
+            )
             graph = self._build_react_graph(
                 tools, assembled_prompt, llm, max_tool_calls,
                 llm_meta=describe_reasoning_effort(llm_params),
             )
 
-            # Build input messages
-            input_messages: list = []
-            if history_context:
-                input_messages.append(
-                    SystemMessage(content=f"[對話歷史]\n{history_context}")
-                )
-            input_messages.append(HumanMessage(content=user_message))
+            # Issue #87：歷史已併進 system prompt，這裡只送使用者訊息
+            input_messages: list = [HumanMessage(content=user_message)]
 
             logger.info(
                 "react.process_message",
@@ -1015,18 +1035,16 @@ class ReActAgentService(AgentService):
                     tools.extend(mcp_tools)
 
             llm = await self._resolve_llm_model(llm_params, with_tools=bool(tools))
-            assembled_prompt = system_prompt or assemble_prompt("", "react")
+            assembled_prompt = merge_history_into_system(
+                system_prompt or assemble_prompt("", "react"), history_context
+            )
             graph = self._build_react_graph(
                 tools, assembled_prompt, llm, max_tool_calls,
                 llm_meta=describe_reasoning_effort(llm_params),
             )
 
-            input_messages: list = []
-            if history_context:
-                input_messages.append(
-                    SystemMessage(content=f"[對話歷史]\n{history_context}")
-                )
-            input_messages.append(HumanMessage(content=user_message))
+            # Issue #87：歷史已併進 system prompt，這裡只送使用者訊息
+            input_messages: list = [HumanMessage(content=user_message)]
 
             logger.info(
                 "react.process_message_stream",

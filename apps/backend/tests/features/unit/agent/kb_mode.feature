@@ -99,3 +99,17 @@ Feature: 知識庫問答模式 — bot mode kb (Knowledge-Only Mode)
             | with_tools | kind                    |
             | 有工具     | ChatGoogleGenerativeAI  |
             | 沒有工具   | ChatOpenAI              |
+
+    # Issue #87：多輪時歷史原本另送一個 SystemMessage，於是有兩個 system message。
+    # Gemini 的相容層把 system 映射到單一 systemInstruction，兩個只留一個——
+    # 留下歷史、丟掉含檢索內容的系統提示。實測第 2 輪起 input token 從 900+ 掉到 92。
+    Scenario Outline: 對話歷史併進單一系統提示
+        Given 系統提示 "<prompt>" 與對話歷史 "<history>"
+        When 合併為送出用的系統提示
+        Then 合併結果應為 "<merged>"
+
+        Examples:
+            | prompt | history  | merged                        |
+            | 你是客服 | 上次問門市 | 你是客服\n\n[對話歷史]\n上次問門市 |
+            | 你是客服 | -        | 你是客服                        |
+            | -      | 上次問門市 | [對話歷史]\n上次問門市           |

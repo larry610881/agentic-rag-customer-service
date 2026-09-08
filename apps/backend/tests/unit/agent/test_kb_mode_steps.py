@@ -435,3 +435,25 @@ def resolve_chat_model(context, with_tools, monkeypatch):
 @then(parsers.parse('使用的 ChatModel 類型應為 "{kind}"'))
 def chat_model_kind(context, kind):
     assert type(context["chat_model"]).__name__ == kind
+
+
+# --- Issue #87：對話歷史併進單一 system prompt ---
+
+
+@given(parsers.parse('系統提示 "{prompt}" 與對話歷史 "{history}"'), target_fixture="merge_inputs")
+def merge_inputs(prompt, history):
+    return (None if prompt == "-" else prompt, None if history == "-" else history)
+
+
+@when("合併為送出用的系統提示", target_fixture="merged_prompt")
+def do_merge(merge_inputs):
+    from src.infrastructure.langgraph.react_agent_service import (
+        merge_history_into_system,
+    )
+
+    return merge_history_into_system(*merge_inputs)
+
+
+@then(parsers.parse('合併結果應為 "{merged}"'))
+def check_merged(merged_prompt, merged):
+    assert merged_prompt == merged.replace("\\n", "\n")
