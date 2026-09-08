@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/api-client";
 import { CategoryList } from "@/features/knowledge/components/category-list";
 import { DocumentList } from "@/features/knowledge/components/document-list";
 import { UploadDropzone } from "@/features/knowledge/components/upload-dropzone";
@@ -23,6 +24,40 @@ const tabs = [
   { value: "documents", label: "文件管理" },
   { value: "categories", label: "分類總覽" },
 ] as const;
+
+/**
+ * 文件清單載入失敗的提示。
+ *
+ * 分開處理限流：批次上傳時清單每 3 秒輪詢一次，很容易撞到租戶層 100 rpm，
+ * 這時顯示「載入文件失敗，請重試」是錯的——沒有失敗、也不用重試，它會自己回來。
+ * 而且清單上一份資料還在畫面上，跳紅字只會讓人以為東西掉了。
+ */
+function DocumentListNotice({
+  error,
+  hasData,
+}: {
+  error: unknown;
+  hasData: boolean;
+}) {
+  const isRateLimited = error instanceof ApiError && error.status === 429;
+  if (isRateLimited) {
+    const wait = error.retryAfter;
+    return (
+      <p className="text-muted-foreground text-sm">
+        目前用量達上限，清單暫停更新
+        {wait ? `，約 ${wait} 秒後自動重試` : "，稍後自動重試"}
+        。上傳中的檔案不受影響，會繼續排隊送出。
+      </p>
+    );
+  }
+  return (
+    <p className={hasData ? "text-muted-foreground text-sm" : "text-destructive"}>
+      {hasData
+        ? "清單更新失敗，畫面顯示的是先前的資料。"
+        : "載入文件失敗，請重試。"}
+    </p>
+  );
+}
 
 export default function KnowledgeDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -99,9 +134,7 @@ export default function KnowledgeDetailPage() {
         <>
           <UploadDropzone knowledgeBaseId={id!} />
           {isLoading && <p className="text-muted-foreground">載入文件中...</p>}
-          {error && (
-            <p className="text-destructive">載入文件失敗，請重試。</p>
-          )}
+          {error && <DocumentListNotice error={error} hasData={!!data} />}
           {data && (
             <>
               <DocumentList

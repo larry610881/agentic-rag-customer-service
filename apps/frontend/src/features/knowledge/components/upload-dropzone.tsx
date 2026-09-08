@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useUploadDocument } from "@/hooks/queries/use-documents";
+import {
+  useUploadDocument,
+  type UploadResumeState,
+} from "@/hooks/queries/use-documents";
 import { useUploadQueue } from "@/features/knowledge/hooks/use-upload-queue";
 import {
   UploadProgressCard,
@@ -53,9 +56,24 @@ export function UploadDropzone({ knowledgeBaseId }: UploadDropzoneProps) {
   const uploadMutation = useUploadDocument();
   // 批次上傳走佇列：租戶層限流是 100 rpm 且整個租戶共用，一次並發送出 33 個檔
   // 會讓前幾個成功、其餘全部 429（2026-09-08 實測）。
+  // resume 由佇列保管、跨重試沿用：429 重試只補做失敗的那一步，
+  // 不會重跑 request-upload 而多生一列永遠「等待中」的孤兒文件（Issue #88）。
   const uploadTask = useCallback(
-    ({ file, onProgress }: { file: File; onProgress: (pct: number) => void }) =>
-      uploadMutation.mutateAsync({ knowledgeBaseId, file, onProgress }),
+    ({
+      file,
+      onProgress,
+      resume,
+    }: {
+      file: File;
+      onProgress: (pct: number) => void;
+      resume: Record<string, unknown>;
+    }) =>
+      uploadMutation.mutateAsync({
+        knowledgeBaseId,
+        file,
+        onProgress,
+        resume: resume as UploadResumeState,
+      }),
     [uploadMutation, knowledgeBaseId],
   );
   const {

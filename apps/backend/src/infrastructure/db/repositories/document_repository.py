@@ -224,6 +224,27 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
 
+    async def find_stale_pending(
+        self, older_than: datetime, limit: int = 200
+    ) -> list[Document]:
+        """久未被派工的 pending 文件。
+
+        以 ``updated_at`` 為準而非 ``created_at``：文件一旦被 worker 撿起就會轉
+        ``processing``，所以「還是 pending 且 updated_at 很舊」才是真的沒人動它。
+        """
+        stmt = (
+            select(DocumentModel)
+            .options(defer(DocumentModel.raw_content))
+            .where(
+                DocumentModel.status == "pending",
+                DocumentModel.updated_at < older_than,
+            )
+            .order_by(DocumentModel.updated_at)
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
     async def find_children(self, parent_id: str) -> list[Document]:
         stmt = (
             select(DocumentModel)

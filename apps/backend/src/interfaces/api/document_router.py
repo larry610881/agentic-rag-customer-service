@@ -102,6 +102,9 @@ class DocumentResponse(BaseModel):
     quality_issues: list[str]
     has_file: bool
     task_progress: int | None = None
+    # 失敗原因（取自 processing_task）。Issue #88：文件轉失敗時要說得出為什麼，
+    # 不然「失敗」跟「假裝還在等待中」一樣沒有資訊。
+    error_message: str | None = None
     parent_id: str | None = None
     page_number: int | None = None
     children_count: int = 0
@@ -120,6 +123,7 @@ def _to_response(
     task_progress: int | None = None,
     children_count: int = 0,
     completed_children_count: int = 0,
+    error_message: str | None = None,
 ) -> DocumentResponse:
     return DocumentResponse(
         id=doc.id.value,
@@ -136,6 +140,7 @@ def _to_response(
         quality_issues=doc.quality_issues,
         has_file=bool(doc.storage_path or doc.raw_content),
         task_progress=task_progress,
+        error_message=error_message,
         parent_id=doc.parent_id,
         page_number=doc.page_number,
         children_count=children_count,
@@ -193,6 +198,26 @@ async def list_documents(
             for row in rows.all():
                 progress_map[row[0]] = row[1]
 
+    # 失敗原因：Issue #88 的 reaper 會把派工遺失的文件轉 failed 並寫進 task，
+    # 這裡撈回來讓 UI 說得出「為什麼失敗」而不是只有一個紅字。
+    error_map: dict[str, str] = {}
+    failed_doc_ids = [
+        doc.id.value for doc in documents if doc.status == "failed"
+    ]
+    if failed_doc_ids:
+        async with async_session_factory() as session:
+            stmt = select(
+                ProcessingTaskModel.document_id,
+                ProcessingTaskModel.error_message,
+            ).where(
+                ProcessingTaskModel.document_id.in_(failed_doc_ids),
+                ProcessingTaskModel.status == "failed",
+            )
+            rows = await session.execute(stmt)
+            for row in rows.all():
+                if row[1]:
+                    error_map[row[0]] = row[1]
+
     # Filter: only show top-level documents (no children)
     top_level = [d for d in documents if d.parent_id is None]
 
@@ -227,6 +252,7 @@ async def list_documents(
                 completed_children_count=completed_children_count_map.get(
                     doc.id.value, 0
                 ),
+                error_message=error_map.get(doc.id.value),
             )
             for doc in top_level
         ],

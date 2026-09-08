@@ -103,6 +103,12 @@ class FakeDocumentRepo(DocumentRepository):
             if d.kb_id == kb_id and getattr(d, "status", "") in statuses
         )
 
+    async def find_stale_pending(self, older_than, limit=200):
+        return [
+            d for d in self.docs.values()
+            if d.status == "pending" and d.updated_at < older_than
+        ][:limit]
+
     async def update_status(self, doc_id, status, chunk_count=None): ...
     async def update_content(self, doc_id, content): ...
     async def delete(self, doc_id: str) -> None:

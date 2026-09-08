@@ -47,11 +47,20 @@ type QueueEntry = {
   id: string;
   file: File;
   attempts: number;
+  /**
+   * 跨重試共享的可變狀態。重試時把**同一個物件**再交給 uploadTask，
+   * 讓它自己記住哪些步驟做完了 —— 佇列不需要知道上傳分幾步。
+   *
+   * 沒有它的話重試會從第一步重跑；而第一步正是建立文件列的那一步，於是
+   * 429 重試每次都多生一列孤兒文件，永遠停在「等待中」（Issue #88）。
+   */
+  resume: Record<string, unknown>;
 };
 
 export type UploadTask = (args: {
   file: File;
   onProgress: (pct: number) => void;
+  resume: Record<string, unknown>;
 }) => Promise<unknown>;
 
 const sleep = (ms: number) =>
@@ -69,6 +78,8 @@ export function useUploadQueue(
   const [now, setNow] = useState(() => Date.now());
 
   const pendingRef = useRef<QueueEntry[]>([]);
+  /** id → entry，讓「重試失敗」拿得回 File 與已完成的步驟 */
+  const entriesRef = useRef<Map<string, QueueEntry>>(new Map());
   const runningRef = useRef(0);
   const pausedUntilRef = useRef(0);
   const mountedRef = useRef(true);
@@ -127,6 +138,7 @@ export function useUploadQueue(
       try {
         await uploadTask({
           file: entry.file,
+          resume: entry.resume,
           onProgress: (pct) =>
             patch(entry.id, { progress: Math.min(pct, 99) }),
         });
@@ -138,7 +150,8 @@ export function useUploadQueue(
           const wait =
             (err as ApiError).retryAfter ?? FALLBACK_RETRY_AFTER_S;
           pauseAll(wait);
-          // 放回隊首：先進來的先送完，順序才符合使用者預期
+          // 放回隊首：先進來的先送完，順序才符合使用者預期。
+          // resume 沿用同一個物件 → 重試只補做失敗的那一步，不會再建一列文件。
           pendingRef.current.unshift({ ...entry, attempts: entry.attempts + 1 });
           patch(entry.id, { status: "queued", progress: 0 });
         } else {
@@ -177,32 +190,51 @@ export function useUploadQueue(
           status: "queued" as const,
         })),
       ]);
-      pendingRef.current.push(
-        ...files.map(({ id, file }) => ({ id, file, attempts: 0 })),
-      );
+      for (const { id, file } of files) {
+        const entry: QueueEntry = { id, file, attempts: 0, resume: {} };
+        entriesRef.current.set(id, entry);
+        pendingRef.current.push(entry);
+      }
       pump();
     },
     [pump],
   );
 
+  // 重試不只是把徽章改回「排隊中」——必須真的把工作放回佇列並重新開工，
+  // 否則按鈕看起來有反應、實際上永遠不會送出（跟 Issue #88 同一類的假狀態）。
   const retryFailed = useCallback(() => {
-    setItems((prev) => {
-      const failed = prev.filter((f) => f.status === "error");
-      if (failed.length === 0) return prev;
-      return prev.map((f) =>
-        f.status === "error"
+    const failedIds = items
+      .filter((f) => f.status === "error")
+      .map((f) => f.id);
+    if (failedIds.length === 0) return;
+
+    for (const id of failedIds) {
+      const entry = entriesRef.current.get(id);
+      if (!entry) continue;
+      pendingRef.current.push({ ...entry, attempts: 0 });
+    }
+    setItems((prev) =>
+      prev.map((f) =>
+        failedIds.includes(f.id)
           ? { ...f, status: "queued" as const, error: undefined, progress: 0 }
           : f,
-      );
-    });
-  }, []);
+      ),
+    );
+    pump();
+  }, [items, pump]);
 
   const dismiss = useCallback((id: string) => {
+    entriesRef.current.delete(id);
     setItems((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
   const clearFinished = useCallback(() => {
-    setItems((prev) => prev.filter((f) => f.status !== "success"));
+    setItems((prev) => {
+      for (const f of prev) {
+        if (f.status === "success") entriesRef.current.delete(f.id);
+      }
+      return prev.filter((f) => f.status !== "success");
+    });
   }, []);
 
   const stats: QueueStats = {

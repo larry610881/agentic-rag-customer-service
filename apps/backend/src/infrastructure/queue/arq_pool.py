@@ -50,3 +50,19 @@ async def enqueue(job_name: str, *args: object) -> str | None:
     except Exception:
         logger.exception("arq.enqueue_failed", job_name=job_name)
         return None
+
+
+async def queue_depth(redis_url: str) -> int:
+    """目前 arq 佇列裡還沒被撿走的工作數（含等待重試的 deferred）。
+
+    reaper 用它來分辨「排隊中」與「派工遺失」：worker 一撿到工作就會把文件轉成
+    ``processing``，所以佇列見底時仍是 ``pending`` 的文件，它的工作根本不存在。
+    探測失敗回 ``-1``（未知），呼叫端據此走保守路徑、不誤判。
+    """
+    try:
+        pool = await get_arq_pool(redis_url)
+        name = getattr(pool, "default_queue_name", "arq:queue")
+        return int(await pool.zcard(name))
+    except Exception:
+        logger.exception("arq.queue_depth_failed")
+        return -1

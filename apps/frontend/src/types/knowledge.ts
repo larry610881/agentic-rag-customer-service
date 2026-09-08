@@ -37,6 +37,8 @@ export interface DocumentResponse {
   quality_issues: string[];
   has_file: boolean;
   task_progress: number | null;
+  /** 失敗原因（取自 processing_task）；null 表示沒有更多資訊 */
+  error_message?: string | null;
   parent_id: string | null;
   page_number: number | null;
   children_count: number;

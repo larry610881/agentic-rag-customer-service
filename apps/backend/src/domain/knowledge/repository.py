@@ -114,6 +114,13 @@ class DocumentRepository(ABC):
     ) -> int: ...
 
     @abstractmethod
+    async def find_stale_pending(
+        self, older_than: datetime, limit: int = 200
+    ) -> list[Document]:
+        """久未被派工處理、仍停在 pending 的文件（用於偵測派工遺失）。"""
+        ...
+
+    @abstractmethod
     async def update_status(
         self, doc_id: str, status: str, chunk_count: int | None = None
     ) -> None: ...
@@ -238,6 +245,13 @@ class ProcessingTaskRepository(ABC):
 
     @abstractmethod
     async def find_by_id(self, task_id: str) -> ProcessingTask | None: ...
+
+    @abstractmethod
+    async def find_by_document_id(
+        self, document_id: str
+    ) -> ProcessingTask | None:
+        """該文件最新的一筆處理工作（沒有則 None）。"""
+        ...
 
     @abstractmethod
     async def update_status(

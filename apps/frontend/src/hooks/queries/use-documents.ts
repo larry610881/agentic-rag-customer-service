@@ -24,7 +24,17 @@ export function useDocuments(kbId: string, page = 1, pageSize = 20) {
         token ?? undefined,
       ),
     enabled: !!kbId && !!token,
+    // 被限流時不要繼續每 3 秒敲一次——輪詢本身就是把租戶額度吃光的元凶之一
+    // （批次上傳 33 檔時同時有 request/confirm 在打）。改依 Retry-After 退避。
+    retry: (failureCount, error) =>
+      error instanceof ApiError && error.status === 429
+        ? false
+        : failureCount < 2,
     refetchInterval: (query) => {
+      const error = query.state.error;
+      if (error instanceof ApiError && error.status === 429) {
+        return Math.max(5, error.retryAfter ?? 30) * 1000;
+      }
       const data = query.state.data;
       if (data?.items?.some((d) => d.status === "pending" || d.status === "processing")) {
         return 3000;
@@ -81,6 +91,17 @@ interface RequestUploadResponse {
   storage_path: string;
 }
 
+/**
+ * 單一檔案跨重試共享的上傳進度（Issue #88）。
+ *
+ * 注意簽名網址效期 600 秒：重試在限流暫停下最多累積數分鐘，仍在效期內。
+ * 若真的過期，PUT 會回 403 → 該檔顯示為失敗（真實錯誤），而不是再建一列文件。
+ */
+export type UploadResumeState = {
+  request?: RequestUploadResponse;
+  gcsUploaded?: boolean;
+};
+
 export function useUploadDocument() {
   const token = useAuthStore((s) => s.token);
   const queryClient = useQueryClient();
@@ -90,24 +111,45 @@ export function useUploadDocument() {
       knowledgeBaseId: string;
       file: File;
       onProgress?: (pct: number) => void;
+      /**
+       * 同一個檔重試時傳入同一個物件，用來記住已完成的步驟。
+       *
+       * 為什麼必要：上傳是三步（request-upload 建立文件列 → 直傳 GCS →
+       * confirm-upload 派工）。原本重試的粒度是整個 mutation，於是 429 打在
+       * 第三步時，重試會從第一步重跑並**建立第二列 document**；第一列永遠等不到
+       * confirm-upload，就成了永遠「等待中」的孤兒（Issue #88，2026-09-08 實測
+       * 產生 3 筆）。帶著 resume 重試就只補做失敗的那一步。
+       */
+      resume?: UploadResumeState;
     }): Promise<UploadDocumentResponse> => {
-      // Step 1: Request signed upload URL from backend
-      console.log("[upload] Step 1: requesting signed URL...");
-      const reqRes = await apiFetch<RequestUploadResponse>(
-        API_ENDPOINTS.documents.requestUpload(data.knowledgeBaseId),
-        {
-          method: "POST",
-          body: JSON.stringify({
-            filename: data.file.name,
-            content_type: data.file.type || "application/octet-stream",
-          }),
-        },
-        token ?? undefined,
-      );
-      console.log("[upload] Step 1 OK:", reqRes.document_id, "url_len:", reqRes.upload_url?.length);
+      const resume = data.resume ?? {};
+
+      // Step 1: Request signed upload URL from backend（已做過就沿用）
+      let reqRes = resume.request;
+      if (!reqRes) {
+        console.log("[upload] Step 1: requesting signed URL...");
+        reqRes = await apiFetch<RequestUploadResponse>(
+          API_ENDPOINTS.documents.requestUpload(data.knowledgeBaseId),
+          {
+            method: "POST",
+            body: JSON.stringify({
+              filename: data.file.name,
+              content_type: data.file.type || "application/octet-stream",
+            }),
+          },
+          token ?? undefined,
+        );
+        resume.request = reqRes;
+        console.log("[upload] Step 1 OK:", reqRes.document_id, "url_len:", reqRes.upload_url?.length);
+      } else {
+        console.log("[upload] Step 1 skipped (resume):", reqRes.document_id);
+      }
 
       // Step 2: Direct upload to GCS via signed URL (bypass Cloud Run)
-      if (reqRes.upload_url) {
+      if (reqRes.upload_url && resume.gcsUploaded) {
+        console.log("[upload] Step 2 skipped (resume)");
+        data.onProgress?.(100);
+      } else if (reqRes.upload_url) {
         console.log("[upload] Step 2: uploading to GCS...");
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -135,6 +177,7 @@ export function useUploadDocument() {
           };
           xhr.send(data.file);
         });
+        resume.gcsUploaded = true;
         console.log("[upload] Step 2 OK");
       } else {
         // Fallback: old multipart upload (local storage)

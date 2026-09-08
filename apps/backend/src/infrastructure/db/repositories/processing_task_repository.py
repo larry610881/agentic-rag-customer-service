@@ -52,6 +52,23 @@ class SQLAlchemyProcessingTaskRepository(ProcessingTaskRepository):
         model = result.scalar_one_or_none()
         return self._to_entity(model) if model else None
 
+    async def find_by_document_id(
+        self, document_id: str
+    ) -> ProcessingTask | None:
+        """該文件最新的一筆處理工作。
+
+        reprocess 會為同一份文件再建一筆，所以取 ``created_at`` 最新的那筆。
+        """
+        stmt = (
+            select(ProcessingTaskModel)
+            .where(ProcessingTaskModel.document_id == document_id)
+            .order_by(ProcessingTaskModel.created_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        return self._to_entity(model) if model else None
+
     async def update_status(
         self,
         task_id: str,

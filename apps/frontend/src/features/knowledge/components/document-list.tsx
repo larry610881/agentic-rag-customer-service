@@ -168,11 +168,13 @@ function StatusCell({
   taskProgress,
   childrenCount,
   completedChildrenCount,
+  errorMessage,
 }: {
   status: DocumentResponse["status"];
   taskProgress?: number | null;
   childrenCount?: number;
   completedChildrenCount?: number;
+  errorMessage?: string | null;
 }) {
   switch (status) {
     case "pending":
@@ -233,10 +235,22 @@ function StatusCell({
         </span>
       );
     case "failed":
+      // 失敗必須說得出原因：派工遺失（Issue #88 的 reaper 轉來的）跟 OCR 失敗
+      // 對使用者的處置完全不同，只顯示一個紅色「失敗」等於沒說。
       return (
-        <span className="flex items-center gap-1.5 text-destructive">
-          <CircleX className="h-4 w-4" />
-          失敗
+        <span
+          className="flex items-center gap-1.5 text-destructive"
+          title={errorMessage ?? undefined}
+        >
+          <CircleX className="h-4 w-4 shrink-0" />
+          <span className="flex flex-col">
+            失敗
+            {errorMessage && (
+              <span className="text-xs font-normal opacity-80 line-clamp-2">
+                {errorMessage}
+              </span>
+            )}
+          </span>
         </span>
       );
   }
@@ -674,6 +688,7 @@ export function DocumentList({
                     taskProgress={doc.task_progress}
                     childrenCount={doc.children_count}
                     completedChildrenCount={doc.completed_children_count}
+                    errorMessage={doc.error_message}
                   />
                 </td>
                 <td className="border-b px-4 py-2">

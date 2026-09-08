@@ -330,6 +330,26 @@ async def drain_outbox_task(ctx: dict) -> None:
         )
 
 
+async def reap_stale_documents_task(ctx: dict) -> None:
+    """把「卡在等待中卻沒有工作在跑」的文件轉成失敗（Issue #88）。
+
+    `enqueue()` 吞例外只回 None、`confirm-upload` 也不看回傳值，所以派工失敗在
+    UI 上跟正常排隊長得一模一樣。這支 cron 是誠實化那個狀態的安全網。
+    """
+    from src.infrastructure.queue.arq_pool import queue_depth
+
+    container = _new_container()
+    use_case = container.reap_stale_documents_use_case()
+    depth = await queue_depth(Settings().redis_url)
+    result = await use_case.execute(queue_depth=depth)
+    if result.failed or result.skipped_queue_busy:
+        logger.info(
+            f"[reap_stale_documents] queue_depth={depth} "
+            f"scanned={result.scanned} failed={result.failed} "
+            f"skipped={result.skipped_queue_busy}"
+        )
+
+
 class WorkerSettings:
     """arq worker configuration."""
 
@@ -367,6 +387,11 @@ class WorkerSettings:
         cron(abuse_daily_report_task, hour={1}, minute={15}),
         cron(conversation_summary_scan_task, minute=set(range(60))),
         cron(drain_outbox_task, minute=set(range(60))),
+        # Issue #88: 每 5 分鐘掃派工遺失的 pending 文件（佇列見底才判死）
+        cron(
+            reap_stale_documents_task,
+            minute=set(range(0, 60, 5)),
+        ),
     ]
     on_startup = startup
     on_shutdown = shutdown

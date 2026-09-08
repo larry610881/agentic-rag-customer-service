@@ -208,6 +208,9 @@ from src.application.knowledge.list_knowledge_bases_use_case import (
 from src.application.knowledge.process_document_use_case import (
     ProcessDocumentUseCase,
 )
+from src.application.knowledge.reap_stale_documents_use_case import (
+    ReapStaleDocumentsUseCase,
+)
 from src.application.knowledge.reembed_chunk_use_case import ReEmbedChunkUseCase
 from src.application.knowledge.reprocess_document_use_case import (
     ReprocessDocumentUseCase,
@@ -520,11 +523,11 @@ from src.infrastructure.db.repositories.feedback_repository import (
 from src.infrastructure.db.repositories.guard_log_repository import (
     SQLAlchemyGuardLogRepository,
 )
-from src.infrastructure.db.repositories.guard_settings_repository import (
-    SQLAlchemyGuardSettingsRepository,
-)
 from src.infrastructure.db.repositories.guard_rules_config_repository import (
     SQLAlchemyGuardRulesConfigRepository,
+)
+from src.infrastructure.db.repositories.guard_settings_repository import (
+    SQLAlchemyGuardSettingsRepository,
 )
 from src.infrastructure.db.repositories.knowledge_base_repository import (
     SQLAlchemyKnowledgeBaseRepository,
@@ -2041,6 +2044,13 @@ class Container(containers.DeclarativeContainer):
             lambda factory: factory.resolve_api_key,
             _llm_factory,
         ),
+    )
+
+    # Issue #88: 派工遺失偵測（worker cron 每 5 分鐘）
+    reap_stale_documents_use_case = providers.Factory(
+        ReapStaleDocumentsUseCase,
+        doc_repo=document_repository,
+        task_repo=processing_task_repository,
     )
 
     # test_retrieval_use_case 移到 query_rag_use_case 之後（forward reference）
