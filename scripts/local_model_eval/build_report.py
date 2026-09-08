@@ -227,6 +227,19 @@ def main() -> int:
     # --- 6. 結構化輸出 ---
     if json_rows:
         out.append("## 6. 結構化輸出（output_format=json）\n")
+        # 防護攔截的回合不進這張表：那是平台在說話（延遲 100–200ms、模型沒被
+        # 呼叫），留著會讓五臂看起來一模一樣。攔截本身另外回報。
+        blocked = [r for r in json_rows if r.get("guard_blocked")]
+        json_rows = [r for r in json_rows if not r.get("guard_blocked")]
+        if blocked:
+            n_arms = len({arm(r["bot"]) for r in blocked})
+            turns = sorted({f"{r['dialogue']}T{r['turn']}" for r in blocked})
+            out.append(
+                f"> 已排除 {len(blocked)} 筆防護攔截的回合（{'、'.join(turns)}，"
+                f"{n_arms} 臂皆同）——那些輪次模型沒有被呼叫，"
+                "測到的是平台契約不是模型能力。攔截本身是否守住 JSON 契約，"
+                "由後端 regression test 覆蓋（#85）。\n"
+            )
         by = defaultdict(list)
         for r in json_rows:
             by[arm(r["bot"])].append(r)
@@ -255,7 +268,19 @@ def main() -> int:
             )
             for a, rs in by.items()
         }
-        if len(by) > 1 and len(set(sig.values())) == 1:
+        all_perfect = len(sig) > 0 and set(sig.values()) == {(1.0, 1.0, 1.0)}
+        if all_perfect:
+            # 全員滿分跟「平台在說話」長得一樣（都是跨臂一致），但意義相反：
+            # 前者是題目太簡單，後者是輸出根本不是模型產生的。用「有沒有失分」
+            # 區分，不然偵測器自己就會變成假警報。
+            out.append(
+                f"> 五臂在 {len(next(iter(by.values())))} 輪全部滿分——"
+                "**這個題組對這五個模型已經沒有鑑別度**，但這是真的都通過，"
+                "不是平台在說話（防護攔截的回合已排除，其餘每一輪模型都有被呼叫）。"
+                "結論：結構化輸出契約連地端 27B 都守得住，不構成選型的區分點；"
+                "要分高下得加難度（巢狀 schema、enum 約束、長輸出截斷）。\n"
+            )
+        elif len(by) > 1 and len(set(sig.values())) == 1:
             culprits = sorted({
                 f"{r['dialogue']}T{r['turn']}"
                 for rs in by.values() for r in rs if not r["schema_ok"]

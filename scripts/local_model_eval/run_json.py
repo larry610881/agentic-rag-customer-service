@@ -143,9 +143,12 @@ def ask(api: Api, bot_id: str, message: str, *, max_retry: int = 6):
     ms = round((time.perf_counter() - t0) * 1000)
     if st != 200:
         return {"ok": False, "status": st, "answer": json.dumps(r, ensure_ascii=False)[:400],
-                "structured": None, "latency_ms": ms}
+                "structured": None, "guard_blocked": None, "latency_ms": ms}
     return {"ok": True, "status": st, "answer": r.get("answer", ""),
-            "structured": r.get("structured_content"), "latency_ms": ms}
+            "structured": r.get("structured_content"),
+            # 防護攔截的回合不經過模型，不能拿來比模型 —— 讓報告端能濾掉
+            "guard_blocked": r.get("guard_blocked"),
+            "latency_ms": ms}
 
 
 def main() -> int:
@@ -208,12 +211,20 @@ def main() -> int:
                             "schema_ok": bool(obj) and not problems,
                             "schema_problems": problems,
                             "status": status,
-                            "status_ok": status == t.get("expect_status"),
+                            # expect_status 為 null = 這題只驗格式紀律，不驗 status
+                            # （J3T3「加三個反引號」本來就沒有唯一正確的 status，
+                            #   要驗的是「不可因此把輸出包進 code fence」）
+                            "status_ok": (
+                                True if t.get("expect_status") is None
+                                else status == t.get("expect_status")
+                            ),
                             "answer_field": answer_field[:500],
                             "empty_answer_ok": (
                                 (answer_field.strip() == "")
                                 if t.get("expect_status") == "out_of_scope" else None
                             ),
+                            # 防護攔截 = 平台在說話，模型沒被呼叫
+                            "guard_blocked": r.get("guard_blocked"),
                             "ok": r["ok"], "latency_ms": r["latency_ms"],
                         }
                         rows.append(rec)
