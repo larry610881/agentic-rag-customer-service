@@ -124,7 +124,12 @@ def ask_stream(api: Api, bot_id: str, message: str, conversation_id: str | None)
                 except Exception:
                     continue
                 kind = ev.get("type")
-                if kind == "retrieval" and retrieval_ms is None:
+                # 分界線用 status:llm_generating，不要用 retrieval 事件——後者是在
+                # 結尾才發（與 done 同時，只回報 top_score/chunk_count），拿來計時
+                # 永遠等於總時間。llm_generating 才是「檢索與組 prompt 結束、模型
+                # 開始」的那一刻，用它才切得出「前置管線 vs 模型」。
+                if kind == "status" and ev.get("status") == "llm_generating" \
+                        and retrieval_ms is None:
                     retrieval_ms = round((time.perf_counter() - t0) * 1000)
                 elif kind == "token":
                     if ttft is None:
@@ -149,9 +154,11 @@ def ask_stream(api: Api, bot_id: str, message: str, conversation_id: str | None)
 
     total = round((time.perf_counter() - t0) * 1000)
     gen_ms = max(1, total - (ttft or total))
+    prefill_ms = (ttft - retrieval_ms) if (ttft and retrieval_ms) else None
     return {
         "ok": True, "status": status, "answer": "".join(parts),
         "latency_ms": total, "ttft_ms": ttft, "retrieval_ms": retrieval_ms,
+        "prefill_ms": prefill_ms,
         "gen_chunks": chunks, "tok_per_s": round(chunks / (gen_ms / 1000), 1),
         "conversation_id": conv, "input_tokens": 0, "output_tokens": chunks,
         "sources": [], "tool_calls": tools,
@@ -265,6 +272,7 @@ def main() -> int:
                             "conversation_id": conv,
                             "ttft_ms": r.get("ttft_ms"),
                             "retrieval_ms": r.get("retrieval_ms"),
+                            "prefill_ms": r.get("prefill_ms"),
                             "gen_chunks": r.get("gen_chunks"),
                             "tok_per_s": r.get("tok_per_s"),
                             "tool_calls": r.get("tool_calls", []),
