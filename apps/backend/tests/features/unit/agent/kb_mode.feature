@@ -67,3 +67,17 @@ Feature: 知識庫問答模式 — bot mode kb (Knowledge-Only Mode)
         Given 一個 mode 為 "kb" 的 bot 實體
         When 取快照後把未命中話術改為 "換個方式問我" 再取一次快照
         Then 快照應含 "miss_reply" 且 diff 應列出 "miss_reply"
+
+    Scenario Outline: 供應商不支援工具時，帶工具的 bot 設定應被擋下（Issue #84）
+        Given 一個租戶可用全部內建工具的環境
+        When 以供應商 "<provider>" 與工具 "<tools>" 儲存 bot 設定
+        Then 儲存結果應為 <outcome>
+
+        Examples:
+            | provider  | tools                            | outcome |
+            | google    | rag_query                        | error   |
+            | google    | rag_query,transfer_to_human_agent| error   |
+            | google    | -                                | saved   |
+            | openai    | rag_query                        | saved   |
+            | ollama    | rag_query,query_dm_with_image    | saved   |
+            | anthropic | rag_query                        | saved   |

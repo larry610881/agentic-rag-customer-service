@@ -360,3 +360,40 @@ def snapshot_has_field(context, field, changed):
     assert field in context["snap_a"]
     assert "output_format" in context["snap_a"]
     assert changed in diff_snapshots(context["snap_a"], context["snap_b"])
+
+
+# --- Issue #84：供應商不支援工具時擋下設定 ---
+
+
+@given("一個租戶可用全部內建工具的環境")
+def all_tools_accessible(context):
+    from src.domain.agent.built_in_tool import BUILT_IN_TOOL_DEFAULTS
+
+    repo = AsyncMock()
+    repo.find_all = AsyncMock(return_value=list(BUILT_IN_TOOL_DEFAULTS))
+    repo.find_accessible = AsyncMock(return_value=list(BUILT_IN_TOOL_DEFAULTS))
+    context["tool_repo"] = repo
+
+
+@when(parsers.parse('以供應商 "{provider}" 與工具 "{tools}" 儲存 bot 設定'))
+def save_bot_with_tools(context, provider, tools):
+    from src.application.bot.validate_bot_enabled_tools import (
+        validate_bot_enabled_tools,
+    )
+
+    enabled = [] if tools == "-" else [t.strip() for t in tools.split(",") if t.strip()]
+    try:
+        _run(validate_bot_enabled_tools(
+            enabled_tools=enabled,
+            tenant_id="t1",
+            built_in_tool_repository=context["tool_repo"],
+            llm_provider=provider,
+        ))
+        context["tool_save_outcome"] = "saved"
+    except ValueError:
+        context["tool_save_outcome"] = "error"
+
+
+@then(parsers.parse("儲存結果應為 {outcome}"))
+def tool_save_outcome(context, outcome):
+    assert context["tool_save_outcome"] == outcome

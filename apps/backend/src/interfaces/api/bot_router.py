@@ -492,6 +492,7 @@ async def create_bot(
             enabled_tools=body.enabled_tools,
             tenant_id=tenant.tenant_id,
             built_in_tool_repository=built_in_tool_repo,
+            llm_provider=body.llm_provider,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -694,10 +695,13 @@ async def update_bot(
         _validate_intent_routes(body.intent_routes)
     if body.enabled_tools is not None:
         try:
+            # 部分更新時 body.llm_provider 可能為 None（沒動供應商），
+            # 此時無從判斷、不擋；建立路徑一定帶得到，新設定擋得住。
             await validate_bot_enabled_tools(
                 enabled_tools=body.enabled_tools,
                 tenant_id=tenant.tenant_id,
                 built_in_tool_repository=built_in_tool_repo,
+                llm_provider=body.llm_provider,
             )
         except ValueError as exc:
             raise HTTPException(

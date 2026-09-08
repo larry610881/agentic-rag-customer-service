@@ -7,6 +7,10 @@
 from __future__ import annotations
 
 from src.domain.agent.built_in_tool import BuiltInToolRepository
+from src.domain.llm.tool_support import (
+    TOOL_UNSUPPORTED_REASON,
+    provider_supports_tools,
+)
 
 
 async def validate_bot_enabled_tools(
@@ -14,6 +18,7 @@ async def validate_bot_enabled_tools(
     enabled_tools: list[str],
     tenant_id: str,
     built_in_tool_repository: BuiltInToolRepository,
+    llm_provider: str | None = None,
 ) -> None:
     """
     Raises ValueError if any built-in tool in ``enabled_tools`` is not
@@ -24,6 +29,11 @@ async def validate_bot_enabled_tools(
     - 傳入 ``enabled_tools`` 中若某名稱屬於 universe 但不在 accessible → reject
     - 其他名稱（不屬 universe）視為 MCP / 自訂 tool，passthrough
     """
+    # Issue #84：Google + 任何工具 = 工具回合後必定 400，存檔時就擋，
+    # 不要讓管理者以為設定成功、上線後才在使用者面前 500。
+    if enabled_tools and not provider_supports_tools(llm_provider):
+        raise ValueError(TOOL_UNSUPPORTED_REASON)
+
     all_tools = await built_in_tool_repository.find_all()
     universe = {t.name for t in all_tools}
     accessible = {
