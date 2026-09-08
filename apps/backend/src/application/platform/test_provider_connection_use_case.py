@@ -57,6 +57,10 @@ class CheckProviderConnectionUseCase:
         if setting.provider_name == ProviderName.ANTHROPIC:
             headers["x-api-key"] = api_key
             headers["anthropic-version"] = "2023-06-01"
+        elif setting.provider_name == ProviderName.GOOGLE:
+            # 2026-09-08：Gemini 原生 /v1beta/models 只認 x-goog-api-key，
+            # 帶 Bearer 會回 401 → 過去「測試連線」對 Google 一律假失敗
+            headers["x-goog-api-key"] = api_key
         else:
             headers["Authorization"] = f"Bearer {api_key}"
 
