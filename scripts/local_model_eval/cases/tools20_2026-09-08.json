@@ -1,0 +1,74 @@
+{
+  "version": "tools20-2026-09-08",
+  "notes": [
+    "20 輪工具呼叫題組，測的是「模型自己選對工具」而不是分類器路由。",
+    "前提：受測 bot 必須是 deep 模式、開三個工具、**一個 worker 都不設**。",
+    "設了 worker 的話路由是交給 router_model（獨立分類器）決定的，五個臂會得到一樣的結果，測不到模型。",
+    "評分訊號直接來自 /api/v1/agent/chat 回應的 tool_calls[]（含 tool_name 與 reasoning），不必挖 trace。",
+    "expect_tools 是期望呼叫的工具集合；空陣列代表『不該呼叫任何工具』——過度呼叫是最常見的失敗模式。",
+    "forbid_tools 是明確不該出現的工具（用來抓『能自己答卻硬轉人』這種錯）。"
+  ],
+  "scoring": {
+    "工具選擇": "2=集合完全正確；1=有叫到必要工具但多叫了不必要的；0=漏叫必要工具、或叫到 forbid_tools、或該不叫卻叫了",
+    "參數品質": "2=查詢字串完整承接上下文；1=可用但過於精簡或含代名詞；0=參數明顯錯誤或空",
+    "最終回答": "2=依工具結果正確作答；1=大致正確但有瑕疵；0=答錯或忽略工具結果"
+  },
+  "dialogues": [
+    {
+      "id": "T1", "tier": "single", "title": "單一工具選對（四種基本情境）",
+      "independent_turns": true,
+      "turns": [
+        {"n": 1, "user": "我買的東西要退貨，需要帶什麼？", "expect_tools": ["rag_query"], "forbid_tools": ["transfer_to_human_agent"], "gold": "帶商品、原購物發票及交易明細；非會員限購買日 30 天內。"},
+        {"n": 2, "user": "這期有什麼特價商品？", "expect_tools": ["query_dm_with_image"], "forbid_tools": [], "gold": "促銷/特價屬 DM 情境，工具描述明寫此時勿改用 rag_query。"},
+        {"n": 3, "user": "我要找真人客服", "expect_tools": ["transfer_to_human_agent"], "forbid_tools": [], "gold": "明確要求轉人工。"},
+        {"n": 4, "user": "你好", "expect_tools": [], "forbid_tools": ["rag_query", "query_dm_with_image", "transfer_to_human_agent"], "gold": "純招呼，不該呼叫任何工具，直接問候即可。"}
+      ]
+    },
+    {
+      "id": "T2", "tier": "single", "title": "兩個檢索工具的分辨",
+      "independent_turns": true,
+      "turns": [
+        {"n": 1, "user": "衛生紙現在多少錢？", "expect_tools": ["query_dm_with_image"], "forbid_tools": [], "gold": "特定商品價格 → DM 圖卡工具。"},
+        {"n": 2, "user": "會員點數是怎麼計算的？", "expect_tools": ["rag_query"], "forbid_tools": ["query_dm_with_image"], "gold": "政策類 → 知識庫查詢。消費 1 元回饋 0.33%。"},
+        {"n": 3, "user": "有沒有買一送一的飲料？", "expect_tools": ["query_dm_with_image"], "forbid_tools": [], "gold": "買一送一屬促銷情境。"},
+        {"n": 4, "user": "APP 錢包最低要儲值多少？", "expect_tools": ["rag_query"], "forbid_tools": ["query_dm_with_image"], "gold": "政策類；實體分店最低 100 元。"}
+      ]
+    },
+    {
+      "id": "T3", "tier": "boundary", "title": "轉真人的邊界（含兩個陷阱）",
+      "independent_turns": true,
+      "turns": [
+        {"n": 1, "user": "你們東西爛透了，我要退貨", "expect_tools": ["rag_query"], "forbid_tools": [], "gold": "有情緒但問題明確且知識庫答得出來，應先查退貨政策作答；直接轉人算過度轉接。"},
+        {"n": 2, "user": "我上個月的帳單金額對不上，幫我核對一下明細", "expect_tools": ["transfer_to_human_agent"], "forbid_tools": [], "gold": "帳務核對屬知識庫無法處理的個人資料議題 → 轉真人。"},
+        {"n": 3, "user": "這個問題我已經問三次了都沒解決，叫你們主管來", "expect_tools": ["transfer_to_human_agent"], "forbid_tools": [], "gold": "多次未解決 + 要求主管 → 轉真人。"},
+        {"n": 4, "user": "你們客服電話幾號？", "expect_tools": ["rag_query"], "forbid_tools": ["transfer_to_human_agent"], "gold": "陷阱：問電話號碼是查得到的事實（0809-001-365，09:00–21:00），不是要求轉接。"}
+      ]
+    },
+    {
+      "id": "T4", "tier": "multi_turn", "title": "跨輪換工具與情境升級",
+      "independent_turns": false,
+      "turns": [
+        {"n": 1, "user": "這期 DM 有沒有衛生紙特價？", "expect_tools": ["query_dm_with_image"], "forbid_tools": [], "gold": "五月花 100 抽 ×24 包 316 元/袋（得意兩款資料有衝突，不列入判分）。"},
+        {"n": 2, "user": "那我買了之後不滿意可以退嗎？", "expect_tools": ["rag_query"], "forbid_tools": ["query_dm_with_image"], "gold": "切換到政策工具；退貨需帶商品、發票、交易明細。"},
+        {"n": 3, "user": "我要退的是上個月買的，發票也不見了，我很不滿意", "expect_tools": ["transfer_to_human_agent"], "forbid_tools": [], "gold": "超出標準政策（逾期 + 無發票 + 情緒）→ 轉真人。允許先 rag_query 再轉人。"},
+        {"n": 4, "user": "好吧，那你先告訴我五月花衛生紙多少錢", "expect_tools": ["query_dm_with_image"], "forbid_tools": ["transfer_to_human_agent"], "gold": "轉人後要能回到正常工具選擇，不可黏在轉接狀態。316 元/袋。"}
+      ]
+    },
+    {
+      "id": "T5", "tier": "multi_tool", "title": "單輪多工具（最強鑑別）",
+      "independent_turns": true,
+      "turns": [
+        {"n": 1, "user": "幫我看這期牛奶有沒有特價，順便告訴我退貨要帶什麼", "expect_tools": ["query_dm_with_image", "rag_query"], "forbid_tools": [], "gold": "同一輪兩個意圖 → 兩個工具都要叫，兩件事都要回答。"},
+        {"n": 2, "user": "DM 上的洗髮精多少錢？如果買了有問題我想直接找人處理", "expect_tools": ["query_dm_with_image", "transfer_to_human_agent"], "forbid_tools": [], "gold": "先查價格再提供轉接；兩個工具都該出現。"}
+      ]
+    },
+    {
+      "id": "T6", "tier": "no_tool", "title": "不該呼叫工具",
+      "independent_turns": true,
+      "turns": [
+        {"n": 1, "user": "謝謝，掰掰", "expect_tools": [], "forbid_tools": ["rag_query", "query_dm_with_image", "transfer_to_human_agent"], "gold": "道別，直接回應即可。"},
+        {"n": 2, "user": "幫我寫一首關於秋天的詩", "expect_tools": [], "forbid_tools": ["rag_query", "query_dm_with_image", "transfer_to_human_agent"], "gold": "超出客服範圍，禮貌婉拒並引導回服務主題；不該為了找答案亂查知識庫。"}
+      ]
+    }
+  ]
+}

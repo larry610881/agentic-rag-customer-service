@@ -37,6 +37,7 @@ class Api:
     def __init__(self, base: str) -> None:
         self.base = base.rstrip("/")
         self.token = ""
+        self._creds: tuple[str, str] | None = None
 
     def call(self, method: str, path: str, body: dict | None = None, timeout: int = 300):
         req = urllib.request.Request(
@@ -62,6 +63,99 @@ class Api:
         if st != 200:
             raise SystemExit(f"login failed {st}: {r}")
         self.token = r["access_token"]
+        self._creds = (account, pw)
+
+    def relogin(self) -> bool:
+        """access token 有效期比整份題組的執行時間短，過期就重新登入。
+
+        不做這件事的後果：跑到後面的 bot 全部收到 401，結果檔看起來「有跑完」，
+        但那個模型的分數是空的（2026-09-08 第一次跑就這樣掉了 47/60 輪）。
+        """
+        if not self._creds:
+            return False
+        account, pw = self._creds
+        st, r = self.call("POST", "/api/v1/auth/login", {"account": account, "password": pw})
+        if st != 200:
+            return False
+        self.token = r["access_token"]
+        print("      access token 過期，已重新登入", flush=True)
+        return True
+
+
+def ask_stream(api: Api, bot_id: str, message: str, conversation_id: str | None):
+    """走 SSE 串流量測首 token 時間與生成吞吐。
+
+    非串流端點只拿得到「總時間」，看不出時間花在哪裡。串流可以拆成三段：
+      檢索完成（retrieval 事件）→ 首 token → 最後一個 token
+    首 token 前包含檢索 + prompt 組裝 + 模型 prefill，之後才是純生成。
+    地端模型的瓶頸通常在 prefill，雲端則在網路來回，拆開才看得出差別。
+
+    注意：串流端點不下發 usage 事件（伺服器端自行記帳），所以生成量以 token
+    事件數（chunk 數）計，標示為 gen_chunks，與非串流的 output_tokens 不完全相等。
+    """
+    body = {
+        "message": message, "bot_id": bot_id,
+        **({"conversation_id": conversation_id} if conversation_id else {}),
+    }
+    req = urllib.request.Request(
+        api.base + "/api/v1/agent/chat/stream",
+        data=json.dumps(body).encode(), method="POST",
+    )
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Accept", "text/event-stream")
+    req.add_header("Authorization", f"Bearer {api.token}")
+
+    t0 = time.perf_counter()
+    ttft = None
+    retrieval_ms = None
+    chunks = 0
+    parts: list[str] = []
+    tools: list[str] = []
+    conv = conversation_id
+    status = 200
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            for raw in resp:
+                line = raw.decode("utf-8", errors="ignore").strip()
+                if not line.startswith("data:"):
+                    continue
+                try:
+                    ev = json.loads(line[5:].strip())
+                except Exception:
+                    continue
+                kind = ev.get("type")
+                if kind == "retrieval" and retrieval_ms is None:
+                    retrieval_ms = round((time.perf_counter() - t0) * 1000)
+                elif kind == "token":
+                    if ttft is None:
+                        ttft = round((time.perf_counter() - t0) * 1000)
+                    chunks += 1
+                    parts.append(ev.get("content") or ev.get("token") or "")
+                elif kind == "tool_calls":
+                    tools = [t.get("tool_name", "") for t in (ev.get("tool_calls") or [])]
+                elif kind == "conversation_id":
+                    conv = ev.get("conversation_id") or conv
+                elif kind == "done":
+                    break
+    except urllib.error.HTTPError as e:
+        status = e.code
+        return {
+            "ok": False, "status": status,
+            "answer": e.read().decode(errors="ignore")[:400],
+            "latency_ms": round((time.perf_counter() - t0) * 1000),
+            "conversation_id": conv, "input_tokens": 0, "output_tokens": 0,
+            "sources": [], "tool_calls": [],
+        }
+
+    total = round((time.perf_counter() - t0) * 1000)
+    gen_ms = max(1, total - (ttft or total))
+    return {
+        "ok": True, "status": status, "answer": "".join(parts),
+        "latency_ms": total, "ttft_ms": ttft, "retrieval_ms": retrieval_ms,
+        "gen_chunks": chunks, "tok_per_s": round(chunks / (gen_ms / 1000), 1),
+        "conversation_id": conv, "input_tokens": 0, "output_tokens": chunks,
+        "sources": [], "tool_calls": tools,
+    }
 
 
 def ask(api: Api, bot_id: str, message: str, conversation_id: str | None, *, max_retry: int = 6):
@@ -75,6 +169,8 @@ def ask(api: Api, bot_id: str, message: str, conversation_id: str | None, *, max
     st, r = 0, None
     for attempt in range(max_retry):
         st, r = api.call("POST", "/api/v1/agent/chat", body)
+        if st == 401 and api.relogin():
+            st, r = api.call("POST", "/api/v1/agent/chat", body)
         if st != 429:
             break
         detail = str((r or {}).get("detail", ""))
@@ -109,6 +205,8 @@ def main() -> int:
     ap.add_argument("--only", default="", help="逗號分隔對話 id，如 E1,H3")
     ap.add_argument("--repeat", type=int, default=1, help="整份題組重跑幾次（看穩定度）")
     ap.add_argument("--sleep", type=float, default=1.0, help="每輪之間的間隔秒數")
+    ap.add_argument("--stream", action="store_true",
+                    help="走 SSE 量測首 token 時間與生成吞吐（不下發 usage，token 數以 chunk 計）")
     args = ap.parse_args()
 
     pw = os.environ.get("TENANT_ADMIN_PASSWORD")
@@ -148,7 +246,12 @@ def main() -> int:
                 for d in dialogues:
                     conv = None
                     for t in d["turns"]:
-                        r = ask(api, bid, t["user"], conv)
+                        if args.stream:
+                            r = ask_stream(api, bid, t["user"], conv)
+                            if not r["ok"] and r["status"] == 401 and api.relogin():
+                                r = ask_stream(api, bid, t["user"], conv)
+                        else:
+                            r = ask(api, bid, t["user"], conv)
                         conv = r.get("conversation_id") or conv
                         rec = {
                             "run": rep, "bot": name, "bot_id": bid,
@@ -160,12 +263,21 @@ def main() -> int:
                             "output_tokens": r["output_tokens"],
                             "model": r.get("model", ""), "sources": r.get("sources", []),
                             "conversation_id": conv,
+                            "ttft_ms": r.get("ttft_ms"),
+                            "retrieval_ms": r.get("retrieval_ms"),
+                            "gen_chunks": r.get("gen_chunks"),
+                            "tok_per_s": r.get("tok_per_s"),
+                            "tool_calls": r.get("tool_calls", []),
                         }
                         fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
                         fh.flush()
                         flag = "OK" if r["ok"] else f"ERR{r['status']}"
-                        print(f"   {d['id']}-{t['n']} {r['latency_ms']}ms "
-                              f"in={r['input_tokens']} out={r['output_tokens']} {flag}", flush=True)
+                        extra = (
+                            f"ttft={r.get('ttft_ms')}ms {r.get('tok_per_s')}tok/s "
+                            if args.stream else
+                            f"in={r['input_tokens']} out={r['output_tokens']} "
+                        )
+                        print(f"   {d['id']}-{t['n']} {r['latency_ms']}ms {extra}{flag}", flush=True)
                         time.sleep(args.sleep)
     print(f"\n輸出：{out}")
     print("下一步：python3 scripts/local_model_eval/make_blind_packet.py --results "
