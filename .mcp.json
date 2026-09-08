@@ -2,23 +2,40 @@
   "mcpServers": {
     "shadcn-ui": {
       "command": "npx",
-      "args": ["shadcn@latest", "mcp"]
+      "args": [
+        "shadcn@latest",
+        "mcp"
+      ]
     },
     "context7": {
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ]
     },
     "magic-ui": {
       "command": "npx",
-      "args": ["-y", "@magicuidesign/mcp@latest"]
+      "args": [
+        "-y",
+        "@magicuidesign/mcp@latest"
+      ]
     },
     "playwright": {
       "command": "npx",
-      "args": ["@playwright/mcp@latest"]
+      "args": [
+        "@playwright/mcp@latest"
+      ]
     },
     "ui-expert": {
       "command": "node",
-      "args": ["/home/p10359945/source/repos/ui-expert-mcp/dist/index.js"]
+      "args": [
+        "/home/p10359945/source/repos/ui-expert-mcp/dist/index.js"
+      ]
+    },
+    "runpod": {
+      "type": "http",
+      "url": "https://mcp.getrunpod.io/"
     }
   }
 }
