@@ -35,10 +35,16 @@ def test_structured_prompt_contains_ocr_discipline(name: str, prompt: str):
     )
 
 
-def test_discipline_mentions_rare_char_protection():
-    """紀律段必須明確指示罕用字保護（薈/樟腦/萃/茅 case）。"""
-    assert "罕用字" in _OCR_DISCIPLINE
-    assert "薈" in _OCR_DISCIPLINE or "樟腦" in _OCR_DISCIPLINE
+def test_discipline_protects_proper_nouns_without_hardcoded_examples():
+    """2026-09-08 Larry：保留「專有名詞不得替換相似字」的通用規則，
+    但 prompt 不得寫死特定品牌 / 商品字（短期解 DM 的做法）；
+    專有名詞事後校正交由廠商商品對應表（Issue #79）。"""
+    assert "專有名詞" in _OCR_DISCIPLINE
+    assert "不得" in _OCR_DISCIPLINE and "替換" in _OCR_DISCIPLINE
+    for hardcoded in ("樟腦", "薈", "萃", "茅", "藺", "CLOROX"):
+        assert hardcoded not in _OCR_DISCIPLINE, hardcoded
+    assert "字形優先於語意" in _OCR_DISCIPLINE
+    assert "#79" in _OCR_DISCIPLINE
 
 
 def test_discipline_forbids_hallucination():
