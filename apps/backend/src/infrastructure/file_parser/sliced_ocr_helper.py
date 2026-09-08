@@ -19,6 +19,14 @@
 合併策略：tile 間用 splitter 看得懂的格式分隔，讓下游 separator splitter
 仍能正確識別 === 商品 block（即使商品橫跨兩個 tile，splitter 會在合併文本
 中找到完整 === block）。
+
+混合模式（Issue #82）：「半個商品直接省略」+ 固定 overlap 仍會漏掉橫跨切片
+邊界的大區塊（DM p13 艾瑪絲贈品框整塊消失）。caller 另給 ``full_page_callback``
+時，切片之外再跑一次整頁 OCR（影像先縮到最長邊 ``ocr_hybrid_full_page_max_side``
+省 token），交給 ``domain.knowledge.ocr_merge`` 以商品名合併：共用 block 保留
+切片版、整頁獨有的 block 補回、「不詳」markers 由整頁補上。
+``settings.ocr_hybrid_full_page``（env ``OCR_HYBRID_FULL_PAGE``，預設 True）
+為總開關。
 """
 
 from __future__ import annotations
@@ -26,6 +34,10 @@ from __future__ import annotations
 import asyncio
 import io
 from typing import Awaitable, Callable
+
+from src.config import settings
+from src.domain.knowledge.ocr_merge import merge_hybrid_ocr_text
+from src.infrastructure.file_parser.ocr_engines._image import downscale_longest_side
 
 WHITE_THRESHOLD = 235
 SEARCH_WINDOW = 100  # 切點在理想位置 ± 此範圍找最白邊
@@ -134,10 +146,16 @@ def merge_tile_texts(texts: list[str]) -> str:
     return "\n\n".join(t for t in texts if t.strip())
 
 
+def hybrid_full_page_enabled() -> bool:
+    """混合模式總開關（讀 settings，測試可 monkeypatch）。"""
+    return bool(getattr(settings, "ocr_hybrid_full_page", True))
+
+
 async def ocr_image_sliced(
     image_bytes: bytes,
     grid_spec: str,
     ocr_callback: OcrCallback,
+    full_page_callback: OcrCallback | None = None,
 ) -> str:
     """OCR an image by slicing into tiles + parallel OCR + merge.
 
@@ -145,10 +163,14 @@ async def ocr_image_sliced(
         image_bytes: source image (PNG/JPEG bytes)
         grid_spec: "2x3" / "3x2" / "" — empty falls back to single OCR call
         ocr_callback: async fn(image_bytes) -> ocr_text，呼叫者注入實際 OCR
-                      engine（可帶 prompt / model 等狀態）
+                      engine（可帶 prompt / model 等狀態；切片時帶切片前綴 prompt）
+        full_page_callback: 混合模式的整頁 OCR（不帶切片前綴 prompt）。給了且
+                      ``settings.ocr_hybrid_full_page`` 開啟時，與 tiles 並發
+                      執行，結果以商品名合併補回切片漏掉的 block。用量由
+                      callback 內部記到 caller 的 OcrUsageTally，兩趟自然加總。
 
     Returns:
-        merged OCR text。grid_spec="" 時直接 callback 整圖。
+        merged OCR text。grid_spec="" 時直接 callback 整圖（不做混合）。
     """
     grid = parse_grid_spec(grid_spec)
     if grid is None:
@@ -156,5 +178,17 @@ async def ocr_image_sliced(
 
     rows, cols = grid
     tiles = slice_image_bytes(image_bytes, rows, cols)
-    texts = await asyncio.gather(*[ocr_callback(t) for t in tiles])
-    return merge_tile_texts(list(texts))
+    tile_tasks = [ocr_callback(t) for t in tiles]
+
+    if full_page_callback is None or not hybrid_full_page_enabled():
+        texts = await asyncio.gather(*tile_tasks)
+        return merge_tile_texts(list(texts))
+
+    full_page_image = downscale_longest_side(
+        image_bytes, int(getattr(settings, "ocr_hybrid_full_page_max_side", 1600))
+    )
+    *tile_texts, full_page_text = await asyncio.gather(
+        *tile_tasks, full_page_callback(full_page_image)
+    )
+    sliced_text = merge_tile_texts([str(t) for t in tile_texts])
+    return merge_hybrid_ocr_text(sliced_text, str(full_page_text))

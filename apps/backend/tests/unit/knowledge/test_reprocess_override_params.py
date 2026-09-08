@@ -366,7 +366,8 @@ def test_ocr_slice_grid_override_passed_to_image_pipeline():
     """ocr_slice_grid override 應蓋過 kb.ocr_slice_grid，影響 image/png OCR 路徑。
 
     驗證方式：image/png + auto mode → 走 slice path（先 classify 再 tile OCR），
-    classify_page_type 應被呼叫，ocr_page 應被呼叫 6 次（2x3 = 6 tiles）。
+    classify_page_type 應被呼叫，ocr_page 應被呼叫 7 次（2x3 = 6 tiles + 1 次
+    混合模式整頁補漏，Issue #82 預設開啟）。
     """
     doc_repo = AsyncMock()
     doc_repo.find_by_id = AsyncMock(
@@ -426,9 +427,9 @@ def test_ocr_slice_grid_override_passed_to_image_pipeline():
 
     # ✅ 切片啟用 → classify_page_type 被呼叫一次（決定 tile 用哪個 prompt）
     mock_ocr.classify_page_type.assert_awaited_once()
-    # ✅ ocr_page 被呼叫 6 次（2x3 = 6 tiles）
-    assert mock_ocr.ocr_page.await_count == 6, (
-        f"切片應產生 6 tiles，實際 {mock_ocr.ocr_page.await_count}"
+    # ✅ ocr_page 被呼叫 7 次（2x3 = 6 tiles + 1 次整頁補漏，#82）
+    assert mock_ocr.ocr_page.await_count == 7, (
+        f"切片應產生 6 tiles + 1 整頁，實際 {mock_ocr.ocr_page.await_count}"
     )
     # ❌ 不走原本的 auto_dispatch（已 override 為切片）
     mock_ocr.ocr_page_auto_dispatch.assert_not_awaited()

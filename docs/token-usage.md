@@ -48,7 +48,7 @@
 
 | 路徑 | 類別 | 用量來源 | 狀態（#73 後） |
 |---|---|---|---|
-| 文件處理：OCR / contextual / embedding | `ocr` / `contextual_retrieval` / `embedding` | OCR：每份文件自己的 `OcrUsageTally`（引擎 `*_with_usage` 結果，#78）；contextual：服務 `last_*` 累計屬性；embedding：`EmbeddingResult` | ✅ 三筆 |
+| 文件處理：OCR / contextual / embedding | `ocr` / `contextual_retrieval` / `embedding` | OCR：每份文件自己的 `OcrUsageTally`（引擎 `*_with_usage` 結果，#78）；切片 OCR 的混合模式（#82，`OCR_HYBRID_FULL_PAGE` 預設開）**每頁多一次整頁呼叫**（影像縮至最長邊 1600px），tile 與整頁兩趟用量都累進同一份 tally；contextual：服務 `last_*` 累計屬性；embedding：`EmbeddingResult` | ✅ 三筆 |
 | 文件重處理：OCR / contextual / embedding | 同上 | 同上（共用 `_pipeline_accounting`） | ✅ 三筆（之前 0 筆） |
 | 每輪對話檢索（web / widget / LINE / 快速道 / LangGraph 工具） | `query_embedding` | `EmbeddingResult`；快取命中 0 筆 | ✅ 帶 bot_id |
 | `/search`（unified search） | `query_embedding` | 同上 | ✅（無 bot） |

@@ -5,6 +5,8 @@
   file parser 未實作 port（舊式注入 / 測試替身）時退回其 ``_ocr`` 預設引擎。
 - :func:`ocr_image`：單張影像（PDF 子頁 image/png）的 OCR，含 auto 模式的
   page-type dispatch 與 ``ocr_slice_grid`` 切片；過去 process / reprocess 各有一份。
+  切片時預設走混合模式（Issue #82）：另跑一次不帶切片前綴的整頁 OCR，由
+  helper 以商品名合併補回橫跨切片邊界被省略的 block（``OCR_HYBRID_FULL_PAGE``）。
 
 用量一律累加到 caller 的 :class:`OcrUsageTally`，並行文件之間互不干擾。
 """
@@ -66,7 +68,11 @@ async def ocr_image(
     slice_grid: str,
     usage: OcrUsageTally,
 ) -> str:
-    """單張影像 OCR：auto 模式走 page-type dispatch；slice_grid 非空時切片。"""
+    """單張影像 OCR：auto 模式走 page-type dispatch；slice_grid 非空時切片。
+
+    切片 + 結構化 prompt（catalog / auto）時同時提供整頁 callback 給 helper
+    做混合補漏；general 模式輸出無 ``===`` block 可合併，不跑整頁。
+    """
     from src.infrastructure.file_parser.ocr_engines import prompts as p
     from src.infrastructure.file_parser.sliced_ocr_helper import ocr_image_sliced
 
@@ -75,7 +81,7 @@ async def ocr_image(
             _page_type, content = await engine.ocr_page_auto_dispatch(
                 raw_content, usage=usage
             )
-            return content
+            return str(content)
         # auto + slice：先 classify 整圖拿 page_type，再用對應 prompt 對每個
         # tile OCR（加切片補充規則）。
         page_type = await engine.classify_page_type(raw_content, usage=usage)
@@ -89,7 +95,17 @@ async def ocr_image(
         prompt = p._SLICE_AWARE_PREFIX + base_prompt if slice_grid else base_prompt
 
     async def _ocr_tile(tile_bytes: bytes) -> str:
-        return await engine.ocr_page(tile_bytes, prompt=prompt, usage=usage)
+        return str(await engine.ocr_page(tile_bytes, prompt=prompt, usage=usage))
 
+    async def _ocr_full_page(page_bytes: bytes) -> str:
+        return str(
+            await engine.ocr_page(page_bytes, prompt=base_prompt, usage=usage)
+        )
+
+    full_page_callback = (
+        _ocr_full_page if slice_grid and ocr_mode != "general" else None
+    )
     # ocr_image_sliced grid="" 時直接呼叫 callback 整圖
-    return await ocr_image_sliced(raw_content, slice_grid, _ocr_tile)
+    return await ocr_image_sliced(
+        raw_content, slice_grid, _ocr_tile, full_page_callback=full_page_callback
+    )

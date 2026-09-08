@@ -89,6 +89,8 @@ thinking token 明細（計入 `output_tokens`），故為 0。`token_usage_reco
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `OCR_DEFAULT_MODEL` | `anthropic:claude-sonnet-4-6` | 環境預設 OCR 引擎 spec；KB 與租戶都沒設定時使用 |
+| `OCR_HYBRID_FULL_PAGE` | `true` | 混合模式（#82）：KB 有設切片格線（`ocr_slice_grid`，`2x3` / `3x2`）時，切片 OCR 之外再跑一次**整頁** OCR（同 prompt 家族、不帶切片前綴），以正規化商品名合併補回橫跨切片邊界被「半個商品直接省略」丟掉的 block。無切片格線或 `general` 模式不受影響；設 `false` 回到純切片 |
+| `OCR_HYBRID_FULL_PAGE_MAX_SIDE` | `1600` | 混合模式整頁 pass 送模型前先等比縮到最長邊此像素數（省 token；整頁只負責補漏與頁面 markers，不需切片等級的字形解析度）。`0` = 不縮 |
 
 **引擎**（`src/infrastructure/file_parser/ocr_engines/`，由 `DynamicOcrEngineFactory` 依 spec 建立、同 spec 共用實例）：
 
@@ -108,6 +110,13 @@ reprocess 可用 `ocr_model` 參數覆寫本次（不寫回 KB）。API key 一�
 
 用量記帳：每份文件各自累計（`OcrUsageTally`），`token_usage_records.model` 記實際 spec，
 並行文件不互相污染（見 `docs/token-usage.md`）。
+
+**混合模式合併規則**（`src/domain/knowledge/ocr_merge.py`，純邏輯；`sliced_ocr_helper.py` 負責並發呼叫）：
+兩份輸出各解析為「頁面 `【marker】` + `===` block」；block 身分 = 商品名正規化（去空白 / 標點、
+全形→半形、小寫）且相似度 ≥ 0.8（容忍一兩個字形差異，如 薈/著；350ml vs 600ml 仍視為不同）。
+兩邊都有 → 保留**切片版**（字形較準）；只有整頁有 → 補進來（排在切片 block 之後）；
+「商品：不詳」的整頁 block 不補。頁面 markers 切片為「不詳」時由整頁補上、切片有值以切片為準。
+輸出格式與原 OCR 相同，`SeparatorTextSplitterService` 不需改動。
 
 ### 認證 / 安全（Issue #67）
 

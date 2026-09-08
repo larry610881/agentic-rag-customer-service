@@ -54,3 +54,27 @@ def _compress_image(image_bytes: bytes) -> tuple[bytes, str]:
         buf, format="JPEG", quality=40
     )
     return buf.getvalue(), "image/jpeg"
+
+
+def downscale_longest_side(image_bytes: bytes, max_side: int) -> bytes:
+    """最長邊超過 ``max_side`` 時等比縮小（LANCZOS）並以 PNG 回傳；否則原樣回傳。
+
+    給混合模式的整頁 OCR pass（Issue #82）省 token 用：整頁只負責補「切片
+    漏掉的 block」與頁面 markers，不需要切片等級的字形解析度。
+    """
+    if max_side <= 0:
+        return image_bytes
+
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(image_bytes))
+    longest = max(img.width, img.height)
+    if longest <= max_side:
+        return image_bytes
+
+    scale = max_side / longest
+    new_size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
+    source = img if img.mode in ("RGB", "L") else img.convert("RGB")
+    buf = io.BytesIO()
+    source.resize(new_size, Image.Resampling.LANCZOS).save(buf, format="PNG")
+    return buf.getvalue()

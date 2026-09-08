@@ -96,6 +96,11 @@ class Settings(BaseSettings):
     # 皆空時用）。格式 provider:model；anthropic → Claude Vision，
     # google / openai / openrouter / litellm → OpenAI 相容視覺端點
     ocr_default_model: str = "anthropic:claude-sonnet-4-6"
+    # OCR 混合模式（Issue #82）：KB 設定切片格線（ocr_slice_grid）時，除切片 OCR
+    # 外再跑一次整頁 OCR，以商品名合併補回橫跨切片邊界被省略的 block。
+    # 每頁多一次整頁呼叫（影像先縮至最長邊 ocr_hybrid_full_page_max_side 省 token）。
+    ocr_hybrid_full_page: bool = True
+    ocr_hybrid_full_page_max_side: int = 1600
 
     # E2E testing: E2E_MODE=true → FakeLLM + MetaSupervisor (no real LLM calls)
     e2e_mode: bool = False
