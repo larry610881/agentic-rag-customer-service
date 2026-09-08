@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -79,12 +80,25 @@ class Api:
         self.token = r["access_token"]
 
 
-def ask(api: Api, bot_id: str, message: str, conversation_id: str | None):
-    t0 = time.perf_counter()
-    st, r = api.call("POST", "/api/v1/agent/chat", {
+_RETRY_AFTER = re.compile(r"(\d+)\s*seconds")
+
+
+def ask(api: Api, bot_id: str, message: str, conversation_id: str | None, *, max_retry: int = 6):
+    """送一題；遇到平台速率限制（429）依訊息指定秒數等待後重試。"""
+    body = {
         "message": message, "bot_id": bot_id,
         **({"conversation_id": conversation_id} if conversation_id else {}),
-    })
+    }
+    t0 = time.perf_counter()
+    for attempt in range(max_retry):
+        st, r = api.call("POST", "/api/v1/agent/chat", body)
+        if st != 429:
+            break
+        detail = str((r or {}).get("detail", ""))
+        m = _RETRY_AFTER.search(detail)
+        wait = min(int(m.group(1)) + 2 if m else 15 * (attempt + 1), 90)
+        print(f"      429 速率限制，等 {wait}s 後重試（{attempt + 1}/{max_retry}）", flush=True)
+        time.sleep(wait)
     ms = round((time.perf_counter() - t0) * 1000)
     if st != 200:
         return {"ok": False, "status": st, "answer": json.dumps(r, ensure_ascii=False)[:500], "latency_ms": ms}
@@ -136,7 +150,7 @@ def main() -> int:
                     answers.append(r["answer"]); lat += r["latency_ms"]
                     itok += r.get("input_tokens") or 0; otok += r.get("output_tokens") or 0
                     ok = ok and r["ok"]
-                    time.sleep(0.3)
+                    time.sleep(1.2)
                 rec = {"case": c["id"], "group": c["group"], "question": " → ".join(turns), "gold": c["gold"],
                        "bot": name, "ok": ok, "answer": "\n---\n".join(answers), "latency_ms": lat,
                        "input_tokens": itok, "output_tokens": otok}
