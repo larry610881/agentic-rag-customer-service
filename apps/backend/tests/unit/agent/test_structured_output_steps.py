@@ -491,3 +491,49 @@ def judge_strict(context):
 @then(parsers.parse("strict 應為 {value}"))
 def strict_is(context, value):
     assert context["strict"] is (value == "true")
+
+
+# --- Issue #85：防護攔截套用輸出格式 ---
+
+
+@given(parsers.parse('一個輸出格式為 "{fmt}" 的輸出規格'), target_fixture="blocked_spec")
+def blocked_spec(fmt):
+    from src.application.agent.output_format import OutputSpec
+
+    return OutputSpec.from_cfg({
+        "output_format": fmt,
+        "output_schema": None,
+        "output_text_field": "answer",
+        "miss_reply": "",
+    })
+
+
+@when(parsers.parse('防護以 "{text}" 攔截'), target_fixture="blocked_result")
+def do_guard_block(blocked_spec, text):
+    from src.application.agent.output_format import resolve_guard_blocked
+
+    return resolve_guard_blocked(blocked_spec, text)
+
+
+@then(parsers.parse("攔截回應應為 {shape}"))
+def blocked_shape(blocked_result, shape):
+    import json as _json
+
+    if shape == "合法 JSON":
+        obj = _json.loads(blocked_result.text)
+        assert isinstance(obj, dict)
+    else:
+        with pytest.raises(Exception):
+            _json.loads(blocked_result.text)
+
+
+@then(parsers.parse('攔截回應的顯示文字應為 "{text}"'))
+def blocked_display(blocked_result, text):
+    assert (blocked_result.display_text or blocked_result.text) == text
+
+
+@then(parsers.parse('攔截回應的 "{field}" 應為 "{value}"'))
+def blocked_field(blocked_result, field, value):
+    import json as _json
+
+    assert _json.loads(blocked_result.text)[field] == value

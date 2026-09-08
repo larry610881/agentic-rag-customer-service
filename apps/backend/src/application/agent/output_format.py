@@ -190,6 +190,48 @@ def resolve_miss_reply(spec: OutputSpec) -> FinalizedAnswer:
     )
 
 
+def resolve_guard_blocked(spec: OutputSpec, blocked_text: str) -> FinalizedAnswer:
+    """防護攔截時的回應，套用 bot 的輸出格式（Issue #85）。
+
+    原本這裡刻意回純文字（送出點註記「攔截後不再是結構化輸出」）。改掉的理由是
+    **契約一致性**：串接方看到 bot 設定 output_format=json 就會直接 json.loads，
+    防護一觸發就解析失敗——而防護觸發是日常事件，不是例外。同一支 bot 有時回物件
+    有時回字串，等於把錯誤處理成本轉嫁給每一個通路。
+
+    kb 未命中早就是這樣處理的（resolve_miss_reply），這裡只是補上同一層。
+    語意上把攔截視為 out_of_scope，拒絕話術放進 output_text_field，
+    前台照常顯示該欄位即可。
+    """
+    if not spec.is_json:
+        return FinalizedAnswer(text=blocked_text, status="blocked")
+
+    candidates: list[dict] = [
+        {**DEFAULT_MISS_REPLY_JSON, spec.output_text_field: blocked_text},
+        {spec.output_text_field: blocked_text},
+        dict(DEFAULT_MISS_REPLY_JSON),
+    ]
+    for obj in candidates:
+        ok, parsed, _ = validate_json_output(
+            json.dumps(obj, ensure_ascii=False), spec.output_schema
+        )
+        if ok and parsed is not None:
+            return FinalizedAnswer(
+                text=json.dumps(parsed, ensure_ascii=False),
+                parsed=parsed,
+                display_text=(_field_text(parsed, spec.output_text_field)
+                              or blocked_text),
+                status="blocked",
+            )
+    # 自訂 schema 連平台預設物件都不接受時，至少維持「可 parse 的 JSON」
+    fallback = {spec.output_text_field: blocked_text}
+    return FinalizedAnswer(
+        text=json.dumps(fallback, ensure_ascii=False),
+        parsed=fallback,
+        display_text=blocked_text,
+        status="blocked",
+    )
+
+
 async def finalize_with_retry(
     spec: OutputSpec,
     answer: str,

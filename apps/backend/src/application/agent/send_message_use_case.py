@@ -22,6 +22,7 @@ from src.application.agent.output_format import (
     append_prompt_suffix,
     finalize_with_retry,
     merge_usage,
+    resolve_guard_blocked,
     resolve_miss_reply,
     resolve_structured_llm_params,
     retrieval_stats,
@@ -1087,11 +1088,15 @@ class SendMessageUseCase:
         )
         if guard_result is not None:
             if not guard_result.passed:
-                response.answer = guard_result.blocked_response
+                # Issue #85：攔截也要套 bot 的輸出格式。原本回純文字，
+                # 導致 output_format=json 的 bot 在防護觸發時破壞契約。
+                fin = resolve_guard_blocked(
+                    OutputSpec.from_cfg(bot_cfg), guard_result.blocked_response
+                )
+                response.answer = fin.text
                 # Sprint A++ Guard UX
                 response.guard_blocked = "output"
                 response.guard_rule_matched = guard_result.rule_matched
-                fin = FinalizedAnswer(text=response.answer)  # 攔截後不再是結構化輸出
 
         structured_content = _build_structured_content(
             contact=response.contact,
@@ -1334,7 +1339,11 @@ class SendMessageUseCase:
                 )
                 _bump_conversation_counters(conversation)
                 await self._conversation_repo.save(conversation)
-            yield {"type": "token", "content": gr.blocked_response}
+            # Issue #85：串流攔截同樣套輸出格式，否則 json bot 的前台解析會爆
+            _blocked = resolve_guard_blocked(
+                OutputSpec.from_cfg(bot_cfg), gr.blocked_response
+            )
+            yield {"type": "token", "content": _blocked.text}
             yield {
                 "type": "guard_blocked",
                 "block_type": "input",
@@ -1652,11 +1661,12 @@ class SendMessageUseCase:
         if guard_result is None:
             return None
         return await self._finalize_input_block(
-            command, conversation, guard_result
+            command, conversation, guard_result, OutputSpec.from_cfg(bot_cfg)
         )
 
     async def _finalize_input_block(
-        self, command: SendMessageCommand, conversation, guard_result
+        self, command: SendMessageCommand, conversation, guard_result,
+        output_spec: "OutputSpec | None" = None,
     ) -> AgentResponse:
         """從 blocked GuardResult 組攔截回應（persist + trace），regex guard 與
         分類器攻擊共用（test_mode 不落庫）。"""
@@ -1682,7 +1692,13 @@ class SendMessageUseCase:
             persist_started_ms=t_persist,
         )
         return AgentResponse(
-            answer=guard_result.blocked_response,
+            answer=(
+                resolve_guard_blocked(
+                    output_spec, guard_result.blocked_response
+                ).text
+                if output_spec is not None
+                else guard_result.blocked_response
+            ),
             conversation_id=conversation.id.value,
             guard_blocked="input",
             guard_rule_matched=guard_result.rule_matched,

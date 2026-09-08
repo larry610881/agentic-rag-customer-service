@@ -146,3 +146,23 @@ Feature: 結構化輸出 — bot output_format 與供應商能力等級 (Structu
             | open         | false  |
             | nested-open  | false  |
             | nested-closed| true   |
+
+    # Issue #85：防護攔截原本回純文字，導致 json bot 在防護觸發時破壞契約。
+    # 攔截是日常事件不是例外，同一支 bot 有時回物件有時回字串，等於把錯誤處理
+    # 成本轉嫁給每一個串接方。
+    Scenario Outline: 防護攔截的回應套用 bot 的輸出格式
+        Given 一個輸出格式為 "<format>" 的輸出規格
+        When 防護以 "我只能協助您處理客服相關問題。" 攔截
+        Then 攔截回應應為 <shape>
+        And 攔截回應的顯示文字應為 "我只能協助您處理客服相關問題。"
+
+        Examples:
+            | format     | shape      |
+            | json       | 合法 JSON  |
+            | text       | 純文字     |
+            | plain_text | 純文字     |
+
+    Scenario: json 攔截回應帶 out_of_scope 狀態
+        Given 一個輸出格式為 "json" 的輸出規格
+        When 防護以 "我只能協助您處理客服相關問題。" 攔截
+        Then 攔截回應的 "status" 應為 "out_of_scope"
