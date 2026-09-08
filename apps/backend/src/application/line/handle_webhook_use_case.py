@@ -14,6 +14,7 @@ from src.application.agent.output_format import (
     append_prompt_suffix,
     finalize_with_retry,
     merge_usage,
+    resolve_guard_blocked,
     resolve_miss_reply,
     resolve_structured_llm_params,
     retrieval_stats,
@@ -830,17 +831,25 @@ class HandleWebhookUseCase:
                 bot_id=bot.id.value,
                 user_id=event.user_id,
             )
+        # Issue #85：攔截也要守住 bot 的輸出格式契約（與 web / widget 同一份
+        # helper）。這裡的 spec 不需要供應商資訊——攔截不呼叫模型，只是把固定
+        # 文案包成 bot 宣告的形狀。
+        _blocked_spec = OutputSpec.from_bot(bot, provider="", model="")
         if guard_result is not None and not guard_result.passed:
             await self._record_abuse(bot, event, guard, guard_hit=True)  # Issue #68 P7
             result = AgentResponse(
-                answer=guard_result.blocked_response,
+                answer=resolve_guard_blocked(
+                    _blocked_spec, guard_result.blocked_response
+                ).text,
                 guard_blocked="input",
                 guard_rule_matched=guard_result.rule_matched,
             )
         elif blocked is not None:
             await self._record_abuse(bot, event, guard, attack=True)  # Issue #68 P7
             result = AgentResponse(
-                answer=blocked.blocked_response,
+                answer=resolve_guard_blocked(
+                    _blocked_spec, blocked.blocked_response
+                ).text,
                 guard_blocked="input",
                 guard_rule_matched=blocked.rule_matched,
             )

@@ -15,7 +15,6 @@ from src.application.abuse.abuse_control_service import (
     apply_conservative_mode,
 )
 from src.application.agent.intent_classifier import IntentClassifier
-from src.application.security.guard_pipeline import GuardPipeline
 from src.application.agent.output_format import (
     FinalizedAnswer,
     OutputSpec,
@@ -33,6 +32,7 @@ from src.application.agent.prompt_assembler import (
 from src.application.agent.prompt_assembler import (
     inject_runtime_vars,
 )
+from src.application.security.guard_pipeline import GuardPipeline
 from src.domain.abuse.policy import (
     NO_ABUSE,
     AbuseDecision,
@@ -967,7 +967,7 @@ class SendMessageUseCase:
         # classifier 已經把 user_message 餵給 LLM → prompt injection 已經
         # compromise 那層 LLM。提前到任何 LLM-touching helper 之前。
         blocked = await self._check_input_guard(
-            command, conversation, metadata, guard
+            command, conversation, metadata, guard, bot_cfg
         )
         if blocked is not None:
             await self._record_abuse(command, guard, guard_hit=True)
@@ -1612,9 +1612,13 @@ class SendMessageUseCase:
         conversation,
         metadata: dict,
         guard: EffectiveGuard,
+        bot_cfg: dict[str, Any],
     ) -> AgentResponse | None:
         """Input guard 前置檢查；攔截時回傳攔截回應（test_mode 不落庫）。
-        Issue #75：regex_input 階段關閉 → pipeline 回 None → 視同通過。"""
+        Issue #75：regex_input 階段關閉 → pipeline 回 None → 視同通過。
+
+        `bot_cfg` 只為了輸出格式：攔截也必須守住 bot 的契約，否則
+        output_format=json 的 bot 一命中 regex 就吐純文字、前台解析炸掉。"""
         guard_result = await self._guard_pipeline.check_input(
             guard,
             command.message,
@@ -1631,7 +1635,7 @@ class SendMessageUseCase:
             metadata["_input_guard_checked"] = True
             return None
         return await self._finalize_input_block(
-            command, conversation, guard_result
+            command, conversation, guard_result, OutputSpec.from_cfg(bot_cfg)
         )
 
     async def _check_classifier_attack(
@@ -1666,7 +1670,7 @@ class SendMessageUseCase:
 
     async def _finalize_input_block(
         self, command: SendMessageCommand, conversation, guard_result,
-        output_spec: "OutputSpec | None" = None,
+        output_spec: "OutputSpec | None",
     ) -> AgentResponse:
         """從 blocked GuardResult 組攔截回應（persist + trace），regex guard 與
         分類器攻擊共用（test_mode 不落庫）。"""
