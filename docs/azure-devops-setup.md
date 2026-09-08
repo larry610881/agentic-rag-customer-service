@@ -201,10 +201,13 @@ Library → Secure files 上傳金鑰，檔名固定 `gcp-sa-key.json`，服務�
 | `GCP_WIF_PROVIDER` | `ado-pic-devops` | ✓ |
 | `GCP_DEPLOY_SA` | `ado-deployer@<專案>.iam.gserviceaccount.com` | ✓ |
 | `GCP_WIF_SERVICE_CONNECTION_ID` | 服務連線 GUID | ✓ |
-| `WORKER_VM_NAME` | `db-services` | |
+| `WORKER_VM_NAME` | `poc-rag-vm-01` | |
 | `WORKER_VM_ZONE` | `asia-east1-b` | |
-| `WORKER_VM_USER` | VM 上持有 repo 的使用者 | |
-| `WORKER_REPO_PATH` | VM 上的 repo 路徑 | |
+| `WORKER_VM_USER` | `larry610881_gcpmail_pcsc_net_tw` | |
+| `WORKER_REPO_PATH` | `/home/larry610881_gcpmail_pcsc_net_tw/agentic-rag-customer-service` | |
+
+> 這四個值是 2026-09-08 於 POC 專案實查的。注意**不是** `db-services`——那是已退役
+> 舊專案的 VM 名稱，照抄會讓 Release 階段報 `resource ... was not found`。
 
 **`agentic-rag-runtime`**（**全部勾 secret**）
 
