@@ -397,3 +397,41 @@ def save_bot_with_tools(context, provider, tools):
 @then(parsers.parse("儲存結果應為 {outcome}"))
 def tool_save_outcome(context, outcome):
     assert context["tool_save_outcome"] == outcome
+
+
+@given(parsers.parse('供應商 "{provider}" 被列為不支援工具'))
+def mark_provider_unsupported(context, provider, monkeypatch):
+    import src.domain.llm.tool_support as ts
+
+    monkeypatch.setattr(ts, "TOOL_UNSUPPORTED_PROVIDERS", frozenset({provider}))
+    monkeypatch.setattr(
+        "src.application.bot.validate_bot_enabled_tools.provider_supports_tools",
+        lambda p: (p or "").strip().lower() not in {provider},
+    )
+
+
+@given("一個 Google 供應商的 ReAct 服務")
+def google_react_service(context):
+    from src.infrastructure.langgraph.react_agent_service import ReActAgentService
+
+    svc = ReActAgentService.__new__(ReActAgentService)
+    svc._llm_service = MagicMock()          # 非 DynamicLLMServiceProxy → 走 fallback 分支
+    context["react_service"] = svc
+
+
+@when(parsers.parse("以{with_tools}解析聊天模型"))
+def resolve_chat_model(context, with_tools, monkeypatch):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    # 相容端點分支會實例化 ChatOpenAI，缺 key 會在建構時就丟例外
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    svc = context["react_service"]
+    params = {"provider_name": "google", "model": "gemini-3.8-flash",
+              "reasoning_effort": "none", "temperature": 0.2, "max_tokens": 256}
+    context["chat_model"] = _run(
+        svc._resolve_llm_model(params, with_tools=(with_tools.strip() == "有工具"))
+    )
+
+
+@then(parsers.parse('使用的 ChatModel 類型應為 "{kind}"'))
+def chat_model_kind(context, kind):
+    assert type(context["chat_model"]).__name__ == kind

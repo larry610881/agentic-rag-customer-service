@@ -17,8 +17,9 @@ Google 供應商 **不能** 綁工具——只要模型決定呼叫任何工具�
 
 from __future__ import annotations
 
-# 目前唯一已知不支援的供應商；修好 #84 後把它移除即可
-TOOL_UNSUPPORTED_PROVIDERS: frozenset[str] = frozenset({"google"})
+# Issue #84 已以原生 SDK 修復（google_chat_model.py），清單目前為空。
+# 未來若再遇到不支援工具的供應商，加進來即可自動擋在存檔階段。
+TOOL_UNSUPPORTED_PROVIDERS: frozenset[str] = frozenset()
 
 TOOL_UNSUPPORTED_REASON = (
     "Google 供應商目前不支援工具模式（Gemini 的 OpenAI 相容端點要求回送 "

@@ -152,6 +152,15 @@ class OpenAILLMService(LLMService):
     def model_name(self) -> str:
         return self._model
 
+    @property
+    def api_key(self) -> str:
+        """已解析的 API key。
+
+        Issue #84：Google 綁工具時要改用原生 SDK 建 ChatModel，需要同一把金鑰。
+        提供唯讀存取，避免呼叫端去讀 ``_api_key`` 私有屬性。
+        """
+        return self._api_key
+
     def __init__(
         self,
         api_key: str,

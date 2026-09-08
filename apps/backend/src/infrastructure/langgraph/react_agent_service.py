@@ -41,6 +41,10 @@ from src.infrastructure.langgraph.usage import (
     reasoning_tokens_of_metadata,
 )
 from src.infrastructure.llm.dynamic_llm_factory import DynamicLLMServiceProxy
+from src.infrastructure.llm.google_chat_model import (
+    build_google_chat_model,
+    is_google_provider,
+)
 from src.infrastructure.llm.reasoning_effort import describe_reasoning_effort
 from src.infrastructure.observability.agent_trace_collector import (
     AgentTraceCollector,
@@ -354,9 +358,15 @@ class ReActAgentService(AgentService):
         return tools
 
     async def _resolve_llm_model(
-        self, llm_params: dict[str, Any] | None
+        self, llm_params: dict[str, Any] | None, *, with_tools: bool = False
     ) -> Any:
-        """Resolve LangChain ChatModel for the request."""
+        """Resolve LangChain ChatModel for the request.
+
+        ``with_tools``：本次會不會 bind_tools。Issue #84——Google 走 OpenAI 相容
+        端點時，工具回合的 thought_signature 會被 langchain-openai 剝掉，導致緊接的
+        第二次 LLM 呼叫必定 400。綁工具時改用原生 SDK；沒有工具的路徑（kb 模式）
+        維持原樣，既有的評測基準才不會失去可比性。
+        """
         params = llm_params or {}
         provider = params.get("provider_name", "")
         model = params.get("model", "")
@@ -375,6 +385,21 @@ class ReActAgentService(AgentService):
             service = await self._llm_service.resolve_for_bot(
                 provider_name=provider, model=model,
             )
+            if with_tools and is_google_provider(provider):
+                api_key = getattr(service, "api_key", "") or ""
+                if api_key:
+                    from src.config import settings as _settings
+
+                    return build_google_chat_model(
+                        model=model or getattr(service, "model_name", ""),
+                        api_key=api_key,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        reasoning_effort=reasoning_effort,
+                        request_timeout=_settings.agent_llm_request_timeout,
+                    )
+                # 沒金鑰就退回相容端點——會失敗，但至少錯誤訊息是既有那條路徑的
+                logger.warning("llm.google.native_chat_model.no_api_key")
             # Try to get a LangChain ChatModel from the service
             if hasattr(service, "get_chat_model"):
                 return service.get_chat_model(
@@ -385,6 +410,23 @@ class ReActAgentService(AgentService):
                 )
 
         # Fallback: create ChatModel from provider/model directly
+        if with_tools and is_google_provider(provider):
+            import os as _os
+
+            from src.config import settings as _settings
+
+            env_key = (
+                _os.getenv("GOOGLE_API_KEY")
+                or getattr(_settings, "google_api_key", "")
+                or ""
+            )
+            if env_key:
+                return build_google_chat_model(
+                    model=model, api_key=env_key, temperature=temperature,
+                    max_tokens=max_tokens, reasoning_effort=reasoning_effort,
+                    request_timeout=_settings.agent_llm_request_timeout,
+                )
+            logger.warning("llm.google.native_chat_model.no_env_api_key")
         return self._create_chat_model(
             provider=provider,
             model=model,
@@ -821,7 +863,7 @@ class ReActAgentService(AgentService):
                     tools.extend(mcp_tools)
 
             # 3. Resolve LLM
-            llm = await self._resolve_llm_model(llm_params)
+            llm = await self._resolve_llm_model(llm_params, with_tools=bool(tools))
 
             # 4. Build and execute ReAct graph
             assembled_prompt = system_prompt or assemble_prompt("", "react")
@@ -972,7 +1014,7 @@ class ReActAgentService(AgentService):
                     )
                     tools.extend(mcp_tools)
 
-            llm = await self._resolve_llm_model(llm_params)
+            llm = await self._resolve_llm_model(llm_params, with_tools=bool(tools))
             assembled_prompt = system_prompt or assemble_prompt("", "react")
             graph = self._build_react_graph(
                 tools, assembled_prompt, llm, max_tool_calls,

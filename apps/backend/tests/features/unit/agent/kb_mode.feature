@@ -68,16 +68,34 @@ Feature: 知識庫問答模式 — bot mode kb (Knowledge-Only Mode)
         When 取快照後把未命中話術改為 "換個方式問我" 再取一次快照
         Then 快照應含 "miss_reply" 且 diff 應列出 "miss_reply"
 
-    Scenario Outline: 供應商不支援工具時，帶工具的 bot 設定應被擋下（Issue #84）
+    # Issue #84：Google 曾因 thought_signature 被 langchain-openai 剝除而無法綁工具，
+    # 改用原生 SDK 後已解除封鎖；封鎖機制保留，供未來其他不支援的供應商使用。
+    Scenario Outline: 各供應商都可儲存帶工具的 bot 設定
         Given 一個租戶可用全部內建工具的環境
         When 以供應商 "<provider>" 與工具 "<tools>" 儲存 bot 設定
         Then 儲存結果應為 <outcome>
 
         Examples:
             | provider  | tools                            | outcome |
-            | google    | rag_query                        | error   |
-            | google    | rag_query,transfer_to_human_agent| error   |
+            | google    | rag_query                        | saved   |
+            | google    | rag_query,transfer_to_human_agent| saved   |
             | google    | -                                | saved   |
             | openai    | rag_query                        | saved   |
             | ollama    | rag_query,query_dm_with_image    | saved   |
             | anthropic | rag_query                        | saved   |
+
+    Scenario: 供應商被列為不支援工具時，帶工具的設定仍會被擋下
+        Given 一個租戶可用全部內建工具的環境
+        And 供應商 "legacy-provider" 被列為不支援工具
+        When 以供應商 "legacy-provider" 與工具 "rag_query" 儲存 bot 設定
+        Then 儲存結果應為 error
+
+    Scenario: 綁工具的 Google 走原生 ChatModel，未綁工具時維持相容端點
+        Given 一個 Google 供應商的 ReAct 服務
+        When 以 <with_tools> 解析聊天模型
+        Then 使用的 ChatModel 類型應為 "<kind>"
+
+        Examples:
+            | with_tools | kind                    |
+            | 有工具     | ChatGoogleGenerativeAI  |
+            | 沒有工具   | ChatOpenAI              |

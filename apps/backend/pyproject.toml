@@ -47,6 +47,7 @@ dependencies = [
     "tenacity>=8.2",
     "cachetools>=5.3",
     "defusedxml>=0.7.1",
+    "langchain-google-genai>=2.1.0",
 ]
 
 [dependency-groups]
