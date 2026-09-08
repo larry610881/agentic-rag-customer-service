@@ -27,8 +27,14 @@ DEFAULT_MODELS: dict[str, dict[str, list[dict]]] = {
     },
     "openai": {
         "llm": [
+            # 2026-09-08 依 developers.openai.com/api/docs/pricing 補入（Sol 為優惠價，至少到 2026-11-21）
+            {"model_id": "gpt-5.6-sol", "display_name": "GPT-5.6 Sol", "price": "$4/$20", "input_price": 4.0, "output_price": 20.0, "cache_read_price": 0.4, "cache_creation_price": 0},
+            {"model_id": "gpt-5.6-terra", "display_name": "GPT-5.6 Terra", "price": "$2/$12", "input_price": 2.0, "output_price": 12.0, "cache_read_price": 0.2, "cache_creation_price": 0},
+            {"model_id": "gpt-5.6-luna", "display_name": "GPT-5.6 Luna", "price": "$0.20/$1.20", "input_price": 0.20, "output_price": 1.20, "cache_read_price": 0.02, "cache_creation_price": 0},
             {"model_id": "gpt-5.5", "display_name": "GPT-5.5", "price": "$5/$30", "input_price": 5.0, "output_price": 30.0, "cache_read_price": 0.5, "cache_creation_price": 0},
             {"model_id": "gpt-5.4", "display_name": "GPT-5.4", "price": "$2.50/$15", "input_price": 2.50, "output_price": 15.0, "cache_read_price": 0.25, "cache_creation_price": 0},
+            {"model_id": "gpt-5.4-mini", "display_name": "GPT-5.4 Mini", "price": "$0.75/$4.50", "input_price": 0.75, "output_price": 4.50, "cache_read_price": 0.075, "cache_creation_price": 0},
+            {"model_id": "gpt-5.4-nano", "display_name": "GPT-5.4 Nano", "price": "$0.20/$1.25", "input_price": 0.20, "output_price": 1.25, "cache_read_price": 0.02, "cache_creation_price": 0},
             {"model_id": "gpt-5.2", "display_name": "GPT-5.2", "price": "$1.75/$14", "input_price": 1.75, "output_price": 14.0, "cache_read_price": 0.175, "cache_creation_price": 0},
             {"model_id": "gpt-5.1", "display_name": "GPT-5.1", "price": "$1.25/$10", "input_price": 1.25, "output_price": 10.0, "cache_read_price": 0.125, "cache_creation_price": 0},
             {"model_id": "gpt-5", "display_name": "GPT-5", "price": "$1.25/$10", "input_price": 1.25, "output_price": 10.0, "cache_read_price": 0.125, "cache_creation_price": 0},
