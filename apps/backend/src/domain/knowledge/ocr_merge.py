@@ -86,13 +86,33 @@ def _is_unknown(value: str) -> bool:
     return not value.strip() or value.strip() == UNKNOWN_VALUE
 
 
+# 這些 marker 每個切片 / 整頁看到的可能是同一活動的不同片段（例如「滿 100 元
+# 加贈 1 點」與「單筆最高贈 50 點、需下載 APP、大宗採購不適用」），先到先贏會
+# 丟掉條件 → 改為累積：不重複的值以「；」串起（2026-09-08，20 題 C5 回歸）。
+ACCUMULATIVE_MARKERS = frozenset({"頁面級促銷說明"})
+
+
+def _merge_accumulative(existing: str, value: str) -> str:
+    parts = [p.strip() for p in existing.split("；") if p.strip()]
+    v = value.strip()
+    if any(v == p or v in p for p in parts):
+        return existing
+    parts = [p for p in parts if p not in v]  # 舊片段被新值涵蓋時去掉
+    return "；".join([*parts, v])
+
+
 def _put_marker(markers: list[tuple[str, str]], name: str, value: str) -> None:
-    """同名 marker 只留一個：第一次出現定順序，值取第一個非「不詳」者。"""
+    """同名 marker 只留一個：第一次出現定順序；一般 marker 值取第一個非「不詳」者，
+    ACCUMULATIVE_MARKERS 則累積所有不重複的非「不詳」值。"""
     for i, (existing_name, existing_value) in enumerate(markers):
         if existing_name != name:
             continue
-        if _is_unknown(existing_value) and not _is_unknown(value):
+        if _is_unknown(value):
+            return
+        if _is_unknown(existing_value):
             markers[i] = (name, value)
+        elif name in ACCUMULATIVE_MARKERS:
+            markers[i] = (name, _merge_accumulative(existing_value, value))
         return
     markers.append((name, value))
 

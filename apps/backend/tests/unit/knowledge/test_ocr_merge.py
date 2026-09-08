@@ -284,3 +284,26 @@ def test_merge_adds_size_variant_only_seen_by_full_page():
     merged = merge_hybrid_ocr_text(sliced, full)
     assert merged.count("商品：可口可樂") == 2
     assert "600ml" in merged
+
+
+def test_promo_marker_accumulates_distinct_fragments_across_tiles_and_full_page():
+    """20 題 C5 回歸：切片與整頁各看到活動的一部分，合併後兩段都要在。"""
+    from src.domain.knowledge.ocr_merge import merge_hybrid_ocr_text
+
+    sliced = (
+        "【頁面級促銷說明】單筆最高贈50點電子貼紙，需下載APP，大宗採購不適用\n"
+        "【頁面分類】商品頁\n\n===\n商品：A\n售價：1元\n===\n"
+        "【頁面級促銷說明】單筆最高贈50點電子貼紙，需下載APP，大宗採購不適用\n"
+    )
+    full = (
+        "【頁面標題】單一商品每滿100元加贈1點電子貼紙\n"
+        "【頁面級促銷說明】單一商品每滿100元加贈1點（同價位同系列可混搭）\n"
+        "【頁面分類】商品頁\n\n===\n商品：A\n售價：1元\n===\n"
+    )
+    merged = merge_hybrid_ocr_text(sliced, full)
+    promo = [ln for ln in merged.splitlines() if ln.startswith("【頁面級促銷說明】")]
+    assert len(promo) == 1
+    assert "最高贈50點" in promo[0] and "每滿100元加贈1點" in promo[0]
+    assert promo[0].count("最高贈50點") == 1
+    assert "【頁面標題】單一商品每滿100元加贈1點電子貼紙" in merged
+
