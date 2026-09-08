@@ -4,7 +4,11 @@
 每輪檢索的查詢 embedding / 對話摘要 / 管理端語意搜尋）一律經此函式寫入
 token_usage_records，規則只有一份：
 
-- 用量來自 ``EmbeddingResult``（供應商回傳），不是估算、不是服務物件屬性
+- 用量來自 ``EmbeddingResult``（供應商回傳），不是服務物件屬性
+- 供應商沒回 usage 時（Issue #80，Gemini OpenAI 相容端點）``EmbeddingResult``
+  帶本地估算值並標 ``tokens_estimated``：照常入帳（少記比估算更糟），
+  token_usage_records 無額外欄位，估算事實只記 log
+  ``usage.embedding.tokens_estimated``（model + token 數）
 - 快取命中（``cache_hit``）沒花 token → 不入帳
 - fail-open：記帳失敗只 warn，不能影響主流程（檢索 / 文件處理照常完成）
 """
@@ -42,6 +46,15 @@ async def account_embedding(
     request_type = (
         category.value if isinstance(category, UsageCategory) else category
     )
+    if result.tokens_estimated:
+        logger.info(
+            "usage.embedding.tokens_estimated",
+            model=result.model,
+            total_tokens=result.total_tokens,
+            request_type=request_type,
+            tenant_id=tenant_id,
+            estimated=True,
+        )
     try:
         await record_usage.execute(
             tenant_id=tenant_id,

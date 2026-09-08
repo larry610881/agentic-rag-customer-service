@@ -16,12 +16,16 @@ class EmbeddingResult:
 
     - ``total_tokens``：供應商回傳的 token 數（embedding 只有 input）
     - ``cache_hit``：查詢向量命中快取 → 沒花 token，呼叫端不得入帳
+    - ``tokens_estimated``（Issue #80）：供應商沒回 usage（Gemini OpenAI 相容
+      embeddings 端點）時 ``total_tokens`` 為本地估算值；記帳照常入帳，只在
+      log / trace 標注為估算。
     """
 
     vectors: list[list[float]]
     model: str
     total_tokens: int = 0
     cache_hit: bool = False
+    tokens_estimated: bool = False
 
 
 class EmbeddingService(ABC):

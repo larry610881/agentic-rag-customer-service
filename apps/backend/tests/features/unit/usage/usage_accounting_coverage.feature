@@ -37,6 +37,46 @@ Feature: 用量記帳覆蓋 (Usage Accounting Coverage)
         When 以 total_tokens 20 的 EmbeddingResult 呼叫 account_embedding
         Then account_embedding 不應拋出例外
 
+    # ── 供應商不回 usage（Issue #80：Gemini OpenAI 相容 embeddings 無 usage 欄位）──
+
+    Scenario Outline: 供應商不回 usage 時以估算 token 入帳
+        Given OpenAI embedding API 回傳 2 個向量但 usage <usage_state>
+        And 已注入以假倉儲建構的 RecordUsageUseCase
+        When 對 2 筆中文文字呼叫 embed_texts_with_usage 並以結果呼叫 account_embedding
+        Then EmbeddingResult 應標記 tokens_estimated 且 total_tokens 大於 0
+        And usage 倉儲應儲存一筆 request_type "embedding" 且 total_tokens 大於 0 的紀錄
+        And 應記錄 "usage.embedding.tokens_estimated" 日誌
+
+        Examples:
+            | usage_state       |
+            | 欄位缺失          |
+            | total_tokens 為 0 |
+
+    Scenario: 供應商有回 usage 時不標記估算
+        Given OpenAI embedding API 回傳 2 個向量且 usage total_tokens 為 37
+        When 對 2 筆文字呼叫 embed_texts_with_usage
+        Then EmbeddingResult 的 tokens_estimated 應為 false
+
+    Scenario: 快取包裝層未命中時透傳內層的估算標記
+        Given 快取包裝層的快取為空且內層服務回傳估算的 total_tokens 12
+        When 對 "怎麼退貨" 呼叫 embed_query_with_usage
+        Then 結果 tokens_estimated 應為 true 且 total_tokens 應為 12
+
+    Scenario Outline: 啟發式估算規則：CJK 每字 1 token、其他字元每 4 字元 1 token（無條件進位）
+        When 以啟發式估算 "<text>" 的 token 數
+        Then 估算結果應為 <tokens>
+
+        Examples:
+            | text        | tokens |
+            | 怎麼退貨    | 4      |
+            | hello world | 3      |
+            | 退貨 policy | 4      |
+            | ab          | 1      |
+
+    Scenario: 估算器對中文與英文文字皆回傳正數 token
+        When 以估算器估算 "怎麼退貨" 與 "how to return an item" 的 token 數
+        Then 兩者估算結果皆應大於 0 且空字串估算為 0
+
     # ── 文件管線：處理與重處理三處對齊 ──
 
     Scenario Outline: 文件管線花了 token 就必有一筆 usage

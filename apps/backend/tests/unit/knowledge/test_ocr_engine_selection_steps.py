@@ -262,7 +262,11 @@ def _build_compat(context, spec: str, resolver) -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         context["requests"].append(request)
-        status, body = context.get("response", (200, {}))
+        queue = context.get("responses")
+        if queue:
+            status, body = queue.pop(0)  # 依序回應（Issue #81 多步退避）
+        else:
+            status, body = context.get("response", (200, {}))
         return httpx.Response(status, json=body)
 
     context["engine"] = OpenAICompatVisionOcrEngine(
@@ -297,6 +301,44 @@ def compat_response(context, text, n, m):
             "choices": [{"message": {"role": "assistant", "content": content}}],
             "usage": {"prompt_tokens": int(n), "completion_tokens": int(m)},
         },
+    )
+
+
+def _chat_body(content: str, n: int, m: int, **message_extra) -> dict:
+    return {
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "message": {"role": "assistant", "content": content, **message_extra},
+            }
+        ],
+        "usage": {"prompt_tokens": n, "completion_tokens": m},
+    }
+
+
+@given(
+    parsers.re(
+        r'相容端點依序回應內容 "(?P<first>.*)" 與 "(?P<second>.*)"，'
+        r"每次用量 prompt_tokens (?P<n>\d+)、completion_tokens (?P<m>\d+)"
+    )
+)
+def compat_response_sequence(context, first, second, n, m):
+    context["responses"] = [
+        (200, _chat_body(text.replace('\\"', '"'), int(n), int(m)))
+        for text in (first, second)
+    ]
+
+
+@given(
+    parsers.re(
+        r'相容端點回應空內容但 parsed 為 page_type "(?P<page_type>\w+)"，'
+        r"用量 prompt_tokens (?P<n>\d+)、completion_tokens (?P<m>\d+)"
+    )
+)
+def compat_response_parsed_only(context, page_type, n, m):
+    context["response"] = (
+        200,
+        _chat_body("", int(n), int(m), parsed={"page_type": page_type}),
     )
 
 
@@ -373,6 +415,64 @@ def request_has_json_schema(context):
 @then("送出的請求不應包含 response_format")
 def request_without_response_format(context):
     assert "response_format" not in _sent_body(context)
+
+
+def _nth_body(context, n: int) -> dict:
+    assert len(context["requests"]) >= n, f"只送出 {len(context['requests'])} 次請求"
+    return json.loads(context["requests"][n - 1].content)
+
+
+@then(parsers.parse("應送出 {n:d} 次分類請求"))
+def request_count(context, n):
+    assert len(context["requests"]) == n
+
+
+@then(parsers.parse("第 {n:d} 次請求應包含 json_schema response_format"))
+def nth_request_has_json_schema(context, n):
+    assert _nth_body(context, n)["response_format"]["type"] == "json_schema"
+
+
+@then(parsers.parse("第 {n:d} 次請求不應包含 response_format"))
+def nth_request_without_response_format(context, n):
+    assert "response_format" not in _nth_body(context, n)
+
+
+@then(parsers.parse(
+    '第 {n:d} 次請求 reasoning_effort 應為 "{effort}" 且 max_tokens 至少 {m:d}'
+))
+def nth_request_effort_and_budget(context, n, effort, m):
+    body = _nth_body(context, n)
+    assert body["reasoning_effort"] == effort
+    assert body["max_tokens"] >= m
+
+
+@then(parsers.parse("第 {n:d} 次請求不應包含 reasoning_effort"))
+def nth_request_without_effort(context, n):
+    assert "reasoning_effort" not in _nth_body(context, n)
+
+
+@then(parsers.parse('第 {n:d} 次請求的 prompt 應包含 "{snippet}"'))
+def nth_request_prompt_contains(context, n, snippet):
+    parts = _nth_body(context, n)["messages"][0]["content"]
+    text = next(p for p in parts if p["type"] == "text")["text"]
+    assert snippet in text
+
+
+@then(parsers.parse('第 {n:d} 次請求應以 image_url data URL 附上 "{mime}" 圖片'))
+def nth_request_has_image(context, n, mime):
+    parts = _nth_body(context, n)["messages"][0]["content"]
+    image = next(p for p in parts if p["type"] == "image_url")
+    assert image["image_url"]["url"].startswith(f"data:{mime};base64,")
+
+
+@then("分類請求不應包含 dimensions 欄位")
+def requests_without_dimensions(context):
+    for request in context["requests"]:
+        body = json.loads(request.content)
+        assert "dimensions" not in body
+        assert set(body) <= {
+            "model", "max_tokens", "messages", "response_format", "reasoning_effort",
+        }
 
 
 @then(parsers.parse('頁面分類結果應為 "{page_type}"'))

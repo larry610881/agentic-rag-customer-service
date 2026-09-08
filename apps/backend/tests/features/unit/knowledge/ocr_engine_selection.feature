@@ -83,6 +83,53 @@ Feature: OCR 引擎多供應商選擇（Issue #78）
     Then 送出的請求不應包含 response_format
     And 頁面分類結果應為 "cover"
 
+  # ── 頁面分類三段式退避（Issue #81：Gemini native schema 回空內容 → 一律 catalog）──
+
+  Scenario: native schema 回空內容時改以純 prompt 重試並解析
+    Given 一個 google 相容引擎 "google:gemini-3.8-flash"
+    And 相容端點依序回應內容 "" 與 "{\"page_type\": \"cover\"}"，每次用量 prompt_tokens 900、completion_tokens 5
+    When 對一張 PNG 圖片執行頁面分類
+    Then 應送出 2 次分類請求
+    And 第 1 次請求應包含 json_schema response_format
+    And 第 1 次請求 reasoning_effort 應為 "none" 且 max_tokens 至少 64
+    And 第 2 次請求不應包含 response_format
+    And 第 2 次請求 reasoning_effort 應為 "none" 且 max_tokens 至少 64
+    And 第 2 次請求的 prompt 應包含 "只輸出 JSON"
+    And 第 2 次請求應以 image_url data URL 附上 "image/png" 圖片
+    And 分類請求不應包含 dimensions 欄位
+    And 頁面分類結果應為 "cover"
+    And 分類結果 input_tokens 應為 1800、output_tokens 應為 10
+
+  Scenario: 純 prompt 重試回含說明文字時以容錯正則擷取標籤
+    Given 一個 google 相容引擎 "google:gemini-3.8-flash"
+    And 相容端點依序回應內容 "" 與 "這一頁看起來是 Promotion 類型的頁面。"，每次用量 prompt_tokens 900、completion_tokens 12
+    When 對一張 PNG 圖片執行頁面分類
+    Then 應送出 2 次分類請求
+    And 頁面分類結果應為 "promotion"
+
+  Scenario: 兩次皆無法解析時退回 catalog
+    Given 一個 google 相容引擎 "google:gemini-3.8-flash"
+    And 相容端點依序回應內容 "" 與 ""，每次用量 prompt_tokens 900、completion_tokens 0
+    When 對一張 PNG 圖片執行頁面分類
+    Then 應送出 2 次分類請求
+    And 頁面分類結果應為 "catalog"
+    And 分類結果 input_tokens 應為 1800、output_tokens 應為 0
+
+  Scenario: native schema 內容在 parsed 欄位時直接採用不重試
+    Given 一個 google 相容引擎 "google:gemini-3.8-flash"
+    And 相容端點回應空內容但 parsed 為 page_type "mixed"，用量 prompt_tokens 900、completion_tokens 5
+    When 對一張 PNG 圖片執行頁面分類
+    Then 應送出 1 次分類請求
+    And 頁面分類結果應為 "mixed"
+
+  Scenario: 不支援 reasoning_effort 的模型分類時不夾帶該參數
+    Given 一個 google 相容引擎 "openrouter:qwen/qwen-vl"
+    And 相容端點回應文字 "cover" 且用量 prompt_tokens 500、completion_tokens 2
+    When 對一張 PNG 圖片執行頁面分類
+    Then 應送出 1 次分類請求
+    And 第 1 次請求不應包含 reasoning_effort
+    And 頁面分類結果應為 "cover"
+
   Scenario: API key 缺失時回傳與 Claude 引擎一致的認證錯誤
     Given 一個 google 相容引擎 "google:gemini-3.7-flash" 且供應商未設定 API key
     When 對一張 PNG 圖片執行 OCR

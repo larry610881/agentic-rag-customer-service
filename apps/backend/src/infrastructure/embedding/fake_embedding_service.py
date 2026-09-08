@@ -35,6 +35,7 @@ class FakeEmbeddingService(EmbeddingService):
             vectors=[self._hash_to_vector(t) for t in texts],
             model=self.model,
             total_tokens=sum(self._fake_tokens(t) for t in texts),
+            tokens_estimated=True,
         )
 
     async def embed_query_with_usage(self, text: str) -> EmbeddingResult:
@@ -42,4 +43,5 @@ class FakeEmbeddingService(EmbeddingService):
             vectors=[self._hash_to_vector(text)],
             model=self.model,
             total_tokens=self._fake_tokens(text),
+            tokens_estimated=True,
         )

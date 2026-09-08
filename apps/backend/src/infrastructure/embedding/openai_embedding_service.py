@@ -4,6 +4,10 @@ import time
 import httpx
 
 from src.domain.rag.services import EmbeddingResult, EmbeddingService
+from src.infrastructure.embedding.token_estimator import (
+    estimate_tokens,
+    estimator_name,
+)
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -39,12 +43,17 @@ class OpenAIEmbeddingService(EmbeddingService):
         self.last_total_tokens: int = 0
 
     async def embed_texts_with_usage(self, texts: list[str]) -> EmbeddingResult:
-        """批次 embedding；total_tokens 為各批次 API 回傳 usage 的總和。"""
+        """批次 embedding；total_tokens 為各批次 API 回傳 usage 的總和。
+
+        Issue #80：任一批次供應商沒回 usage 而改用本地估算時，整體結果標
+        ``tokens_estimated=True``（估算值與實際值混算後仍只是近似）。
+        """
         self.last_total_tokens = 0
         if not texts:
             return EmbeddingResult(vectors=[], model=self._model, total_tokens=0)
         all_embeddings: list[list[float]] = []
         total_tokens = 0
+        tokens_estimated = False
         effective_batch_size = self._batch_size
         i = 0
         batch_num = 0
@@ -59,11 +68,12 @@ class OpenAIEmbeddingService(EmbeddingService):
                 chunk_count=len(batch),
                 batch_size=effective_batch_size,
             )
-            embeddings, batch_tokens, was_rate_limited = (
+            embeddings, batch_tokens, batch_estimated, was_rate_limited = (
                 await self._embed_batch_with_retry(batch)
             )
             all_embeddings.extend(embeddings)
             total_tokens += batch_tokens
+            tokens_estimated = tokens_estimated or batch_estimated
             if was_rate_limited and effective_batch_size > self._min_batch_size:
                 new_size = max(effective_batch_size // 2, self._min_batch_size)
                 logger.warning(
@@ -75,7 +85,10 @@ class OpenAIEmbeddingService(EmbeddingService):
             i += len(batch)
         self.last_total_tokens = total_tokens
         return EmbeddingResult(
-            vectors=all_embeddings, model=self._model, total_tokens=total_tokens,
+            vectors=all_embeddings,
+            model=self._model,
+            total_tokens=total_tokens,
+            tokens_estimated=tokens_estimated,
         )
 
     async def embed_query_with_usage(self, text: str) -> EmbeddingResult:
@@ -83,7 +96,8 @@ class OpenAIEmbeddingService(EmbeddingService):
 
     async def _embed_batch_with_retry(
         self, texts: list[str]
-    ) -> tuple[list[list[float]], int, bool]:
+    ) -> tuple[list[list[float]], int, bool, bool]:
+        """回傳 (vectors, total_tokens, tokens_estimated, was_rate_limited)。"""
         log = logger.bind(
             model=self._model,
             base_url=self._base_url,
@@ -92,8 +106,8 @@ class OpenAIEmbeddingService(EmbeddingService):
         was_rate_limited = False
         for attempt in range(self._max_retries):
             try:
-                result, tokens = await self._call_api(texts, log)
-                return result, tokens, was_rate_limited
+                result, tokens, estimated = await self._call_api(texts, log)
+                return result, tokens, estimated, was_rate_limited
             except ValueError:
                 # API key 空字串等 config error → 不 retry，重試 5 次也救不回
                 # 必須由人介入修 ProviderSetting 才能解
@@ -134,7 +148,10 @@ class OpenAIEmbeddingService(EmbeddingService):
                 await asyncio.sleep(wait)
         raise RuntimeError("unreachable")  # pragma: no cover
 
-    async def _call_api(self, texts: list[str], log):  # type: ignore[no-untyped-def]
+    async def _call_api(  # type: ignore[no-untyped-def]
+        self, texts: list[str], log
+    ) -> tuple[list[list[float]], int, bool]:
+        """回傳 (vectors, total_tokens, tokens_estimated)。"""
         # Fail-fast：API key 為空時直接 raise，避免送出 `Bearer ` 空 token
         # 觸發 httpx 的 LocalProtocolError("Illegal header value b'Bearer '")
         # 這個 error message 對 user 完全無意義且會 retry 5 次浪費時間。
@@ -172,12 +189,26 @@ class OpenAIEmbeddingService(EmbeddingService):
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
             usage = data.get("usage") or {}
             total_tokens = int(usage.get("total_tokens") or 0)
+            tokens_estimated = False
+            if total_tokens <= 0 and any(texts):
+                # Issue #80：Gemini OpenAI 相容端點不回 usage → 0 會被記帳略過，
+                # 改以本地估算補上並標記，寧可近似入帳也不能整筆漏帳。
+                total_tokens = estimate_tokens(texts)
+                tokens_estimated = True
+                log.warning(
+                    "embedding.usage_missing",
+                    estimator=estimator_name(),
+                    estimated_tokens=total_tokens,
+                    usage_raw=usage,
+                )
             log.info(
                 "embedding.done",
                 latency_ms=elapsed_ms,
                 total_tokens=total_tokens,
+                tokens_estimated=tokens_estimated,
             )
-            return [item["embedding"] for item in data["data"]], total_tokens
+            vectors = [item["embedding"] for item in data["data"]]
+            return vectors, total_tokens, tokens_estimated
         except httpx.HTTPStatusError as e:
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
             # 2026-09-08：把供應商回的錯誤本文記下來（Gemini 400 只看狀態碼查不出原因）

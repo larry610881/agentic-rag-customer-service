@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
+from structlog.testing import capture_logs
 
 from src.application.conversation.search_conversations_use_case import (
     _SYSTEM_TENANT_ID,
@@ -71,6 +72,10 @@ from src.infrastructure.embedding.dynamic_embedding_factory import (
 )
 from src.infrastructure.embedding.openai_embedding_service import (
     OpenAIEmbeddingService,
+)
+from src.infrastructure.embedding.token_estimator import (
+    estimate_tokens,
+    heuristic_token_count,
 )
 from src.infrastructure.llm.llm_caller import LLMCallResult
 from src.infrastructure.observability.agent_trace_collector import (
@@ -848,3 +853,141 @@ def verify_producers(context):
     assert context["missing_producers"] == [], (
         f"以下 UsageCategory 沒有生產者：{context['missing_producers']}"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 供應商不回 usage → 估算入帳（Issue #80）
+# ═══════════════════════════════════════════════════════════════════
+
+
+def _install_openai_service(context, *, count: int, usage: dict | None) -> None:
+    service = OpenAIEmbeddingService(api_key="test-key", model="gemini-embedding-001")
+
+    async def _post(url, **kwargs):
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        body: dict = {"data": [{"embedding": list(_VECTOR)} for _ in range(count)]}
+        if usage is not None:
+            body["usage"] = usage
+        resp.json.return_value = body
+        return resp
+
+    client = AsyncMock()
+    client.post = _post
+    service._client = client
+    context["service"] = service
+
+
+@given(parsers.parse("OpenAI embedding API 回傳 {count:d} 個向量但 usage {state}"))
+def openai_api_without_usage(context, count, state):
+    usage = None if state == "欄位缺失" else {"total_tokens": 0}
+    _install_openai_service(context, count=count, usage=usage)
+
+
+@given("已注入以假倉儲建構的 RecordUsageUseCase")
+def inject_real_record_usage(context):
+    repo = AsyncMock()
+    context["usage_repo"] = repo
+    context["record_usage"] = RecordUsageUseCase(usage_repository=repo)
+
+
+@when(parsers.parse(
+    "對 {count:d} 筆中文文字呼叫 embed_texts_with_usage 並以結果呼叫 account_embedding"
+))
+def embed_then_account(context, count):
+    texts = [f"退貨流程第 {i} 步：請攜帶發票至門市" for i in range(count)]
+    result = _run(context["service"].embed_texts_with_usage(texts))
+    context["result"] = result
+    with capture_logs() as logs:
+        context["recorded"] = _run(account_embedding(
+            context["record_usage"],
+            tenant_id="tenant-001",
+            result=result,
+            category=UsageCategory.EMBEDDING,
+            kb_id="kb-001",
+        ))
+    context["logs"] = logs
+
+
+@then("EmbeddingResult 應標記 tokens_estimated 且 total_tokens 大於 0")
+def result_is_estimated(context):
+    result = context["result"]
+    assert result.tokens_estimated is True
+    assert result.total_tokens > 0
+    assert result.cache_hit is False
+
+
+@then(parsers.parse(
+    'usage 倉儲應儲存一筆 request_type "{category}" 且 total_tokens 大於 0 的紀錄'
+))
+def usage_repo_saved_positive(context, category):
+    assert context["recorded"] is True
+    context["usage_repo"].save.assert_awaited_once()
+    record = context["usage_repo"].save.await_args.args[0]
+    assert record.request_type == category
+    assert record.total_tokens > 0
+    assert record.input_tokens == context["result"].total_tokens
+    assert record.model == "gemini-embedding-001"
+    assert record.kb_id == "kb-001"
+
+
+@then(parsers.parse('應記錄 "{event}" 日誌'))
+def log_event_present(context, event):
+    matching = [entry for entry in context["logs"] if entry.get("event") == event]
+    assert matching, f"沒有 {event} 日誌：{context['logs']}"
+    assert matching[0]["model"] == context["result"].model
+    assert matching[0]["total_tokens"] == context["result"].total_tokens
+
+
+@then(parsers.parse("EmbeddingResult 的 tokens_estimated 應為 {flag}"))
+def result_estimated_flag(context, flag):
+    assert context["result"].tokens_estimated is (flag == "true")
+
+
+@given(parsers.parse(
+    "快取包裝層的快取為空且內層服務回傳估算的 total_tokens {tokens:d}"
+))
+def cache_empty_inner_estimated(context, tokens):
+    _make_cached(context, cached_value=None, inner_tokens=tokens)
+    context["inner"].embed_query_with_usage = AsyncMock(
+        return_value=EmbeddingResult(
+            vectors=[list(_VECTOR)],
+            model="inner-model",
+            total_tokens=tokens,
+            tokens_estimated=True,
+        )
+    )
+
+
+@then(parsers.parse(
+    "結果 tokens_estimated 應為 {flag} 且 total_tokens 應為 {tokens:d}"
+))
+def verify_cache_estimated(context, flag, tokens):
+    result = context["result"]
+    assert result.tokens_estimated is (flag == "true")
+    assert result.total_tokens == tokens
+    assert result.cache_hit is False
+
+
+@when(parsers.parse('以啟發式估算 "{text}" 的 token 數'))
+def heuristic_estimate(context, text):
+    context["estimate"] = heuristic_token_count(text)
+
+
+@then(parsers.parse("估算結果應為 {tokens:d}"))
+def verify_estimate(context, tokens):
+    assert context["estimate"] == tokens
+
+
+@when(parsers.parse('以估算器估算 "{cjk}" 與 "{ascii_text}" 的 token 數'))
+def estimator_both(context, cjk, ascii_text):
+    context["estimate_cjk"] = estimate_tokens([cjk])
+    context["estimate_ascii"] = estimate_tokens([ascii_text])
+    context["estimate_empty"] = estimate_tokens(["", ""])
+
+
+@then("兩者估算結果皆應大於 0 且空字串估算為 0")
+def estimator_positive(context):
+    assert context["estimate_cjk"] > 0
+    assert context["estimate_ascii"] > 0
+    assert context["estimate_empty"] == 0
