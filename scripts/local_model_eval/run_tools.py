@@ -144,6 +144,9 @@ def main() -> int:
     ap.add_argument("--account", default="eval-admin@example.com")
     ap.add_argument("--cases", default=str(HERE / "cases" / "tools20_2026-09-08.json"))
     ap.add_argument("--bot-prefix", default="工具 ")
+    ap.add_argument("--exclude", default="",
+                    help="逗號分隔的子字串；bot 名稱含任一者就跳過"
+                         "（例：--exclude gemini，用於供應商尚不支援工具時）")
     ap.add_argument("--only", default="")
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--sleep", type=float, default=1.0)
@@ -162,7 +165,14 @@ def main() -> int:
     api.login(args.account, pw)
     st, bots = api.call("GET", "/api/v1/bots?page=1&page_size=200")
     items = bots if isinstance(bots, list) else bots.get("items", [])
-    targets = [b for b in items if b["name"].startswith(args.bot_prefix)]
+    skip = [x.strip() for x in args.exclude.split(",") if x.strip()]
+    targets = [
+        b for b in items
+        if b["name"].startswith(args.bot_prefix)
+        and not any(x in b["name"] for x in skip)
+    ]
+    if skip:
+        print(f"（已排除含 {skip} 的 bot）")
     if not targets:
         print(f"找不到「{args.bot_prefix}」開頭的 bot，先跑 scripts/setup_tool_eval_bots.py")
         return 1

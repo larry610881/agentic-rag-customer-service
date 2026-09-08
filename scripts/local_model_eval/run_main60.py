@@ -140,8 +140,11 @@ def ask_stream(api: Api, bot_id: str, message: str, conversation_id: str | None)
                     tools = [t.get("tool_name", "") for t in (ev.get("tool_calls") or [])]
                 elif kind == "conversation_id":
                     conv = ev.get("conversation_id") or conv
-                elif kind == "done":
-                    break
+                # 不在 done 就 break：實測事件順序是
+                #   done(4098ms) → sources → retrieval → conversation_id(4115ms) → done
+                # 第一個 done 之後才發 conversation_id，提早跳出會讓每一輪都拿不到
+                # 對話 id、等於每輪都開新對話——多輪題全部失去上下文而不自知。
+                # 讀到串流自然結束為止。
     except urllib.error.HTTPError as e:
         status = e.code
         return {
@@ -152,6 +155,9 @@ def ask_stream(api: Api, bot_id: str, message: str, conversation_id: str | None)
             "sources": [], "tool_calls": [],
         }
 
+    if conv is None:
+        # 大聲一點：沒有對話 id 代表下一輪會開新對話，多輪題的評測結果會是假的
+        print("      ⚠️ 這一輪沒拿到 conversation_id，多輪上下文會斷", flush=True)
     total = round((time.perf_counter() - t0) * 1000)
     gen_ms = max(1, total - (ttft or total))
     prefill_ms = (ttft - retrieval_ms) if (ttft and retrieval_ms) else None
