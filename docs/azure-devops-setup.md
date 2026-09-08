@@ -94,8 +94,22 @@ Pipelines → New pipeline → Azure Repos Git → 選本 repo → Existing Azur
 | `roles/iam.serviceAccountUser` | 以 Cloud Run runtime SA 身分部署 |
 | `roles/iap.tunnelResourceAccessor` + `roles/compute.instanceAdmin.v1` | IAP SSH / SCP 進 VM 同步程式碼並重啟 worker |
 
-> 想避免長期金鑰落地，可改用 Workload Identity Federation：把
-> `steps-gcp-auth.yml` 換成 OIDC 取 token 的版本，其餘 stage 完全不用動。
+> **先確認公司 GCP 有沒有禁發服務帳號金鑰**：企業組織常設
+> `constraints/iam.disableServiceAccountKeyCreation`，一旦生效就**根本產不出**
+> 這個 JSON 檔，只能走下面的 WIF。Larry 的帳號沒有 IAM 讀取權限，查不到現況，
+> 要請專案負責人確認。
+>
+> 想避免長期金鑰落地（或被組織政策擋住），改用 Workload Identity Federation：
+> 只需要換掉 `steps-gcp-auth.yml` 這一支，Package / Release 兩個 stage 完全不用動。
+> 做法是在 GCP 建一個 OIDC provider 指向 Azure DevOps 的 issuer，管線改用
+> `AzureCLI@2` / OIDC token + `gcloud iam workload-identity-pools create-cred-config`
+> 產生外部帳號設定檔，再 `gcloud auth login --cred-file=`。
+>
+> **`gcloud compute ssh` / `scp` 的額外前提**：CI agent 是全新環境，第一次連線會自己
+> 產 SSH 金鑰。VM 若啟用了 OS Login（公司環境常見），`compute.instanceAdmin.v1`
+> 不夠，還要 `roles/compute.osAdminLogin`（要 sudo 重啟 systemd 服務就得是 admin 版）。
+> 沒開 OS Login 才是靠 `compute.instanceAdmin.v1` 寫 metadata SSH key。
+> 這一項是整條管線最容易第一次就卡住的地方。
 
 ### 3. Library → Variable groups
 
