@@ -67,11 +67,16 @@ class RateLimitMiddleware:
         abuse_store: Any | None = None,
         abuse_slow_rpm: int = 5,
         abuse_alerts: Any | None = None,
+        abuse_policy_provider: Any | None = None,
     ) -> None:
         self.app = app
         # Issue #68 P7：主體處於 L2+ 時，把該主體的每分鐘上限壓到 abuse_slow_rpm
         self._abuse_store = abuse_store
         self._abuse_slow_rpm = abuse_slow_rpm
+        # 2026-09-08：監控模式（或關閉）的租戶不該被降速——監控模式的定義是
+        # 「照樣計分與稽核，但不影響使用者」。少了這個判斷，monitor 租戶仍會被
+        # 壓到 5 rpm（評測腳本連續送題時踩到）。
+        self._abuse_policy_provider = abuse_policy_provider
         self._abuse_alerts = abuse_alerts  # Issue #68 P7c：429 突增告警
         self._rate_limiter = rate_limiter
         self._config_loader = config_loader
@@ -213,6 +218,8 @@ class RateLimitMiddleware:
         """從身分推主體 key；只有等級 ≥ 2 才回傳（其餘回 None 不加限制）。"""
         if self._abuse_store is None or not tenant_id or not user_id:
             return None
+        if not await self._abuse_enforcing(tenant_id):
+            return None
         if user_id.startswith("visitor:"):
             kind, sid = "visitor", user_id[len("visitor:"):]
         elif user_id.startswith("client:"):
@@ -231,6 +238,21 @@ class RateLimitMiddleware:
         if locked is None or locked[0] < 2:
             return None
         return key
+
+    async def _abuse_enforcing(self, tenant_id: str) -> bool:
+        """租戶的異常控管是否處於 enforce（會影響使用者）。取不到設定時視為
+        enforce，維持既有保護行為（fail-safe）。"""
+        provider = self._abuse_policy_provider
+        if provider is None:
+            return True
+        try:
+            policy = await provider.policy_for(tenant_id)
+        except Exception:
+            return True
+        if not getattr(policy, "enabled", True):
+            return False
+        mode = getattr(policy, "mode", None)
+        return str(getattr(mode, "value", mode)) == "enforce"
 
     @staticmethod
     def _client_ip(scope: Scope, headers: dict) -> str:

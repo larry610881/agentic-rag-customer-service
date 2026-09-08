@@ -88,6 +88,12 @@ Feature: 異常控管三通路接線 (Abuse Control Pipeline Wiring)
         When 訪客 "v1" 持 widget 票請求聊天端點
         Then 限流檢查包含 abuse key 且上限為 5
 
+    Scenario: 監控模式的租戶即使主體在 L2 也不被降速
+        Given 掛了異常控管的限流中介層（租戶為監控模式）
+        And 訪客 "v1" 已被鎖定在等級 2
+        When 訪客 "v1" 持 widget 票請求聊天端點
+        Then 限流檢查不含 abuse key
+
     Scenario: 未受控主體不加額外限流
         Given 掛了異常控管的限流中介層
         When 訪客 "v1" 持 widget 票請求聊天端點

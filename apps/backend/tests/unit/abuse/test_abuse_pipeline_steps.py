@@ -393,6 +393,10 @@ def http_retry_after(ctx, value):
 
 @given("掛了異常控管的限流中介層")
 def middleware(ctx):
+    _install_rate_limit_middleware(ctx)
+
+
+def _install_rate_limit_middleware(ctx, policy_provider=None):
     from src.domain.ratelimit.rate_limiter_service import RateLimitResult
     from src.infrastructure.auth.jwt_service import JWTService
     from src.infrastructure.ratelimit.config_loader import ResolvedRateLimitConfig
@@ -416,9 +420,24 @@ def middleware(ctx):
         RateLimitMiddleware, rate_limiter=limiter, config_loader=loader,
         jwt_secret_key="test-secret", jwt_algorithm="HS256", global_rpm=1000,
         abuse_store=ctx["store"], abuse_slow_rpm=5,
+        abuse_policy_provider=policy_provider,
     )
     jwt = JWTService("test-secret")
     ctx.update(mw_client=TestClient(app), limiter=limiter, mw_jwt=jwt)
+
+
+@given("掛了異常控管的限流中介層（租戶為監控模式）")
+def middleware_monitor_mode(ctx):
+    """2026-09-08 回歸：監控模式只計分不影響使用者，不該壓到 5 rpm。"""
+    from types import SimpleNamespace
+
+    from src.domain.abuse.policy import AbuseMode
+
+    provider = AsyncMock()
+    provider.policy_for = AsyncMock(
+        return_value=SimpleNamespace(enabled=True, mode=AbuseMode.MONITOR)
+    )
+    _install_rate_limit_middleware(ctx, policy_provider=provider)
 
 
 @when(parsers.parse('訪客 "{vid}" 持 widget 票請求聊天端點'))

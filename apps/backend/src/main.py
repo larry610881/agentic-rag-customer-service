@@ -274,6 +274,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
             # Issue #68 P7：L2 主體動態降速
             abuse_store=container.abuse_score_store(),
             abuse_alerts=container.abuse_alert_service(),
+            abuse_policy_provider=container.abuse_policy_provider(),
         )
 
     # Request Timeout (between CORS and RequestID)
