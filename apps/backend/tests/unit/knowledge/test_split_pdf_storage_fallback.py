@@ -51,7 +51,9 @@ def test_load_403_falls_back_to_db_copy_and_splits_pages():
     parent = _parent(b"%PDF-fake")
     uc, doc_repo, task_repo = _use_case(parent, storage)
     with (
-        patch("src.application.knowledge.split_pdf_use_case.count_pages", return_value=2),
+        patch(
+            "src.application.knowledge.split_pdf_use_case.count_pages", return_value=2
+        ),
         patch(
             "src.application.knowledge.split_pdf_use_case.iter_pages_as_images",
             return_value=iter([b"png1", b"png2"]),
