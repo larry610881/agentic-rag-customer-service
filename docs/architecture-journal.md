@@ -6140,3 +6140,19 @@ graph TD
 
 **延伸學習**：Audit-triggered side effects（稽核即事件源）是把「誰改了什麼」變成一等事件流的起點；下一步是讓 outbox 消費稽核事件，通知、快取失效、指紋重算都從同一條流出來。
 
+## 2026-09-08 — 評測租戶建置時踩到的兩層環境落差：GCS 權限與 worker 環境變數
+
+**背景**：用腳本建「模型評測」租戶並批次匯入 121 條 FAQ，文件全部 failed。三個原因疊在一起：VM worker 的服務帳號沒有文件桶讀取權（403）、worker 的 `.env` 沒跟著 Cloud Run 改 `EMBEDDING_PROVIDER`、後台存的 Google key 本身無效（401）。
+
+**做得好**：
+1. **儲存讀取失敗改用資料庫副本**：上傳時文件本體同時存 GCS 與 DB，process / reprocess 對非「找不到」的儲存錯誤（權限、網路）改用副本繼續，只有簽名網址直傳（無副本）才視為真失敗。一個 IAM 缺口不再讓整批文件死掉，兩個回歸 scenario 鎖住。
+2. **錯誤本文一定要落 log**：embedding 4xx 之前只記狀態碼，加上供應商回應本文後，「Please pass a valid API key」一眼定位，省掉猜 dimensions / 模型名的時間。
+3. **用 hash 比對機密而不印出**：兩邊 ENCRYPTION_MASTER_KEY 用 sha256 前 12 碼比對確認一致，排除解密錯誤，全程沒把金鑰印進對話。
+
+**隱憂**：
+- **Cloud Run 與 VM worker 是兩套環境設定**，改 Cloud Run 的 env 不會同步到 worker 的 `.env`；今天已第二次踩到（前一次是 APP_ENV）。→ 把 worker 的 `.env` 由 Secret Manager 或同一份 env 檔生成，或在部署清單加「worker env 對齊」檢查 → 優先級：高。
+- worker SA 缺 `storage.objects.get`，靠 DB 副本掩蓋；大檔（簽名網址直傳）仍會失敗 → 請專案負責人補 `roles/storage.objectAdmin` → 優先級：高。
+- 供應商「測試連線」只在後台按鈕觸發；bulk 匯入前若自動做一次 key 健檢，可以在入口就擋掉 121 份無效工作 → 優先級：中。
+
+**延伸學習**：Config drift 是多執行角色（API / worker）最常見的故障來源；解法是單一來源（同一份 secret / 同一個 env 產生器）加啟動時自檢，而不是靠人記得改兩邊。
+
