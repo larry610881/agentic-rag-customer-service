@@ -65,6 +65,18 @@ def _is_gemini(model: str) -> bool:
     return any(model.startswith(p) for p in _GEMINI_PREFIXES)
 
 
+# 地端混合推理模型（ollama 的 OpenAI 相容端點）。ollama 把 reasoning_effort
+# 對應到 thinking 開關，thinking 預設是**開著**的：2026-09-08 於 RunPod 實測
+# qwen3.8:27b-q8_0，同一題不帶參數 154 completion tokens / 9.3s，帶
+# reasoning_effort=none 只剩 11 tokens / 2.2s。不接這個 gate 的話，後台把
+# 推理強度設成 none 對地端模型完全無效，成本與延遲都對不上其他供應商。
+_LOCAL_HYBRID_PREFIXES = ("qwen3",)
+
+
+def _is_local_hybrid(model: str) -> bool:
+    return any(model.startswith(p) for p in _LOCAL_HYBRID_PREFIXES)
+
+
 def normalize_reasoning_effort(model: str, effort: str) -> str:
     """Issue #61：把 bot 設定的 reasoning_effort 對應到該模型接受的值。
 
@@ -73,16 +85,22 @@ def normalize_reasoning_effort(model: str, effort: str) -> str:
     """
     if _is_gemini(model) and effort == "minimal":
         return "low"
+    if _is_local_hybrid(model) and effort == "minimal":
+        return "none"
     return effort
 
 
 def supports_reasoning_effort(model: str) -> bool:
-    """gpt-5 / o-series reasoning 模型與 Gemini 才接受 reasoning_effort 參數。
+    """gpt-5 / o-series reasoning 模型、Gemini 與地端混合推理模型才接受此參數。
 
     非 reasoning 模型（gpt-4o 系）收到此參數會被 API 拒絕，
     呼叫端須以此 gate 決定是否夾帶。
     """
-    return _needs_max_completion_tokens(model) or _is_gemini(model)
+    return (
+        _needs_max_completion_tokens(model)
+        or _is_gemini(model)
+        or _is_local_hybrid(model)
+    )
 
 
 def reasoning_effort_allowed(model: str, effort: str) -> bool:
@@ -99,6 +117,10 @@ def reasoning_effort_allowed(model: str, effort: str) -> bool:
         return False
     if _is_gemini(model):
         return normalize_reasoning_effort(model, effort) in _GEMINI_EFFORTS
+    if _is_local_hybrid(model):
+        # 只放行 none（唯一實測過的值）。low/medium/high 不夾帶，讓模型走自己的
+        # 預設，避免送出端點不認的值讓整個請求 400。
+        return normalize_reasoning_effort(model, effort) == "none"
     if model.startswith("gpt-5"):
         return effort == "none"
     return True

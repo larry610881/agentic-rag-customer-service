@@ -82,6 +82,21 @@ Feature: 推理強度控制 — 關閉（none）、通路對等、供應商對�
             | gemini-3.7-flash | none   | none    |
             | gemini-3.7-flash | medium | medium  |
 
+    # 地端 Qwen（ollama 的 OpenAI 相容端點）：thinking 預設開著，只有 none 能關掉。
+    # 其餘強度不夾帶，讓模型走自己的預設，避免送出端點不認的值而整個請求 400。
+    Scenario Outline: 地端 Qwen 的推理強度對應（ollama OpenAI 相容端點）
+        When 以供應商 "ollama" 模型 "<model>" 建立聊天模型並要求推理強度 "<effort>"
+        Then 聊天模型送出的 reasoning_effort 應為 "<sent>"
+
+        Examples:
+            | model                | effort  | sent   |
+            | qwen3.8:27b-q8_0     | none    | none   |
+            | qwen3.6:35b-a3b-q8_0 | none    | none   |
+            | qwen3.8:27b-q8_0     | minimal | none   |
+            | qwen3.8:27b-q8_0     | low     | (省略) |
+            | qwen3.8:27b-q8_0     | high    | (省略) |
+            | llama3.3:70b         | none    | (省略) |
+
     Scenario Outline: Anthropic 的推理強度對應（LangChain ChatAnthropic）
         When 以供應商 "anthropic" 模型 "<model>" 建立聊天模型並要求推理強度 "<effort>"
         Then Anthropic 聊天模型的 thinking 應為 "<thinking>" 且 effort 應為 "<sent>"
@@ -129,6 +144,8 @@ Feature: 推理強度控制 — 關閉（none）、通路對等、供應商對�
             | anthropic | claude-opus-5    | high   | high             |
             | anthropic | claude-haiku-4-5 | high   | provider_default |
             | anthropic | claude-fable-5   | none   | provider_default |
+            | ollama    | qwen3.8:27b-q8_0 | none   | none             |
+            | ollama    | qwen3.8:27b-q8_0 | high   | provider_default |
 
     # ── D. 審計 / 指紋 / trace / usage ──
 
