@@ -7,8 +7,8 @@
 用法（POC）：
   ADMIN_PASSWORD=... TENANT_ADMIN_PASSWORD=... python3 scripts/setup_eval_tenant.py \
       --base-url https://agentic-rag-969010424468.asia-east1.run.app \
-      --models google:gemini-3.7-flash,anthropic:claude-sonnet-4-6 \
-      --ocr-model google:gemini-3.7-flash
+      --models google:gemini-3.8-flash,anthropic:claude-sonnet-4-6 \
+      --ocr-model google:gemini-3.8-flash
 
 不做的事（請在後台手動）：供應商 API key、上傳 DM PDF（知識庫「DM」）。
 """
@@ -190,8 +190,8 @@ def main() -> int:
     ap.add_argument("--admin-account", default="admin@system.com")
     ap.add_argument("--tenant-name", default="模型評測")
     ap.add_argument("--tenant-admin-email", default="eval-admin@example.com")
-    ap.add_argument("--models", default="google:gemini-3.7-flash")
-    ap.add_argument("--ocr-model", default="google:gemini-3.7-flash")
+    ap.add_argument("--models", default="google:gemini-3.8-flash")
+    ap.add_argument("--ocr-model", default="google:gemini-3.8-flash")
     ap.add_argument("--faq", default=str(DEFAULT_FAQ))
     ap.add_argument("--threshold", type=float, default=0.5)
     ap.add_argument("--abuse-profile", default="monitor")
