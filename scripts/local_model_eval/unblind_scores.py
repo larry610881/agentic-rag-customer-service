@@ -27,7 +27,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--scores", required=True)
     ap.add_argument("--key-file", required=True)
-    ap.add_argument("--results", default="", help="給了就一起輸出延遲與 token 統計")
+    ap.add_argument("--results", default=[], nargs="*",
+                    help="給了就一起輸出延遲與 token 統計；可給多個檔")
     args = ap.parse_args()
 
     key = json.loads(Path(args.key_file).expanduser().read_text(encoding="utf-8"))
@@ -94,7 +95,12 @@ def main() -> int:
             print(f"- `{cell}` {bot} → {total}/6　{note}")
 
     if args.results:
-        rows = [json.loads(x) for x in Path(args.results).read_text(encoding="utf-8").splitlines() if x.strip()]
+        rows = [
+            json.loads(x)
+            for f in args.results
+            for x in Path(f).read_text(encoding="utf-8").splitlines()
+            if x.strip()
+        ]
         agg: dict[str, list] = defaultdict(list)
         for r in rows:
             agg[r["bot"]].append(r)
