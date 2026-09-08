@@ -1,0 +1,294 @@
+# =============================================================================
+# Agentic RAG Customer Service — Azure DevOps 多階段管線
+#
+#   CI（每個 PR / push）→ Package（只有 main）→ Release（環境核准後部署）
+#
+# 前置設定見 docs/azure-devops-setup.md：
+#   - 安全檔案 `gcp-sa-key.json`（GCP 服務帳號金鑰，Library → Secure files）
+#   - 變數群組 `agentic-rag-gcp`（GCP_PROJECT_ID / GCP_REGION / WORKER_* 等非祕密）
+#   - 變數群組 `agentic-rag-runtime`（Cloud Run 執行期祕密，全部標記為 secret）
+#   - Environment `poc`（加核准人 → 這就是「release 閘門」）
+# =============================================================================
+
+trigger:
+  batch: true
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - docs/**
+      - "**/*.md"
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - docs/**
+      - "**/*.md"
+
+variables:
+  - group: agentic-rag-gcp        # GCP_PROJECT_ID / GCP_REGION / WORKER_VM_*
+  - group: agentic-rag-runtime    # Cloud Run 執行期環境變數（全部 secret）
+  - name: pythonVersion
+    value: "3.12"
+  - name: nodeVersion
+    value: "20.x"
+  - name: serviceName
+    value: agentic-rag
+  - name: arRepo
+    value: poc-ar-rag
+  - name: imageTag
+    value: "rc-$(Build.SourceVersion)"
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  # ---------------------------------------------------------------------------
+  # Stage 1：CI — 後端與前端平行跑 lint + test，任何一個紅就不進 Package
+  # ---------------------------------------------------------------------------
+  - stage: CI
+    displayName: CI（lint + test）
+    jobs:
+      - job: backend
+        displayName: 後端 ruff / mypy / pytest
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+
+          - script: |
+              set -euo pipefail
+              curl -LsSf https://astral.sh/uv/install.sh | sh
+              echo "##vso[task.prependpath]$HOME/.local/bin"
+            displayName: 安裝 uv
+
+          - script: |
+              set -euo pipefail
+              cd apps/backend
+              uv sync --frozen
+            displayName: uv sync（鎖定版本）
+
+          - script: |
+              set -euo pipefail
+              cd apps/backend
+              uv run ruff check src/ tests/
+              uv run mypy src/
+            displayName: lint（ruff + mypy）
+
+          - script: |
+              set -euo pipefail
+              cd apps/backend
+              uv run python -m pytest tests/unit/ \
+                --junitxml=$(Build.ArtifactStagingDirectory)/backend-unit.xml \
+                --cov=src --cov-report=xml:$(Build.ArtifactStagingDirectory)/coverage.xml \
+                --cov-report=term-missing --cov-fail-under=80 \
+                -q --tb=short
+            displayName: 單元測試（覆蓋率門檻 80%）
+
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: $(Build.ArtifactStagingDirectory)/backend-unit.xml
+              testRunTitle: backend-unit
+
+          - task: PublishCodeCoverageResults@2
+            condition: succeededOrFailed()
+            inputs:
+              summaryFileLocation: $(Build.ArtifactStagingDirectory)/coverage.xml
+
+      - job: backend_integration
+        displayName: 後端整合測試（真實 Postgres / Redis）
+        services:
+          postgres: postgres
+          redis: redis
+        variables:
+          DATABASE_URL_OVERRIDE: postgresql+asyncpg://postgres:postgres@localhost:5432/agentic_rag_test
+          REDIS_URL_OVERRIDE: redis://localhost:6379/0
+          APP_ENV: development
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+
+          - script: |
+              set -euo pipefail
+              curl -LsSf https://astral.sh/uv/install.sh | sh
+              echo "##vso[task.prependpath]$HOME/.local/bin"
+            displayName: 安裝 uv
+
+          - script: |
+              set -euo pipefail
+              cd apps/backend
+              uv sync --frozen
+              # 無 Alembic：schema 由 infra/schema.sql 建立（migration 規範見 .claude/rules）
+              PGPASSWORD=postgres psql -h localhost -U postgres -d agentic_rag_test \
+                -v ON_ERROR_STOP=1 -f ../../infra/schema.sql
+            displayName: 建立測試 schema
+
+          - script: |
+              set -euo pipefail
+              cd apps/backend
+              uv run python -m pytest tests/integration/ -p no:asyncio \
+                --junitxml=$(Build.ArtifactStagingDirectory)/backend-integration.xml \
+                -q --tb=short
+            displayName: 整合測試
+
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: $(Build.ArtifactStagingDirectory)/backend-integration.xml
+              testRunTitle: backend-integration
+
+      - job: frontend
+        displayName: 前端 eslint / tsc / vitest
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: |
+              set -euo pipefail
+              cd apps/frontend
+              npm ci
+              npx eslint src/
+              npx tsc --noEmit
+              npx vitest run --passWithNoTests --reporter=junit \
+                --outputFile=$(Build.ArtifactStagingDirectory)/frontend-unit.xml
+            displayName: lint + 單元測試
+
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: $(Build.ArtifactStagingDirectory)/frontend-unit.xml
+              testRunTitle: frontend-unit
+
+  # ---------------------------------------------------------------------------
+  # Stage 2：Package — 建映像推 Artifact Registry（只有 main，PR 不建）
+  # ---------------------------------------------------------------------------
+  - stage: Package
+    displayName: 建置映像
+    dependsOn: CI
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: image
+        displayName: widget build → docker build → push
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: |
+              set -euo pipefail
+              cd apps/widget
+              npm ci
+              npm run build
+            displayName: 建置 widget（打包進後端映像）
+
+          - template: infra/azure-pipelines/steps-gcp-auth.yml
+
+          - script: |
+              set -euo pipefail
+              gcloud auth configure-docker $(GCP_REGION)-docker.pkg.dev --quiet
+              IMAGE="$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(arRepo)/$(serviceName)"
+              cd apps/backend
+              docker build --platform linux/amd64 -t "$IMAGE:$(imageTag)" -t "$IMAGE:latest" .
+              docker push "$IMAGE:$(imageTag)"
+              docker push "$IMAGE:latest"
+              echo "已推送 $IMAGE:$(imageTag)"
+            displayName: 建置並推送映像
+
+  # ---------------------------------------------------------------------------
+  # Stage 3：Release — 部署 Cloud Run + 重啟 VM worker
+  #   deployment job 綁 Environment `poc`，核准人在 Azure DevOps 上按核准才會跑。
+  # ---------------------------------------------------------------------------
+  - stage: Release
+    displayName: 發布到 POC
+    dependsOn: Package
+    condition: succeeded()
+    jobs:
+      - deployment: cloudrun
+        displayName: 部署 Cloud Run
+        environment: poc
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - template: infra/azure-pipelines/steps-gcp-auth.yml
+
+                - script: |
+                    set -euo pipefail
+                    IMAGE="$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(arRepo)/$(serviceName):$(imageTag)"
+                    gcloud run deploy $(serviceName) \
+                      --image="$IMAGE" \
+                      --region=$(GCP_REGION) \
+                      --project=$(GCP_PROJECT_ID) \
+                      --platform=managed \
+                      --allow-unauthenticated \
+                      --port=8000 --memory=2Gi --cpu=1 \
+                      --cpu-boost --no-cpu-throttling \
+                      --min-instances=1 --max-instances=5 \
+                      --vpc-connector=db-connector \
+                      --vpc-egress=private-ranges-only \
+                      --set-env-vars="^@^APP_ENV=production@LOG_LEVEL=INFO@DATABASE_URL_OVERRIDE=$(DATABASE_URL_OVERRIDE)@REDIS_URL_OVERRIDE=$(REDIS_URL_OVERRIDE)@MILVUS_URI=$(MILVUS_URI)@JWT_SECRET_KEY=$(JWT_SECRET_KEY)@ENCRYPTION_MASTER_KEY=$(ENCRYPTION_MASTER_KEY)@STORAGE_BACKEND=$(STORAGE_BACKEND)@GCS_BUCKET_NAME=$(GCS_BUCKET_NAME)@CORS_ORIGINS=$(CORS_ORIGINS)@RATE_LIMIT_ENABLED=$(RATE_LIMIT_ENABLED)"
+                  displayName: gcloud run deploy
+
+                - script: |
+                    set -euo pipefail
+                    URL=$(gcloud run services describe $(serviceName) \
+                      --region=$(GCP_REGION) --project=$(GCP_PROJECT_ID) \
+                      --format='value(status.url)')
+                    echo "服務網址：$URL"
+                    for i in $(seq 1 20); do
+                      CODE=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$URL/health" || echo 000)
+                      echo "health 第 $i 次：$CODE"
+                      [ "$CODE" = "200" ] && exit 0
+                      sleep 5
+                    done
+                    echo "##vso[task.logissue type=error]health 檢查未通過"
+                    exit 1
+                  displayName: 健康檢查（失敗即整條 Release 紅燈）
+
+      - deployment: worker
+        displayName: 重啟 VM 上的 arq worker
+        dependsOn: cloudrun
+        environment: poc
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: none
+
+                - template: infra/azure-pipelines/steps-gcp-auth.yml
+
+                # worker 是 long-lived process（無 HTTP），跑在 GCE VM 上用 systemd 管理，
+                # 與 Cloud Run 不同部署路徑。不重啟的後果：worker 永遠跑舊 code，
+                # 新功能「Cloud Run 有但背景作業跑不到」，且不會有任何錯誤訊息。
+                - script: |
+                    set -euo pipefail
+                    gcloud compute ssh $(WORKER_VM_NAME) \
+                      --zone=$(WORKER_VM_ZONE) --tunnel-through-iap \
+                      --project=$(GCP_PROJECT_ID) --quiet \
+                      --command='
+                        set -euo pipefail
+                        sudo -u '"$(WORKER_VM_USER)"' bash -lc "
+                          cd '"$(WORKER_REPO_PATH)"'
+                          git fetch --quiet origin main
+                          git reset --hard origin/main
+                          echo HEAD: \$(git rev-parse --short HEAD)
+                          cd apps/backend
+                          \$HOME/.local/bin/uv sync --quiet
+                        "
+                        sudo systemctl restart arq-worker.service
+                        sleep 3
+                        sudo systemctl is-active arq-worker.service
+                      '
+                  displayName: git pull + uv sync + systemctl restart
