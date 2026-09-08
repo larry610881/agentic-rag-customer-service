@@ -26,3 +26,13 @@ Feature: Manage Provider Settings
     Given 一個已存在的 mock 供應商設定，ID 為 "setting-mock"
     When 我測試設定 "setting-mock" 的連線
     Then 連線測試結果應為成功
+
+  Scenario: 自架供應商連線測試打模型清單端點
+    Given 一個 base_url 為 "https://pod.example.com/v1" 的 ollama 供應商設定，ID 為 "setting-ollama"
+    When 我測試設定 "setting-ollama" 的連線
+    Then 連線測試實際請求的網址應為 "https://pod.example.com/v1/models"
+
+  Scenario: base_url 已指到模型清單端點時不重複附加
+    Given 一個 base_url 為 "https://pod.example.com/v1/models" 的 ollama 供應商設定，ID 為 "setting-ollama2"
+    When 我測試設定 "setting-ollama2" 的連線
+    Then 連線測試實際請求的網址應為 "https://pod.example.com/v1/models"

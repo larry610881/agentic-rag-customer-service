@@ -45,9 +45,13 @@ class CheckProviderConnectionUseCase:
             return TestConnectionResult(success=True, latency_ms=0)
 
         api_key = self._encryption.decrypt(setting.api_key_encrypted)
-        base_url = setting.base_url or _TEST_ENDPOINTS.get(
-            setting.provider_name.value, ""
-        )
+        if setting.base_url:
+            # 自架/代理供應商（ollama、litellm、自建 gateway）填的是 OpenAI 相容
+            # 根路徑（.../v1），直接 GET 會 404 → 測試恆失敗。補上模型清單端點。
+            root = setting.base_url.rstrip("/")
+            base_url = root if root.endswith("/models") else f"{root}/models"
+        else:
+            base_url = _TEST_ENDPOINTS.get(setting.provider_name.value, "")
         if not base_url:
             return TestConnectionResult(
                 success=False, latency_ms=0, error="No test endpoint configured"

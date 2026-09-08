@@ -1,8 +1,10 @@
 """供應商設定管理 BDD Step Definitions"""
 
 import asyncio
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
@@ -214,9 +216,45 @@ def do_test_connection(context, setting_id):
         provider_setting_repository=context["repo"],
         encryption_service=context["encryption"],
     )
-    context["test_result"] = _run(use_case.execute(setting_id))
+
+    async def _fake_get(_self, url, **_kwargs):
+        context["requested_url"] = url
+        return SimpleNamespace(status_code=200)
+
+    with patch.object(httpx.AsyncClient, "get", _fake_get):
+        context["test_result"] = _run(use_case.execute(setting_id))
 
 
 @then("連線測試結果應為成功")
 def connection_success(context):
     assert context["test_result"].success is True
+
+
+# --- Scenario: 自架供應商連線測試打模型清單端點 ---
+
+
+@given(
+    parsers.parse(
+        '一個 base_url 為 "{base_url}" 的 ollama 供應商設定，ID 為 "{setting_id}"'
+    )
+)
+def ollama_provider_setting(
+    context, mock_provider_repo, mock_encryption, base_url, setting_id
+):
+    setting = ProviderSetting(
+        id=ProviderSettingId(value=setting_id),
+        provider_type=ProviderType.LLM,
+        provider_name=ProviderName.OLLAMA,
+        display_name="Ollama",
+        is_enabled=True,
+        api_key_encrypted="enc:fake-key",
+        base_url=base_url,
+    )
+    mock_provider_repo.find_by_id = AsyncMock(return_value=setting)
+    context["repo"] = mock_provider_repo
+    context["encryption"] = mock_encryption
+
+
+@then(parsers.parse('連線測試實際請求的網址應為 "{expected}"'))
+def connection_url_is(context, expected):
+    assert context["requested_url"] == expected
