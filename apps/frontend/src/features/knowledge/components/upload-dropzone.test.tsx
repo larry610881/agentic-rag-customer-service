@@ -242,7 +242,10 @@ describe("UploadDropzone", () => {
     });
   });
 
-  it("should dismiss success card after 2 seconds", async () => {
+  // 行為變更（批次上傳佇列）：成功卡片不再 2 秒自動消失。
+  // 一次丟 33 個檔時逐一自動消失會讓列表不斷跳動、也看不出「哪些已完成」，
+  // 改為保留並提供「清除已完成」，與雲端硬碟的批次上傳一致。
+  it("成功後卡片保留，並可用『清除已完成』移除", async () => {
     const user = userEvent.setup();
     mockMutateAsync.mockResolvedValueOnce({ task_id: "t1" });
 
@@ -257,14 +260,49 @@ describe("UploadDropzone", () => {
       ).toBeInTheDocument();
     });
 
-    // 等 real-timer setTimeout(2000) 觸發後卡片消失
+    // 不會自己消失
+    await new Promise((r) => setTimeout(r, 2500));
+    expect(
+      screen.getByRole("progressbar", { name: "上傳成功：ok.pdf" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "清除已完成" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("progressbar", { name: "上傳成功：ok.pdf" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("一次丟多個檔會排隊，不會同時全部送出", async () => {
+    const user = userEvent.setup();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    mockMutateAsync.mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 30));
+      inFlight -= 1;
+      return { task_id: "t" };
+    });
+
+    renderWithProviders(<UploadDropzone knowledgeBaseId="kb-1" />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(input, [
+      makeFile("a.pdf", "application/pdf"),
+      makeFile("b.pdf", "application/pdf"),
+      makeFile("c.pdf", "application/pdf"),
+      makeFile("d.pdf", "application/pdf"),
+      makeFile("e.pdf", "application/pdf"),
+    ]);
+
     await waitFor(
       () => {
-        expect(
-          screen.queryByRole("progressbar", { name: "上傳成功：ok.pdf" }),
-        ).not.toBeInTheDocument();
+        expect(mockMutateAsync).toHaveBeenCalledTimes(5);
       },
-      { timeout: 3000 },
+      { timeout: 5000 },
     );
+    // 併發上限 2：不做佇列的話這裡會是 5
+    expect(maxInFlight).toBeLessThanOrEqual(2);
   });
 });

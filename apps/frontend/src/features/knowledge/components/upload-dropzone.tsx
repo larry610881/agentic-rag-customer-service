@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUploadDocument } from "@/hooks/queries/use-documents";
+import { useUploadQueue } from "@/features/knowledge/hooks/use-upload-queue";
 import {
   UploadProgressCard,
   type UploadingFileItem,
@@ -9,7 +10,6 @@ import {
 import { cn } from "@/lib/utils";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
-const SUCCESS_DISMISS_MS = 2000;
 
 const ACCEPTED_TYPES: Record<string, { ext: string; label: string; strategy: string }> = {
   "text/plain":        { ext: ".txt",  label: "純文字",     strategy: "遞迴分塊" },
@@ -49,25 +49,25 @@ interface UploadDropzoneProps {
 
 export function UploadDropzone({ knowledgeBaseId }: UploadDropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [uploadingFiles, setUploadingFiles] = useState<UploadingFileItem[]>([]);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const uploadMutation = useUploadDocument();
-  const isMountedRef = useRef(true);
-  const timersRef = useRef<number[]>([]);
+  // 批次上傳走佇列：租戶層限流是 100 rpm 且整個租戶共用，一次並發送出 33 個檔
+  // 會讓前幾個成功、其餘全部 429（2026-09-08 實測）。
+  const uploadTask = useCallback(
+    ({ file, onProgress }: { file: File; onProgress: (pct: number) => void }) =>
+      uploadMutation.mutateAsync({ knowledgeBaseId, file, onProgress }),
+    [uploadMutation, knowledgeBaseId],
+  );
+  const {
+    items: uploadingFiles,
+    stats,
+    enqueue,
+    retryFailed,
+    clearFinished,
+  } = useUploadQueue(uploadTask);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    const timers = timersRef.current;
-    return () => {
-      isMountedRef.current = false;
-      for (const t of timers) {
-        window.clearTimeout(t);
-      }
-    };
-  }, []);
-
-  const isLocked = uploadingFiles.some((f) => f.status === "uploading");
+  const isLocked = stats.uploading > 0 || stats.queued > 0;
 
   const validateFile = useCallback((file: File): string | null => {
     if (file.size > MAX_FILE_SIZE) {
@@ -81,84 +81,22 @@ export function UploadDropzone({ knowledgeBaseId }: UploadDropzoneProps) {
     return null;
   }, []);
 
-  const safeSetFiles = useCallback(
-    (updater: (prev: UploadingFileItem[]) => UploadingFileItem[]) => {
-      if (!isMountedRef.current) return;
-      setUploadingFiles(updater);
-    },
-    [],
-  );
-
   const handleFiles = useCallback(
     (files: FileList | File[]) => {
-      const fileArray = Array.from(files);
       const newErrors: string[] = [];
-      const validFiles: File[] = [];
+      const accepted: { id: string; file: File }[] = [];
 
-      for (const file of fileArray) {
+      for (const file of Array.from(files)) {
         const error = validateFile(file);
-        if (error) {
-          newErrors.push(error);
-        } else {
-          validFiles.push(file);
-        }
+        if (error) newErrors.push(error);
+        else accepted.push({ id: makeFileId(file), file });
       }
 
       setValidationErrors(newErrors);
-      if (validFiles.length === 0) return;
-
-      const newItems: UploadingFileItem[] = validFiles.map((file) => ({
-        id: makeFileId(file),
-        name: file.name,
-        progress: 0,
-        status: "uploading",
-      }));
-      setUploadingFiles((prev) => [...prev, ...newItems]);
-
-      newItems.forEach((item, idx) => {
-        const file = validFiles[idx];
-        uploadMutation
-          .mutateAsync({
-            knowledgeBaseId,
-            file,
-            onProgress: (pct) => {
-              safeSetFiles((prev) =>
-                prev.map((f) =>
-                  f.id === item.id
-                    ? { ...f, progress: Math.min(pct, 99) }
-                    : f,
-                ),
-              );
-            },
-          })
-          .then(() => {
-            safeSetFiles((prev) =>
-              prev.map((f) =>
-                f.id === item.id
-                  ? { ...f, progress: 100, status: "success" }
-                  : f,
-              ),
-            );
-            const handle = window.setTimeout(() => {
-              safeSetFiles((prev) => prev.filter((f) => f.id !== item.id));
-            }, SUCCESS_DISMISS_MS);
-            timersRef.current.push(handle);
-          })
-          .catch((err: unknown) => {
-            console.error(`Upload failed: ${file.name}`, err);
-            const message =
-              err instanceof Error && err.message ? err.message : "上傳失敗";
-            safeSetFiles((prev) =>
-              prev.map((f) =>
-                f.id === item.id
-                  ? { ...f, status: "error", error: message }
-                  : f,
-              ),
-            );
-          });
-      });
+      // 全部丟進佇列，由 useUploadQueue 依伺服器回報的剩餘額度節流送出
+      enqueue(accepted);
     },
-    [knowledgeBaseId, uploadMutation, validateFile, safeSetFiles],
+    [validateFile, enqueue],
   );
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -246,6 +184,53 @@ export function UploadDropzone({ knowledgeBaseId }: UploadDropzoneProps) {
           multiple
           disabled={isLocked}
         />
+        {uploadingFiles.length > 0 && (
+          <div
+            className="mb-2 flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-xs"
+            aria-live="polite"
+          >
+            <span className="font-medium">
+              {stats.success} / {stats.total} 完成
+            </span>
+            {stats.queued > 0 && (
+              <span className="text-muted-foreground">
+                排隊中 {stats.queued}
+              </span>
+            )}
+            {stats.error > 0 && (
+              <span className="text-destructive">失敗 {stats.error}</span>
+            )}
+            {/* 額度是整個租戶共用的，撞到就整批暫停，這裡把等待秒數說清楚，
+                否則使用者會以為卡住了而重新整理、反而讓進度歸零 */}
+            {stats.pausedSeconds > 0 && (
+              <span className="text-amber-600 dark:text-amber-400">
+                已達流量上限，{stats.pausedSeconds} 秒後自動繼續
+              </span>
+            )}
+            {stats.error > 0 && stats.queued === 0 && stats.uploading === 0 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-xs"
+                onClick={retryFailed}
+              >
+                重試失敗項
+              </Button>
+            )}
+            {stats.success > 0 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-xs"
+                onClick={clearFinished}
+              >
+                清除已完成
+              </Button>
+            )}
+          </div>
+        )}
         {uploadingFiles.length > 0 && (
           <ul
             aria-label="上傳進度列表"

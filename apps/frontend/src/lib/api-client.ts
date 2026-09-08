@@ -8,10 +8,54 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** 429 時伺服器要求的等待秒數（Retry-After）。上傳佇列靠它決定暫停多久。 */
+    public retryAfter?: number,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/**
+ * 最近一次 API 回應的限流狀態。
+ *
+ * 額度是**整個租戶共用**的——同一個租戶的其他分頁、文件輪詢、對話測試、widget
+ * 都在吃同一份。所以批次上傳不能用「檔數 × 固定百分比」自己算預算，那會低估
+ * 別人的用量而撞牆；要拿伺服器實際回報的剩餘量當回饋訊號。
+ */
+export type RateLimitSnapshot = {
+  limit: number | null;
+  remaining: number | null;
+  at: number;
+};
+
+let lastRateLimit: RateLimitSnapshot = { limit: null, remaining: null, at: 0 };
+
+export function getRateLimitSnapshot(): RateLimitSnapshot {
+  return lastRateLimit;
+}
+
+function captureRateLimit(res: Response): void {
+  // 測試會用最小化的 Response mock（沒有 headers），不能假設它存在
+  if (!res?.headers?.get) return;
+  const limit = Number(res.headers.get("x-ratelimit-limit"));
+  const remaining = Number(res.headers.get("x-ratelimit-remaining"));
+  if (Number.isFinite(limit) || Number.isFinite(remaining)) {
+    lastRateLimit = {
+      limit: Number.isFinite(limit) ? limit : lastRateLimit.limit,
+      remaining: Number.isFinite(remaining) ? remaining : lastRateLimit.remaining,
+      at: Date.now(),
+    };
+  }
+}
+
+function parseRetryAfter(res: Response, body: string): number | undefined {
+  const header = Number(res?.headers?.get?.("retry-after"));
+  if (Number.isFinite(header) && header > 0) return header;
+  // 後端的訊息是「Rate limit exceeded. Try again in 48 seconds.」，
+  // 標頭被中介層剝掉時還能從內文救回來。
+  const m = /in (\d+) seconds/.exec(body);
+  return m ? Number(m[1]) : undefined;
 }
 
 let refreshPromise: Promise<boolean> | null = null;
@@ -51,6 +95,7 @@ export async function apiFetch<T>(
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  captureRateLimit(res);
   if (!res.ok) {
     // L20：只有「帶 token 的已認證請求」的 401 才視為 session 過期；登入/refresh
     // 本身的 401（無 token）交由呼叫端自行顯示錯誤，不彈「登入已過期」toast。
@@ -86,7 +131,11 @@ export async function apiFetch<T>(
         });
       });
     }
-    throw new ApiError(res.status, body);
+    throw new ApiError(
+      res.status,
+      body,
+      res.status === 429 ? parseRetryAfter(res, body) : undefined,
+    );
   }
   if (res.status === 204) {
     return undefined as T;

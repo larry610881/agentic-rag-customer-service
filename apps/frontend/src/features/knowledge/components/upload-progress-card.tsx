@@ -1,7 +1,8 @@
 import { CircularProgress } from "@/components/ui/circular-progress";
 import { cn } from "@/lib/utils";
 
-export type UploadFileStatus = "uploading" | "success" | "error";
+// queued：已在佇列但尚未送出（批次上傳的節流狀態）
+export type UploadFileStatus = "queued" | "uploading" | "success" | "error";
 
 export type UploadingFileItem = {
   id: string;
@@ -21,13 +22,16 @@ export function UploadProgressCard({ file }: UploadProgressCardProps) {
       ? `上傳失敗：${file.name}`
       : file.status === "success"
         ? `上傳成功：${file.name}`
-        : `上傳中：${file.name}`;
+        : file.status === "queued"
+          ? `排隊中：${file.name}`
+          : `上傳中：${file.name}`;
 
   return (
     <div
       className={cn(
         "flex flex-col items-center gap-2 rounded-md border bg-background p-3",
         file.status === "error" && "border-destructive/50",
+        file.status === "queued" && "opacity-60",
       )}
     >
       <CircularProgress
