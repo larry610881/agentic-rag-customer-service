@@ -3,7 +3,7 @@
 Used by CreateProviderSettingUseCase to populate models on first creation，
 and by RecordUsageUseCase._estimate_cost_from_registry 計算 estimated_cost。
 
-Embedding is fixed to OpenAI text-embedding-3-large (3072 dim) globally.
+Embedding 預設 OpenAI text-embedding-3-large（3072 dim）；google 供應商可選 gemini-embedding-001 / 2（同 3072 dim）。
 
 Pricing: input_price / output_price = USD per 1M tokens (2026-04 verified).
 Cache pricing: cache_read_price / cache_creation_price = USD per 1M tokens.
@@ -42,12 +42,22 @@ DEFAULT_MODELS: dict[str, dict[str, list[dict]]] = {
     },
     "google": {
         "llm": [
+            # 2026-09-08 依 ai.google.dev/gemini-api/docs/pricing 補入（3.6–3.8 Flash 標準價至 2026-12-31）
+            {"model_id": "gemini-3.8-flash", "display_name": "Gemini 3.8 Flash", "price": "$0.75/$3.75", "input_price": 0.75, "output_price": 3.75, "cache_read_price": 0.075, "cache_creation_price": 0},
+            {"model_id": "gemini-3.7-flash", "display_name": "Gemini 3.7 Flash", "price": "$0.75/$3.75", "input_price": 0.75, "output_price": 3.75, "cache_read_price": 0.075, "cache_creation_price": 0},
+            {"model_id": "gemini-3.6-flash", "display_name": "Gemini 3.6 Flash", "price": "$0.75/$3.75", "input_price": 0.75, "output_price": 3.75, "cache_read_price": 0.075, "cache_creation_price": 0},
+            {"model_id": "gemini-3.5-flash", "display_name": "Gemini 3.5 Flash", "price": "$1.50/$9", "input_price": 1.50, "output_price": 9.0, "cache_read_price": 0.15, "cache_creation_price": 0},
+            {"model_id": "gemini-3.5-flash-lite", "display_name": "Gemini 3.5 Flash Lite", "price": "$0.30/$2.50", "input_price": 0.30, "output_price": 2.50, "cache_read_price": 0.03, "cache_creation_price": 0},
             {"model_id": "gemini-3.1-pro-preview", "display_name": "Gemini 3.1 Pro", "price": "$2/$12", "input_price": 2.0, "output_price": 12.0, "cache_read_price": 0.2, "cache_creation_price": 0},
             {"model_id": "gemini-3.1-flash-lite-preview", "display_name": "Gemini 3.1 Flash Lite", "price": "$0.25/$1.50", "input_price": 0.25, "output_price": 1.50, "cache_read_price": 0.025, "cache_creation_price": 0},
             {"model_id": "gemini-3-flash-preview", "display_name": "Gemini 3 Flash", "price": "$0.50/$3", "input_price": 0.50, "output_price": 3.0, "cache_read_price": 0.05, "cache_creation_price": 0},
             {"model_id": "gemini-2.5-pro", "display_name": "Gemini 2.5 Pro", "price": "$1.25/$10", "input_price": 1.25, "output_price": 10.0, "cache_read_price": 0.125, "cache_creation_price": 0},
             {"model_id": "gemini-2.5-flash", "display_name": "Gemini 2.5 Flash", "price": "$0.30/$2.50", "input_price": 0.30, "output_price": 2.50, "cache_read_price": 0.03, "cache_creation_price": 0},
             {"model_id": "gemini-2.5-flash-lite", "display_name": "Gemini 2.5 Flash Lite", "price": "$0.10/$0.40", "input_price": 0.10, "output_price": 0.40, "cache_read_price": 0.01, "cache_creation_price": 0},
+        ],
+        "embedding": [
+            {"model_id": "gemini-embedding-2", "display_name": "Gemini Embedding 2 (3072d)", "price": "$0.20/1M", "input_price": 0.20, "output_price": 0, "cache_read_price": 0, "cache_creation_price": 0},
+            {"model_id": "gemini-embedding-001", "display_name": "Gemini Embedding 001 (3072d)", "price": "$0.15/1M", "input_price": 0.15, "output_price": 0, "cache_read_price": 0, "cache_creation_price": 0},
         ],
     },
     "anthropic": {

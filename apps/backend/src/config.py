@@ -222,7 +222,10 @@ class Settings(BaseSettings):
     def effective_embedding_model(self) -> str:
         if self.embedding_model:
             return self.embedding_model
-        _defaults = {"google": "text-embedding-004", "openai": "text-embedding-3-large"}
+        _defaults = {
+            "google": "gemini-embedding-001",
+            "openai": "text-embedding-3-large",
+        }
         return _defaults.get(self.embedding_provider, "text-embedding-3-large")
 
     @property
