@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import statistics
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -104,14 +105,35 @@ def main() -> int:
         agg: dict[str, list] = defaultdict(list)
         for r in rows:
             agg[r["bot"]].append(r)
-        print("\n## 效能與用量（不參與評分，揭盲後才對照）\n")
-        print("| 模型 | 平均延遲 ms | p90 延遲 ms | 總 input | 總 output |")
-        print("|---|---|---|---|---|")
+        # 串流不下發 usage，jsonl 的 output_tokens 對 Gemini 是 chunk 數
+        # （chunk/token ≈ 0.03），直接印會低估 30 倍。改用回答文字配 tiktoken
+        # 估算，跟 build_report.py 同一把尺——只能跨模型比快慢，不能算錢。
+        try:
+            import tiktoken
+            enc = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            enc = None
+        print("\n## 效能（不參與評分，揭盲後才對照；中位數）\n")
+        head = "| 模型 | 首 token ms | 總時間 ms | 字元/秒 |"
+        head += " 估算 token/秒 |" if enc else ""
+        print(head)
+        print("|---|---|---|---|" + ("---|" if enc else ""))
         for bot, rs in sorted(agg.items()):
-            lat = sorted(x["latency_ms"] for x in rs)
-            p90 = lat[int(len(lat) * 0.9) - 1] if lat else 0
-            print(f"| {bot} | {sum(lat) // len(lat)} | {p90} | "
-                  f"{sum(x['input_tokens'] for x in rs)} | {sum(x['output_tokens'] for x in rs)} |")
+            rs = [x for x in rs if x.get("ttft_ms") and x.get("latency_ms")]
+            if not rs:
+                continue
+            med = lambda xs: statistics.median(xs)  # noqa: E731
+            gen = [max(1, x["latency_ms"] - x["ttft_ms"]) for x in rs]
+            txt = [x.get("answer") or "" for x in rs]
+            cps = [len(t) / (g / 1000) for t, g in zip(txt, gen)]
+            line = (f"| {bot} | {med([x['ttft_ms'] for x in rs]):.0f} | "
+                    f"{med([x['latency_ms'] for x in rs]):.0f} | {med(cps):.0f} |")
+            if enc:
+                tps = [len(enc.encode(t)) / (g / 1000) for t, g in zip(txt, gen)]
+                line += f" {med(tps):.0f} |"
+            print(line)
+        if not enc:
+            print("\n（tiktoken 不在環境中，略過 token/秒；字元/秒仍可跨模型比較）")
 
     if missing:
         print(f"\n（有 {missing} 列因為欄位空白或對不到代號被略過）")
