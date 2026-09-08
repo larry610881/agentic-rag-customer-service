@@ -82,93 +82,102 @@ class Api:
         return True
 
 
-def ask_stream(api: Api, bot_id: str, message: str, conversation_id: str | None):
+def ask_stream(api: Api, bot_id: str, message: str, conversation_id: str | None,
+               *, max_retry: int = 6):
     """走 SSE 串流量測首 token 時間與生成吞吐。
 
     非串流端點只拿得到「總時間」，看不出時間花在哪裡。串流可以拆成三段：
-      檢索完成（retrieval 事件）→ 首 token → 最後一個 token
-    首 token 前包含檢索 + prompt 組裝 + 模型 prefill，之後才是純生成。
-    地端模型的瓶頸通常在 prefill，雲端則在網路來回，拆開才看得出差別。
+      檢索完成 → 首 token → 最後一個 token
 
-    注意：串流端點不下發 usage 事件（伺服器端自行記帳），所以生成量以 token
-    事件數（chunk 數）計，標示為 gen_chunks，與非串流的 output_tokens 不完全相等。
+    兩個踩過的坑，改動前請先讀：
+    1. **不要在第一個 done 就 break**。實測事件順序是
+       done → sources → retrieval → conversation_id → done，提早跳出會讓每一輪都
+       拿不到對話 id，等於每輪都開新對話，多輪題全部失去上下文而且不會報錯。
+    2. **分界線用 status:llm_generating**，不要用 retrieval 事件——後者在結尾才發
+       （與 done 同時，只回報 top_score/chunk_count），拿來計時永遠等於總時間。
+
+    串流端點不下發 usage 事件（伺服器端自行記帳），生成量以 token 事件數計，
+    標示為 gen_chunks，與非串流的 output_tokens 不完全相等。
     """
     body = {
         "message": message, "bot_id": bot_id,
         **({"conversation_id": conversation_id} if conversation_id else {}),
     }
-    req = urllib.request.Request(
-        api.base + "/api/v1/agent/chat/stream",
-        data=json.dumps(body).encode(), method="POST",
-    )
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Accept", "text/event-stream")
-    req.add_header("Authorization", f"Bearer {api.token}")
 
-    t0 = time.perf_counter()
-    ttft = None
-    retrieval_ms = None
-    chunks = 0
-    parts: list[str] = []
-    tools: list[str] = []
-    conv = conversation_id
-    status = 200
-    try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            for raw in resp:
-                line = raw.decode("utf-8", errors="ignore").strip()
-                if not line.startswith("data:"):
-                    continue
-                try:
-                    ev = json.loads(line[5:].strip())
-                except Exception:
-                    continue
-                kind = ev.get("type")
-                # 分界線用 status:llm_generating，不要用 retrieval 事件——後者是在
-                # 結尾才發（與 done 同時，只回報 top_score/chunk_count），拿來計時
-                # 永遠等於總時間。llm_generating 才是「檢索與組 prompt 結束、模型
-                # 開始」的那一刻，用它才切得出「前置管線 vs 模型」。
-                if kind == "status" and ev.get("status") == "llm_generating" \
-                        and retrieval_ms is None:
-                    retrieval_ms = round((time.perf_counter() - t0) * 1000)
-                elif kind == "token":
-                    if ttft is None:
-                        ttft = round((time.perf_counter() - t0) * 1000)
-                    chunks += 1
-                    parts.append(ev.get("content") or ev.get("token") or "")
-                elif kind == "tool_calls":
-                    tools = [t.get("tool_name", "") for t in (ev.get("tool_calls") or [])]
-                elif kind == "conversation_id":
-                    conv = ev.get("conversation_id") or conv
-                # 不在 done 就 break：實測事件順序是
-                #   done(4098ms) → sources → retrieval → conversation_id(4115ms) → done
-                # 第一個 done 之後才發 conversation_id，提早跳出會讓每一輪都拿不到
-                # 對話 id、等於每輪都開新對話——多輪題全部失去上下文而不自知。
-                # 讀到串流自然結束為止。
-    except urllib.error.HTTPError as e:
-        status = e.code
+    def _new_request():
+        req = urllib.request.Request(
+            api.base + "/api/v1/agent/chat/stream",
+            data=json.dumps(body).encode(), method="POST",
+        )
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Accept", "text/event-stream")
+        req.add_header("Authorization", f"Bearer {api.token}")
+        return req
+
+    for attempt in range(max_retry):
+        t0 = time.perf_counter()
+        ttft = None
+        retrieval_ms = None
+        chunks = 0
+        parts: list[str] = []
+        tools: list[str] = []
+        conv = conversation_id
+        try:
+            with urllib.request.urlopen(_new_request(), timeout=300) as resp:
+                for raw in resp:
+                    line = raw.decode("utf-8", errors="ignore").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    try:
+                        ev = json.loads(line[5:].strip())
+                    except Exception:
+                        continue
+                    kind = ev.get("type")
+                    if (kind == "status" and ev.get("status") == "llm_generating"
+                            and retrieval_ms is None):
+                        retrieval_ms = round((time.perf_counter() - t0) * 1000)
+                    elif kind == "token":
+                        if ttft is None:
+                            ttft = round((time.perf_counter() - t0) * 1000)
+                        chunks += 1
+                        parts.append(ev.get("content") or ev.get("token") or "")
+                    elif kind == "tool_calls":
+                        tools = [t.get("tool_name", "")
+                                 for t in (ev.get("tool_calls") or [])]
+                    elif kind == "conversation_id":
+                        conv = ev.get("conversation_id") or conv
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode(errors="ignore")
+            if e.code == 429 and attempt < max_retry - 1:
+                m = _RETRY_AFTER.search(detail)
+                wait = min(int(m.group(1)) + 2 if m else 15 * (attempt + 1), 90)
+                print(f"      429 速率限制，等 {wait}s 後重試"
+                      f"（{attempt + 1}/{max_retry}）", flush=True)
+                time.sleep(wait)
+                continue
+            return {
+                "ok": False, "status": e.code, "answer": detail[:400],
+                "latency_ms": round((time.perf_counter() - t0) * 1000),
+                "conversation_id": conversation_id, "input_tokens": 0,
+                "output_tokens": 0, "sources": [], "tool_calls": [],
+            }
+
+        if conv is None:
+            # 大聲一點：沒有對話 id 代表下一輪會開新對話，多輪題的結果會是假的
+            print("      ⚠️ 這一輪沒拿到 conversation_id，多輪上下文會斷", flush=True)
+        total = round((time.perf_counter() - t0) * 1000)
+        gen_ms = max(1, total - (ttft or total))
         return {
-            "ok": False, "status": status,
-            "answer": e.read().decode(errors="ignore")[:400],
-            "latency_ms": round((time.perf_counter() - t0) * 1000),
-            "conversation_id": conv, "input_tokens": 0, "output_tokens": 0,
-            "sources": [], "tool_calls": [],
+            "ok": True, "status": 200, "answer": "".join(parts),
+            "latency_ms": total, "ttft_ms": ttft, "retrieval_ms": retrieval_ms,
+            "prefill_ms": (ttft - retrieval_ms) if (ttft and retrieval_ms) else None,
+            "gen_chunks": chunks, "tok_per_s": round(chunks / (gen_ms / 1000), 1),
+            "conversation_id": conv, "input_tokens": 0, "output_tokens": chunks,
+            "sources": [], "tool_calls": tools,
         }
-
-    if conv is None:
-        # 大聲一點：沒有對話 id 代表下一輪會開新對話，多輪題的評測結果會是假的
-        print("      ⚠️ 這一輪沒拿到 conversation_id，多輪上下文會斷", flush=True)
-    total = round((time.perf_counter() - t0) * 1000)
-    gen_ms = max(1, total - (ttft or total))
-    prefill_ms = (ttft - retrieval_ms) if (ttft and retrieval_ms) else None
-    return {
-        "ok": True, "status": status, "answer": "".join(parts),
-        "latency_ms": total, "ttft_ms": ttft, "retrieval_ms": retrieval_ms,
-        "prefill_ms": prefill_ms,
-        "gen_chunks": chunks, "tok_per_s": round(chunks / (gen_ms / 1000), 1),
-        "conversation_id": conv, "input_tokens": 0, "output_tokens": chunks,
-        "sources": [], "tool_calls": tools,
-    }
+    return {"ok": False, "status": 429, "answer": "rate limited",
+            "latency_ms": 0, "conversation_id": conversation_id,
+            "input_tokens": 0, "output_tokens": 0, "sources": [], "tool_calls": []}
 
 
 def ask(api: Api, bot_id: str, message: str, conversation_id: str | None, *, max_retry: int = 6):
