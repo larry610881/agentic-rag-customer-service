@@ -127,7 +127,7 @@ def main() -> int:
     print(f"    -H 'Content-Type: application/json' \\")
     print(f"    -d '{{\"account\":\"{args.tenant_admin_email}\",\"password\":\"<密碼>\"}}' \\")
     print(f"    | python3 -c 'import sys,json;print(json.load(sys.stdin)[\"access_token\"])')")
-    print(f"  curl -X POST '{base}/api/v1/knowledge-bases/{kb['id']}/documents/upload' \\")
+    print(f"  curl -X POST '{base}/api/v1/knowledge-bases/{kb['id']}/documents' \\")
     print(f"    -H \"Authorization: Bearer $TOKEN\" -F 'file=@<檔名>.pdf'")
     return 0
 

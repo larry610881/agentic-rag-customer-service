@@ -70,13 +70,48 @@ Claude Code 的記憶是**以工作目錄為單位**（`~/.claude/projects/<路�
 
 **1）產盲評包**（在專案資料夾做）
 
+`--results` 收**多個檔**：一天下來資料是分批產生的（不同臂在不同時間跑、修完 bug 重跑），
+硬要合成單一檔反而容易把修復前後的資料混在一起。
+
 ```bash
 cd ~/source/repos/agentic-rag-customer-service
 python3 scripts/local_model_eval/make_blind_packet.py \
-  --results scripts/local_model_eval/results/main60_<時間>.jsonl \
+  --results scripts/local_model_eval/results/main60_20260908-1849.jsonl \
+            scripts/local_model_eval/results/main60_20260908-1942.jsonl \
+            scripts/local_model_eval/results/main60_20260908-2056.jsonl \
   --out-dir ~/qa-scoring \
-  --key-file scripts/local_model_eval/results/blind_key_<日期>.json
+  --key-file scripts/local_model_eval/results/blind_key_20260908.json
 ```
+
+### 重跑要評幾次？`--runs`
+
+跑 3 輪是為了量穩定度，但**不代表 3 輪都要送去盲評**：
+
+| 模式 | 待評回答數（本次資料） | 適用 |
+|---|---|---|
+| `all` | 180 輪 × 5 = **900** × 3 維度 = 2,700 個判斷 | 幾乎不可行，評到後面品質必掉 |
+| `first` | 60 輪 × 5 = 300 | 可行，但「某臂第一輪剛好手氣好」會直接變成結論 |
+| `random`（**預設**） | 60 輪 × 5 = 300 | 每輪各自抽一次重跑，樣本量一樣但分散在三次上 |
+
+`random` 用的是**分層**而不是純隨機：把題目順序打亂後輪流指派重跑編號，
+確保三次重跑被抽到的次數相同（本次 20/20/20）。純 `rng.choice` 在 60 次抽樣下很容易歪掉
+（實測 seed 20260908 抽出 26/25/9，等於第三次重跑幾乎沒被評到，白花了跑三輪的成本）。
+
+產包後可以自己驗一次洗牌有沒有生效——每個模型應該平均散落在所有代號上：
+
+```bash
+python3 -c "
+import json,collections
+k=json.load(open('scripts/local_model_eval/results/blind_key_20260908.json',encoding='utf-8'))
+c=collections.defaultdict(collections.Counter)
+for cell,l2b in k['mapping'].items():
+    for lab,bot in l2b.items(): c[bot][lab]+=1
+for bot,cnt in sorted(c.items()): print(bot, dict(sorted(cnt.items())))
+print('重跑分布', dict(collections.Counter(x.split('-r')[-1] for x in k['mapping'])))
+"
+```
+
+若某個模型集中在一兩個代號，代表洗牌壞了，**不要送去評**。
 
 **2）開盲評 session**
 

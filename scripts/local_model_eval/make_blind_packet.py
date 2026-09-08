@@ -14,7 +14,8 @@
 
 用法：
   python3 scripts/local_model_eval/make_blind_packet.py \\
-      --results scripts/local_model_eval/results/main60_20260908-1530.jsonl \\
+      --results scripts/local_model_eval/results/main60_A.jsonl \\
+                scripts/local_model_eval/results/main60_B.jsonl \\
       --out-dir ~/qa-scoring \\
       --key-file scripts/local_model_eval/results/blind_key_20260908.json
 """
@@ -46,8 +47,17 @@ def mask(text: str) -> str:
     return _LEAK_RE.sub("[已遮蔽]", text or "")
 
 
-def build(results: Path, out_dir: Path, key_file: Path, seed: int) -> int:
-    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines() if line.strip()]
+def build(
+    results: list[Path], out_dir: Path, key_file: Path, seed: int,
+    runs_mode: str = "random",
+) -> int:
+    rows: list[dict] = []
+    for f in results:
+        rows += [
+            json.loads(line)
+            for line in f.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
     if not rows:
         print("結果檔是空的")
         return 1
@@ -62,7 +72,33 @@ def build(results: Path, out_dir: Path, key_file: Path, seed: int) -> int:
     for r in rows:
         cells[(r["dialogue"], r["turn"], r.get("run", 1))][r["bot"]] = r
 
+    # 取樣哪些重跑進盲評包。
+    #
+    # 全跑進去（all）是 180 輪 × 5 個來源 = 900 個回答 × 3 個維度 = 2,700 個判斷，
+    # 一個 session 評到後面品質一定掉。只取 run 1（first）又會讓「某臂第一輪剛好
+    # 手氣好」直接變成結論。折衷是 **每一輪各自隨機抽一次重跑**（random，預設）：
+    # 樣本量回到 60 輪，但每個模型被抽到的回合分散在三次重跑上，沒有哪一臂
+    # 被單一次抽樣系統性偏袒。
     rng = random.Random(seed)
+    if runs_mode != "all":
+        by_turn: dict[tuple, list[int]] = defaultdict(list)
+        for (did, turn, run) in cells:
+            by_turn[(did, turn)].append(run)
+        keep = set()
+        if runs_mode == "first":
+            for (did, turn), runs in sorted(by_turn.items()):
+                keep.add((did, turn, min(runs)))
+        else:
+            # 分層而非純隨機：把題目順序打亂後輪流指派重跑編號。純 rng.choice
+            # 在 60 次抽樣下很容易歪掉（實測 seed 20260908 抽出 26/25/9），
+            # 那等於讓「第三次重跑」幾乎沒被評到，白費了跑三輪的成本。
+            turns_list = sorted(by_turn.items())
+            rng.shuffle(turns_list)
+            for i, ((did, turn), runs) in enumerate(turns_list):
+                runs.sort()
+                keep.add((did, turn, runs[i % len(runs)]))
+        cells = {k: v for k, v in cells.items() if k in keep}
+
     key: dict[str, dict[str, str]] = {}   # "E1-1-r1" -> {label: bot}
     out_dir = out_dir.expanduser()
     if out_dir.exists():
@@ -157,7 +193,10 @@ def build(results: Path, out_dir: Path, key_file: Path, seed: int) -> int:
     )
 
     n_cells = len(key)
-    print(f"盲評包：{out_dir}（{len(dialogues)} 段 / {n_cells} 輪 × {len(bots)} 個來源）")
+    print(
+        f"盲評包：{out_dir}（{len(dialogues)} 段 / {n_cells} 輪 × "
+        f"{len(bots)} 個來源 = {n_cells * len(bots)} 個待評回答，取樣={runs_mode}）"
+    )
     print(f"對照表：{key_file} ← 不要放進盲評資料夾，也不要在評分 session 提到它")
     print("自檢通過：盲評包內無洩漏字串")
     return 0
@@ -165,12 +204,19 @@ def build(results: Path, out_dir: Path, key_file: Path, seed: int) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--results", required=True)
+    ap.add_argument("--results", required=True, nargs="+")
     ap.add_argument("--out-dir", default="~/qa-scoring")
     ap.add_argument("--key-file", default="scripts/local_model_eval/results/blind_key.json")
     ap.add_argument("--seed", type=int, default=20260908)
+    ap.add_argument(
+        "--runs", choices=("random", "first", "all"), default="random",
+        help="每輪取一次重跑（random，預設）／只取第一次／全部都評",
+    )
     args = ap.parse_args()
-    return build(Path(args.results), Path(args.out_dir), Path(args.key_file), args.seed)
+    return build(
+        [Path(x) for x in args.results], Path(args.out_dir),
+        Path(args.key_file), args.seed, args.runs,
+    )
 
 
 if __name__ == "__main__":

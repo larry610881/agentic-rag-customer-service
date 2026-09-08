@@ -46,13 +46,13 @@ ok=0; fail=0
 for f in "${FILES[@]}"; do
   name=$(basename "$f")
   code=$(curl -s -o /tmp/expo_up.json -w '%{http_code}' -m 300 \
-    -X POST "$BASE/api/v1/knowledge-bases/$KB/documents/upload" \
+    -X POST "$BASE/api/v1/knowledge-bases/$KB/documents" \
     -H "Authorization: Bearer $TOKEN" -F "file=@$f")
   # access token 效期比整批上傳短，過期就重登再試一次
   if [ "$code" = "401" ]; then
     TOKEN=$(login)
     code=$(curl -s -o /tmp/expo_up.json -w '%{http_code}' -m 300 \
-      -X POST "$BASE/api/v1/knowledge-bases/$KB/documents/upload" \
+      -X POST "$BASE/api/v1/knowledge-bases/$KB/documents" \
       -H "Authorization: Bearer $TOKEN" -F "file=@$f")
   fi
   if [ "$code" = "200" ] || [ "$code" = "201" ]; then
