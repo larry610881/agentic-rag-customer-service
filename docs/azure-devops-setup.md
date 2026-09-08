@@ -83,46 +83,128 @@ Pipelines → New pipeline → Azure Repos Git → 選本 repo → Existing Azur
 > 通常 2–3 個工作天），否則管線會一直卡在 "waiting for an available agent"。
 > 不想等就改用 self-hosted agent，`pool:` 換成自架的 agent pool 名稱。
 
-### 2. Library → Secure files
+### 2. GCP 認證：Workload Identity Federation（預設）
 
-上傳 GCP 服務帳號金鑰，檔名固定 `gcp-sa-key.json`。這個服務帳號需要：
+管線的 `gcpAuthMethod` 參數預設 `wif`，走 OIDC 短效權杖，**GCP 端不產生任何長期金鑰**。
+流程是：Azure DevOps 針對某個服務連線發一張 OIDC token（`sub` 為
+`sc://<組織>/<專案>/<服務連線>`）→ GCP 的 workload identity pool provider 信任這個
+issuer → STS 換成部署用服務帳號的短效存取權杖。
+
+#### 2.1 Azure DevOps 端：建一個服務連線當「身分」
+
+Project settings → Service connections → New service connection → **Azure Resource Manager**
+→ **Workload Identity federation (manual)**，名稱例如 `gcp-poc`。
+
+> 這裡填的訂閱 / 租戶欄位可以填佔位值 —— 我們不是真的要連 Azure 資源，只是需要一個
+> 服務連線來當 OIDC token 的 subject。**不要按 Verify**（沒有真的 Azure 訂閱會失敗）。
+
+建好後從網址列取得它的 GUID（`.../_settings/adminservices?resourceId=<GUID>`），
+填進變數 `GCP_WIF_SERVICE_CONNECTION_ID`。組織 GUID 從
+`https://dev.azure.com/PIC-DevOps/_apis/connectionData` 的 `instanceId` 取得。
+
+#### 2.2 GCP 端：建 pool、provider 與部署用服務帳號
+
+由專案負責人執行（需要 IAM 管理權限；Larry 的帳號在 POC 專案沒有 IAM 讀寫權）：
+
+```bash
+PROJECT_ID=project-pic-ai-innovation-poc
+ADO_ORG_ID=<Azure DevOps 組織 GUID>
+ADO_ORG=PIC-DevOps
+ADO_PROJECT='檯帳系列-平台POC'
+POOL=azure-devops
+PROVIDER=ado-pic-devops
+SA=ado-deployer
+
+# 1) Workload Identity Pool
+gcloud iam workload-identity-pools create "$POOL" \
+  --project="$PROJECT_ID" --location=global \
+  --display-name="Azure DevOps"
+
+# 2) OIDC Provider — 信任 Azure DevOps 的 token issuer
+#    attribute.proj 讓我們可以「只授權某個 ADO 專案」，而不是整個組織
+gcloud iam workload-identity-pools providers create-oidc "$PROVIDER" \
+  --project="$PROJECT_ID" --location=global \
+  --workload-identity-pool="$POOL" \
+  --display-name="ado/$ADO_ORG" \
+  --issuer-uri="https://vstoken.dev.azure.com/$ADO_ORG_ID" \
+  --allowed-audiences="api://AzureADTokenExchange" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.proj=assertion.sub.extract('sc://{organization}/') + '/' + (assertion.sub.extract('sc://{conn}')).split('/', 3)[1]" \
+  --attribute-condition="assertion.sub.startsWith('sc://$ADO_ORG/')"
+
+# 3) 部署用服務帳號
+gcloud iam service-accounts create "$SA" \
+  --project="$PROJECT_ID" --display-name="Azure DevOps deployer"
+
+SA_EMAIL="$SA@$PROJECT_ID.iam.gserviceaccount.com"
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+POOL_NAME="projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL"
+
+# 4) 只允許這個 ADO 專案的管線來扮演這個服務帳號
+gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
+  --project="$PROJECT_ID" \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/$POOL_NAME/attribute.proj/$ADO_ORG/$ADO_PROJECT"
+
+# 5) 部署權限
+for ROLE in roles/artifactregistry.writer roles/run.admin roles/iam.serviceAccountUser \
+            roles/iap.tunnelResourceAccessor roles/compute.instanceAdmin.v1; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:$SA_EMAIL" --role="$ROLE" --condition=None
+done
+
+echo "GCP_PROJECT_NUMBER=$PROJECT_NUMBER"
+echo "GCP_DEPLOY_SA=$SA_EMAIL"
+```
 
 | 角色 | 用途 |
 |------|------|
 | `roles/artifactregistry.writer` | 推映像 |
 | `roles/run.admin` | 部署 Cloud Run |
-| `roles/iam.serviceAccountUser` | 以 Cloud Run runtime SA 身分部署 |
-| `roles/iap.tunnelResourceAccessor` + `roles/compute.instanceAdmin.v1` | IAP SSH / SCP 進 VM 同步程式碼並重啟 worker |
+| `roles/iam.serviceAccountUser` | 以 Cloud Run runtime SA（`poc-rag-run-sa`）身分部署 |
+| `roles/iap.tunnelResourceAccessor` | 走 IAP 隧道連 VM |
+| `roles/compute.instanceAdmin.v1` | SSH / SCP 進 VM 同步程式碼並重啟 worker |
+
+> **VM 若啟用 OS Login**（公司環境常見），`compute.instanceAdmin.v1` **不夠**，
+> 要再加 `roles/compute.osAdminLogin`（要 sudo 重啟 systemd 服務就得是 admin 版）。
+> 沒開 OS Login 才是靠 instanceAdmin 寫 metadata SSH key。
+> 這是整條管線最容易第一次就卡住的地方，建議先問清楚。
+
+#### 2.3 兩個時效陷阱
+
+1. **OIDC token 約 10 分鐘就過期**。gcloud 換到的存取權杖有 1 小時，但過期後 gcloud
+   會回頭重讀 token 檔 —— 那時 OIDC token 早就失效。所以認證樣板要**緊接在實際用
+   gcloud 的步驟之前**引用，不要放 job 開頭然後隔很久才用。目前三個 job 都是這樣排的。
+2. **每個 job 要各自認證一次**。job 之間不共用 agent 狀態，這也是三個 job 都引用
+   同一支樣板的原因。
+
+### 3. 備援路徑：服務帳號 JSON 金鑰
+
+只在 WIF 走不通時用（例如公司不允許自建服務連線）。手動觸發管線時把參數
+**GCP 認證方式**改成 `sa-key`，或改 `azure-pipelines.yml` 裡 `gcpAuthMethod` 的 default。
+
+Library → Secure files 上傳金鑰，檔名固定 `gcp-sa-key.json`，服務帳號角色同上表。
 
 > **先確認公司 GCP 有沒有禁發服務帳號金鑰**：企業組織常設
-> `constraints/iam.disableServiceAccountKeyCreation`，一旦生效就**根本產不出**
-> 這個 JSON 檔，只能走下面的 WIF。Larry 的帳號沒有 IAM 讀取權限，查不到現況，
-> 要請專案負責人確認。
->
-> 想避免長期金鑰落地（或被組織政策擋住），改用 Workload Identity Federation：
-> 只需要換掉 `steps-gcp-auth.yml` 這一支，Package / Release 兩個 stage 完全不用動。
-> 做法是在 GCP 建一個 OIDC provider 指向 Azure DevOps 的 issuer，管線改用
-> `AzureCLI@2` / OIDC token + `gcloud iam workload-identity-pools create-cred-config`
-> 產生外部帳號設定檔，再 `gcloud auth login --cred-file=`。
->
-> **`gcloud compute ssh` / `scp` 的額外前提**：CI agent 是全新環境，第一次連線會自己
-> 產 SSH 金鑰。VM 若啟用了 OS Login（公司環境常見），`compute.instanceAdmin.v1`
-> 不夠，還要 `roles/compute.osAdminLogin`（要 sudo 重啟 systemd 服務就得是 admin 版）。
-> 沒開 OS Login 才是靠 `compute.instanceAdmin.v1` 寫 metadata SSH key。
-> 這一項是整條管線最容易第一次就卡住的地方。
+> `constraints/iam.disableServiceAccountKeyCreation`，一旦生效就**根本產不出**這個
+> JSON 檔，只能走 WIF。Larry 的帳號沒有 IAM 讀取權限，查不到現況，要請專案負責人確認。
 
-### 3. Library → Variable groups
+### 4. Library → Variable groups
 
 **`agentic-rag-gcp`**（非祕密，可直接看）
 
-| 變數 | 範例值 |
-|------|--------|
-| `GCP_PROJECT_ID` | `project-pic-ai-innovation-poc` |
-| `GCP_REGION` | `asia-east1` |
-| `WORKER_VM_NAME` | `db-services` |
-| `WORKER_VM_ZONE` | `asia-east1-b` |
-| `WORKER_VM_USER` | VM 上持有 repo 的使用者 |
-| `WORKER_REPO_PATH` | VM 上的 repo 路徑 |
+| 變數 | 範例值 | 只有 WIF 需要 |
+|------|--------|:---:|
+| `GCP_PROJECT_ID` | `project-pic-ai-innovation-poc` | |
+| `GCP_PROJECT_NUMBER` | 由上面腳本印出 | ✓ |
+| `GCP_REGION` | `asia-east1` | |
+| `GCP_WIF_POOL` | `azure-devops` | ✓ |
+| `GCP_WIF_PROVIDER` | `ado-pic-devops` | ✓ |
+| `GCP_DEPLOY_SA` | `ado-deployer@<專案>.iam.gserviceaccount.com` | ✓ |
+| `GCP_WIF_SERVICE_CONNECTION_ID` | 服務連線 GUID | ✓ |
+| `WORKER_VM_NAME` | `db-services` | |
+| `WORKER_VM_ZONE` | `asia-east1-b` | |
+| `WORKER_VM_USER` | VM 上持有 repo 的使用者 | |
+| `WORKER_REPO_PATH` | VM 上的 repo 路徑 | |
 
 **`agentic-rag-runtime`**（**全部勾 secret**）
 
@@ -144,7 +226,7 @@ gcloud run services describe agentic-rag --region=asia-east1 \
 > LLM 供應商的 API key **不放這裡**——它們存在資料庫（加密欄位），由後台
 > 「供應商設定」維護。管線只需要 `ENCRYPTION_MASTER_KEY` 就能解密。
 
-### 4. Environments → `poc`
+### 5. Environments → `poc`
 
 Pipelines → Environments → New environment → 名稱 `poc`。**不要加 Approvals and checks**
 —— 這條線要的是全自動：push 到 `main` 後一路跑到部署完成，中間不停。Environment 在這裡
@@ -208,7 +290,9 @@ GitHub Actions 那條線上真的發生過（快取計費與自動分類記帳�
 ## 五、驗收清單
 
 - [ ] 平行度授權已核准（或已接上 self-hosted agent）
-- [ ] Secure file `gcp-sa-key.json` 已上傳，SA 具備上表五個角色
+- [ ] Azure DevOps 服務連線 `gcp-poc` 已建（WIF manual，可填佔位值、不要按 Verify）
+- [ ] GCP 端 pool / provider / `ado-deployer` 服務帳號已建，五個角色都給了
+- [ ] 已問清楚 VM 有沒有開 OS Login（有的話要補 `roles/compute.osAdminLogin`）
 - [ ] 兩個 variable group 已建立，`agentic-rag-runtime` 全部標 secret
 - [ ] Environment `poc` 已建立，且**沒有**設 approvals（要全自動）
 - [ ] 對 `main` 發一個測試 PR：CI 三個 job 全綠、PR 不會觸發 Package

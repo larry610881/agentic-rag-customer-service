@@ -4,11 +4,22 @@
 #   CI（每個 PR / push）→ Package（只有 main）→ Release（自動部署，無人工閘門）
 #
 # 前置設定見 docs/azure-devops-setup.md：
-#   - 安全檔案 `gcp-sa-key.json`（GCP 服務帳號金鑰，Library → Secure files）
-#   - 變數群組 `agentic-rag-gcp`（GCP_PROJECT_ID / GCP_REGION / WORKER_* 等非祕密）
+#   - GCP 認證預設走 Workload Identity Federation（無長期金鑰）；要退回服務帳號
+#     金鑰時，手動觸發時把參數 gcpAuthMethod 改成 sa-key，或改下面的 default
+#   - 變數群組 `agentic-rag-gcp`（GCP_PROJECT_ID / GCP_PROJECT_NUMBER / GCP_REGION /
+#     GCP_WIF_* / GCP_DEPLOY_SA / WORKER_* 等非祕密）
 #   - 變數群組 `agentic-rag-runtime`（Cloud Run 執行期祕密，全部標記為 secret）
 #   - Environment `poc`（只留部署歷史；**不要加 approvals**，加了就變成要人核准）
 # =============================================================================
+
+parameters:
+  - name: gcpAuthMethod
+    displayName: GCP 認證方式
+    type: string
+    default: wif
+    values:
+      - wif      # Workload Identity Federation（無長期金鑰）
+      - sa-key   # 服務帳號 JSON 金鑰（備援）
 
 trigger:
   batch: true
@@ -192,6 +203,8 @@ stages:
             displayName: 建置 widget（打包進後端映像）
 
           - template: infra/azure-pipelines/steps-gcp-auth.yml
+            parameters:
+              method: ${{ parameters.gcpAuthMethod }}
 
           - script: |
               set -euo pipefail
@@ -225,6 +238,8 @@ stages:
                 - checkout: none
 
                 - template: infra/azure-pipelines/steps-gcp-auth.yml
+                  parameters:
+                    method: ${{ parameters.gcpAuthMethod }}
 
                 # 用 --update-env-vars 而非 --set-env-vars：後者會把服務上「這份清單以外」
                 # 的環境變數全部清掉。線上實際存在但不在此清單的變數（例如
@@ -276,6 +291,8 @@ stages:
                   fetchDepth: 0
 
                 - template: infra/azure-pipelines/steps-gcp-auth.yml
+                  parameters:
+                    method: ${{ parameters.gcpAuthMethod }}
 
                 # worker 是 long-lived process（無 HTTP），跑在 GCE VM 上由 systemd 管理，
                 # 與 Cloud Run 是兩條部署路徑。漏掉它的後果：worker 永遠跑舊 code，

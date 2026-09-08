@@ -1,0 +1,23 @@
+# GCP 認證 —— 服務帳號長期 JSON 金鑰（備援路徑）
+#
+# 只在下列情況才用：公司不允許在 Azure DevOps 建服務連線、或 WIF 設定尚未就緒。
+# 缺點是金鑰長期有效、要自己輪替；組織若設了
+# `constraints/iam.disableServiceAccountKeyCreation`，這條路根本產不出金鑰。
+#
+# 金鑰放 Library → Secure files，檔名固定 `gcp-sa-key.json`。
+# 下載到 agent 暫存目錄，隨工作區在作業結束時清除；不落 repo、不進 log。
+
+steps:
+  - task: DownloadSecureFile@1
+    name: gcpKey
+    displayName: 取得 GCP 服務帳號金鑰
+    inputs:
+      secureFile: gcp-sa-key.json
+
+  - script: |
+      set -euo pipefail
+      gcloud auth activate-service-account --key-file="$(gcpKey.secureFilePath)"
+      gcloud config set project "$(GCP_PROJECT_ID)"
+      gcloud config set compute/region "$(GCP_REGION)"
+      echo "已以 $(gcloud config get-value account) 登入（SA 金鑰）"
+    displayName: gcloud 認證（服務帳號金鑰）

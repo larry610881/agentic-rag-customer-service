@@ -1,24 +1,20 @@
-# GCP 認證步驟樣板 — 由 azure-pipelines.yml 各 stage 重複使用。
+# GCP 認證分派樣板 —— 依 `method` 參數選一條路徑，呼叫端不用管細節。
 #
-# 憑證來源：變數群組 `agentic-rag-gcp` 的祕密變數 GCP_SA_KEY（服務帳號 JSON 全文）。
-# 寫進 agent 的暫存目錄後立即 gcloud auth activate-service-account，
-# 檔案隨 agent 工作目錄在作業結束時清除；不落到 repo、不進 log。
+#   wif     ：Workload Identity Federation，無長期金鑰（預設，建議）
+#   sa-key  ：服務帳號長期 JSON 金鑰（備援）
 #
-# 想改用 Workload Identity Federation（不放長期金鑰）時，把下面 script 換成
-# gcloud iam workload-identity-pools create-cred-config + Azure OIDC token 即可，
-# 其餘 stage 不用動。設定步驟見 docs/azure-devops-setup.md。
+# 兩條路徑的前置設定、所需 IAM 角色與踩雷點見 docs/azure-devops-setup.md。
+
+parameters:
+  - name: method
+    type: string
+    default: wif
+    values:
+      - wif
+      - sa-key
 
 steps:
-  - task: DownloadSecureFile@1
-    name: gcpKey
-    displayName: 取得 GCP 服務帳號金鑰
-    inputs:
-      secureFile: gcp-sa-key.json
-
-  - script: |
-      set -euo pipefail
-      gcloud auth activate-service-account --key-file="$(gcpKey.secureFilePath)"
-      gcloud config set project "$(GCP_PROJECT_ID)"
-      gcloud config set compute/region "$(GCP_REGION)"
-      echo "已以 $(gcloud config get-value account) 登入"
-    displayName: gcloud 認證
+  - ${{ if eq(parameters.method, 'wif') }}:
+      - template: steps-gcp-auth-wif.yml
+  - ${{ if eq(parameters.method, 'sa-key') }}:
+      - template: steps-gcp-auth-sakey.yml

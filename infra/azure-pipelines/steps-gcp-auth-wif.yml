@@ -1,0 +1,50 @@
+# GCP 認證 —— Workload Identity Federation（無長期金鑰，預設路徑）
+#
+# 流程：Azure DevOps 發一張短效 OIDC token（subject 為
+# `sc://<組織>/<專案>/<服務連線>`）→ GCP 的 workload identity pool provider 信任
+# 該 issuer → STS 換成部署用服務帳號的短效存取權杖。整段沒有任何長期祕密。
+#
+# 需要的變數（放 `agentic-rag-gcp` 變數群組，全部非祕密）：
+#   GCP_PROJECT_ID / GCP_PROJECT_NUMBER / GCP_REGION
+#   GCP_WIF_POOL / GCP_WIF_PROVIDER / GCP_DEPLOY_SA
+#   GCP_WIF_SERVICE_CONNECTION_ID（Azure DevOps 服務連線的 GUID）
+#
+# 注意：OIDC token 只有約 10 分鐘效期。gcloud 換到的存取權杖有 1 小時，
+# 但存取權杖過期後 gcloud 會回頭重讀 token 檔，此時 OIDC token 早已失效。
+# 因此本樣板要「緊接在實際使用 gcloud 的步驟之前」引用，不要放在 job 開頭
+# 然後隔一段長時間才用。
+
+steps:
+  - script: |
+      set -euo pipefail
+      RESP=$(curl -sS -X POST \
+        -H "Authorization: Bearer $SYSTEM_ACCESSTOKEN" \
+        -H "Content-Type: application/json" \
+        -H "Content-Length: 0" \
+        "$(System.OidcRequestUri)?api-version=7.1&serviceConnectionId=$(GCP_WIF_SERVICE_CONNECTION_ID)")
+      TOKEN=$(printf '%s' "$RESP" | jq -r '.oidcToken // empty')
+      if [ -z "$TOKEN" ]; then
+        # 不要印 $RESP 全文，錯誤回應可能夾帶其他權杖
+        echo "##vso[task.logissue type=error]取不到 OIDC token（HTTP 回應無 oidcToken 欄位）"
+        echo "檢查：服務連線 GUID 是否正確、管線是否有該服務連線的使用權限"
+        exit 1
+      fi
+      umask 077
+      printf '%s' "$TOKEN" > "$(Agent.TempDirectory)/gcp-oidc-token.txt"
+      echo "已取得 OIDC token（長度 ${#TOKEN}）"
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+    displayName: 取得 Azure DevOps OIDC token
+
+  - script: |
+      set -euo pipefail
+      gcloud iam workload-identity-pools create-cred-config \
+        "projects/$(GCP_PROJECT_NUMBER)/locations/global/workloadIdentityPools/$(GCP_WIF_POOL)/providers/$(GCP_WIF_PROVIDER)" \
+        --service-account="$(GCP_DEPLOY_SA)" \
+        --credential-source-file="$(Agent.TempDirectory)/gcp-oidc-token.txt" \
+        --output-file="$(Agent.TempDirectory)/gcp-cred-config.json"
+      gcloud auth login --cred-file="$(Agent.TempDirectory)/gcp-cred-config.json"
+      gcloud config set project "$(GCP_PROJECT_ID)"
+      gcloud config set compute/region "$(GCP_REGION)"
+      echo "已以 $(gcloud config get-value account) 登入（WIF）"
+    displayName: gcloud 認證（Workload Identity Federation）
