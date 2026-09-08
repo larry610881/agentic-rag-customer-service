@@ -227,6 +227,10 @@ def main() -> int:
     ap.add_argument("--only", default="", help="逗號分隔對話 id，如 E1,H3")
     ap.add_argument("--repeat", type=int, default=1, help="整份題組重跑幾次（看穩定度）")
     ap.add_argument("--sleep", type=float, default=1.0, help="每輪之間的間隔秒數")
+    ap.add_argument("--prefix-template", default="",
+                    help="外送訊息前綴樣板，如 \"【看板：{board}】{user}\"；"
+                         "空 = 讀題庫 meta.outbound_template，都沒有就不加前綴。"
+                         "題庫存使用者原句、前綴在送出時才套，同一份題庫才能給不同系統跑")
     ap.add_argument("--stream", action="store_true",
                     help="走 SSE 量測首 token 時間與生成吞吐（不下發 usage，token 數以 chunk 計）")
     args = ap.parse_args()
@@ -237,6 +241,7 @@ def main() -> int:
         return 2
 
     spec = json.loads(Path(args.cases).read_text(encoding="utf-8"))
+    template = args.prefix_template or (spec.get("meta") or {}).get("outbound_template", "")
     only = {x.strip() for x in args.only.split(",") if x.strip()}
     dialogues = [d for d in spec["dialogues"] if not only or d["id"] in only]
     total_turns = sum(len(d["turns"]) for d in dialogues)
@@ -268,17 +273,22 @@ def main() -> int:
                 for d in dialogues:
                     conv = None
                     for t in d["turns"]:
+                        sent = (
+                            template.format(user=t["user"], board=d.get("board", ""))
+                            if template else t["user"]
+                        )
                         if args.stream:
-                            r = ask_stream(api, bid, t["user"], conv)
+                            r = ask_stream(api, bid, sent, conv)
                             if not r["ok"] and r["status"] == 401 and api.relogin():
-                                r = ask_stream(api, bid, t["user"], conv)
+                                r = ask_stream(api, bid, sent, conv)
                         else:
-                            r = ask(api, bid, t["user"], conv)
+                            r = ask(api, bid, sent, conv)
                         conv = r.get("conversation_id") or conv
                         rec = {
                             "run": rep, "bot": name, "bot_id": bid,
                             "dialogue": d["id"], "tier": d["tier"], "title": d["title"],
-                            "turn": t["n"], "user": t["user"], "gold": t["gold"],
+                            "turn": t["n"], "user": t["user"], "sent": sent,
+                            "gold": t["gold"],
                             "answer": r["answer"], "ok": r["ok"],
                             "latency_ms": r["latency_ms"],
                             "input_tokens": r["input_tokens"],
