@@ -7,6 +7,52 @@
 
 ---
 
+## 串流 usage 的兩種語意 — 累計 vs 增量，以及「每筆都合法卻加起來是錯的」（2026-09-08，Issue #90）
+
+**Sprint 來源**：五臂模型評測的成本章。同樣 ~760 次呼叫、同一份提示，Gemini 記到 input 5.55M、
+output 698k（terra 1.06M / 56k），估算成本高出 2.3 倍。一開始以為是原生 SDK（#84）的問題，
+查下去是 OpenAI 相容端點 + LangChain 合併邏輯的組合技。
+
+**主題**：串流協定語意、第三方程式庫的合併假設、資料驅動的根因定位、歷史資料修正的可回溯性
+
+#### 做得好的地方
+- **用 ledger 本身證明機制，不用碰金鑰**。原本想直接打 Gemini 端點看每個 chunk 的 usage，
+  但金鑰在 DB 裡、VM 的 .env 沒有。改用「output token ÷ 回答字元數」對長度分桶：terra 平穩 0.85，
+  Gemini 從 1.72 一路漲到 7.92——**膨脹倍率隨 chunk 數線性成長**，這只有「逐 chunk 累計相加」
+  能解釋。一列一則訊息（rows == msgs）又排除了重複記錄。機制在資料裡就寫死了。
+- **修在語意層而不是修數字**。LangChain 把每個 chunk 的 usage_metadata 相加是對的——對 Anthropic
+  這種「第一個 chunk 給 input、最後一個給 output」的**增量**語意正確；錯的是把它套在 Gemini 的
+  **累計**語意上。所以修法是「對累計型端點只保留最後一筆、尾端補一個只帶 usage 的空 chunk」，
+  對增量型端點與「只有最後 chunk 帶 usage」的 OpenAI 都等價，不必猜供應商。
+- **一個工廠管所有建構點**。`build_openai_compat_chat_model` 依 base_url 決定類別，
+  `openai_llm_service.get_chat_model` 與 `react_agent_service._create_chat_model` 都走它；
+  下一個同類供應商只改 `CUMULATIVE_USAGE_HOSTS`。
+- **測試先證明有鑑別力再相信它**。BDD 一次就綠，反而可疑；補跑對照：同一串合成 chunk 餵一般
+  ChatOpenAI 得 (3000, 60)、餵子類得 (1000, 30)。綠燈才算數。
+
+#### 潛在隱憂
+- **歷史資料只能推估**。1,274 列受影響（含另一租戶的 card-3.8 bot 332 列），真值已不可還原，
+  只能用「out ≈ 字元 × 0.85、N ≈ 2·rec_out/out − 1、in ≈ rec_in/N」反推，
+  總成本 7.78 → 約 2.31。**推估值進 ledger 就是新的事實**，所以逐筆標 `cost_recalc_at`、
+  migration 檔留下公式與 dry-run 數字，並且 preview 後由人決定套不套 → 優先級：中。
+- **`pricing_recalc_audit.pricing_id NOT NULL` 讓「無牌價列的模型」無法留稽核**。gemini-3.8-flash
+  的牌價在 `model_registry.py` 而非 `model_pricing` 表（#17 pricing 資料遺失同源），
+  這次只好不寫稽核表。應該讓稽核表能記「來源=registry」的重算 → 優先級：中。
+- **`ChatOpenAI` 的 `_astream` 是私有介面**。子類覆寫它等於綁在 langchain_openai 的內部結構上；
+  升級時要重跑這支 BDD → 優先級：低（已有測試守著）。
+
+#### 延伸學習
+- **Idempotent vs cumulative telemetry**：串流計量常見兩種語意——每筆是「到目前為止的總量」
+  （cumulative，可冪等取最後一筆）或「這一段的增量」（delta，要相加）。協定沒標明時，
+  合併端必須二選一，選錯就是數倍誤差。搜尋關鍵字：`monotonic counter vs gauge`、
+  `OpenTelemetry cumulative/delta temporality`。
+- **思考題**：如果某供應商在同一串流裡混用（前段增量、最後一筆累計），
+  「只保留最後一筆」和「全部相加」都會錯。你會在哪一層偵測這件事——合併前比對單調性？
+  還是事後用 ledger 的「tok/字元 vs 長度」斜率當監控指標？後者這次證明有效，
+  值得做成每日檢查。
+
+---
+
 ## 「等待中」是最貴的謊 — 重試粒度錯位造成的孤兒與狀態誠實化（2026-09-08，Issue #88）
 
 **Sprint 來源**：3D 虛擬商品展 KM 匯入。批次上傳 36 份 PDF，33 份完成、3 份永遠卡在

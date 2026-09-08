@@ -500,9 +500,10 @@ class ReActAgentService(AgentService):
         # Default to OpenAI-compatible
         import os
 
-        from langchain_openai import ChatOpenAI
-
         from src.config import settings
+        from src.infrastructure.llm.openai_compat_chat_model import (
+            build_openai_compat_chat_model,
+        )
 
         kwargs: dict[str, Any] = {
             "model": model or "gpt-4o-mini",
@@ -548,7 +549,8 @@ class ReActAgentService(AgentService):
         if response_format is not None:
             kwargs["model_kwargs"] = {"response_format": response_format}
 
-        return ChatOpenAI(**kwargs)
+        # Issue #90：依 base_url 決定要不要用「只保留最後一筆 usage」的子類
+        return build_openai_compat_chat_model(**kwargs)
 
     def _build_react_graph(
         self,

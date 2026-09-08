@@ -185,9 +185,11 @@ class OpenAILLMService(LLMService):
         response_json_object: bool = False,
     ):
         """Return a LangChain ChatModel using the same API key and base_url."""
-        from langchain_openai import ChatOpenAI
 
         from src.config import settings
+        from src.infrastructure.llm.openai_compat_chat_model import (
+            build_openai_compat_chat_model,
+        )
 
         kwargs: dict = {
             "model": self._model,
@@ -224,7 +226,9 @@ class OpenAILLMService(LLMService):
         response_format = openai_response_format(response_schema, response_json_object)
         if response_format is not None:
             kwargs["model_kwargs"] = {"response_format": response_format}
-        return ChatOpenAI(**kwargs)
+        # Issue #90：Gemini 相容端點每個 chunk 都帶累計 usage，工廠依 base_url
+        # 換成只保留最後一筆 usage 的子類，其餘供應商仍是一般 ChatOpenAI。
+        return build_openai_compat_chat_model(**kwargs)
 
     def _build_headers(self) -> dict[str, str]:
         return {
