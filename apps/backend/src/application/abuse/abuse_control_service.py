@@ -47,9 +47,14 @@ def apply_conservative_mode(bot_cfg: dict[str, Any]) -> dict[str, Any]:
     top_k = bot_cfg.get("rag_top_k")
     if isinstance(top_k, int) and top_k > 1:
         bot_cfg["rag_top_k"] = max(1, top_k // 2)
-    prompt = bot_cfg.get("system_prompt") or ""
-    if CONSERVATIVE_PROMPT_SUFFIX not in prompt:
-        bot_cfg["system_prompt"] = prompt + CONSERVATIVE_PROMPT_SUFFIX
+    # Issue #91：保守指令是「組裝後」的加固，必須改 effective_prompt。
+    # 本函式在 _resolve_worker_config 之後執行，此時 effective_prompt 已算好；
+    # 只改 system_prompt（平台層）會被既有的 effective_prompt 蓋掉 → 指令靜默失效。
+    from src.application.agent.prompt_assembler import resolve_effective_prompt
+
+    effective = bot_cfg.get("effective_prompt") or resolve_effective_prompt(bot_cfg)
+    if CONSERVATIVE_PROMPT_SUFFIX not in effective:
+        bot_cfg["effective_prompt"] = effective + CONSERVATIVE_PROMPT_SUFFIX
     bot_cfg["_abuse_conservative"] = True
     return bot_cfg
 

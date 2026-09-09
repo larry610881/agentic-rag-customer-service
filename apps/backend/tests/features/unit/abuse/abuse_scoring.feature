@@ -67,4 +67,4 @@ Feature: 異常分數與分級 (Abuse Score & Tiered Response)
 
     Scenario: 保守模式關掉工具、top-k 減半、加婉拒指令
         When 對 bot 設定套用保守模式
-        Then bot 設定的 enabled_tools 為空、rag_top_k 由 6 變 3、system_prompt 含保守指令
+        Then bot 設定的 enabled_tools 為空、rag_top_k 由 6 變 3、送模型的提示詞含保守指令

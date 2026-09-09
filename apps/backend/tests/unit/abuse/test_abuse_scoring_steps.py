@@ -189,9 +189,13 @@ def audit_action(ctx, entity, action):
     assert any(c["entity_type"] == entity and c["action"] == action for c in calls)
 
 
-@then("bot 設定的 enabled_tools 為空、rag_top_k 由 6 變 3、system_prompt 含保守指令")
+@then("bot 設定的 enabled_tools 為空、rag_top_k 由 6 變 3、送模型的提示詞含保守指令")
 def conservative_applied(ctx):
     cfg = ctx["cfg"]
     assert cfg["enabled_tools"] == [] and cfg["mcp_servers"] == []
     assert cfg["rag_top_k"] == 3
-    assert CONSERVATIVE_PROMPT_SUFFIX in cfg["system_prompt"]
+    # Issue #91：保守指令加在組裝後的 effective_prompt，不是平台層 system_prompt
+    from src.application.agent.prompt_assembler import resolve_effective_prompt
+
+    sent = cfg.get("effective_prompt") or resolve_effective_prompt(cfg)
+    assert CONSERVATIVE_PROMPT_SUFFIX in sent

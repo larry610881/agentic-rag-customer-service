@@ -23,7 +23,7 @@ Feature: 異常控管三通路接線 (Abuse Control Pipeline Wiring)
         Given 接了異常控管的 SendMessageUseCase
         And 訪客 "v1" 已被鎖定在等級 1
         When 訪客 "v1" 送出訊息
-        Then agent 被呼叫且 enabled_tools 為空、system_prompt 含保守指令
+        Then agent 被呼叫且 enabled_tools 為空、送模型的提示詞含保守指令
         And trace 的 abuse_level 為 1
 
     Scenario: Guard 命中會計分

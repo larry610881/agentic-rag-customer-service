@@ -219,7 +219,7 @@ def blocked_error(ctx):
     assert ctx["error"].message == "temporarily_unavailable"
 
 
-@then("agent 被呼叫且 enabled_tools 為空、system_prompt 含保守指令")
+@then("agent 被呼叫且 enabled_tools 為空、送模型的提示詞含保守指令")
 def conservative_call(ctx):
     kwargs = ctx["agent"].process_message.await_args.kwargs
     assert kwargs["enabled_tools"] == []
@@ -468,3 +468,25 @@ def abuse_check_present(ctx):
 def abuse_check_absent(ctx):
     assert ctx["resp"].status_code == 200
     assert not [k for k in _checked_keys(ctx) if k[0].startswith("rl:abuse:")]
+
+
+def test_conservative_suffix_survives_precomputed_effective_prompt():
+    """Regression（Issue #91）：保守指令必須進到真正送模型的字串。
+
+    `apply_conservative_mode` 在 `_resolve_worker_config` 之後執行，此時
+    `effective_prompt` 已組裝完成。舊寫法只改 `system_prompt`（平台層），
+    會被既有的 `effective_prompt` 蓋掉，指令靜默失效——本測試以生產條件
+    （effective_prompt 已預先算好）鎖住這個行為。
+    """
+    from src.application.abuse.abuse_control_service import apply_conservative_mode
+    from src.application.agent.prompt_assembler import resolve_effective_prompt
+
+    cfg = {"system_prompt": "平台設定", "bot_prompt": "你是助理", "rag_top_k": 6}
+    cfg["effective_prompt"] = resolve_effective_prompt(cfg)
+
+    out = apply_conservative_mode(dict(cfg))
+
+    sent = out.get("effective_prompt") or resolve_effective_prompt(out)
+    assert CONSERVATIVE_PROMPT_SUFFIX in sent, "保守指令沒有送進模型"
+    assert out["enabled_tools"] == []
+    assert out["rag_top_k"] == 3
