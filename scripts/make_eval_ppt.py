@@ -252,11 +252,14 @@ def slide_verdict(prs):
     table(s, rows, 0.92, 1.50, 11.48, 1.95, [2.05, 2.35, 2.60, 2.28, 2.20],
           head_size=10.5, body_size=10.5, row_h=0.36)
 
-    card(s, 0.92, 3.72, 5.60, 1.28, "qwen3.6-35b-a3b（MoE）　可用", [
+    text(s, 0.92, 3.52, 11.48, 0.28,
+         "回應速度為租用測試機實測；公司自有設備（GX10）的推估見第 6 頁。",
+         size=10, color=ORANGE)
+    card(s, 0.92, 3.78, 5.60, 1.22, "qwen3.6-35b-a3b（MoE）　可用", [
         "四道門檻過三道，工具呼叫甚至優於全部雲端模型。",
         "唯一的缺口在難題的清單與計數 —— 可用護欄補，不必換模型。",
     ], heading_color=GREEN, heading_size=13, body_size=10)
-    card(s, 6.80, 3.72, 5.60, 1.28, "qwen3.8-27b（dense）　不可用", [
+    card(s, 6.80, 3.78, 5.60, 1.22, "qwen3.8-27b（dense）　不可用", [
         "回應 5.5 秒是雲端的 3 倍，客服場景直接出局。",
         "而且品質沒有因此換到 —— 工具選對率 83% 是全場最低。",
     ], heading_color=RED, heading_size=13, body_size=10)
@@ -429,6 +432,46 @@ def slide_latency(prs):
          "但模型選擇的結論在任何設備上都成立：MoE 每產一個字只需讀取 3.3 GB 權重，dense 27B 要讀 30 GB —— "
          "設備記憶體頻寬越低，這個差距越大。",
          size=10.5, color=INK)
+    return s
+
+
+def slide_gx10(prs):
+    s = content_slide(prs, "對照公司自有設備的回應時間推估")
+
+    box(s, 0.92, 1.48, 11.48, 0.36, shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+        fill=CARD, radius=0.2)
+    text(s, 1.15, 1.55, 11.0, 0.24,
+         "⚠　以下為依規格推算，非實測。推估區間約 ±40%，取得實機頻寬後可收斂至 ±20%。",
+         size=10.5, color=ORANGE, bold=True)
+
+    rows = [
+        ["模型", "設備 / 量化", "回應時間中位數", "p90", "判定"],
+        ["qwen3.6-35b-a3b（MoE）", "租用測試機 q8_0（實測）", "2.2 秒", "3.7 秒", "通過"],
+        ["", "自有設備 q8_0（推估）", "約 7.4 秒", "約 16.9 秒", "邊緣"],
+        ["", "自有設備 4-bit（推估）", "約 4.3 秒", "約 9.2 秒", "邊緣偏可用"],
+        ["qwen3.8-27b（dense）", "租用測試機 q8_0（實測）", "5.5 秒", "12.6 秒", "未通過"],
+        ["", "自有設備 4-bit（推估）", "約 14 秒", "約 37 秒", "完全不可用"],
+    ]
+    table(s, rows, 0.92, 1.98, 11.48, 2.10, [3.05, 3.20, 2.05, 1.60, 1.58],
+          head_size=10.5, body_size=10.5, row_h=0.33,
+          emphasis={4: RED, 5: RED})
+
+    card(s, 0.92, 4.32, 5.60, 1.15, "推算方法", [
+        "把實測的「首字 + 產字」拆開，只將產字時間乘記憶體頻寬比。",
+        "首字視為持平 —— prefill 算力需求極小，且地端省掉跨海機房的來回。",
+    ], heading_size=12, body_size=9.5)
+    card(s, 6.80, 4.32, 5.60, 1.15, "兩個不受推估誤差影響的結論", [
+        "① dense 27B 徹底出局 —— 差距太大，誤差吃不掉。",
+        "② 4-bit 量化是必要條件，不是選項 —— 7.4 秒到 4.3 秒全靠它。",
+    ], heading_color=GREEN, heading_size=12, body_size=9.5)
+
+    box(s, 0.92, 5.65, 11.48, 0.85, shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+        fill=CARD, radius=0.08)
+    text(s, 1.15, 5.80, 11.0, 0.55,
+         [("要把推估變成實測，只需要兩件事：", {"bold": True, "color": INK}),
+          ("① 自有設備的實際記憶體頻寬與是否支援 FP4 原生運算　"
+           "② 在該設備起一個推論服務並開一個埠 —— 量測工具已完備，半天可得三方對照。", {})],
+         size=10.5, color=BODY)
     return s
 
 
@@ -675,6 +718,7 @@ def main() -> int:
     slide_method(prs)
     slide_quality(prs)
     slide_latency(prs)
+    slide_gx10(prs)
     slide_tools(prs)
     slide_json(prs)
     slide_guardrails(prs)
