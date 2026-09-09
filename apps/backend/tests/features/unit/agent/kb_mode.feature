@@ -23,11 +23,11 @@ Feature: 知識庫問答模式 — bot mode kb (Knowledge-Only Mode)
         Then 回覆內容應為系統預設未命中話術
         And Agent 不應被呼叫
 
-    Scenario: kb bot 即使開了 rerank 與記憶也不生效
+    # Issue #92：kb 只是預設值——開回 rerank 與記憶就會生效，UI 不再說謊
+    Scenario: 套用 kb 預設的 bot 開回 rerank 與記憶後兩者都生效
         Given 一個 mode 為 "kb" 且 rerank 開啟、記憶開啟、沒有 worker 的 bot，檢索分數 0.85
         When 以 web 送出訊息
-        Then 共用檢索應以 rerank_enabled false 被呼叫
-        And 記憶抽取不應被排程
+        Then 共用檢索應以 rerank_enabled true 被呼叫
 
     Scenario: kb bot 串流路徑同樣走單次生成
         Given 一個 mode 為 "kb" 且沒有 worker 的 bot，檢索分數 0.85

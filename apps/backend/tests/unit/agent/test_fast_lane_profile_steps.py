@@ -59,8 +59,14 @@ def _sources(score):
 
 def _setup_web(context, *, mode, score, rerank=False, worker_direct=None):
     bot = Bot(
-        id=BotId(value="bot-p"), tenant_id="t1", name="P", knowledge_base_ids=["kb-1"], rerank_enabled=rerank, mode=mode,
+        id=BotId(value="bot-p"), tenant_id="t1", name="P", knowledge_base_ids=["kb-1"], mode=mode,
     )
+    # Issue #92：情境預設只填值；顯式 rerank 代表使用者偏離預設，優先生效
+    from src.domain.bot.mode_presets import preset_values
+
+    for _k, _v in preset_values(mode).items():
+        setattr(bot, _k, _v)
+    bot.rerank_enabled = rerank
     workers = []
     if worker_direct is not None:
         workers = [WorkerConfig(

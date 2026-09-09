@@ -256,6 +256,8 @@ CREATE TABLE public.bots (
     hyde_model character varying(100) DEFAULT ''::character varying NOT NULL,
     hyde_extra_hint text DEFAULT ''::text NOT NULL,
     mode character varying(10) DEFAULT 'deep'::character varying NOT NULL,
+    direct_retrieval boolean DEFAULT false NOT NULL,
+    escalate_on_miss boolean DEFAULT true NOT NULL,
     guard_stages json,
     output_format character varying(20) DEFAULT 'text'::character varying NOT NULL,
     output_schema json,

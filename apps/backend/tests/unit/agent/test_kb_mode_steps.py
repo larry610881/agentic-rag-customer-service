@@ -69,10 +69,17 @@ def _spy_trace(context, uc):
 
 def _setup_web(context, *, mode, score, rerank=False, memory=False, miss_reply=""):
     bot = Bot(
-        id=BotId(value="bot-kb"), tenant_id="t1", name="KB", knowledge_base_ids=["kb-1"], rerank_enabled=rerank, mode=mode,
-        memory_enabled=memory, memory_extraction_threshold=1,
+        id=BotId(value="bot-kb"), tenant_id="t1", name="KB", knowledge_base_ids=["kb-1"], mode=mode,
+        memory_extraction_threshold=1,
         miss_reply=miss_reply,
     )
+    # Issue #92：情境預設只填值；顯式 rerank / memory 代表使用者偏離預設，優先生效
+    from src.domain.bot.mode_presets import preset_values
+
+    for _k, _v in preset_values(mode).items():
+        setattr(bot, _k, _v)
+    bot.rerank_enabled = rerank
+    bot.memory_enabled = memory
     agent = AsyncMock()
     agent.process_message = AsyncMock(return_value=AgentResponse(answer="答"))
 
@@ -252,6 +259,10 @@ def _setup_line(context, *, mode, score, miss_reply=""):
         line_channel_access_token="t", knowledge_base_ids=["kb-1"], mode=mode,
         miss_reply=miss_reply,
     )
+    from src.domain.bot.mode_presets import preset_values
+
+    for _k, _v in preset_values(mode).items():
+        setattr(bot, _k, _v)
     bot_repo = AsyncMock()
     bot_repo.find_by_short_code = AsyncMock(return_value=bot)
     line_service = AsyncMock()

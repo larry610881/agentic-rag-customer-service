@@ -14,10 +14,11 @@ Feature: 快速道 profile — bot mode 與 worker 覆寫 (Fast Lane Profile)
         When 以 web 送出訊息
         Then Agent 應以 max_tool_calls 2 被呼叫
 
-    Scenario: fast bot 即使 bot 開了 rerank，快速道檢索也不 rerank
+    # Issue #92：fast 只是預設值，開回 rerank 就會生效
+    Scenario: 套用 fast 預設的 bot 開回 rerank 後檢索會 rerank
         Given 一個 mode 為 "fast" 且 rerank 開啟、沒有 worker 的 bot，檢索分數 0.85
         When 以 web 送出訊息
-        Then 共用檢索應以 rerank_enabled false 被呼叫
+        Then 共用檢索應以 rerank_enabled true 被呼叫
 
     Scenario: deep bot 的 worker 開快速道時，rerank 依 bot 設定
         Given 一個 mode 為 "deep" 且 rerank 開啟、worker 開啟直接檢索的 bot，檢索分數 0.85

@@ -96,6 +96,15 @@ if TYPE_CHECKING:
     from src.domain.tenant.repository import TenantRepository
 
 logger = structlog.get_logger(__name__)
+def resolve_allow_rerank(bot: Any) -> bool:
+    """Issue #92：rerank 由 `rerank_enabled` 決定，不再被 `mode` 覆蓋。
+
+    舊版是 `allow_rerank = not is_fast and not is_kb`——後台開關打開也無效且無提示。
+    現在只看設定本身；要走「最短路徑」就把 `rerank_enabled` 關掉（情境預設會幫你填）。
+    """
+    return bool(getattr(bot, "rerank_enabled", False))
+
+
 def _effective(bot_cfg: dict) -> str:
     """取 effective prompt；缺鍵時即時由 system_prompt / bot_prompt 兩層組裝。
 
@@ -334,7 +343,11 @@ class SendMessageUseCase:
         # Issue #66：bot profile；fast 時沒有 worker 也走快速道
         cfg["mode"] = getattr(bot, "mode", "deep") or "deep"
         # Issue #70：kb（知識庫問答）也走共用快速道，但未命中不升級（knowledge_only）
-        cfg["_direct_retrieval"] = cfg["mode"] in ("fast", "kb")
+        # Issue #92：改讀 bot 層開關，mode 只是標籤
+        cfg["_direct_retrieval"] = bool(getattr(bot, "direct_retrieval", False))
+        cfg["escalate_on_miss"] = bool(
+            getattr(bot, "escalate_on_miss", True)
+        )
         cfg["output_format"] = getattr(bot, "output_format", "text") or "text"
         cfg["output_schema"] = getattr(bot, "output_schema", None) or None
         cfg["miss_reply"] = getattr(bot, "miss_reply", "") or ""
@@ -474,8 +487,6 @@ class SendMessageUseCase:
             return ""
         if not bot_cfg.get("memory_enabled", False):
             return ""
-        if bot_cfg.get("mode") == "kb":
-            return ""  # Issue #70：kb 模式記憶全關（載入與抽取皆不做）
         if not self._resolve_identity or not self._load_memory:
             return ""
 
@@ -509,8 +520,6 @@ class SendMessageUseCase:
         """Check if memory extraction should be triggered."""
         if not bot_cfg.get("memory_enabled", False):
             return False
-        if bot_cfg.get("mode") == "kb":
-            return False  # Issue #70：kb 模式不抽取記憶
         threshold = bot_cfg.get("memory_extraction_threshold", 3)
         if message_count < threshold * 2:
             return False
@@ -730,9 +739,12 @@ class SendMessageUseCase:
             guard = await self._guard_pipeline.effective(
                 tenant_id, bot_cfg.get("_bot")
             )
-        if bot_cfg.get("mode") == "kb":
-            # Issue #70：kb 模式不分流；Issue #75：「分類器攻擊判定」仍是可勾選階段，
-            # 開啟時不帶 worker 只做攻擊判定（關閉時每題只有 1 次 embedding + 1 次 LLM）
+        async def _attack_check_only() -> dict[str, Any]:
+            """Issue #92：沒有 worker 就不分流（原本由 mode == "kb" 強制）。
+
+            Issue #75：「分類器攻擊判定」仍是可勾選階段，
+            開啟時不帶 worker 只做攻擊判定；關閉時每題只有 1 次 embedding + 1 次 LLM。
+            """
             bot_cfg["_classifier_attack"] = await self._guard_pipeline.kb_attack_check(
                 guard,
                 message=message,
@@ -743,6 +755,7 @@ class SendMessageUseCase:
                 test_mode=test_mode,
             )
             return bot_cfg
+
         if not self._worker_config_repo or not self._intent_classifier:
             return bot_cfg
         bot_id = bot_cfg.get("bot_id", "")
@@ -752,6 +765,8 @@ class SendMessageUseCase:
         workers = await self._worker_config_repo.find_by_bot_id(
             bot_id
         )
+        if not workers and not bot_cfg.get("intent_routes"):
+            return await _attack_check_only()
         if not workers:
             # No workers configured — also try legacy intent_routes
             intent_routes = bot_cfg.get("intent_routes", [])
@@ -885,7 +900,7 @@ class SendMessageUseCase:
         # Issue #61：快速道旗標與分類器改寫查詢，供 _apply_fast_lane 使用
         cfg["_direct_retrieval"] = bool(
             getattr(matched, "direct_retrieval", False)
-        ) or cfg.get("mode") == "fast"
+        ) or bool(cfg.get("_direct_retrieval"))
         cfg["_retrieval_query"] = getattr(outcome, "query", "") or ""
 
         cfg["_worker_matched_info"] = {
@@ -1021,9 +1036,9 @@ class SendMessageUseCase:
 
         # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
         bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
-        if bot_cfg.get("mode") in ("fast", "kb"):
-            # Issue #66：fast profile 壓進 agent metadata（升級 ReAct 也零額外 LLM）
-            metadata["rerank_enabled"] = False
+        # Issue #92：快速道的檢索能力由各自欄位決定，不再由 mode 壓制
+        if bot_cfg.get("_direct_retrieval"):
+            metadata["rerank_enabled"] = bool(bot_cfg.get("rerank_enabled"))
             metadata["rag_retrieval_modes"] = ["raw"]
 
         # Issue #68 P7：正常回合也計分（連續無法分流 / 節奏），並套 L1 保守模式
@@ -1377,9 +1392,9 @@ class SendMessageUseCase:
 
         # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
         bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
-        if bot_cfg.get("mode") in ("fast", "kb"):
-            # Issue #66：fast profile 壓進 agent metadata（升級 ReAct 也零額外 LLM）
-            metadata["rerank_enabled"] = False
+        # Issue #92：快速道的檢索能力由各自欄位決定，不再由 mode 壓制
+        if bot_cfg.get("_direct_retrieval"):
+            metadata["rerank_enabled"] = bool(bot_cfg.get("rerank_enabled"))
             metadata["rag_retrieval_modes"] = ["raw"]
 
         # Issue #68 P7：正常回合也計分（連續無法分流 / 節奏），並套 L1 保守模式
@@ -1729,11 +1744,10 @@ class SendMessageUseCase:
         if self._direct_retrieval is None or not bot_cfg.get("_direct_retrieval"):
             return bot_cfg, None
         bot_entity = bot_cfg.get("_bot")
-        is_kb = bot_cfg.get("mode") == "kb"
+        knowledge_only = not bot_cfg.get("escalate_on_miss", True)
         # kb 模式沒綁知識庫也要走 plan（回未命中），其餘沒 KB 直接維持 ReAct
-        if bot_entity is None or (not bot_cfg.get("kb_ids") and not is_kb):
+        if bot_entity is None or (not bot_cfg.get("kb_ids") and not knowledge_only):
             return bot_cfg, None
-        is_fast = bot_cfg.get("mode") == "fast"
         plan = await self._direct_retrieval.plan(
             tenant_id=command.tenant_id,
             bot=bot_entity,
@@ -1746,11 +1760,11 @@ class SendMessageUseCase:
             retrieval_query=bot_cfg.get("_retrieval_query", ""),
             # Issue #66：fast profile 零額外 LLM；deep 的 worker 快速道依 bot 設定
             # Issue #70：kb 亦零額外 LLM（rerank 關），且未命中不升級（knowledge_only）
-            allow_rerank=not is_fast and not is_kb,
-            knowledge_only=is_kb,
+            allow_rerank=bool(bot_cfg.get("rerank_enabled")),
+            knowledge_only=knowledge_only,
         )
         if plan is None:
-            if is_fast:
+            if bot_cfg.get("escalate_on_miss", True):
                 # 升級 ReAct 但受 profile 約束：工具上限 2、無 rerank / rewrite / HyDE
                 return {
                     **bot_cfg,

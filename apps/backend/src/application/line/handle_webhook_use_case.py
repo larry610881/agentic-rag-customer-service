@@ -881,10 +881,9 @@ class HandleWebhookUseCase:
                 rerank_metadata["_input_guard_checked"] = True
             # LINE 通路規範（格式 / 長度 / 角色鎖）在此注入一次，
             # 快速道與完整 ReAct 共用；bot_prompt / worker_prompt 不再各抄一份
-            from src.domain.platform.prompt_defaults import (
-                LINE_CHANNEL_PROMPT_SUFFIX,
-            )
             # Issue #91：平台防護層必須在最前，且不受 bot / worker 設定影響。
+            # Issue #92：LINE 後綴已移除——通路差異改用能力設定表達
+            # （Markdown 由 output_format=plain_text 伺服端剝除、長度由 max_tokens）。
             _platform_prompt = ""
             if self._sys_prompt_repo:
                 _sys_cfg = await self._sys_prompt_repo.get()
@@ -893,8 +892,7 @@ class HandleWebhookUseCase:
                 {
                     "system_prompt": _platform_prompt,
                     "bot_prompt": system_prompt or "",
-                },
-                channel_suffix=LINE_CHANNEL_PROMPT_SUFFIX,
+                }
             )
 
             # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）

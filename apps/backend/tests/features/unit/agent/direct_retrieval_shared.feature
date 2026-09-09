@@ -32,10 +32,11 @@ Feature: 快速道共用管線 (Shared Direct Retrieval)
         Then 共用檢索不應被呼叫
         And Agent 應以完整工具模式被呼叫
 
-    Scenario: fast profile 的 bot 快速道鎖定 rerank 關閉（Issue #66：deep bot 依設定）
+    # Issue #92：fast 只是預設值，使用者把 rerank 開回來就會生效（不再被鎖）
+    Scenario: 套用 fast 預設後使用者開回 rerank，檢索就會 rerank
         Given 一個 mode 為 fast 且 bot 開啟 rerank 的 Worker
         When 以來源 "web" 以非串流方式送出訊息
-        Then 共用檢索應以 rerank_enabled false 被呼叫
+        Then 共用檢索應以 rerank_enabled true 被呼叫
 
     Scenario: LINE 快速道改用共用服務後行為一致
         Given LINE 用例以共用檢索服務建構且 Worker 開啟直接檢索

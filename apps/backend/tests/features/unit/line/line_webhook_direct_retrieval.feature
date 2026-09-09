@@ -65,7 +65,7 @@ Feature: LINE Webhook Worker 直接檢索模式（workflow 快速道）
   Scenario: LINE 通路規範由系統注入一次 — 快速道與 ReAct 共用（合併重複 prompt）
     Given 一個開啟直接檢索的 Worker 且檢索結果分數高於門檻
     When 系統處理一則命中該 Worker 的 LINE 訊息
-    Then 生成 Prompt 應包含 LINE 通路規範後綴
+    Then 生成 Prompt 不應含通路後綴但仍含平台防護層
 
   Scenario: 分類器判定純攻擊 — 回固定文案且不呼叫生成（前置語意閘門）
     Given 一個開啟直接檢索的 Worker 且分類器判定訊息為純攻擊

@@ -138,7 +138,10 @@ class CreateBotRequest(BaseModel):
     eval_provider: str = ""
     eval_model: str = ""
     eval_depth: str = "off"
-    mode: str = "deep"  # Issue #66：fast | deep；Issue #70：kb（知識庫問答）
+    mode: str = "deep"  # Issue #66：fast | deep；Issue #70：kb（Issue #92：僅標籤）
+    # Issue #92：可組合的行為欄位（原本由 mode 強制覆蓋）
+    direct_retrieval: bool = False
+    escalate_on_miss: bool = True
     # Issue #75：bot 層防護階段（None = 繼承租戶有效值；只能是有效值的超集）
     guard_stages: list[str] | None = None
     # Issue #70：輸出格式 text | plain_text | json（json 可附 output_schema）
@@ -207,7 +210,9 @@ class UpdateBotRequest(BaseModel):
     eval_provider: str | None = None
     eval_model: str | None = None
     eval_depth: str | None = None
-    mode: str | None = None  # fast | deep | kb
+    mode: str | None = None  # fast | deep | kb（僅標籤）
+    direct_retrieval: bool | None = None
+    escalate_on_miss: bool | None = None
     guard_stages: list[str] | None = None  # Issue #75：None = 繼承租戶有效值
     output_format: str | None = None
     output_schema: dict | None = None
@@ -278,6 +283,8 @@ class BotResponse(BaseModel):
     eval_model: str
     eval_depth: str
     mode: str
+    direct_retrieval: bool
+    escalate_on_miss: bool
     guard_stages: list[str] | None = None  # Issue #75
     output_format: str
     output_schema: dict | None
@@ -351,6 +358,8 @@ def _to_response(bot) -> BotResponse:
         eval_model=bot.eval_model,
         eval_depth=bot.eval_depth,
         mode=bot.mode,
+        direct_retrieval=bot.direct_retrieval,
+        escalate_on_miss=bot.escalate_on_miss,
         guard_stages=bot.guard_stages,
         output_format=bot.output_format,
         output_schema=bot.output_schema,
@@ -519,6 +528,8 @@ async def create_bot(
             eval_depth=body.eval_depth,
             gate_mode=body.gate_mode,
             mode=body.mode,
+            direct_retrieval=body.direct_retrieval,
+            escalate_on_miss=body.escalate_on_miss,
             guard_stages=body.guard_stages,
             output_format=body.output_format,
             output_schema=body.output_schema,

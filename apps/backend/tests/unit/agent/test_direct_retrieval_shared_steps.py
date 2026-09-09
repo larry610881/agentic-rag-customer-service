@@ -53,9 +53,15 @@ def _setup_web(
     context, *, direct: bool, score: float = 0.85, rerank: bool = False,
     mode: str = "deep",
 ):
+    from src.domain.bot.mode_presets import preset_values
+
     bot = Bot(
-        id=BotId(value="bot-dr"), tenant_id="t1", name="DR", knowledge_base_ids=["kb-faq"], rerank_enabled=rerank, mode=mode,
+        id=BotId(value="bot-dr"), tenant_id="t1", name="DR", knowledge_base_ids=["kb-faq"], mode=mode,
     )
+    # Issue #92：情境預設只填值，顯式參數代表「使用者偏離預設」，優先生效
+    for _k, _v in preset_values(mode).items():
+        setattr(bot, _k, _v)
+    bot.rerank_enabled = rerank
     worker = WorkerConfig(
         bot_id="bot-dr", name="門市服務查詢", worker_prompt="你是門市客服",
         knowledge_base_ids=["kb-faq"], direct_retrieval=direct,
@@ -198,6 +204,13 @@ def retrieve_not_called(context):
 def retrieve_no_rerank(context):
     cmd = context["query_rag"].retrieve.call_args.args[0]
     assert cmd.rerank_enabled is False
+
+
+@then("共用檢索應以 rerank_enabled true 被呼叫")
+def retrieve_with_rerank(context):
+    """Issue #92：mode 只是預設，開回 rerank 就必須真的生效。"""
+    cmd = context["query_rag"].retrieve.call_args.args[0]
+    assert cmd.rerank_enabled is True
 
 
 @then(parsers.parse("共用檢索應被呼叫 {n:d} 次"))

@@ -61,6 +61,13 @@ class BotModel(Base):
         String(20), nullable=False, default="L1", server_default="L1"
     )
     # Issue #66 — 快速 / 深度 profile（migration: add_bot_mode.sql）
+    # Issue #92：可組合的行為欄位（原本由 mode 強制）
+    direct_retrieval: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    escalate_on_miss: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
     mode: Mapped[str] = mapped_column(
         String(10), nullable=False, default="deep", server_default="deep"
     )

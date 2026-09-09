@@ -15,6 +15,7 @@ from src.domain.bot.entity import (
     ToolRagConfig,
     validate_reasoning_effort,
 )
+from src.domain.bot.mode_presets import unmet_prerequisites
 from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
 from src.domain.rag.retrieval_mode import normalize_modes, validate_modes
@@ -22,6 +23,8 @@ from src.domain.shared.exceptions import ValidationError
 
 
 @dataclass(frozen=True)
+
+
 class CreateBotCommand:
     tenant_id: str
     name: str
@@ -44,7 +47,9 @@ class CreateBotCommand:
     eval_model: str = ""
     eval_depth: str = "off"
     gate_mode: str = "off"
-    mode: str = "deep"  # Issue #66 fast | deep；Issue #70 kb
+    mode: str = "deep"  # Issue #66 fast | deep；Issue #70 kb（Issue #92：僅標籤）
+    direct_retrieval: bool = False
+    escalate_on_miss: bool = True
     guard_stages: list[str] | None = None  # Issue #75：None = 繼承租戶有效值
     # Issue #70：輸出格式 / schema / 未命中話術 / 文字通路顯示欄位
     output_format: str = "text"
@@ -169,6 +174,8 @@ class CreateBotUseCase:
             eval_depth=command.eval_depth,
             gate_mode=command.gate_mode,
             mode=command.mode,
+            direct_retrieval=command.direct_retrieval,
+            escalate_on_miss=command.escalate_on_miss,
             guard_stages=guard_stages,
             output_format=command.output_format,
             output_schema=dict(command.output_schema) if command.output_schema else None,
@@ -246,5 +253,18 @@ class CreateBotUseCase:
             line_channel_access_token=command.line_channel_access_token,
             line_show_sources=command.line_show_sources,
         )
+        _reject_invalid_combination(bot)
         await self._bot_repo.save(bot)
         return bot
+
+
+def _reject_invalid_combination(bot) -> None:
+    """Issue #92：組合前置條件的**第二層防呆**。
+
+    前端已在選取當下 disable 不可用的選項；此處守 API 被直接呼叫的情況。
+    只擋「開了但前置不成立」的組合，不改寫任何使用者輸入。
+    """
+    unmet = unmet_prerequisites(bot)
+    if unmet:
+        detail = "；".join(f"{field}：{reason}" for field, _prereq, reason in unmet)
+        raise ValidationError(f"設定組合無效——{detail}")

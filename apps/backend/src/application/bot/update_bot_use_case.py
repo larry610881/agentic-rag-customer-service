@@ -18,6 +18,7 @@ from src.domain.bot.entity import (
     ToolRagConfig,
     validate_reasoning_effort,
 )
+from src.domain.bot.mode_presets import unmet_prerequisites
 from src.domain.bot.repository import BotRepository
 from src.domain.platform.services import EncryptionService
 from src.domain.prompt_gate.config_snapshot import (
@@ -44,6 +45,8 @@ _MASKED_VALUE = "***"
 
 
 @dataclass(frozen=True)
+
+
 class UpdateBotCommand:
     bot_id: str
     # 歸屬檢查用（C9）：由 router 從 JWT 帶入，非可版本化的 bot 欄位
@@ -71,7 +74,9 @@ class UpdateBotCommand:
     eval_model: object = _UNSET
     eval_depth: object = _UNSET
     gate_mode: object = _UNSET
-    mode: object = _UNSET  # Issue #66：fast | deep；Issue #70：kb
+    mode: object = _UNSET  # Issue #66：fast | deep；Issue #70：kb（#92：僅標籤）
+    direct_retrieval: object = _UNSET
+    escalate_on_miss: object = _UNSET
     guard_stages: object = _UNSET  # Issue #75：None = 繼承租戶有效值
     # Issue #70：輸出格式 / schema / 未命中話術 / 文字通路顯示欄位
     output_format: object = _UNSET
@@ -165,6 +170,8 @@ class UpdateBotUseCase:
             "eval_provider", "eval_model", "eval_depth",
             "gate_mode", "gate_soft_threshold", "gate_repeats",
             "mode",
+            "direct_retrieval",
+            "escalate_on_miss",
             "output_format", "output_schema", "miss_reply", "output_text_field",
             "gate_auto_publish", "gate_daily_limit", "gate_budget_usd",
             "max_tool_calls",
@@ -440,6 +447,7 @@ class UpdateBotUseCase:
         await self._record_config_version(
             bot, before_snapshot, actor_user_id=command.actor_user_id
         )
+        _reject_invalid_combination(bot)
         await self._bot_repo.save(bot)
         if self._audit is not None:
             await self._audit.record(
@@ -452,3 +460,15 @@ class UpdateBotUseCase:
             await self._cache_service.delete(f"bot:sc:{bot.short_code.value}")
 
         return bot
+
+
+def _reject_invalid_combination(bot) -> None:
+    """Issue #92：組合前置條件的**第二層防呆**。
+
+    前端已在選取當下 disable 不可用的選項；此處守 API 被直接呼叫的情況。
+    只擋「開了但前置不成立」的組合，不改寫任何使用者輸入。
+    """
+    unmet = unmet_prerequisites(bot)
+    if unmet:
+        detail = "；".join(f"{field}：{reason}" for field, _prereq, reason in unmet)
+        raise ValidationError(f"設定組合無效——{detail}")

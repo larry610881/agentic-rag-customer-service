@@ -137,6 +137,8 @@ class SQLAlchemyBotRepository(BotRepository):
             eval_depth=model.eval_depth or "L1",
             gate_mode=model.gate_mode or "off",
             mode=getattr(model, "mode", None) or "deep",
+            direct_retrieval=bool(getattr(model, "direct_retrieval", False)),
+            escalate_on_miss=bool(getattr(model, "escalate_on_miss", True)),
             guard_stages=_guard_stages_from_model(model),
             output_format=getattr(model, "output_format", None) or "text",
             output_schema=dict(model.output_schema) if model.output_schema else None,
@@ -274,6 +276,8 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.eval_depth = bot.eval_depth
                 existing.gate_mode = bot.gate_mode
                 existing.mode = bot.mode
+                existing.direct_retrieval = bot.direct_retrieval
+                existing.escalate_on_miss = bot.escalate_on_miss
                 existing.guard_stages = (
                     list(bot.guard_stages) if bot.guard_stages is not None else None
                 )
@@ -370,6 +374,8 @@ class SQLAlchemyBotRepository(BotRepository):
                     eval_depth=bot.eval_depth,
                     gate_mode=bot.gate_mode,
                     mode=bot.mode,
+                    direct_retrieval=bot.direct_retrieval,
+                    escalate_on_miss=bot.escalate_on_miss,
                     guard_stages=(
                         list(bot.guard_stages) if bot.guard_stages is not None else None
                     ),

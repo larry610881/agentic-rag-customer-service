@@ -28,6 +28,9 @@ PROMPT_FIELDS = (
 # 直接以原值進出快照的純量/list 欄位
 _SCALAR_FIELDS = (
     *PROMPT_FIELDS,
+    # Issue #92：可組合的行為欄位（原本由 mode 強制，現在是真設定 → 應受版控）
+    "direct_retrieval",
+    "escalate_on_miss",
     "llm_provider",
     "llm_model",
     "router_model",

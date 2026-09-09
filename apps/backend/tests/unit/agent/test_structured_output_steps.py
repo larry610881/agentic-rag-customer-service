@@ -89,6 +89,10 @@ def _setup_web(
         output_schema=schema, miss_reply=miss_reply, llm_provider=provider,
         llm_model=model, output_text_field=text_field,
     )
+    from src.domain.bot.mode_presets import preset_values
+
+    for _k, _v in preset_values(getattr(bot, "mode", "deep")).items():
+        setattr(bot, _k, _v)
     agent = AsyncMock()
     default_reply = (
         '{"status":"km","category":"marketing","answer":"可以"}'

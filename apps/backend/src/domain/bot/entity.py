@@ -138,7 +138,15 @@ class Bot:
     # Issue #66：快速 / 深度 profile。
     # fast = 全 worker 走快速道、rerank/rewrite/HyDE 關、升級 ReAct 工具上限 2
     # deep = 完整 ReAct，worker 可個別開快速道
-    mode: str = "deep"  # fast | deep | kb
+    # Issue #92：`mode` 降級為「上次套用的情境預設」**標籤**，不再驅動任何行為。
+    # 真正決定行為的是下面兩個欄位與既有的 rerank_enabled / query_rewrite_enabled /
+    # hyde_enabled / memory_enabled / enabled_tools。
+    # 預設值定義在 domain/bot/mode_presets。
+    mode: str = "deep"  # fast | deep | kb（僅標籤）
+    # 走快速道：檢索命中即單次生成、不進 ReAct（原本由 mode in (fast, kb) 強制）
+    direct_retrieval: bool = False
+    # 快速道未命中時是否升級 ReAct；False = 直接回 miss_reply（原本由 mode == kb 強制）
+    escalate_on_miss: bool = True
     # Issue #75：bot 層防護階段覆寫；None = 繼承租戶有效值，list 只能是有效值的超集
     #（只能加不能減；租戶被平台鎖定時忽略）。名稱見 domain/security/guard_stages.STAGES
     guard_stages: list[str] | None = None
