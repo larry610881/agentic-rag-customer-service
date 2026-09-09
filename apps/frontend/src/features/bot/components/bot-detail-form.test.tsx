@@ -464,11 +464,11 @@ describe("BotDetailForm", () => {
       expect(screen.getByRole("radio", { name: /深度道（deep）/ })).toBeChecked();
       expect(screen.getByRole("radio", { name: /快速道（fast）/ })).not.toBeChecked();
       expect(
-        screen.queryByText("快速道模式下 rerank / 查詢改寫 / HyDE 會自動關閉"),
+        screen.queryByText(/套用此預設會把 rerank/),
       ).not.toBeInTheDocument();
     });
 
-    it("should reflect bot.mode = fast and show the fast hint", () => {
+    it("套用 fast 預設會顯示「只是填值、之後可自行開啟」的說明（Issue #92）", () => {
       renderWithProviders(
         <BotDetailForm
           bot={{ ...mockBot, mode: "fast" }}
@@ -480,11 +480,11 @@ describe("BotDetailForm", () => {
       );
       expect(screen.getByRole("radio", { name: /快速道（fast）/ })).toBeChecked();
       expect(
-        screen.getByText("快速道模式下 rerank / 查詢改寫 / HyDE 會自動關閉"),
+        screen.getByText(/套用此預設會把 rerank/),
       ).toBeInTheDocument();
     });
 
-    it("should show the fast hint after selecting fast", async () => {
+    it("選取 fast 後顯示預設填值說明（Issue #92）", async () => {
       const user = userEvent.setup();
       renderWithProviders(
         <BotDetailForm
@@ -497,7 +497,7 @@ describe("BotDetailForm", () => {
       );
       await user.click(screen.getByRole("radio", { name: /快速道（fast）/ }));
       expect(
-        screen.getByText("快速道模式下 rerank / 查詢改寫 / HyDE 會自動關閉"),
+        screen.getByText(/套用此預設會把 rerank/),
       ).toBeInTheDocument();
     });
 
@@ -974,7 +974,9 @@ describe("BotDetailForm", () => {
       const summary = screen.getByTestId("bot-change-summary");
       expect(summary).toHaveTextContent("名稱：Customer Service Bot → New Name");
       expect(summary).toHaveTextContent("推理模式：深度 → 快速");
-      expect(summary.querySelectorAll("li")).toHaveLength(2);
+      // Issue #92：套用情境預設會一併填好 direct_retrieval 等開關，
+      // 因此變更摘要會多列出這些欄位——這正是「預設只填值、且看得見」的預期行為。
+      expect(summary.querySelectorAll("li").length).toBeGreaterThanOrEqual(2);
       expect(mockOnSave).not.toHaveBeenCalled();
 
       await user.click(screen.getByRole("button", { name: "確認儲存" }));
@@ -982,6 +984,8 @@ describe("BotDetailForm", () => {
       const payload = mockOnSave.mock.calls[0][0];
       expect(payload.name).toBe("New Name");
       expect(payload.mode).toBe("fast");
+      expect(payload.direct_retrieval).toBe(true);
+      expect(payload.escalate_on_miss).toBe(true);
     });
 
     it("does not save when the summary is cancelled", async () => {

@@ -93,7 +93,12 @@ export interface Bot {
   gate_budget_usd: number;
   gate_excluded_cases: string[];
   /** Issue #66 / #70 — 推理模式（fast = 快速道 / deep = 深度道 / kb = 知識庫問答） */
+  /** Issue #92：僅標籤，記錄上次套用的情境預設；不驅動行為 */
   mode: BotMode;
+  /** 走快速道：檢索命中即單次生成、不進 ReAct */
+  direct_retrieval: boolean;
+  /** 快速道未命中時是否升級 ReAct；false = 直接回未命中話術 */
+  escalate_on_miss: boolean;
   /** Issue #70 — 輸出格式（預設 text） */
   output_format?: OutputFormat;
   /** Issue #70 — JSON schema；僅 output_format=json 時有意義 */
@@ -171,6 +176,8 @@ export interface CreateBotRequest {
   gate_excluded_cases?: string[];
   /** Issue #66 / #70 — 推理模式（fast = 快速道 / deep = 深度道 / kb = 知識庫問答） */
   mode?: BotMode;
+  direct_retrieval?: boolean;
+  escalate_on_miss?: boolean;
   /** Issue #70 — 輸出格式 */
   output_format?: OutputFormat;
   /** Issue #70 — JSON schema；僅 output_format=json 時有意義 */
@@ -244,6 +251,8 @@ export interface UpdateBotRequest {
   gate_excluded_cases?: string[];
   /** Issue #66 / #70 — 推理模式（fast = 快速道 / deep = 深度道 / kb = 知識庫問答） */
   mode?: BotMode;
+  direct_retrieval?: boolean;
+  escalate_on_miss?: boolean;
   /** Issue #70 — 輸出格式 */
   output_format?: OutputFormat;
   /** Issue #70 — JSON schema；僅 output_format=json 時有意義 */

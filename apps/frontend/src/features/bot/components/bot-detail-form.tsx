@@ -175,7 +175,10 @@ const botFormSchema = z.object({
   ),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
   // Issue #66 / #70 — 推理模式（fast = 快速道 / deep = 深度道 / kb = 知識庫問答）
+  // Issue #92：mode 僅標籤；行為由下面兩個欄位與既有開關決定
   mode: z.enum(["fast", "deep", "kb"]).default("deep"),
+  direct_retrieval: z.boolean().default(false),
+  escalate_on_miss: z.boolean().default(true),
   // Issue #70 — 未命中話術（空 = 平台預設）；output_format=json 時須為合法 JSON
   miss_reply: z.string().max(1000).default(""),
   // Issue #70 — 輸出格式；schema 以文字保存於表單，送出時才 parse 成物件
@@ -325,6 +328,8 @@ function buildFormValues(bot: Bot): DefaultValues<BotFormValues> {
     widget_greeting_messages: bot.widget_greeting_messages ?? [],
     widget_greeting_animation: bot.widget_greeting_animation ?? "fade",
     rerank_enabled: bot.rerank_enabled ?? false,
+    direct_retrieval: bot.direct_retrieval ?? false,
+    escalate_on_miss: bot.escalate_on_miss ?? true,
     rerank_model: bot.rerank_model ?? "",
     rerank_top_n: bot.rerank_top_n ?? 20,
     rag_retrieval_modes: bot.rag_retrieval_modes ?? ["raw"],
@@ -540,6 +545,11 @@ function RetrievalModesSection({
   errors,
 }: RetrievalModesSectionProps) {
   const modes = (watch("rag_retrieval_modes") ?? ["raw"]) as RetrievalMode[];
+  // Issue #92 前置條件（對應後端 domain/bot/mode_presets.PREREQUISITES）：
+  // 沒綁知識庫時，改寫 / HyDE 沒有東西可檢索 —— 在選取當下就 disable，
+  // 而不是等按下儲存才回錯誤。後端仍保留同一條驗證作為第二層防呆。
+  const hasKb = ((watch("knowledge_base_ids") as string[] | undefined) ?? []).length > 0;
+  const kbHint = hasKb ? "" : "需要先綁定知識庫";
   const hasRewrite = modes.includes("rewrite");
   const hasHyde = modes.includes("hyde");
   const modeError = (
@@ -568,6 +578,11 @@ function RetrievalModesSection({
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-3 pt-2">
+        {!hasKb && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+            尚未綁定知識庫，改寫 / HyDE 無法選取（沒有可檢索的內容）。
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">
           可多選 — 每多 1 個 mode，就多 1 條 query 並行檢索並 union
           結果。多選增加 LLM 呼叫成本（rewrite/hyde 各會多 1 次 LLM call）。
@@ -588,6 +603,8 @@ function RetrievalModesSection({
                     <input
                       type="checkbox"
                       checked={checked}
+                      disabled={!hasKb && mode !== "raw"}
+                      title={mode === "raw" ? undefined : kbHint}
                       onChange={(e) => {
                         const current = field.value ?? [];
                         const next = e.target.checked
@@ -789,7 +806,36 @@ function PlatformDatasetCases({
 type ModeSectionProps = {
   register: UseFormRegister<BotFormValues>;
   watch: UseFormWatch<BotFormValues>;
+  setValue: UseFormSetValue<BotFormValues>;
   errors: FieldErrors<BotFormValues>;
+};
+
+/**
+ * Issue #92 — 情境預設**只填值**，不覆蓋。
+ * 與後端 `domain/bot/mode_presets.MODE_PRESETS` 一一對應；套用後各開關即為真相，
+ * 使用者可任意偏離（舊版是執行期強制覆蓋，導致開關打開卻不生效）。
+ */
+const MODE_PRESET_VALUES: Record<string, Partial<BotFormValues>> = {
+  kb: {
+    direct_retrieval: true,
+    escalate_on_miss: false,
+    rerank_enabled: false,
+    query_rewrite_enabled: false,
+    hyde_enabled: false,
+    // 記憶開關不在本表單管理（另有分頁），故預設不動它
+  },
+  fast: {
+    direct_retrieval: true,
+    escalate_on_miss: true,
+    rerank_enabled: false,
+    query_rewrite_enabled: false,
+    hyde_enabled: false,
+  },
+  deep: {
+    direct_retrieval: false,
+    escalate_on_miss: true,
+    rerank_enabled: true,
+  },
 };
 
 const BOT_MODE_OPTIONS: {
@@ -816,7 +862,7 @@ const BOT_MODE_OPTIONS: {
 ];
 
 /** Issue #66 / #70 — 推理模式（fast = 快速道 / deep = 深度道 / kb = 知識庫問答） */
-function ModeSection({ register, watch, errors }: ModeSectionProps) {
+function ModeSection({ register, watch, setValue, errors }: ModeSectionProps) {
   const mode = watch("mode");
   const outputFormat = watch("output_format");
   const missReplyIsJson = outputFormat === "json";
@@ -847,7 +893,17 @@ function ModeSection({ register, watch, errors }: ModeSectionProps) {
                 type="radio"
                 value={opt.value}
                 className="mt-1 accent-primary"
-                {...register("mode")}
+                {...register("mode", {
+                  onChange: (e) => {
+                    // Issue #92：選預設 = 一次填好各開關；之後開關即為真相
+                    const preset = MODE_PRESET_VALUES[e.target.value] ?? {};
+                    for (const [k, v] of Object.entries(preset)) {
+                      setValue(k as keyof BotFormValues, v as never, {
+                        shouldDirty: true,
+                      });
+                    }
+                  },
+                })}
               />
               <span className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium">{opt.title}</span>
@@ -859,9 +915,11 @@ function ModeSection({ register, watch, errors }: ModeSectionProps) {
           );
         })}
       </div>
-      {mode === "fast" && (
+      {(mode === "fast" || mode === "kb") && (
         <p className="text-xs text-muted-foreground">
-          快速道模式下 rerank / 查詢改寫 / HyDE 會自動關閉
+          套用此預設會把 rerank / 查詢改寫 / HyDE 填成關閉
+          {mode === "kb" ? "（記憶與工具也會關閉）" : ""}
+          ；之後仍可自行開啟，開了就會生效。
         </p>
       )}
       {mode === "kb" && (
@@ -1642,7 +1700,12 @@ export function BotDetailForm({
           />
 
           {/* Issue #66 / #70 — 推理模式 */}
-          <ModeSection register={register} watch={watch} errors={errors} />
+          <ModeSection
+            register={register}
+            watch={watch}
+            setValue={setValue}
+            errors={errors}
+          />
 
           {/* Issue #70 — 輸出格式 */}
           <OutputFormatSection
