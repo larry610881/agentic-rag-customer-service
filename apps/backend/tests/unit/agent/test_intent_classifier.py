@@ -26,9 +26,9 @@ class FakeLLMResult:
 
 def _make_routes() -> list[IntentRoute]:
     return [
-        IntentRoute(name="查詢", description="用戶詢問產品或服務相關問題", system_prompt="你是查詢助手"),
-        IntentRoute(name="客訴", description="用戶表達不滿或投訴", system_prompt="你是客訴處理專員"),
-        IntentRoute(name="閒聊", description="用戶進行閒聊或打招呼", system_prompt="你是閒聊夥伴"),
+        IntentRoute(name="查詢", description="用戶詢問產品或服務相關問題", worker_prompt="你是查詢助手"),
+        IntentRoute(name="客訴", description="用戶表達不滿或投訴", worker_prompt="你是客訴處理專員"),
+        IntentRoute(name="閒聊", description="用戶進行閒聊或打招呼", worker_prompt="你是閒聊夥伴"),
     ]
 
 
@@ -47,7 +47,7 @@ def test_classify_exact_match():
 
     assert result is not None
     assert result.name == "客訴"
-    assert result.system_prompt == "你是客訴處理專員"
+    assert result.worker_prompt == "你是客訴處理專員"
 
 
 def test_classify_with_whitespace():

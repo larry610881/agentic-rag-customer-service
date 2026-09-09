@@ -188,7 +188,8 @@ class SQLAlchemyBotRepository(BotRepository):
                 IntentRoute(
                     name=r.get("name", ""),
                     description=r.get("description", ""),
-                    system_prompt=r.get("system_prompt", ""),
+                    # Issue #91 正名；舊 JSON 仍可能是 system_prompt 鍵
+                    worker_prompt=r.get("worker_prompt") or r.get("system_prompt", ""),
                 )
                 for r in (model.intent_routes or [])
             ],
@@ -312,7 +313,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.tool_configs = _tool_configs_to_dict(bot.tool_configs)
                 existing.customer_service_url = bot.customer_service_url
                 existing.intent_routes = [
-                    {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
+                    {"name": r.name, "description": r.description, "worker_prompt": r.worker_prompt}
                     for r in bot.intent_routes
                 ]
                 existing.router_model = bot.router_model
@@ -409,7 +410,7 @@ class SQLAlchemyBotRepository(BotRepository):
                     tool_configs=_tool_configs_to_dict(bot.tool_configs),
                     customer_service_url=bot.customer_service_url,
                     intent_routes=[
-                        {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
+                        {"name": r.name, "description": r.description, "worker_prompt": r.worker_prompt}
                         for r in bot.intent_routes
                     ],
                     router_model=bot.router_model,

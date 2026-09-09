@@ -3024,4 +3024,6 @@ class Container(containers.DeclarativeContainer):
         encryption_service=encryption_service,  # L10：快取憑證加密
         quota_preflight=quota_preflight_service,  # Issue #74
         guard_provider=guard_provider,  # Issue #75
+        # Issue #91：LINE 也要載入平台防護層（先前只有 web/widget 有）
+        system_prompt_config_repository=system_prompt_config_repository,
     )

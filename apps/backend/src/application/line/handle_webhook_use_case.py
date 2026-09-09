@@ -19,7 +19,11 @@ from src.application.agent.output_format import (
     resolve_structured_llm_params,
     retrieval_stats,
 )
-from src.application.agent.prompt_assembler import inject_runtime_vars
+from src.application.agent.prompt_assembler import (
+    inject_runtime_vars,
+    resolve_bot_layer,
+    resolve_effective_prompt,
+)
 from src.application.agent.send_message_use_case import (
     _build_structured_content,
     build_tool_rag_params_map,
@@ -149,7 +153,15 @@ def _bot_from_json(raw: str, encryption: Any | None = None) -> Bot:
         for s in d.get("mcp_servers", [])
     ]
     d["mcp_bindings"] = [BotMcpBinding(**b) for b in d.get("mcp_bindings", [])]
-    d["intent_routes"] = [IntentRoute(**r) for r in d.get("intent_routes", [])]
+    d["intent_routes"] = [
+        IntentRoute(
+            name=r.get("name", ""),
+            description=r.get("description", ""),
+            # Issue #91 正名；相容舊 JSON 的 system_prompt 鍵
+            worker_prompt=r.get("worker_prompt") or r.get("system_prompt", ""),
+        )
+        for r in d.get("intent_routes", [])
+    ]
     d["tool_configs"] = {
         name: ToolRagConfig(**cfg) for name, cfg in d.get("tool_configs", {}).items()
     }
@@ -207,8 +219,11 @@ class HandleWebhookUseCase:
         direct_retrieval_service: Any | None = None,
         quota_preflight: Any | None = None,
         guard_provider: Any | None = None,
+        system_prompt_config_repository: Any | None = None,
     ):
         self._agent_service = agent_service
+        # Issue #91：LINE 先前只用 bot_prompt，平台防護層從未載入 → 通路對等破口
+        self._sys_prompt_repo = system_prompt_config_repository
         # Issue #74：共用配額預檢（與 web/widget 同一份；LINE 只做文字回覆適配）
         self._quota_preflight = quota_preflight
         self._bot_repository = bot_repository
@@ -675,8 +690,11 @@ class HandleWebhookUseCase:
             )
 
         # ── Worker Routing（Subagent 分流；與 Web path 一致） ──
-        # 預設用 bot 本體設定
-        system_prompt = bot.bot_prompt or None
+        # 預設用 bot 本體設定。Issue #91：這個變數在組裝前只代表「bot 層」，
+        # 平台防護層在下方 assemble 時才接上，worker 覆寫也只換這一層。
+        system_prompt = resolve_bot_layer(
+            base_prompt=bot.base_prompt, bot_prompt=bot.bot_prompt
+        ) or None
         enabled_tools = bot.enabled_tools
         kb_ids = bot.knowledge_base_ids
         kb_id = bot.knowledge_base_ids[0] if bot.knowledge_base_ids else ""
@@ -869,7 +887,18 @@ class HandleWebhookUseCase:
             from src.domain.platform.prompt_defaults import (
                 LINE_CHANNEL_PROMPT_SUFFIX,
             )
-            system_prompt = (system_prompt or "") + LINE_CHANNEL_PROMPT_SUFFIX
+            # Issue #91：平台防護層必須在最前，且不受 bot / worker 設定影響。
+            _platform_prompt = ""
+            if self._sys_prompt_repo:
+                _sys_cfg = await self._sys_prompt_repo.get()
+                _platform_prompt = _sys_cfg.system_prompt
+            system_prompt = resolve_effective_prompt(
+                {
+                    "system_prompt": _platform_prompt,
+                    "bot_prompt": system_prompt or "",
+                },
+                channel_suffix=LINE_CHANNEL_PROMPT_SUFFIX,
+            )
 
             # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）
             config_hash = await self._fingerprint_config(

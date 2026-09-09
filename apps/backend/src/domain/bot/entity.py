@@ -42,7 +42,8 @@ class IntentRoute:
 
     name: str              # "客訴", "查詢", "閒聊", "轉人工"
     description: str       # 給 classifier 看的描述
-    system_prompt: str     # 該意圖專用 prompt
+    # Issue #91 正名（原 system_prompt）：這是 bot 層，不是平台防護層
+    worker_prompt: str     # 該意圖專用 prompt
 
 
 @dataclass(frozen=True)

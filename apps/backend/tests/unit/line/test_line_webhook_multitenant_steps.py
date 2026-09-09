@@ -263,5 +263,12 @@ def verify_agent_system_prompt(context, prompt):
     call_kwargs = context["mock_agent"].process_message.call_args
     # 2026-08-17：LINE 通路規範（格式/長度/角色鎖）由程式注入一次，
     # bot_prompt 為前綴、後綴為 LINE_CHANNEL_PROMPT_SUFFIX
+    # Issue #91：LINE 改與 web 同一支組裝器（平台防護層 → bot 層 → 通路後綴），
+    # bot 層會被包在 [自定義指令] 區塊裡，三通路格式一致。
+    from src.application.agent.prompt_assembler import resolve_effective_prompt
     from src.domain.platform.prompt_defaults import LINE_CHANNEL_PROMPT_SUFFIX
-    assert call_kwargs.kwargs["system_prompt"] == prompt + LINE_CHANNEL_PROMPT_SUFFIX
+    expected = resolve_effective_prompt(
+        {"system_prompt": "", "bot_prompt": prompt},
+        channel_suffix=LINE_CHANNEL_PROMPT_SUFFIX,
+    )
+    assert call_kwargs.kwargs["system_prompt"] == expected

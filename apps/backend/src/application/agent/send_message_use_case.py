@@ -27,10 +27,9 @@ from src.application.agent.output_format import (
     retrieval_stats,
 )
 from src.application.agent.prompt_assembler import (
-    assemble as assemble_prompt,
-)
-from src.application.agent.prompt_assembler import (
-    inject_runtime_vars,
+    apply_worker_override,
+    resolve_bot_layer,
+    resolve_effective_prompt,
 )
 from src.application.security.guard_pipeline import GuardPipeline
 from src.domain.abuse.policy import (
@@ -98,6 +97,14 @@ if TYPE_CHECKING:
     from src.domain.tenant.repository import TenantRepository
 
 logger = structlog.get_logger(__name__)
+def _effective(bot_cfg: dict) -> str:
+    """取 effective prompt；缺鍵時即時由 system_prompt / bot_prompt 兩層組裝。
+
+    Issue #91：設定字典可能由其他路徑（測試、快速道 fast_cfg）建立，
+    這裡保證永遠拿得到組裝結果，且平台防護層不會因為少一個鍵而消失。
+    """
+    return bot_cfg.get("effective_prompt") or resolve_effective_prompt(bot_cfg)
+
 
 # Issue #74：通路轉接器宣告的身分來源 → 用量類別（預檢與記帳同一張表）
 _IDENTITY_SOURCE_CATEGORY: dict[str, str] = {
@@ -257,7 +264,12 @@ class SendMessageUseCase:
         """Resolve Bot config — shared by execute & execute_stream."""
         cfg: dict[str, Any] = {
             "kb_ids": None,
+            # Issue #91 分層：system_prompt = 平台防護層（不可取代）、
+            # bot_prompt = bot 層（worker 命中時被取代）、
+            # effective_prompt = 兩層組裝後送模型的字串。三者不可混用。
             "system_prompt": None,
+            "bot_prompt": "",
+            "effective_prompt": "",
             "llm_params": None,
             "kb_id": command.kb_id,
             "history_limit": None,
@@ -267,20 +279,18 @@ class SendMessageUseCase:
             "show_sources": True,
         }
         if not (command.bot_id and self._bot_repo):
-            # No bot — still resolve system prompts from DB
+            # No bot — 仍須載入平台防護層（Issue #91：任何路徑都不得缺這一層）
             if self._sys_prompt_repo:
                 sys_cfg = await self._sys_prompt_repo.get()
-                cfg["system_prompt"] = assemble_prompt(
-                    system_prompt=sys_cfg.system_prompt,
-                )
+                cfg["system_prompt"] = sys_cfg.system_prompt
+                cfg["effective_prompt"] = resolve_effective_prompt(cfg)
             return cfg
         bot = await self._bot_repo.find_by_id(command.bot_id)
         if bot is None:
             if self._sys_prompt_repo:
                 sys_cfg = await self._sys_prompt_repo.get()
-                cfg["system_prompt"] = assemble_prompt(
-                    system_prompt=sys_cfg.system_prompt,
-                )
+                cfg["system_prompt"] = sys_cfg.system_prompt
+                cfg["effective_prompt"] = resolve_effective_prompt(cfg)
             return cfg
         if bot.tenant_id != command.tenant_id:
             msg = (
@@ -297,7 +307,6 @@ class SendMessageUseCase:
         cfg["kb_ids"] = bot.knowledge_base_ids or None
         if not cfg["kb_id"] and cfg["kb_ids"]:
             cfg["kb_id"] = cfg["kb_ids"][0]
-        cfg["system_prompt"] = bot.bot_prompt or None
         llm_params: dict = {
             "temperature": bot.llm_params.temperature,
             "max_tokens": bot.llm_params.max_tokens,
@@ -420,7 +429,6 @@ class SendMessageUseCase:
         cfg["hyde_enabled"] = getattr(bot, "hyde_enabled", False)
         cfg["hyde_model"] = getattr(bot, "hyde_model", "")
         cfg["hyde_extra_hint"] = getattr(bot, "hyde_extra_hint", "")
-        cfg["bot_prompt"] = bot.bot_prompt or ""
         cfg["eval_depth"] = getattr(bot, "eval_depth", "off")
         cfg["eval_provider"] = getattr(bot, "eval_provider", "")
         cfg["eval_model"] = getattr(bot, "eval_model", "")
@@ -441,20 +449,20 @@ class SendMessageUseCase:
         cfg["router_model"] = _bot_router_model or _tenant_default_intent
         cfg["summary_model"] = _bot_summary_model or _tenant_default_summary
 
-        # Resolve prompt overrides: Bot → SystemPromptConfig → Seed
-        resolved_system_prompt = ""
+        # Issue #91 分層解析：平台防護層與 bot 層**分開存**，到使用當下才組裝。
+        # 舊版是 `bot.base_prompt or sys_cfg.system_prompt`——租戶在後台填一個字
+        # 就能把平台防護層整段換掉；現在 base_prompt 降級為 bot 層的前段。
         cfg["_platform_prompt_fallback"] = False
         if self._sys_prompt_repo:
             sys_cfg = await self._sys_prompt_repo.get()
-            resolved_system_prompt = bot.base_prompt or sys_cfg.system_prompt
-            # Issue #60：bot 未設 base_prompt 時靜默 fallback 到平台 prompt
+            cfg["system_prompt"] = sys_cfg.system_prompt
             cfg["_platform_prompt_fallback"] = not bool(bot.base_prompt)
 
-        # Pre-assemble the full system prompt (agent services use it directly)
-        cfg["system_prompt"] = assemble_prompt(
+        cfg["bot_prompt"] = resolve_bot_layer(
+            base_prompt=bot.base_prompt,
             bot_prompt=bot.bot_prompt,
-            system_prompt=resolved_system_prompt,
         )
+        cfg["effective_prompt"] = resolve_effective_prompt(cfg)
 
         return cfg
 
@@ -775,8 +783,12 @@ class SendMessageUseCase:
                     candidates=[r.name for r in intent_routes],
                 )
                 if matched:
-                    bot_cfg["system_prompt"] = inject_runtime_vars(
-                        matched.system_prompt
+                    # Issue #91：只換 bot 層，平台防護層不受影響
+                    bot_cfg = apply_worker_override(
+                        bot_cfg, matched.worker_prompt
+                    )
+                    bot_cfg["effective_prompt"] = resolve_effective_prompt(
+                        bot_cfg
                     )
             return bot_cfg
 
@@ -819,11 +831,10 @@ class SendMessageUseCase:
             return bot_cfg
 
         # Override bot_cfg with worker settings
-        cfg = {**bot_cfg}
+        # Issue #91：worker 只取代 bot 層，平台防護層原封不動
+        cfg = apply_worker_override(bot_cfg, matched.worker_prompt)
         if matched.worker_prompt:
-            cfg["system_prompt"] = inject_runtime_vars(
-                matched.worker_prompt
-            )
+            cfg["effective_prompt"] = resolve_effective_prompt(cfg)
         # M17：temperature/max_tokens 賦值原本在 provider/model 條件內 → worker 沿用
         # bot 模型（不指定 provider/model）時 web 忽略 worker 的取樣參數，但 LINE 無條件
         # 套用 → 同一 worker 兩通路取樣參數/回覆長度不同。移出條件，與 LINE 對齊。
@@ -1731,7 +1742,7 @@ class SendMessageUseCase:
             bot=bot_entity,
             kb_id=bot_cfg.get("kb_id", ""),
             kb_ids=list(bot_cfg.get("kb_ids") or []),
-            system_prompt=bot_cfg.get("system_prompt"),
+            system_prompt=_effective(bot_cfg),
             enabled_tools=bot_cfg.get("enabled_tools"),
             tool_rag_params=bot_cfg.get("tool_rag_params"),
             user_message=command.message,
@@ -1760,7 +1771,8 @@ class SendMessageUseCase:
             return bot_cfg, plan
         fast_cfg = {
             **bot_cfg,
-            "system_prompt": plan.system_prompt,
+            # 快速道已把檢索區塊接在 effective_prompt 之後
+            "effective_prompt": plan.system_prompt,
             "enabled_tools": plan.enabled_tools,
             "max_tool_calls": plan.max_tool_calls,
             "mcp_servers": [],
@@ -1781,8 +1793,8 @@ class SendMessageUseCase:
         return {
             **bot_cfg,
             "llm_params": {**(bot_cfg.get("llm_params") or {}), **patch},
-            "system_prompt": append_prompt_suffix(
-                bot_cfg.get("system_prompt"), suffix
+            "effective_prompt": append_prompt_suffix(
+                _effective(bot_cfg), suffix
             ),
         }, spec
 
@@ -1802,7 +1814,7 @@ class SendMessageUseCase:
             "user_message": command.message,
             "history": history,
             "kb_ids": bot_cfg["kb_ids"],
-            "system_prompt": bot_cfg["system_prompt"],
+            "system_prompt": _effective(bot_cfg),
             "llm_params": bot_cfg["llm_params"],
             "metadata": metadata,
             "history_context": history_context,
@@ -1940,7 +1952,7 @@ class SendMessageUseCase:
             effective = EffectiveConfig(
                 channel=command.identity_source or "web",
                 bot_id=command.bot_id or "",
-                system_prompt=bot_cfg.get("system_prompt") or "",
+                system_prompt=_effective(bot_cfg),
                 platform_prompt_fallback=bool(
                     bot_cfg.get("_platform_prompt_fallback", False)
                 ),

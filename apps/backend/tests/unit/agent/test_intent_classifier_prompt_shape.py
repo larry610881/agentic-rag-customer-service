@@ -44,9 +44,9 @@ def test_categories_appear_in_system_prompt_not_user_message(mock_llm_service):
     """類別列表必須出現在 system_prompt（cacheable），不在 user_message。"""
     classifier = IntentClassifier(llm_service=mock_llm_service, record_usage=None)
     routes = [
-        IntentRoute(name="退貨", description="客戶詢問退貨流程", system_prompt=""),
-        IntentRoute(name="出貨", description="客戶詢問出貨進度", system_prompt=""),
-        IntentRoute(name="閒聊", description="一般對話", system_prompt=""),
+        IntentRoute(name="退貨", description="客戶詢問退貨流程", worker_prompt=""),
+        IntentRoute(name="出貨", description="客戶詢問出貨進度", worker_prompt=""),
+        IntentRoute(name="閒聊", description="一般對話", worker_prompt=""),
     ]
 
     _run(
@@ -81,7 +81,7 @@ def test_router_context_optional_in_user_message(mock_llm_service):
     """無 router_context 時 user_message 只有用戶訊息。"""
     classifier = IntentClassifier(llm_service=mock_llm_service, record_usage=None)
     routes = [
-        IntentRoute(name="閒聊", description="一般對話", system_prompt=""),
+        IntentRoute(name="閒聊", description="一般對話", worker_prompt=""),
     ]
 
     _run(

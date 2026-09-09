@@ -60,7 +60,9 @@ def test_resolve_worker_config_uses_worker_prompt_not_system_prompt():
 
     bot_cfg = {
         "bot_id": "bot-001",
-        "system_prompt": "你是通用客服。",
+        # Issue #91：system_prompt 只代表平台防護層，bot 層另存 bot_prompt
+        "system_prompt": "平台防護規則",
+        "bot_prompt": "你是通用客服。",
     }
 
     result = _run(
@@ -71,13 +73,18 @@ def test_resolve_worker_config_uses_worker_prompt_not_system_prompt():
         )
     )
 
-    # worker_prompt 必須覆寫 bot 層的 system_prompt
-    assert "你是客訴專員" in result["system_prompt"]
+    # worker_prompt 只覆寫 bot 層
+    assert "你是客訴專員" in result["bot_prompt"]
+    assert "你是通用客服。" not in result["bot_prompt"]
+    # 平台防護層不受 worker 覆寫影響（Issue #91 紅線）
+    assert result["system_prompt"] == "平台防護規則"
+    assert "平台防護規則" in result["effective_prompt"]
+    assert "你是客訴專員" in result["effective_prompt"]
     assert result["max_tool_calls"] == 3
 
 
 def test_resolve_worker_config_keeps_bot_prompt_when_worker_prompt_empty():
-    """Regression: worker_prompt 空字串時不應覆寫 bot 的 system_prompt。"""
+    """Regression: worker_prompt 空字串時不應覆寫 bot 層。"""
     worker = WorkerConfig(
         bot_id="bot-001",
         name="預設",
@@ -87,7 +94,8 @@ def test_resolve_worker_config_keeps_bot_prompt_when_worker_prompt_empty():
 
     bot_cfg = {
         "bot_id": "bot-001",
-        "system_prompt": "你是通用客服。",
+        "system_prompt": "平台防護規則",
+        "bot_prompt": "你是通用客服。",
     }
 
     result = _run(
@@ -98,4 +106,5 @@ def test_resolve_worker_config_keeps_bot_prompt_when_worker_prompt_empty():
         )
     )
 
-    assert result["system_prompt"] == "你是通用客服。"
+    assert result["bot_prompt"] == "你是通用客服。"
+    assert result["system_prompt"] == "平台防護規則"

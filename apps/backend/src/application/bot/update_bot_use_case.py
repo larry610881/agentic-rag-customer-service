@@ -248,7 +248,8 @@ class UpdateBotUseCase:
                 IntentRoute(
                     name=r.get("name", ""),
                     description=r.get("description", ""),
-                    system_prompt=r.get("system_prompt", ""),
+                    # Issue #91 正名；相容舊 payload 的 system_prompt 鍵
+                    worker_prompt=r.get("worker_prompt") or r.get("system_prompt", ""),
                 )
                 for r in command.intent_routes  # type: ignore[union-attr]
             ]

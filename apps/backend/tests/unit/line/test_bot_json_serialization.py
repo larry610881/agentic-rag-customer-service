@@ -45,7 +45,7 @@ def _make_bot_with_nested() -> Bot:
             BotMcpBinding(registry_id="reg-1", enabled_tools=["tool_a"])
         ],
         intent_routes=[
-            IntentRoute(name="客訴", description="客戶抱怨", system_prompt="安撫")
+            IntentRoute(name="客訴", description="客戶抱怨", worker_prompt="安撫")
         ],
         tool_configs={
             "rag_query": ToolRagConfig(
