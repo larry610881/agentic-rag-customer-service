@@ -76,7 +76,7 @@ def _make(store, bot, *, gate_enabled: bool):
 def test_rollback_succeeds_when_gate_block_enabled():
     """gate_mode=block + prompt_gate_enabled=True 下 rollback 應成功發布。"""
     bot = Bot(id=BotId(value=BOT_ID), tenant_id=TENANT, name="b",
-              base_prompt="舊版", gate_mode="block")
+              bot_prompt="舊版", gate_mode="block")
     store: dict = {}
     # 歷史已發布版本 v1（回朔目標），快照為「舊版」
     v1 = BotConfigVersion(
@@ -86,7 +86,7 @@ def test_rollback_succeeds_when_gate_block_enabled():
     )
     store[v1.id] = v1
     # 目前 bot 設定已改成「新版」，rollback 回 v1 有差異
-    bot.base_prompt = "新版"
+    bot.bot_prompt = "新版"
 
     rollback = _make(store, bot, gate_enabled=True)
     result = _run(rollback.execute(RollbackConfigVersionCommand(
@@ -94,4 +94,4 @@ def test_rollback_succeeds_when_gate_block_enabled():
     )))
     assert result.status == STATUS_PUBLISHED
     assert result.is_current is True
-    assert bot.base_prompt == "舊版"  # 已套回 v1 快照
+    assert bot.bot_prompt == "舊版"  # 已套回 v1 快照

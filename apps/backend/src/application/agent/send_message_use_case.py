@@ -28,7 +28,6 @@ from src.application.agent.output_format import (
 )
 from src.application.agent.prompt_assembler import (
     apply_worker_override,
-    resolve_bot_layer,
     resolve_effective_prompt,
 )
 from src.application.security.guard_pipeline import GuardPipeline
@@ -449,19 +448,17 @@ class SendMessageUseCase:
         cfg["router_model"] = _bot_router_model or _tenant_default_intent
         cfg["summary_model"] = _bot_summary_model or _tenant_default_summary
 
-        # Issue #91 分層解析：平台防護層與 bot 層**分開存**，到使用當下才組裝。
+        # Issue #91 分層解析：系統層與 bot 層**分開存**，到使用當下才組裝。
         # 舊版是 `bot.base_prompt or sys_cfg.system_prompt`——租戶在後台填一個字
-        # 就能把平台防護層整段換掉；現在 base_prompt 降級為 bot 層的前段。
+        # 就能把平台防護層整段換掉；`base_prompt` 欄位已隨本次一併移除。
         cfg["_platform_prompt_fallback"] = False
         if self._sys_prompt_repo:
             sys_cfg = await self._sys_prompt_repo.get()
             cfg["system_prompt"] = sys_cfg.system_prompt
-            cfg["_platform_prompt_fallback"] = not bool(bot.base_prompt)
+            # Issue #91：bot 已無覆蓋平台 prompt 的欄位，永遠走平台設定
+            cfg["_platform_prompt_fallback"] = True
 
-        cfg["bot_prompt"] = resolve_bot_layer(
-            base_prompt=bot.base_prompt,
-            bot_prompt=bot.bot_prompt,
-        )
+        cfg["bot_prompt"] = bot.bot_prompt or ""
         cfg["effective_prompt"] = resolve_effective_prompt(cfg)
 
         return cfg

@@ -40,11 +40,11 @@ Feature: 管理端變更稽核 (Audit Log)
         And 稽核 changed_fields 應含 "system_prompt"
 
     Scenario: PUT bot 留下稽核並補上版本作者
-        Given 一個 base_prompt 為 "舊" 的 bot 與版本 repository
+        Given 一個 bot_prompt 為 "舊" 的 bot 與版本 repository
         And bot 更新用例已注入稽核紀錄器
-        When 管理員 "admin-1" 將 bot base_prompt 改為 "新"
+        When 管理員 "admin-1" 將 bot bot_prompt 改為 "新"
         Then 應寫入 entity_type "bot" action "update" actor "admin-1" 的稽核
-        And 稽核 changed_fields 應含 "base_prompt"
+        And 稽核 changed_fields 應含 "bot_prompt"
         And 新建的設定版本 author_user_id 應為 "admin-1"
 
     Scenario: worker 建立、更新、刪除各留一筆稽核

@@ -19,7 +19,6 @@ SNAPSHOT_SCHEMA = 1
 
 # prompt 類欄位（第 0 層靜態檢查的施作對象）
 PROMPT_FIELDS = (
-    "base_prompt",
     "bot_prompt",
     "memory_extraction_prompt",
     "query_rewrite_extra_hint",

@@ -20,7 +20,6 @@ export const BOT_FIELD_LABELS: Record<string, string> = {
   is_active: "狀態",
   // 提示詞
   bot_prompt: "Bot 自訂指令",
-  base_prompt: "Base Prompt",
   memory_extraction_prompt: "記憶萃取提示詞",
   // LLM
   llm_provider: "模型供應商",
@@ -95,7 +94,6 @@ export const BOT_FIELD_LABELS: Record<string, string> = {
 /** 提示詞類長文字：簡述 / 紀錄只顯示字數增減，不顯示全文 */
 export const LONG_TEXT_FIELDS = new Set([
   "bot_prompt",
-  "base_prompt",
   "memory_extraction_prompt",
   "query_rewrite_extra_hint",
   "hyde_extra_hint",

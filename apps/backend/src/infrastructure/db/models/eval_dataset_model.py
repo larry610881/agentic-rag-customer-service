@@ -18,7 +18,7 @@ class EvalDatasetModel(Base):
     bot_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    target_prompt: Mapped[str] = mapped_column(String(50), nullable=False, default="base_prompt")
+    target_prompt: Mapped[str] = mapped_column(String(50), nullable=False, default="bot_prompt")
     default_assertions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     cost_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_platform_base: Mapped[bool] = mapped_column(

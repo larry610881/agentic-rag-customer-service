@@ -166,8 +166,7 @@ def _sources(score):
 
 def _bot(effort, *, mode="deep"):
     return Bot(
-        id=BotId(value="bot-e"), tenant_id="t1", name="E", base_prompt="p",
-        knowledge_base_ids=["kb-1"], mode=mode,
+        id=BotId(value="bot-e"), tenant_id="t1", name="E", knowledge_base_ids=["kb-1"], mode=mode,
         line_channel_secret="s", line_channel_access_token="t",
         llm_params=BotLLMParams(reasoning_effort=effort),
     )

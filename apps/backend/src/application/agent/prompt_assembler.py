@@ -75,22 +75,6 @@ def assemble(
     return inject_runtime_vars("\n\n".join(parts))
 
 
-def resolve_bot_layer(base_prompt: str = "", bot_prompt: str = "") -> str:
-    """把 bot 的兩個 prompt 欄位合成「bot 層」單一字串。
-
-    ``base_prompt`` 舊語意是「**取代**平台 system prompt」（程式碼寫成
-    ``bot.base_prompt or sys_cfg.system_prompt``），等於讓租戶在後台填一個字就能
-    關掉平台防護層。Issue #91 起它降級為 bot 層的前段：與 ``bot_prompt`` 同屬
-    租戶可編輯範圍，worker 命中時一起被 ``worker_prompt`` 取代，
-    **再也影響不到平台防護層**。
-
-    保留欄位而非刪除，是因為 prompt 發布閘門的版控、prompt 優化器的優化目標、
-    以及租戶變更稽核都建立在這個欄位上；降級即可達成安全性質，不必動那些功能。
-    """
-    parts = [p.strip() for p in (base_prompt, bot_prompt) if p and p.strip()]
-    return "\n\n".join(parts)
-
-
 def resolve_effective_prompt(
     cfg: dict[str, Any],
     channel_suffix: str = "",

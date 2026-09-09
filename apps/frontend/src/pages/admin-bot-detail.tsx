@@ -173,10 +173,8 @@ export default function AdminBotDetailPage() {
         <TabsContent value="prompt">
           <Card>
             <CardContent className="flex flex-col gap-6 pt-6">
-              <PromptField label="System Prompt (Override)" value={bot.base_prompt} />
               <PromptField label="Bot Prompt" value={bot.bot_prompt} />
-              {!bot.base_prompt &&
-                !bot.bot_prompt && (
+              {!bot.bot_prompt && (
                   <p className="text-muted-foreground">未設定任何 Prompt。</p>
                 )}
             </CardContent>

@@ -54,8 +54,7 @@ def _setup_web(
     mode: str = "deep",
 ):
     bot = Bot(
-        id=BotId(value="bot-dr"), tenant_id="t1", name="DR", base_prompt="p",
-        knowledge_base_ids=["kb-faq"], rerank_enabled=rerank, mode=mode,
+        id=BotId(value="bot-dr"), tenant_id="t1", name="DR", knowledge_base_ids=["kb-faq"], rerank_enabled=rerank, mode=mode,
     )
     worker = WorkerConfig(
         bot_id="bot-dr", name="門市服務查詢", worker_prompt="你是門市客服",

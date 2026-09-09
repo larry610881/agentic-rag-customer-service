@@ -45,7 +45,6 @@ def bot_with_eval(context, depth):
         id=BotId(value="bot-eval"),
         tenant_id="t1",
         name="eval bot",
-        base_prompt="提示詞",
         eval_depth=depth,
     )
     agent = AsyncMock()

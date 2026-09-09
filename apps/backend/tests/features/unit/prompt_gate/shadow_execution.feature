@@ -4,7 +4,7 @@ Feature: Config Override 影子執行與 test-mode 隔離
   trace 不落庫但回傳 nodes、guard 照跑）。
 
   Scenario: config_override 以 overlay 生效
-    Given 一個 base_prompt 為 "線上提示詞" 的 bot 與含 "草稿提示詞" 的 override 快照
+    Given 一個 bot_prompt 為 "線上提示詞" 的 bot 與含 "草稿提示詞" 的 override 快照
     When 以 config_override 執行影子對話
     Then agent 收到的 system prompt 含 "草稿提示詞"
     And bot repository 未被呼叫 save

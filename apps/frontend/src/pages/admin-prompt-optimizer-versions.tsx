@@ -165,7 +165,7 @@ function VersionCard({
   };
 
   const snapshotPrompt =
-    (detail?.config_snapshot?.base_prompt as string | undefined) ?? "";
+    (detail?.config_snapshot?.bot_prompt as string | undefined) ?? "";
   const gateOn = gateMode !== "off";
   const canForce =
     gateMode === "warn" &&
@@ -434,7 +434,7 @@ function VersionCard({
             <PromptDiff
               before={currentBasePrompt}
               after={snapshotPrompt}
-              title={`base_prompt：線上 vs v${version.version_no}`}
+              title={`bot_prompt：線上 vs v${version.version_no}`}
             />
           ) : (
             <Skeleton className="h-24 w-full" />
@@ -467,7 +467,7 @@ export default function AdminPromptOptimizerVersionsPage() {
   );
   const currentBasePrompt = useMemo(
     () =>
-      (currentDetail?.config_snapshot?.base_prompt as string | undefined) ??
+      (currentDetail?.config_snapshot?.bot_prompt as string | undefined) ??
       "",
     [currentDetail],
   );

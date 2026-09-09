@@ -87,7 +87,6 @@ class UpdateBotCommand:
     mcp_servers: object = _UNSET
     mcp_bindings: object = _UNSET
     max_tool_calls: object = _UNSET
-    base_prompt: object = _UNSET
     widget_enabled: object = _UNSET
     widget_allowed_origins: object = _UNSET
     widget_keep_history: object = _UNSET
@@ -172,7 +171,6 @@ class UpdateBotUseCase:
             "widget_enabled", "widget_keep_history",
             "widget_welcome_message", "widget_placeholder_text",
             "widget_greeting_animation",
-            "base_prompt",
             "memory_enabled", "memory_extraction_threshold",
             "memory_extraction_prompt",
             "busy_reply_message",

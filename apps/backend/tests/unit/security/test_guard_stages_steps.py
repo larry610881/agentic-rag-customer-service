@@ -425,8 +425,7 @@ def _spy_trace(ctx, uc):
 
 def _setup_bot(ctx, *, mode: str, is_attack: bool):
     ctx["bot"] = Bot(
-        id=BotId(value="bot-1"), tenant_id="t1", name="B", base_prompt="p",
-        knowledge_base_ids=["kb-1"], mode=mode,
+        id=BotId(value="bot-1"), tenant_id="t1", name="B", knowledge_base_ids=["kb-1"], mode=mode,
         line_channel_secret="s", line_channel_access_token="t",
     )
     ctx["guard"] = _guard_mock()

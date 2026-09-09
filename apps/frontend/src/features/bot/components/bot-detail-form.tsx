@@ -174,7 +174,6 @@ const botFormSchema = z.object({
     }),
   ),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
-  base_prompt: z.string().default(""),
   // Issue #66 / #70 — 推理模式（fast = 快速道 / deep = 深度道 / kb = 知識庫問答）
   mode: z.enum(["fast", "deep", "kb"]).default("deep"),
   // Issue #70 — 未命中話術（空 = 平台預設）；output_format=json 時須為合法 JSON
@@ -304,7 +303,6 @@ function buildFormValues(bot: Bot): DefaultValues<BotFormValues> {
     eval_depth: bot.eval_depth ?? "off",
     mcp_servers: bot.mcp_servers ?? [],
     max_tool_calls: bot.max_tool_calls ?? 5,
-    base_prompt: bot.base_prompt ?? "",
     mode: bot.mode ?? "deep",
     miss_reply: bot.miss_reply ?? "",
     output_format: bot.output_format ?? "text",
@@ -1629,43 +1627,12 @@ export function BotDetailForm({
             </p>
           </section>
 
-          {/* Issue #54 — 系統提示詞（base_prompt，受版控） */}
-          <section className="flex flex-col gap-4">
-            <h3 className="text-lg font-semibold">系統提示詞（受版控）</h3>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="bot-base-prompt">Base Prompt</Label>
-              <Textarea
-                id="bot-base-prompt"
-                {...register("base_prompt")}
-                rows={8}
-                placeholder="空白 = 使用系統預設提示詞"
-              />
-              <p className="text-xs text-muted-foreground">
-                每次變更會自動建立設定版本；閘門啟用（warn/block）時，
-                變更需在「Prompt 管理 → 版本與發布」送驗後發布。
-              </p>
-              <div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPlaygroundOpen(true)}
-                >
-                  對照測試（線上 vs 草稿）
-                </Button>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  此功能會消耗 token（約 2 則對話/次，計入租戶用量）
-                </span>
-              </div>
-            </div>
-          </section>
 
           <PlaygroundCompareDialog
             open={playgroundOpen}
             onOpenChange={setPlaygroundOpen}
             botId={bot.id}
             draftOverride={{
-              base_prompt: watch("base_prompt"),
               bot_prompt: watch("bot_prompt") ?? "",
               llm_params: {
                 temperature: Number(watch("temperature")),

@@ -44,7 +44,6 @@ def bot():
         id=BotId(value=BOT_ID),
         tenant_id=TENANT,
         name="測試 bot",
-        base_prompt="線上提示詞",
         memory_enabled=True,
         memory_extraction_threshold=1,
         eval_depth="L1+L2",
@@ -101,10 +100,10 @@ def _make_use_case(deps, prompt_guard=None):
     )
 
 
-@given("一個 base_prompt 為 \"線上提示詞\" 的 bot 與含 \"草稿提示詞\" 的 override 快照")
+@given("一個 bot_prompt 為 \"線上提示詞\" 的 bot 與含 \"草稿提示詞\" 的 override 快照")
 def override_snapshot(context, bot, deps):
     snap = take_snapshot(bot)
-    snap["base_prompt"] = "草稿提示詞"
+    snap["bot_prompt"] = "草稿提示詞"
     context["override"] = snap
     context["uc"] = _make_use_case(deps)
 
@@ -112,7 +111,7 @@ def override_snapshot(context, bot, deps):
 @given("一個屬於其他租戶的 bot")
 def foreign_bot(context, bot, deps):
     bot.tenant_id = "other-tenant"
-    context["override"] = {"base_prompt": "任意"}
+    context["override"] = {"bot_prompt": "任意"}
     context["uc"] = _make_use_case(deps)
 
 

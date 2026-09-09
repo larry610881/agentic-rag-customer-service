@@ -116,7 +116,7 @@ interface PlaygroundCompareDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   botId: string;
-  /** 草稿設定（受版控欄位的候選值，如 { base_prompt, bot_prompt, llm_params } ） */
+  /** 草稿設定（受版控欄位的候選值，如 { bot_prompt, llm_params } ） */
   draftOverride: Record<string, unknown>;
 }
 

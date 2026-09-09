@@ -38,7 +38,7 @@ def _fake_dataset(tenant_id: str):
         tenant_id=tenant_id,
         is_platform_base=False,
         bot_id="b1",
-        target_prompt="base_prompt",
+        target_prompt="bot_prompt",
         description="d",
         default_assertions=[],
         test_cases=[case],

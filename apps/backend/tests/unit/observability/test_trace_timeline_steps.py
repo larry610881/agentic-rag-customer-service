@@ -119,7 +119,7 @@ def root_span(context, ms):
 
 @given("一個有 2 則歷史訊息的既有對話與正常設定的 bot")
 def web_setup(context):
-    bot = Bot(id=BotId(value="bot-1"), tenant_id="t1", name="b", base_prompt="p")
+    bot = Bot(id=BotId(value="bot-1"), tenant_id="t1", name="b", bot_prompt="p")
     conv = Conversation(tenant_id="t1", bot_id="bot-1")
     conv.add_message("user", "先前問題")
     conv.add_message("assistant", "先前回答")

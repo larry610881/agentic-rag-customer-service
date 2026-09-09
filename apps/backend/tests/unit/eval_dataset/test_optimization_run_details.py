@@ -115,7 +115,7 @@ def setup_active_run(context):
     active_run = MagicMock()
     active_run.run_id = "run-001"
     active_run.tenant_id = "tenant-001"
-    active_run.target_field = "base_prompt"
+    active_run.target_field = "bot_prompt"
     active_run.bot_id = "bot-001"
     active_run.status = "running"
     active_run.baseline_score = 0.60

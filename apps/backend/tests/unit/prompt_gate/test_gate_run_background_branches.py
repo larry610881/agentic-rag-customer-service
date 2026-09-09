@@ -50,7 +50,7 @@ def _make_uc_and_ctx():
     version = BotConfigVersion(
         id="ver-1", tenant_id=TENANT, bot_id=BOT_ID, version_no=2,
         config_snapshot=take_snapshot(bot), status=STATUS_VALIDATING,
-        gate_run_id="run-1", changed_fields=["base_prompt"],
+        gate_run_id="run-1", changed_fields=["bot_prompt"],
     )
     run = PromptGateRun(
         id="run-1", tenant_id=TENANT, bot_id=BOT_ID,

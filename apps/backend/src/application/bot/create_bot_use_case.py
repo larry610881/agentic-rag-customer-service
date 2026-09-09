@@ -60,7 +60,6 @@ class CreateBotCommand:
     mcp_servers: list[dict] = field(default_factory=list)
     mcp_bindings: list[dict] = field(default_factory=list)
     max_tool_calls: int = 5
-    base_prompt: str = ""
     widget_enabled: bool = False
     widget_allowed_origins: list[str] = field(default_factory=list)
     widget_keep_history: bool = True
@@ -206,7 +205,6 @@ class CreateBotUseCase:
             widget_placeholder_text=command.widget_placeholder_text,
             widget_greeting_messages=list(command.widget_greeting_messages),
             widget_greeting_animation=command.widget_greeting_animation,
-            base_prompt=command.base_prompt,
             memory_enabled=command.memory_enabled,
             memory_extraction_threshold=command.memory_extraction_threshold,
             memory_extraction_prompt=command.memory_extraction_prompt,

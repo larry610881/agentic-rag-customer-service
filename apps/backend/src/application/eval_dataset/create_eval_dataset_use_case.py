@@ -12,7 +12,7 @@ class CreateEvalDatasetCommand:
     name: str
     bot_id: str | None = None
     description: str = ""
-    target_prompt: str = "base_prompt"
+    target_prompt: str = "bot_prompt"
     default_assertions: list[dict[str, Any]] | None = None
     cost_config: dict[str, Any] | None = None
     include_security: bool = True

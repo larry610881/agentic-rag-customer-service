@@ -96,7 +96,7 @@ def verify_summary(context):
 def _build_uc(context, *, questions, today_count=0, judge_raises=False):
     bot = Bot(
         id=BotId(value=BOT_ID), tenant_id=TENANT, name="b",
-        base_prompt="線上", gate_daily_limit=20, gate_budget_usd=100.0,
+        gate_daily_limit=20, gate_budget_usd=100.0,
     )
     bot_repo = AsyncMock(spec=BotRepository)
     bot_repo.find_by_id.return_value = bot
@@ -108,7 +108,6 @@ def _build_uc(context, *, questions, today_count=0, judge_raises=False):
     )
     cand_bot = Bot(
         id=BotId(value=BOT_ID), tenant_id=TENANT, name="b",
-        base_prompt="候選",
     )
     candidate = BotConfigVersion(
         id="ver-cand", tenant_id=TENANT, bot_id=BOT_ID, version_no=2,
@@ -151,7 +150,7 @@ class _FakeClient:
 
     async def chat(self, message, bot_id=None, config_override=None, **kw):
         # 依 override 回不同答案，讓 judge 有得比
-        flavor = (config_override or {}).get("base_prompt", "線上")
+        flavor = (config_override or {}).get("bot_prompt", "線上")
         return ChatResult(
             answer=f"[{flavor}] 回答：{message}",
             conversation_id="c", tool_calls=[], sources=[],
@@ -225,8 +224,8 @@ def run_background(context, monkeypatch):
     _run(
         context["uc"]._execute_background(
             run_id="run-1", tenant_id=TENANT, bot_id=BOT_ID,
-            baseline_snapshot={"base_prompt": "線上"},
-            candidate_snapshot={"base_prompt": "候選"},
+            baseline_snapshot={"bot_prompt": "線上"},
+            candidate_snapshot={"bot_prompt": "候選"},
             questions=["問題一", "問題二"],
             budget_usd=100.0, api_token="jwt", judge_api_key="",
         )

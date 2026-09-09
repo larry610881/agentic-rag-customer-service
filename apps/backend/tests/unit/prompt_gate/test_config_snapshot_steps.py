@@ -28,7 +28,6 @@ def _full_bot() -> Bot:
     bot = Bot(
         tenant_id="t1",
         name="測試 bot",
-        base_prompt="現行提示詞 {today}",
         bot_prompt="附加指令",
         line_channel_secret="secret-abc",
         line_channel_access_token="token-xyz",
@@ -64,17 +63,17 @@ def bot_with_mcp(context):
     context["bot"] = bot
 
 
-@given('一份 base_prompt 為 "舊版提示詞" 且 temperature 為 0.9 的快照')
+@given('一份 bot_prompt 為 "舊版提示詞" 且 temperature 為 0.9 的快照')
 def snapshot_with_changes(context):
     snap = take_snapshot(context["bot"])
-    snap["base_prompt"] = "舊版提示詞"
+    snap["bot_prompt"] = "舊版提示詞"
     snap["llm_params"]["temperature"] = 0.9
     context["snapshot"] = snap
 
 
-@given("一份只含 base_prompt 的部分快照（模擬舊 schema 版本）")
+@given("一份只含 bot_prompt 的部分快照（模擬舊 schema 版本）")
 def partial_snapshot(context):
-    context["snapshot"] = {"base_prompt": "舊 schema 提示詞"}
+    context["snapshot"] = {"bot_prompt": "舊 schema 提示詞"}
 
 
 @given("一份含相同 registry_id 的 mcp_bindings 快照")
@@ -90,13 +89,13 @@ def do_snapshot(context):
     context["snapshot"] = take_snapshot(context["bot"])
 
 
-@when("修改 base_prompt 與 temperature 後比較新舊快照")
+@when("修改 bot_prompt 與 temperature 後比較新舊快照")
 def do_diff(context):
     from dataclasses import replace
 
     bot = context["bot"]
     old = take_snapshot(bot)
-    bot.base_prompt = "新提示詞"
+    bot.bot_prompt = "新提示詞"
     bot.llm_params = replace(bot.llm_params, temperature=0.7)
     context["changed"] = diff_snapshots(old, take_snapshot(bot))
 
@@ -110,7 +109,7 @@ def do_apply(context):
 def verify_included(context):
     snap = context["snapshot"]
     for f in (
-        "base_prompt", "bot_prompt", "llm_provider", "llm_model",
+        "bot_prompt", "llm_provider", "llm_model",
         "llm_params", "rag_retrieval_modes", "rerank_enabled",
         "enabled_tools", "max_tool_calls", "knowledge_base_ids",
         "tool_configs", "mcp_bindings",
@@ -154,17 +153,17 @@ def verify_mcp_no_env(context):
         assert "env_values" not in b
 
 
-@then("changed_fields 恰為 base_prompt 與 llm_params.temperature")
+@then("changed_fields 恰為 bot_prompt 與 llm_params.temperature")
 def verify_changed_fields(context):
     assert sorted(context["changed"]) == [
-        "base_prompt", "llm_params.temperature",
+        "bot_prompt", "llm_params.temperature",
     ]
 
 
-@then('Bot 的 base_prompt 為 "舊版提示詞" 且 temperature 為 0.9')
+@then('Bot 的 bot_prompt 為 "舊版提示詞" 且 temperature 為 0.9')
 def verify_applied(context):
     bot = context["bot"]
-    assert bot.base_prompt == "舊版提示詞"
+    assert bot.bot_prompt == "舊版提示詞"
     assert bot.llm_params.temperature == 0.9
 
 
@@ -175,15 +174,15 @@ def verify_credentials_intact(context):
     assert bot.line_channel_access_token == "token-xyz"
 
 
-@then("Bot 的 base_prompt 為快照值")
+@then("Bot 的 bot_prompt 為快照值")
 def verify_partial_applied(context):
-    assert context["bot"].base_prompt == "舊 schema 提示詞"
+    assert context["bot"].bot_prompt == "舊 schema 提示詞"
 
 
 @then("其餘白名單欄位維持現值")
 def verify_others_kept(context):
     bot = context["bot"]
-    assert bot.bot_prompt == "附加指令"
+    # bot_prompt 本身在快照裡，不屬於「其餘欄位」
     assert bot.knowledge_base_ids == ["kb-1"]
     assert bot.llm_params.temperature == 0.3
 
@@ -191,8 +190,9 @@ def verify_others_kept(context):
 @then("回報 skipped_fields 列出快照缺少的欄位")
 def verify_skipped(context):
     result = context["result"]
-    assert result.applied == ["base_prompt"]
-    assert "bot_prompt" in result.skipped
+    assert result.applied == ["bot_prompt"]
+    # bot_prompt 在快照裡（applied），被略過的是快照沒有的其他 prompt 欄位
+    assert "memory_extraction_prompt" in result.skipped
     assert "llm_params" in result.skipped
     assert "mcp_bindings" in result.skipped
 

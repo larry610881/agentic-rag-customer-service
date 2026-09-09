@@ -148,7 +148,6 @@ class SQLAlchemyBotRepository(BotRepository):
             gate_daily_limit=model.gate_daily_limit,
             gate_budget_usd=model.gate_budget_usd,
             gate_excluded_cases=list(model.gate_excluded_cases or []),
-            base_prompt=model.base_prompt or "",
             fab_icon_url=model.fab_icon_url or "",
             widget_enabled=model.widget_enabled if model.widget_enabled is not None else False,
             widget_allowed_origins=list(model.widget_allowed_origins or []),
@@ -288,7 +287,6 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.gate_daily_limit = bot.gate_daily_limit
                 existing.gate_budget_usd = bot.gate_budget_usd
                 existing.gate_excluded_cases = list(bot.gate_excluded_cases or [])
-                existing.base_prompt = bot.base_prompt
                 existing.fab_icon_url = bot.fab_icon_url
                 existing.widget_enabled = bot.widget_enabled
                 existing.widget_allowed_origins = bot.widget_allowed_origins
@@ -385,7 +383,6 @@ class SQLAlchemyBotRepository(BotRepository):
                     gate_daily_limit=bot.gate_daily_limit,
                     gate_budget_usd=bot.gate_budget_usd,
                     gate_excluded_cases=list(bot.gate_excluded_cases or []),
-                    base_prompt=bot.base_prompt,
                     fab_icon_url=bot.fab_icon_url,
                     widget_enabled=bot.widget_enabled,
                     widget_allowed_origins=bot.widget_allowed_origins,

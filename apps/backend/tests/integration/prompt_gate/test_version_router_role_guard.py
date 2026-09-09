@@ -31,7 +31,7 @@ def test_user_role_forbidden_on_version_writes(client, app):
 
     # 6 個寫入/驗證端點對 role=user 一律 403（在 use case 之前就擋）
     assert client.post(
-        base, json={"changes": {"base_prompt": "x"}}, headers=user
+        base, json={"changes": {"bot_prompt": "x"}}, headers=user
     ).status_code == 403
     assert client.post(
         f"{base}/some-id/publish", headers=user
@@ -67,7 +67,7 @@ def test_tenant_admin_can_create_version(client, app):
     admin = _hdr(app, tid, "tenant_admin")
     resp = client.post(
         f"/api/v1/bots/{bot_id}/config-versions",
-        json={"changes": {"base_prompt": "管理員版"}},
+        json={"changes": {"bot_prompt": "管理員版"}},
         headers=admin,
     )
     assert resp.status_code == 201, resp.text

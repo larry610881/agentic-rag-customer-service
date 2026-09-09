@@ -69,8 +69,7 @@ def _spy_trace(context, uc):
 
 def _setup_web(context, *, mode, score, rerank=False, memory=False, miss_reply=""):
     bot = Bot(
-        id=BotId(value="bot-kb"), tenant_id="t1", name="KB", base_prompt="p",
-        knowledge_base_ids=["kb-1"], rerank_enabled=rerank, mode=mode,
+        id=BotId(value="bot-kb"), tenant_id="t1", name="KB", knowledge_base_ids=["kb-1"], rerank_enabled=rerank, mode=mode,
         memory_enabled=memory, memory_extraction_threshold=1,
         miss_reply=miss_reply,
     )

@@ -82,8 +82,13 @@ describe("describeBotChange", () => {
       describeBotChange({ field: "bot_prompt", before: "x".repeat(20), after: "y".repeat(140) }),
     ).toBe("Bot 自訂指令：已修改（+120 字）");
     expect(
-      describeBotChange({ field: "base_prompt", before_len: 100, after_len: 70, changed: true }),
-    ).toBe("Base Prompt：已修改（−30 字）");
+      describeBotChange({
+        field: "memory_extraction_prompt",
+        before_len: 100,
+        after_len: 70,
+        changed: true,
+      }),
+    ).toBe("記憶萃取提示詞：已修改（−30 字）");
   });
 });
 

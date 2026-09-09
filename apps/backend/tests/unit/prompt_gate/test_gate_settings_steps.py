@@ -82,7 +82,7 @@ def _build_uc(
 ):
     bot = Bot(
         id=BotId(value=BOT_ID), tenant_id=TENANT, name="b",
-        base_prompt="舊", gate_mode=gate_mode, gate_daily_limit=20,
+        gate_mode=gate_mode, gate_daily_limit=20,
         gate_budget_usd=budget, gate_repeats=3,
     )
     bot_repo = AsyncMock(spec=BotRepository)
@@ -96,7 +96,7 @@ def _build_uc(
     version = BotConfigVersion(
         id=VERSION_ID, tenant_id=TENANT, bot_id=BOT_ID, version_no=2,
         config_snapshot=take_snapshot(bot), status=STATUS_DRAFT,
-        changed_fields=["base_prompt"],
+        changed_fields=["bot_prompt"],
     )
     version_repo = AsyncMock(spec=BotConfigVersionRepository)
     version_repo.find_by_id.return_value = version

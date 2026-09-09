@@ -85,8 +85,7 @@ def _setup_web(
     model="", miss_reply="", schema=None, text_field="answer", replies=None,
 ):
     bot = Bot(
-        id=BotId(value="bot-so"), tenant_id="t1", name="SO", base_prompt="p",
-        knowledge_base_ids=["kb-1"], mode=mode, output_format=output_format,
+        id=BotId(value="bot-so"), tenant_id="t1", name="SO", knowledge_base_ids=["kb-1"], mode=mode, output_format=output_format,
         output_schema=schema, miss_reply=miss_reply, llm_provider=provider,
         llm_model=model, output_text_field=text_field,
     )

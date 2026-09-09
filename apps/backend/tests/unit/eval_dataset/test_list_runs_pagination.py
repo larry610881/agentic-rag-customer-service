@@ -19,7 +19,7 @@ def _run(coro):
 def _active(run_id):
     return SimpleNamespace(
         run_id=run_id, tenant_id="t1", dataset_id="d", dataset_name="n",
-        target_field="base_prompt", bot_id="b", status="running",
+        target_field="bot_prompt", bot_id="b", status="running",
         baseline_score=0.0, best_score=0.0, current_iteration=1,
         max_iterations=20, total_api_calls=0, stopped_reason="",
         started_at=datetime.now(timezone.utc), completed_at=None,
@@ -28,7 +28,7 @@ def _active(run_id):
 
 def _db(run_id):
     return {
-        "run_id": run_id, "tenant_id": "t1", "target_field": "base_prompt",
+        "run_id": run_id, "tenant_id": "t1", "target_field": "bot_prompt",
         "bot_id": "b", "run_type": "optimization", "baseline_score": 0.0,
         "best_score": 0.0, "total_iterations": 3,
         "started_at": datetime.now(timezone.utc),

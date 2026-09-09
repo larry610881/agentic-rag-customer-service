@@ -28,7 +28,7 @@ class EvalDataset:
     bot_id: str | None = None
     name: str = ""
     description: str = ""
-    target_prompt: str = "base_prompt"
+    target_prompt: str = "bot_prompt"
     default_assertions: list[dict[str, Any]] = field(default_factory=list)
     cost_config: dict[str, Any] = field(default_factory=dict)
     include_security: bool = True

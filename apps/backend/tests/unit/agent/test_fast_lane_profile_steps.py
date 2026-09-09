@@ -59,8 +59,7 @@ def _sources(score):
 
 def _setup_web(context, *, mode, score, rerank=False, worker_direct=None):
     bot = Bot(
-        id=BotId(value="bot-p"), tenant_id="t1", name="P", base_prompt="p",
-        knowledge_base_ids=["kb-1"], rerank_enabled=rerank, mode=mode,
+        id=BotId(value="bot-p"), tenant_id="t1", name="P", knowledge_base_ids=["kb-1"], rerank_enabled=rerank, mode=mode,
     )
     workers = []
     if worker_direct is not None:

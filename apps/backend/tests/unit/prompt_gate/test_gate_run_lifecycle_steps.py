@@ -95,7 +95,7 @@ def _stores(context, bot):
     version = BotConfigVersion(
         id="ver-1", tenant_id=TENANT, bot_id=BOT_ID, version_no=2,
         config_snapshot=take_snapshot(bot), status=STATUS_VALIDATING,
-        gate_run_id="run-1", changed_fields=["base_prompt"],
+        gate_run_id="run-1", changed_fields=["bot_prompt"],
     )
     run = PromptGateRun(
         id="run-1", tenant_id=TENANT, bot_id=BOT_ID,
@@ -220,7 +220,7 @@ def _publish_setup(context, *, gate_mode, status, gate_verdict):
     version = BotConfigVersion(
         id="ver-1", tenant_id=TENANT, bot_id=BOT_ID, version_no=2,
         config_snapshot=take_snapshot(bot), status=status,
-        gate_verdict=gate_verdict, changed_fields=["base_prompt"],
+        gate_verdict=gate_verdict, changed_fields=["bot_prompt"],
     )
     bot_repo = AsyncMock(spec=BotRepository)
     bot_repo.find_by_id.return_value = bot

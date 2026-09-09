@@ -210,9 +210,9 @@ def sys_prompt_update(context, actor, text):
 # ── bot ──
 
 
-@given(parsers.parse('一個 base_prompt 為 "{prompt}" 的 bot 與版本 repository'))
+@given(parsers.parse('一個 bot_prompt 為 "{prompt}" 的 bot 與版本 repository'))
 def bot_with_version_repo(context, prompt):
-    bot = Bot(id=BotId(value="bot-1"), tenant_id="t1", name="b", base_prompt=prompt)
+    bot = Bot(id=BotId(value="bot-1"), tenant_id="t1", name="b", bot_prompt=prompt)
     bot_repo = AsyncMock()
     bot_repo.find_by_id = AsyncMock(return_value=bot)
     bot_repo.save = AsyncMock()
@@ -233,10 +233,10 @@ def bot_uc(context):
     )
 
 
-@when(parsers.parse('管理員 "{actor}" 將 bot base_prompt 改為 "{prompt}"'))
+@when(parsers.parse('管理員 "{actor}" 將 bot bot_prompt 改為 "{prompt}"'))
 def bot_update(context, actor, prompt):
     _run(context["uc"].execute(UpdateBotCommand(
-        bot_id="bot-1", base_prompt=prompt, actor_user_id=actor,
+        bot_id="bot-1", bot_prompt=prompt, actor_user_id=actor,
     )))
 
 

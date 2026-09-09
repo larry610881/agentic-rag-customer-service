@@ -198,7 +198,7 @@ class _SpyRecorder:
 
 @given("一個正常設定的 bot 與已注入的指紋紀錄器")
 def web_setup(context):
-    bot = Bot(id=BotId(value="bot-1"), tenant_id="t1", name="b", base_prompt="p")
+    bot = Bot(id=BotId(value="bot-1"), tenant_id="t1", name="b", bot_prompt="p")
     agent = AsyncMock()
     agent.process_message.return_value = AgentResponse(answer="回答")
     conv_repo = AsyncMock()

@@ -62,11 +62,6 @@ def _given_bot(context, text):
     context["bot_prompt"] = text
 
 
-@given(parsers.parse('一個 bot 其 base_prompt 為 "{text}"'))
-def _given_bot_base(context, text):
-    context["base_prompt"] = text
-
-
 @given(parsers.parse('一個 worker "{name}" 其 worker_prompt 為 "{text}"'))
 def _given_worker(context, name, text):
     context["worker"] = _Worker(name=name, worker_prompt=text)
@@ -86,16 +81,18 @@ def _when_assemble(context):
 
 @when("解析該 bot 的對話設定")
 def _when_resolve_cfg(context):
-    from src.application.agent.prompt_assembler import resolve_bot_layer
-
     # 分層解析後兩層必須分開存放，不得提前組裝成單一字串
     context["cfg"] = {
         "system_prompt": context["system_prompt"],
-        "bot_prompt": resolve_bot_layer(
-            base_prompt=context.get("base_prompt", ""),
-            bot_prompt=context["bot_prompt"],
-        ),
+        "bot_prompt": context["bot_prompt"],
     }
+
+
+@when("檢視 bot 可設定的 prompt 欄位")
+def _when_inspect_bot_fields(context):
+    from src.domain.bot.entity import Bot
+
+    context["bot_fields"] = set(getattr(Bot, "__dataclass_fields__", {}).keys())
 
 
 @when(parsers.parse('worker "{name}" 命中並覆寫設定'))
@@ -212,3 +209,10 @@ def _then_starts_with_security_clause(context):
     from src.domain.platform.prompt_defaults import SECURITY_CLAUSE
 
     assert context["effective"].startswith(SECURITY_CLAUSE)
+
+
+@then(parsers.parse('不應存在名為 "{field}" 的欄位'))
+def _then_no_field(context, field):
+    assert field not in context["bot_fields"], (
+        f"Bot 仍有 {field} 欄位，租戶可藉此取代平台防護層"
+    )

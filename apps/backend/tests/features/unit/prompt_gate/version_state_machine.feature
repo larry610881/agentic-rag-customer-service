@@ -4,14 +4,14 @@ Feature: Bot 設定版本狀態機
 
   Scenario: 建立 draft 版本（版號遞增 + changed_fields）
     Given Bot 已有線上版本 v1
-    When 修改 base_prompt 建立新 draft
+    When 修改 bot_prompt 建立新 draft
     Then 產生 version_no 為 2 的 draft 版本
-    And draft 的 changed_fields 包含 base_prompt
+    And draft 的 changed_fields 包含 bot_prompt
     And 線上版本仍為 v1
 
   Scenario: 靜態檢查失敗不產生版本
     Given Bot 已有線上版本 v1
-    When 以含 injection 句式的 base_prompt 建立 draft
+    When 以含 injection 句式的 bot_prompt 建立 draft
     Then 建立被拒絕且錯誤含違規明細
     And 不產生任何新版本
 

@@ -40,7 +40,6 @@ PLATFORM_ACTOR_LABEL = "平台"
 # 只回字數的長文字欄位（與 config_snapshot.PROMPT_FIELDS 的提示詞類一致）
 LONG_TEXT_FIELDS = frozenset({
     "bot_prompt",
-    "base_prompt",
     "memory_extraction_prompt",
     "worker_prompt",  # Issue #77：worker 列
 })

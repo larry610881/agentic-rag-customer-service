@@ -26,7 +26,7 @@ def test_cross_tenant_bot_access_is_404(client, create_tenant_login):
     # 攻擊者竄改 → 404
     put = client.put(
         f"/api/v1/bots/{bot_id}",
-        json={"base_prompt": "hijacked"},
+        json={"bot_prompt": "hijacked"},
         headers=attacker,
     )
     assert put.status_code == 404, put.text
@@ -38,4 +38,4 @@ def test_cross_tenant_bot_access_is_404(client, create_tenant_login):
     # 擁有者仍可正常讀取
     owner_get = client.get(f"/api/v1/bots/{bot_id}", headers=owner)
     assert owner_get.status_code == 200, owner_get.text
-    assert owner_get.json()["base_prompt"] != "hijacked"
+    assert owner_get.json()["bot_prompt"] != "hijacked"

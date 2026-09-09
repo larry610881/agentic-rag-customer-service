@@ -108,7 +108,6 @@ export interface Bot {
   guard_stages?: string[] | null;
   mcp_servers: McpServerConfig[];
   max_tool_calls: number;
-  base_prompt: string;
   fab_icon_url: string;
   widget_enabled: boolean;
   widget_allowed_origins: string[];
@@ -186,7 +185,6 @@ export interface CreateBotRequest {
   guard_stages?: string[] | null;
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
-  base_prompt?: string;
   widget_enabled?: boolean;
   widget_allowed_origins?: string[];
   widget_keep_history?: boolean;
@@ -260,7 +258,6 @@ export interface UpdateBotRequest {
   guard_stages?: string[] | null;
   mcp_servers?: McpServerConfig[];
   max_tool_calls?: number;
-  base_prompt?: string;
   widget_enabled?: boolean;
   widget_allowed_origins?: string[];
   widget_keep_history?: boolean;

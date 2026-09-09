@@ -26,7 +26,7 @@ def _req(**kw):
 
 @pytest.mark.parametrize("shadow_kw", [
     {"test_mode": True},
-    {"config_override": {"base_prompt": "x"}},
+    {"config_override": {"bot_prompt": "x"}},
     {"history_override": [{"role": "user", "content": "x"}]},
 ])
 def test_shadow_without_eval_marker_forbidden(shadow_kw):
@@ -37,7 +37,7 @@ def test_shadow_without_eval_marker_forbidden(shadow_kw):
 
 @pytest.mark.parametrize("shadow_kw", [
     {"test_mode": True},
-    {"config_override": {"base_prompt": "x"}},
+    {"config_override": {"bot_prompt": "x"}},
 ])
 def test_shadow_with_eval_marker_allowed(shadow_kw):
     ctx = UsageContext(request_type="eval_gate")
@@ -76,7 +76,7 @@ from src.interfaces.api.agent_router import _effective_test_mode  # noqa: E402
 
 
 def test_config_override_forces_test_mode():
-    assert _effective_test_mode(_req(config_override={"base_prompt": "x"})) is True
+    assert _effective_test_mode(_req(config_override={"bot_prompt": "x"})) is True
 
 
 def test_history_override_forces_test_mode():

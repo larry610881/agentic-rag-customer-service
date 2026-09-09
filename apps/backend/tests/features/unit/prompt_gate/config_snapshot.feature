@@ -18,21 +18,21 @@ Feature: Bot 設定快照與 Overlay 回朔合併
 
   Scenario: changed_fields 反映兩份快照的差異
     Given 一個完整設定的 Bot（含憑證與 widget 外觀欄位）
-    When 修改 base_prompt 與 temperature 後比較新舊快照
-    Then changed_fields 恰為 base_prompt 與 llm_params.temperature
+    When 修改 bot_prompt 與 temperature 後比較新舊快照
+    Then changed_fields 恰為 bot_prompt 與 llm_params.temperature
 
   Scenario: Overlay 套用快照到 Bot
     Given 一個完整設定的 Bot（含憑證與 widget 外觀欄位）
-    And 一份 base_prompt 為 "舊版提示詞" 且 temperature 為 0.9 的快照
+    And 一份 bot_prompt 為 "舊版提示詞" 且 temperature 為 0.9 的快照
     When 將快照 overlay 套用到該 Bot
-    Then Bot 的 base_prompt 為 "舊版提示詞" 且 temperature 為 0.9
+    Then Bot 的 bot_prompt 為 "舊版提示詞" 且 temperature 為 0.9
     And Bot 的憑證欄位維持原值
 
   Scenario: Overlay 對快照缺少的欄位保留現值
     Given 一個完整設定的 Bot（含憑證與 widget 外觀欄位）
-    And 一份只含 base_prompt 的部分快照（模擬舊 schema 版本）
+    And 一份只含 bot_prompt 的部分快照（模擬舊 schema 版本）
     When 將快照 overlay 套用到該 Bot
-    Then Bot 的 base_prompt 為快照值
+    Then Bot 的 bot_prompt 為快照值
     And 其餘白名單欄位維持現值
     And 回報 skipped_fields 列出快照缺少的欄位
 

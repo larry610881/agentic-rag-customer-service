@@ -28,7 +28,7 @@ def _run(coro):
 def _dataset():
     return Dataset(
         metadata=DatasetMetadata(
-            tenant_id="t1", bot_id="b1", target_prompt="base_prompt",
+            tenant_id="t1", bot_id="b1", target_prompt="bot_prompt",
             agent_mode="react",
             cost_config=CostConfigData(),
         ),
@@ -61,7 +61,7 @@ def test_write_prompt_restores_best_when_mutate_raises():
 
     cfg = OptimizationConfig(
         target=PromptTarget(
-            level="bot", field="base_prompt", bot_id="b1", tenant_id="t1"
+            level="bot", field="bot_prompt", bot_id="b1", tenant_id="t1"
         ),
         max_iterations=3, patience=2, budget=200,
     )

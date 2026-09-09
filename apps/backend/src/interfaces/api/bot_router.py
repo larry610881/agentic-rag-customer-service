@@ -156,7 +156,6 @@ class CreateBotRequest(BaseModel):
     mcp_servers: list[dict[str, Any]] = []
     mcp_bindings: list[dict[str, Any]] = []
     max_tool_calls: int = 5
-    base_prompt: str = ""
     widget_enabled: bool = False
     widget_allowed_origins: list[str] = []
     widget_keep_history: bool = True
@@ -224,7 +223,6 @@ class UpdateBotRequest(BaseModel):
     mcp_servers: list[dict[str, Any]] | None = None
     mcp_bindings: list[dict[str, Any]] | None = None
     max_tool_calls: int | None = None
-    base_prompt: str | None = None
     widget_enabled: bool | None = None
     widget_allowed_origins: list[str] | None = None
     widget_keep_history: bool | None = None
@@ -295,7 +293,6 @@ class BotResponse(BaseModel):
     mcp_servers: list[dict[str, Any]]
     mcp_bindings: list[dict[str, Any]]
     max_tool_calls: int
-    base_prompt: str
     fab_icon_url: str
     widget_enabled: bool
     widget_allowed_origins: list[str]
@@ -388,7 +385,6 @@ def _to_response(bot) -> BotResponse:
             for b in bot.mcp_bindings
         ],
         max_tool_calls=bot.max_tool_calls,
-        base_prompt=bot.base_prompt,
         fab_icon_url=bot.fab_icon_url,
         widget_enabled=bot.widget_enabled,
         widget_allowed_origins=bot.widget_allowed_origins,
@@ -544,7 +540,6 @@ async def create_bot(
             widget_placeholder_text=body.widget_placeholder_text,
             widget_greeting_messages=body.widget_greeting_messages,
             widget_greeting_animation=body.widget_greeting_animation,
-            base_prompt=body.base_prompt,
             memory_enabled=body.memory_enabled,
             memory_extraction_threshold=body.memory_extraction_threshold,
             memory_extraction_prompt=body.memory_extraction_prompt,

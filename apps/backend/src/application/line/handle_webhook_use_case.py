@@ -21,7 +21,6 @@ from src.application.agent.output_format import (
 )
 from src.application.agent.prompt_assembler import (
     inject_runtime_vars,
-    resolve_bot_layer,
     resolve_effective_prompt,
 )
 from src.application.agent.send_message_use_case import (
@@ -692,9 +691,7 @@ class HandleWebhookUseCase:
         # ── Worker Routing（Subagent 分流；與 Web path 一致） ──
         # 預設用 bot 本體設定。Issue #91：這個變數在組裝前只代表「bot 層」，
         # 平台防護層在下方 assemble 時才接上，worker 覆寫也只換這一層。
-        system_prompt = resolve_bot_layer(
-            base_prompt=bot.base_prompt, bot_prompt=bot.bot_prompt
-        ) or None
+        system_prompt = bot.bot_prompt or None
         enabled_tools = bot.enabled_tools
         kb_ids = bot.knowledge_base_ids
         kb_id = bot.knowledge_base_ids[0] if bot.knowledge_base_ids else ""

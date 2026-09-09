@@ -69,14 +69,10 @@ Feature: Prompt 分層 (System 防護層 / Bot 層 / 通路後綴)
         Then 設定的 system 層應為 "平台防護規則"
         And 設定的 bot 層應為 "你是烘焙看板助理"
 
-    Scenario: 租戶的 base_prompt 不再能取代平台防護層，只是 bot 層的一部分
+    Scenario: bot 已無任何可以取代平台防護層的欄位
         Given 平台防護層為 "平台防護規則"
-        And 一個 bot 其 base_prompt 為 "我自己的系統提示"
-        And 一個 bot 其 bot_prompt 為 "你是烘焙看板助理"
-        When 解析該 bot 的對話設定
-        Then 設定的 system 層應為 "平台防護規則"
-        And 設定的 bot 層應包含 "我自己的系統提示"
-        And 設定的 bot 層應包含 "你是烘焙看板助理"
+        When 檢視 bot 可設定的 prompt 欄位
+        Then 不應存在名為 "base_prompt" 的欄位
 
     # --- worker 覆寫：只換 bot 層 ---
 

@@ -26,7 +26,7 @@ def test_import_strips_default_assertions_from_case(monkeypatch):
 
     dataset = Dataset(
         metadata=DatasetMetadata(
-            tenant_id="t1", bot_id="b1", target_prompt="base_prompt",
+            tenant_id="t1", bot_id="b1", target_prompt="bot_prompt",
             agent_mode="react", cost_config=CostConfigData(),
         ),
         default_assertions=(default_a, default_b),

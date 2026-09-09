@@ -39,7 +39,7 @@ CONFIG_CHANGE_FIELD_GROUPS: dict[str, tuple[str, ...]] = {
         "frequency_penalty",
     ),
     GROUP_PROMPT: (
-        "bot_prompt", "base_prompt", "worker_prompt", "memory_extraction_prompt",
+        "bot_prompt", "worker_prompt", "memory_extraction_prompt",
         "query_rewrite_extra_hint", "hyde_extra_hint", "miss_reply",
     ),
     GROUP_KNOWLEDGE: (
@@ -74,7 +74,7 @@ GUARD_SETTINGS_ENTITY = "guard_settings"
 
 # 通知內容只顯示字數、不顯示全文的欄位
 LONG_TEXT_FIELDS: frozenset[str] = frozenset({
-    "bot_prompt", "base_prompt", "worker_prompt", "memory_extraction_prompt",
+    "bot_prompt", "worker_prompt", "memory_extraction_prompt",
     "query_rewrite_extra_hint", "hyde_extra_hint", "miss_reply",
 })
 
@@ -92,7 +92,6 @@ FIELD_LABELS: dict[str, str] = {
     "max_tokens": "最大輸出 token",
     "reasoning_effort": "推理強度",
     "bot_prompt": "機器人提示詞",
-    "base_prompt": "基礎提示詞",
     "worker_prompt": "worker 提示詞",
     "memory_extraction_prompt": "記憶萃取提示詞",
     "miss_reply": "未命中話術",

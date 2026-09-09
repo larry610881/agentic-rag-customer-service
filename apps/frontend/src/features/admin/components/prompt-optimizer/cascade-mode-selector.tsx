@@ -15,8 +15,7 @@ interface CascadeModeSelectorProps {
 }
 
 const TARGET_FIELDS = [
-  { value: "base_prompt", label: "基礎 Prompt" },
-  { value: "system_prompt", label: "系統 Prompt" },
+  { value: "bot_prompt", label: "Bot Prompt" },
 ] as const;
 
 export function CascadeModeSelector({

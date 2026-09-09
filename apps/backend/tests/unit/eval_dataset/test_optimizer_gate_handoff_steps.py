@@ -76,14 +76,14 @@ class _RecordingClient:
 # ─── 影子 client ───
 
 
-@given('一個 target_field 為 base_prompt 的影子 client 與候選 prompt "候選 A"')
+@given('一個 target_field 為 bot_prompt 的影子 client 與候選 prompt "候選 A"')
 def shadow_client(context):
     inner = _RecordingClient()
-    store = {"base_prompt": "候選 A"}
+    store = {"bot_prompt": "候選 A"}
     context["inner"] = inner
     context["store"] = store
     context["shadow"] = _ShadowAPIClient(
-        inner, target_field="base_prompt", prompt_store=store
+        inner, target_field="bot_prompt", prompt_store=store
     )
 
 
@@ -94,21 +94,21 @@ def shadow_chat(context):
 
 @when("候選 prompt 更新為 \"候選 B\" 後再發送測試問題")
 def shadow_chat_updated(context):
-    context["store"]["base_prompt"] = "候選 B"
+    context["store"]["bot_prompt"] = "候選 B"
     _run(context["shadow"].chat(message="測試", bot_id=BOT_ID))
 
 
 @then("底層 chat 收到 config_override 含 \"候選 A\" 且 test_mode 為 true")
 def verify_shadow_call(context):
     call = context["inner"].calls[-1]
-    assert call["config_override"] == {"base_prompt": "候選 A"}
+    assert call["config_override"] == {"bot_prompt": "候選 A"}
     assert call["test_mode"] is True
 
 
 @then("底層 chat 收到 config_override 含 \"候選 B\"")
 def verify_shadow_updated(context):
     call = context["inner"].calls[-1]
-    assert call["config_override"] == {"base_prompt": "候選 B"}
+    assert call["config_override"] == {"bot_prompt": "候選 B"}
 
 
 # ─── runner history_override ───
@@ -203,7 +203,7 @@ def improved_result(context):
     _make_start_uc(context, factory=factory)
     context["kwargs"] = {
         "tenant_id": TENANT, "bot_id": BOT_ID,
-        "target_field": "base_prompt",
+        "target_field": "bot_prompt",
         "best_prompt": "優化後", "initial_prompt": "原始",
         "improved": True, "run_id": "run-1",
     }
@@ -222,7 +222,7 @@ def not_improved_result(context):
     _make_start_uc(context, factory=factory)
     context["kwargs"] = {
         "tenant_id": TENANT, "bot_id": BOT_ID,
-        "target_field": "base_prompt",
+        "target_field": "bot_prompt",
         "best_prompt": "原始", "initial_prompt": "原始",
         "improved": False, "run_id": "run-1",
     }
@@ -239,7 +239,7 @@ def failing_factory_result(context):
     _make_start_uc(context, factory=factory)
     context["kwargs"] = {
         "tenant_id": TENANT, "bot_id": BOT_ID,
-        "target_field": "base_prompt",
+        "target_field": "bot_prompt",
         "best_prompt": "優化後", "initial_prompt": "原始",
         "improved": True, "run_id": "run-1",
     }
@@ -260,9 +260,9 @@ def verify_draft_created(context):
     assert cmd.source_run_id == "run-1"
 
 
-@then("draft 的變更欄位包含 base_prompt")
+@then("draft 的變更欄位包含 bot_prompt")
 def verify_draft_changes(context):
-    assert "base_prompt" in context["created"][0].changes
+    assert "bot_prompt" in context["created"][0].changes
 
 
 @then("不建立任何版本")
@@ -282,7 +282,7 @@ def verify_fail_open(context):
 def _iteration(tenant_id=TENANT):
     return SimpleNamespace(
         iteration=3, tenant_id=tenant_id, bot_id=BOT_ID,
-        target_field="base_prompt", prompt_snapshot="歷史 prompt",
+        target_field="bot_prompt", prompt_snapshot="歷史 prompt",
         score=0.85,
     )
 
@@ -294,7 +294,7 @@ def _make_rollback(context, *, gate_mode: str, iteration=None):
 
     bot = Bot(
         id=BotId(value=BOT_ID), tenant_id=TENANT, name="b",
-        base_prompt="現行 prompt", gate_mode=gate_mode,
+        gate_mode=gate_mode,
     )
     bot_repo = AsyncMock(spec=BotRepository)
     bot_repo.find_by_id.return_value = bot
