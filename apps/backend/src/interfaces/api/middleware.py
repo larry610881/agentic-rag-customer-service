@@ -79,7 +79,11 @@ class RequestTimeoutMiddleware:
                     (b"content-type", b"application/json"),
                 ],
             })
-            body = json.dumps({"detail": "Request timeout"}).encode()
+            from src.interfaces.api.errors import error_body
+
+            body = json.dumps(
+                error_body(504, "Request timeout", code="request_timeout")
+            ).encode()
             await send({
                 "type": "http.response.body",
                 "body": body,

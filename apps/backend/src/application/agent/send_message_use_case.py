@@ -1128,6 +1128,7 @@ class SendMessageUseCase:
             display_text=fin.display_text,
             retrieval=retrieval_stats(fast_plan),
         )
+        response.structured_output = fin.parsed  # Issue #94
 
         assistant_msg = None
         t_persist = AgentTraceCollector.offset_ms()
@@ -1697,6 +1698,12 @@ class SendMessageUseCase:
     ) -> AgentResponse:
         """從 blocked GuardResult 組攔截回應（persist + trace），regex guard 與
         分類器攻擊共用（test_mode 不落庫）。"""
+        # Issue #94：攔截回應也守 bot 輸出格式，並把已解析物件交給 router
+        blocked = (
+            resolve_guard_blocked(output_spec, guard_result.blocked_response)
+            if output_spec is not None
+            else None
+        )
         assistant_msg = None
         t_persist = AgentTraceCollector.offset_ms()
         if not command.test_mode:
@@ -1719,13 +1726,8 @@ class SendMessageUseCase:
             persist_started_ms=t_persist,
         )
         return AgentResponse(
-            answer=(
-                resolve_guard_blocked(
-                    output_spec, guard_result.blocked_response
-                ).text
-                if output_spec is not None
-                else guard_result.blocked_response
-            ),
+            answer=blocked.text if blocked else guard_result.blocked_response,
+            structured_output=blocked.parsed if blocked else None,
             conversation_id=conversation.id.value,
             guard_blocked="input",
             guard_rule_matched=guard_result.rule_matched,
@@ -1855,7 +1857,7 @@ class SendMessageUseCase:
             contact=None, sources=None, output=miss.parsed,
             display_text=miss.display_text, retrieval=retrieval_stats(plan),
         )
-        response = AgentResponse(answer=miss.text)
+        response = AgentResponse(answer=miss.text, structured_output=miss.parsed)
         assistant_msg = None
         t_persist = AgentTraceCollector.offset_ms()
         if not command.test_mode:

@@ -66,7 +66,7 @@ def _chat_result():
         answer="ok", conversation_id="c1", trace_id=None, trace_nodes=None,
         tool_calls=[], sources=[], contact=None, usage=None, message_id="m1",
         config_version_id=None, config_hash=None, guard_blocked=False,
-        guard_rule_matched=None,
+        guard_rule_matched=None, structured_output=None,
     )
 
 

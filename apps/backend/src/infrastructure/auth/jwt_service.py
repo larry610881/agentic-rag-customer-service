@@ -15,9 +15,15 @@ from typing import Any
 from uuid import uuid4
 
 from jose import JWTError, jwt
+from jose.exceptions import ExpiredSignatureError
 
 API_ACCESS_TOKEN_TYPE = "api_access"
 WIDGET_TOKEN_TYPE = "widget_access"
+
+
+class TokenExpiredError(ValueError):
+    """Issue #94：token 過期與其他無效原因分開，讓 401 帶 `token_expired` code。
+    繼承 ValueError 讓既有 `except ValueError` 呼叫端不受影響。"""
 
 
 class JWTService:
@@ -207,6 +213,8 @@ class JWTService:
                 algorithms=[self._algorithm],
                 options={"verify_aud": False, "verify_iss": False},
             )
+        except ExpiredSignatureError as e:
+            raise TokenExpiredError("Token expired") from e
         except JWTError as e:
             raise ValueError(f"Invalid token: {e}") from e
         self._validate_issuer_audience(payload)

@@ -5,9 +5,9 @@ import logging
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.application.agent.send_message_use_case import (
     SendMessageCommand,
@@ -22,6 +22,7 @@ from src.interfaces.api.deps import (
     get_current_tenant,
     require_scope,
 )
+from src.interfaces.api.errors import ApiError
 from src.interfaces.api.streaming_errors import classify_streaming_error
 from src.interfaces.api.usage_context import UsageContext, get_usage_context
 
@@ -69,12 +70,26 @@ class TokenUsageResponse(BaseModel):
     estimated_cost: float
 
 
+class StructuredContentResponse(BaseModel):
+    """Issue #94：typed 結構化附件。`sources` 永遠是陣列（空時 `[]`）。"""
+
+    # transfer_to_human_agent 產生的聯絡按鈕 {"label", "url", "type": "url" | "phone"}
+    contact: dict | None = None
+    # 檢索來源（含 chunk_id / document_id / kb_id / image_url 等延伸欄位）
+    sources: list[dict] = Field(default_factory=list)
+    # output_format=json 的 bot：已解析的結構化答案；`answer` 仍為 JSON 字串相容舊客戶端
+    output: dict | None = None
+
+
 class ChatResponse(BaseModel):
     answer: str
     conversation_id: str
+    # Issue #94：客戶端帶的 conversation_id 查不到 / 歸屬不符時，平台會另開新對話並回傳
+    # 新 id（既有語意不變）；此旗標讓客戶端能察覺 id 被替換，不再靜默分叉。
+    conversation_created: bool
     tool_calls: list[ToolCallInfo]
     sources: list[SourceResponse]
-    structured_content: dict | None = None
+    structured_content: StructuredContentResponse | None = None
     usage: TokenUsageResponse | None = None
     trace_id: str | None = None       # test_mode 影子執行才填
     trace_nodes: list[dict] | None = None
@@ -117,9 +132,10 @@ def _require_shadow_authorized(
         or request.history_override is not None
     )
     if wants_shadow and usage_ctx.request_type not in _EVAL_USAGE_CATEGORIES:
-        raise HTTPException(
-            status_code=403,
-            detail="config_override/test_mode requires a valid eval usage "
+        raise ApiError(
+            403,
+            code="eval_marker_required",
+            message="config_override/test_mode requires a valid eval usage "
             "marker (X-Usage-Category + admin role)",
         )
 
@@ -139,6 +155,23 @@ def _maybe_expose_guard(result_guard_blocked, result_guard_rule, role):
     if _can_see_guard_details(role):
         return result_guard_blocked, result_guard_rule
     return None, None
+
+
+def _conversation_created(requested_id: str | None, actual_id: str) -> bool:
+    """Issue #94：平台回傳的 id 與請求端帶的不同（含未帶）= 新建對話。"""
+    return requested_id is None or requested_id != actual_id
+
+
+def _with_conversation_created(event: dict, requested_id: str | None) -> dict:
+    """SSE `conversation_id` 事件補 `conversation_created`，與非串流回應對等。"""
+    if event.get("type") != "conversation_id":
+        return event
+    return {
+        **event,
+        "conversation_created": _conversation_created(
+            requested_id, str(event.get("conversation_id", ""))
+        ),
+    }
 
 
 def _abuse_subject_for(tenant: CurrentTenant, request_headers: Any) -> tuple[str, str]:
@@ -218,19 +251,21 @@ async def agent_chat(
             estimated_cost=result.usage.estimated_cost,
         )
 
-    sources_dicts = (
-        [s.to_dict() for s in result.sources] if result.sources else None
-    )
-    structured_content: dict | None = None
-    if result.contact or sources_dicts:
-        structured_content = {
-            "contact": result.contact,
-            "sources": sources_dicts,
-        }
+    sources_dicts = [s.to_dict() for s in result.sources] if result.sources else []
+    structured_content: StructuredContentResponse | None = None
+    if result.contact or sources_dicts or result.structured_output is not None:
+        structured_content = StructuredContentResponse(
+            contact=result.contact,
+            sources=sources_dicts,
+            output=result.structured_output,
+        )
 
     return ChatResponse(
         answer=result.answer,
         conversation_id=result.conversation_id,
+        conversation_created=_conversation_created(
+            request.conversation_id, result.conversation_id
+        ),
         trace_id=result.trace_id,
         trace_nodes=result.trace_nodes,
         tool_calls=[
@@ -320,6 +355,7 @@ async def agent_chat_stream(
                 # Sprint A++: strip guard_blocked event for end-user 介面
                 if event.get("type") == "guard_blocked" and not is_studio:
                     continue
+                event = _with_conversation_created(event, request.conversation_id)
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:
             logger.exception("agent.chat.stream.error")

@@ -7,6 +7,49 @@
 
 ---
 
+## 契約不是 schema 合格就好 — 同一個 key 兩種型別、靜默替換識別碼、JSON 塞字串（2026-09-11，Issue #94）
+
+**Sprint 來源**：3D 展廠商要把測試機從 LumiOne 切到 `/api/v1/agent/chat`。用
+`/restful-api-contract-review` 對這一支端點跑完整審核，前提是「原生 app 無法強制更新、
+舊 binary 會活好幾年」——這個前提把很多 web 上無感的設計變成契約缺陷。
+
+**主題**：跨客戶端契約設計、加法式演進、錯誤契約、識別碼語意
+
+#### 做得好的地方
+- **四項全是加法，web 前端零改動**。`conversation_created`、`structured_content.output`、
+  錯誤 `code` / `request_id`、422 `detail` 改字串——每一項都先 grep 前端消費者
+  （`typeof detail === "string"`、`structured_content?.sources ?? undefined`）確認不會壞，
+  再動手。改「靜默新建」為回錯誤才是破壞性變更，所以刻意不做。
+- **code 與 detail 分工**。`detail` 給人看、可改文案；`code` 給程式分支、永不改。
+  既有 `HTTPException(detail="insufficient_scope")` 這種「detail 本來就是 code」的寫法
+  由 `infer_code` 直接沿用，不必一次改遍 40 個 router；FastAPI 自產的
+  `"Not authenticated"` 也對應到 `token_missing`。
+- **401 拆成四個 code 而不是四段文案**。`token_expired` 要客戶端重新換票、`token_revoked`
+  要客戶端停止重試，這兩個動作完全不同，之前都是「Invalid or expired token」一句話。
+  `TokenExpiredError(ValueError)` 繼承既有型別，其他 `except ValueError` 呼叫端不受影響。
+- **審核發現先分「已驗證」與「待驗證」**。`client_secret` 是否落在展場裝置上讀程式碼看不出來，
+  就標 `[待驗證]` 寫驗證方法，不升格成缺陷。
+
+#### 潛在隱憂
+- **`Idempotency-Key` 還沒做**。展場 Wi-Fi 在回應階段斷線，客戶端重送會再開一筆對話、再扣一次
+  LLM 用量。需要一個以「身份＋操作＋key」為主鍵、保存首次結果 24 小時的 store，
+  這次因為要動持久層而延後 → 優先級：高。
+- **錯誤契約只在 chat 路徑手動補了 code**。其他 router 靠 `infer_code` 從 detail 推斷，
+  detail 是句子的就只拿到 `forbidden` / `conflict` 這種通用碼；第二塊全 API 面審核時要逐支補
+  → 優先級：中。
+- **OpenAPI 仍不是契約來源**。production 關閉 `/openapi.json`，也沒有由程式產出並提交的 spec，
+  廠商拿到的是手寫 markdown，這次就抓到四處分歧（403 文案、逾時、漏列 402/504、換 bot 開新對話）。
+  應在 CI 產出 spec 並 diff → 優先級：中。
+- **`structured_content.sources` 從 null 變 `[]`** 是可空性改動。web 前端用 `??` 沒差，
+  但這正是準則說的「可空性兩個方向都不得改」——趁廠商還沒接入才能改，之後就不行了。
+
+#### 延伸學習
+- Google API Design Guide 的錯誤模型（`code` / `message` / `details`）與 RFC 9457 Problem Details
+  都把「機器碼」與「人類訊息」分開，這次的 `code` / `detail` 是同一個思路的最小版。
+- Swift `Codable` 對 `[T]` 欄位遇 `null` 直接 `valueNotFound`，Kotlin `kotlinx.serialization`
+  預設 `explicitNulls=true`；瀏覽器 `undefined` 照跑，所以這類問題**在 web 上永遠測不出來**。
+- Stripe 的 idempotency 設計（key 綁身份、保存 24 小時、不同參數回 422）是 D1 的參考實作。
+
 ## 串流 usage 的兩種語意 — 累計 vs 增量，以及「每筆都合法卻加起來是錯的」（2026-09-08，Issue #90）
 
 **Sprint 來源**：五臂模型評測的成本章。同樣 ~760 次呼叫、同一份提示，Gemini 記到 input 5.55M、

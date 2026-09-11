@@ -68,7 +68,7 @@ Feature: 異常控管三通路接線 (Abuse Control Pipeline Wiring)
 
     # --- HTTP 契約 ---
 
-    Scenario Outline: 被拒時回 429，body 只有 temporarily_unavailable 與 retry_after
+    Scenario Outline: 被拒時回 429，body 只有中性的 temporarily_unavailable、retry_after 與 code/request_id
         Given 已啟動的異常控管 HTTP 測試應用
         When 以會被拒的主體請求 "<path>"
         Then HTTP 狀態碼為 429

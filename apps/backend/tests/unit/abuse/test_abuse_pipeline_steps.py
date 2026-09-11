@@ -378,7 +378,10 @@ def http_status(ctx, status):
 ))
 def http_body(ctx, retry):
     body = ctx["resp"].json()
-    assert body == {"detail": "temporarily_unavailable", "retry_after": retry}
+    # Issue #94：body 多了穩定 code 與 request_id，但仍不得含任何偵測原因
+    assert body["detail"] == body["code"] == "temporarily_unavailable"
+    assert body["retry_after"] == retry
+    assert set(body) <= {"detail", "code", "request_id", "retry_after"}
 
 
 @then(parsers.parse('回應標頭 Retry-After 為 "{value}"'))

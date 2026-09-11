@@ -19,7 +19,12 @@ from src.application.auth.api_key_use_cases import AuthenticateApiClientUseCase
 from src.container import Container
 from src.domain.auth.api_key import API_CLIENT_ROLE, InvalidClientError
 from src.domain.auth.token_stores import TokenRevocationStore
-from src.infrastructure.auth.jwt_service import API_ACCESS_TOKEN_TYPE, JWTService
+from src.infrastructure.auth.jwt_service import (
+    API_ACCESS_TOKEN_TYPE,
+    JWTService,
+    TokenExpiredError,
+)
+from src.interfaces.api.errors import ApiError
 
 bearer_scheme = HTTPBearer()
 
@@ -46,8 +51,22 @@ class CurrentTenant:
         return bot_id is not None and bot_id in self.bot_ids
 
 
-def _unauthorized(detail: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+def _unauthorized(detail: str, code: str = "token_invalid") -> HTTPException:
+    return ApiError(status.HTTP_401_UNAUTHORIZED, code=code, message=detail)
+
+
+def _forbidden(code: str, detail: str | None = None) -> HTTPException:
+    return ApiError(status.HTTP_403_FORBIDDEN, code=code, message=detail)
+
+
+def _decode_or_401(jwt_service: JWTService, token: str) -> dict:
+    """Issue #94：401 帶可辨識 code（token_expired / token_invalid）。"""
+    try:
+        return jwt_service.decode_token(token)
+    except TokenExpiredError:
+        raise _unauthorized("Token expired", code="token_expired") from None
+    except ValueError:
+        raise _unauthorized("Invalid token", code="token_invalid") from None
 
 
 @inject
@@ -62,21 +81,23 @@ async def authenticate(
     ),
 ) -> CurrentTenant:
     """解析任何一種 access 票；不做端點層級授權。"""
-    try:
-        payload = jwt_service.decode_token(credentials.credentials)
-    except ValueError:
-        raise _unauthorized("Invalid or expired token") from None
+    payload = _decode_or_401(jwt_service, credentials.credentials)
 
     token_type = payload.get("type", "tenant_access")
 
     if token_type in ("refresh", "tenant_refresh"):
-        raise _unauthorized("Refresh tokens cannot be used to access resources")
+        raise _unauthorized(
+            "Refresh tokens cannot be used to access resources",
+            code="token_type_not_allowed",
+        )
 
     if token_type == API_ACCESS_TOKEN_TYPE:
         try:
             principal = await api_client_auth.execute(payload)
         except InvalidClientError:
-            raise _unauthorized("Invalid or revoked API credentials") from None
+            raise _unauthorized(
+                "Invalid or revoked API credentials", code="token_revoked"
+            ) from None
         return CurrentTenant(
             tenant_id=principal.tenant_id,
             role=API_CLIENT_ROLE,
@@ -94,7 +115,7 @@ async def authenticate(
             # Issue #67 P3：改密碼後 access token 到期前即失效（Redis fail-open）
             min_ver = await revocation_store.min_version(user_id)
             if min_ver is not None and ver < min_ver:
-                raise _unauthorized("Token revoked")
+                raise _unauthorized("Token revoked", code="token_revoked")
         return CurrentTenant(
             tenant_id=payload.get("tenant_id") or "",
             user_id=user_id,
@@ -113,9 +134,7 @@ async def get_current_tenant(
 ) -> CurrentTenant:
     """人類 / legacy 租戶票。機器票不得進入未宣告 scope 的端點。"""
     if tenant.is_api_client:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=INSUFFICIENT_SCOPE
-        )
+        raise _forbidden(INSUFFICIENT_SCOPE)
     return tenant
 
 
@@ -124,10 +143,7 @@ def require_role(*roles: str) -> Callable:
         tenant: CurrentTenant = Depends(get_current_tenant),
     ) -> CurrentTenant:
         if tenant.role not in roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Required role: {', '.join(roles)}",
-            )
+            raise _forbidden("role_required", f"Required role: {', '.join(roles)}")
         return tenant
 
     return _check
@@ -140,9 +156,7 @@ def require_scope(*scopes: str) -> Callable:
         tenant: CurrentTenant = Depends(authenticate),
     ) -> CurrentTenant:
         if tenant.is_api_client and not any(s in tenant.scopes for s in scopes):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail=INSUFFICIENT_SCOPE
-            )
+            raise _forbidden(INSUFFICIENT_SCOPE)
         return tenant
 
     return _check
@@ -150,6 +164,4 @@ def require_scope(*scopes: str) -> Callable:
 
 def ensure_bot_allowed(tenant: CurrentTenant, bot_id: str | None) -> None:
     if not tenant.allows_bot(bot_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=INSUFFICIENT_SCOPE
-        )
+        raise _forbidden(INSUFFICIENT_SCOPE)

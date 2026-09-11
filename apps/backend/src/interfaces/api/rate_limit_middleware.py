@@ -15,6 +15,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from src.domain.ratelimit.rate_limiter_service import RateLimiterService
 from src.infrastructure.logging.trace import trace_step
 from src.infrastructure.ratelimit.config_loader import RateLimitConfigLoader
+from src.interfaces.api.errors import error_body
 
 logger = logging.getLogger(__name__)
 
@@ -180,11 +181,14 @@ class RateLimitMiddleware:
 
     @staticmethod
     async def _send_429(send: Send, retry_after: int, limit: int) -> None:
-        body = json.dumps({
-            "detail": (
-                f"Rate limit exceeded. Try again in {retry_after} seconds."
+        body = json.dumps(
+            error_body(
+                429,
+                f"Rate limit exceeded. Try again in {retry_after} seconds.",
+                code="rate_limited",
+                extra={"retry_after": retry_after},
             )
-        }).encode()
+        ).encode()
         await send({
             "type": "http.response.start",
             "status": 429,

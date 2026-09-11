@@ -318,15 +318,22 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         GateBlockedError,
         InvalidVersionTransitionError,
     )
+    from src.interfaces.api.errors import error_body, install_error_handlers
+
+    # Issue #94：HTTPException / 422 統一為 {detail: str, code, request_id}
+    install_error_handlers(application)
 
     @application.exception_handler(QuotaExhaustedError)
     async def quota_exhausted_handler(
         request: Request, exc: QuotaExhaustedError
     ) -> JSONResponse:
         # Issue #74：用完即擋（web / widget / 背景任務 API 入口共用）
+        # detail 維持 "quota_exhausted"（前端 billing-labels 以此判定），message 帶話術
         return JSONResponse(
             status_code=402,
-            content={"detail": "quota_exhausted", "message": exc.message},
+            content=error_body(
+                402, "quota_exhausted", extra={"message": exc.message}
+            ),
         )
 
     @application.exception_handler(AbuseBlockedError)
@@ -336,10 +343,9 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         # Issue #68 P7：中性回應，不洩漏偵測原因
         return JSONResponse(
             status_code=429,
-            content={
-                "detail": "temporarily_unavailable",
-                "retry_after": exc.retry_after,
-            },
+            content=error_body(
+                429, "temporarily_unavailable", extra={"retry_after": exc.retry_after}
+            ),
             headers={"Retry-After": str(exc.retry_after)},
         )
 
@@ -348,28 +354,37 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         request: Request, exc: GateBlockedError
     ) -> JSONResponse:
         logger.warning("domain.gate_blocked", error=exc.message)
-        return JSONResponse(status_code=409, content={"detail": exc.message})
+        return JSONResponse(
+            status_code=409, content=error_body(409, exc.message, code="gate_blocked")
+        )
 
     @application.exception_handler(InvalidVersionTransitionError)
     async def version_transition_handler(
         request: Request, exc: InvalidVersionTransitionError
     ) -> JSONResponse:
         logger.warning("domain.invalid_transition", error=exc.message)
-        return JSONResponse(status_code=409, content={"detail": exc.message})
+        return JSONResponse(
+            status_code=409,
+            content=error_body(409, exc.message, code="invalid_version_transition"),
+        )
 
     @application.exception_handler(EntityNotFoundError)
     async def entity_not_found_handler(
         request: Request, exc: EntityNotFoundError
     ) -> JSONResponse:
         logger.warning("domain.entity_not_found", error=exc.message)
-        return JSONResponse(status_code=404, content={"detail": exc.message})
+        return JSONResponse(
+            status_code=404, content=error_body(404, exc.message, code="not_found")
+        )
 
     @application.exception_handler(DomainException)
     async def domain_exception_handler(
         request: Request, exc: DomainException
     ) -> JSONResponse:
         logger.warning("domain.error", error=exc.message)
-        return JSONResponse(status_code=400, content={"detail": exc.message})
+        return JSONResponse(
+            status_code=400, content=error_body(400, exc.message, code="domain_error")
+        )
 
     @application.exception_handler(Exception)
     async def unhandled_exception_handler(
@@ -381,7 +396,7 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         set_captured_error(f"{type(exc).__name__}: {exc}")
         return JSONResponse(
             status_code=500,
-            content={"detail": "Internal server error"},
+            content=error_body(500, "Internal server error", code="internal_error"),
         )
 
     modules = settings.enabled_modules_set
