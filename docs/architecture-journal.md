@@ -7,6 +7,41 @@
 
 ---
 
+## 重送保護只存「回應快照」，不存對話 — Idempotency-Key 與 Redis TTL 的邊界（2026-09-14，Issue #95）
+
+**Sprint 來源**：#94 審核延後的 D1 項。展場測試機在回應階段斷線後重送，會再開一筆對話、再扣一次
+LLM 用量，且沒有任何錯誤可察覺。Larry 問了兩個好問題：「Redis TTL 怎麼定的」「對話要從 Redis 拉嗎」。
+
+**主題**：冪等設計、快取與事實來源的邊界、fail-open 慣例、參數集中 vs 機制抽象
+
+#### 做得好的地方
+- **先盤點再設計**。專案裡 Redis 已有九種用途，全部 per-key TTL、`SET NX EX` 搶佔、fail-open。
+  新設計沿用同一套慣例，不引入新機制；LINE 的 `webhookEventId` 去重本來就是同一件事。
+- **快照存 HTTP 回應，不存 domain 物件**。對話與訊息只在 Postgres，重送命中快照時完全不碰 DB；
+  沒有雙寫、沒有回填、沒有一致性問題。準則 D1 要的「下游只呼叫一次」由「handler 不執行」自然保證。
+- **處理中標記 130 秒、完成快照 24 小時**。worker 中途被殺沒機會 DEL，130 秒後 key 自然消失；
+  130 > 請求逾時 30 > 對話鎖 120，三個數字的關係寫在 config 註解裡。
+- **guard 放 application 層、通路無關**。`IdempotencyGuard.run(scope, key, fingerprint, handler)`
+  不知道 FastAPI；interfaces 只做讀標頭、算指紋、轉錯誤碼。stream / widget 下一期直接重用。
+- **參數集中，機制不抽**。散在三處的 TTL 數值收進 config 一個分組並寫成 `docs/redis-keyspace.md`；
+  但鎖、去重、快取、計數的降級語意各不相同（當作拿到鎖 / 當作第一次 / 當作未命中 / 放行），
+  硬包一個 `RedisPolicyService` 只會多一層轉手。
+
+#### 潛在隱憂
+- **Redis 不可用的視窗內沒有重送保護**。與專案其他 Redis 用途同級的殘餘風險；若日後要
+  「Redis 掛掉也不重複」，加 `idempotency_keys` 表當第二層 → 優先級：低（POC）。
+- **快照存的是完整回應**。`ChatResponse` 含 `answer` 全文，2–10 KB；24h 內高流量租戶會佔記憶體。
+  可加 `body` 大小上限（超過就不快取、只擋重複執行）→ 優先級：中。
+- **`/chat/stream` 尚未覆蓋**。串流的快照要存事件序列，重送時整段重播；guard 可重用但 store
+  的 value 形狀不同 → 優先級：中。
+- **fingerprint 含 `conversation_id`**。第一輪不帶 id、重送也不帶 → 相同；但若客戶端第一輪逾時後
+  「先開新對話再重送」會被視為不同 body 而 422。規格文件已寫明重送要帶同一把 key 與同一個 body。
+
+#### 延伸學習
+- Stripe Idempotent Requests：key 綁 API key、保存 24 小時、同 key 不同參數回 400、只快取成功結果。
+- Redis `SET NX EX` 是最小的分散式互斥原語；鎖要比對 uuid 才能安全釋放，去重與快照則不必。
+- 「快取」與「事實來源」的邊界一旦模糊（把對話也放 Redis），一致性問題就從零變成無限多。
+
 ## 契約不是 schema 合格就好 — 同一個 key 兩種型別、靜默替換識別碼、JSON 塞字串（2026-09-11，Issue #94）
 
 **Sprint 來源**：3D 展廠商要把測試機從 LumiOne 切到 `/api/v1/agent/chat`。用

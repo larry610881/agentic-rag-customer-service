@@ -408,6 +408,7 @@ from src.application.security.guard_settings_use_cases import (
     UpdateGuardSettingsUseCase,
 )
 from src.application.security.prompt_guard_service import PromptGuardService
+from src.application.shared.idempotency_guard import IdempotencyGuard
 from src.application.tenant.create_tenant_use_case import CreateTenantUseCase
 from src.application.tenant.get_tenant_use_case import GetTenantUseCase
 from src.application.tenant.list_tenants_use_case import ListTenantsUseCase
@@ -621,6 +622,9 @@ from src.infrastructure.file_parser.ocr_engines.factory import (
 from src.infrastructure.file_parser.ocr_file_parser_service import (
     OcrFileParserService,
 )
+from src.infrastructure.idempotency.redis_idempotency_store import (
+    RedisIdempotencyStore,
+)
 from src.infrastructure.langgraph.dm_image_query_tool import (
     DmImageQueryTool,
 )
@@ -797,6 +801,24 @@ class Container(containers.DeclarativeContainer):
     conversation_lock = providers.Singleton(
         RedisConversationLock,
         redis_client=redis_client,
+        default_timeout=providers.Callable(
+            lambda cfg: cfg.conversation_lock_ttl_seconds, config
+        ),
+    )
+
+    # Issue #95：Idempotency-Key 快照（Redis 24h、fail-open）；guard 通路無關
+    idempotency_store = providers.Singleton(
+        RedisIdempotencyStore, redis_client=redis_client,
+    )
+    idempotency_guard = providers.Singleton(
+        IdempotencyGuard,
+        store=idempotency_store,
+        ttl_seconds=providers.Callable(
+            lambda cfg: cfg.idempotency_ttl_seconds, config
+        ),
+        in_progress_ttl_seconds=providers.Callable(
+            lambda cfg: cfg.idempotency_in_progress_ttl_seconds, config
+        ),
     )
 
     db_session = providers.Factory(get_tracked_session)
@@ -1903,6 +1925,9 @@ class Container(containers.DeclarativeContainer):
         QuotaPreflightService,
         compute_quota_factory=compute_tenant_quota_use_case.provider,
         redis_client=redis_client,
+        ttl_seconds=providers.Callable(
+            lambda cfg: cfg.quota_preflight_cache_ttl_seconds, config
+        ),
     )
     get_billing_settings_use_case = providers.Factory(
         GetBillingSettingsUseCase, repo=billing_settings_repository,

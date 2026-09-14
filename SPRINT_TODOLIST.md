@@ -1940,6 +1940,7 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | ~~[#60](https://github.com/larry610881/agentic-rag-customer-service/issues/60)~~ | ~~執行時設定指紋（config_snapshots）+ 管理端 audit_logs~~ | ~~`enhancement`~~ | ~~09-02 紅隊追溯需求~~ ✅ 2026-09-02（migration 已套 local-docker / dev-vm / company-poc-vm；POC rev 00005 煙霧測試通過） |
 | ~~[#61](https://github.com/larry610881/agentic-rag-customer-service/issues/61)~~ | ~~快速道抽共用管線（web 覆蓋）+ Gemini 3.7 Flash low 驗證~~ | ~~`refactor`~~ | ~~09-02~~ ✅ 程式完成 2026-09-02；**Gemini low 實測（20 題分流 + 12 題攻擊）待 dev 環境** |
 | [#94](https://github.com/larry610881/agentic-rag-customer-service/issues/94) | `/agent/chat` 對外契約加固：`conversation_created`、`structured_content.output`（typed）、錯誤 `code`/`request_id`、422 `detail` 統一字串、401 拆 expired/invalid/revoked | `enhancement` | 09-11 `/restful-api-contract-review` 第一塊（廠商整合面）；程式＋規格文件完成於分支 `feature/api/chat-contract-hardening`，待部署；延後：Idempotency-Key、estimated_cost 浮點、CORS expose_headers |
+| [#95](https://github.com/larry610881/agentic-rag-customer-service/issues/95) | `/agent/chat` 支援 `Idempotency-Key`（Redis 快照 24h、處理中 130s、fail-open）+ Redis TTL 參數集中到 config + `docs/redis-keyspace.md` | `enhancement` | 09-14 #94 延後項（準則 D1）；設計 `.claude/plans/idempotency-key-plan-2026-09-14.md`；程式＋文件完成於分支 `feature/api/chat-contract-hardening`，待部署；下一期：stream / widget 重用同一 guard |
 
 ---
 

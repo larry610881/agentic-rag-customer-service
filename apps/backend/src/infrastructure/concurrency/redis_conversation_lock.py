@@ -18,13 +18,18 @@ class RedisConversationLock(ConversationLock):
     Falls back to no-lock (yield True) if Redis is unavailable.
     """
 
-    def __init__(self, redis_client) -> None:  # noqa: ANN001
+    def __init__(
+        self, redis_client, default_timeout: int = 120  # noqa: ANN001
+    ) -> None:
         self._redis = redis_client
+        self._default_timeout = default_timeout  # config.conversation_lock_ttl_seconds
 
     @asynccontextmanager
     async def acquire(
-        self, lock_key: str, *, timeout: int = 120
+        self, lock_key: str, *, timeout: int | None = None
     ) -> AsyncIterator[bool]:
+        if timeout is None:
+            timeout = self._default_timeout
         lock_value = uuid4().hex
         acquired = False
         # Phase 1: acquire lock (Redis errors → degrade to no-lock)

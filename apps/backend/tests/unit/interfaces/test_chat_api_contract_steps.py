@@ -101,6 +101,8 @@ def _call_chat(ctx, conversation_id: str | None):
             use_case=ctx["uc"],
             record_usage=AsyncMock(),
             usage_ctx=UsageContext(),
+            idempotency_key=None,
+            idempotency_guard=None,
         )
     )
 

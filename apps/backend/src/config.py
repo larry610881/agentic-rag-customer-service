@@ -153,6 +153,14 @@ class Settings(BaseSettings):
     # LINE webhook 事件去重 TTL（Issue #58）
     line_webhook_dedup_ttl_seconds: int = 3600
 
+    # ── Redis TTL（秒）── 只集中數值；機制（鎖 / 去重 / 快取）各自實作、全 fail-open
+    # key 前綴與用途一覽：docs/redis-keyspace.md
+    conversation_lock_ttl_seconds: int = 120  # conv_lock:*
+    quota_preflight_cache_ttl_seconds: int = 30  # quota:*
+    idempotency_ttl_seconds: int = 86400  # idem:* 完成快照保留 24h（Issue #95）
+    # idem:* 處理中標記；> 請求逾時 30s、> 對話鎖 120s
+    idempotency_in_progress_ttl_seconds: int = 130
+
     # 對話摘要 cron 只處理達此訊息數的對話（Issue #59：一兩輪的客服對話不摘要）
     conversation_summary_min_messages: int = 6
 

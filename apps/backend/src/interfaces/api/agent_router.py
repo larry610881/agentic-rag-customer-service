@@ -13,6 +13,7 @@ from src.application.agent.send_message_use_case import (
     SendMessageCommand,
     SendMessageUseCase,
 )
+from src.application.shared.idempotency_guard import IdempotencyGuard
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
 from src.interfaces.api.client_ip import client_ip_of
@@ -23,6 +24,12 @@ from src.interfaces.api.deps import (
     require_scope,
 )
 from src.interfaces.api.errors import ApiError
+from src.interfaces.api.idempotency import (
+    get_idempotency_key,
+    idempotency_scope,
+    request_fingerprint,
+    run_idempotent,
+)
 from src.interfaces.api.streaming_errors import classify_streaming_error
 from src.interfaces.api.usage_context import UsageContext, get_usage_context
 
@@ -197,13 +204,42 @@ async def agent_chat(
         Provide[Container.record_usage_use_case]
     ),
     usage_ctx: UsageContext = Depends(get_usage_context),
-) -> ChatResponse:
+    idempotency_key: str | None = Depends(get_idempotency_key),
+    idempotency_guard: IdempotencyGuard | None = Depends(
+        Provide[Container.idempotency_guard]
+    ),
+) -> Any:
     # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
     # 跨租戶測試流程請走系統管理專用端點（尚未實作，另立 issue）。
     identity_source = request.identity_source or "web"
     ensure_bot_allowed(tenant, request.bot_id)  # Issue #67：api_client bot 範圍
     _require_shadow_authorized(request, usage_ctx)
     subject_kind, subject_id = _abuse_subject_for(tenant, http_request.headers)
+
+    # Issue #95：帶 Idempotency-Key 時「執行一次或重播」；沒帶則行為與過去相同
+    return await run_idempotent(
+        idempotency_guard,
+        key=idempotency_key,
+        scope=idempotency_scope(tenant, "agent.chat"),
+        fingerprint=request_fingerprint(request),
+        handler=lambda: _agent_chat_once(
+            request, http_request, tenant, use_case, record_usage, usage_ctx,
+            identity_source, subject_kind, subject_id,
+        ),
+    )
+
+
+async def _agent_chat_once(
+    request: ChatRequest,
+    http_request: Request,
+    tenant: CurrentTenant,
+    use_case: SendMessageUseCase,
+    record_usage: RecordUsageUseCase,
+    usage_ctx: UsageContext,
+    identity_source: str,
+    subject_kind: str,
+    subject_id: str,
+) -> ChatResponse:
     result = await use_case.execute(
         SendMessageCommand(
             tenant_id=tenant.tenant_id,
