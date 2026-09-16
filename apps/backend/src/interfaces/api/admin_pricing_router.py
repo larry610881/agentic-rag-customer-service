@@ -38,7 +38,7 @@ from src.domain.pricing.entity import ModelPricing, PricingRecalcAudit
 from src.domain.pricing.value_objects import PricingCategory
 from src.infrastructure.pricing.pricing_cache import InMemoryPricingCache
 from src.interfaces.api.deps import CurrentTenant, require_role
-from src.interfaces.api.types import ApiDateTime
+from src.interfaces.api.types import ApiDateTime, ApiMoney
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +57,10 @@ class PricingResponse(BaseModel):
     model_id: str
     display_name: str
     category: str
-    input_price: float
-    output_price: float
-    cache_read_price: float
-    cache_creation_price: float
+    input_price: ApiMoney
+    output_price: ApiMoney
+    cache_read_price: ApiMoney
+    cache_creation_price: ApiMoney
     effective_from: ApiDateTime
     effective_to: ApiDateTime | None
     created_by: str
@@ -101,9 +101,9 @@ class DryRunRecalculateResponse(BaseModel):
     dry_run_token: str
     pricing_id: str
     affected_rows: int
-    cost_before_total: float
-    cost_after_total: float
-    cost_delta: float
+    cost_before_total: ApiMoney
+    cost_after_total: ApiMoney
+    cost_delta: ApiMoney
     recalc_from: ApiDateTime
     recalc_to: ApiDateTime
 
@@ -116,8 +116,8 @@ class ExecuteRecalculateRequest(BaseModel):
 class ExecuteRecalculateResponse(BaseModel):
     audit_id: str
     affected_rows: int
-    cost_before_total: float
-    cost_after_total: float
+    cost_before_total: ApiMoney
+    cost_after_total: ApiMoney
 
 
 class RecalcAuditResponse(BaseModel):
@@ -126,9 +126,9 @@ class RecalcAuditResponse(BaseModel):
     recalc_from: ApiDateTime
     recalc_to: ApiDateTime
     affected_rows: int
-    cost_before_total: float
-    cost_after_total: float
-    cost_delta: float
+    cost_before_total: ApiMoney
+    cost_after_total: ApiMoney
+    cost_delta: ApiMoney
     executed_by: str
     executed_at: ApiDateTime
     reason: str

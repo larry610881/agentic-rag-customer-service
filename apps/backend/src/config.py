@@ -165,6 +165,9 @@ class Settings(BaseSettings):
     conversation_summary_min_messages: int = 6
 
 
+    # Issue #98：客戶端最低版本（X-Client-Version；空字串 = 不檢查，低於門檻回 426）
+    min_client_version: str = ""
+
     # Rate Limiting
     rate_limit_enabled: bool = True
     rate_limit_global_rpm: int = 1000

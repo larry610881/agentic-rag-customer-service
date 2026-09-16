@@ -25,6 +25,7 @@ from src.application.bot.upload_bot_icon_use_case import (
 from src.application.bot.validate_bot_enabled_tools import (
     validate_bot_enabled_tools,
 )
+from src.application.shared.idempotency_guard import IdempotencyGuard
 from src.container import Container
 from src.domain.bot.entity import VALID_BOT_MODES, VALID_REASONING_EFFORTS
 from src.domain.platform.value_objects import ProviderName
@@ -36,6 +37,12 @@ from src.interfaces.api.deps import (
     require_scope,
 )
 from src.interfaces.api.errors import ApiError, not_found_code
+from src.interfaces.api.idempotency import (
+    get_idempotency_key,
+    idempotency_scope,
+    request_fingerprint,
+    run_idempotent,
+)
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 from src.interfaces.api.types import ApiDateTime
 
@@ -298,7 +305,10 @@ class BotResponse(BaseModel):
         description="防護階段；null = 繼承租戶有效值（永遠出現，不會缺席）",
     )  # Issue #75
     output_format: str
-    output_schema: dict | None
+    output_schema: dict | None = Field(
+        json_schema_extra={"x-opaque": True},
+        description="json bot 的輸出 JSON Schema（由租戶自訂）",
+    )
     miss_reply: str
     output_text_field: str
     gate_mode: str
@@ -474,6 +484,27 @@ async def create_bot(
     built_in_tool_repo=Depends(
         Provide[Container.built_in_tool_repository]
     ),
+    idempotency_key: str | None = Depends(get_idempotency_key),
+    idempotency_guard: IdempotencyGuard | None = Depends(
+        Provide[Container.idempotency_guard]
+    ),
+) -> Any:
+    # Issue #98：帶 Idempotency-Key 時「執行一次或重播」；沒帶則行為與過去相同
+    return await run_idempotent(
+        idempotency_guard,
+        key=idempotency_key,
+        scope=idempotency_scope(tenant, "bots.create"),
+        fingerprint=request_fingerprint(body),
+        handler=lambda: _create_bot_once(body, tenant, use_case, built_in_tool_repo),
+        status_code=201,
+    )
+
+
+async def _create_bot_once(
+    body: CreateBotRequest,
+    tenant: CurrentTenant,
+    use_case: CreateBotUseCase,
+    built_in_tool_repo,
 ) -> BotResponse:
     if body.eval_depth not in _VALID_EVAL_DEPTHS:
         raise ApiError(
@@ -594,8 +625,6 @@ async def create_bot(
         )
     )
     return _to_response(bot)
-
-
 @router.get("", response_model=PaginatedResponse[BotResponse])
 @inject
 async def list_bots(

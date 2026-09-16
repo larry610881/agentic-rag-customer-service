@@ -12,6 +12,7 @@ from src.application.usage.query_monthly_usage_use_case import QueryMonthlyUsage
 from src.application.usage.query_usage_use_case import QueryUsageUseCase
 from src.container import Container
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.types import ApiMoney
 
 router = APIRouter(
     prefix="/api/v1/usage",
@@ -24,7 +25,7 @@ class UsageSummaryResponse(BaseModel):
     total_input_tokens: int
     total_output_tokens: int
     total_tokens: int
-    total_cost: float
+    total_cost: ApiMoney
     by_model: dict[str, int]
     by_request_type: dict[str, int]
     # Issue #74：點數欄位與 token 並列（token 制恆 0）
@@ -68,7 +69,7 @@ class BotUsageStatResponse(BaseModel):
     input_tokens: int
     output_tokens: int
     total_tokens: int
-    estimated_cost: float
+    estimated_cost: ApiMoney
     message_count: int
     points: int = 0  # Issue #74
 
@@ -78,7 +79,7 @@ class DailyUsageStatResponse(BaseModel):
     input_tokens: int
     output_tokens: int
     total_tokens: int
-    estimated_cost: float
+    estimated_cost: ApiMoney
     message_count: int
     request_type: str | None = None  # by_category=true 時填入
     points: int = 0  # Issue #74
@@ -174,7 +175,7 @@ class MonthlyUsageStatResponse(BaseModel):
     input_tokens: int
     output_tokens: int
     total_tokens: int
-    estimated_cost: float
+    estimated_cost: ApiMoney
     message_count: int
     request_type: str | None = None  # by_category=true 時填入
     points: int = 0  # Issue #74

@@ -12,7 +12,7 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from fastapi import Request
+from fastapi import Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -45,8 +45,17 @@ def parse_idempotency_key(raw: str | None) -> str | None:
     return raw
 
 
-async def get_idempotency_key(request: Request) -> str | None:
-    return parse_idempotency_key(request.headers.get(IDEMPOTENCY_KEY_HEADER))
+async def get_idempotency_key(
+    idempotency_key: str | None = Header(
+        default=None,
+        alias=IDEMPOTENCY_KEY_HEADER,
+        description=(
+            "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送"
+            "回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費"
+        ),
+    ),
+) -> str | None:
+    return parse_idempotency_key(idempotency_key)
 
 
 def idempotency_scope(tenant: CurrentTenant, endpoint: str) -> str:
@@ -65,6 +74,11 @@ def request_fingerprint(body: BaseModel) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def fingerprint_parts(*parts: str) -> str:
+    """非 JSON body（multipart 上傳）的指紋：各部分以 NUL 串接後 sha256。"""
+    return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+
+
 async def run_idempotent(
     guard: IdempotencyGuard | None,
     *,
@@ -72,6 +86,7 @@ async def run_idempotent(
     scope: str,
     fingerprint: str,
     handler: Callable[[], Awaitable[BaseModel]],
+    status_code: int = 200,
 ) -> Any:
     """沒帶 key → 直接回 handler 的模型（行為與過去完全相同）。
     帶 key → 回 JSONResponse，標頭 ``Idempotent-Replayed`` 標示是否為重播。"""
@@ -80,7 +95,7 @@ async def run_idempotent(
 
     async def _as_wire() -> tuple[int, dict[str, Any]]:
         model = await handler()
-        return 200, model.model_dump(mode="json")
+        return status_code, model.model_dump(mode="json")
 
     try:
         result = await guard.run(

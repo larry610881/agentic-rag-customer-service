@@ -1,6 +1,7 @@
 """回饋 API 端點"""
 
 from datetime import date, datetime, timedelta, timezone
+from typing import Any
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends
@@ -29,11 +30,18 @@ from src.application.conversation.submit_feedback_use_case import (
     SubmitFeedbackCommand,
     SubmitFeedbackUseCase,
 )
+from src.application.shared.idempotency_guard import IdempotencyGuard
 from src.container import Container
 from src.domain.bot.repository import BotRepository
 from src.domain.conversation.repository import ConversationRepository
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_scope
-from src.interfaces.api.types import ApiDateTime
+from src.interfaces.api.idempotency import (
+    get_idempotency_key,
+    idempotency_scope,
+    request_fingerprint,
+    run_idempotent,
+)
+from src.interfaces.api.types import ApiDateTime, ApiMoney
 
 router = APIRouter(
     prefix="/api/v1/feedback",
@@ -109,7 +117,7 @@ class ModelCostStatResponse(BaseModel):
     input_tokens: int
     output_tokens: int
     avg_latency_ms: float
-    estimated_cost: float
+    estimated_cost: ApiMoney
 
 
 class DataRetentionResponse(BaseModel):
@@ -124,6 +132,26 @@ async def submit_feedback(
     use_case: SubmitFeedbackUseCase = Depends(
         Provide[Container.submit_feedback_use_case]
     ),
+    idempotency_key: str | None = Depends(get_idempotency_key),
+    idempotency_guard: IdempotencyGuard | None = Depends(
+        Provide[Container.idempotency_guard]
+    ),
+) -> Any:
+    # Issue #98：帶 Idempotency-Key 時「執行一次或重播」；沒帶則行為與過去相同
+    return await run_idempotent(
+        idempotency_guard,
+        key=idempotency_key,
+        scope=idempotency_scope(tenant, "feedback.create"),
+        fingerprint=request_fingerprint(body),
+        handler=lambda: _submit_feedback_once(body, tenant, use_case),
+        status_code=201,
+    )
+
+
+async def _submit_feedback_once(
+    body: SubmitFeedbackRequest,
+    tenant: CurrentTenant,
+    use_case: SubmitFeedbackUseCase,
 ) -> FeedbackResponse:
     # S-Gov.3: 移除 admin 跨租戶 feedback 回填；admin 一律用自己的 tenant_id。
     command = SubmitFeedbackCommand(
@@ -149,8 +177,6 @@ async def submit_feedback(
         tags=feedback.tags,
         created_at=feedback.created_at,
     )
-
-
 @router.get("", response_model=list[FeedbackResponse])
 @inject
 async def list_feedback(

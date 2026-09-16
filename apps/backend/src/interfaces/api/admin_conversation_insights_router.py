@@ -29,8 +29,9 @@ from src.application.conversation.get_conversation_token_usage_use_case import (
 )
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
+from src.interfaces.api.chat_schemas import HistoryStructuredContent
 from src.interfaces.api.deps import CurrentTenant, require_role
-from src.interfaces.api.types import ApiDateTime
+from src.interfaces.api.types import ApiDateTime, ApiMoney
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class MessageItem(BaseModel):
     retrieved_chunks: list[dict[str, Any]] | None = Field(
         default=None, description="該輪有檢索才有值；未檢索為 null（不會缺席）"
     )
-    structured_content: dict[str, Any] | None = None
+    structured_content: HistoryStructuredContent | None = None
     created_at: ApiDateTime | None = None
 
 
@@ -77,7 +78,7 @@ class TokenUsageRow(BaseModel):
     output_tokens: int
     cache_read_tokens: int
     cache_creation_tokens: int
-    estimated_cost: float
+    estimated_cost: ApiMoney
     message_count: int
 
 
@@ -86,7 +87,7 @@ class TokenUsageTotals(BaseModel):
     output_tokens: int
     cache_read_tokens: int
     cache_creation_tokens: int
-    estimated_cost: float
+    estimated_cost: ApiMoney
     message_count: int
 
 

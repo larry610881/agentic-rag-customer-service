@@ -1,6 +1,5 @@
 """Agent Chat API 端點"""
 
-import json
 import logging
 from typing import Any
 
@@ -18,8 +17,14 @@ from src.container import Container
 from src.interfaces.api._stream_events import (
     conversation_created as _conversation_created,
 )
+from src.interfaces.api._stream_events import sse_frame
 from src.interfaces.api._stream_events import (
     with_conversation_created as _with_conversation_created,
+)
+from src.interfaces.api.chat_schemas import (
+    SourceResponse,
+    StructuredContentResponse,
+    ToolCallInfo,
 )
 from src.interfaces.api.client_ip import client_ip_of
 from src.interfaces.api.deps import (
@@ -36,6 +41,7 @@ from src.interfaces.api.idempotency import (
     run_idempotent,
 )
 from src.interfaces.api.streaming_errors import classify_streaming_error
+from src.interfaces.api.types import ApiMoney
 from src.interfaces.api.usage_context import UsageContext, get_usage_context
 
 logger = logging.getLogger(__name__)
@@ -62,35 +68,12 @@ class ChatRequest(BaseModel):
     history_override: list[dict] | None = None
 
 
-class ToolCallInfo(BaseModel):
-    tool_name: str
-    label: str = ""  # Backend resolve 後的中文顯示名稱，空值時前端 fallback 為 tool_name
-    reasoning: str
-
-
-class SourceResponse(BaseModel):
-    document_name: str
-    content_snippet: str
-    score: float
-
-
 class TokenUsageResponse(BaseModel):
     model: str
     input_tokens: int
     output_tokens: int
     total_tokens: int
-    estimated_cost: float
-
-
-class StructuredContentResponse(BaseModel):
-    """Issue #94：typed 結構化附件。`sources` 永遠是陣列（空時 `[]`）。"""
-
-    # transfer_to_human_agent 產生的聯絡按鈕 {"label", "url", "type": "url" | "phone"}
-    contact: dict | None = None
-    # 檢索來源（含 chunk_id / document_id / kb_id / image_url 等延伸欄位）
-    sources: list[dict] = Field(default_factory=list)
-    # output_format=json 的 bot：已解析的結構化答案；`answer` 仍為 JSON 字串相容舊客戶端
-    output: dict | None = None
+    estimated_cost: ApiMoney
 
 
 class ChatResponse(BaseModel):
@@ -342,6 +325,7 @@ async def agent_chat_stream(
         # M13：guard 細節暴露改以 JWT role 判定（非 body 自報的 identity_source）
         is_studio = _can_see_guard_details(tenant.role)
 
+        seq = 0
         try:
             async for event in use_case.execute_stream(command):
                 # Issue #96：usage / config_version / config_hash 是內部事件，不下發；
@@ -352,7 +336,8 @@ async def agent_chat_stream(
                 if event.get("type") == "guard_blocked" and not is_studio:
                     continue
                 event = _with_conversation_created(event, request.conversation_id)
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                seq += 1
+                yield sse_frame(event, seq)
         except Exception as exc:
             logger.exception("agent.chat.stream.error")
             error_msg = classify_streaming_error(exc)
@@ -385,8 +370,8 @@ async def agent_chat_stream(
             done_payload: dict = {"type": "done"}
             if failed_trace_id:
                 done_payload["trace_id"] = failed_trace_id
-            yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+            yield sse_frame(error_payload, seq + 1)
+            yield sse_frame(done_payload, seq + 2)
 
     return StreamingResponse(
         event_generator(),

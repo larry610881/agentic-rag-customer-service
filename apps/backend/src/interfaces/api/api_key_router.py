@@ -5,6 +5,7 @@ secret 只在建立回應出現一次。
 """
 
 from datetime import datetime
+from typing import Any
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query
@@ -16,11 +17,18 @@ from src.application.auth.api_key_use_cases import (
     ListApiKeysUseCase,
     RevokeApiKeyUseCase,
 )
+from src.application.shared.idempotency_guard import IdempotencyGuard
 from src.container import Container
 from src.domain.auth.api_key import API_SCOPES, ApiKey
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import CurrentTenant, require_role
 from src.interfaces.api.errors import ApiError, not_found_code
+from src.interfaces.api.idempotency import (
+    get_idempotency_key,
+    idempotency_scope,
+    request_fingerprint,
+    run_idempotent,
+)
 from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/api-keys", tags=["api-keys"])
@@ -110,6 +118,26 @@ async def create_api_key(
     use_case: CreateApiKeyUseCase = Depends(
         Provide[Container.create_api_key_use_case]
     ),
+    idempotency_key: str | None = Depends(get_idempotency_key),
+    idempotency_guard: IdempotencyGuard | None = Depends(
+        Provide[Container.idempotency_guard]
+    ),
+) -> Any:
+    # Issue #98：帶 Idempotency-Key 時「執行一次或重播」；沒帶則行為與過去相同
+    return await run_idempotent(
+        idempotency_guard,
+        key=idempotency_key,
+        scope=idempotency_scope(caller, "api_keys.create"),
+        fingerprint=request_fingerprint(body),
+        handler=lambda: _create_api_key_once(body, caller, use_case),
+        status_code=201,
+    )
+
+
+async def _create_api_key_once(
+    body: CreateApiKeyRequest,
+    caller: CurrentTenant,
+    use_case: CreateApiKeyUseCase,
 ) -> ApiKeyCreatedResponse:
     tenant_id = _target_tenant(caller, body.tenant_id)
     try:
@@ -134,8 +162,6 @@ async def create_api_key(
     return ApiKeyCreatedResponse(
         **base.model_dump(), client_secret=result.client_secret
     )
-
-
 @router.get("", response_model=list[ApiKeyResponse])
 @inject
 async def list_api_keys(

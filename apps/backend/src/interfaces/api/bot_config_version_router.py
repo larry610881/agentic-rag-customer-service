@@ -4,7 +4,6 @@
 InvalidVersionTransitionError → 409；StaticCheckFailedError → 400 + 逐項明細。
 """
 
-from datetime import datetime
 from math import ceil
 from typing import Any
 
@@ -46,7 +45,7 @@ from src.interfaces.api.deps import (
     require_role,
 )
 from src.interfaces.api.schemas.pagination import PaginatedResponse
-from src.interfaces.api.types import ApiDateTime
+from src.interfaces.api.types import ApiDateTime, ApiMoney
 
 # H4：版本寫入/驗證端點限管理員角色。一般成員（role="user"，註冊預設）不得建立/
 # 發布/回朔版本（等同租戶內權限提升寫入 bots 設定），亦不得觸發 validate/replay
@@ -88,9 +87,12 @@ class GateRunResponse(BaseModel):
     hard_failed_cases: int | None
     soft_pass_rate: float | None
     unstable_cases: int | None
-    est_cost: float | None
-    actual_cost: float | None
-    details: dict | None
+    est_cost: ApiMoney | None
+    actual_cost: ApiMoney | None
+    details: dict | None = Field(
+        json_schema_extra={"x-opaque": True},
+        description="閘門執行細節（依閘門類型而異）",
+    )
     error_message: str | None
     created_at: ApiDateTime
     started_at: ApiDateTime | None
@@ -132,7 +134,10 @@ class VersionResponse(BaseModel):
 
 
 class VersionDetailResponse(VersionResponse):
-    config_snapshot: dict[str, Any]
+    config_snapshot: dict[str, Any] = Field(
+        json_schema_extra={"x-opaque": True},
+        description="該版本的完整設定快照",
+    )
     snapshot_schema: int
 
 

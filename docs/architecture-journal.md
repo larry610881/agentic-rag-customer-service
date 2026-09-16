@@ -7,6 +7,43 @@
 
 ---
 
+## 契約改造第二批 — 冪等擴到建立型端點、SSE 序號、widget 補非串流（2026-09-16，Issue #98）
+
+**Sprint 來源**：全 API 面審核改造順序 7–11 步。第一批把「解碼會不會壞」處理掉，這批處理
+「重送會不會重複」「串流能不能接」「金額三端是否一致」。
+
+**主題**：包裝器模式的邊界、multipart 的冪等指紋、SSE 契約的最小可用集、通路對等
+
+#### 做得好的地方
+- **`run_idempotent` 一個 helper 包五支端點，handler 不動**。每支端點只是把原本 body 搬進
+  `_xxx_once`、外層加兩個 Depends 與一個 `return await run_idempotent(...)`；201/202 狀態碼原樣重播。
+  multipart 上傳沒有 JSON body，指紋改用（kb, 檔名, 型別, 內容 sha256）——同檔重送不會重複建文件、
+  重複 embedding 計費。
+- **`Idempotency-Key` 從 `request.headers.get` 改成 `Header(alias=…)` 宣告**，OpenAPI 就自動出現在
+  六個端點的參數表，廠商不用讀 markdown 才知道有這回事。
+- **SSE 先給最小可用契約**：`id:` 序號 + 事件型別表 + 終止語意 + 非串流替代。`Last-Event-ID`
+  從快照重播需要存整段事件序列，與串流冪等是同一個 store 的事，留同一個觸發條件。
+  文件裡特別標了坑：帶 `node_id` 的 `done` 是 trace 節點狀態，不是終止——這是自己在斷線測試腳本上踩過的。
+- **widget 非串流端點與串流共用 `_widget_command`**，command 組裝只有一份；輸出刻意不含 usage 與
+  guard 細節（匿名通路）。
+- **opaque 檢查排除 typed map**。第一版把 `dict[str, float]` 也當無型別 object 抓進來，
+  看 schema 才發現 `additionalProperties` 已經有型別——工具的判準也要跟著 schema 語意修。
+
+#### 潛在隱憂
+- **金額只做了「固定 6 位小數」，沒有字串化**。三端取整一致了，但 JavaScript 的 double 表示
+  仍可能出現 0.1+0.2 類問題；等有對帳消費者再加 `*_str` → 優先級：低。
+- **`X-Client-Version` 只在有標頭時檢查**。web 前端不帶標頭，426 對它無效——這是刻意的
+  （426 是止血不是演進策略），但要記得原生 app 一定要帶 → 優先級：中（寫進廠商規格）。
+- **widget 非串流的 scope 用 visitor_id**。同一個 visitor 在不同 origin 的 widget 會共用 scope；
+  key 是客戶端 UUID 所以不會誤撞，但語意上可加 origin → 優先級：低。
+
+#### 延伸學習
+- Stripe 對 multipart 端點同樣支援 Idempotency-Key，指紋取檔案內容 hash；本設計對齊。
+- SSE 規格（WHATWG）裡 `id` 是連線層的重連游標，不是業務序號；這裡先當去重序號用，
+  之後做重播時語意要對齊（伺服器保存 id → 事件的對應）。
+- 「typed map」在 JSON Schema 是 `additionalProperties` 帶 schema 的 object，
+  產生器（Swift/Kotlin）會產出 `[String: T]`／`Map<String, T>`，不算無型別。
+
 ## 契約改造第一批 — 用型別別名與 app 層宣告，一次改對 130 個回應 schema（2026-09-16，Issue #97）
 
 **Sprint 來源**：全 API 面契約審核（`docs/api-contract-review-2026-09-16.md`）改造順序前六步。

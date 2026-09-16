@@ -8,7 +8,7 @@ from typing import Any
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.application.platform.create_provider_setting_use_case import (
     CreateProviderSettingCommand,
@@ -36,7 +36,7 @@ from src.application.platform.update_provider_setting_use_case import (
 from src.container import Container
 from src.domain.shared.exceptions import DuplicateEntityError, EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
-from src.interfaces.api.types import ApiDateTime
+from src.interfaces.api.types import ApiDateTime, ApiMoney
 
 router = APIRouter(prefix="/api/v1/settings/providers", tags=["settings"])
 
@@ -48,8 +48,8 @@ class ModelConfigSchema(BaseModel):
     is_enabled: bool = True
     price: str = ""
     description: str = ""
-    input_price: float = 0.0   # USD per 1M tokens
-    output_price: float = 0.0  # USD per 1M tokens
+    input_price: ApiMoney = 0.0   # USD per 1M tokens
+    output_price: ApiMoney = 0.0  # USD per 1M tokens
 
 
 class CreateProviderSettingRequest(BaseModel):
@@ -80,7 +80,10 @@ class ProviderSettingResponse(BaseModel):
     has_api_key: bool
     base_url: str
     models: list[ModelConfigSchema]
-    extra_config: dict[str, Any]
+    extra_config: dict[str, Any] = Field(
+        json_schema_extra={"x-opaque": True},
+        description="供應商特有設定",
+    )
     created_at: ApiDateTime
     updated_at: ApiDateTime
 

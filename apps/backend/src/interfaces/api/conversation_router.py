@@ -12,6 +12,7 @@ from src.application.conversation.list_conversations_use_case import (
     ListConversationsUseCase,
 )
 from src.container import Container
+from src.interfaces.api.chat_schemas import HistoryStructuredContent
 from src.interfaces.api.deps import CurrentTenant, require_scope
 from src.interfaces.api.errors import ApiError
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
@@ -27,7 +28,7 @@ class MessageResponse(BaseModel):
     id: str
     role: str
     content: str
-    structured_content: dict | None = None
+    structured_content: HistoryStructuredContent | None = None
     created_at: ApiDateTime
 
 

@@ -1120,6 +1120,26 @@
             "HTTPBearer": []
           }
         ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費",
+              "title": "Idempotency-Key"
+            },
+            "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -6045,6 +6065,24 @@
               "type": "string",
               "title": "Kb Id"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費",
+              "title": "Idempotency-Key"
+            },
+            "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費"
           }
         ],
         "requestBody": {
@@ -8064,15 +8102,40 @@
         ],
         "summary": "Agent Chat",
         "operationId": "agent_chat_api_v1_agent_chat_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費",
+              "title": "Idempotency-Key"
+            },
+            "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費"
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ChatRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -8165,12 +8228,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/agent/chat/stream": {
@@ -9276,6 +9334,26 @@
         "security": [
           {
             "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費",
+              "title": "Idempotency-Key"
+            },
+            "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費"
           }
         ],
         "requestBody": {
@@ -13047,6 +13125,26 @@
         "security": [
           {
             "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費",
+              "title": "Idempotency-Key"
+            },
+            "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費"
           }
         ],
         "requestBody": {
@@ -27163,6 +27261,163 @@
         }
       }
     },
+    "/api/v1/widget/{short_code}/chat": {
+      "post": {
+        "tags": [
+          "widget"
+        ],
+        "summary": "Widget Chat",
+        "description": "非串流 chat（需 widget 票）。與 /chat/stream 走同一條管線，只差輸出形狀。",
+        "operationId": "widget_chat_api_v1_widget__short_code__chat_post",
+        "parameters": [
+          {
+            "name": "short_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Short Code"
+            }
+          },
+          {
+            "name": "wt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wt"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費",
+              "title": "Idempotency-Key"
+            },
+            "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetChatResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "請求不合法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未認證或 token 無效 / 過期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "權限或 scope 不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "資源不存在或不屬於此租戶",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "狀態衝突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "欄位驗證失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "限流或異常控管（含 Retry-After）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未預期錯誤，請附 request_id 回報",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/widget/{short_code}/documents/{doc_id}/view": {
       "get": {
         "tags": [
@@ -29009,6 +29264,26 @@
             "HTTPBearer": []
           }
         ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費",
+              "title": "Idempotency-Key"
+            },
+            "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -30833,7 +31108,9 @@
                 "type": "null"
               }
             ],
-            "title": "Output Schema"
+            "title": "Output Schema",
+            "description": "json bot 的輸出 JSON Schema（由租戶自訂）",
+            "x-opaque": true
           },
           "miss_reply": {
             "type": "string",
@@ -31170,7 +31447,11 @@
           },
           "estimated_cost": {
             "type": "number",
-            "title": "Estimated Cost"
+            "format": "double",
+            "title": "Estimated Cost",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "message_count": {
             "type": "integer",
@@ -33492,7 +33773,7 @@
           },
           "models": {
             "items": {
-              "$ref": "#/components/schemas/ModelConfigSchema"
+              "$ref": "#/components/schemas/ModelConfigSchema-Input"
             },
             "type": "array",
             "title": "Models",
@@ -33735,7 +34016,11 @@
           },
           "estimated_cost": {
             "type": "number",
-            "title": "Estimated Cost"
+            "format": "double",
+            "title": "Estimated Cost",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "message_count": {
             "type": "integer",
@@ -33826,7 +34111,9 @@
           "cost_config": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Cost Config"
+            "title": "Cost Config",
+            "description": "評測成本設定（依供應商而異）",
+            "x-opaque": true
           },
           "include_security": {
             "type": "boolean",
@@ -34235,15 +34522,27 @@
           },
           "cost_before_total": {
             "type": "number",
-            "title": "Cost Before Total"
+            "format": "double",
+            "title": "Cost Before Total",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "cost_after_total": {
             "type": "number",
-            "title": "Cost After Total"
+            "format": "double",
+            "title": "Cost After Total",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "cost_delta": {
             "type": "number",
-            "title": "Cost Delta"
+            "format": "double",
+            "title": "Cost Delta",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "recalc_from": {
             "type": "string",
@@ -34406,11 +34705,19 @@
           },
           "cost_before_total": {
             "type": "number",
-            "title": "Cost Before Total"
+            "format": "double",
+            "title": "Cost Before Total",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "cost_after_total": {
             "type": "number",
-            "title": "Cost After Total"
+            "format": "double",
+            "title": "Cost After Total",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           }
         },
         "type": "object",
@@ -34636,7 +34943,11 @@
           "est_cost": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "format": "double",
+                "description": "金額（USD），伺服器端固定取整到 6 位小數",
+                "x-precision": 6,
+                "x-unit": "USD"
               },
               {
                 "type": "null"
@@ -34647,7 +34958,11 @@
           "actual_cost": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "format": "double",
+                "description": "金額（USD），伺服器端固定取整到 6 位小數",
+                "x-precision": 6,
+                "x-unit": "USD"
               },
               {
                 "type": "null"
@@ -34665,7 +34980,9 @@
                 "type": "null"
               }
             ],
-            "title": "Details"
+            "title": "Details",
+            "description": "閘門執行細節（依閘門類型而異）",
+            "x-opaque": true
           },
           "error_message": {
             "anyOf": [
@@ -34903,6 +35220,76 @@
         ],
         "title": "GuardRulesResponse"
       },
+      "HistoryStructuredContent": {
+        "properties": {
+          "contact": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact",
+            "description": "轉人工聯絡按鈕 {label, url, type: url|phone}；無則 null",
+            "x-opaque": true
+          },
+          "sources": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Sources",
+            "description": "檢索來源（含 chunk_id / document_id / kb_id / image_url）"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output",
+            "description": "json bot 已解析的結構化答案（schema 由 bot 設定決定）",
+            "x-opaque": true
+          },
+          "display_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Text",
+            "description": "文字通路顯示欄位（json bot 的 answer 欄）"
+          },
+          "retrieval": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval",
+            "description": "快速道 / kb 檢索統計（top_score, chunk_count, threshold, miss）",
+            "x-opaque": true
+          }
+        },
+        "type": "object",
+        "title": "HistoryStructuredContent",
+        "description": "對話歷史端點的 structured_content（持久化 payload 的 typed 形狀）。"
+      },
       "ImportDatasetRequest": {
         "properties": {
           "yaml_content": {
@@ -35006,7 +35393,9 @@
                 "type": "null"
               }
             ],
-            "title": "Details"
+            "title": "Details",
+            "description": "迭代細節（依策略而異）",
+            "x-opaque": true
           },
           "prompt_snapshot": {
             "type": "string",
@@ -35411,14 +35800,12 @@
           "structured_content": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/HistoryStructuredContent"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Structured Content"
+            ]
           },
           "created_at": {
             "anyOf": [
@@ -35459,14 +35846,12 @@
           "structured_content": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/HistoryStructuredContent"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Structured Content"
+            ]
           },
           "created_at": {
             "type": "string",
@@ -35484,7 +35869,7 @@
         ],
         "title": "MessageResponse"
       },
-      "ModelConfigSchema": {
+      "ModelConfigSchema-Input": {
         "properties": {
           "model_id": {
             "type": "string",
@@ -35532,6 +35917,62 @@
         ],
         "title": "ModelConfigSchema"
       },
+      "ModelConfigSchema-Output": {
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "title": "Model Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "default": false
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "default": true
+          },
+          "price": {
+            "type": "string",
+            "title": "Price",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "input_price": {
+            "type": "number",
+            "format": "double",
+            "title": "Input Price",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "default": 0.0,
+            "x-precision": 6,
+            "x-unit": "USD"
+          },
+          "output_price": {
+            "type": "number",
+            "format": "double",
+            "title": "Output Price",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "default": 0.0,
+            "x-precision": 6,
+            "x-unit": "USD"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_id",
+          "display_name"
+        ],
+        "title": "ModelConfigSchema"
+      },
       "ModelCostStatResponse": {
         "properties": {
           "model": {
@@ -35556,7 +35997,11 @@
           },
           "estimated_cost": {
             "type": "number",
-            "title": "Estimated Cost"
+            "format": "double",
+            "title": "Estimated Cost",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           }
         },
         "type": "object",
@@ -35619,7 +36064,11 @@
           },
           "estimated_cost": {
             "type": "number",
-            "title": "Estimated Cost"
+            "format": "double",
+            "title": "Estimated Cost",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "message_count": {
             "type": "integer",
@@ -35696,7 +36145,9 @@
           "payload": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Payload"
+            "title": "Payload",
+            "description": "事件 payload（依事件類型而異）",
+            "x-opaque": true
           },
           "status": {
             "type": "string",
@@ -36456,19 +36907,35 @@
           },
           "input_price": {
             "type": "number",
-            "title": "Input Price"
+            "format": "double",
+            "title": "Input Price",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "output_price": {
             "type": "number",
-            "title": "Output Price"
+            "format": "double",
+            "title": "Output Price",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "cache_read_price": {
             "type": "number",
-            "title": "Cache Read Price"
+            "format": "double",
+            "title": "Cache Read Price",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "cache_creation_price": {
             "type": "number",
-            "title": "Cache Creation Price"
+            "format": "double",
+            "title": "Cache Creation Price",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "effective_from": {
             "type": "string",
@@ -36584,7 +37051,7 @@
           },
           "models": {
             "items": {
-              "$ref": "#/components/schemas/ModelConfigSchema"
+              "$ref": "#/components/schemas/ModelConfigSchema-Output"
             },
             "type": "array",
             "title": "Models"
@@ -36592,7 +37059,9 @@
           "extra_config": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Extra Config"
+            "title": "Extra Config",
+            "description": "供應商特有設定",
+            "x-opaque": true
           },
           "created_at": {
             "type": "string",
@@ -36826,15 +37295,27 @@
           },
           "cost_before_total": {
             "type": "number",
-            "title": "Cost Before Total"
+            "format": "double",
+            "title": "Cost Before Total",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "cost_after_total": {
             "type": "number",
-            "title": "Cost After Total"
+            "format": "double",
+            "title": "Cost After Total",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "cost_delta": {
             "type": "number",
-            "title": "Cost Delta"
+            "format": "double",
+            "title": "Cost Delta",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "executed_by": {
             "type": "string",
@@ -37147,7 +37628,9 @@
           "metadata": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Metadata"
+            "title": "Metadata",
+            "description": "chunk metadata（依來源而異）",
+            "x-opaque": true
           }
         },
         "type": "object",
@@ -37787,7 +38270,9 @@
                 "type": "null"
               }
             ],
-            "title": "Contact"
+            "title": "Contact",
+            "description": "轉人工聯絡按鈕 {label, url, type: url|phone}；無則 null",
+            "x-opaque": true
           },
           "sources": {
             "items": {
@@ -37795,7 +38280,8 @@
               "type": "object"
             },
             "type": "array",
-            "title": "Sources"
+            "title": "Sources",
+            "description": "檢索來源（含 chunk_id / document_id / kb_id / image_url）"
           },
           "output": {
             "anyOf": [
@@ -37807,7 +38293,9 @@
                 "type": "null"
               }
             ],
-            "title": "Output"
+            "title": "Output",
+            "description": "json bot 已解析的結構化答案（schema 由 bot 設定決定）",
+            "x-opaque": true
           }
         },
         "type": "object",
@@ -38641,7 +39129,11 @@
           },
           "estimated_cost": {
             "type": "number",
-            "title": "Estimated Cost"
+            "format": "double",
+            "title": "Estimated Cost",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           }
         },
         "type": "object",
@@ -38737,7 +39229,11 @@
           },
           "estimated_cost": {
             "type": "number",
-            "title": "Estimated Cost"
+            "format": "double",
+            "title": "Estimated Cost",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "message_count": {
             "type": "integer",
@@ -38778,7 +39274,11 @@
           },
           "estimated_cost": {
             "type": "number",
-            "title": "Estimated Cost"
+            "format": "double",
+            "title": "Estimated Cost",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "message_count": {
             "type": "integer",
@@ -40658,7 +41158,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/ModelConfigSchema"
+                  "$ref": "#/components/schemas/ModelConfigSchema-Input"
                 },
                 "type": "array"
               },
@@ -41153,7 +41653,11 @@
           },
           "total_cost": {
             "type": "number",
-            "title": "Total Cost"
+            "format": "double",
+            "title": "Total Cost",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-precision": 6,
+            "x-unit": "USD"
           },
           "by_model": {
             "additionalProperties": {
@@ -41347,7 +41851,9 @@
           "config_snapshot": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Config Snapshot"
+            "title": "Config Snapshot",
+            "description": "該版本的完整設定快照",
+            "x-opaque": true
           },
           "snapshot_schema": {
             "type": "integer",
@@ -41524,6 +42030,54 @@
           "message"
         ],
         "title": "WidgetChatRequest"
+      },
+      "WidgetChatResponse": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id",
+            "description": "keep_history 關閉時為 null（不下發對話 id）"
+          },
+          "conversation_created": {
+            "type": "boolean",
+            "title": "Conversation Created"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceResponse"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "structured_content": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StructuredContentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "conversation_created"
+        ],
+        "title": "WidgetChatResponse",
+        "description": "widget 非串流回覆（Issue #98，準則 C3：SSE 必須有非串流替代）。\n不含 usage（匿名通路不揭露成本）與 guard 細節。"
       },
       "WidgetConfigResponse": {
         "properties": {

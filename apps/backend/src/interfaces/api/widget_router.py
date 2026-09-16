@@ -9,15 +9,15 @@
 3. 訪客身分取自票，不再信任 X-Visitor-Id header。
 """
 
-import json
 import logging
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlsplit
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
 from src.application.abuse.abuse_control_service import AbuseControlService
 from src.application.agent.send_message_use_case import (
@@ -35,6 +35,7 @@ from src.application.observability.error_event_use_cases import (
     ReportErrorCommand,
     ReportErrorUseCase,
 )
+from src.application.shared.idempotency_guard import IdempotencyGuard
 from src.application.widget.identity_use_cases import VerifyWidgetIdentityUseCase
 from src.container import Container
 from src.domain.abuse.policy import AbuseSubject, SubjectKind
@@ -44,8 +45,18 @@ from src.domain.knowledge.repository import DocumentRepository
 from src.domain.usage.category import UsageCategory
 from src.infrastructure.auth.jwt_service import WIDGET_TOKEN_TYPE, JWTService
 from src.infrastructure.auth.visitor_id_signer import VisitorIdSigner
-from src.interfaces.api._stream_events import with_conversation_created
+from src.interfaces.api._stream_events import (
+    conversation_created,
+    sse_frame,
+    with_conversation_created,
+)
+from src.interfaces.api.chat_schemas import SourceResponse, StructuredContentResponse
 from src.interfaces.api.client_ip import client_ip_of
+from src.interfaces.api.idempotency import (
+    get_idempotency_key,
+    request_fingerprint,
+    run_idempotent,
+)
 from src.interfaces.api.streaming_errors import classify_streaming_error
 
 logger = logging.getLogger(__name__)
@@ -338,32 +349,20 @@ async def widget_chat_stream(
 ) -> StreamingResponse:
     """SSE streaming chat（需 widget 票）。"""
     bot = principal.bot
-    command = SendMessageCommand(
-        tenant_id=bot.tenant_id,
-        bot_id=bot.id.value,
-        message=body.message,
-        conversation_id=body.conversation_id if bot.widget_keep_history else None,
-        # 取自票，不信任 header；identify() 通過後改用宿主 user id（記憶 / 紀錄綁定）
-        visitor_id=principal.end_user_id or principal.visitor_id,
-        # L6：widget 端點固定通路標記——trace source 不再 fallback 成 "web"
-        identity_source="widget",
-        subject_kind=principal.subject[0],
-        subject_id=principal.subject[1],
-        client_ip=client_ip_of(request),
-        # Issue #96：記帳在 use case 內完成
-        usage_request_type=UsageCategory.CHAT_WIDGET.value,
-    )
+    command = _widget_command(body, principal, request)
     # Issue #68 P7：串流前先問異常等級（L3+ → 429）
     await use_case.abuse_preflight(command)
 
     async def event_generator():
         captured: dict = {}
+        seq = 0
         try:
             async for event in use_case.execute_stream(command):
                 if _widget_should_forward(event, bot.widget_keep_history, captured):
-                    # Issue #94 通路對等：widget 的 conversation_id 事件同樣帶 created 旗標
+                    # Issue #94 通路對等：conversation_id 事件同樣帶 created 旗標
                     event = with_conversation_created(event, command.conversation_id)
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                    seq += 1
+                    yield sse_frame(event, seq)
         except Exception as exc:
             logger.exception("widget.chat.stream.error")
             error_msg = classify_streaming_error(exc)
@@ -382,12 +381,114 @@ async def widget_chat_stream(
             done_payload: dict = {"type": "done"}
             if failed_trace_id:
                 done_payload["trace_id"] = failed_trace_id
-            yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+            yield sse_frame(error_payload, seq + 1)
+            yield sse_frame(done_payload, seq + 2)
 
     response = StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
+    )
+    _set_cors_headers(response, principal.origin, bot)
+    return response
+
+
+def _widget_command(
+    body: WidgetChatRequest, principal: WidgetPrincipal, request: Request
+) -> SendMessageCommand:
+    """串流與非串流共用同一份 command 組裝（channel parity）。"""
+    bot = principal.bot
+    return SendMessageCommand(
+        tenant_id=bot.tenant_id,
+        bot_id=bot.id.value,
+        message=body.message,
+        conversation_id=body.conversation_id if bot.widget_keep_history else None,
+        # 取自票，不信任 header；identify() 通過後改用宿主 user id（記憶 / 紀錄綁定）
+        visitor_id=principal.end_user_id or principal.visitor_id,
+        # L6：widget 端點固定通路標記——trace source 不再 fallback 成 "web"
+        identity_source="widget",
+        subject_kind=principal.subject[0],
+        subject_id=principal.subject[1],
+        client_ip=client_ip_of(request),
+        # Issue #96：記帳在 use case 內完成
+        usage_request_type=UsageCategory.CHAT_WIDGET.value,
+    )
+
+
+class WidgetChatResponse(BaseModel):
+    """widget 非串流回覆（Issue #98，準則 C3：SSE 必須有非串流替代）。
+    不含 usage（匿名通路不揭露成本）與 guard 細節。"""
+
+    answer: str
+    conversation_id: str | None = Field(
+        default=None, description="keep_history 關閉時為 null（不下發對話 id）"
+    )
+    conversation_created: bool
+    sources: list[SourceResponse] = Field(default_factory=list)
+    structured_content: StructuredContentResponse | None = None
+
+
+@router.post("/{short_code}/chat", response_model=WidgetChatResponse)
+@inject
+async def widget_chat(
+    short_code: str,
+    body: WidgetChatRequest,
+    request: Request,
+    principal: WidgetPrincipal = Depends(get_widget_principal),
+    use_case: SendMessageUseCase = Depends(
+        Provide[Container.send_message_use_case]
+    ),
+    idempotency_key: str | None = Depends(get_idempotency_key),
+    idempotency_guard: IdempotencyGuard | None = Depends(
+        Provide[Container.idempotency_guard]
+    ),
+) -> Any:
+    """非串流 chat（需 widget 票）。與 /chat/stream 走同一條管線，只差輸出形狀。"""
+    bot = principal.bot
+    command = _widget_command(body, principal, request)
+    await use_case.abuse_preflight(command)
+
+    async def _once() -> WidgetChatResponse:
+        result = await use_case.execute(command)
+        show = bool(bot.show_sources)
+        source_dicts = [s.to_dict() for s in result.sources] if show else []
+        structured: StructuredContentResponse | None = None
+        if result.contact or source_dicts or result.structured_output is not None:
+            structured = StructuredContentResponse(
+                contact=result.contact,
+                sources=source_dicts,
+                output=result.structured_output,
+            )
+        return WidgetChatResponse(
+            answer=result.answer,
+            conversation_id=(
+                result.conversation_id if bot.widget_keep_history else None
+            ),
+            conversation_created=conversation_created(
+                command.conversation_id, result.conversation_id
+            ),
+            sources=[
+                SourceResponse(
+                    document_name=s.document_name,
+                    content_snippet=s.content_snippet,
+                    score=s.score,
+                )
+                for s in result.sources
+            ] if show else [],
+            structured_content=structured,
+        )
+
+    scope = f"{bot.tenant_id}:visitor:{principal.visitor_id or ''}:widget.chat"
+    outcome = await run_idempotent(
+        idempotency_guard,
+        key=idempotency_key,
+        scope=scope,
+        fingerprint=request_fingerprint(body),
+        handler=_once,
+    )
+    response = (
+        outcome
+        if isinstance(outcome, Response)
+        else JSONResponse(content=outcome.model_dump(mode="json"))
     )
     _set_cors_headers(response, principal.origin, bot)
     return response

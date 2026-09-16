@@ -9,7 +9,7 @@ from typing import Any
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.application.eval_dataset.run_use_cases import (
     GetRunDiffUseCase,
@@ -21,10 +21,17 @@ from src.application.eval_dataset.run_use_cases import (
     StartRunUseCase,
     StopRunUseCase,
 )
+from src.application.shared.idempotency_guard import IdempotencyGuard
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.infrastructure.prompt_optimizer.run_manager import RunManager
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.idempotency import (
+    get_idempotency_key,
+    idempotency_scope,
+    request_fingerprint,
+    run_idempotent,
+)
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 from src.interfaces.api.types import ApiDateTime
 
@@ -78,7 +85,10 @@ class IterationResponse(BaseModel):
     passed_count: int
     total_count: int
     is_best: bool
-    details: dict[str, Any] | None
+    details: dict[str, Any] | None = Field(
+        json_schema_extra={"x-opaque": True},
+        description="迭代細節（依策略而異）",
+    )
     prompt_snapshot: str = ""
     created_at: ApiDateTime
 
@@ -144,6 +154,28 @@ async def start_run(
     use_case: StartRunUseCase = Depends(
         Provide[Container.start_run_use_case]
     ),
+    idempotency_key: str | None = Depends(get_idempotency_key),
+    idempotency_guard: IdempotencyGuard | None = Depends(
+        Provide[Container.idempotency_guard]
+    ),
+) -> Any:
+    """Start an optimization run (async background task)."""
+    # Issue #98：帶 Idempotency-Key 時「執行一次或重播」；沒帶則行為與過去相同
+    return await run_idempotent(
+        idempotency_guard,
+        key=idempotency_key,
+        scope=idempotency_scope(tenant, "prompt_optimizer.runs.start"),
+        fingerprint=request_fingerprint(body),
+        handler=lambda: _start_run_once(body, request, tenant, use_case),
+        status_code=202,
+    )
+
+
+async def _start_run_once(
+    body: StartRunRequest,
+    request: Request,
+    tenant: CurrentTenant,
+    use_case: StartRunUseCase,
 ) -> StartRunResponse:
     """Start an optimization run (async background task)."""
     auth_header = request.headers.get("authorization", "")
@@ -166,8 +198,6 @@ async def start_run(
             status_code=status.HTTP_404_NOT_FOUND, detail=e.message
         ) from e
     return StartRunResponse(run_id=run_id, status="running")
-
-
 @router.get("/runs", response_model=PaginatedResponse[RunSummaryResponse])
 @inject
 async def list_runs(

@@ -1,4 +1,5 @@
 import asyncio  # noqa: F401  # tests patch document_router.asyncio.create_task
+import hashlib
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
@@ -45,6 +46,7 @@ from src.application.knowledge.upload_document_use_case import (
 from src.application.knowledge.view_document_use_case import (
     ViewDocumentUseCase,
 )
+from src.application.shared.idempotency_guard import IdempotencyGuard
 from src.container import Container
 from src.domain.shared.exceptions import (
     EntityNotFoundError,
@@ -53,6 +55,12 @@ from src.domain.shared.exceptions import (
 from src.infrastructure.logging.error_handler import safe_background_task
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.errors import ApiError, not_found_code
+from src.interfaces.api.idempotency import (
+    fingerprint_parts,
+    get_idempotency_key,
+    idempotency_scope,
+    run_idempotent,
+)
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 from src.interfaces.api.types import ApiDateTime
 
@@ -504,8 +512,39 @@ async def upload_document(
     use_case: UploadDocumentUseCase = Depends(
         Provide[Container.upload_document_use_case]
     ),
-) -> UploadDocumentResponse:
+    idempotency_key: str | None = Depends(get_idempotency_key),
+    idempotency_guard: IdempotencyGuard | None = Depends(
+        Provide[Container.idempotency_guard]
+    ),
+) -> Any:
     raw_content = await file.read()
+    # Issue #98：multipart 上傳以（kb, 檔名, 型別, 內容 sha256）當指紋；
+    # 同 key 同檔重送回同一份 201，不會重複建文件、重複 embedding 計費
+    return await run_idempotent(
+        idempotency_guard,
+        key=idempotency_key,
+        scope=idempotency_scope(tenant, "documents.upload"),
+        fingerprint=fingerprint_parts(
+            kb_id,
+            file.filename or "unnamed",
+            file.content_type or "",
+            hashlib.sha256(raw_content).hexdigest(),
+        ),
+        handler=lambda: _upload_document_once(
+            kb_id, file, background_tasks, tenant, use_case, raw_content
+        ),
+        status_code=201,
+    )
+
+
+async def _upload_document_once(
+    kb_id: str,
+    file: UploadFile,
+    background_tasks: BackgroundTasks,
+    tenant: CurrentTenant,
+    use_case: UploadDocumentUseCase,
+    raw_content: bytes,
+) -> UploadDocumentResponse:
     if len(raw_content) > MAX_FILE_SIZE:
         raise ApiError(
             413,

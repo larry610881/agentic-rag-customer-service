@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 
 def conversation_created(requested_id: str | None, actual_id: str) -> bool:
     """Issue #94：平台回傳的 id 與請求端帶的不同（含未帶）= 新建對話。"""
@@ -18,3 +20,12 @@ def with_conversation_created(event: dict, requested_id: str | None) -> dict:
             requested_id, str(event.get("conversation_id", ""))
         ),
     }
+
+
+def sse_frame(event: dict, seq: int) -> str:
+    """一個完整 SSE 事件：`id:` 為本串流內遞增序號（Issue #98，準則 C3）。
+
+    客戶端斷線重連時可帶 `Last-Event-ID`；目前伺服器尚未支援從快照重播
+    （與串流冪等同一觸發條件，另案），但序號已讓客戶端能去重。
+    """
+    return f"id: {seq}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"

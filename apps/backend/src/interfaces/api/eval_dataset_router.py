@@ -7,7 +7,7 @@ from typing import Any
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.application.eval_dataset.create_eval_dataset_use_case import (
     CreateEvalDatasetCommand,
@@ -120,7 +120,10 @@ class DatasetResponse(BaseModel):
     description: str
     target_prompt: str
     default_assertions: list[dict[str, Any]]
-    cost_config: dict[str, Any]
+    cost_config: dict[str, Any] = Field(
+        json_schema_extra={"x-opaque": True},
+        description="評測成本設定（依供應商而異）",
+    )
     include_security: bool
     is_platform_base: bool
     test_cases: list[TestCaseResponse]

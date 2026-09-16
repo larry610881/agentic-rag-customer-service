@@ -314,6 +314,13 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     # RequestID + trace init/flush (runs before CORS & RateLimit)
     application.add_middleware(RequestIDMiddleware)
 
+    # Issue #98：X-Client-Version 門檻（在 RequestID 內層，log context 已有 request_id）
+    from src.interfaces.api.client_version_middleware import ClientVersionMiddleware
+
+    application.add_middleware(
+        ClientVersionMiddleware, min_version=settings.min_client_version
+    )
+
     # security-precheck：安全標頭包在最外層（含 401 / 靜態檔 / 例外回應）
     from src.interfaces.api.security_headers_middleware import (
         SecurityHeadersMiddleware,

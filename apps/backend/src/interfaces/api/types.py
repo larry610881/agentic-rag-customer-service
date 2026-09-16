@@ -32,3 +32,24 @@ ApiDateTime = Annotated[
         mode="serialization",
     ),
 ]
+
+
+def serialize_api_money(value: float) -> float:
+    """金額固定 6 位小數：三端（web / Swift / Kotlin）看到同一個取整結果（準則 A7）。"""
+    return round(float(value), 6)
+
+
+ApiMoney = Annotated[
+    float,
+    PlainSerializer(serialize_api_money, return_type=float, when_used="json"),
+    WithJsonSchema(
+        {
+            "type": "number",
+            "format": "double",
+            "description": "金額（USD），伺服器端固定取整到 6 位小數",
+            "x-unit": "USD",
+            "x-precision": 6,
+        },
+        mode="serialization",
+    ),
+]

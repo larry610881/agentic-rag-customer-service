@@ -93,7 +93,10 @@ class RetrievalHitResponse(BaseModel):
     content: str
     score: float
     source: str
-    metadata: dict
+    metadata: dict = Field(
+        json_schema_extra={"x-opaque": True},
+        description="chunk metadata（依來源而異）",
+    )
 
 
 class RetrievalTestResponse(BaseModel):

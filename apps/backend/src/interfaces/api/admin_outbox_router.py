@@ -46,7 +46,10 @@ class OutboxEventResponse(BaseModel):
     aggregate_type: str
     aggregate_id: str
     event_type: str
-    payload: dict[str, Any]
+    payload: dict[str, Any] = Field(
+        json_schema_extra={"x-opaque": True},
+        description="事件 payload（依事件類型而異）",
+    )
     status: str
     attempts: int
     max_attempts: int
