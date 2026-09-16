@@ -32,6 +32,7 @@ from src.application.outbox.admin_use_cases import (
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/admin/outbox", tags=["admin-outbox"])
 
@@ -50,9 +51,9 @@ class OutboxEventResponse(BaseModel):
     attempts: int
     max_attempts: int
     last_error: str | None
-    next_attempt_at: str
-    created_at: str
-    completed_at: str | None
+    next_attempt_at: ApiDateTime
+    created_at: ApiDateTime
+    completed_at: ApiDateTime | None
     age_seconds: float
 
 

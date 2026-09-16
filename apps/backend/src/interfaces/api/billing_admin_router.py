@@ -19,6 +19,7 @@ from src.container import Container
 from src.domain.billing.settings import BillingSettings
 from src.domain.shared.exceptions import ValidationError
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/admin/billing", tags=["admin-billing"])
 
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/api/v1/admin/billing", tags=["admin-billing"])
 class BillingSettingsResponse(BaseModel):
     usd_per_point: Decimal
     updated_by: str | None = None
-    updated_at: str
+    updated_at: ApiDateTime
 
 
 class UpdateBillingSettingsRequest(BaseModel):

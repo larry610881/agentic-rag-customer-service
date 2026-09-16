@@ -11,13 +11,14 @@ from src.application.platform.system_prompt_use_cases import (
 )
 from src.container import Container
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/system/prompts", tags=["system-prompts"])
 
 
 class SystemPromptConfigResponse(BaseModel):
     system_prompt: str
-    updated_at: str
+    updated_at: ApiDateTime
 
 
 class UpdateSystemPromptConfigRequest(BaseModel):

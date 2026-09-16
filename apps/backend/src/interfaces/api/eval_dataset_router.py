@@ -49,6 +49,7 @@ from src.domain.shared.exceptions import (
 )
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
+from src.interfaces.api.types import ApiDateTime
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,7 @@ class TestCaseResponse(BaseModel):
     conversation_history: list[dict]
     assertions: list[dict[str, Any]]
     tags: list[str]
-    created_at: str
+    created_at: ApiDateTime
 
 
 class DatasetResponse(BaseModel):
@@ -124,8 +125,8 @@ class DatasetResponse(BaseModel):
     is_platform_base: bool
     test_cases: list[TestCaseResponse]
     test_case_count: int
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 class DatasetSummaryResponse(BaseModel):
@@ -138,8 +139,8 @@ class DatasetSummaryResponse(BaseModel):
     target_prompt: str
     include_security: bool
     test_case_count: int
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 # --- Converters ---

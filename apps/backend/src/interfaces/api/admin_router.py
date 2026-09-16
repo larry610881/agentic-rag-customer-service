@@ -7,7 +7,6 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from src.interfaces.api.types import ApiDateTime
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.list_users_use_case import ListUsersUseCase
@@ -49,6 +48,7 @@ from src.domain.ratelimit.value_objects import EndpointGroup
 from src.domain.shared.exceptions import DuplicateEntityError, EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, require_role
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -201,8 +201,8 @@ class UserResponse(BaseModel):
     tenant_id: str
     email: str
     role: str
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 class CreateUserRequest(BaseModel):
@@ -591,8 +591,8 @@ class ConversationSearchResultResponse(BaseModel):
     tenant_name: str
     bot_id: str | None = None
     summary: str
-    first_message_at: str | None = None
-    last_message_at: str | None = None
+    first_message_at: ApiDateTime | None = None
+    last_message_at: ApiDateTime | None = None
     message_count: int
     score: float | None = None  # 僅 semantic 模式有
     matched_via: str  # "keyword" | "semantic"

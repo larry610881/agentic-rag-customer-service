@@ -24,6 +24,7 @@ from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.domain.usage.category import UsageCategory
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.types import ApiDateTime
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class ConvSummaryItem(BaseModel):
     tenant_id: str
     bot_id: str | None = None
     summary: str | None = None
-    created_at: str | None = None
+    created_at: ApiDateTime | None = None
 
 
 class ListConvSummariesResponse(BaseModel):

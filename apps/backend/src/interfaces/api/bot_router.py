@@ -37,6 +37,7 @@ from src.interfaces.api.deps import (
 )
 from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/bots", tags=["bots"])
 
@@ -339,8 +340,8 @@ class BotResponse(BaseModel):
     line_channel_secret: str | None
     line_channel_access_token: str | None
     line_show_sources: bool
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 def _to_response(bot) -> BotResponse:

@@ -8,6 +8,7 @@ from src.application.knowledge.get_processing_task_use_case import (
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
@@ -19,8 +20,8 @@ class TaskResponse(BaseModel):
     status: str
     progress: int
     error_message: str
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 @router.get("/{task_id}", response_model=TaskResponse)

@@ -30,6 +30,7 @@ from src.application.conversation.get_conversation_token_usage_use_case import (
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.types import ApiDateTime
 
 logger = logging.getLogger(__name__)
 
@@ -48,17 +49,17 @@ class MessageItem(BaseModel):
         default=None, description="該輪有檢索才有值；未檢索為 null（不會缺席）"
     )
     structured_content: dict[str, Any] | None = None
-    created_at: str | None = None
+    created_at: ApiDateTime | None = None
 
 
 class ConversationMessagesResponse(BaseModel):
     conversation_id: str
     tenant_id: str
     bot_id: str | None = None
-    created_at: str | None = None
+    created_at: ApiDateTime | None = None
     summary: str | None = None
     message_count: int = 0
-    last_message_at: str | None = None
+    last_message_at: ApiDateTime | None = None
     messages: list[MessageItem]
 
 

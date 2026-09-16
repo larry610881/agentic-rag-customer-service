@@ -35,6 +35,7 @@ from src.domain.shared.exceptions import (
 from src.domain.tenant.entity import Tenant
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/tenants", tags=["tenants"])
 
@@ -155,8 +156,8 @@ class TenantResponse(BaseModel):
     default_classification_model: str = ""
     default_summary_model: str = ""
     default_intent_model: str = ""
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 def _to_response(t: Tenant) -> TenantResponse:

@@ -36,6 +36,7 @@ from src.application.platform.update_provider_setting_use_case import (
 from src.container import Container
 from src.domain.shared.exceptions import DuplicateEntityError, EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/settings/providers", tags=["settings"])
 
@@ -80,8 +81,8 @@ class ProviderSettingResponse(BaseModel):
     base_url: str
     models: list[ModelConfigSchema]
     extra_config: dict[str, Any]
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 class EnabledModelResponse(BaseModel):

@@ -18,6 +18,7 @@ from src.application.bot.worker_use_cases import (
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(
     prefix="/api/v1/bots/{bot_id}/workers", tags=["bot-workers"]
@@ -96,8 +97,8 @@ class WorkerResponse(BaseModel):
     tool_configs: dict[str, dict[str, Any]]
     sort_order: int
     direct_retrieval: bool = False
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 def _to_response(w: Any) -> WorkerResponse:

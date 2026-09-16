@@ -114,7 +114,9 @@ def scan_dt(ctx, api_app):
         for fname, prop in schemas.get(name, {}).get("properties", {}).items():
             for sub in [prop] + prop.get("anyOf", []):
                 is_dt = sub.get("format") == "date-time"
-                if is_dt and sub.get("pattern") != API_DATETIME_PATTERN:
+                # 也抓「宣告成 str、由 router 自己 isoformat」的漏網時間欄位
+                looks_dt = sub.get("type") == "string" and fname.endswith("_at")
+                if (is_dt or looks_dt) and sub.get("pattern") != API_DATETIME_PATTERN:
                     missing.append(f"{name}.{fname}")
     ctx["missing"] = missing
 

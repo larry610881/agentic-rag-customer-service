@@ -12,6 +12,7 @@ from src.container import Container
 from src.domain.security.guard_config import GuardLogRepository
 from src.interfaces.api.deps import CurrentTenant, require_role
 from src.interfaces.api.schemas.pagination import PaginatedResponse
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/security", tags=["security"])
 
@@ -37,7 +38,7 @@ class GuardRulesResponse(BaseModel):
     input_guard_prompt: str
     output_guard_prompt: str
     blocked_response: str
-    updated_at: str
+    updated_at: ApiDateTime
 
 
 class UpdateGuardRulesRequest(BaseModel):
@@ -60,7 +61,7 @@ class GuardLogItem(BaseModel):
     rule_matched: str
     user_message: str
     ai_response: str | None
-    created_at: str
+    created_at: ApiDateTime
 
 
 @router.get("/guard-rules", response_model=GuardRulesResponse)

@@ -39,6 +39,7 @@ from src.domain.shared.exceptions import (
     ValidationError,
 )
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/admin/plans", tags=["admin-plans"])
 
@@ -104,8 +105,8 @@ class PlanResponse(BaseModel):
     auto_topup_monthly_cap: int = 0
     grace_percent: Decimal = Decimal("0")
     block_message: str = ""
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 class PlanMultipliersRequest(BaseModel):

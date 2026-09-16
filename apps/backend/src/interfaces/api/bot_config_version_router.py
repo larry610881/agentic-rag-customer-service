@@ -12,7 +12,6 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
-from src.interfaces.api.types import ApiDateTime
 from src.application.prompt_gate.gate_run_use_cases import (
     GateEstimateUseCase,
     GatePreconditionError,
@@ -47,6 +46,7 @@ from src.interfaces.api.deps import (
     require_role,
 )
 from src.interfaces.api.schemas.pagination import PaginatedResponse
+from src.interfaces.api.types import ApiDateTime
 
 # H4：版本寫入/驗證端點限管理員角色。一般成員（role="user"，註冊預設）不得建立/
 # 發布/回朔版本（等同租戶內權限提升寫入 bots 設定），亦不得觸發 validate/replay

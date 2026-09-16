@@ -34,6 +34,7 @@ from src.domain.shared.exceptions import (
     EntityNotFoundError,
 )
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/mcp-servers", tags=["mcp-registry"])
 
@@ -88,8 +89,8 @@ class McpServerResponse(BaseModel):
     scope: str
     tenant_ids: list[str]
     is_enabled: bool
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 class DiscoverRequest(BaseModel):

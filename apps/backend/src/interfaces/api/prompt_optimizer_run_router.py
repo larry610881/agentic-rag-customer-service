@@ -26,6 +26,7 @@ from src.domain.shared.exceptions import EntityNotFoundError
 from src.infrastructure.prompt_optimizer.run_manager import RunManager
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
+from src.interfaces.api.types import ApiDateTime
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +68,8 @@ class RunSummaryResponse(BaseModel):
     max_iterations: int
     total_api_calls: int
     stopped_reason: str
-    started_at: str
-    completed_at: str | None
+    started_at: ApiDateTime
+    completed_at: ApiDateTime | None
 
 
 class IterationResponse(BaseModel):
@@ -79,7 +80,7 @@ class IterationResponse(BaseModel):
     is_best: bool
     details: dict[str, Any] | None
     prompt_snapshot: str = ""
-    created_at: str
+    created_at: ApiDateTime
 
 
 class RunDetailResponse(BaseModel):
@@ -95,7 +96,7 @@ class RunDetailResponse(BaseModel):
     current_iteration: int
     max_iterations: int
     total_api_calls: int
-    started_at: str
+    started_at: ApiDateTime
     iterations: list[IterationResponse]
 
 

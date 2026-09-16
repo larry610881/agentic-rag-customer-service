@@ -54,6 +54,7 @@ from src.infrastructure.logging.error_handler import safe_background_task
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(
     prefix="/api/v1/knowledge-bases/{kb_id}/documents",
@@ -109,8 +110,8 @@ class DocumentResponse(BaseModel):
     page_number: int | None = None
     children_count: int = 0
     completed_children_count: int = 0
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 class UploadDocumentResponse(BaseModel):

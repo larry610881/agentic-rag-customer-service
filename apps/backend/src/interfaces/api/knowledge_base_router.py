@@ -34,6 +34,7 @@ from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
 from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["knowledge-bases"])
 
@@ -113,8 +114,8 @@ class KnowledgeBaseResponse(BaseModel):
     ocr_slice_grid: str = ""
     dm_metadata_model: str = ""
     document_count: int
-    created_at: str
-    updated_at: str
+    created_at: ApiDateTime
+    updated_at: ApiDateTime
 
 
 def _kb_to_response(kb) -> KnowledgeBaseResponse:
@@ -300,8 +301,8 @@ class CategoryResponse(BaseModel):
     name: str
     description: str | None = None
     chunk_count: int = 0
-    created_at: str | None = None
-    updated_at: str | None = None
+    created_at: ApiDateTime | None = None
+    updated_at: ApiDateTime | None = None
 
 
 class UpdateCategoryRequest(BaseModel):
