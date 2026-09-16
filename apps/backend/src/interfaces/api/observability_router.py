@@ -29,6 +29,7 @@ from src.infrastructure.db.models.rag_eval_model import RAGEvalModel
 from src.infrastructure.db.models.tenant_model import TenantModel
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
+from src.interfaces.api.errors import ApiError
 
 router = APIRouter(prefix="/api/v1/observability", tags=["observability"])
 
@@ -226,15 +227,21 @@ async def get_agent_trace(
         row = (await session.execute(stmt)).scalar_one_or_none()
 
     if row is None:
-        from fastapi import HTTPException
 
-        raise HTTPException(status_code=404, detail="Agent trace not found")
+        raise ApiError(
+            404,
+            code="trace_not_found",
+            message="Agent trace not found",
+        )
 
     # S-Gov.3: 非 admin 只能看自己 tenant 的 trace；admin 可跨租戶
     if tenant.role != "system_admin" and row.tenant_id != tenant.tenant_id:
-        from fastapi import HTTPException
 
-        raise HTTPException(status_code=404, detail="Agent trace not found")
+        raise ApiError(
+            404,
+            code="trace_not_found",
+            message="Agent trace not found",
+        )
 
     return {
         "id": row.id,

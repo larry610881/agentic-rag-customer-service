@@ -35,6 +35,7 @@ from src.application.knowledge.update_chunk_use_case import (
 from src.container import Container
 from src.domain.shared.exceptions import DomainException, EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.errors import ApiError
 
 logger = logging.getLogger(__name__)
 
@@ -120,18 +121,28 @@ class KbQualitySummaryResponse(BaseModel):
 def _map_error(exc: Exception) -> HTTPException:
     if isinstance(exc, EntityNotFoundError):
         # 404 防枚舉（跨租戶訪問不屬於自己的資源 → 404 不 403）
-        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+        return ApiError(
+            404,
+            code="not_found",
+            message="not found",
+        )
     if isinstance(exc, ValueError):
-        return HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        return ApiError(
+            422,
+            code="invalid_request",
+            message=str(exc),
         )
     if isinstance(exc, DomainException):
-        return HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        return ApiError(
+            422,
+            code="invalid_request",
+            message=str(exc),
         )
-    return HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="internal error"
-    )
+    return ApiError(
+            500,
+            code="internal_error",
+            message="internal error",
+        )
 
 
 def _chunk_dict(chunk) -> ChunkResponse:

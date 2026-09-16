@@ -7,7 +7,7 @@ model-registry 供租戶端建 bot / KB 選模型，需登入即可（Issue #67�
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 
 from src.application.platform.create_provider_setting_use_case import (
@@ -36,6 +36,7 @@ from src.application.platform.update_provider_setting_use_case import (
 from src.container import Container
 from src.domain.shared.exceptions import DuplicateEntityError, EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.types import ApiDateTime, ApiMoney
 
 router = APIRouter(prefix="/api/v1/settings/providers", tags=["settings"])
@@ -163,9 +164,10 @@ async def create_provider_setting(
             )
         )
     except DuplicateEntityError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=e.message,
+        raise ApiError(
+            409,
+            code="duplicate_entity",
+            message=e.message,
         ) from None
     return _to_response(setting)
 
@@ -215,9 +217,10 @@ async def get_provider_setting(
     try:
         setting = await use_case.execute(setting_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return _to_response(setting)
 
@@ -249,9 +252,10 @@ async def update_provider_setting(
             )
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return _to_response(setting)
 
@@ -268,9 +272,10 @@ async def delete_provider_setting(
     try:
         await use_case.execute(setting_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
 
 
@@ -289,9 +294,10 @@ async def test_provider_connection(
     try:
         result = await use_case.execute(setting_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return ConnectionResultResponse(
         success=result.success,

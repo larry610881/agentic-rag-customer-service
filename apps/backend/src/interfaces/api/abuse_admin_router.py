@@ -9,7 +9,7 @@
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from src.application.abuse.abuse_settings_use_cases import (
@@ -29,6 +29,7 @@ from src.domain.abuse.settings import (
 )
 from src.domain.shared.exceptions import ValidationError
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError
 
 router = APIRouter(prefix="/api/v1/admin/abuse", tags=["abuse-control"])
 
@@ -55,7 +56,11 @@ def _own_or_admin_tenant(caller: CurrentTenant, tenant_id: str) -> str:
     if caller.role == "system_admin":
         return tenant_id
     if tenant_id != caller.tenant_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise ApiError(
+            403,
+            code="forbidden",
+            message="Forbidden",
+        )
     return tenant_id
 
 
@@ -151,8 +156,10 @@ async def _update(
             actor_user_id=caller.user_id, profile=profile,
         )
     except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=e.message,
         ) from None
     return {
         "scope_kind": saved.scope_kind,
@@ -197,9 +204,10 @@ async def release_control(
     ),
 ) -> None:
     if not body.tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="tenant_id is required",
+        raise ApiError(
+            422,
+            code="tenant_id_required",
+            message="tenant_id is required",
         )
     try:
         await use_case.execute(
@@ -207,7 +215,8 @@ async def release_control(
             subject_id=body.subject_id, actor_user_id=caller.user_id,
         )
     except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Unknown subject_kind",
+        raise ApiError(
+            422,
+            code="invalid_subject_kind",
+            message="Unknown subject_kind",
         ) from None

@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 
 from src.application.pricing.create_pricing_use_case import (
@@ -38,6 +38,7 @@ from src.domain.pricing.entity import ModelPricing, PricingRecalcAudit
 from src.domain.pricing.value_objects import PricingCategory
 from src.infrastructure.pricing.pricing_cache import InMemoryPricingCache
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError
 from src.interfaces.api.types import ApiDateTime, ApiMoney
 
 logger = logging.getLogger(__name__)
@@ -219,9 +220,10 @@ async def create_pricing(
             )
         )
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=str(exc),
         ) from exc
 
     # 刷新 in-memory cache，讓新價立即生效
@@ -256,7 +258,11 @@ async def update_pricing_points(
             if "not found" in str(exc)
             else status.HTTP_422_UNPROCESSABLE_ENTITY
         )
-        raise HTTPException(status_code=code, detail=str(exc)) from exc
+        raise ApiError(
+            code,
+            code="invalid_request",
+            message=str(exc),
+        ) from exc
     await cache.refresh()
     return _to_response(pricing)
 
@@ -282,8 +288,10 @@ async def deactivate_pricing(
             )
         )
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        raise ApiError(
+            404,
+            code="invalid_request",
+            message=str(exc),
         ) from exc
 
     await cache.refresh()
@@ -292,9 +300,11 @@ async def deactivate_pricing(
     for p in pricings:
         if p.id == pricing_id:
             return _to_response(p)
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND, detail="pricing not found"
-    )
+    raise ApiError(
+            404,
+            code="pricing_not_found",
+            message="pricing not found",
+        )
 
 
 @router.post(
@@ -318,9 +328,10 @@ async def recalculate_dry_run(
             )
         )
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=str(exc),
         ) from exc
 
     return DryRunRecalculateResponse(
@@ -355,18 +366,23 @@ async def recalculate_execute(
             )
         )
     except PermissionError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+        raise ApiError(
+            403,
+            code="permission",
+            message=str(exc),
         ) from exc
     except RuntimeError as exc:
         # race detected
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        raise ApiError(
+            409,
+            code="runtime",
+            message=str(exc),
         ) from exc
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=str(exc),
         ) from exc
 
     return ExecuteRecalculateResponse(

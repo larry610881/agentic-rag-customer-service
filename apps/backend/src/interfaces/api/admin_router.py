@@ -3,7 +3,7 @@ from decimal import Decimal
 from math import ceil
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
@@ -46,6 +46,7 @@ from src.domain.ratelimit.repository import RateLimitConfigRepository
 from src.domain.ratelimit.value_objects import EndpointGroup
 from src.domain.shared.exceptions import DuplicateEntityError, EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 from src.interfaces.api.types import ApiDateTime
 
@@ -280,10 +281,16 @@ async def create_user(
             )
         )
     except DuplicateEntityError as e:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=e.message) from None
+        raise ApiError(
+            409,
+            code="duplicate_entity",
+            message=e.message,
+        ) from None
     except (InvalidTenantBindingError, TenantRequiredError) as e:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message
+        raise ApiError(
+            422,
+            code="duplicate_entity",
+            message=e.message,
         ) from None
     return _user_response(user)
 
@@ -300,8 +307,10 @@ async def get_user(
     try:
         user = await use_case.execute(user_id)
     except EntityNotFoundError:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise ApiError(
+            404,
+            code="user_not_found",
+            message="User not found",
         ) from None
     return _user_response(user)
 
@@ -325,12 +334,16 @@ async def update_user(
             )
         )
     except EntityNotFoundError:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise ApiError(
+            404,
+            code="user_not_found",
+            message="User not found",
         ) from None
     except (InvalidTenantBindingError, TenantRequiredError) as e:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message
+        raise ApiError(
+            422,
+            code="not_found",
+            message=e.message,
         ) from None
     return _user_response(user)
 
@@ -347,8 +360,10 @@ async def delete_user(
     try:
         await use_case.execute(user_id)
     except EntityNotFoundError:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise ApiError(
+            404,
+            code="user_not_found",
+            message="User not found",
         ) from None
 
 
@@ -373,8 +388,10 @@ async def reset_password(
             )
         )
     except EntityNotFoundError:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise ApiError(
+            404,
+            code="user_not_found",
+            message="User not found",
         ) from None
 
 
@@ -623,14 +640,16 @@ async def search_conversations(
     兩者擇一傳入；不可同時。
     """
     if not keyword and not semantic:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="需提供 keyword 或 semantic 至少一個",
+        raise ApiError(
+            422,
+            code="search_query_required",
+            message="需提供 keyword 或 semantic 至少一個",
         )
     if keyword and semantic:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="keyword 與 semantic 互斥，請擇一",
+        raise ApiError(
+            422,
+            code="search_query_conflict",
+            message="keyword 與 semantic 互斥，請擇一",
         )
 
     if keyword:

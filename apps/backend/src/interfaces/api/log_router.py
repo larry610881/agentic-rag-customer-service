@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.models.request_log_model import RequestLogModel
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError
 
 router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
 
@@ -83,8 +84,11 @@ async def get_log_detail(
         row = (await session.execute(stmt)).scalar_one_or_none()
 
     if row is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Log not found")
+        raise ApiError(
+            404,
+            code="log_not_found",
+            message="Log not found",
+        )
 
     return {
         "id": row.id,

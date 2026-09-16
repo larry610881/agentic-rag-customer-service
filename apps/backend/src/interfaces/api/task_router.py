@@ -1,5 +1,5 @@
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from src.application.knowledge.get_processing_task_use_case import (
@@ -8,6 +8,7 @@ from src.application.knowledge.get_processing_task_use_case import (
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
@@ -36,15 +37,17 @@ async def get_task(
     try:
         task = await use_case.execute(task_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
 
     if task.tenant_id != tenant.tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="ProcessingTask not found",
+        raise ApiError(
+            404,
+            code="not_found",
+            message="ProcessingTask not found",
         )
 
     return TaskResponse(

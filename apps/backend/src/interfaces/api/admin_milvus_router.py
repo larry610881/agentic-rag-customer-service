@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 
 from src.application.milvus.get_collection_stats_use_case import (
@@ -26,6 +26,7 @@ from src.application.milvus.rebuild_index_use_case import (
 )
 from src.container import Container
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,9 @@ async def rebuild_index(
             )
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        raise ApiError(
+            500,
+            code="internal_error",
+            message=str(e),
         ) from e
     return result

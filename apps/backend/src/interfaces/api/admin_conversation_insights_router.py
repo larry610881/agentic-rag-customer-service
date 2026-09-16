@@ -16,7 +16,7 @@ import logging
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from src.application.conversation.get_conversation_messages_use_case import (
@@ -31,6 +31,7 @@ from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.chat_schemas import HistoryStructuredContent
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError
 from src.interfaces.api.types import ApiDateTime, ApiMoney
 
 logger = logging.getLogger(__name__)
@@ -115,8 +116,10 @@ async def get_conversation_messages(
             )
         )
     except EntityNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="not found"
+        raise ApiError(
+            404,
+            code="not_found",
+            message="not found",
         ) from exc
 
     return ConversationMessagesResponse(
@@ -152,8 +155,10 @@ async def get_conversation_token_usage(
             )
         )
     except EntityNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="not found"
+        raise ApiError(
+            404,
+            code="not_found",
+            message="not found",
         ) from exc
 
     return ConversationTokenUsageResponse(

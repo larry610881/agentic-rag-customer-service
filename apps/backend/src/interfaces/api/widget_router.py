@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -52,6 +52,7 @@ from src.interfaces.api._stream_events import (
 )
 from src.interfaces.api.chat_schemas import SourceResponse, StructuredContentResponse
 from src.interfaces.api.client_ip import client_ip_of
+from src.interfaces.api.errors import ApiError
 from src.interfaces.api.idempotency import (
     get_idempotency_key,
     get_last_event_id,
@@ -141,29 +142,34 @@ async def validate_widget_bot(
     """bot 存在、啟用、開放 widget、Origin 在白名單（白名單為空一律拒）。"""
     bot = await bot_repo.find_by_short_code(short_code)
     if bot is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Bot not found",
+        raise ApiError(
+            404,
+            code="not_found",
+            message="Bot not found",
         )
     if not bot.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bot is not active",
+        raise ApiError(
+            403,
+            code="bot_inactive",
+            message="Bot is not active",
         )
     if not bot.widget_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Widget is not enabled for this bot",
+        raise ApiError(
+            403,
+            code="widget_disabled",
+            message="Widget is not enabled for this bot",
         )
     if not bot.widget_allowed_origins:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Widget origin allowlist is empty",
+        raise ApiError(
+            403,
+            code="widget_origin_allowlist_empty",
+            message="Widget origin allowlist is empty",
         )
     if not origin or origin not in bot.widget_allowed_origins:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Origin not allowed",
+        raise ApiError(
+            403,
+            code="origin_not_allowed",
+            message="Origin not allowed",
         )
     return bot
 
@@ -187,25 +193,32 @@ async def get_widget_principal(
     """驗 widget 票：type、bot、Origin 三者都要對得上。"""
     token = _bearer_or_query_token(request, wt)
     if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Widget token required"
+        raise ApiError(
+            401,
+            code="widget_token_missing",
+            message="Widget token required",
         )
     try:
         payload = jwt_service.decode_token(token)
     except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid widget token"
+        raise ApiError(
+            401,
+            code="widget_token_invalid",
+            message="Invalid widget token",
         ) from None
     if payload.get("type") != WIDGET_TOKEN_TYPE:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid widget token"
+        raise ApiError(
+            401,
+            code="widget_token_invalid",
+            message="Invalid widget token",
         )
     token_origin = payload.get("origin") or ""
     bot = await validate_widget_bot(short_code, token_origin, bot_repo)
     if payload.get("sub") != bot.id.value:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Widget token does not match bot",
+        raise ApiError(
+            401,
+            code="widget_token_bot_mismatch",
+            message="Widget token does not match bot",
         )
     origin = request_origin(request)
     if origin is not None and origin != token_origin:
@@ -216,8 +229,10 @@ async def get_widget_principal(
                 bot.tenant_id, AbuseSubject(SubjectKind.VISITOR, visitor),
                 origin_mismatch=True, channel="widget",
             )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Origin not allowed"
+        raise ApiError(
+            403,
+            code="origin_not_allowed",
+            message="Origin not allowed",
         )
     return WidgetPrincipal(
         bot=bot, origin=token_origin, visitor_id=payload.get("visitor_id"),
@@ -550,9 +565,10 @@ async def widget_identify(
     _set_cors_headers(response, principal.origin, bot)
     if not verdict.verified:
         if verdict.enforce and verdict.reason == "invalid":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="identity_required"
-            )
+            raise ApiError(
+            403,
+            code="identity_required",
+        )
         return WidgetIdentifyResponse(identified=False, reason=verdict.reason)
     token, expires_in = jwt_service.create_widget_token(
         bot_id=bot.id.value, tenant_id=bot.tenant_id, origin=principal.origin,
@@ -634,17 +650,19 @@ async def widget_view_document(
     """View original document file（需 widget 票；新分頁開啟時以 ?wt= 帶票）。"""
     bot = principal.bot
     if not bot.show_sources:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Source viewing is disabled for this bot",
+        raise ApiError(
+            403,
+            code="sources_disabled",
+            message="Source viewing is disabled for this bot",
         )
 
     # Verify document belongs to one of this bot's knowledge bases
     doc = await doc_repo.find_by_id(doc_id)
     if doc is None or doc.kb_id not in bot.knowledge_base_ids:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found",
+        raise ApiError(
+            404,
+            code="not_found",
+            message="Document not found",
         )
 
     result = await use_case.execute(doc_id)

@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 
 from src.application.outbox.admin_use_cases import (
@@ -32,6 +32,7 @@ from src.application.outbox.admin_use_cases import (
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/admin/outbox", tags=["admin-outbox"])
@@ -169,8 +170,10 @@ async def retry_event(
             )
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return _to_response(event)
 
@@ -223,6 +226,8 @@ async def abandon_event(
             )
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None

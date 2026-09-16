@@ -3,10 +3,11 @@
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.errors import ApiError
 
 logger = structlog.get_logger(__name__)
 
@@ -143,7 +144,8 @@ async def discover_mcp_tools(
             error=str(exc),
             error_type=type(exc).__name__,
         )
-        raise HTTPException(
-            status_code=502,
-            detail=f"無法連線 MCP Server: {exc}",
+        raise ApiError(
+            502,
+            code="mcp_connect_failed",
+            message=f"無法連線 MCP Server: {exc}",
         ) from exc

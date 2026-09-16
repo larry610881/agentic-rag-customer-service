@@ -91,11 +91,53 @@ API_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
+# Issue #99 一-5：not_found 的 code 以常數表固定（型別改名不會悄悄改契約）；
+# key 為 EntityNotFoundError(entity_type) 的小寫值；不在表內的推導後記 warning
+ENTITY_NOT_FOUND_CODES: dict[str, str] = {
+    "bot": "bot_not_found",
+    "kb": "knowledge_base_not_found",
+    "knowledgebase": "knowledge_base_not_found",
+    "chunk": "chunk_not_found",
+    "category": "category_not_found",
+    "document": "document_not_found",
+    "conversation": "conversation_not_found",
+    "tenant": "tenant_not_found",
+    "user": "user_not_found",
+    "apikey": "api_key_not_found",
+    "plan": "plan_not_found",
+    "worker": "worker_not_found",
+    "botconfigversion": "bot_config_version_not_found",
+    "promptgaterun": "prompt_gate_run_not_found",
+    "configsnapshot": "config_snapshot_not_found",
+    "evaldataset": "eval_dataset_not_found",
+    "evaltestcase": "eval_test_case_not_found",
+    "optimizationrun": "optimization_run_not_found",
+    "activerun": "active_run_not_found",
+    "providersetting": "provider_setting_not_found",
+    "processingtask": "processing_task_not_found",
+    "notificationchannel": "notification_channel_not_found",
+    "errorevent": "error_event_not_found",
+    "outbox_event": "outbox_event_not_found",
+    "linechannel": "line_channel_not_found",
+    "mcpserverregistration": "mcp_server_not_found",
+    "optimizationiteration": "optimization_iteration_not_found",
+    "systempromptfield": "system_prompt_field_not_found",
+}
+
+
 def not_found_code(exc: Any) -> str:
-    """EntityNotFoundError(entity_type) → `<entity>_not_found`（例：bot_not_found）。"""
+    """EntityNotFoundError(entity_type) → 常數表；表外型別推導並記 warning。"""
     entity = str(getattr(exc, "entity_type", "") or "")
+    key = entity.replace(" ", "").lower()
+    if key in ENTITY_NOT_FOUND_CODES:
+        return ENTITY_NOT_FOUND_CODES[key]
     snake = re.sub(r"(?<!^)(?=[A-Z])", "_", entity).lower().strip("_")
-    return f"{snake}_not_found" if snake else "not_found"
+    if not snake:
+        return "not_found"
+    structlog.get_logger(__name__).warning(
+        "errors.not_found_code_unmapped", entity_type=entity
+    )
+    return f"{snake}_not_found"
 
 
 class ApiError(HTTPException):

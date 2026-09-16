@@ -3,7 +3,7 @@
 import asyncio
 import time
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -197,6 +197,18 @@ class SendMessageCommand:
     # 記帳在 use case 內完成，三通路共用，router 不再事後補記（M12）
     usage_request_type: str | None = None
     usage_run_id: str | None = None
+
+
+@dataclass
+class _StreamState:
+    """串流生成段累積的狀態（Issue #99 一-6：_stream_generate 與呼叫端共用）。"""
+
+    full_answer: str = ""
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    sources_list: list[dict[str, Any]] = field(default_factory=list)
+    contact_payload: dict[str, Any] | None = None
+    refund_step_value: str | None = None
+    usage_event: dict[str, Any] | None = None
 
 
 class SendMessageUseCase:
@@ -1517,65 +1529,19 @@ class SendMessageUseCase:
             command, bot_cfg, history, history_context, router_context, metadata,
         )
 
-        # Stream from agent service
-        full_answer = ""
-        tool_calls: list[dict[str, Any]] = []
-        sources_list: list[dict[str, Any]] = []
-        contact_payload: dict[str, Any] | None = None
-        refund_step_value: str | None = None
-
+        # Stream from agent service（Issue #99 一-6：生成段抽成 _stream_generate）
+        st = _StreamState()
         t0 = time.perf_counter()
-        usage_event: dict[str, Any] | None = None
-        try:
-            async for event in self._agent_service.process_message_stream(**gen_kwargs):
-                # contact event 不塞進 answer，透過 yield 傳給呼叫者
-                if event["type"] == "token":
-                    full_answer += event["content"]
-                elif event["type"] == "usage":
-                    usage_event = event  # Issue #96：留給收尾記帳
-                elif event["type"] == "tool_calls":
-                    tool_calls = event.get("tool_calls", [])
-                elif event["type"] == "sources":
-                    sources_list = event.get("sources", [])
-                elif event["type"] == "contact":
-                    contact_payload = event.get("contact")
-                elif event["type"] == "refund_step":
-                    refund_step_value = event.get("refund_step")
-                    continue  # Internal metadata, not sent to client
-                # Non-debug: hide "direct" tool_calls; strip reasoning for others
-                if event["type"] == "tool_calls" and not self._debug:
-                    tcs = event.get("tool_calls", [])
-                    # "direct" means no tool used — nothing to show
-                    if all(tc.get("tool_name") == "direct" for tc in tcs):
-                        continue
-                    event = {
-                        "type": "tool_calls",
-                        "tool_calls": [
-                            {
-                                "tool_name": tc.get("tool_name", ""),
-                                "label": tc.get("label", ""),
-                                "reasoning": "",
-                            }
-                            for tc in tcs
-                        ],
-                    }
-                # Suppress sources event when bot has show_sources=False
-                if event["type"] == "sources" and not bot_cfg["show_sources"]:
-                    continue
-                yield event
-        except asyncio.CancelledError:
-            # Issue #96 / #99：生成中斷線——供應商已對已生成部分計費，但沒有 usage 數字。
-            # 以已串出文字與提示估算 token 補記（estimated=True），訊息不存（另案）。
-            logger.info(
-                "stream.client_disconnected", phase="generating",
-                chars=len(full_answer), bot_id=command.bot_id,
-            )
-            if full_answer:
-                with anyio.CancelScope(shield=True):
-                    await self._record_partial_usage(
-                        command, bot_cfg, gen_kwargs, full_answer, config_hash
-                    )
-            raise
+        async for event in self._stream_generate(
+            command, bot_cfg, gen_kwargs, config_hash, st
+        ):
+            yield event
+        full_answer = st.full_answer
+        tool_calls = st.tool_calls
+        sources_list = st.sources_list
+        contact_payload = st.contact_payload
+        refund_step_value = st.refund_step_value
+        usage_event = st.usage_event
         if fast_plan is not None and not sources_list:
             sources_list = [
                 src.to_dict() if hasattr(src, "to_dict") else src
@@ -1649,11 +1615,107 @@ class SendMessageUseCase:
                 "refund_step": refund_step_value,
             })
 
+        # Issue #96 / #99 一-6：收尾「存對話 → 記帳 → 存 trace」抽成 _stream_finalize（shielded）
+        assistant_msg, cv_id, stream_trace_id, stream_trace_nodes = (
+            await self._stream_finalize(
+                command, conversation, full_answer, tool_calls_to_save, latency_ms,
+                retrieved_chunks, structured_content, usage_event, config_hash,
+            )
+        )
+
+        if not command.test_mode:
+            # Fire-and-forget: memory extraction（test_mode 六面隔離跳過）
+            await self._fire_memory_extraction(command, bot_cfg, conversation)
+
+        # Issue #59：線上每輪 LLM 自評已下線（品質驗收走 prompt gate 離線回放）
+
+        async for event in self._stream_tail_events(
+            command, conversation, assistant_msg, cv_id, config_hash,
+            stream_trace_id, stream_trace_nodes,
+        ):
+            yield event
+
+    # ── 串流三段（Issue #99 一-6）：生成 / 收尾 / 尾端事件 ──
+
+    async def _stream_generate(
+        self,
+        command: SendMessageCommand,
+        bot_cfg: dict[str, Any],
+        gen_kwargs: dict[str, Any],
+        config_hash: str | None,
+        st: _StreamState,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """從 agent service 串流事件並累積到 st；生成中斷線以估算補記（#99）。"""
+        try:
+            async for event in self._agent_service.process_message_stream(**gen_kwargs):
+                # contact event 不塞進 answer，透過 yield 傳給呼叫者
+                if event["type"] == "token":
+                    st.full_answer += event["content"]
+                elif event["type"] == "usage":
+                    st.usage_event = event  # Issue #96：留給收尾記帳
+                elif event["type"] == "tool_calls":
+                    st.tool_calls = event.get("tool_calls", [])
+                elif event["type"] == "sources":
+                    st.sources_list = event.get("sources", [])
+                elif event["type"] == "contact":
+                    st.contact_payload = event.get("contact")
+                elif event["type"] == "refund_step":
+                    st.refund_step_value = event.get("refund_step")
+                    continue  # Internal metadata, not sent to client
+                # Non-debug: hide "direct" tool_calls; strip reasoning for others
+                if event["type"] == "tool_calls" and not self._debug:
+                    tcs = event.get("tool_calls", [])
+                    # "direct" means no tool used — nothing to show
+                    if all(tc.get("tool_name") == "direct" for tc in tcs):
+                        continue
+                    event = {
+                        "type": "tool_calls",
+                        "tool_calls": [
+                            {
+                                "tool_name": tc.get("tool_name", ""),
+                                "label": tc.get("label", ""),
+                                "reasoning": "",
+                            }
+                            for tc in tcs
+                        ],
+                    }
+                # Suppress sources event when bot has show_sources=False
+                if event["type"] == "sources" and not bot_cfg["show_sources"]:
+                    continue
+                yield event
+        except asyncio.CancelledError:
+            # Issue #96 / #99：生成中斷線——供應商已對已生成部分計費，但沒有 usage 數字。
+            # 以已串出文字與提示估算 token 補記（estimated=True），訊息不存（另案）。
+            logger.info(
+                "stream.client_disconnected", phase="generating",
+                chars=len(st.full_answer), bot_id=command.bot_id,
+            )
+            if st.full_answer:
+                with anyio.CancelScope(shield=True):
+                    await self._record_partial_usage(
+                        command, bot_cfg, gen_kwargs, st.full_answer, config_hash
+                    )
+            raise
+
+    async def _stream_finalize(
+        self,
+        command: SendMessageCommand,
+        conversation: Conversation,
+        full_answer: str,
+        tool_calls_to_save: list[dict[str, Any]],
+        latency_ms: int,
+        retrieved_chunks: list[dict[str, Any]] | None,
+        structured_content: dict[str, Any] | None,
+        usage_event: dict[str, Any] | None,
+        config_hash: str | None,
+    ) -> tuple[Any, str | None, str | None, list[dict[str, Any]] | None]:
+        """收尾「存對話 → 記帳 → 存 trace」（Issue #96 M12）。
+
+        整段包在 shielded scope：客戶端此時斷線，Starlette 的取消會延後到本區塊結束後
+        才生效，訊息與用量不會只存一半。回傳 (assistant_msg, cv_id, trace_id, trace_nodes)。
+        """
         assistant_msg = None
         cv_id: str | None = None
-        # Issue #96（M12）：收尾「存對話 → 記帳 → 存 trace」包在 shielded scope：
-        # 客戶端此時斷線，Starlette 的取消會延後到本區塊結束後才生效，
-        # 訊息與用量不會只存一半。記帳在此完成，router 不再事後補記（三通路共用）。
         with anyio.CancelScope(shield=True):
             t_persist = AgentTraceCollector.offset_ms()
             if not command.test_mode:
@@ -1683,7 +1745,6 @@ class SendMessageUseCase:
             _current_trace = AgentTraceCollector.current()
             stream_trace_id = _current_trace.trace_id if _current_trace else None
 
-            # Fire-and-forget: persist agent execution trace
             _, stream_trace_nodes = await self._persist_agent_trace(
                 conversation_id=conversation.id.value,
                 message_id=(
@@ -1694,13 +1755,19 @@ class SendMessageUseCase:
                 persist=not command.test_mode,
                 persist_started_ms=t_persist,
             )
+        return assistant_msg, cv_id, stream_trace_id, stream_trace_nodes
 
-        if not command.test_mode:
-            # Fire-and-forget: memory extraction（test_mode 六面隔離跳過）
-            await self._fire_memory_extraction(command, bot_cfg, conversation)
-
-        # Issue #59：線上每輪 LLM 自評已下線（品質驗收走 prompt gate 離線回放）
-
+    async def _stream_tail_events(
+        self,
+        command: SendMessageCommand,
+        conversation: Conversation,
+        assistant_msg: Any,
+        cv_id: str | None,
+        config_hash: str | None,
+        stream_trace_id: str | None,
+        stream_trace_nodes: list[dict[str, Any]] | None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """尾端事件：message_id / config_version / config_hash / conversation_id / done。"""
         try:
             if assistant_msg is not None:
                 yield {

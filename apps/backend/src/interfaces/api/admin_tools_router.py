@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from src.container import Container
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +72,16 @@ async def update_tool_scope(
             tenant_ids=body.tenant_ids,
         )
     except LookupError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        raise ApiError(
+            404,
+            code="lookup",
+            message=str(exc),
         ) from exc
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=str(exc),
         ) from exc
 
     # Invalidate bot caches so new scope takes effect on next chat request

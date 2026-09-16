@@ -28,9 +28,13 @@ Feature: API 契約改造第一批（Issue #97）
     Then 端點的 401 與 404 回應引用 ErrorResponse
     And 端點的 422 回應引用 ValidationErrorResponse 而非 HTTPValidationError
 
-  Scenario: 對外六支 router 不再有句子型 HTTPException
-    When 掃描 auth、api_key、bot、knowledge_base、document、conversation 六支 router 原始碼
+  Scenario: 全部 router 不再有句子型 HTTPException
+    When 掃描全部 router 原始碼
     Then 沒有任何 "raise HTTPException(" 出現
+
+  Scenario: 程式裡每個 EntityNotFoundError 的 entity_type 都在 not_found 常數表
+    When 掃描 src 內所有 EntityNotFoundError 的 entity_type 字面值
+    Then 每一個都對應到 ENTITY_NOT_FOUND_CODES 的項目
 
   Scenario: 提交的 openapi.json 與程式產出一致
     When 以 create_app 產出 OpenAPI 並與 docs/api/openapi.json 比對

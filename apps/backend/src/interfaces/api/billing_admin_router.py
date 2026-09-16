@@ -8,7 +8,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from src.application.billing.billing_settings_use_cases import (
@@ -19,6 +19,7 @@ from src.container import Container
 from src.domain.billing.settings import BillingSettings
 from src.domain.shared.exceptions import ValidationError
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError
 from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/admin/billing", tags=["admin-billing"])
@@ -67,7 +68,9 @@ async def update_billing_settings(
             usd_per_point=body.usd_per_point, actor_user_id=admin.user_id
         )
     except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=e.message,
         ) from None
     return _to_response(settings)

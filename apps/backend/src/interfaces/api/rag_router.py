@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from src.application.rag.unified_search_use_case import (
@@ -19,6 +19,7 @@ from src.application.rag.unified_search_use_case import (
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.errors import ApiError, not_found_code
 
 router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 
@@ -75,8 +76,10 @@ async def unified_search(
             )
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
 
     return UnifiedSearchResponse(

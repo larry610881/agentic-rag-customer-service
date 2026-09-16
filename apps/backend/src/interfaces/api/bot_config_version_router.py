@@ -44,6 +44,7 @@ from src.interfaces.api.deps import (
     get_current_tenant,
     require_role,
 )
+from src.interfaces.api.errors import ApiError
 from src.interfaces.api.schemas.pagination import PaginatedResponse
 from src.interfaces.api.types import ApiDateTime, ApiMoney
 
@@ -169,27 +170,31 @@ def _to_detail(version) -> VersionDetailResponse:
 
 def _handle(exc: Exception) -> HTTPException:
     if isinstance(exc, EntityNotFoundError):
-        return HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        return ApiError(
+            404,
+            code="not_found",
+            message=str(exc),
         )
     if isinstance(exc, InvalidVersionTransitionError | VersionConflictError):
-        return HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        return ApiError(
+            409,
+            code="conflict",
+            message=str(exc),
         )
     if isinstance(exc, GateBlockedError):
-        return HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        return ApiError(
+            409,
+            code="conflict",
+            message=str(exc),
         )
     if isinstance(exc, GatePreconditionError):
-        return HTTPException(
-            status_code=exc.http_status,
-            detail={"code": exc.code, "message": str(exc)},
-        )
+        return ApiError(exc.http_status, code=exc.code, message=str(exc))
     if isinstance(exc, StaticCheckFailedError):
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "message": "static_checks_failed",
+        return ApiError(
+            400,
+            code="static_checks_failed",
+            message="static_checks_failed",
+            extra={
                 "violations": [
                     {"type": v.type, "detail": v.detail}
                     for v in exc.violations
@@ -197,8 +202,10 @@ def _handle(exc: Exception) -> HTTPException:
             },
         )
     if isinstance(exc, ValidationError):
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        return ApiError(
+            400,
+            code="invalid_request",
+            message=str(exc),
         )
     raise exc
 
@@ -275,9 +282,10 @@ async def get_version(
     except EntityNotFoundError as exc:
         raise _handle(exc) from exc
     if version.bot_id != bot_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Version does not belong to this bot",
+        raise ApiError(
+            404,
+            code="version_bot_mismatch",
+            message="Version does not belong to this bot",
         )
     return _to_detail(version)
 

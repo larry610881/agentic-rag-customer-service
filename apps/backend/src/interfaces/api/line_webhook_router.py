@@ -3,7 +3,7 @@
 import json
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request
 
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
 from src.container import Container
@@ -14,6 +14,7 @@ from src.domain.shared.exceptions import (
     EntityNotFoundError,
 )
 from src.infrastructure.logging.error_handler import safe_background_task
+from src.interfaces.api.errors import ApiError, not_found_code
 
 router = APIRouter(prefix="/api/v1/webhook", tags=["webhook"])
 
@@ -80,7 +81,11 @@ async def line_webhook(
     body_text = body.decode("utf-8")
 
     if not await line_service.verify_signature(body_text, x_line_signature):
-        raise HTTPException(status_code=403, detail="Invalid signature")
+        raise ApiError(
+            403,
+            code="invalid_signature",
+            message="Invalid signature",
+        )
 
     events = _parse_text_events(body_text)
     postback_events = _parse_postback_events(body_text)
@@ -124,9 +129,17 @@ async def line_webhook_multitenant(
             bot_short_code, body_text, x_line_signature,
         )
     except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
+        ) from e
     except AuthorizationError as e:
-        raise HTTPException(status_code=403, detail=e.message) from e
+        raise ApiError(
+            403,
+            code="authorization",
+            message=e.message,
+        ) from e
 
     if ctx is not None:
         background_tasks.add_task(

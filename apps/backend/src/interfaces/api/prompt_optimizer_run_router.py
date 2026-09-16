@@ -7,7 +7,7 @@ from math import ceil
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -26,6 +26,7 @@ from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.infrastructure.prompt_optimizer.run_manager import RunManager
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.idempotency import (
     get_idempotency_key,
     idempotency_scope,
@@ -194,8 +195,10 @@ async def _start_run_once(
     try:
         run_id = await use_case.execute(command)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
     return StartRunResponse(run_id=run_id, status="running")
 @router.get("/runs", response_model=PaginatedResponse[RunSummaryResponse])
@@ -241,8 +244,10 @@ async def get_run(
     try:
         result = await use_case.execute(run_id, tenant_id=_scope(tenant))
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
     return RunDetailResponse(**result)
 
@@ -259,8 +264,10 @@ async def stop_run(
     try:
         await use_case.execute(run_id, tenant_id=_scope(tenant))
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
     return {"status": "stopped", "run_id": run_id}
 
@@ -280,8 +287,10 @@ async def rollback_run(
             run_id, body.iteration, tenant_id=_scope(tenant)
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
     return RollbackResponse(**result)
 
@@ -298,8 +307,10 @@ async def get_run_report(
     try:
         report = await use_case.execute(run_id, tenant_id=_scope(tenant))
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
     return {"run_id": run_id, "report": report}
 
@@ -319,8 +330,10 @@ async def get_run_diff(
             run_id, iteration, tenant_id=_scope(tenant)
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
     return DiffResponse(**result)
 
@@ -342,8 +355,10 @@ async def stream_progress(
         and active is not None
         and active.tenant_id != tenant.tenant_id
     ):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Run not found"
+        raise ApiError(
+            404,
+            code="not_found",
+            message="Run not found",
         )
     return StreamingResponse(
         run_manager.subscribe_progress(run_id),

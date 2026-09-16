@@ -7,7 +7,7 @@ secret 只在輪替時回傳一次。
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from src.application.widget.identity_use_cases import (
@@ -17,6 +17,7 @@ from src.application.widget.identity_use_cases import (
 )
 from src.container import Container
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError
 
 router = APIRouter(prefix="/api/v1/widget-identity", tags=["widget-identity"])
 
@@ -31,13 +32,18 @@ class UpdatePolicyBody(BaseModel):
 def _target_tenant(caller: CurrentTenant, requested: str | None) -> str:
     if caller.role == "system_admin":
         if not requested:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="system_admin must specify tenant_id",
+            raise ApiError(
+                422,
+                code="tenant_id_required",
+                message="system_admin must specify tenant_id",
             )
         return requested
     if requested and requested != caller.tenant_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise ApiError(
+                403,
+                code="forbidden",
+                message="Forbidden",
+            )
     return caller.tenant_id
 
 

@@ -3,7 +3,7 @@
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 
 from src.application.bot.get_bot_use_case import GetBotUseCase
@@ -18,6 +18,7 @@ from src.application.bot.worker_use_cases import (
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(
@@ -154,8 +155,10 @@ async def require_owned_bot(
     try:
         await get_bot.execute(bot_id, tenant_id=tenant.tenant_id, role=tenant.role)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return tenant
 
@@ -258,9 +261,10 @@ async def update_worker(
         )
     )
     if worker is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Worker '{worker_id}' not found",
+        raise ApiError(
+            404,
+            code="not_found",
+            message=f"Worker '{worker_id}' not found",
         )
     return _to_response(worker)
 
@@ -282,6 +286,8 @@ async def delete_worker(
             worker_id, actor_user_id=tenant.user_id, bot_id=bot_id
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None

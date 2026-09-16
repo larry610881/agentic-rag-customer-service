@@ -7,7 +7,7 @@
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel
 
 from src.application.platform.mcp.create_mcp_server_use_case import (
@@ -34,6 +34,7 @@ from src.domain.shared.exceptions import (
     EntityNotFoundError,
 )
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/mcp-servers", tags=["mcp-registry"])
@@ -181,14 +182,16 @@ async def create_mcp_server(
             )
         )
     except DuplicateEntityError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=e.message,
+        raise ApiError(
+            409,
+            code="duplicate_entity",
+            message=e.message,
         ) from None
     except DomainException as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=e.message,
+        raise ApiError(
+            400,
+            code="domain",
+            message=e.message,
         ) from None
     return _to_response(server)
 
@@ -226,9 +229,10 @@ async def get_mcp_server(
         if not server.is_accessible_to(current.tenant_id):
             server = None
     if server is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"McpServerRegistration with id '{server_id}' not found",
+        raise ApiError(
+            404,
+            code="mcp_server_not_found",
+            message=f"McpServerRegistration with id '{server_id}' not found",
         )
     return _to_response(server)
 
@@ -266,9 +270,10 @@ async def update_mcp_server(
             )
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return _to_response(server)
 
@@ -304,9 +309,10 @@ async def discover_tools(
             server_id=body.server_id,
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to discover tools: {e}",
+        raise ApiError(
+            502,
+            code="mcp_discovery_failed",
+            message=f"Failed to discover tools: {e}",
         ) from None
     return DiscoverResponse(
         tools=[ToolMetaSchema(name=t.name, description=t.description) for t in tools],
@@ -329,9 +335,10 @@ async def test_mcp_connection(
 ) -> TestConnectionResponse:
     server = await repo.find_by_id(server_id)
     if server is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"McpServerRegistration with id '{server_id}' not found",
+        raise ApiError(
+            404,
+            code="mcp_server_not_found",
+            message=f"McpServerRegistration with id '{server_id}' not found",
         )
     result = await use_case.execute(
         transport=server.transport,

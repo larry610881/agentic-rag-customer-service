@@ -6,7 +6,7 @@ from math import ceil
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, Field
 
 from src.application.eval_dataset.create_eval_dataset_use_case import (
@@ -48,6 +48,7 @@ from src.domain.shared.exceptions import (
     EntityNotFoundError,
 )
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 from src.interfaces.api.types import ApiDateTime
 
@@ -272,8 +273,10 @@ async def get_dataset(
             dataset_id, tenant_id=tenant.tenant_id, role=tenant.role
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
     return _to_response(dataset)
 
@@ -290,9 +293,10 @@ async def update_dataset(
 ) -> DatasetResponse:
     # 平台通用集標記只有 system_admin 可動（spec §5.1）
     if body.is_platform_base is not None and tenant.role != "system_admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="is_platform_base requires system_admin role",
+        raise ApiError(
+            403,
+            code="system_admin_required",
+            message="is_platform_base requires system_admin role",
         )
     try:
         command = UpdateEvalDatasetCommand(
@@ -310,12 +314,16 @@ async def update_dataset(
         )
         dataset = await use_case.execute(command)
     except AuthorizationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=e.message
+        raise ApiError(
+            403,
+            code="authorization",
+            message=e.message,
         ) from e
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
     return _to_response(dataset)
 
@@ -336,12 +344,16 @@ async def delete_dataset(
             dataset_id, tenant_id=tenant.tenant_id, role=tenant.role
         )
     except AuthorizationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=e.message
+        raise ApiError(
+            403,
+            code="authorization",
+            message=e.message,
         ) from e
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
 
 
@@ -379,7 +391,11 @@ async def import_dataset_from_yaml(
     try:
         ds = loader.load_from_string(body.yaml_content)
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Invalid YAML: {e}") from e
+        raise ApiError(
+            422,
+            code="invalid_yaml",
+            message=f"Invalid YAML: {e}",
+        ) from e
 
     # H12：非 system_admin 一律忽略 body.tenant_id，強制用自己的 tenant_id，
     # 否則任一租戶可指定他人 tenant_id 冒名寫入其命名空間。
@@ -458,7 +474,11 @@ async def export_dataset(
             dataset_id, tenant_id=tenant.tenant_id, role=tenant.role
         )
     except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
+        ) from e
 
     # Convert DB entity to prompt_optimizer Dataset
     default_assertions = tuple(
@@ -534,12 +554,16 @@ async def create_test_case(
         )
         test_case = await use_case.execute(command)
     except AuthorizationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=e.message
+        raise ApiError(
+            403,
+            code="authorization",
+            message=e.message,
         ) from e
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
     return _tc_to_response(test_case)
 
@@ -565,12 +589,16 @@ async def update_test_case(
             role=tenant.role,
         )
     except AuthorizationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=e.message
+        raise ApiError(
+            403,
+            code="authorization",
+            message=e.message,
         ) from e
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=str(e),
         ) from e
     return {"id": tc.id.value, "case_id": tc.case_id, "enabled": tc.enabled}
 
@@ -596,12 +624,16 @@ async def delete_test_case(
             role=tenant.role,
         )
     except AuthorizationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=e.message
+        raise ApiError(
+            403,
+            code="authorization",
+            message=e.message,
         ) from e
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
 
 
@@ -646,13 +678,17 @@ async def run_single_eval(
     try:
         return await use_case.execute(command)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
     except EvalInfrastructureError as e:
         # M28：大量 API 失敗屬基礎設施故障，回 502 而非把假 FAIL 落歷史
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
+        raise ApiError(
+            502,
+            code="eval_infrastructure",
+            message=str(e),
         ) from e
 
 
@@ -679,8 +715,10 @@ async def estimate_cost(
     try:
         return await use_case.execute(command)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
 
 
@@ -703,9 +741,10 @@ async def run_validation_eval(
 ) -> dict:
     """Run N evaluation repeats and return PASS/FAIL verdict with per-case pass rates."""
     if body.repeats < 1 or body.repeats > 100:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="repeats must be between 1 and 100",
+        raise ApiError(
+            422,
+            code="invalid_repeats",
+            message="repeats must be between 1 and 100",
         )
     auth_header = request.headers.get("authorization", "")
     api_token = auth_header.removeprefix("Bearer ").strip()
@@ -721,13 +760,17 @@ async def run_validation_eval(
     try:
         return await use_case.execute(command)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from e
     except EvalInfrastructureError as e:
         # M28：大量 API 失敗屬基礎設施故障，回 502 而非把假 FAIL 落歷史
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
+        raise ApiError(
+            502,
+            code="eval_infrastructure",
+            message=str(e),
         ) from e
 
 
@@ -771,7 +814,11 @@ async def get_exchange_rate(
 
         rate = data.get("usd", {}).get(target)
         if rate is None:
-            raise HTTPException(status_code=400, detail=f"Unknown currency: {target}")
+            raise ApiError(
+            400,
+            code="invalid_currency",
+            message=f"Unknown currency: {target}",
+        )
 
         result = {
             "from": "USD",
@@ -790,4 +837,8 @@ async def get_exchange_rate(
         return result
 
     except _httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Exchange rate API error: {e}") from e
+        raise ApiError(
+            502,
+            code="exchange_rate_upstream_error",
+            message=f"Exchange rate API error: {e}",
+        ) from e

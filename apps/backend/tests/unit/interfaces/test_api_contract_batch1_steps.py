@@ -19,10 +19,6 @@ scenarios("unit/interfaces/api_contract_batch1.feature")
 
 ROUTER_DIR = pathlib.Path(__file__).resolve().parents[3] / "src" / "interfaces" / "api"
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[5]
-OUTWARD_ROUTERS = [
-    "auth_router.py", "api_key_router.py", "bot_router.py",
-    "knowledge_base_router.py", "document_router.py", "conversation_router.py",
-]
 
 
 @pytest.fixture
@@ -181,13 +177,12 @@ def given_error_app(error_app):
 # ── 錯誤碼 fence ──────────────────────────────────────────────
 
 
-@when(
-    "掃描 auth、api_key、bot、knowledge_base、document、conversation 六支 router 原始碼"
-)
+@when("掃描全部 router 原始碼")
 def scan_routers(ctx):
     hits = []
-    for name in OUTWARD_ROUTERS:
-        src = (ROUTER_DIR / name).read_text()
+    for path in sorted(ROUTER_DIR.glob("*_router.py")):
+        name = path.name
+        src = path.read_text()
         for i, line in enumerate(src.splitlines(), 1):
             if "raise HTTPException(" in line or "return HTTPException(" in line:
                 hits.append(f"{name}:{i}")
@@ -197,6 +192,30 @@ def scan_routers(ctx):
 @then('沒有任何 "raise HTTPException(" 出現')
 def assert_no_http_exception(ctx):
     assert ctx["hits"] == [], ctx["hits"]
+
+
+# ── not_found 常數表 ──────────────────────────────────────────
+
+
+@when("掃描 src 內所有 EntityNotFoundError 的 entity_type 字面值")
+def scan_entity_types(ctx):
+    src_root = ROUTER_DIR.parents[1]
+    found: set[str] = set()
+    for path in src_root.rglob("*.py"):
+        for m in re.finditer(r'EntityNotFoundError\(\s*"([^"]+)"', path.read_text()):
+            found.add(m.group(1))
+    ctx["entity_types"] = found
+
+
+@then("每一個都對應到 ENTITY_NOT_FOUND_CODES 的項目")
+def assert_entity_types(ctx):
+    from src.interfaces.api.errors import ENTITY_NOT_FOUND_CODES
+
+    missing = sorted(
+        e for e in ctx["entity_types"]
+        if e.replace(" ", "").lower() not in ENTITY_NOT_FOUND_CODES
+    )
+    assert missing == [], missing
 
 
 # ── OpenAPI 快照 ──────────────────────────────────────────────

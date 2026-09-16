@@ -1,7 +1,7 @@
 """設定指紋 snapshot / 時間軸 / diff API（Issue #60）"""
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 from src.application.observability.config_snapshot_use_cases import (
     DiffConfigSnapshotsUseCase,
@@ -11,6 +11,7 @@ from src.application.observability.config_snapshot_use_cases import (
 from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.errors import ApiError, not_found_code
 
 router = APIRouter(prefix="/api/v1", tags=["config-snapshots"])
 
@@ -28,7 +29,11 @@ async def diff_config_snapshots(
     try:
         return await use_case.execute(a, b)
     except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
+        ) from e
 
 
 @router.get("/config-snapshots/{config_hash}")
@@ -43,7 +48,11 @@ async def get_config_snapshot(
     try:
         found = await use_case.execute(config_hash)
     except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
+        ) from e
     return {
         "hash": found["hash"],
         "schema": found["schema"],

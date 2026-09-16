@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from src.application.conversation.list_conv_summaries_use_case import (
@@ -24,6 +24,7 @@ from src.container import Container
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.domain.usage.category import UsageCategory
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError
 from src.interfaces.api.types import ApiDateTime
 
 logger = logging.getLogger(__name__)
@@ -64,8 +65,10 @@ async def list_summaries(
 ) -> ListConvSummariesResponse:
     # 跨租戶擋：tenant_admin 只能查自己
     if admin.role == "tenant_admin" and admin.tenant_id != tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="not found"
+        raise ApiError(
+            404,
+            code="not_found",
+            message="not found",
         )
     try:
         items = await use_case.execute(
@@ -78,12 +81,16 @@ async def list_summaries(
             )
         )
     except EntityNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="not found"
+        raise ApiError(
+            404,
+            code="not_found",
+            message="not found",
         ) from exc
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=str(e),
         ) from e
     # 統一 schema
     normalized: list[ConvSummaryItem] = []
@@ -115,8 +122,10 @@ async def search_summaries(
     record_usage=Depends(Provide[Container.record_usage_use_case]),
 ) -> dict:
     if admin.role == "tenant_admin" and admin.tenant_id != body.tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="not found"
+        raise ApiError(
+            404,
+            code="not_found",
+            message="not found",
         )
     # 薄 wrapper：直接呼叫既有 search_conv_summaries
     # Issue #73：admin 操作的 embedding 歸帳 SYSTEM tenant（同 search_conversations）

@@ -9,7 +9,7 @@
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from src.application.security.guard_settings_use_cases import (
@@ -30,6 +30,7 @@ from src.domain.security.guard_stages import (
 )
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError, not_found_code
 
 router = APIRouter(tags=["guard-stages"])
 
@@ -52,7 +53,11 @@ def _own_or_admin_tenant(caller: CurrentTenant, tenant_id: str) -> str:
     if caller.role == "system_admin":
         return tenant_id
     if tenant_id != caller.tenant_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise ApiError(
+            403,
+            code="forbidden",
+            message="Forbidden",
+        )
     return tenant_id
 
 
@@ -154,8 +159,10 @@ async def _update(
             profile=profile, locked=locked,
         )
     except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=e.message,
         ) from None
     return {
         "scope_kind": saved.scope_kind,
@@ -180,7 +187,9 @@ async def get_effective_guard(
             bot_id, tenant_id=caller.tenant_id, role=caller.role
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return view.to_dict()

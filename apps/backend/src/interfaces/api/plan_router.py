@@ -9,7 +9,7 @@ Issue #74：方案加計價模式 / 點數 / 用盡策略欄位；`/{plan_id}/mu
 from decimal import Decimal
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 
 from src.application.plan.assign_plan_to_tenant_use_case import (
@@ -39,6 +39,7 @@ from src.domain.shared.exceptions import (
     ValidationError,
 )
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/admin/plans", tags=["admin-plans"])
@@ -177,8 +178,10 @@ async def get_plan(
     try:
         plan = await use_case.execute(plan_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return _to_response(plan)
 
@@ -197,8 +200,10 @@ async def create_plan(
             CreatePlanCommand(**body.model_dump(), actor_user_id=admin.user_id)
         )
     except DomainException as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(e)
+        raise ApiError(
+            409,
+            code="domain",
+            message=str(e),
         ) from None
     return _to_response(plan)
 
@@ -220,12 +225,16 @@ async def update_plan(
             )
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     except DomainException as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        raise ApiError(
+            400,
+            code="domain",
+            message=str(e),
         ) from None
     return _to_response(plan)
 
@@ -243,12 +252,16 @@ async def delete_plan(
     try:
         await use_case.execute(plan_id, force=force)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     except DomainException as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(e)
+        raise ApiError(
+            409,
+            code="domain",
+            message=str(e),
         ) from None
 
 
@@ -267,8 +280,10 @@ async def get_plan_multipliers(
     try:
         view = await use_case.execute(plan_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return _multipliers_response(view)
 
@@ -290,12 +305,16 @@ async def replace_plan_multipliers(
             actor_user_id=admin.user_id,
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=e.message,
         ) from None
     return _multipliers_response(view)
 
@@ -313,10 +332,14 @@ async def assign_plan_to_tenant(
     try:
         await use_case.execute(plan_name=plan_name, tenant_id=tenant_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     except DomainException as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        raise ApiError(
+            400,
+            code="domain",
+            message=str(e),
         ) from None

@@ -1,7 +1,7 @@
 from math import ceil
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 
 from src.application.quota.compute_tenant_quota_use_case import (
@@ -34,6 +34,7 @@ from src.domain.shared.exceptions import (
 )
 from src.domain.tenant.entity import Tenant
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 from src.interfaces.api.types import ApiDateTime
 
@@ -192,8 +193,10 @@ async def create_tenant(
             CreateTenantCommand(name=body.name, plan=body.plan)
         )
     except DuplicateEntityError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=e.message
+        raise ApiError(
+            409,
+            code="duplicate_entity",
+            message=e.message,
         ) from None
     return _to_response(tenant)
 
@@ -241,8 +244,10 @@ async def get_tenant(
     try:
         tenant = await use_case.execute(tenant_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return _to_response(tenant)
 
@@ -284,12 +289,16 @@ async def update_tenant_config(
     try:
         tenant = await use_case.execute(UpdateTenantCommand(**cmd_kwargs))
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     except DomainException as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        raise ApiError(
+            400,
+            code="domain",
+            message=str(e),
         ) from None
     return _to_response(tenant)
 
@@ -311,15 +320,18 @@ async def get_tenant_quota(
     """
     tenant_id = _resolve_tenant_alias(tenant_id, tenant)
     if tenant.role != "system_admin" and tenant.tenant_id != tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot access other tenant's quota",
+        raise ApiError(
+            403,
+            code="cross_tenant_forbidden",
+            message="Cannot access other tenant's quota",
         )
     try:
         result = await use_case.execute(tenant_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return TenantQuotaResponse(
         cycle_year_month=result.cycle_year_month,
@@ -355,9 +367,10 @@ async def update_tenant_billing_policy(
     """Issue #74：額度用盡策略覆寫。tenant_admin 只能改自己且方案須允許（否則 403）。"""
     tenant_id = _resolve_tenant_alias(tenant_id, caller)
     if caller.role != "system_admin" and caller.tenant_id != tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot change other tenant's billing policy",
+        raise ApiError(
+            403,
+            code="cross_tenant_forbidden",
+            message="Cannot change other tenant's billing policy",
         )
     try:
         view = await use_case.execute(
@@ -368,16 +381,22 @@ async def update_tenant_billing_policy(
             actor_user_id=caller.user_id,
         )
     except PermissionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+        raise ApiError(
+            403,
+            code="permission",
+            message=str(e),
         ) from None
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=e.message,
         ) from None
     return TenantBillingPolicyResponse(
         tenant_id=view.tenant_id,
@@ -405,15 +424,18 @@ async def get_tenant_notification_preferences(
     tenant_admin 只能讀自己）。"""
     tenant_id = _resolve_tenant_alias(tenant_id, caller)
     if caller.role != "system_admin" and caller.tenant_id != tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot read other tenant's notification preferences",
+        raise ApiError(
+            403,
+            code="cross_tenant_forbidden",
+            message="Cannot read other tenant's notification preferences",
         )
     try:
         view = await use_case.execute(tenant_id=tenant_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return _preferences_response(view)
 
@@ -443,15 +465,21 @@ async def update_tenant_notification_preferences(
             actor_user_id=caller.user_id,
         )
     except PermissionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+        raise ApiError(
+            403,
+            code="permission",
+            message=str(e),
         ) from None
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=e.message,
         ) from None
     return _preferences_response(view)
