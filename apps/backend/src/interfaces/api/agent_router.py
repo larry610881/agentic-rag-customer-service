@@ -6,7 +6,7 @@ from typing import Any
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from src.application.agent.send_message_use_case import (
     SendMessageCommand,
@@ -76,6 +76,12 @@ class TokenUsageResponse(BaseModel):
     output_tokens: int
     total_tokens: int
     estimated_cost: ApiMoney
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def estimated_cost_str(self) -> str:
+        """Issue #99：金額字串形式（USD，6 位小數），跨端無浮點誤差；數字欄位維持相容。"""
+        return f"{float(self.estimated_cost):.6f}"
 
 
 class ChatResponse(BaseModel):

@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -226,6 +226,7 @@ class SendMessageUseCase:
         quota_preflight: Any | None = None,
         guard_provider: Any | None = None,
         record_usage_use_case: Any | None = None,
+        token_estimator: Callable[[str], int] | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -249,6 +250,7 @@ class SendMessageUseCase:
         self._conversation_lock = conversation_lock
         self._prompt_guard = prompt_guard
         self._record_usage = record_usage_use_case  # Issue #96
+        self._token_estimator = token_estimator  # Issue #99：部分計費估算
         self._tenant_repo = tenant_repository
         self._config_version_repo = config_version_repository
         # Issue #74：共用配額預檢（web / widget / LINE / 背景任務同一份）
@@ -940,6 +942,35 @@ class SendMessageUseCase:
         )
         return response
 
+    async def _record_partial_usage(
+        self,
+        command: SendMessageCommand,
+        bot_cfg: dict[str, Any],
+        gen_kwargs: dict[str, Any],
+        partial_answer: str,
+        config_hash: str | None,
+    ) -> None:
+        """Issue #99：生成中斷線的估算記帳；估算器缺席時用字元數 / 2 保底。"""
+        estimate = self._token_estimator or (lambda text: max(1, len(text) // 2))
+        prompt_text = "\n".join(
+            str(gen_kwargs.get(k) or "")
+            for k in ("system_prompt", "history_context", "router_context", "user_message")
+        )
+        usage = TokenUsage(
+            model=str(bot_cfg.get("llm_model") or "unknown"),
+            input_tokens=max(1, estimate(prompt_text)),
+            output_tokens=max(1, estimate(partial_answer)),
+            estimated=True,
+        )
+        await self._record_turn_usage(
+            command, usage, message_id=None, config_version_id=None,
+            config_hash=config_hash,
+        )
+        logger.info(
+            "stream.partial_usage_recorded", bot_id=command.bot_id,
+            input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+        )
+
     async def _record_turn_usage(
         self,
         command: SendMessageCommand,
@@ -1533,11 +1564,17 @@ class SendMessageUseCase:
                     continue
                 yield event
         except asyncio.CancelledError:
-            # Issue #96：生成中斷線——本輪沒有 usage 數字也沒存訊息（部分計費另案）
+            # Issue #96 / #99：生成中斷線——供應商已對已生成部分計費，但沒有 usage 數字。
+            # 以已串出文字與提示估算 token 補記（estimated=True），訊息不存（另案）。
             logger.info(
                 "stream.client_disconnected", phase="generating",
                 chars=len(full_answer), bot_id=command.bot_id,
             )
+            if full_answer:
+                with anyio.CancelScope(shield=True):
+                    await self._record_partial_usage(
+                        command, bot_cfg, gen_kwargs, full_answer, config_hash
+                    )
             raise
         if fast_plan is not None and not sources_list:
             sources_list = [

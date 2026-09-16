@@ -65,6 +65,8 @@ class TokenUsage:
     # reasoning，故此欄位只是 output_tokens 的「子集標注」，不進 total_tokens、
     # 不另計價；用途是實證模型這一輪是否真的在思考。
     reasoning_tokens: int = 0
+    # Issue #99：生成中斷線以估算補記（供應商已計費但無 usage 數字）
+    estimated: bool = False
 
     @property
     def total_tokens(self) -> int:

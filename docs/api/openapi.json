@@ -39208,6 +39208,12 @@
             "description": "金額（USD），伺服器端固定取整到 6 位小數",
             "x-precision": 6,
             "x-unit": "USD"
+          },
+          "estimated_cost_str": {
+            "type": "string",
+            "title": "Estimated Cost Str",
+            "description": "Issue #99：金額字串形式（USD，6 位小數），跨端無浮點誤差；數字欄位維持相容。",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -39216,7 +39222,8 @@
           "input_tokens",
           "output_tokens",
           "total_tokens",
-          "estimated_cost"
+          "estimated_cost",
+          "estimated_cost_str"
         ],
         "title": "TokenUsageResponse"
       },

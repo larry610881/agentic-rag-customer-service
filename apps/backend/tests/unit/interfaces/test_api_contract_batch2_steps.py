@@ -97,6 +97,25 @@ def assert_money_marked(ctx):
     assert ctx["missing"] == [], ctx["missing"]
 
 
+@when(parsers.parse("以 estimated_cost {raw} 建立 TokenUsageResponse 並序列化"))
+def usage_response(ctx, raw):
+    from src.interfaces.api.agent_router import TokenUsageResponse
+
+    m = TokenUsageResponse(
+        model="m", input_tokens=1, output_tokens=1, total_tokens=2,
+        estimated_cost=float(raw),
+    )
+    ctx["dump"] = json.loads(m.model_dump_json())
+
+
+@then(parsers.parse(
+    '序列化含 estimated_cost {num} 與 estimated_cost_str "{text}"'
+))
+def assert_usage_dump(ctx, num, text):
+    assert ctx["dump"]["estimated_cost"] == float(num)
+    assert ctx["dump"]["estimated_cost_str"] == text
+
+
 # ── opaque ────────────────────────────────────────────────────
 
 

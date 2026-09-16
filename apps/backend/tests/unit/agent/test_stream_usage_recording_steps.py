@@ -185,6 +185,13 @@ def record_calls(ctx, n):
     assert ctx["record"].execute.await_count == n
 
 
+@then(parsers.parse("record_usage 被呼叫 {n:d} 次且 usage 標記 estimated"))
+def record_calls_estimated(ctx, n):
+    assert ctx["record"].execute.await_count == n
+    usage = ctx["record"].execute.await_args.kwargs["usage"]
+    assert usage.estimated is True and usage.output_tokens > 0
+
+
 @then(parsers.parse(
     '記帳帶有 message_id、request_type "{rt}" 與 run_id "{run}"'
 ))

@@ -12,6 +12,10 @@ Feature: API 契約改造第二批（Issue #98 步驟 8–11）
       | 2            | 2.0      |
       | 0.0000004    | 0.0      |
 
+  Scenario: 對外面的 usage 金額另有字串形式
+    When 以 estimated_cost 0.1234567 建立 TokenUsageResponse 並序列化
+    Then 序列化含 estimated_cost 0.123457 與 estimated_cost_str "0.123457"
+
   Scenario: 回應模型的金額欄位都帶精度標記
     When 掃描全部回應模型的金額欄位
     Then 每個名稱含 cost、price、amount 的 number 欄位都有 x-precision

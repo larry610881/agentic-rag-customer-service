@@ -18,10 +18,10 @@ Feature: 串流記帳不因客戶端斷線遺失（Issue #96，M12）
     And 對話已儲存
     And 沒有其他例外
 
-  Scenario: 客戶端在生成中斷線時不記帳、不存檔、不拋其他例外
+  Scenario: 客戶端在生成中斷線時以估算補記、不存檔、不拋其他例外
     Given 一個會串出 token 與 usage 的 kb bot
     When 以 web 串流送出訊息並在第一個 token 後斷線
-    Then record_usage 被呼叫 0 次
+    Then record_usage 被呼叫 1 次且 usage 標記 estimated
     And 對話未儲存
     And 只發生取消，沒有其他例外
 

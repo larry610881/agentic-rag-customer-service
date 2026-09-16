@@ -66,6 +66,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 config_hash=record.config_hash,
                 points=record.points,
                 reasoning_tokens=record.reasoning_tokens,
+                estimated=record.estimated,
                 created_at=record.created_at,
             )
             self._session.add(model)
@@ -109,6 +110,7 @@ class SQLAlchemyUsageRepository(UsageRepository):
                 config_hash=getattr(r, "config_hash", None),
                 points=getattr(r, "points", 0) or 0,
                 reasoning_tokens=getattr(r, "reasoning_tokens", 0) or 0,
+                estimated=bool(getattr(r, "estimated", False)),
                 created_at=r.created_at,
             )
             for r in rows

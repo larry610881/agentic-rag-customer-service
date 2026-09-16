@@ -83,3 +83,8 @@ def estimate_tokens(texts: Iterable[str]) -> int:
                 logger.warning("embedding.token_estimator.tiktoken_failed")
         total += heuristic_token_count(text)
     return total
+
+
+def estimate_text_tokens(text: str) -> int:
+    """單一字串版（Issue #99：串流中斷的部分計費估算注入 SendMessageUseCase）。"""
+    return estimate_tokens([text])

@@ -115,6 +115,7 @@ class RecordUsageUseCase:
             cache_read_tokens=usage.cache_read_tokens,
             cache_creation_tokens=usage.cache_creation_tokens,
             reasoning_tokens=getattr(usage, "reasoning_tokens", 0) or 0,
+            estimated=bool(getattr(usage, "estimated", False)),
             bot_id=bot_id,
             kb_id=kb_id,
             message_id=message_id,

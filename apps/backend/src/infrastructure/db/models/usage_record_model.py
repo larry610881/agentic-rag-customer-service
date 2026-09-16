@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, Index, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
@@ -59,6 +59,10 @@ class UsageRecordModel(Base):
     # Issue #74：點數制換算結果（token 制為 0）與推理 token 標注（#72）
     points: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
+    )
+    # Issue #99：生成中斷線的估算記帳；migrations/add_token_usage_records_estimated.sql
+    estimated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     reasoning_tokens: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"

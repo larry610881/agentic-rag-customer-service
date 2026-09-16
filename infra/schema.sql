@@ -950,7 +950,8 @@ CREATE TABLE public.token_usage_records (
     config_version_id character varying(36),
     config_hash character varying(64),
     points integer DEFAULT 0 NOT NULL,
-    reasoning_tokens integer DEFAULT 0 NOT NULL
+    reasoning_tokens integer DEFAULT 0 NOT NULL,
+    estimated boolean DEFAULT false NOT NULL
 );
 
 

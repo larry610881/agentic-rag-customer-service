@@ -34,6 +34,8 @@ class UsageRecord:
     # reasoning_tokens 為 output 的子集標注（#72），不進 total_tokens。
     points: int = 0
     reasoning_tokens: int = 0
+    # Issue #99：生成中斷線的估算記帳（非供應商回報的實際值）
+    estimated: bool = False
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

@@ -616,6 +616,7 @@ from src.infrastructure.embedding.fake_embedding_service import (
 from src.infrastructure.embedding.openai_embedding_service import (
     OpenAIEmbeddingService,
 )
+from src.infrastructure.embedding.token_estimator import estimate_text_tokens
 from src.infrastructure.file_parser.ocr_engines.factory import (
     DynamicOcrEngineFactory,
 )
@@ -2897,6 +2898,7 @@ class Container(containers.DeclarativeContainer):
         quota_preflight=quota_preflight_service,  # Issue #74
         guard_provider=guard_provider,  # Issue #75
         record_usage_use_case=record_usage_use_case,  # Issue #96：記帳移入 use case
+        token_estimator=providers.Object(estimate_text_tokens),  # Issue #99
     )
 
     # --- Platform: Provider Settings ---
