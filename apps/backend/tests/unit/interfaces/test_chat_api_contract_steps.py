@@ -99,7 +99,6 @@ def _call_chat(ctx, conversation_id: str | None):
             http_request=http_request,
             tenant=tenant,
             use_case=ctx["uc"],
-            record_usage=AsyncMock(),
             usage_ctx=UsageContext(),
             idempotency_key=None,
             idempotency_guard=None,

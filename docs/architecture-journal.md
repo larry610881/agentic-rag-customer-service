@@ -7,6 +7,47 @@
 
 ---
 
+## 取消不是例外 — 串流收尾要用 shielded scope，而記帳應該住在 use case（2026-09-16，Issue #96）
+
+**Sprint 來源**：channel-parity 債務第 5 項（M12）。串流路徑的記帳寫在 router 迴圈之後；客戶端
+中途斷線時 Starlette 取消 task，`CancelledError` 不是 `Exception`，`except Exception` 接不到，
+記帳永遠不會跑。訊息有存、`token_usage_records` 沒有列。
+
+**主題**：非同步取消語意、持久化的原子邊界、通路對等、可量化的修復
+
+#### 做得好的地方
+- **先用實驗確認機制再動手**。寫了十行腳本比較 `task.cancel()` 與 anyio task group 取消：
+  `anyio.CancelScope(shield=True)` 只擋得住後者，而 Starlette `StreamingResponse` 用的正是後者。
+  沒有這個實驗，可能會選 `asyncio.shield` 然後撞上「shielded task 在 request session 關閉後
+  還在寫 DB」的競態。
+- **收尾當成一個原子區塊**。存對話、記帳、存 trace 三件事放進同一個 shielded scope，斷線只會延後
+  到區塊結束後才生效，不會出現「訊息在、用量不在」的半套狀態。
+- **記帳移進 use case，router 只剩 I/O**。web 非串流、web 串流、widget 三處各自的記帳程式碼
+  刪掉，換成 `SendMessageCommand.usage_request_type / usage_run_id` 兩個欄位；LINE 本來就在
+  use case 內。這是 channel-parity「管線邏輯只有一份」的實踐，也讓 widget 的整合測試不用改
+  就能沿用（它 override 的是 container 的 `record_usage_use_case` provider）。
+- **測試用真的取消機制**。步驟以 `anyio.create_task_group` 驅動串流、在 `conv_repo.save`
+  進行中 `cancel_scope.cancel()`，而不是 mock 一個 CancelledError。發現一個有趣的事實：
+  收尾完成後若剩餘程式沒有 await 檢查點，取消根本不會被觀察到、串流正常結束——
+  所以那個 scenario 的斷言是「沒有其他例外」而不是「一定觀察到取消」。
+- **留下可量化的尺**。斷線記 `stream.client_disconnected phase=generating|finalized`，
+  加上「有打 LLM 但無記帳」的 SQL，修復前後用同一把尺量。
+
+#### 潛在隱憂
+- **生成中斷線仍是黑洞**。供應商對已生成的部分計費，我們沒有 usage 數字，訊息也沒存，
+  使用者的問題從歷史消失。要以已串出字元估算並標 `estimated`，需要 ledger 加欄位 → 優先級：中。
+- **shield 只對 anyio 取消有效**。若日後有人用純 asyncio 驅動 `execute_stream`（背景任務、
+  測試），shield 不會保護；程式碼註解已寫明前提 → 優先級：低。
+- **`_execute_stream_inner` 複雜度 46**。這次又加了兩層 try；該拆成「生成」「收尾」「尾端事件」
+  三個方法 → 優先級：中。
+
+#### 延伸學習
+- anyio 的取消是「scope 內每個檢查點都會再丟」，跟 asyncio 的一次性 `CancelledError` 不同；
+  這是為什麼不能在 except 裡 await 補救，只能用 shield。
+- Starlette `StreamingResponse` 用 task group 同時跑 `stream_response` 與 `listen_for_disconnect`，
+  誰先結束就 cancel 另一個——斷線偵測就是這麼來的。
+- 「記帳在誰手上」是 DDD 的邊界問題：它是對話管線的一步，不是 HTTP 轉接的一步。
+
 ## 重送保護只存「回應快照」，不存對話 — Idempotency-Key 與 Redis TTL 的邊界（2026-09-14，Issue #95）
 
 **Sprint 來源**：#94 審核延後的 D1 項。展場測試機在回應階段斷線後重送，會再開一筆對話、再扣一次

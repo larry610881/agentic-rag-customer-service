@@ -1941,6 +1941,7 @@ Navigator 以 Strategy Pattern 預留擴充點，MVP 只實作 KeywordBFSNavigat
 | ~~[#61](https://github.com/larry610881/agentic-rag-customer-service/issues/61)~~ | ~~快速道抽共用管線（web 覆蓋）+ Gemini 3.7 Flash low 驗證~~ | ~~`refactor`~~ | ~~09-02~~ ✅ 程式完成 2026-09-02；**Gemini low 實測（20 題分流 + 12 題攻擊）待 dev 環境** |
 | [#94](https://github.com/larry610881/agentic-rag-customer-service/issues/94) | `/agent/chat` 對外契約加固：`conversation_created`、`structured_content.output`（typed）、錯誤 `code`/`request_id`、422 `detail` 統一字串、401 拆 expired/invalid/revoked | `enhancement` | 09-11 `/restful-api-contract-review` 第一塊（廠商整合面）；**09-14 已上線 rev 00027-dtb（rc-296563c-ui）煙霧 29/29 通過、Issue 已關**；main 待 Larry FF 至 296563c；延後：estimated_cost 浮點、CORS expose_headers |
 | [#95](https://github.com/larry610881/agentic-rag-customer-service/issues/95) | `/agent/chat` 支援 `Idempotency-Key`（Redis 快照 24h、處理中 130s、fail-open）+ Redis TTL 參數集中到 config + `docs/redis-keyspace.md` | `enhancement` | 09-14 #94 延後項（準則 D1）；設計 `.claude/plans/idempotency-key-plan-2026-09-14.md`；**09-14 已上線 rev 00027-dtb 真 Redis 驗收通過（重送不落庫、訊息數 4）、Issue 已關**；下一期：stream / widget 重用同一 guard |
+| [#96](https://github.com/larry610881/agentic-rag-customer-service/issues/96) | SSE 中斷漏記帳（M12）：記帳移入 `SendMessageUseCase`（三通路統一）+ 串流收尾包 `anyio.CancelScope(shield=True)` + 斷線 structured log | `bug` | 09-16 channel-parity 債務第 5 項；`stream_usage_recording.feature` 6 scenarios；待部署後以基準 SQL 驗證漏記率歸零；生成中斷線的部分計費另案（需 migration） |
 
 ---
 

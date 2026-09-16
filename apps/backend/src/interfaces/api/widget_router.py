@@ -35,7 +35,6 @@ from src.application.observability.error_event_use_cases import (
     ReportErrorCommand,
     ReportErrorUseCase,
 )
-from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.application.widget.identity_use_cases import VerifyWidgetIdentityUseCase
 from src.container import Container
 from src.domain.abuse.policy import AbuseSubject, SubjectKind
@@ -335,9 +334,6 @@ async def widget_chat_stream(
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
     ),
-    record_usage: RecordUsageUseCase = Depends(
-        Provide[Container.record_usage_use_case]
-    ),
 ) -> StreamingResponse:
     """SSE streaming chat（需 widget 票）。"""
     bot = principal.bot
@@ -353,6 +349,8 @@ async def widget_chat_stream(
         subject_kind=principal.subject[0],
         subject_id=principal.subject[1],
         client_ip=client_ip_of(request),
+        # Issue #96：記帳在 use case 內完成
+        usage_request_type=UsageCategory.CHAT_WIDGET.value,
     )
     # Issue #68 P7：串流前先問異常等級（L3+ → 429）
     await use_case.abuse_preflight(command)
@@ -383,28 +381,6 @@ async def widget_chat_stream(
                 done_payload["trace_id"] = failed_trace_id
             yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
-
-        # Record token usage after stream completes
-        usage_data = captured.get("usage")
-        if usage_data:
-            from src.infrastructure.langgraph.usage import (
-                extract_usage_from_accumulated,
-            )
-
-            usage = extract_usage_from_accumulated(usage_data)
-            if usage is not None:
-                try:
-                    await record_usage.execute(
-                        tenant_id=bot.tenant_id,
-                        request_type=UsageCategory.CHAT_WIDGET.value,
-                        usage=usage,
-                        bot_id=bot.id.value,
-                        message_id=captured.get("message_id"),  # H8
-                        config_version_id=captured.get("config_version_id"),  # H8
-                        config_hash=captured.get("config_hash"),
-                    )
-                except Exception:
-                    logger.exception("widget.chat.stream.record_usage_error")
 
     response = StreamingResponse(
         event_generator(),

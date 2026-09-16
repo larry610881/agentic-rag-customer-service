@@ -2893,6 +2893,7 @@ class Container(containers.DeclarativeContainer):
         config_version_repository=bot_config_version_repository,
         quota_preflight=quota_preflight_service,  # Issue #74
         guard_provider=guard_provider,  # Issue #75
+        record_usage_use_case=record_usage_use_case,  # Issue #96：記帳移入 use case
     )
 
     # --- Platform: Provider Settings ---

@@ -14,7 +14,6 @@ from src.application.agent.send_message_use_case import (
     SendMessageUseCase,
 )
 from src.application.shared.idempotency_guard import IdempotencyGuard
-from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.container import Container
 from src.interfaces.api.client_ip import client_ip_of
 from src.interfaces.api.deps import (
@@ -200,9 +199,6 @@ async def agent_chat(
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
     ),
-    record_usage: RecordUsageUseCase = Depends(
-        Provide[Container.record_usage_use_case]
-    ),
     usage_ctx: UsageContext = Depends(get_usage_context),
     idempotency_key: str | None = Depends(get_idempotency_key),
     idempotency_guard: IdempotencyGuard | None = Depends(
@@ -223,7 +219,7 @@ async def agent_chat(
         scope=idempotency_scope(tenant, "agent.chat"),
         fingerprint=request_fingerprint(request),
         handler=lambda: _agent_chat_once(
-            request, http_request, tenant, use_case, record_usage, usage_ctx,
+            request, http_request, tenant, use_case, usage_ctx,
             identity_source, subject_kind, subject_id,
         ),
     )
@@ -234,7 +230,6 @@ async def _agent_chat_once(
     http_request: Request,
     tenant: CurrentTenant,
     use_case: SendMessageUseCase,
-    record_usage: RecordUsageUseCase,
     usage_ctx: UsageContext,
     identity_source: str,
     subject_kind: str,
@@ -254,6 +249,8 @@ async def _agent_chat_once(
             config_override=request.config_override,
             test_mode=_effective_test_mode(request),  # M9
             history_override=request.history_override,
+            usage_request_type=usage_ctx.request_type,  # Issue #96：記帳在 use case 內
+            usage_run_id=usage_ctx.run_id,
         )
     )
 
@@ -261,21 +258,6 @@ async def _agent_chat_once(
     guard_blocked, guard_rule_matched = _maybe_expose_guard(
         result.guard_blocked, result.guard_rule_matched, tenant.role
     )
-
-    # 記帳 fail-open：帳務失敗不得炸使用者請求（工程約束；spec §7.3 修債）
-    try:
-        await record_usage.execute(
-            tenant_id=tenant.tenant_id,
-            request_type=usage_ctx.request_type,
-            usage=result.usage,
-            bot_id=request.bot_id,
-            message_id=result.message_id,
-            run_id=usage_ctx.run_id,
-            config_version_id=result.config_version_id,
-            config_hash=result.config_hash,
-        )
-    except Exception:
-        logger.exception("agent.chat.record_usage_error")
 
     usage_resp = None
     if result.usage:
@@ -336,9 +318,6 @@ async def agent_chat_stream(
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
     ),
-    record_usage: RecordUsageUseCase = Depends(
-        Provide[Container.record_usage_use_case]
-    ),
     usage_ctx: UsageContext = Depends(get_usage_context),
 ) -> StreamingResponse:
     ensure_bot_allowed(tenant, request.bot_id)  # Issue #67：api_client bot 範圍
@@ -359,6 +338,8 @@ async def agent_chat_stream(
         config_override=request.config_override,
         test_mode=_effective_test_mode(request),  # M9
         history_override=request.history_override,
+        usage_request_type=usage_ctx.request_type,  # Issue #96：記帳在 use case 內
+        usage_run_id=usage_ctx.run_id,
     )
 
     # Issue #68 P7：串流前先問異常等級（L3+ → 429，headers 尚未送出）
@@ -370,24 +351,12 @@ async def agent_chat_stream(
         # M13：guard 細節暴露改以 JWT role 判定（非 body 自報的 identity_source）
         is_studio = _can_see_guard_details(tenant.role)
 
-        usage_data: dict | None = None
-        assistant_message_id: str | None = None
-        config_version_id: str | None = None
-        config_hash: str | None = None
         try:
             async for event in use_case.execute_stream(command):
-                if event.get("type") == "usage":
-                    usage_data = event
+                # Issue #96：usage / config_version / config_hash 是內部事件，不下發；
+                # 記帳已在 use case 收尾完成（shielded），router 不再事後補記
+                if event.get("type") in ("usage", "config_version", "config_hash"):
                     continue
-                # S-ConvInsights.1: 捕獲 assistant message_id 供 RecordUsage 用
-                if event.get("type") == "message_id":
-                    assistant_message_id = event.get("message_id")
-                if event.get("type") == "config_version":
-                    config_version_id = event.get("config_version_id")
-                    continue  # 內部事件，不下發前端
-                if event.get("type") == "config_hash":
-                    config_hash = event.get("config_hash")
-                    continue  # Issue #60：內部事件，不下發前端
                 # Sprint A++: strip guard_blocked event for end-user 介面
                 if event.get("type") == "guard_blocked" and not is_studio:
                     continue
@@ -427,28 +396,6 @@ async def agent_chat_stream(
                 done_payload["trace_id"] = failed_trace_id
             yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
-
-        # Record usage after stream completes
-        if usage_data:
-            from src.infrastructure.langgraph.usage import (
-                extract_usage_from_accumulated,
-            )
-
-            usage = extract_usage_from_accumulated(usage_data)
-            if usage is not None:
-                try:
-                    await record_usage.execute(
-                        tenant_id=tenant.tenant_id,
-                        request_type=usage_ctx.request_type,
-                        usage=usage,
-                        bot_id=request.bot_id,
-                        message_id=assistant_message_id,
-                        run_id=usage_ctx.run_id,
-                        config_version_id=config_version_id,
-                        config_hash=config_hash,
-                    )
-                except Exception:
-                    logger.exception("agent.chat.stream.record_usage_error")
 
     return StreamingResponse(
         event_generator(),

@@ -1,5 +1,6 @@
 """發送訊息用例 — 委託 AgentService 處理，支援對話記憶"""
 
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+import anyio
 import structlog
 
 from src.application.abuse.abuse_control_service import (
@@ -53,6 +55,7 @@ from src.domain.conversation.history_strategy import (
 from src.domain.conversation.repository import ConversationRepository
 from src.domain.platform.repository import SystemPromptConfigRepository
 from src.domain.platform.services import EncryptionService
+from src.domain.rag.value_objects import TokenUsage
 from src.domain.security.guard_stages import EffectiveGuard
 from src.domain.shared.concurrency import ConversationLock
 from src.domain.shared.exceptions import DomainException
@@ -190,6 +193,10 @@ class SendMessageCommand:
     config_override: dict | None = None   # draft 快照 overlay（spec §13.3）
     test_mode: bool = False               # 六面隔離：不落庫、不 memory、不線上 eval
     history_override: list[dict] | None = None  # [{role, content}] 取代 DB 歷史
+    # Issue #96：記帳分類（None = 依 identity_source 決定）與 eval run 歸因；
+    # 記帳在 use case 內完成，三通路共用，router 不再事後補記（M12）
+    usage_request_type: str | None = None
+    usage_run_id: str | None = None
 
 
 class SendMessageUseCase:
@@ -218,6 +225,7 @@ class SendMessageUseCase:
         config_version_repository: Any | None = None,
         quota_preflight: Any | None = None,
         guard_provider: Any | None = None,
+        record_usage_use_case: Any | None = None,
     ) -> None:
         self._agent_service = agent_service
         self._conversation_repo = conversation_repository
@@ -240,6 +248,7 @@ class SendMessageUseCase:
         self._worker_config_repo = worker_config_repo
         self._conversation_lock = conversation_lock
         self._prompt_guard = prompt_guard
+        self._record_usage = record_usage_use_case  # Issue #96
         self._tenant_repo = tenant_repository
         self._config_version_repo = config_version_repository
         # Issue #74：共用配額預檢（web / widget / LINE / 背景任務同一份）
@@ -920,6 +929,61 @@ class SendMessageUseCase:
         return cfg
 
     async def execute(self, command: SendMessageCommand) -> AgentResponse:
+        response = await self._execute_locked(command)
+        # Issue #96：記帳在 use case 內完成（與串流路徑同一個 helper）
+        await self._record_turn_usage(
+            command,
+            response.usage,
+            message_id=response.message_id,
+            config_version_id=response.config_version_id,
+            config_hash=response.config_hash,
+        )
+        return response
+
+    async def _record_turn_usage(
+        self,
+        command: SendMessageCommand,
+        usage: TokenUsage | None,
+        *,
+        message_id: str | None,
+        config_version_id: str | None,
+        config_hash: str | None,
+    ) -> None:
+        """記帳 fail-open：帳務失敗不得炸使用者請求（spec §7.3）。"""
+        if self._record_usage is None or usage is None:
+            return
+        try:
+            await self._record_usage.execute(
+                tenant_id=command.tenant_id,
+                request_type=(
+                    command.usage_request_type or self._usage_category(command)
+                ),
+                usage=usage,
+                bot_id=command.bot_id,
+                message_id=message_id,
+                run_id=command.usage_run_id,
+                config_version_id=config_version_id,
+                config_hash=config_hash,
+            )
+        except Exception:
+            logger.exception("send_message.record_usage_error")
+
+    @staticmethod
+    def _usage_from_event(event: dict[str, Any] | None) -> TokenUsage | None:
+        """串流 usage 事件 → TokenUsage（欄位與 build_usage_event 對齊）。"""
+        if not event:
+            return None
+        return TokenUsage(
+            model=event.get("model", "unknown"),
+            input_tokens=event.get("input_tokens", 0),
+            output_tokens=event.get("output_tokens", 0),
+            estimated_cost=event.get("estimated_cost", 0.0),
+            cache_read_tokens=event.get("cache_read_tokens", 0),
+            cache_creation_tokens=event.get("cache_creation_tokens", 0),
+            reasoning_tokens=event.get("reasoning_tokens", 0),
+        )
+
+    async def _execute_locked(self, command: SendMessageCommand) -> AgentResponse:
         # Acquire conversation lock
         lock_key = self._build_lock_key(command)
         if lock_key and self._conversation_lock:
@@ -1430,40 +1494,51 @@ class SendMessageUseCase:
         refund_step_value: str | None = None
 
         t0 = time.perf_counter()
-        async for event in self._agent_service.process_message_stream(**gen_kwargs):
-            # contact event 不塞進 answer，透過 yield 傳給呼叫者
-            if event["type"] == "token":
-                full_answer += event["content"]
-            elif event["type"] == "tool_calls":
-                tool_calls = event.get("tool_calls", [])
-            elif event["type"] == "sources":
-                sources_list = event.get("sources", [])
-            elif event["type"] == "contact":
-                contact_payload = event.get("contact")
-            elif event["type"] == "refund_step":
-                refund_step_value = event.get("refund_step")
-                continue  # Internal metadata, not sent to client
-            # Non-debug: hide "direct" tool_calls entirely, strip reasoning for others
-            if event["type"] == "tool_calls" and not self._debug:
-                tcs = event.get("tool_calls", [])
-                # "direct" means no tool used — nothing to show
-                if all(tc.get("tool_name") == "direct" for tc in tcs):
+        usage_event: dict[str, Any] | None = None
+        try:
+            async for event in self._agent_service.process_message_stream(**gen_kwargs):
+                # contact event 不塞進 answer，透過 yield 傳給呼叫者
+                if event["type"] == "token":
+                    full_answer += event["content"]
+                elif event["type"] == "usage":
+                    usage_event = event  # Issue #96：留給收尾記帳
+                elif event["type"] == "tool_calls":
+                    tool_calls = event.get("tool_calls", [])
+                elif event["type"] == "sources":
+                    sources_list = event.get("sources", [])
+                elif event["type"] == "contact":
+                    contact_payload = event.get("contact")
+                elif event["type"] == "refund_step":
+                    refund_step_value = event.get("refund_step")
+                    continue  # Internal metadata, not sent to client
+                # Non-debug: hide "direct" tool_calls; strip reasoning for others
+                if event["type"] == "tool_calls" and not self._debug:
+                    tcs = event.get("tool_calls", [])
+                    # "direct" means no tool used — nothing to show
+                    if all(tc.get("tool_name") == "direct" for tc in tcs):
+                        continue
+                    event = {
+                        "type": "tool_calls",
+                        "tool_calls": [
+                            {
+                                "tool_name": tc.get("tool_name", ""),
+                                "label": tc.get("label", ""),
+                                "reasoning": "",
+                            }
+                            for tc in tcs
+                        ],
+                    }
+                # Suppress sources event when bot has show_sources=False
+                if event["type"] == "sources" and not bot_cfg["show_sources"]:
                     continue
-                event = {
-                    "type": "tool_calls",
-                    "tool_calls": [
-                        {
-                            "tool_name": tc.get("tool_name", ""),
-                            "label": tc.get("label", ""),
-                            "reasoning": "",
-                        }
-                        for tc in tcs
-                    ],
-                }
-            # Suppress sources event when bot has show_sources=False
-            if event["type"] == "sources" and not bot_cfg["show_sources"]:
-                continue
-            yield event
+                yield event
+        except asyncio.CancelledError:
+            # Issue #96：生成中斷線——本輪沒有 usage 數字也沒存訊息（部分計費另案）
+            logger.info(
+                "stream.client_disconnected", phase="generating",
+                chars=len(full_answer), bot_id=command.bot_id,
+            )
+            raise
         if fast_plan is not None and not sources_list:
             sources_list = [
                 src.to_dict() if hasattr(src, "to_dict") else src
@@ -1538,36 +1613,50 @@ class SendMessageUseCase:
             })
 
         assistant_msg = None
-        t_persist = AgentTraceCollector.offset_ms()
-        if not command.test_mode:
-            conversation.add_message("user", command.message)
-            assistant_msg = conversation.add_message(
-                "assistant",
-                full_answer,
-                tool_calls=tool_calls_to_save,
-                latency_ms=latency_ms,
-                retrieved_chunks=retrieved_chunks,
-                structured_content=structured_content,
+        cv_id: str | None = None
+        # Issue #96（M12）：收尾「存對話 → 記帳 → 存 trace」包在 shielded scope：
+        # 客戶端此時斷線，Starlette 的取消會延後到本區塊結束後才生效，
+        # 訊息與用量不會只存一半。記帳在此完成，router 不再事後補記（三通路共用）。
+        with anyio.CancelScope(shield=True):
+            t_persist = AgentTraceCollector.offset_ms()
+            if not command.test_mode:
+                conversation.add_message("user", command.message)
+                assistant_msg = conversation.add_message(
+                    "assistant",
+                    full_answer,
+                    tool_calls=tool_calls_to_save,
+                    latency_ms=latency_ms,
+                    retrieved_chunks=retrieved_chunks,
+                    structured_content=structured_content,
+                )
+                _bump_conversation_counters(conversation)
+                await self._conversation_repo.save(conversation)
+                cv_id = await self._resolve_current_version_id(command.bot_id)
+
+            await self._record_turn_usage(
+                command,
+                self._usage_from_event(usage_event),
+                message_id=assistant_msg.id.value if assistant_msg else None,
+                config_version_id=cv_id,
+                config_hash=config_hash,
             )
-            _bump_conversation_counters(conversation)
-            await self._conversation_repo.save(conversation)
 
-        # 在 _persist_agent_trace 之前取 trace_id（finish 後 ContextVar 會被清掉）
-        # 用於 SSE done 事件回傳給前端，讓 Studio canvas 等可 fetch 完整 DAG。
-        _current_trace = AgentTraceCollector.current()
-        stream_trace_id = _current_trace.trace_id if _current_trace else None
+            # 在 _persist_agent_trace 之前取 trace_id（finish 後 ContextVar 會被清掉）
+            # 用於 SSE done 事件回傳給前端，讓 Studio canvas 等可 fetch 完整 DAG。
+            _current_trace = AgentTraceCollector.current()
+            stream_trace_id = _current_trace.trace_id if _current_trace else None
 
-        # Fire-and-forget: persist agent execution trace
-        _, stream_trace_nodes = await self._persist_agent_trace(
-            conversation_id=conversation.id.value,
-            message_id=(
-                assistant_msg.id.value if assistant_msg else None
-            ),
-            latency_ms=latency_ms,
-            source=command.identity_source or "web",
-            persist=not command.test_mode,
-            persist_started_ms=t_persist,
-        )
+            # Fire-and-forget: persist agent execution trace
+            _, stream_trace_nodes = await self._persist_agent_trace(
+                conversation_id=conversation.id.value,
+                message_id=(
+                    assistant_msg.id.value if assistant_msg else None
+                ),
+                latency_ms=latency_ms,
+                source=command.identity_source or "web",
+                persist=not command.test_mode,
+                persist_started_ms=t_persist,
+            )
 
         if not command.test_mode:
             # Fire-and-forget: memory extraction（test_mode 六面隔離跳過）
@@ -1575,29 +1664,35 @@ class SendMessageUseCase:
 
         # Issue #59：線上每輪 LLM 自評已下線（品質驗收走 prompt gate 離線回放）
 
-        if assistant_msg is not None:
-            yield {
-                "type": "message_id",
-                "message_id": assistant_msg.id.value,
-            }
-            cv_id = await self._resolve_current_version_id(command.bot_id)
-            if cv_id:
+        try:
+            if assistant_msg is not None:
                 yield {
-                    "type": "config_version",
-                    "config_version_id": cv_id,
+                    "type": "message_id",
+                    "message_id": assistant_msg.id.value,
                 }
-            if config_hash:
-                yield {"type": "config_hash", "config_hash": config_hash}
-        yield {
-            "type": "conversation_id",
-            "conversation_id": conversation.id.value,
-        }
-        done_event: dict[str, Any] = {"type": "done"}
-        if stream_trace_id:
-            done_event["trace_id"] = stream_trace_id
-        if command.test_mode and stream_trace_nodes is not None:
-            done_event["trace_nodes"] = stream_trace_nodes
-        yield done_event
+                if cv_id:
+                    yield {
+                        "type": "config_version",
+                        "config_version_id": cv_id,
+                    }
+                if config_hash:
+                    yield {"type": "config_hash", "config_hash": config_hash}
+            yield {
+                "type": "conversation_id",
+                "conversation_id": conversation.id.value,
+            }
+            done_event: dict[str, Any] = {"type": "done"}
+            if stream_trace_id:
+                done_event["trace_id"] = stream_trace_id
+            if command.test_mode and stream_trace_nodes is not None:
+                done_event["trace_nodes"] = stream_trace_nodes
+            yield done_event
+        except asyncio.CancelledError:
+            # Issue #96：收尾已完成（訊息與用量都在），只是客戶端沒收到尾端事件
+            logger.info(
+                "stream.client_disconnected", phase="finalized", bot_id=command.bot_id,
+            )
+            raise
 
     async def _load_or_create_conversation(
         self, command: SendMessageCommand
