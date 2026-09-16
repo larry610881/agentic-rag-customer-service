@@ -819,6 +819,9 @@ class Container(containers.DeclarativeContainer):
         in_progress_ttl_seconds=providers.Callable(
             lambda cfg: cfg.idempotency_in_progress_ttl_seconds, config
         ),
+        stream_max_bytes=providers.Callable(
+            lambda cfg: cfg.idempotency_stream_max_bytes, config
+        ),
     )
 
     db_session = providers.Factory(get_tracked_session)

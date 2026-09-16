@@ -160,6 +160,8 @@ class Settings(BaseSettings):
     idempotency_ttl_seconds: int = 86400  # idem:* 完成快照保留 24h（Issue #95）
     # idem:* 處理中標記；> 請求逾時 30s、> 對話鎖 120s
     idempotency_in_progress_ttl_seconds: int = 130
+    # 串流快照大小上限（bytes）；超過就不存、重送會真的重跑（Issue #99）
+    idempotency_stream_max_bytes: int = 524288
 
     # 對話摘要 cron 只處理達此訊息數的對話（Issue #59：一兩輪的客服對話不摘要）
     conversation_summary_min_messages: int = 6

@@ -8238,15 +8238,58 @@
         ],
         "summary": "Agent Chat Stream",
         "operationId": "agent_chat_stream_api_v1_agent_chat_stream_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費",
+              "title": "Idempotency-Key"
+            },
+            "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費"
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "SSE 重連游標：帶 Idempotency-Key 重送時，只補送 id 大於此值的事件",
+              "title": "Last-Event-Id"
+            },
+            "description": "SSE 重連游標：帶 Idempotency-Key 重送時，只補送 id 大於此值的事件"
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ChatRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -8337,12 +8380,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/agent/built-in-tools": {
@@ -27157,6 +27195,42 @@
               ],
               "title": "Wt"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費",
+              "title": "Idempotency-Key"
+            },
+            "description": "選填。1–128 可見 ASCII（建議 UUID v4）。同 key 同 body 在 24 小時內重送回同一份回應（Idempotent-Replayed: true），不會重複建立或重複計費"
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "SSE 重連游標：帶 Idempotency-Key 重送時，只補送 id 大於此值的事件",
+              "title": "Last-Event-Id"
+            },
+            "description": "SSE 重連游標：帶 Idempotency-Key 重送時，只補送 id 大於此值的事件"
           }
         ],
         "requestBody": {

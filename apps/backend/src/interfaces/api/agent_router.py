@@ -36,7 +36,9 @@ from src.interfaces.api.deps import (
 from src.interfaces.api.errors import ApiError
 from src.interfaces.api.idempotency import (
     get_idempotency_key,
+    get_last_event_id,
     idempotency_scope,
+    idempotent_sse,
     request_fingerprint,
     run_idempotent,
 )
@@ -293,6 +295,11 @@ async def agent_chat_stream(
         Provide[Container.send_message_use_case]
     ),
     usage_ctx: UsageContext = Depends(get_usage_context),
+    idempotency_key: str | None = Depends(get_idempotency_key),
+    idempotency_guard: IdempotencyGuard | None = Depends(
+        Provide[Container.idempotency_guard]
+    ),
+    last_event_id: int | None = Depends(get_last_event_id),
 ) -> StreamingResponse:
     ensure_bot_allowed(tenant, request.bot_id)  # Issue #67：api_client bot 範圍
     # S-Gov.3: admin 一律以自己的 tenant_id (SYSTEM_TENANT_ID) 發訊息；
@@ -337,7 +344,7 @@ async def agent_chat_stream(
                     continue
                 event = _with_conversation_created(event, request.conversation_id)
                 seq += 1
-                yield sse_frame(event, seq)
+                yield seq, sse_frame(event, seq)
         except Exception as exc:
             logger.exception("agent.chat.stream.error")
             error_msg = classify_streaming_error(exc)
@@ -370,12 +377,22 @@ async def agent_chat_stream(
             done_payload: dict = {"type": "done"}
             if failed_trace_id:
                 done_payload["trace_id"] = failed_trace_id
-            yield sse_frame(error_payload, seq + 1)
-            yield sse_frame(done_payload, seq + 2)
+            yield seq + 1, sse_frame(error_payload, seq + 1)
+            yield seq + 2, sse_frame(done_payload, seq + 2)
 
+    # Issue #99：帶 Idempotency-Key 時整段事件存快照，同 key 重送從快照重播（可帶 Last-Event-ID）
+    frames, headers = await idempotent_sse(
+        idempotency_guard,
+        key=idempotency_key,
+        scope=idempotency_scope(tenant, "agent.chat.stream"),
+        fingerprint=request_fingerprint(request),
+        last_event_id=last_event_id,
+        producer=event_generator,
+    )
     return StreamingResponse(
-        event_generator(),
+        frames,
         media_type="text/event-stream",
+        headers=headers,
     )
 
 

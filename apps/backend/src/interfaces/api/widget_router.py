@@ -54,6 +54,8 @@ from src.interfaces.api.chat_schemas import SourceResponse, StructuredContentRes
 from src.interfaces.api.client_ip import client_ip_of
 from src.interfaces.api.idempotency import (
     get_idempotency_key,
+    get_last_event_id,
+    idempotent_sse,
     request_fingerprint,
     run_idempotent,
 )
@@ -346,6 +348,11 @@ async def widget_chat_stream(
     use_case: SendMessageUseCase = Depends(
         Provide[Container.send_message_use_case]
     ),
+    idempotency_key: str | None = Depends(get_idempotency_key),
+    idempotency_guard: IdempotencyGuard | None = Depends(
+        Provide[Container.idempotency_guard]
+    ),
+    last_event_id: int | None = Depends(get_last_event_id),
 ) -> StreamingResponse:
     """SSE streaming chat（需 widget 票）。"""
     bot = principal.bot
@@ -362,7 +369,7 @@ async def widget_chat_stream(
                     # Issue #94 通路對等：conversation_id 事件同樣帶 created 旗標
                     event = with_conversation_created(event, command.conversation_id)
                     seq += 1
-                    yield sse_frame(event, seq)
+                    yield seq, sse_frame(event, seq)
         except Exception as exc:
             logger.exception("widget.chat.stream.error")
             error_msg = classify_streaming_error(exc)
@@ -381,12 +388,21 @@ async def widget_chat_stream(
             done_payload: dict = {"type": "done"}
             if failed_trace_id:
                 done_payload["trace_id"] = failed_trace_id
-            yield sse_frame(error_payload, seq + 1)
-            yield sse_frame(done_payload, seq + 2)
+            yield seq + 1, sse_frame(error_payload, seq + 1)
+            yield seq + 2, sse_frame(done_payload, seq + 2)
 
+    # Issue #99：與 web 串流同一套快照重播（scope 綁 visitor）
+    scope = f"{bot.tenant_id}:visitor:{principal.visitor_id or ''}:widget.chat.stream"
+    frames, headers = await idempotent_sse(
+        idempotency_guard,
+        key=idempotency_key,
+        scope=scope,
+        fingerprint=request_fingerprint(body),
+        last_event_id=last_event_id,
+        producer=event_generator,
+    )
     response = StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
+        frames, media_type="text/event-stream", headers=headers
     )
     _set_cors_headers(response, principal.origin, bot)
     return response
