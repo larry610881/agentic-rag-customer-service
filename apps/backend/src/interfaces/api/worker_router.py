@@ -90,7 +90,9 @@ class WorkerResponse(BaseModel):
     max_tool_calls: int
     enabled_mcp_ids: list[str]
     knowledge_base_ids: list[str]
-    enabled_tools: list[str] | None
+    enabled_tools: list[str] | None = Field(
+        description="null = 繼承 Bot.enabled_tools；[] = 不啟用任何 built-in；[...] = 白名單"
+    )
     tool_configs: dict[str, dict[str, Any]]
     sort_order: int
     direct_retrieval: bool = False

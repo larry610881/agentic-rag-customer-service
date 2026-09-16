@@ -9,6 +9,7 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from src.interfaces.api.types import ApiDateTime
 from src.application.pricing.create_pricing_use_case import (
     CreatePricingCommand,
     CreatePricingUseCase,
@@ -60,10 +61,10 @@ class PricingResponse(BaseModel):
     output_price: float
     cache_read_price: float
     cache_creation_price: float
-    effective_from: datetime
-    effective_to: datetime | None
+    effective_from: ApiDateTime
+    effective_to: ApiDateTime | None
     created_by: str
-    created_at: datetime
+    created_at: ApiDateTime
     note: str | None
     # Issue #74：模型點數表（每千 token；null = 未設，改由平台匯率換算）
     points_per_1k_input: float | None = None
@@ -103,8 +104,8 @@ class DryRunRecalculateResponse(BaseModel):
     cost_before_total: float
     cost_after_total: float
     cost_delta: float
-    recalc_from: datetime
-    recalc_to: datetime
+    recalc_from: ApiDateTime
+    recalc_to: ApiDateTime
 
 
 class ExecuteRecalculateRequest(BaseModel):
@@ -122,14 +123,14 @@ class ExecuteRecalculateResponse(BaseModel):
 class RecalcAuditResponse(BaseModel):
     id: str
     pricing_id: str
-    recalc_from: datetime
-    recalc_to: datetime
+    recalc_from: ApiDateTime
+    recalc_to: ApiDateTime
     affected_rows: int
     cost_before_total: float
     cost_after_total: float
     cost_delta: float
     executed_by: str
-    executed_at: datetime
+    executed_at: ApiDateTime
     reason: str
 
 

@@ -12,6 +12,7 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
+from src.interfaces.api.types import ApiDateTime
 from src.application.prompt_gate.gate_run_use_cases import (
     GateEstimateUseCase,
     GatePreconditionError,
@@ -91,9 +92,9 @@ class GateRunResponse(BaseModel):
     actual_cost: float | None
     details: dict | None
     error_message: str | None
-    created_at: datetime
-    started_at: datetime | None
-    completed_at: datetime | None
+    created_at: ApiDateTime
+    started_at: ApiDateTime | None
+    completed_at: ApiDateTime | None
 
 
 def _run_to_response(run) -> GateRunResponse:
@@ -126,8 +127,8 @@ class VersionResponse(BaseModel):
     gate_verdict: str | None
     changed_fields: list[str]
     author_user_id: str | None
-    published_at: datetime | None
-    created_at: datetime
+    published_at: ApiDateTime | None
+    created_at: ApiDateTime
 
 
 class VersionDetailResponse(VersionResponse):

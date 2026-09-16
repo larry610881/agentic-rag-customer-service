@@ -24,6 +24,7 @@ from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
@@ -54,6 +55,47 @@ _CODE_BY_KNOWN_DETAIL: dict[str, str] = {
     "Not Found": "not_found",
     "Method Not Allowed": "method_not_allowed",
 }
+
+
+class ErrorResponse(BaseModel):
+    """所有 4xx / 5xx 的 body 形狀（Issue #97 進 OpenAPI）。"""
+
+    detail: str = Field(description="給人看的訊息，文案可變，客戶端不得據此分支")
+    code: str = Field(
+        description="穩定的機器可讀碼（snake_case），客戶端據此分支"
+    )
+    request_id: str | None = Field(
+        default=None, description="與回應標頭 X-Request-ID 同值，回報問題時附上"
+    )
+
+
+class ValidationErrorResponse(ErrorResponse):
+    """422：detail 為摘要字串，逐欄位細節在 errors。"""
+
+    errors: list[dict[str, Any]] = Field(
+        default_factory=list, description="FastAPI / Pydantic 逐欄位驗證細節"
+    )
+
+
+# FastAPI(responses=…)：每個操作的 OpenAPI 都宣告錯誤 body schema
+# （客戶端產生器才會產出錯誤 model）
+API_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {"model": ErrorResponse, "description": "請求不合法"},
+    401: {"model": ErrorResponse, "description": "未認證或 token 無效 / 過期"},
+    403: {"model": ErrorResponse, "description": "權限或 scope 不足"},
+    404: {"model": ErrorResponse, "description": "資源不存在或不屬於此租戶"},
+    409: {"model": ErrorResponse, "description": "狀態衝突"},
+    422: {"model": ValidationErrorResponse, "description": "欄位驗證失敗"},
+    429: {"model": ErrorResponse, "description": "限流或異常控管（含 Retry-After）"},
+    500: {"model": ErrorResponse, "description": "未預期錯誤，請附 request_id 回報"},
+}
+
+
+def not_found_code(exc: Any) -> str:
+    """EntityNotFoundError(entity_type) → `<entity>_not_found`（例：bot_not_found）。"""
+    entity = str(getattr(exc, "entity_type", "") or "")
+    snake = re.sub(r"(?<!^)(?=[A-Z])", "_", entity).lower().strip("_")
+    return f"{snake}_not_found" if snake else "not_found"
 
 
 class ApiError(HTTPException):

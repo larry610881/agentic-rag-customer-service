@@ -7,7 +7,7 @@ secret 只在建立回應出現一次。
 from datetime import datetime
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from src.application.auth.api_key_use_cases import (
@@ -20,6 +20,8 @@ from src.container import Container
 from src.domain.auth.api_key import API_SCOPES, ApiKey
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import CurrentTenant, require_role
+from src.interfaces.api.errors import ApiError, not_found_code
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/api-keys", tags=["api-keys"])
 
@@ -44,12 +46,12 @@ class ApiKeyResponse(BaseModel):
     secret_prefix: str
     scopes: list[str]
     allowed_bot_ids: list[str]
-    expires_at: datetime | None
-    revoked_at: datetime | None
+    expires_at: ApiDateTime | None
+    revoked_at: ApiDateTime | None
     is_active: bool
-    last_used_at: datetime | None
+    last_used_at: ApiDateTime | None
     created_by: str | None
-    created_at: datetime
+    created_at: ApiDateTime
 
 
 class ApiKeyCreatedResponse(ApiKeyResponse):
@@ -78,16 +80,18 @@ def _to_response(key: ApiKey) -> ApiKeyResponse:
 def _target_tenant(caller: CurrentTenant, requested: str | None) -> str:
     if caller.role == "system_admin":
         if not requested:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="system_admin must specify tenant_id",
+            raise ApiError(
+                422,
+                code="tenant_id_required",
+                message="system_admin must specify tenant_id",
             )
         return requested
     if requested and requested != caller.tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot manage API keys of another tenant",
-        )
+        raise ApiError(
+                403,
+                code="cross_tenant_forbidden",
+                message="Cannot manage API keys of another tenant",
+            )
     return caller.tenant_id
 
 
@@ -121,9 +125,11 @@ async def create_api_key(
             )
         )
     except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message
-        ) from None
+        raise ApiError(
+                422,
+                code="invalid_request",
+                message=e.message,
+            ) from None
     base = _to_response(result.key)
     return ApiKeyCreatedResponse(
         **base.model_dump(), client_secret=result.client_secret
@@ -162,7 +168,9 @@ async def revoke_api_key(
             key_id, tenant_id=tenant_scope, actor_user_id=caller.user_id
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
-        ) from None
+        raise ApiError(
+                404,
+                code=not_found_code(e),
+                message=e.message,
+            ) from None
     return _to_response(key)

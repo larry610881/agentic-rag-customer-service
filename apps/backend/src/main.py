@@ -211,6 +211,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await engine.dispose()
 
 
+CORS_EXPOSE_HEADERS = [
+    "Retry-After",
+    "X-Request-ID",
+    "X-RateLimit-Limit",
+    "X-RateLimit-Remaining",
+    "Idempotent-Replayed",
+]
+
+
 def docs_kwargs_for_env(app_env: str) -> dict[str, str | None]:
     """production 關閉 FastAPI 自動文件（10820 曝露）；其他環境維持預設。"""
     if app_env == "production":
@@ -229,10 +238,14 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
     if container.config().e2e_mode:
         container.llm_service.override(container._static_llm_service)
 
+    from src.interfaces.api.errors import API_ERROR_RESPONSES
+
     application = FastAPI(
         title="Agentic RAG Customer Service",
         version="0.1.0",
         lifespan=lifespan,
+        # Issue #97：每個操作宣告 4xx/5xx body schema（ErrorResponse）
+        responses=API_ERROR_RESPONSES,
         # security-precheck 10820：production 不公開 /docs /redoc /openapi.json
         **docs_kwargs_for_env(settings.app_env),
     )
@@ -294,6 +307,8 @@ def create_app(*, skip_rate_limit: bool = False) -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # Issue #97：瀏覽器端要能讀到重試 / 追蹤 / 冪等標頭（準則 D4）
+        expose_headers=CORS_EXPOSE_HEADERS,
     )
 
     # RequestID + trace init/flush (runs before CORS & RateLimit)

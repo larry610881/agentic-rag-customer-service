@@ -33,6 +33,7 @@ from src.container import Container
 from src.domain.bot.repository import BotRepository
 from src.domain.conversation.repository import ConversationRepository
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_scope
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(
     prefix="/api/v1/feedback",
@@ -60,7 +61,7 @@ class FeedbackResponse(BaseModel):
     rating: str
     comment: str | None
     tags: list[str]
-    created_at: datetime
+    created_at: ApiDateTime
     bot_name: str | None = None
 
 
@@ -94,7 +95,7 @@ class RetrievalQualityRecordResponse(BaseModel):
     retrieved_chunks: list[dict]
     rating: str
     comment: str | None
-    created_at: datetime
+    created_at: ApiDateTime
 
 
 class RetrievalQualityResponse(BaseModel):

@@ -45,6 +45,9 @@ test-frontend:
 # ─── Lint ────────────────────────────────────────────────────
 lint: lint-backend lint-frontend
 
+openapi:
+	cd apps/backend && uv run python scripts/export_openapi.py
+
 lint-backend:
 	cd apps/backend && uv run ruff check src/ tests/
 	cd apps/backend && uv run mypy src/

@@ -2,7 +2,7 @@ from math import ceil
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.application.quota.compute_tenant_quota_use_case import (
     ComputeTenantQuotaUseCase,
@@ -70,7 +70,9 @@ class TenantQuotaResponse(BaseModel):
     addon_remaining: int
     total_remaining: int
     total_billable_in_cycle: int  # 取代 total_used_in_cycle（breaking rename）
-    included_categories: list[str] | None = None
+    included_categories: list[str] | None = Field(
+        default=None, description="計入配額的用量類別；null = 沿用方案預設"
+    )
     # Issue #74：雙軌計價 + 用盡策略（token 制租戶 points_* 恆 0）
     billing_mode: str = "token"
     exhaustion_policy: str = "auto_topup"  # 方案預設
@@ -113,7 +115,9 @@ class NotifyGroupOptionResponse(BaseModel):
 
 class TenantNotificationPreferencesResponse(BaseModel):
     tenant_id: str
-    config_change_notify_fields: list[str] | None = None
+    config_change_notify_fields: list[str] | None = Field(
+        default=None, description="null = 平台預設；[] = 完全關閉；[...] = 白名單"
+    )
     effective_fields: list[str]
     available_groups: list[NotifyGroupOptionResponse]
 
@@ -142,7 +146,9 @@ class TenantResponse(BaseModel):
     name: str
     plan: str
     monthly_token_limit: int | None = None
-    included_categories: list[str] | None = None
+    included_categories: list[str] | None = Field(
+        default=None, description="計入配額的用量類別；null = 沿用方案預設"
+    )
     prompt_gate_enabled: bool = False
     default_ocr_model: str = ""
     default_context_model: str = ""

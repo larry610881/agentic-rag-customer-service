@@ -1,5 +1,5 @@
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from src.application.auth.api_key_use_cases import (
@@ -31,6 +31,7 @@ from src.domain.auth.value_objects import Role
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.infrastructure.logging.trace import trace_step
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.errors import ApiError
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -94,8 +95,9 @@ async def create_token(
     secret 錯 / 已撤銷 / 已過期一律同一訊息。舊的「給 tenant_id 就發票」已移除。
     """
     if body.grant_type != "client_credentials":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported_grant_type"
+        raise ApiError(
+            400,
+            code="unsupported_grant_type",
         )
     try:
         result = await use_case.execute(
@@ -104,12 +106,14 @@ async def create_token(
             scope=body.scope,
         )
     except InvalidClientError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_client"
+        raise ApiError(
+            401,
+            code="invalid_client",
         ) from None
     except InvalidScopeError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="invalid_scope"
+        raise ApiError(
+            403,
+            code="invalid_scope",
         ) from None
     return ClientCredentialsResponse(
         access_token=result.access_token,
@@ -131,13 +135,18 @@ async def login(
             result = await use_case.execute(command)
     except AccountLockedError as e:
         # Issue #58：訊息刻意不提帳號存在與否，避免帳號列舉
-        raise HTTPException(
-            status_code=429,
-            detail="Too many failed login attempts. Try again later.",
+        raise ApiError(
+            429,
+            code="too_many_login_attempts",
+            message="Too many failed login attempts. Try again later.",
             headers={"Retry-After": str(e.retry_after)},
         ) from None
     except AuthenticationError:
-        raise HTTPException(status_code=401, detail="Invalid credentials") from None
+        raise ApiError(
+            401,
+            code="invalid_credentials",
+            message="Invalid credentials",
+        ) from None
     return TokenResponse(
         access_token=result.access_token,
         refresh_token=result.refresh_token,
@@ -161,9 +170,10 @@ async def register(
     try:
         target_role = Role(body.role)
     except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Unknown role: {body.role}",
+        raise ApiError(
+            422,
+            code="invalid_role",
+            message=f"Unknown role: {body.role}",
         ) from None
     if not can_register(
         actor_role=current.role,
@@ -171,9 +181,10 @@ async def register(
         target_role=target_role,
         target_tenant_id=body.tenant_id,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not allowed to create a user with this role in this tenant",
+        raise ApiError(
+            403,
+            code="role_not_allowed",
+            message="Not allowed to create a user with this role in this tenant",
         )
     command = RegisterUserCommand(
         email=body.email,
@@ -205,7 +216,11 @@ async def refresh_token(
     try:
         result = await use_case.execute(body.refresh_token)
     except InvalidRefreshTokenError as e:
-        raise HTTPException(status_code=401, detail=e.message) from None
+        raise ApiError(
+            401,
+            code="invalid_refresh_token",
+            message=e.message,
+        ) from None
     return TokenResponse(
         access_token=result.access_token, refresh_token=result.refresh_token
     )
@@ -230,9 +245,10 @@ async def change_password(
 ) -> None:
     """登入中的使用者自行變更密碼 — 需 user_access JWT 且驗證舊密碼。"""
     if not current.user_id:
-        raise HTTPException(
-            status_code=401,
-            detail="Change password requires a user-level JWT (not tenant token)",
+        raise ApiError(
+            401,
+            code="user_token_required",
+            message="Change password requires a user-level JWT (not tenant token)",
         )
     command = ChangePasswordCommand(
         user_id=current.user_id,
@@ -244,10 +260,20 @@ async def change_password(
     except AuthenticationError:
         # 400（非 401）— 避免前端 apiFetch 把「舊密碼錯」
         # 誤判為 token 過期而觸發 refresh 迴圈
-        raise HTTPException(status_code=400, detail="舊密碼錯誤") from None
+        raise ApiError(
+            400,
+            code="wrong_password",
+            message="舊密碼錯誤",
+        ) from None
     except EntityNotFoundError:
-        raise HTTPException(status_code=404, detail="使用者不存在") from None
+        raise ApiError(
+            404,
+            code="user_not_found",
+            message="使用者不存在",
+        ) from None
     except SameAsOldPasswordError:
-        raise HTTPException(
-            status_code=422, detail="新密碼不可與舊密碼相同"
+        raise ApiError(
+            422,
+            code="password_same_as_old",
+            message="新密碼不可與舊密碼相同",
         ) from None

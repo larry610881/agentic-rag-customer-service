@@ -17,7 +17,7 @@ from typing import Any
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.application.conversation.get_conversation_messages_use_case import (
     GetConversationMessagesQuery,
@@ -44,7 +44,9 @@ class MessageItem(BaseModel):
     content: str
     tool_calls: list[dict[str, Any]] = []
     latency_ms: int | None = None
-    retrieved_chunks: list[dict[str, Any]] | None = None
+    retrieved_chunks: list[dict[str, Any]] | None = Field(
+        default=None, description="該輪有檢索才有值；未檢索為 null（不會缺席）"
+    )
     structured_content: dict[str, Any] | None = None
     created_at: str | None = None
 

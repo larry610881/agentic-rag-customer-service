@@ -5,8 +5,9 @@ from math import ceil
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from src.interfaces.api.types import ApiDateTime
 from src.application.auth.delete_user_use_case import DeleteUserUseCase
 from src.application.auth.get_user_use_case import GetUserUseCase
 from src.application.auth.list_users_use_case import ListUsersUseCase
@@ -399,7 +400,9 @@ class TenantQuotaOverviewResponse(BaseModel):
     total_audit_in_cycle: int  # 審計總量
     total_billable_in_cycle: int  # 計費總量（= 租戶視角的本月已用）
     platform_absorbed_tokens: int  # = audit - billable
-    included_categories: list[str] | None = None
+    included_categories: list[str] | None = Field(
+        default=None, description="計入配額的用量類別；null = 沿用方案預設"
+    )
     has_ledger: bool
 
 
@@ -439,7 +442,7 @@ class QuotaEventResponse(BaseModel):
     tenant_id: str
     tenant_name: str
     cycle_year_month: str
-    created_at: datetime
+    created_at: ApiDateTime
     addon_tokens_added: int | None = None
     amount_currency: str | None = None
     amount_value: Decimal | None = None

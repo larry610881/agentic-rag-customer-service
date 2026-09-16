@@ -104,7 +104,9 @@ class ChatResponse(BaseModel):
     structured_content: StructuredContentResponse | None = None
     usage: TokenUsageResponse | None = None
     trace_id: str | None = None       # test_mode 影子執行才填
-    trace_nodes: list[dict] | None = None
+    trace_nodes: list[dict] | None = Field(
+        default=None, description="只有 test_mode 影子執行才有值，否則 null"
+    )
     # Sprint A++ Guard UX: 只暴露給 Studio（identity_source="studio"）
     # widget / LINE / web 路徑會被 sanitize 成 None 避免洩露防禦邏輯
     guard_blocked: str | None = None
@@ -401,7 +403,9 @@ class BuiltInToolItem(BaseModel):
     description: str
     requires_kb: bool
     scope: str | None = None  # admin-only
-    tenant_ids: list[str] | None = None  # admin-only
+    tenant_ids: list[str] | None = Field(
+        default=None, description="白名單租戶；只有 system_admin 看得到，其餘為 null"
+    )
 
 
 @router.get("/built-in-tools", response_model=list[BuiltInToolItem])

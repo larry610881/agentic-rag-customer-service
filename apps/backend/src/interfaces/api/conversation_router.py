@@ -1,9 +1,8 @@
 """對話歷史查詢 API 端點"""
 
-from datetime import datetime
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from src.application.conversation.get_conversation_use_case import (
@@ -14,7 +13,9 @@ from src.application.conversation.list_conversations_use_case import (
 )
 from src.container import Container
 from src.interfaces.api.deps import CurrentTenant, require_scope
+from src.interfaces.api.errors import ApiError
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
+from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(
     prefix="/api/v1/conversations",
@@ -27,7 +28,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     structured_content: dict | None = None
-    created_at: datetime
+    created_at: ApiDateTime
 
 
 class ConversationDetailResponse(BaseModel):
@@ -35,14 +36,14 @@ class ConversationDetailResponse(BaseModel):
     tenant_id: str
     bot_id: str | None = None
     messages: list[MessageResponse]
-    created_at: datetime
+    created_at: ApiDateTime
 
 
 class ConversationSummaryResponse(BaseModel):
     id: str
     tenant_id: str
     bot_id: str | None = None
-    created_at: datetime
+    created_at: ApiDateTime
 
 
 @router.get("", response_model=PaginatedResponse[ConversationSummaryResponse])
@@ -96,9 +97,17 @@ async def get_conversation(
 ) -> ConversationDetailResponse:
     conversation = await use_case.execute(conversation_id=conversation_id)
     if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise ApiError(
+            404,
+            code="conversation_not_found",
+            message="Conversation not found",
+        )
     if tenant.role != "system_admin" and conversation.tenant_id != tenant.tenant_id:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise ApiError(
+            404,
+            code="conversation_not_found",
+            message="Conversation not found",
+        )
     return ConversationDetailResponse(
         id=conversation.id.value,
         tenant_id=conversation.tenant_id,

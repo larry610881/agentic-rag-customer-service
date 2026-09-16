@@ -7,6 +7,42 @@
 
 ---
 
+## 契約改造第一批 — 用型別別名與 app 層宣告，一次改對 130 個回應 schema（2026-09-16，Issue #97）
+
+**Sprint 來源**：全 API 面契約審核（`docs/api-contract-review-2026-09-16.md`）改造順序前六步。
+目標：讓原生 app 的解碼風險從「間歇性失敗」降到「可預期」，全部加法、不需 migration。
+
+**主題**：橫切面修正的槓桿點、契約即程式碼、機械轉換的安全邊界
+
+#### 做得好的地方
+- **找槓桿點而不是逐檔改**。日期 profile 用 `Annotated[datetime, PlainSerializer, WithJsonSchema]`
+  做成 `ApiDateTime` 型別別名，回應模型只改型別註記，23 個欄位一個腳本套完；錯誤 schema 用
+  `FastAPI(responses=API_ERROR_RESPONSES)` 一行讓 235 個操作都宣告 4xx body；CORS expose 一行。
+  三個 Critical/High 發現，改動的「程式」不到 60 行。
+- **機械轉換有守門**。65 處 `HTTPException` 轉 `ApiError` 用平衡括號掃描（detail 文案含括號、
+  多行 f-string 都有），code 來源三層：snake 字面值直接沿用 → 關鍵字表 → 前置 `except` 型別
+  （`EntityNotFoundError` 由 `entity_type` 推成 `bot_not_found`）；轉完 `ast.parse` 驗語法、
+  fence 測試斷言六支 router 不再出現 `raise HTTPException(`。
+- **可空陣列沒有盲目改成 `[]`**。逐欄看語意：`guard_stages`/`enabled_tools` 的 null 是「繼承」、
+  `included_categories` 是「沿用方案」、`tenant_ids` 是「非 admin 不給看」。null 有意義就留著，
+  但把語意寫進 `Field(description=…)` 進 OpenAPI——準則 A3 要的是「缺席 vs null 擇一且寫明」，不是消滅 null。
+- **契約進版控**。`scripts/export_openapi.py` → `docs/api/openapi.json`，unit test 比對程式產出，
+  漂移在 CI 就紅；第一塊審核抓到的四處文件分歧，以後不會再靠人眼。
+
+#### 潛在隱憂
+- **`ApiDateTime` 只管序列化**。請求端仍收 `datetime`（0–9 位小數都接受），這是刻意的；但若有人把
+  `ApiDateTime` 用在請求模型，`WithJsonSchema(mode="serialization")` 不影響驗證，仍安全 → 優先級：低。
+- **剩 142 處句子型 detail 在其他 24 支 router**。靠 `infer_code` 拿通用碼，對外面之外的後台端點
+  暫時可接受；第二批再掃 → 優先級：中。
+- **快照測試綁 `E2E_MODE=true`**。與 `create_app` 的模組載入條件耦合，換環境變數就會假紅
+  → 優先級：低，已在 script 與 fixture 用同一組 env。
+
+#### 延伸學習
+- Pydantic v2 的 `Annotated` 型別別名是做「契約政策」的正確位置：序列化、JSON schema、驗證三者可各自指定。
+- FastAPI 的 `responses` 在 app / router / route 三層合併，app 層宣告是讓產生器產出錯誤 model 的最低成本做法。
+- Google API 設計指南把錯誤碼當 API 的一部分版本化；`not_found_code(entity_type)` 這種「由型別推碼」
+  的做法要注意 entity_type 改名即破壞契約，之後應以常數固定。
+
 ## 取消不是例外 — 串流收尾要用 shielded scope，而記帳應該住在 use case（2026-09-16，Issue #96）
 
 **Sprint 來源**：channel-parity 債務第 5 項（M12）。串流路徑的記帳寫在 router 迴圈之後；客戶端

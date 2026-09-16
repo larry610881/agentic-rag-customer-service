@@ -6,7 +6,6 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
-    HTTPException,
     UploadFile,
     status,
 )
@@ -53,6 +52,7 @@ from src.domain.shared.exceptions import (
 )
 from src.infrastructure.logging.error_handler import safe_background_task
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
 router = APIRouter(
@@ -417,8 +417,10 @@ async def delete_documents_by_source(
             )
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
 
 
@@ -480,8 +482,10 @@ async def delete_document(
     try:
         await use_case.execute(doc_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
 
 
@@ -502,9 +506,10 @@ async def upload_document(
 ) -> UploadDocumentResponse:
     raw_content = await file.read()
     if len(raw_content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File size exceeds {MAX_FILE_SIZE // (1024 * 1024)}MB limit",
+        raise ApiError(
+            413,
+            code="file_too_large",
+            message=f"File size exceeds {MAX_FILE_SIZE // (1024 * 1024)}MB limit",
         )
 
     content_type = _resolve_content_type(
@@ -523,12 +528,16 @@ async def upload_document(
             )
         )
     except UnsupportedFileTypeError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=e.message
+        raise ApiError(
+            400,
+            code="unsupported_file_type",
+            message=e.message,
         ) from None
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
 
     from src.infrastructure.queue.arq_pool import enqueue
@@ -583,18 +592,23 @@ async def request_upload(
             )
         )
     except UnsupportedFileTypeError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=e.message
+        raise ApiError(
+            400,
+            code="unsupported_file_type",
+            message=e.message,
         ) from None
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
 
     if not result.upload_url:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Direct upload not supported with current storage backend",
+        raise ApiError(
+            501,
+            code="direct_upload_unsupported",
+            message="Direct upload not supported with current storage backend",
         )
 
     return RequestUploadResponse(
@@ -627,8 +641,10 @@ async def confirm_upload(
     try:
         result = await use_case.confirm_upload(body.document_id, body.task_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
 
     from src.infrastructure.queue.arq_pool import enqueue
@@ -713,12 +729,16 @@ async def view_document(
     try:
         result = await use_case.execute(doc_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=e.message
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+        raise ApiError(
+            404,
+            code="invalid_request",
+            message=str(e),
         ) from None
 
     return Response(
@@ -750,9 +770,10 @@ async def get_document_preview_url(
 
     doc = await doc_repo.find_by_id(doc_id)
     if doc is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Document '{doc_id}' not found",
+        raise ApiError(
+            404,
+            code="document_not_found",
+            message=f"Document '{doc_id}' not found",
         )
 
     preview_url = None

@@ -3,7 +3,7 @@
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, Query, UploadFile, status
 from pydantic import BaseModel, Field
 
 from src.application.bot.create_bot_use_case import (
@@ -26,8 +26,8 @@ from src.application.bot.validate_bot_enabled_tools import (
     validate_bot_enabled_tools,
 )
 from src.container import Container
-from src.domain.platform.value_objects import ProviderName
 from src.domain.bot.entity import VALID_BOT_MODES, VALID_REASONING_EFFORTS
+from src.domain.platform.value_objects import ProviderName
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import (
     CurrentTenant,
@@ -35,6 +35,7 @@ from src.interfaces.api.deps import (
     require_role,
     require_scope,
 )
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
 router = APIRouter(prefix="/api/v1/bots", tags=["bots"])
@@ -52,15 +53,17 @@ _VALID_REASONING_EFFORTS = set(VALID_REASONING_EFFORTS)  # Issue #72 none 可關
 def _validate_intent_routes(routes: list["IntentRouteSchema"]) -> None:
     """Validate intent routes: max 10, unique names."""
     if len(routes) > 10:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="intent_routes cannot exceed 10 items",
+        raise ApiError(
+            400,
+            code="invalid_intent_routes",
+            message="intent_routes cannot exceed 10 items",
         )
     names = [r.name for r in routes]
     if len(names) != len(set(names)):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="intent_routes names must be unique within a bot",
+        raise ApiError(
+            400,
+            code="invalid_intent_routes",
+            message="intent_routes names must be unique within a bot",
         )
 
 
@@ -73,29 +76,33 @@ def _validate_llm_fields(
     """Validate LLM/eval provider and model field combinations."""
     # llm_provider validation
     if llm_provider and llm_provider not in _VALID_LLM_PROVIDERS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"llm_provider must be one of "
+        raise ApiError(
+            400,
+            code="invalid_llm_provider",
+            message=f"llm_provider must be one of "
             f"{sorted(_VALID_LLM_PROVIDERS)} or empty",
         )
     # llm_model requires llm_provider
     if llm_model and not llm_provider:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="llm_model requires llm_provider to be set",
+        raise ApiError(
+            400,
+            code="llm_provider_required",
+            message="llm_model requires llm_provider to be set",
         )
     # eval_provider validation
     if eval_provider and eval_provider not in _VALID_LLM_PROVIDERS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"eval_provider must be one of "
+        raise ApiError(
+            400,
+            code="invalid_eval_provider",
+            message=f"eval_provider must be one of "
             f"{sorted(_VALID_LLM_PROVIDERS)} or empty",
         )
     # eval_model requires eval_provider
     if eval_model and not eval_provider:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="eval_model requires eval_provider to be set",
+        raise ApiError(
+            400,
+            code="eval_provider_required",
+            message="eval_model requires eval_provider to be set",
         )
 
 
@@ -285,7 +292,10 @@ class BotResponse(BaseModel):
     mode: str
     direct_retrieval: bool
     escalate_on_miss: bool
-    guard_stages: list[str] | None = None  # Issue #75
+    guard_stages: list[str] | None = Field(
+        default=None,
+        description="防護階段；null = 繼承租戶有效值（永遠出現，不會缺席）",
+    )  # Issue #75
     output_format: str
     output_schema: dict | None
     miss_reply: str
@@ -465,27 +475,29 @@ async def create_bot(
     ),
 ) -> BotResponse:
     if body.eval_depth not in _VALID_EVAL_DEPTHS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
+        raise ApiError(
+            400,
+            code="invalid_eval_depth",
+            message=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
         )
     if body.mode not in _VALID_BOT_MODES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"mode must be one of {sorted(_VALID_BOT_MODES)}",
+        raise ApiError(
+            400,
+            code="invalid_bot_mode",
+            message=f"mode must be one of {sorted(_VALID_BOT_MODES)}",
         )
     if body.reasoning_effort not in _VALID_REASONING_EFFORTS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "reasoning_effort must be one of "
-                f"{sorted(_VALID_REASONING_EFFORTS)}"
-            ),
+        raise ApiError(
+            400,
+            code="invalid_reasoning_effort",
+            message="reasoning_effort must be one of "
+                f"{sorted(_VALID_REASONING_EFFORTS)}",
         )
     if body.gate_mode not in _VALID_GATE_MODES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"gate_mode must be one of {sorted(_VALID_GATE_MODES)}",
+        raise ApiError(
+            400,
+            code="invalid_bot_mode",
+            message=f"gate_mode must be one of {sorted(_VALID_GATE_MODES)}",
         )
     _validate_llm_fields(
         body.llm_provider, body.llm_model,
@@ -500,9 +512,10 @@ async def create_bot(
             llm_provider=body.llm_provider,
         )
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=str(exc),
         ) from exc
     bot = await use_case.execute(
         CreateBotCommand(
@@ -624,9 +637,10 @@ async def get_bot(
             bot_id, tenant_id=tenant.tenant_id, role=tenant.role
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return _to_response(bot)
 
@@ -668,30 +682,32 @@ async def update_bot(
     ),
 ) -> BotResponse:
     if body.eval_depth is not None and body.eval_depth not in _VALID_EVAL_DEPTHS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
+        raise ApiError(
+            400,
+            code="invalid_eval_depth",
+            message=f"eval_depth must be one of {sorted(_VALID_EVAL_DEPTHS)}",
         )
     if body.mode is not None and body.mode not in _VALID_BOT_MODES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"mode must be one of {sorted(_VALID_BOT_MODES)}",
+        raise ApiError(
+            400,
+            code="invalid_bot_mode",
+            message=f"mode must be one of {sorted(_VALID_BOT_MODES)}",
         )
     if (
         body.reasoning_effort is not None
         and body.reasoning_effort not in _VALID_REASONING_EFFORTS
     ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "reasoning_effort must be one of "
-                f"{sorted(_VALID_REASONING_EFFORTS)}"
-            ),
+        raise ApiError(
+            400,
+            code="invalid_reasoning_effort",
+            message="reasoning_effort must be one of "
+                f"{sorted(_VALID_REASONING_EFFORTS)}",
         )
     if body.gate_mode is not None and body.gate_mode not in _VALID_GATE_MODES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"gate_mode must be one of {sorted(_VALID_GATE_MODES)}",
+        raise ApiError(
+            400,
+            code="invalid_bot_mode",
+            message=f"gate_mode must be one of {sorted(_VALID_GATE_MODES)}",
         )
     _validate_llm_fields(
         body.llm_provider, body.llm_model,
@@ -710,17 +726,19 @@ async def update_bot(
                 llm_provider=body.llm_provider,
             )
         except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(exc),
-            ) from exc
+            raise ApiError(
+            422,
+            code="invalid_request",
+            message=str(exc),
+        ) from exc
     command = _build_update_command(bot_id, body, tenant)
     try:
         bot = await use_case.execute(command)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return _to_response(bot)
 
@@ -739,9 +757,10 @@ async def delete_bot(
             bot_id, tenant_id=tenant.tenant_id, role=tenant.role
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
 
 
@@ -765,14 +784,16 @@ async def upload_bot_icon(
     try:
         url = await use_case.execute(command)
     except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=e.message,
+        raise ApiError(
+            400,
+            code="invalid_request",
+            message=e.message,
         ) from None
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return {"fab_icon_url": url}
 
@@ -789,9 +810,10 @@ async def delete_bot_icon(
     try:
         await use_case.delete(tenant.tenant_id, bot_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
 
 
@@ -831,14 +853,16 @@ async def list_bot_audit_logs(
             cursor=cursor,
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="invalid cursor",
+        raise ApiError(
+            422,
+            code="invalid_cursor",
+            message="invalid cursor",
         ) from None
     return {
         "items": [

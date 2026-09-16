@@ -1,5 +1,5 @@
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, field_validator
 
 # Issue #45: per-KB chunk_strategy 白名單
@@ -32,6 +32,7 @@ from src.domain.knowledge.repository import (
 )
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant
+from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 
 router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["knowledge-bases"])
@@ -164,8 +165,10 @@ async def create_knowledge_base(
             )
         )
     except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=e.message
+        raise ApiError(
+            400,
+            code="invalid_request",
+            message=e.message,
         ) from None
     return _kb_to_response(kb)
 
@@ -216,9 +219,10 @@ async def get_knowledge_base(
     try:
         kb, _ = await ensure_kb_accessible(kb_repo, kb_id, tenant.tenant_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     return _kb_to_response(kb)
 
@@ -253,13 +257,16 @@ async def update_knowledge_base(
                 )
         )
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
     except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=e.message
+        raise ApiError(
+            400,
+            code="invalid_request",
+            message=e.message,
         ) from None
     kb = await kb_repo.find_by_id(kb_id)
     return _kb_to_response(kb)
@@ -277,9 +284,10 @@ async def delete_knowledge_base(
     try:
         await use_case.execute(kb_id, requester_tenant_id=tenant.tenant_id)
     except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=e.message,
+        raise ApiError(
+            404,
+            code=not_found_code(e),
+            message=e.message,
         ) from None
 
 
@@ -349,7 +357,11 @@ async def update_category(
 ) -> CategoryResponse:
     cat = await cat_repo.find_by_id(cat_id)
     if cat is None:
-        raise HTTPException(status_code=404, detail="分類不存在")
+        raise ApiError(
+            404,
+            code="category_not_found",
+            message="分類不存在",
+        )
     await cat_repo.update_name(cat_id, body.name)
     cat = await cat_repo.find_by_id(cat_id)
     return CategoryResponse(
@@ -390,7 +402,11 @@ async def get_category_chunks(
 ) -> CategoryChunksResponse:
     result = await use_case.execute(kb_id, cat_id)
     if result is None:
-        raise HTTPException(status_code=404, detail="分類不存在")
+        raise ApiError(
+            404,
+            code="category_not_found",
+            message="分類不存在",
+        )
     return CategoryChunksResponse(
         category_id=result.category_id,
         category_name=result.category_name,
@@ -447,9 +463,17 @@ async def create_category(
             )
         )
     except EntityNotFoundError:
-        raise HTTPException(status_code=404, detail="kb not found")
+        raise ApiError(
+            404,
+            code="knowledge_base_not_found",
+            message="kb not found",
+        )
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
+        raise ApiError(
+            422,
+            code="invalid_request",
+            message=str(e),
+        ) from e
     return CategoryResponse(
         id=cat.id,
         kb_id=cat.kb_id,
@@ -485,7 +509,11 @@ async def delete_category(
             )
         )
     except EntityNotFoundError:
-        raise HTTPException(status_code=404, detail="not found")
+        raise ApiError(
+            404,
+            code="not_found",
+            message="not found",
+        )
 
 
 @router.post("/{kb_id}/categories/{cat_id}/assign-chunks")
@@ -512,5 +540,9 @@ async def assign_chunks(
             )
         )
     except EntityNotFoundError:
-        raise HTTPException(status_code=404, detail="not found")
+        raise ApiError(
+            404,
+            code="not_found",
+            message="not found",
+        )
     return {"status": "ok", "assigned_count": count}
