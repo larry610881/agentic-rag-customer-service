@@ -169,20 +169,34 @@ Library → Secure files 上傳金鑰，檔名固定 `gcp-sa-key.json`，服務�
 > `constraints/iam.disableServiceAccountKeyCreation`，一旦生效就**根本產不出**這個
 > JSON 檔，只能走 WIF。Larry 的帳號沒有 IAM 讀取權限，查不到現況，要請專案負責人確認。
 
-### 4. Library → Variable groups
+### 4. Library → Variable groups（一個環境一組）
 
-只建一組 `agentic-rag-gcp`，三個值，都不是機密：
+管線 YAML 不含任何環境專屬值。每個環境建一組 `agentic-rag-gcp-<environment>`（目前只有 `poc`），
+用管線參數 `environment` 切換；加新環境 = 加一組 group + 在 `parameters.environment.values` 加一個選項，
+YAML 其他地方不動。
 
-| 變數 | 值 | 來源 |
-|---|---|---|
-| `GCP_WIF_SERVICE_CONNECTION_ID` | 服務連線 GUID | 你（2.1） |
-| `GCP_WIF_PROVIDER` | `projects/<編號>/locations/global/workloadIdentityPools/<pool>/providers/<provider>` | infra（2.2 的 echo） |
-| `GCP_DEPLOY_SA` | `<sa>@project-pic-ai-innovation-poc.iam.gserviceaccount.com` | infra（2.2 的 echo） |
+`agentic-rag-gcp-poc` 的九個值：
+
+| 變數 | 值 | 來源 | 機密 |
+|---|---|---|:---:|
+| `GCP_WIF_SERVICE_CONNECTION_ID` | 服務連線 GUID | 你（2.1） | 否 |
+| `GCP_WIF_PROVIDER` | `projects/<編號>/locations/global/workloadIdentityPools/<pool>/providers/<provider>` | infra（2.2 的 echo） | 否 |
+| `GCP_DEPLOY_SA` | `<sa>@project-pic-ai-innovation-poc.iam.gserviceaccount.com` | infra（2.2 的 echo） | 否 |
+| `GCP_PROJECT_ID` | `project-pic-ai-innovation-poc` | 固定 | 否 |
+| `GCP_REGION` | `asia-east1` | 固定 | 否 |
+| `WORKER_VM_NAME` | `poc-rag-vm-01` | 固定 | 否 |
+| `WORKER_VM_ZONE` | `asia-east1-b` | 固定 | 否 |
+| `WORKER_VM_USER` | `larry610881_gcpmail_pcsc_net_tw` | 固定 | 否 |
+| `WORKER_REPO_PATH` | `/home/larry610881_gcpmail_pcsc_net_tw/agentic-rag-customer-service` | 固定 | 否 |
+
+這九個都不是憑證，不用勾 secret（勾了就不能在 template expression 用，而且 log 會遮罩到難以除錯）。
+WIF 路徑沒有任何長期祕密；只有備援的 `sa-key` 路徑用 Secure Files 放金鑰。
 
 建好後回到管線頁，第一次載入會出現「Variable group was not found or is not authorized」，
 按 **Authorize resources**（或在該 group 的 Pipeline permissions 加這條管線）。
 
-infra 還沒回覆前，後兩個值先填佔位字串也能建管線：CI 階段照跑，只有 Package 的認證步驟會失敗。
+infra 還沒回覆前，`GCP_WIF_PROVIDER` / `GCP_DEPLOY_SA` 先填佔位字串也能建管線：CI 階段照跑，
+只有 Package 的認證步驟會失敗。
 
 > 舊版文件裡的 `agentic-rag-runtime`（Cloud Run 執行期環境變數）**不再需要**：Release 只換映像，
 > 環境變數沿用服務現況（見第六節）。
@@ -253,7 +267,7 @@ GitHub Actions 那條線上真的發生過（快取計費與自動分類記帳�
 - [ ] Azure：服務連線 `gcp-poc` 已建（未 Verify），GUID 已取得
 - [ ] infra：pool / provider / SA 已建，回覆 `GCP_WIF_PROVIDER` 與 `GCP_DEPLOY_SA` 兩個值
 - [ ] infra：SA 具五個角色（VM 開 OS Login 時加 `compute.osAdminLogin`）
-- [ ] Library：`agentic-rag-gcp` 三個值填好並 Authorize 給管線
+- [ ] Library：`agentic-rag-gcp-poc` 九個值填好並 Authorize 給管線
 - [ ] 管線指向 `/azure-pipelines.yml`，首次排程 `coverageFailUnder` 填 78
 - [ ] main 推一次 → CI 綠 → Package 推出 `rc-<sha>` → Release 部署且 `/health` 200 → VM worker HEAD 等於本次 commit
 

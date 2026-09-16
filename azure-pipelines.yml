@@ -6,13 +6,18 @@
 # 前置設定見 docs/azure-devops-setup.md：
 #   - GCP 認證預設走 Workload Identity Federation（無長期金鑰）；要退回服務帳號
 #     金鑰時，手動觸發時把參數 gcpAuthMethod 改成 sa-key，或改下面的 default
-#   - 變數群組 `agentic-rag-gcp`：只有 GCP_WIF_PROVIDER / GCP_DEPLOY_SA /
-#     GCP_WIF_SERVICE_CONNECTION_ID 三個值；其餘常數寫在下方 variables
+#   - 變數群組 `agentic-rag-gcp-<environment>`（一個環境一組，見 docs/azure-devops-setup.md §4）
 #   - 變數群組 `agentic-rag-runtime`（Cloud Run 執行期祕密，全部標記為 secret）
 #   - Environment `poc`（只留部署歷史；**不要加 approvals**，加了就變成要人核准）
 # =============================================================================
 
 parameters:
+  - name: environment
+    displayName: 部署環境（對應 Library variable group agentic-rag-gcp-<environment> 與 Environment 資源）
+    type: string
+    default: poc
+    values:
+      - poc
   - name: coverageFailUnder
     displayName: 單元測試覆蓋率門檻（%）；專案規範 80，首次接管線時可暫以現況 78 排程
     type: number
@@ -45,21 +50,10 @@ pr:
       - "**/*.md"
 
 variables:
-  # 只有 WIF 三個值放 Library（agentic-rag-gcp）：GCP_WIF_PROVIDER / GCP_DEPLOY_SA /
-  # GCP_WIF_SERVICE_CONNECTION_ID。其餘都是非機密常數，直接寫在這裡，換環境改這裡。
-  - group: agentic-rag-gcp
-  - name: GCP_PROJECT_ID
-    value: project-pic-ai-innovation-poc
-  - name: GCP_REGION
-    value: asia-east1
-  - name: WORKER_VM_NAME
-    value: poc-rag-vm-01
-  - name: WORKER_VM_ZONE
-    value: asia-east1-b
-  - name: WORKER_VM_USER
-    value: larry610881_gcpmail_pcsc_net_tw
-  - name: WORKER_REPO_PATH
-    value: /home/larry610881_gcpmail_pcsc_net_tw/agentic-rag-customer-service
+  # YAML 不含任何環境專屬值：一個環境一組 Library variable group，名稱
+  # `agentic-rag-gcp-<environment>`，由 environment 參數切換。GitHub 鏡像是公開 repo，
+  # VM 使用者 / 路徑這類識別碼也不放 YAML。憑證在 WIF 流程裡不存在，備援 SA 金鑰走 Secure Files。
+  - group: agentic-rag-gcp-${{ parameters.environment }}
   - name: pythonVersion
     value: "3.12"
   - name: nodeVersion
@@ -285,7 +279,7 @@ stages:
     jobs:
       - deployment: cloudrun
         displayName: 部署 Cloud Run
-        environment: poc
+        environment: ${{ parameters.environment }}
         strategy:
           runOnce:
             deploy:
@@ -333,7 +327,7 @@ stages:
       - deployment: worker
         displayName: 同步並重啟 VM 上的 arq worker
         dependsOn: cloudrun
-        environment: poc
+        environment: ${{ parameters.environment }}
         strategy:
           runOnce:
             deploy:
