@@ -17,11 +17,8 @@ from starlette.requests import Request
 from src.application.usage.usage_context import UsageContext
 from src.domain.agent.entity import AgentResponse
 from src.infrastructure.auth.jwt_service import JWTService, TokenExpiredError
-from src.interfaces.api.agent_router import (
-    ChatRequest,
-    _with_conversation_created,
-    agent_chat,
-)
+from src.interfaces.api._stream_events import with_conversation_created
+from src.interfaces.api.agent_router import ChatRequest, agent_chat
 from src.interfaces.api.deps import CurrentTenant
 from src.interfaces.api.errors import ApiError, install_error_handlers
 
@@ -161,7 +158,7 @@ def assert_sc_null(ctx):
     )
 )
 def apply_event(ctx, requested, actual):
-    ctx["event"] = _with_conversation_created(
+    ctx["event"] = with_conversation_created(
         {"type": "conversation_id", "conversation_id": actual}, requested
     )
 
@@ -224,6 +221,23 @@ def error_app(ctx):
     async def validate(body: _Body):
         return {"ok": True}
 
+    @app.get("/dict-code")
+    async def dict_code():
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "gate_precondition", "message": "版本尚未通過閘門"},
+        )
+
+    @app.get("/dict-violations")
+    async def dict_violations():
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "static_checks_failed",
+                "violations": [{"type": "length", "detail": "太長"}],
+            },
+        )
+
     app.add_middleware(_BindRequestId)
     ctx["client"] = TestClient(app, raise_server_exceptions=False)
 
@@ -256,6 +270,11 @@ def assert_code(ctx, code):
 def assert_request_id(ctx):
     body = ctx["http"].json()
     assert body["request_id"] == ctx["http"].headers["x-request-id"] == "req-unit-1"
+
+
+@then(parsers.parse('錯誤 body 的 "{key}" 存在'))
+def assert_extra_key(ctx, key):
+    assert key in ctx["http"].json(), ctx["http"].text
 
 
 @then(parsers.parse('錯誤 body 的 errors 是非空陣列且第一筆 loc 包含 "{field}"'))

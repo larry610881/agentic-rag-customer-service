@@ -111,8 +111,11 @@ def error_body(
 def _detail_text(detail: Any) -> str:
     if isinstance(detail, str):
         return detail
-    if isinstance(detail, dict) and isinstance(detail.get("detail"), str):
-        return str(detail["detail"])
+    if isinstance(detail, dict):
+        for key in ("message", "detail"):
+            if isinstance(detail.get(key), str):
+                return str(detail[key])
+        return "error"
     return str(detail)
 
 
@@ -122,8 +125,14 @@ async def http_exception_handler(
     code = getattr(exc, "code", None)
     extra = dict(getattr(exc, "extra", None) or {})
     if isinstance(exc.detail, dict):
-        # 既有寫法 detail 帶 dict（含 retry_after 等）→ 攤平成 extra
-        flattened = {k: v for k, v in exc.detail.items() if k != "detail"}
+        # 既有寫法 detail 帶 dict（{"code", "message", "violations", ...}）：
+        # code 沿用、message 當 detail、其餘鍵攤平到頂層
+        if code is None and isinstance(exc.detail.get("code"), str):
+            code = exc.detail["code"]
+        flattened = {
+            k: v for k, v in exc.detail.items()
+            if k not in ("detail", "message", "code")
+        }
         extra = {**flattened, **extra}
     return JSONResponse(
         status_code=exc.status_code,

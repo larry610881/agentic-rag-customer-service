@@ -59,6 +59,23 @@ Feature: /agent/chat 對外契約加固（Issue #94）
       | /sentence-detail  | GET    | 409    | conflict           |
       | /validate         | POST   | 422    | validation_error   |
 
+  Scenario Outline: dict 形式的 detail 轉成 detail 字串 + code + 攤平欄位
+    Given 一個安裝了統一錯誤處理的測試應用
+    When 對 "<path>" 送出 GET 請求
+    Then 狀態碼為 <status>
+    And 錯誤 body 的 detail 是字串
+    And 錯誤 body 的 code 為 "<code>"
+    And 錯誤 body 的 "<extra_key>" 存在
+
+    Examples:
+      | path             | status | code               | extra_key  |
+      | /dict-code       | 409    | gate_precondition  | request_id |
+      | /dict-violations | 400    | static_checks_failed | violations |
+
+  Scenario: widget 串流的 conversation_id 事件同樣帶 conversation_created
+    When 把請求端 conversation_id "conv-1" 套用到平台回傳 "conv-2" 的 conversation_id 事件
+    Then 該事件的 conversation_created 為 true
+
   Scenario: 422 另附 errors 陣列保留欄位層級細節
     Given 一個安裝了統一錯誤處理的測試應用
     When 對 "/validate" 送出 POST 請求

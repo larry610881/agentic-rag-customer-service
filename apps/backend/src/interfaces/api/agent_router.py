@@ -15,6 +15,12 @@ from src.application.agent.send_message_use_case import (
 )
 from src.application.shared.idempotency_guard import IdempotencyGuard
 from src.container import Container
+from src.interfaces.api._stream_events import (
+    conversation_created as _conversation_created,
+)
+from src.interfaces.api._stream_events import (
+    with_conversation_created as _with_conversation_created,
+)
 from src.interfaces.api.client_ip import client_ip_of
 from src.interfaces.api.deps import (
     CurrentTenant,
@@ -161,23 +167,6 @@ def _maybe_expose_guard(result_guard_blocked, result_guard_rule, role):
     if _can_see_guard_details(role):
         return result_guard_blocked, result_guard_rule
     return None, None
-
-
-def _conversation_created(requested_id: str | None, actual_id: str) -> bool:
-    """Issue #94：平台回傳的 id 與請求端帶的不同（含未帶）= 新建對話。"""
-    return requested_id is None or requested_id != actual_id
-
-
-def _with_conversation_created(event: dict, requested_id: str | None) -> dict:
-    """SSE `conversation_id` 事件補 `conversation_created`，與非串流回應對等。"""
-    if event.get("type") != "conversation_id":
-        return event
-    return {
-        **event,
-        "conversation_created": _conversation_created(
-            requested_id, str(event.get("conversation_id", ""))
-        ),
-    }
 
 
 def _abuse_subject_for(tenant: CurrentTenant, request_headers: Any) -> tuple[str, str]:

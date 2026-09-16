@@ -44,6 +44,7 @@ from src.domain.knowledge.repository import DocumentRepository
 from src.domain.usage.category import UsageCategory
 from src.infrastructure.auth.jwt_service import WIDGET_TOKEN_TYPE, JWTService
 from src.infrastructure.auth.visitor_id_signer import VisitorIdSigner
+from src.interfaces.api._stream_events import with_conversation_created
 from src.interfaces.api.client_ip import client_ip_of
 from src.interfaces.api.streaming_errors import classify_streaming_error
 
@@ -360,6 +361,8 @@ async def widget_chat_stream(
         try:
             async for event in use_case.execute_stream(command):
                 if _widget_should_forward(event, bot.widget_keep_history, captured):
+                    # Issue #94 通路對等：widget 的 conversation_id 事件同樣帶 created 旗標
+                    event = with_conversation_created(event, command.conversation_id)
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:
             logger.exception("widget.chat.stream.error")
