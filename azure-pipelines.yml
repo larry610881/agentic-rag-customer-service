@@ -45,8 +45,8 @@ pr:
       - "**/*.md"
 
 variables:
-  - group: agentic-rag-gcp        # GCP_PROJECT_ID / GCP_REGION / WORKER_VM_*
-  - group: agentic-rag-runtime    # Cloud Run 執行期環境變數（全部 secret）
+  - group: agentic-rag-gcp        # GCP_PROJECT_ID / GCP_REGION / GCP_WIF_* / GCP_DEPLOY_SA / WORKER_VM_*
+  # agentic-rag-runtime（Cloud Run 執行期環境變數）已不需要：Release 只換映像，變數沿用服務現況
   - name: pythonVersion
     value: "3.12"
   - name: nodeVersion
