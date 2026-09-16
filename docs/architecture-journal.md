@@ -7,6 +7,42 @@
 
 ---
 
+## 另案總收尾 — 用「一份共用 service」而不是「一條共用管線」先還 channel-parity 的債（2026-09-16，Issue #99）
+
+**Sprint 來源**：契約審核留下的另案清單（CI/CD 除外）一次做完：串流冪等與重播、部分計費、
+全 router 錯誤碼、not_found 常數表、串流拆段、廠商交付、VM 同步、channel-parity 二-2/3/6/7、
+ADR-0003、GitHub 盤點。
+
+**主題**：絞殺者遷移的節奏、機械轉換的守門、可回放的串流、通路對等的最小單位
+
+#### 做得好的地方
+- **channel-parity 用 service 還債，不等管線統一**。trace 持久化、攔截回應組裝、記憶載入/萃取
+  各抽成一個小模組，web 與 LINE 各改幾行呼叫；LINE 第一次接上長期記憶、攔截回應補上
+  `structured_output`。ADR-0003 把「回合編排本體仍是兩份」誠實寫下來並定了三個 phase 與觸發條件。
+- **串流重播用「錄 frames」而不是「錄事件再重編」**。快照存的就是已編好的 SSE frame（含 `id:`），
+  重播零轉換；`Last-Event-ID` 只是過濾 seq。大小上限 512 KB 超過就不存、重送真的重跑——
+  寧可不保護也不要存半套。
+- **143 處錯誤轉換靠三層推碼**：字面值 → 關鍵字表 → `except` 型別名 snake 化 → 狀態碼通用碼；
+  轉完 `ast.parse` + fence 測試掃全部 router。`not_found` 再收成 28 項常數表，fence 掃 src 內所有
+  `EntityNotFoundError("X")` 字面值必須在表內——型別改名不會悄悄改契約。
+- **GitHub 盤點用 commit 當證據**。十個「程式在、Issue 開著」的都以實作 commit 關閉，
+  不憑印象。
+
+#### 潛在隱憂
+- **部分計費的估算品質**。輸出用已串出字元估、輸入用提示字元估，`estimated=True` 標記讓報表能
+  排除；Cloud Run 不傳遞斷線所以目前不會觸發，換平台再校準 → 優先級：低。
+- **replay 保真度用「bot 是否綁 LINE」當代理指標**。真正的保真要等 ADR-0003 Phase C 以能力旗標
+  跑同一條管線 → 優先級：中。
+- **`_execute_stream_inner` 複雜度 46 → 30**，仍高；Phase B 合併編排本體時一併處理 → 優先級：中。
+- **migration 在分支上、尚未套用**：`token_usage_records.estimated` 的 ORM 已改，**部署前必須先套
+  local-docker 與 company-poc-vm**，否則記帳 insert 立刻 500 → 優先級：高（已列為部署前置）。
+
+#### 延伸學習
+- 絞殺者模式（Strangler Fig）的實務節奏：先抽「純函式 / 無狀態 service」，最後才動編排本體；
+  每一步都要有「零回歸」的驗收，而不是「重寫完再測」。
+- SSE 的 `Last-Event-ID` 在 WHATWG 規格是連線層游標；把它綁到冪等快照的 seq 是一種「業務層
+  重播」，兩者語意要在文件寫清楚（已寫進 sse-contract.md）。
+
 ## 契約改造第二批 — 冪等擴到建立型端點、SSE 序號、widget 補非串流（2026-09-16，Issue #98）
 
 **Sprint 來源**：全 API 面審核改造順序 7–11 步。第一批把「解碼會不會壞」處理掉，這批處理

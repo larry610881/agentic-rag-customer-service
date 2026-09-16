@@ -93,10 +93,13 @@ def verify_summary(context):
 # ─── use case 前置與背景 ───
 
 
-def _build_uc(context, *, questions, today_count=0, judge_raises=False):
+def _build_uc(
+    context, *, questions, today_count=0, judge_raises=False, line_bound=False
+):
     bot = Bot(
         id=BotId(value=BOT_ID), tenant_id=TENANT, name="b",
         gate_daily_limit=20, gate_budget_usd=100.0,
+        line_channel_secret="secret" if line_bound else None,
     )
     bot_repo = AsyncMock(spec=BotRepository)
     bot_repo.find_by_id.return_value = bot
@@ -174,6 +177,19 @@ def bot_at_limit(context):
 @given("一個有兩則歷史問題的 bot 與 candidate 版本")
 def bot_with_history(context):
     _build_uc(context, questions=["問題一", "問題二"])
+
+
+@given("一個綁定 LINE 且有兩則歷史問題的 bot 與 candidate 版本")
+def line_bot_with_history(context):
+    _build_uc(context, questions=["問題一", "問題二"], line_bound=True)
+
+
+@then(parsers.parse('details 標注 pipeline_approximation 為 "{value}"'))
+def fidelity_marker(context, value):
+    details = context["run"].details
+    assert details["pipeline_approximation"] == value
+    assert details["pipeline_fidelity"]["line_bound"] is (value == "web")
+    assert "trace" in details["pipeline_fidelity"]["shared_steps"]
 
 
 @given("一個有兩則歷史問題的 bot 且 judge 會拋錯")

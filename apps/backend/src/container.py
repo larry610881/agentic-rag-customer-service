@@ -240,6 +240,9 @@ from src.application.ledger.process_monthly_reset_use_case import (
     ProcessMonthlyResetUseCase,
 )
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
+from src.application.memory.conversation_memory_service import (
+    ConversationMemoryService,
+)
 from src.application.memory.extract_memory_use_case import ExtractMemoryUseCase
 from src.application.memory.load_memory_use_case import LoadMemoryUseCase
 from src.application.memory.resolve_identity_use_case import (
@@ -3019,6 +3022,14 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
+    # channel-parity 二-6：記憶服務三通路共用（Factory：內含 per-request use case）
+    conversation_memory_service = providers.Factory(
+        ConversationMemoryService,
+        resolve_identity=resolve_identity_use_case,
+        load_memory=load_memory_use_case,
+        extract_memory=extract_memory_use_case,
+    )
+
     handle_webhook_use_case = providers.Factory(
         HandleWebhookUseCase,
         agent_service=agent_service,
@@ -3044,6 +3055,7 @@ class Container(containers.DeclarativeContainer):
         conversation_lock=conversation_lock,
         record_usage_use_case=record_usage_use_case,
         trace_session_factory=trace_session_factory,
+        memory_service=conversation_memory_service,  # channel-parity 二-6
         intent_classifier=intent_classifier,
         worker_config_repo=worker_config_repository,
         history_strategy=history_strategy,

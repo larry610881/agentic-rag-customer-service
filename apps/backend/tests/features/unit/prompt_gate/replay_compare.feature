@@ -39,6 +39,16 @@ Feature: 真實流量回放 pairwise 對比（Phase G，spec §14 層次 2）
     Then run 完成且 details 型別為 replay_compare
     And 每題含 baseline 與 candidate 的回應與判定
 
+  Scenario: 未綁 LINE 的 bot 回放標注為精確（真實流量本就是 web）
+    Given 一個有兩則歷史問題的 bot 與 candidate 版本
+    When 執行回放對比背景任務
+    Then details 標注 pipeline_approximation 為 "exact"
+
+  Scenario: 綁 LINE 的 bot 回放標注為 web 近似
+    Given 一個綁定 LINE 且有兩則歷史問題的 bot 與 candidate 版本
+    When 執行回放對比背景任務
+    Then details 標注 pipeline_approximation 為 "web"
+
   Scenario: judge 失敗的題目記為 tie（fail-open）
     Given 一個有兩則歷史問題的 bot 且 judge 會拋錯
     When 執行回放對比背景任務

@@ -6,7 +6,6 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
 import anyio
 import structlog
@@ -16,6 +15,7 @@ from src.application.abuse.abuse_control_service import (
     AbuseControlService,
     apply_conservative_mode,
 )
+from src.application.agent.guard_responses import blocked_input_response
 from src.application.agent.intent_classifier import IntentClassifier
 from src.application.agent.output_format import (
     FinalizedAnswer,
@@ -31,6 +31,13 @@ from src.application.agent.output_format import (
 from src.application.agent.prompt_assembler import (
     apply_worker_override,
     resolve_effective_prompt,
+)
+from src.application.agent.trace_persistence import (
+    compute_trace_outcome,
+    persist_finished_trace,
+)
+from src.application.memory.conversation_memory_service import (
+    ConversationMemoryService,
 )
 from src.application.security.guard_pipeline import GuardPipeline
 from src.domain.abuse.policy import (
@@ -126,16 +133,9 @@ _IDENTITY_SOURCE_CATEGORY: dict[str, str] = {
 _REFUND_METADATA_MARKER = "__refund_metadata"
 
 
-def _compute_trace_outcome(nodes: list[dict[str, Any]]) -> str:
-    """S-Gov.6a: 從節點 outcome 計算 trace-level outcome。
-
-    優先級：failed > partial > success
-    """
-    if any(n.get("outcome") == "failed" for n in nodes):
-        return "failed"
-    if any(n.get("outcome") == "partial" for n in nodes):
-        return "partial"
-    return "success"
+# channel-parity 二-2：trace outcome 計算與持久化移到 trace_persistence（三通路共用）；
+# 保留舊名供既有 import
+_compute_trace_outcome = compute_trace_outcome
 
 
 def _bump_conversation_counters(conversation: Any) -> None:
@@ -256,6 +256,12 @@ class SendMessageUseCase:
         self._resolve_identity = resolve_identity_use_case
         self._load_memory = load_memory_use_case
         self._extract_memory = extract_memory_use_case
+        # channel-parity 二-6：記憶載入 / 萃取三通路共用（LINE 同一份）
+        self._memory = ConversationMemoryService(
+            resolve_identity=resolve_identity_use_case,
+            load_memory=load_memory_use_case,
+            extract_memory=extract_memory_use_case,
+        )
         self._intent_classifier = intent_classifier
         self._abuse_control = abuse_control
         self._worker_config_repo = worker_config_repo
@@ -502,51 +508,23 @@ class SendMessageUseCase:
     async def _resolve_and_load_memory(
         self, command: SendMessageCommand, bot_cfg: dict[str, Any]
     ) -> str:
-        """Resolve visitor identity and load memory context.
-
-        Returns formatted memory prompt string (empty if disabled).
-        """
-        if not command.visitor_id or not command.identity_source:
-            return ""
-        if not bot_cfg.get("memory_enabled", False):
-            return ""
-        if not self._resolve_identity or not self._load_memory:
-            return ""
-
-        try:
-            from src.application.memory.load_memory_use_case import (
-                LoadMemoryCommand,
-            )
-            from src.application.memory.resolve_identity_use_case import (
-                ResolveIdentityCommand,
-            )
-
-            profile_id = await self._resolve_identity.execute(
-                ResolveIdentityCommand(
-                    tenant_id=command.tenant_id,
-                    source=command.identity_source,
-                    external_id=command.visitor_id,
-                )
-            )
-            memory_ctx = await self._load_memory.execute(
-                LoadMemoryCommand(profile_id=profile_id)
-            )
-            if memory_ctx.has_memory:
-                return memory_ctx.formatted_prompt
-        except Exception:
-            logger.warning("memory.load_failed", exc_info=True)
-        return ""
+        """Resolve visitor identity and load memory context（共用 ConversationMemoryService）。"""
+        return await self._memory.load_prompt(
+            tenant_id=command.tenant_id,
+            source=command.identity_source,
+            external_id=command.visitor_id,
+            memory_enabled=bool(bot_cfg.get("memory_enabled", False)),
+        )
 
     def _should_extract_memory(
         self, bot_cfg: dict[str, Any], message_count: int
     ) -> bool:
-        """Check if memory extraction should be triggered."""
-        if not bot_cfg.get("memory_enabled", False):
-            return False
-        threshold = bot_cfg.get("memory_extraction_threshold", 3)
-        if message_count < threshold * 2:
-            return False
-        return True
+        """Check if memory extraction should be triggered（共用規則）。"""
+        return ConversationMemoryService.should_extract(
+            bool(bot_cfg.get("memory_enabled", False)),
+            int(bot_cfg.get("memory_extraction_threshold", 3) or 3),
+            message_count,
+        )
 
     async def _fire_memory_extraction(
         self,
@@ -554,46 +532,17 @@ class SendMessageUseCase:
         bot_cfg: dict[str, Any],
         conversation: Conversation,
     ) -> None:
-        """Fire-and-forget memory extraction (background task)."""
-        if not command.visitor_id or not command.identity_source:
-            return
-        if not self._resolve_identity or not self._extract_memory:
-            return
-        if not self._should_extract_memory(bot_cfg, len(conversation.messages)):
-            return
-
-        try:
-            from src.application.memory.resolve_identity_use_case import (
-                ResolveIdentityCommand,
-            )
-
-            profile_id = await self._resolve_identity.execute(
-                ResolveIdentityCommand(
-                    tenant_id=command.tenant_id,
-                    source=command.identity_source,
-                    external_id=command.visitor_id,
-                )
-            )
-
-            # Only pass the latest user+assistant pair for extraction
-            recent_messages = []
-            for msg in conversation.messages[-2:]:
-                recent_messages.append(
-                    {"role": msg.role, "content": msg.content}
-                )
-
-            from src.infrastructure.queue.arq_pool import enqueue
-            await enqueue(
-                "extract_memory",
-                profile_id,
-                command.tenant_id,
-                conversation.id.value,
-                recent_messages,
-                bot_cfg.get("memory_extraction_prompt", ""),
-                conversation.bot_id or "",  # Issue #73：memory_extraction 用量歸屬
-            )
-        except Exception:
-            logger.warning("memory.extraction_dispatch_failed", exc_info=True)
+        """Fire-and-forget memory extraction（共用 ConversationMemoryService）。"""
+        await self._memory.schedule_extraction(
+            tenant_id=command.tenant_id,
+            source=command.identity_source,
+            external_id=command.visitor_id,
+            conversation=conversation,
+            memory_enabled=bool(bot_cfg.get("memory_enabled", False)),
+            threshold=int(bot_cfg.get("memory_extraction_threshold", 3) or 3),
+            extraction_prompt=str(bot_cfg.get("memory_extraction_prompt", "") or ""),
+            bot_id=conversation.bot_id or "",
+        )
 
     async def _resolve_history(
         self,
@@ -1897,12 +1846,8 @@ class SendMessageUseCase:
     ) -> AgentResponse:
         """從 blocked GuardResult 組攔截回應（persist + trace），regex guard 與
         分類器攻擊共用（test_mode 不落庫）。"""
-        # Issue #94：攔截回應也守 bot 輸出格式，並把已解析物件交給 router
-        blocked = (
-            resolve_guard_blocked(output_spec, guard_result.blocked_response)
-            if output_spec is not None
-            else None
-        )
+        # Issue #94 / channel-parity 二-3：攔截回應與 LINE 同一份組裝
+        blocked_resp = blocked_input_response(guard_result, output_spec)
         assistant_msg = None
         t_persist = AgentTraceCollector.offset_ms()
         if not command.test_mode:
@@ -1924,15 +1869,10 @@ class SendMessageUseCase:
             persist=not command.test_mode,
             persist_started_ms=t_persist,
         )
-        return AgentResponse(
-            answer=blocked.text if blocked else guard_result.blocked_response,
-            structured_output=blocked.parsed if blocked else None,
-            conversation_id=conversation.id.value,
-            guard_blocked="input",
-            guard_rule_matched=guard_result.rule_matched,
-            trace_id=g_trace_id if command.test_mode else None,
-            trace_nodes=g_nodes if command.test_mode else None,
-        )
+        blocked_resp.conversation_id = conversation.id.value
+        blocked_resp.trace_id = g_trace_id if command.test_mode else None
+        blocked_resp.trace_nodes = g_nodes if command.test_mode else None
+        return blocked_resp
 
     async def _apply_fast_lane(
         self, command: SendMessageCommand, bot_cfg: dict[str, Any]
@@ -2260,42 +2200,14 @@ class SendMessageUseCase:
             if session_factory is None:
                 return trace.trace_id, node_dicts_compact
 
-            trace.conversation_id = conversation_id
-            trace.message_id = message_id
-            trace.source = source
-
-            from src.infrastructure.db.models.agent_trace_model import (
-                AgentExecutionTraceModel,
+            # channel-parity 二-2：與 LINE 同一份持久化
+            await persist_finished_trace(
+                trace,
+                session_factory,
+                conversation_id=conversation_id,
+                message_id=message_id,
+                source=source,
             )
-
-            # S-Gov.6a: trace-level outcome snapshot
-            #   - 任一節點 failed → trace failed
-            #   - 任一節點 partial → trace partial
-            #   - 全 success → trace success
-            node_dicts = [n.to_dict() for n in trace.nodes]
-            outcome = _compute_trace_outcome(node_dicts)
-
-            row = AgentExecutionTraceModel(
-                id=str(uuid4()),
-                trace_id=trace.trace_id,
-                tenant_id=trace.tenant_id,
-                message_id=trace.message_id,
-                conversation_id=trace.conversation_id,
-                agent_mode=trace.agent_mode,
-                source=trace.source,
-                llm_model=trace.llm_model,
-                llm_provider=trace.llm_provider,
-                bot_id=trace.bot_id,
-                nodes=node_dicts,
-                total_ms=trace.total_ms,
-                total_tokens=trace.total_tokens,
-                outcome=outcome,
-                config_hash=trace.config_hash,
-                abuse_level=trace.abuse_level,
-            )
-            async with session_factory() as session:
-                session.add(row)
-                await session.commit()
             return trace.trace_id, node_dicts_compact
         except Exception:
             logger.warning("agent_trace.persist_failed", exc_info=True)

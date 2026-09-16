@@ -392,13 +392,29 @@ class StartReplayCompareUseCase:
             summary = aggregate_replay([i.verdict for i in items])
             run.actual_cost = round(actual_cost, 6)
             run.total_cases = summary.total
+            # M22 / #99 二-7：影子執行走 web 管線。管線步驟已陸續共用（ADR-0003），
+            # 現在依「bot 是否綁 LINE」標注保真度：未綁 → 真實流量本就是 web，屬精確；
+            # 綁 LINE → 回覆組裝與並行 guard 不同，屬近似。管線統一後移除此標注。
+            replay_bot = await self._bot_repo.find_by_id(bot_id)
+            line_bound = bool(
+                getattr(replay_bot, "line_channel_secret", None)
+                or getattr(replay_bot, "line_channel_access_token", None)
+            )
             run.details = {
                 "type": "replay_compare",
                 "aborted": aborted,
-                # M22：真實流量可能來自 LINE，但影子執行走 web 管線（無 LINE
-                # channel suffix、無 direct_retrieval 快速道）。對比屬近似參考，
-                # 前端據此標注限制；管線統一（channel-parity 債務 #6）後移除。
-                "pipeline_approximation": "web",
+                "pipeline_approximation": "web" if line_bound else "exact",
+                "pipeline_fidelity": {
+                    "line_bound": line_bound,
+                    "shared_steps": [
+                        "direct_retrieval", "guard", "blocked_response",
+                        "output_format", "config_fingerprint", "trace",
+                        "usage", "memory", "abuse",
+                    ],
+                    "approximated": (
+                        ["reply_assembly", "guard_parallelism"] if line_bound else []
+                    ),
+                },
                 "summary": {
                     "candidate_wins": summary.candidate_wins,
                     "baseline_wins": summary.baseline_wins,

@@ -9,12 +9,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, TypeVar
 from uuid import uuid4
 
+from src.application.agent.guard_responses import blocked_input_response
 from src.application.agent.output_format import (
     OutputSpec,
     append_prompt_suffix,
     finalize_with_retry,
     merge_usage,
-    resolve_guard_blocked,
     resolve_miss_reply,
     resolve_structured_llm_params,
     retrieval_stats,
@@ -27,6 +27,7 @@ from src.application.agent.send_message_use_case import (
     _build_structured_content,
     build_tool_rag_params_map,
 )
+from src.application.agent.trace_persistence import persist_finished_trace
 from src.application.security.guard_pipeline import GuardPipeline
 from src.domain.abuse.policy import CONSERVATIVE_PROMPT_SUFFIX
 from src.domain.agent.entity import AgentResponse
@@ -219,6 +220,7 @@ class HandleWebhookUseCase:
         quota_preflight: Any | None = None,
         guard_provider: Any | None = None,
         system_prompt_config_repository: Any | None = None,
+        memory_service: Any | None = None,
     ):
         self._agent_service = agent_service
         # Issue #91：LINE 先前只用 bot_prompt，平台防護層從未載入 → 通路對等破口
@@ -241,6 +243,7 @@ class HandleWebhookUseCase:
         self._conversation_lock = conversation_lock
         self._conversation_timeout = timedelta(minutes=conversation_timeout_minutes)
         self._trace_session_factory = trace_session_factory
+        self._memory_service = memory_service  # channel-parity 二-6
         # Issue: dev-vm 5/4 trace 顯示 LINE 多輪對話 history_loaded_status="lost"
         # — 因為原本沒過 history_strategy 直接傳 raw history list，
         # process_message(history_context="") 讓 react_agent 沒 inject 對話歷史。
@@ -850,24 +853,13 @@ class HandleWebhookUseCase:
         # helper）。這裡的 spec 不需要供應商資訊——攔截不呼叫模型，只是把固定
         # 文案包成 bot 宣告的形狀。
         _blocked_spec = OutputSpec.from_bot(bot, provider="", model="")
+        # channel-parity 二-3：攔截回應與 web 同一份組裝（json bot 同時帶 structured_output）
         if guard_result is not None and not guard_result.passed:
             await self._record_abuse(bot, event, guard, guard_hit=True)  # Issue #68 P7
-            result = AgentResponse(
-                answer=resolve_guard_blocked(
-                    _blocked_spec, guard_result.blocked_response
-                ).text,
-                guard_blocked="input",
-                guard_rule_matched=guard_result.rule_matched,
-            )
+            result = blocked_input_response(guard_result, _blocked_spec)
         elif blocked is not None:
             await self._record_abuse(bot, event, guard, attack=True)  # Issue #68 P7
-            result = AgentResponse(
-                answer=resolve_guard_blocked(
-                    _blocked_spec, blocked.blocked_response
-                ).text,
-                guard_blocked="input",
-                guard_rule_matched=blocked.rule_matched,
-            )
+            result = blocked_input_response(blocked, _blocked_spec)
         else:
             # Issue #68 P7：正常回合計分 + L1 保守模式（不呼叫工具、加婉拒指令）
             await self._record_abuse(bot, event, guard, unrouted=unrouted_turn)
@@ -894,6 +886,21 @@ class HandleWebhookUseCase:
                     "bot_prompt": system_prompt or "",
                 }
             )
+
+            # channel-parity 二-6：LINE user_id 穩定，長期記憶接上（與 web 同一份服務）
+            if self._memory_service is not None:
+                memory_prompt = await self._memory_service.load_prompt(
+                    tenant_id=bot.tenant_id,
+                    source="line",
+                    external_id=event.user_id,
+                    memory_enabled=bool(getattr(bot, "memory_enabled", False)),
+                )
+                if memory_prompt:
+                    history_context = (
+                        memory_prompt + "\n\n" + history_context
+                        if history_context
+                        else memory_prompt
+                    )
 
             # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）
             config_hash = await self._fingerprint_config(
@@ -1138,44 +1145,35 @@ class HandleWebhookUseCase:
             if trace:
                 trace.source = "line"
 
-            # Persist agent trace to DB
+            # channel-parity 二-2：與 web 同一份 trace 持久化（含 outcome，M20）
             if trace and self._trace_session_factory:
                 try:
-                    from src.application.agent.send_message_use_case import (
-                        _compute_trace_outcome,
+                    await persist_finished_trace(
+                        trace,
+                        self._trace_session_factory,
+                        conversation_id=conversation.id.value,
+                        message_id=assistant_msg.id.value,
+                        source="line",
                     )
-                    from src.infrastructure.db.models.agent_trace_model import (
-                        AgentExecutionTraceModel,
-                    )
-                    trace.conversation_id = conversation.id.value
-                    trace.message_id = assistant_msg.id.value
-                    node_dicts = [n.to_dict() for n in trace.nodes]
-                    row = AgentExecutionTraceModel(
-                        id=str(uuid4()),
-                        trace_id=trace.trace_id,
-                        tenant_id=trace.tenant_id,
-                        message_id=trace.message_id,
-                        conversation_id=trace.conversation_id,
-                        agent_mode=trace.agent_mode,
-                        source=trace.source,
-                        # M20：LINE trace 原本不設 outcome → 恆 NULL，失敗率儀表板
-                        # （以 outcome 過濾）看不到 LINE trace，主力通路監控失明。
-                        # 呼叫 web 端同一份共用純函式計算（非重寫）。
-                        outcome=_compute_trace_outcome(node_dicts),
-                        llm_model=trace.llm_model,
-                        llm_provider=trace.llm_provider,
-                        bot_id=trace.bot_id,
-                        nodes=node_dicts,
-                        total_ms=trace.total_ms,
-                        total_tokens=trace.total_tokens,
-                        config_hash=trace.config_hash,
-                        abuse_level=trace.abuse_level,
-                    )
-                    async with self._trace_session_factory() as session:
-                        session.add(row)
-                        await session.commit()
                 except Exception:
                     logger.warning("line.trace_persist_failed", exc_info=True)
+
+            # channel-parity 二-6：對話達門檻 → 排程長期記憶萃取（與 web 同一份服務）
+            if self._memory_service is not None:
+                await self._memory_service.schedule_extraction(
+                    tenant_id=bot.tenant_id,
+                    source="line",
+                    external_id=event.user_id,
+                    conversation=conversation,
+                    memory_enabled=bool(getattr(bot, "memory_enabled", False)),
+                    threshold=int(
+                        getattr(bot, "memory_extraction_threshold", 3) or 3
+                    ),
+                    extraction_prompt=str(
+                        getattr(bot, "memory_extraction_prompt", "") or ""
+                    ),
+                    bot_id=bot.id.value,
+                )
 
             # Record token usage
             if self._record_usage and result.usage:
