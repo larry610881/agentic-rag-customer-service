@@ -1,0 +1,39 @@
+# 探針：印出管線向 Azure DevOps 請到的 OIDC token 的 issuer / subject / audience，
+# 用來確認要給 GCP Workload Identity Federation 的 provider 設定值。
+# 只印 header 與非機密 claims，不印 token 本體。手動觸發，不觸發 CI。
+trigger: none
+pr: none
+
+parameters:
+  - name: serviceConnectionId
+    displayName: 服務連線 GUID
+    type: string
+    default: 564a27b2-b280-41aa-9f7b-7d080c424f80
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: none
+  - bash: |
+      set -euo pipefail
+      URL="$(System.OidcRequestUri)?api-version=7.1&serviceConnectionId=${{ parameters.serviceConnectionId }}"
+      echo "request: $URL"
+      RESP=$(curl -sS -X POST -H "Content-Length: 0" \
+        -H "Authorization: Bearer $(System.AccessToken)" "$URL")
+      python3 - "$RESP" <<'PY'
+      import sys, json, base64
+      resp = sys.argv[1]
+      try:
+          tok = json.loads(resp)["oidcToken"]
+      except Exception:
+          print("no oidcToken in response:", resp[:500]); sys.exit(1)
+      h, p, _ = tok.split(".")
+      dec = lambda s: json.loads(base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)))
+      print("header:", json.dumps(dec(h)))
+      pl = dec(p)
+      keep = ("iss", "sub", "aud", "exp", "iat", "nbf", "tid", "appid", "idtyp", "ver", "oid", "azp")
+      print("claims:", json.dumps({k: pl[k] for k in pl if k in keep}, indent=2, ensure_ascii=False))
+      print("other claim names:", sorted(k for k in pl if k not in keep))
+      PY
+    displayName: 解出 OIDC token 的 issuer / subject / audience
