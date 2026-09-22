@@ -13,7 +13,10 @@ from src.domain.platform.value_objects import (
     ProviderSettingId,
     ProviderType,
 )
-from src.infrastructure.llm.dynamic_llm_factory import DynamicLLMServiceFactory, _build_llm_service_from_config
+from src.infrastructure.llm.dynamic_llm_factory import (
+    DynamicLLMServiceFactory,
+    _build_llm_service_from_config,
+)
 
 scenarios("unit/platform/dynamic_llm_factory.feature")
 

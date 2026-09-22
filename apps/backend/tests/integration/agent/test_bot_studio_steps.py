@@ -57,7 +57,7 @@ def _override_agent_service(app, test_engine):
     同時 override trace_session_factory 讓 _persist_agent_trace 寫到 test DB
     而非 dev DB（既有測試對 trace 持久化沒驗證，所以 default 沒注意到）。
     """
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     test_session_factory = async_sessionmaker(
         test_engine, class_=AsyncSession, expire_on_commit=False
@@ -165,7 +165,7 @@ def check_trace_source_in_db(ctx, test_engine, expected):
     import asyncio
 
     from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     trace_id = ctx["trace_id"]
 

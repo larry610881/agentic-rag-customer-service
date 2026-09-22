@@ -4,9 +4,7 @@ import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from prompt_optimizer.assertions import (
-    ASSERTION_REGISTRY,
     AssertionContext,
-    AssertionResult,
     run_assertion,
 )
 

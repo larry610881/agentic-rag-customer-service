@@ -2,21 +2,15 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, field_validator
 
-# Issue #45: per-KB chunk_strategy 白名單
-_VALID_CHUNK_STRATEGIES = {
-    "", "auto", "recursive", "separator", "json_record", "csv_row",
-}
-
-# Per-KB sliced OCR 白名單。"" = 不切片；"RxC" = R 列 C 行切片 + overlap。
-# 2x3 是 page 51 驗證最佳組合（3x3 反而失敗 — 太細缺脈絡）。
-_VALID_OCR_SLICE_GRIDS = {"", "2x3", "3x2"}
-
 from src.application.knowledge.create_knowledge_base_use_case import (
     CreateKnowledgeBaseCommand,
     CreateKnowledgeBaseUseCase,
 )
 from src.application.knowledge.delete_knowledge_base_use_case import (
     DeleteKnowledgeBaseUseCase,
+)
+from src.application.knowledge.get_category_chunks_use_case import (
+    GetCategoryChunksUseCase,
 )
 from src.application.knowledge.list_knowledge_bases_use_case import (
     ListKnowledgeBasesUseCase,
@@ -37,6 +31,15 @@ from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQ
 from src.interfaces.api.types import ApiDateTime
 
 router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["knowledge-bases"])
+
+# Issue #45: per-KB chunk_strategy 白名單
+_VALID_CHUNK_STRATEGIES = {
+    "", "auto", "recursive", "separator", "json_record", "csv_row",
+}
+
+# Per-KB sliced OCR 白名單。"" = 不切片；"RxC" = R 列 C 行切片 + overlap。
+# 2x3 是 page 51 驗證最佳組合（3x3 反而失敗 — 太細缺脈絡）。
+_VALID_OCR_SLICE_GRIDS = {"", "2x3", "3x2"}
 
 
 class CreateKnowledgeBaseRequest(BaseModel):
@@ -397,7 +400,7 @@ async def get_category_chunks(
     kb_id: str,
     cat_id: str,
     tenant: CurrentTenant = Depends(get_current_tenant),
-    use_case: "GetCategoryChunksUseCase" = Depends(
+    use_case: GetCategoryChunksUseCase = Depends(
         Provide[Container.get_category_chunks_use_case]
     ),
 ) -> CategoryChunksResponse:

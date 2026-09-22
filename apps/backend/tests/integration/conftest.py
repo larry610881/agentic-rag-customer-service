@@ -228,6 +228,7 @@ def app(test_engine, monkeypatch):
     # module 不夠 — 要把所有已 import 的 caller module 的 async_session_factory
     # attribute 一起 patch 到 test_session_factory。
     import sys
+
     import src.infrastructure.db.engine as _engine_mod
 
     _orig_factory = _engine_mod.async_session_factory

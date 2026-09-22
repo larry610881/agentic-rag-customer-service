@@ -12,8 +12,6 @@ import asyncio
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from src.application.agent.send_message_use_case import (
     SendMessageCommand,
     SendMessageUseCase,
@@ -333,12 +331,12 @@ def test_stream_blocked_input_starts_trace_and_persists_for_dag_visibility():
 
 def test_trace_collector_start_is_idempotent():
     """連續呼叫兩次 start 不該 reset 已建立的 trace（保護 guard add_node 路徑）"""
+    # 用 contextvars.copy_context 隔離 ContextVar，避免污染其他 test
+    import contextvars
+
     from src.infrastructure.observability.agent_trace_collector import (
         AgentTraceCollector,
     )
-
-    # 用 contextvars.copy_context 隔離 ContextVar，避免污染其他 test
-    import contextvars
 
     def _check():
         t1 = AgentTraceCollector.start(

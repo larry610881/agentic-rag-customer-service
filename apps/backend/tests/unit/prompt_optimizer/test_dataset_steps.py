@@ -3,7 +3,6 @@
 import textwrap
 
 import pytest
-import yaml
 from pytest_bdd import given, scenarios, then, when
 
 from prompt_optimizer.dataset import (

@@ -12,7 +12,6 @@ from prompt_optimizer.dataset import (
     TestCase,
 )
 from prompt_optimizer.evaluator import (
-    PRIORITY_WEIGHTS,
     DatasetEvalSummary,
     Evaluator,
 )

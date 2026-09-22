@@ -13,7 +13,6 @@ from src.domain.rag.value_objects import SearchResult
 from src.infrastructure.cache.in_memory_cache_service import InMemoryCacheService
 from src.infrastructure.embedding.fake_embedding_service import FakeEmbeddingService
 
-
 # -----------------------------------------------------------------------
 # E2E app fixture (mock agent via container selector)
 # -----------------------------------------------------------------------
@@ -29,6 +28,7 @@ def e2e_app(test_engine, monkeypatch):
       （ReAct 會呼叫此 static method 建立 chat model；fake 輸出預先安排的訊息序列）
     """
     import os as _os
+
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     monkeypatch.setenv(
@@ -92,6 +92,7 @@ def e2e_app(test_engine, monkeypatch):
 
     # 同步 patch 全域 async_session_factory（同 integration/conftest.py 的做法）
     import sys
+
     import src.infrastructure.db.engine as _engine_mod
 
     _orig_factory = _engine_mod.async_session_factory

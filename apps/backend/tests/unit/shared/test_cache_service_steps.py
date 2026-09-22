@@ -1,7 +1,7 @@
 """CacheService BDD Step Definitions"""
 
 import asyncio
-from unittest.mock import AsyncMock, PropertyMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when

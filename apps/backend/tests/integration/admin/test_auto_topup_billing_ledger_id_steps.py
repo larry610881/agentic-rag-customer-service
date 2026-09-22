@@ -192,6 +192,6 @@ def verify_ledger_id_non_empty(ctx):
     txs = ctx["billing_txs"]
     assert len(txs) > 0
     assert txs[-1].ledger_id != "", (
-        f"BillingTransaction.ledger_id is empty string — FK regression!"
+        "BillingTransaction.ledger_id is empty string — FK regression!"
     )
     assert txs[-1].ledger_id is not None

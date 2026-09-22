@@ -1,9 +1,9 @@
 """BDD Step Definitions — RAG Quality Diagnostic Engine."""
 
 import pytest
-from pytest_bdd import given, scenarios, then, when, parsers
+from pytest_bdd import given, parsers, scenarios, then, when
 
-from src.domain.observability.diagnostic import DiagnosticHint, diagnose
+from src.domain.observability.diagnostic import diagnose
 
 scenarios("unit/observability/rag_diagnostic.feature")
 

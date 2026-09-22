@@ -2,8 +2,7 @@
 
 import asyncio
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from pytest_bdd import given, scenarios, then, when

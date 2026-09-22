@@ -79,9 +79,7 @@ class FakeAuditRepo(PricingRecalcAuditRepository):
         self.saved.append(audit)
 
     async def list_recent(self, limit: int = 100) -> list[PricingRecalcAudit]:
-        return list(
-            sorted(self.saved, key=lambda a: a.executed_at, reverse=True)
-        )[:limit]
+        return sorted(self.saved, key=lambda a: a.executed_at, reverse=True)[:limit]
 
 
 class FakeUsageRecalcPort(UsageRecalcPort):

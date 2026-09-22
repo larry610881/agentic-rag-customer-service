@@ -7,7 +7,6 @@ import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from src.application.eval_dataset.run_use_cases import GetRunUseCase
-from src.domain.eval_dataset.run_entity import OptimizationIteration
 
 scenarios("unit/eval_dataset/optimization_run_details.feature")
 

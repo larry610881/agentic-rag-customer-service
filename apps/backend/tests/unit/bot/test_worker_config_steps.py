@@ -3,7 +3,6 @@ import asyncio
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
-from unittest.mock import AsyncMock
 
 from src.application.bot.worker_use_cases import (
     CreateWorkerCommand,

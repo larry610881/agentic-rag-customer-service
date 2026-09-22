@@ -4,11 +4,9 @@ import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
+from langchain_core.messages import AIMessage
 from pytest_bdd import given, scenarios, then, when
 
-from langchain_core.messages import AIMessage
-
-from src.application.rag.query_rag_use_case import QueryRAGCommand, QueryRAGUseCase
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 from src.domain.rag.value_objects import LLMResult, SearchResult, TokenUsage
 from src.domain.usage.repository import UsageRepository

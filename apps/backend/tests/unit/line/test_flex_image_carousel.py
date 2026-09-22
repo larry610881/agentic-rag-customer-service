@@ -1,6 +1,5 @@
 """LINE Flex carousel builder unit tests."""
 
-import pytest
 
 from src.infrastructure.line.flex_image_carousel_builder import (
     LINE_FLEX_CAROUSEL_MAX,

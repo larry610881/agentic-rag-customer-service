@@ -17,7 +17,7 @@ from src.application.pricing.deactivate_pricing_use_case import (
 )
 from src.application.pricing.list_pricing_use_case import ListPricingUseCase
 from src.domain.pricing.entity import ModelPricing
-from src.domain.pricing.value_objects import PriceRate, PricingCategory
+from src.domain.pricing.value_objects import PriceRate
 from tests.unit.pricing.conftest import FakeModelPricingRepo, run
 
 scenarios("unit/pricing/pricing_crud.feature")

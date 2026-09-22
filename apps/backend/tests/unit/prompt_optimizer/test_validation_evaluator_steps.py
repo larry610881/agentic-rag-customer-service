@@ -7,7 +7,12 @@ import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from prompt_optimizer.api_client import ChatResult
-from prompt_optimizer.dataset import Assertion, CostConfigData, Dataset, DatasetMetadata, TestCase
+from prompt_optimizer.dataset import (
+    Assertion,
+    Dataset,
+    DatasetMetadata,
+    TestCase,
+)
 from prompt_optimizer.evaluator import Evaluator
 from prompt_optimizer.validation_evaluator import ValidationEvaluator
 

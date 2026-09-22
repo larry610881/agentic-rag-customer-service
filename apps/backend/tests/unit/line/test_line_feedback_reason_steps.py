@@ -7,11 +7,8 @@ import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
-from src.domain.conversation.feedback_entity import Feedback
 from src.domain.conversation.feedback_repository import FeedbackRepository
 from src.domain.conversation.feedback_value_objects import (
-    Channel,
-    FeedbackId,
     Rating,
 )
 from src.domain.line.entity import LinePostbackEvent

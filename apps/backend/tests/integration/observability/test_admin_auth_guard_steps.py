@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text as _sql
 
 from src.domain.shared.constants import SYSTEM_TENANT_ID

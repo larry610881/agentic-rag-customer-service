@@ -5,7 +5,6 @@ import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from src.domain.observability.agent_trace import (
-    AgentExecutionTrace,
     ExecutionNode,
 )
 from src.infrastructure.observability.agent_trace_collector import (

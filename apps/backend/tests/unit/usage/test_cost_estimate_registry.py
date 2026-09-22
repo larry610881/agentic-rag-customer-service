@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from src.application.usage.record_usage_use_case import RecordUsageUseCase
 
-
 # ── litellm provider 前綴 — 這是現實中最常見的 case ───────────────────────
 
 

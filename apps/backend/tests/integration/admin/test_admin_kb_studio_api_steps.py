@@ -11,13 +11,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 from dependency_injector import providers
 from pytest_bdd import given, parsers, scenarios, then, when
 from sqlalchemy import text
-from types import SimpleNamespace
 
 scenarios("integration/admin/admin_kb_studio_api.feature")
 

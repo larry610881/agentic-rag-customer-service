@@ -10,11 +10,10 @@ from src.application.memory.resolve_identity_use_case import (
     ResolveIdentityCommand,
     ResolveIdentityUseCase,
 )
-from src.domain.memory.entity import VisitorIdentity, VisitorProfile
+from src.domain.memory.entity import VisitorIdentity
 from src.domain.memory.repository import VisitorProfileRepository
 from src.domain.memory.value_objects import (
     VisitorIdentityId,
-    VisitorProfileId,
 )
 
 scenarios("unit/memory/resolve_identity.feature")

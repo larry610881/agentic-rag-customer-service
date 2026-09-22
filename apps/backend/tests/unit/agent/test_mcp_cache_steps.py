@@ -1,7 +1,7 @@
 """BDD steps for MCP 工具載入器（stack-based, no cache）."""
 import asyncio
 from contextlib import AsyncExitStack
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when

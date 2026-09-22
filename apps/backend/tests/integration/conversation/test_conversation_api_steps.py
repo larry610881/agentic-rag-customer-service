@@ -35,7 +35,9 @@ def other_tenant_has_conversation(ctx, client, create_tenant_login, app, name):
     import asyncio
 
     from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.ext.asyncio import (
+        create_async_engine,
+    )
     from sqlalchemy.pool import NullPool
 
     headers = _create_tenant_and_login(create_tenant_login, name)

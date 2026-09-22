@@ -1,13 +1,12 @@
 """Widget 聊天 API 驗證 BDD Step Definitions"""
 
 import asyncio
-import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from src.domain.bot.entity import Bot, BotLLMParams
+from src.domain.bot.entity import Bot
 from src.domain.bot.repository import BotRepository
 from src.domain.bot.value_objects import BotId, BotShortCode
 
@@ -96,7 +95,7 @@ def bot_keep_history(context, value):
 
 @when(parsers.parse('從來源 "{origin}" 發送 widget 訊息 "{message}"'))
 def send_widget_message(context, mock_bot_repo, mock_send_message_use_case, origin, message):
-    from src.interfaces.api.widget_router import validate_widget_bot, WidgetChatRequest
+    from src.interfaces.api.widget_router import WidgetChatRequest, validate_widget_bot
 
     short_code = context.get("short_code", "ab3Kx9")
 

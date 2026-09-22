@@ -7,7 +7,6 @@ import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from src.application.line.handle_webhook_use_case import HandleWebhookUseCase
-from src.domain.agent.entity import AgentResponse
 from src.domain.bot.entity import Bot
 from src.domain.shared.exceptions import DomainException
 

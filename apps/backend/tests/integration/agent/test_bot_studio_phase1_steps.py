@@ -121,7 +121,7 @@ class _FixedClassifier:
 
 @pytest.fixture(autouse=True)
 def _override_di(app, test_engine, fake_agent_factory):
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     test_session_factory = async_sessionmaker(
         test_engine, class_=AsyncSession, expire_on_commit=False
@@ -288,7 +288,7 @@ def check_events_have_node_id(ctx, test_engine):
     )
 
     from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     async def _query():
         sf = async_sessionmaker(
@@ -337,7 +337,7 @@ def check_matched_event_has_field(ctx, field):
 @then(parsers.parse('DB 中該 trace 應有至少一筆 outcome 為 "{outcome}" 的節點'))
 def check_trace_has_failed_node(ctx, test_engine, outcome):
     from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     async def _query():
         sf = async_sessionmaker(
@@ -371,7 +371,7 @@ def check_failed_node_metadata(ctx, field):
 @then(parsers.parse('DB 中該 trace_id 對應的 trace.source 應為 "{expected}"'))
 def check_trace_source(ctx, test_engine, expected):
     from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     async def _query():
         sf = async_sessionmaker(
@@ -392,7 +392,7 @@ def check_trace_source(ctx, test_engine, expected):
 @then(parsers.parse('DB 中該 trace 所有節點的 outcome 應為 "{expected}"'))
 def check_all_nodes_success(ctx, test_engine, expected):
     from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     async def _query():
         sf = async_sessionmaker(

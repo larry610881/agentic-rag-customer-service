@@ -1,8 +1,9 @@
 """PromptBlock domain 抽象單元測試 — S-LLM-Cache.1 Step 1."""
 from __future__ import annotations
 
-import pytest
 from dataclasses import FrozenInstanceError
+
+import pytest
 
 from src.domain.llm import BlockRole, CacheHint, PromptBlock
 
