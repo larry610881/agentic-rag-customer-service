@@ -68,6 +68,24 @@ variables:
 pool:
   vmImage: ubuntu-latest
 
+# 整合測試 job 的 service containers。POSTGRES_DB 是 admin DB（agentic_rag）：
+# tests/integration/conftest.py 自己連它 CREATE DATABASE agentic_rag_test 並 ORM create_all，
+# 所以管線不灌 infra/schema.sql（灌了反而跟 create_all 衝突）。
+resources:
+  containers:
+    - container: postgres
+      image: postgres:16-alpine
+      env:
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: agentic_rag
+      ports:
+        - 5432:5432
+      options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
+    - container: redis
+      image: redis:7-alpine
+      ports:
+        - 6379:6379
+
 stages:
   # ---------------------------------------------------------------------------
   # Stage 1：CI — 後端與前端平行跑 lint + test，任何一個紅就不進 Package
@@ -101,8 +119,13 @@ stages:
               set -euo pipefail
               cd apps/backend
               uv run ruff check src/ tests/
+            displayName: lint（ruff）
+
+          - script: |
+              set -euo pipefail
+              cd apps/backend
               uv run mypy src/
-            displayName: lint（ruff + mypy）
+            displayName: 型別檢查（mypy）
 
           - script: |
               set -euo pipefail
@@ -176,10 +199,7 @@ stages:
               set -euo pipefail
               cd apps/backend
               uv sync --frozen
-              # 無 Alembic：schema 由 infra/schema.sql 建立（migration 規範見 .claude/rules）
-              PGPASSWORD=postgres psql -h localhost -U postgres -d agentic_rag_test \
-                -v ON_ERROR_STOP=1 -f ../../infra/schema.sql
-            displayName: 建立測試 schema
+            displayName: uv sync（鎖定版本）
 
           - script: |
               set -euo pipefail
@@ -207,7 +227,7 @@ stages:
               set -euo pipefail
               cd apps/frontend
               npm ci
-              npx eslint src/
+              npm run lint
               npx tsc --noEmit
               npx vitest run --passWithNoTests --reporter=junit \
                 --outputFile=$(Build.ArtifactStagingDirectory)/frontend-unit.xml
