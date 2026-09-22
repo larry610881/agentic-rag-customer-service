@@ -15,13 +15,13 @@ scenarios("unit/bot/bot_mode_presets.feature")
 
 
 def _bot(**kw) -> Bot:
-    base = dict(
-        id=BotId(value="b1"),
-        tenant_id="t1",
-        name="b",
-        knowledge_base_ids=["kb-1"],
-        llm_params=BotLLMParams(),
-    )
+    base = {
+        "id": BotId(value="b1"),
+        "tenant_id": "t1",
+        "name": "b",
+        "knowledge_base_ids": ["kb-1"],
+        "llm_params": BotLLMParams(),
+    }
     base.update(kw)
     return Bot(**base)
 

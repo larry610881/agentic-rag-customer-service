@@ -109,7 +109,7 @@ def seed_usage_rows(ctx, test_engine, n, prefix, model_id):
 
     async def _seed():
         async with test_engine.begin() as conn:
-            for i in range(n):
+            for _ in range(n):
                 await conn.execute(
                     text(
                         "INSERT INTO token_usage_records "

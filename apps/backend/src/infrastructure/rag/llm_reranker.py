@@ -102,7 +102,7 @@ async def llm_rerank(
         if raw.startswith("```"):
             lines = raw.split("\n")
             # Remove first line (```json or ```) and last line (```)
-            lines = [l for l in lines if not l.strip().startswith("```")]
+            lines = [ln for ln in lines if not ln.strip().startswith("```")]
             raw = "\n".join(lines).strip()
 
         # Parse JSON scores

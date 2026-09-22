@@ -1023,7 +1023,7 @@ class HandleWebhookUseCase:
         trace = None
 
         # Save messages to conversation
-        user_msg = conversation.add_message("user", event.message_text)
+        conversation.add_message("user", event.message_text)
         assistant_msg = conversation.add_message(
             "assistant",
             result.answer,

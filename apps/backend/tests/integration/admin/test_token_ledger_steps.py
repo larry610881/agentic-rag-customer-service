@@ -203,8 +203,6 @@ def setup_ledger_with_state(ctx, base, addon):
     container = ctx["app"].container
     ledger_repo = container.token_ledger_repository()
     ensure = container.ensure_ledger_use_case()
-    cycle = current_year_month()
-
     # 先建本月 ledger
     ledger = _run(ensure.execute(ctx["tenant_id"], "starter"))
     # 強制設定特定狀態

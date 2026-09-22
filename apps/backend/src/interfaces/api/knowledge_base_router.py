@@ -471,7 +471,7 @@ async def create_category(
             404,
             code="knowledge_base_not_found",
             message="kb not found",
-        )
+        ) from None
     except ValueError as e:
         raise ApiError(
             422,
@@ -517,7 +517,7 @@ async def delete_category(
             404,
             code="not_found",
             message="not found",
-        )
+        ) from None
 
 
 @router.post("/{kb_id}/categories/{cat_id}/assign-chunks")
@@ -548,5 +548,5 @@ async def assign_chunks(
             404,
             code="not_found",
             message="not found",
-        )
+        ) from None
     return {"status": "ok", "assigned_count": count}

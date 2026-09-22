@@ -95,8 +95,6 @@ def middleware_configured(context, mock_rate_limiter, mock_config_loader):
 
 @given(parsers.parse('租戶 "{tenant_id}" 的 "{group}" 端點群組已超過限額'))
 def tenant_over_limit(context, mock_rate_limiter, tenant_id, group):
-    original = mock_rate_limiter.check_rate_limit
-
     async def _side_effect(key, limit, window):
         if tenant_id in key and "global" not in key and "user" not in key:
             return RateLimitResult(allowed=False, remaining=0, retry_after=42)
@@ -124,8 +122,6 @@ def tenant_under_limit(context, mock_rate_limiter, tenant_id, group):
 
 @given(parsers.parse('使用者 "{user_id}" 的 per-user 限額已超過'))
 def user_over_limit(context, mock_rate_limiter, user_id):
-    original_side_effect = mock_rate_limiter.check_rate_limit.side_effect
-
     async def _side_effect(key, limit, window):
         if user_id in key:
             return RateLimitResult(allowed=False, remaining=0, retry_after=15)

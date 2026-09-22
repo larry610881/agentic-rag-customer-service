@@ -113,10 +113,6 @@ def setup_conversations_with_bot(context, tenant_id, total, bot_count, bot_id):
         for _ in range(total - bot_count)
     ]
 
-    filtered_conversations = [
-        c for c in all_conversations if c.bot_id == bot_id
-    ]
-
     mock_repo = AsyncMock()
 
     async def mock_find_by_tenant(tid, *, bot_id=None, **_kw):

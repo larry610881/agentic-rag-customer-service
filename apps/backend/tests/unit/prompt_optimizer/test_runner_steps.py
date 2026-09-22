@@ -185,7 +185,6 @@ def given_scores_stagnate(ctx):
     ctx["mutator"].mutate = AsyncMock(
         side_effect=[f"嘗試 prompt v{i}" for i in range(1, 11)]
     )
-    num_cases = len(ctx["dataset"].test_cases)
 
     # All calls return the same mediocre answer → score never improves
     async def same_score_chat(**kwargs):
@@ -287,7 +286,6 @@ def then_budget_exhausted(ctx):
 @when("我以 dry_run 模式執行")
 def when_dry_run(ctx):
     # For dry run, api_client needs to return results for baseline eval
-    num_cases = len(ctx["dataset"].test_cases)
     ctx["api_client"].chat = AsyncMock(
         return_value=_make_chat_result(answer="這是正確的回答")
     )

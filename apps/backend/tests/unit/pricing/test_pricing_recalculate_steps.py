@@ -229,7 +229,6 @@ def dry_run_rows_given(context, n):
 
 @given(parsers.parse("dry-run 之後 token_usage_records 又多了 {n:d} 筆符合條件的 row"))
 def add_rows_after_dry_run(context, n):
-    base = len(context["usage_port"]._rows)
     new_rows = list(context["usage_port"]._rows) + [
         UsageRecalcRow(
             id=f"new-{i}",

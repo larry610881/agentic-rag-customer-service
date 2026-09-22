@@ -526,7 +526,7 @@ def blocked_shape(blocked_result, shape):
         obj = _json.loads(blocked_result.text)
         assert isinstance(obj, dict)
     else:
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, TypeError)):
             _json.loads(blocked_result.text)
 
 

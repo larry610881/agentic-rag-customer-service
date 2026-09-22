@@ -218,7 +218,6 @@ def then_rewrite_diff(ctx):
 
 @then("結果應 union by chunk_id（保留最高分）")
 def then_union(ctx):
-    chunks = ctx["result"].chunks
     # all unique
     sources = ctx["result"].sources
     chunk_ids = [s.chunk_id for s in sources]

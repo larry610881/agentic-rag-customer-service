@@ -107,8 +107,6 @@ def when_background_task_triggered(context):
 
         # upload_document now uses asyncio.create_task instead of BackgroundTasks
         # Patch create_task to capture the coroutine
-        import asyncio as _asyncio
-        original_create_task = _asyncio.create_task
         captured_coro = {}
 
         def fake_create_task(coro):
