@@ -453,7 +453,9 @@ class OpenAILLMService(LLMService):
                         usage_collector["total_tokens"] = usage.total_tokens
                         usage_collector["estimated_cost"] = usage.estimated_cost
                         usage_collector["cache_read_tokens"] = usage.cache_read_tokens
-                        usage_collector["cache_creation_tokens"] = usage.cache_creation_tokens
+                        usage_collector["cache_creation_tokens"] = (
+                            usage.cache_creation_tokens
+                        )
                         elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
                         logger.info(
                             "llm.openai.stream.done",

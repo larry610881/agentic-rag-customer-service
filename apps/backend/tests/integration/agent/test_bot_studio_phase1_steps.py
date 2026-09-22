@@ -4,7 +4,8 @@ Validates Phase 1 contracts:
 1. Stream events 帶 node_id → 對應 trace.nodes
 2. 多 worker → SSE 收到 worker_routing event
 3. 失敗路徑 → trace 含 outcome=failed 節點 + error_message
-4. 既有 web 通路 (identity_source 不帶) → trace.source = "web" + 所有節點 outcome = "success"
+4. 既有 web 通路 (identity_source 不帶)
+   → trace.source = "web" + 所有節點 outcome = "success"
 """
 
 from __future__ import annotations

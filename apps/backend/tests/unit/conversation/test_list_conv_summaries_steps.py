@@ -63,7 +63,8 @@ def _build_bot_repo(ctx):
 
 @given(
     parsers.parse(
-        '租戶 "{tenant_id}" 有 {n:d} 筆 conv_summaries（{a:d} 筆 bot="{bot_a}"、{b:d} 筆 bot="{bot_b}"）'
+        '租戶 "{tenant_id}" 有 {n:d} 筆 conv_summaries'
+        '（{a:d} 筆 bot="{bot_a}"、{b:d} 筆 bot="{bot_b}"）'
     )
 )
 def seed_cross_bot(ctx, tenant_id, n, a, bot_a, b, bot_b):
@@ -84,7 +85,9 @@ def seed_simple(ctx, tenant_id, n):
     ]
 
 
-@given(parsers.parse('租戶 "{tenant_id}" 有 conv_summaries 跨 bot-A({a:d}) + bot-B({b:d})'))
+@given(
+    parsers.parse('租戶 "{tenant_id}" 有 conv_summaries 跨 bot-A({a:d}) + bot-B({b:d})')
+)
 def seed_cross_bot_short(ctx, tenant_id, a, b):
     ctx["by_tenant"] = {
         tenant_id: (
@@ -121,7 +124,8 @@ def _run_list(ctx, *, tenant_id=None, bot_id=None, role="system_admin"):
 
 @when(
     parsers.parse(
-        '我以 tenant "{tenant}" 的 tenant_admin 身分呼叫 list_conv_summaries(tenant_id="{tenant_id}")'
+        '我以 tenant "{tenant}" 的 tenant_admin 身分呼叫 '
+        'list_conv_summaries(tenant_id="{tenant_id}")'
     )
 )
 def when_tenant(ctx, tenant, tenant_id):
@@ -139,7 +143,8 @@ def when_bot_filter(ctx, tenant_id, bot_id):
 
 @when(
     parsers.parse(
-        '我以 tenant "{tenant}" 身分呼叫 list_conv_summaries(tenant_id="{tenant_id}", bot_id="{bot_id}")'
+        '我以 tenant "{tenant}" 身分呼叫 '
+        'list_conv_summaries(tenant_id="{tenant_id}", bot_id="{bot_id}")'
     )
 )
 def when_cross_tenant_bot(ctx, tenant, tenant_id, bot_id):

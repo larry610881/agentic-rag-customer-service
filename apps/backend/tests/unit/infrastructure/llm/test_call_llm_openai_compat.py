@@ -87,9 +87,19 @@ def test_openai_blocks_split_by_role_to_system_and_user_messages_no_cache_hint()
     cm, mock_client = _patch_httpx(mock_resp)
     with cm:
         blocks = [
-            PromptBlock(text="You are helpful.", role=BlockRole.SYSTEM, cache=CacheHint.NONE),
-            PromptBlock(text="Big stable context...", role=BlockRole.USER, cache=CacheHint.NONE),
-            PromptBlock(text="Question now.", role=BlockRole.USER, cache=CacheHint.NONE),
+            PromptBlock(
+                text="You are helpful.",
+                role=BlockRole.SYSTEM,
+                cache=CacheHint.NONE,
+            ),
+            PromptBlock(
+                text="Big stable context...",
+                role=BlockRole.USER,
+                cache=CacheHint.NONE,
+            ),
+            PromptBlock(
+                text="Question now.", role=BlockRole.USER, cache=CacheHint.NONE
+            ),
         ]
         _run(
             call_llm(
@@ -115,8 +125,14 @@ def test_openai_blocks_with_cache_hint_send_structured_content():
     cm, mock_client = _patch_httpx(mock_resp)
     with cm:
         blocks = [
-            PromptBlock(text="You are helpful.", role=BlockRole.SYSTEM, cache=CacheHint.EPHEMERAL),
-            PromptBlock(text="Question now.", role=BlockRole.USER, cache=CacheHint.NONE),
+            PromptBlock(
+                text="You are helpful.",
+                role=BlockRole.SYSTEM,
+                cache=CacheHint.EPHEMERAL,
+            ),
+            PromptBlock(
+                text="Question now.", role=BlockRole.USER, cache=CacheHint.NONE
+            ),
         ]
         _run(
             call_llm(

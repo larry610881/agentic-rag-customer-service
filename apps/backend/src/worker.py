@@ -141,7 +141,8 @@ async def classify_kb_task(ctx: dict, kb_id: str, tenant_id: str) -> None:
 async def extract_dm_metadata_task(
     ctx: dict, kb_id: str, tenant_id: str
 ) -> None:
-    """KB-level DM metadata 抽取：cover/promotion 頁 OCR → LLM tool use → KB.dm_metadata。
+    """KB-level DM metadata 抽取：cover/promotion 頁 OCR → LLM tool use
+    → KB.dm_metadata。
 
     觸發於 process_document `_maybe_trigger_dm_metadata_extract`（KB 全 child
     docs done 且 KB.dm_metadata_model 已設）。失敗會走 worker_resilience

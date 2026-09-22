@@ -254,7 +254,8 @@ class HandleWebhookUseCase:
         self._prompt_guard = prompt_guard
         # Issue #68 P7：與 web/widget/API 共用的異常控管 service
         self._abuse_control = abuse_control
-        # Issue #75：防護階段閘門的 provider（與 web/widget 同一份 helper；未注入時全開）
+        # Issue #75：防護階段閘門的 provider
+        # （與 web/widget 同一份 helper；未注入時全開）
         self._guard_provider = guard_provider
         # Issue #50 — workflow 快速道用的檢索管線（direct_retrieval worker）
         self._query_rag = query_rag_use_case
@@ -853,7 +854,8 @@ class HandleWebhookUseCase:
         # helper）。這裡的 spec 不需要供應商資訊——攔截不呼叫模型，只是把固定
         # 文案包成 bot 宣告的形狀。
         _blocked_spec = OutputSpec.from_bot(bot, provider="", model="")
-        # channel-parity 二-3：攔截回應與 web 同一份組裝（json bot 同時帶 structured_output）
+        # channel-parity 二-3：攔截回應與 web 同一份組裝
+        # （json bot 同時帶 structured_output）
         if guard_result is not None and not guard_result.passed:
             await self._record_abuse(bot, event, guard, guard_hit=True)  # Issue #68 P7
             result = blocked_input_response(guard_result, _blocked_spec)
@@ -1012,7 +1014,8 @@ class HandleWebhookUseCase:
                     merge_usage(result, second)
                     return second.answer
 
-                # json：驗證 → 失敗重試一次 → 仍失敗回未命中話術；plain_text：剝 Markdown
+                # json：驗證 → 失敗重試一次 → 仍失敗回未命中話術
+                # plain_text：剝 Markdown
                 fin = await finalize_with_retry(out_spec, result.answer, retry=_retry)
                 result.answer = fin.text
                 output_obj, display_text = fin.parsed, fin.display_text
@@ -1028,7 +1031,10 @@ class HandleWebhookUseCase:
             "assistant",
             result.answer,
             tool_calls=[
-                {"tool_name": tc.get("tool_name", ""), "reasoning": tc.get("reasoning", "")}
+                {
+                    "tool_name": tc.get("tool_name", ""),
+                    "reasoning": tc.get("reasoning", ""),
+                }
                 if isinstance(tc, dict) else
                 {"tool_name": tc.tool_name, "reasoning": getattr(tc, "reasoning", "")}
                 for tc in result.tool_calls

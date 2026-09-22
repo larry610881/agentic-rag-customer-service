@@ -45,7 +45,11 @@ def _setup(ctx, *, tenant_id="T001", kb_id="kb-1", include_results=True):
     run(kb_repo.save(make_kb(kb_id, tenant_id)))
     if include_results:
         vs.search_results = [
-            SearchResult(id=f"c-{i}", score=0.9 - i * 0.1, payload={"content": f"片段 {i}", "tenant_id": tenant_id})
+            SearchResult(
+                id=f"c-{i}",
+                score=0.9 - i * 0.1,
+                payload={"content": f"片段 {i}", "tenant_id": tenant_id},
+            )
             for i in range(3)
         ]
     ctx.update(kb_repo=kb_repo, vs=vs, embed=embed, kb_id=kb_id, tenant_id=tenant_id)
@@ -69,7 +73,11 @@ def seed_kb_has_chunks(ctx, tenant_id):
 @given(parsers.parse('租戶 "{tenant_id}" 的 conv_summaries 也有相關對話摘要'))
 def seed_conv(ctx, tenant_id):
     ctx["vs"].search_results.append(
-        SearchResult(id="cs-1", score=0.85, payload={"summary": "對話摘要", "tenant_id": tenant_id})
+        SearchResult(
+            id="cs-1",
+            score=0.85,
+            payload={"summary": "對話摘要", "tenant_id": tenant_id},
+        )
     )
 
 
@@ -107,7 +115,8 @@ def _run_test(ctx, *, tenant, kb_id, query, top_k=5, include_conv=False):
 
 @when(
     parsers.parse(
-        '我以 tenant "{tenant}" 身分呼叫 test_retrieval(kb_id="{kb_id}", query="{q}", top_k={k:d})'
+        '我以 tenant "{tenant}" 身分呼叫 test_retrieval(kb_id="{kb_id}", '
+        'query="{q}", top_k={k:d})'
     )
 )
 def when_retrieve(ctx, tenant, kb_id, q, k):
@@ -125,7 +134,8 @@ def when_retrieve_default(ctx, tenant, kb_id, q):
 
 @when(
     parsers.parse(
-        '我呼叫 test_retrieval(kb_id="{kb_id}", query="{q}", include_conv_summaries=True)'
+        '我呼叫 test_retrieval(kb_id="{kb_id}", query="{q}", '
+        'include_conv_summaries=True)'
     )
 )
 def when_retrieve_cross(ctx, kb_id, q):

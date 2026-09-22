@@ -88,7 +88,11 @@ def bot_with_zero_ttl(context, bot_id):
 
 @when("系統連續兩次處理同一 Bot ID 的 Webhook")
 def process_webhook_twice(context):
-    body_text = '{"events":[{"type":"message","replyToken":"tk-c","source":{"userId":"U-c"},"message":{"type":"text","text":"hi"},"timestamp":1}]}'
+    body_text = (
+        '{"events":[{"type":"message","replyToken":"tk-c",'
+        '"source":{"userId":"U-c"},'
+        '"message":{"type":"text","text":"hi"},"timestamp":1}]}'
+    )
     for _ in range(2):
         _run(
             context["use_case"].execute_for_bot(

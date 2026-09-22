@@ -68,7 +68,11 @@ def test_finish_skips_nodes_without_token_usage():
         parent_id=None,
         start_ms=50,
         end_ms=150,
-        token_usage={"input_tokens": 500, "output_tokens": 100, "estimated_cost": 0.002},
+        token_usage={
+            "input_tokens": 500,
+            "output_tokens": 100,
+            "estimated_cost": 0.002,
+        },
     )
 
     trace.finish(total_ms=150.0)

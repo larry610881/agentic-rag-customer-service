@@ -443,7 +443,9 @@ class StartRunUseCase:
                     run_id,
                     current_iteration=evt.iteration,
                     current_score=evt.score if evt.score > 0 else None,
-                    baseline_score=evt.baseline_score if evt.baseline_score > 0 else None,
+                    baseline_score=(
+                        evt.baseline_score if evt.baseline_score > 0 else None
+                    ),
                     best_score=evt.best_score if evt.best_score > 0 else None,
                     progress_message=evt.message,
                 )
@@ -871,7 +873,9 @@ class RollbackRunUseCase:
     async def _rollback_via_version(
         self, target, run_id: str
     ) -> tuple[bool, str | None, bool, str]:
-        """建 optimizer 版本 → 嘗試發布。回傳 (applied, version_id, published, note)。"""
+        """建 optimizer 版本 → 嘗試發布。
+        回傳 (applied, version_id, published, note)。
+        """
         from src.application.prompt_gate.version_use_cases import (
             CreateConfigVersionCommand,
         )

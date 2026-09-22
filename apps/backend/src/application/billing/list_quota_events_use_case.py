@@ -108,7 +108,8 @@ class ListQuotaEventsUseCase:
         # 套用 offset + limit
         sliced = items[offset:offset + limit]
 
-        # total = 兩表 count 加總（一致性折衷：跨兩表精確 distinct count 太貴；事件 id 不會碰撞）
+        # total = 兩表 count 加總
+        # （一致性折衷：跨兩表精確 distinct count 太貴；事件 id 不會碰撞）
         total_billing = await self._billing_repo.count_recent(tenant_id=tenant_id)
         total_alert = await self._alert_repo.count_recent(tenant_id=tenant_id)
         total = total_billing + total_alert

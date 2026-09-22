@@ -1,4 +1,5 @@
-"""Regression test: background task 必須 lazy resolve use case，不能使用 request-scoped session。
+"""Regression test: background task 必須 lazy resolve use case，
+不能使用 request-scoped session。
 
 根因：upload_document / batch_reprocess / reprocess_document 的 background task
 使用了注入的 use case（持有 request-scoped session），但 response 送回後 session 已被
@@ -115,7 +116,10 @@ def when_background_task_triggered(context):
             coro.close()  # Prevent RuntimeWarning
             return MagicMock()
 
-        with patch("src.interfaces.api.document_router.asyncio.create_task", side_effect=fake_create_task):
+        with patch(
+            "src.interfaces.api.document_router.asyncio.create_task",
+            side_effect=fake_create_task,
+        ):
             _run(upload_document(
                 kb_id="kb-1",
                 file=mock_file,

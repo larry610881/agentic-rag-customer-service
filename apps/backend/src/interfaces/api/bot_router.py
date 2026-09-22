@@ -398,7 +398,9 @@ def _to_response(bot) -> BotResponse:
                 "url": s.url,
                 "name": s.name,
                 "enabled_tools": s.enabled_tools,
-                "tools": [{"name": t.name, "description": t.description} for t in s.tools],
+                "tools": [
+                    {"name": t.name, "description": t.description} for t in s.tools
+                ],
                 "version": s.version,
             }
             for s in bot.mcp_servers
@@ -453,7 +455,11 @@ def _to_response(bot) -> BotResponse:
         },
         customer_service_url=bot.customer_service_url,
         intent_routes=[
-            {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
+            {
+                "name": r.name,
+                "description": r.description,
+                "system_prompt": r.system_prompt,
+            }
             for r in bot.intent_routes
         ],
         busy_reply_message=bot.busy_reply_message,
@@ -615,7 +621,11 @@ async def _create_bot_once(
             },
             customer_service_url=body.customer_service_url,
             intent_routes=[
-                {"name": r.name, "description": r.description, "system_prompt": r.system_prompt}
+                {
+                    "name": r.name,
+                    "description": r.description,
+                    "system_prompt": r.system_prompt,
+                }
                 for r in body.intent_routes
             ],
             busy_reply_message=body.busy_reply_message,

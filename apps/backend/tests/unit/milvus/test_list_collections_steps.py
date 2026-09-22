@@ -28,7 +28,12 @@ def ctx():
     return {}
 
 
-@given(parsers.parse('Milvus 有 collections: "{c1}"({r1:d} rows), "{c2}"({r2:d} rows), "{c3}"({r3:d} rows)'))
+@given(
+    parsers.parse(
+        'Milvus 有 collections: "{c1}"({r1:d} rows), "{c2}"({r2:d} rows), '
+        '"{c3}"({r3:d} rows)'
+    )
+)
 def seed_three(ctx, c1, r1, c2, r2, c3, r3):
     vs = FakeVectorStore()
     vs.collections_info = [
@@ -94,7 +99,9 @@ def when_platform(ctx):
     )
 
 
-@when(parsers.parse('我以 tenant "{tenant}" 的 tenant_admin 身分呼叫 list_collections()'))
+@when(
+    parsers.parse('我以 tenant "{tenant}" 的 tenant_admin 身分呼叫 list_collections()')
+)
 def when_tenant(ctx, tenant):
     uc = ListCollectionsUseCase(ctx["vs"], ctx["kb_repo"])
     ctx["result"] = run(

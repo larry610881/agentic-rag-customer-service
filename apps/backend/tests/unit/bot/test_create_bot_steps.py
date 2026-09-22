@@ -96,7 +96,11 @@ def bot_kb_count(context, count):
     assert len(context["result"].knowledge_base_ids) == count
 
 
-@then(parsers.parse("機器人預設 LLM 參數應為 temperature={temp:g} max_tokens={max_t:d}"))
+@then(
+    parsers.parse(
+        "機器人預設 LLM 參數應為 temperature={temp:g} " "max_tokens={max_t:d}"
+    )
+)
 def bot_default_llm_params(context, temp, max_t):
     params = context["result"].llm_params
     assert params.temperature == temp

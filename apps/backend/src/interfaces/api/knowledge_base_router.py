@@ -394,7 +394,9 @@ class CategoryChunksResponse(BaseModel):
     chunks: list[CategoryChunkItemResponse]
 
 
-@router.get("/{kb_id}/categories/{cat_id}/chunks", response_model=CategoryChunksResponse)
+@router.get(
+    "/{kb_id}/categories/{cat_id}/chunks", response_model=CategoryChunksResponse
+)
 @inject
 async def get_category_chunks(
     kb_id: str,

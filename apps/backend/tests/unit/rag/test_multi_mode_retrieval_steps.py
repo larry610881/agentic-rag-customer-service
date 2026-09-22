@@ -83,7 +83,9 @@ def _seed(ctx, *, tenant_id="T001", kb_id="kb-1", chunks=3):
     )
 
 
-@given(parsers.parse('租戶 "{tenant_id}" 的 KB "{kb_id}" 有 {n:d} 筆已 embed 的 chunks'))
+@given(
+    parsers.parse('租戶 "{tenant_id}" 的 KB "{kb_id}" 有 {n:d} 筆已 embed 的 chunks')
+)
 def seed_with_n(ctx, tenant_id, kb_id, n):
     _seed(ctx, tenant_id=tenant_id, kb_id=kb_id, chunks=n)
 
@@ -253,4 +255,7 @@ def then_value_error(ctx):
 def then_rewrite_received_prompt(ctx):
     captured = ctx["captured"]
     assert "rewrite_kwargs" in captured, "rewrite_query never called"
-    assert captured["rewrite_kwargs"].get("bot_system_prompt") == ctx["bot_system_prompt"]
+    assert (
+        captured["rewrite_kwargs"].get("bot_system_prompt")
+        == ctx["bot_system_prompt"]
+    )

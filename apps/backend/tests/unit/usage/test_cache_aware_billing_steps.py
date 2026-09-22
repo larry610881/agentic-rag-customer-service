@@ -245,7 +245,8 @@ def setup_first_chunk_response(context, cc, cr):
 
 
 @given(parsers.parse(
-    "後續 4 個 chunks 的 LLM 回應每筆 cache_read_tokens={cr:d}、cache_creation_tokens={cc:d}"
+    "後續 4 個 chunks 的 LLM 回應每筆 "
+    "cache_read_tokens={cr:d}、cache_creation_tokens={cc:d}"
 ))
 def setup_subsequent_chunk_responses(context, cr, cc):
     context["subsequent_response"] = LLMCallResult(

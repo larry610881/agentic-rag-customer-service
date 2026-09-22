@@ -31,7 +31,8 @@ def old_jwt(context, jwt_service, token_type, tenant_id):
 
 @given(
     parsers.parse(
-        '一個 type 為 "{token_type}" 的新版 JWT 包含 user_id "{user_id}" tenant_id "{tenant_id}" role "{role}"'
+        '一個 type 為 "{token_type}" 的新版 JWT 包含 user_id "{user_id}" '
+        'tenant_id "{tenant_id}" role "{role}"'
     )
 )
 def new_jwt(context, jwt_service, token_type, user_id, tenant_id, role):

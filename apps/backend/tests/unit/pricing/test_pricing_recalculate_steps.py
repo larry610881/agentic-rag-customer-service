@@ -363,7 +363,11 @@ def assert_audit_saved(context):
     assert context["audit_repo"].saved[0].executed_by == "admin"
 
 
-@then(parsers.parse("該區間的 {n:d} 筆 token_usage_records 的 cost_recalc_at 應被設定為當前時間"))
+@then(
+    parsers.parse(
+        "該區間的 {n:d} 筆 token_usage_records 的 cost_recalc_at 應被設定為當前時間"
+    )
+)
 def assert_recalc_at(context, n):
     assert context["usage_port"].recalc_at is not None
     assert len(context["usage_port"].updates) == n

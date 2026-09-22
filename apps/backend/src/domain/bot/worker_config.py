@@ -22,7 +22,8 @@ class WorkerConfig:
     max_tokens: int = 1024
     max_tool_calls: int = 5
     enabled_mcp_ids: list[str] = field(default_factory=list)
-    knowledge_base_ids: list[str] = field(default_factory=list)  # 空 = 用 bot default KB
+    # 空 = 用 bot default KB
+    knowledge_base_ids: list[str] = field(default_factory=list)
     # Worker 層級啟用工具白名單；None = 繼承 Bot 的 enabled_tools；
     # [] = 顯式不啟用任何 built-in tool；[...] = 只啟用這些
     enabled_tools: list[str] | None = None

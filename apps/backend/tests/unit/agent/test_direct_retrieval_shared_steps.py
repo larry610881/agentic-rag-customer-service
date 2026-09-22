@@ -56,7 +56,11 @@ def _setup_web(
     from src.domain.bot.mode_presets import preset_values
 
     bot = Bot(
-        id=BotId(value="bot-dr"), tenant_id="t1", name="DR", knowledge_base_ids=["kb-faq"], mode=mode,
+        id=BotId(value="bot-dr"),
+        tenant_id="t1",
+        name="DR",
+        knowledge_base_ids=["kb-faq"],
+        mode=mode,
     )
     # Issue #92：情境預設只填值，顯式參數代表「使用者偏離預設」，優先生效
     for _k, _v in preset_values(mode).items():

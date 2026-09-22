@@ -168,7 +168,8 @@ def _seed_conv(
                 conversation_id=cid.value,
                 role="user" if i % 2 == 0 else "assistant",
                 content=f"msg {i}",
-                created_at=now - timedelta(minutes=last_message_at_offset_min + message_count - i),
+                created_at=now
+                - timedelta(minutes=last_message_at_offset_min + message_count - i),
             )
             for i in range(message_count)
         ]
@@ -178,7 +179,8 @@ def _seed_conv(
             bot_id=None,
             visitor_id=None,
             messages=messages,
-            created_at=now - timedelta(minutes=last_message_at_offset_min + message_count),
+            created_at=now
+            - timedelta(minutes=last_message_at_offset_min + message_count),
             summary=summary,
             message_count=message_count,
             summary_message_count=summary_message_count,
@@ -366,7 +368,8 @@ def verify_summary_message_count(ctx, conv_name, n):
 
 @then(parsers.parse("usage_records 應有 {n:d} 筆 {category} type"))
 def verify_usage_records(ctx, n, category):
-    # 測試簡化：驗證 summary service 被呼叫次數相對應（summary=每次 1 筆，embedding=每次 1 筆）
+    # 測試簡化：驗證 summary service 被呼叫次數相對應
+    # （summary=每次 1 筆，embedding=每次 1 筆）
     # 實際 usage_records 的 integration 驗證需重查 DB — 這裡用 mock sentinel
     if category == "conversation_summary":
         assert len(ctx["mock_summary"].calls) == n, (
@@ -379,7 +382,9 @@ def verify_usage_records(ctx, n, category):
         pytest.fail(f"unknown category {category}")
 
 
-@then(parsers.parse("mock Milvus upsert_conv_summary 應被呼叫 {n:d} 次（覆蓋舊 vector）"))
+@then(
+    parsers.parse("mock Milvus upsert_conv_summary 應被呼叫 {n:d} 次（覆蓋舊 vector）")
+)
 def verify_milvus_upsert_override(ctx, n):
     assert len(ctx["mock_milvus"].upsert_calls) == n
 

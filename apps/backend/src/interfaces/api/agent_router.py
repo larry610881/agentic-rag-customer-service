@@ -59,7 +59,8 @@ class ChatRequest(BaseModel):
     bot_id: str | None = None
     knowledge_base_id: str | None = None
     conversation_id: str | None = None
-    # 來源識別（"web" / "widget" / "line" / "studio"），影響 agent_execution_traces.source；
+    # 來源識別（"web" / "widget" / "line" / "studio"），
+    # 影響 agent_execution_traces.source；
     # 預設 "web" 對應後台 chat / Studio 試運轉等網頁來源。
     identity_source: str | None = None
     # Issue #54 Phase C — 影子執行（閘門驗證 / Playground）。
@@ -80,7 +81,10 @@ class TokenUsageResponse(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def estimated_cost_str(self) -> str:
-        """Issue #99：金額字串形式（USD，6 位小數），跨端無浮點誤差；數字欄位維持相容。"""
+        (
+            """Issue #99：金額字串形式（USD，6 位小數），跨端無浮點誤差；"""
+            """數字欄位維持相容。"""
+        )
         return f"{float(self.estimated_cost):.6f}"
 
 
@@ -360,7 +364,8 @@ async def agent_chat_stream(
             )
             AgentTraceCollector.mark_current_failed(error_msg)
 
-            # Phase 1: 同時持久化 trace（exception 路徑 use_case 來不及 _persist_agent_trace）
+            # Phase 1: 同時持久化 trace
+            # （exception 路徑 use_case 來不及 _persist_agent_trace）
             # + 帶 trace_id 給前端 fetch 完整 DAG（含 failed 節點）
             failed_trace_id = ""
             _trace = AgentTraceCollector.current()
@@ -386,7 +391,8 @@ async def agent_chat_stream(
             yield seq + 1, sse_frame(error_payload, seq + 1)
             yield seq + 2, sse_frame(done_payload, seq + 2)
 
-    # Issue #99：帶 Idempotency-Key 時整段事件存快照，同 key 重送從快照重播（可帶 Last-Event-ID）
+    # Issue #99：帶 Idempotency-Key 時整段事件存快照，
+    # 同 key 重送從快照重播（可帶 Last-Event-ID）
     frames, headers = await idempotent_sse(
         idempotency_guard,
         key=idempotency_key,

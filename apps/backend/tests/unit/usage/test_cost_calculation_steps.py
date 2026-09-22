@@ -54,7 +54,9 @@ def setup_gpt_pricing(context):
     context["pricing"] = {"gpt-5.1": {"input": 1.25, "output": 10.0}}
 
 
-@when('用模型名 "gpt-5.1-2025-11-13" 計算 1000 input tokens 和 500 output tokens 的成本')
+@when(
+    '用模型名 "gpt-5.1-2025-11-13" 計算 1000 input tokens 和 500 output tokens 的成本'
+)
 def do_calculate_with_suffix(context):
     context["usage"] = calculate_usage(
         model="gpt-5.1-2025-11-13",

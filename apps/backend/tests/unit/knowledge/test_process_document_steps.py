@@ -153,7 +153,10 @@ def pending_document(
             id=ChunkId(),
             document_id="doc-001",
             tenant_id="tenant-001",
-            content=f"This is chunk number {i} with enough content to pass quality filter.",
+            content=(
+                f"This is chunk number {i} with enough content to pass "
+                "quality filter."
+            ),
             chunk_index=i,
         )
         for i in range(3)

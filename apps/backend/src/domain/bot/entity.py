@@ -86,7 +86,8 @@ def validate_reasoning_effort(value: object) -> str:
         )
     return value
 DEFAULT_MISS_REPLY = "很抱歉，這個問題不在我的服務範圍內，歡迎換個方式問我。"
-# JSON 格式 bot 未設定 miss_reply 時的平台預設未命中物件（無 schema 或通過 schema 時使用）
+# JSON 格式 bot 未設定 miss_reply 時的平台預設未命中物件
+# （無 schema 或通過 schema 時使用）
 DEFAULT_MISS_REPLY_JSON: dict = {
     "status": "out_of_scope",
     "category": "unclassified",
@@ -153,7 +154,8 @@ class Bot:
     # Issue #70：輸出格式與未命中話術（三通路共用；進設定快照）
     output_format: str = "text"          # text | plain_text | json
     output_schema: dict | None = None    # output_format=json 時可附 JSON schema
-    miss_reply: str = ""                 # 空 = 系統預設（json 時為 DEFAULT_MISS_REPLY_JSON）
+    # 空 = 系統預設（json 時為 DEFAULT_MISS_REPLY_JSON）
+    miss_reply: str = ""
     # json 輸出時文字通路（LINE / widget 對話泡泡）顯示的欄位名
     output_text_field: str = "answer"
     gate_soft_threshold: float = 0.8
@@ -191,8 +193,10 @@ class Bot:
     # Per-tool RAG 參數覆蓋（key = tool name，例如 "rag_query" / "query_dm_with_image"）
     # 未設定時走 Bot 全域 rag_top_k / rag_score_threshold / rerank_*
     tool_configs: dict[str, ToolRagConfig] = field(default_factory=dict)
-    intent_routes: list[IntentRoute] = field(default_factory=list)  # deprecated → bot_workers
-    router_model: str = ""  # LLM router 分類用 model（空 = tenant default → 系統 default）
+    # deprecated → bot_workers
+    intent_routes: list[IntentRoute] = field(default_factory=list)
+    # LLM router 分類用 model（空 = tenant default → 系統 default）
+    router_model: str = ""
     # S-KB-Followup.2: bot-level override for conversation summary
     summary_model: str = ""  # 空 = tenant default → 系統 default
     busy_reply_message: str = "小編正在努力回覆中，請稍等一下喔～"

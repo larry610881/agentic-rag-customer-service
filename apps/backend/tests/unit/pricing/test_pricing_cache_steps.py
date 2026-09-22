@@ -19,7 +19,10 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-@given("DB 有 3 筆生效中的 pricing: openai/gpt-5, anthropic/claude-haiku-4-5, litellm/azure_ai/claude-sonnet-4-5")
+@given(
+    "DB 有 3 筆生效中的 pricing: openai/gpt-5, anthropic/claude-haiku-4-5, "
+    "litellm/azure_ai/claude-sonnet-4-5"
+)
 def seed_three(context):
     repo = FakeModelPricingRepo()
     past = _now() - timedelta(hours=1)
@@ -119,7 +122,8 @@ def assert_none(context):
 
 
 @given(
-    "PricingCache 有 \"openai\" \"gpt-5\" 兩個版本: v1 effective_from=T0, v2 effective_from=T1"
+    "PricingCache 有 \"openai\" \"gpt-5\" 兩個版本: "
+    "v1 effective_from=T0, v2 effective_from=T1"
 )
 def seed_two_versions(context):
     repo = FakeModelPricingRepo()

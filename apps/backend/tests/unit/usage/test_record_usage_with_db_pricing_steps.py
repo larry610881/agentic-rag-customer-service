@@ -109,7 +109,8 @@ class _SpyCache(InMemoryPricingCache):
 
 @when(
     parsers.parse(
-        'RecordUsageUseCase 收到一筆 TokenUsage model="{model}" estimated_cost={cost:g} input_tokens={it:d} output_tokens={ot:d}'
+        'RecordUsageUseCase 收到一筆 TokenUsage model="{model}" '
+        'estimated_cost={cost:g} input_tokens={it:d} output_tokens={ot:d}'
     )
 )
 def record(context, model, cost, it, ot):
@@ -152,7 +153,8 @@ def record_simple(context, model, cost):
 
 @then(
     parsers.parse(
-        "儲存的 UsageRecord.estimated_cost 應以 DB 價格計算 input={inp:g} output={out:g}"
+        "儲存的 UsageRecord.estimated_cost 應以 DB 價格計算 "
+        "input={inp:g} output={out:g}"
     )
 )
 def assert_db_priced(context, inp, out):

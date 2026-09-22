@@ -215,7 +215,8 @@ def when_run_patience_3(ctx):
 def then_early_stop(ctx):
     result: RunResult = ctx["result"]
     assert result.stopped_reason == "patience"
-    # Should have stopped after 3 non-improving iterations (baseline + 3 iterations = 4 total)
+    # Should have stopped after 3 non-improving iterations
+    # (baseline + 3 iterations = 4 total)
     assert len(result.iterations) == 4  # iteration 0,1,2,3
 
 
@@ -272,7 +273,8 @@ def then_budget_exhausted(ctx):
     result: RunResult = ctx["result"]
     assert result.stopped_reason == "budget"
     # Baseline uses 3 API calls. Budget=6, so only 1 iteration possible (3+3=6).
-    # After iteration 1 (total_api_calls=6), next iteration needs 3 more (6+3=9 > 6) → stop.
+    # After iteration 1 (total_api_calls=6), next iteration needs 3 more
+    # (6+3=9 > 6) → stop.
     assert result.total_api_calls <= 6
     # iterations: baseline (0) + 1 iteration
     assert len(result.iterations) == 2

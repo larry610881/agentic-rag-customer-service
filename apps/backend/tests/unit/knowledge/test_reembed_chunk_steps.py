@@ -30,7 +30,15 @@ def ctx():
     return {}
 
 
-def _seed(ctx, *, chunk_id="chunk-1", kb_id="kb-1", tenant_id="T001", content="修正後內容", ctx_text="context X"):
+def _seed(
+    ctx,
+    *,
+    chunk_id="chunk-1",
+    kb_id="kb-1",
+    tenant_id="T001",
+    content="修正後內容",
+    ctx_text="context X",
+):
     doc_repo = FakeDocumentRepo()
     kb_repo = FakeKbRepo()
     run(kb_repo.save(make_kb(kb_id, tenant_id)))
@@ -104,7 +112,12 @@ def then_embed_called(ctx):
     assert ctx["embed"].calls == 1
 
 
-@then(parsers.parse('Milvus collection "{collection}" 應呼叫 upsert_single(id="{cid}", vector, payload)'))
+@then(
+    parsers.parse(
+        'Milvus collection "{collection}" 應呼叫 '
+        'upsert_single(id="{cid}", vector, payload)'
+    )
+)
 def then_upsert_single(ctx, collection, cid):
     assert len(ctx["vs"].single_upserts) == 1
     col, mid, _, _ = ctx["vs"].single_upserts[0]

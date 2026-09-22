@@ -344,7 +344,14 @@ def setup_cache_usage_zero_cost(context):
         model="claude-sonnet-4-6",
         input_tokens=500,
         output_tokens=200,
-        pricing={"claude-sonnet-4-6": {"input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_creation": 3.75}},
+        pricing={
+            "claude-sonnet-4-6": {
+                "input": 3.0,
+                "output": 15.0,
+                "cache_read": 0.3,
+                "cache_creation": 3.75,
+            }
+        },
     )
     context["base_cost"] = base.estimated_cost
 

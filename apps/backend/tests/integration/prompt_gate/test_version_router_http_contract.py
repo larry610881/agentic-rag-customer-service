@@ -1,4 +1,6 @@
-"""Regression: config-version router HTTP 契約 401/404/422（H20，review 標為零覆蓋）。"""
+"""Regression: config-version router HTTP 契約 401/404/422
+（H20，review 標為零覆蓋）。
+"""
 
 
 def _admin(app, tenant_id):

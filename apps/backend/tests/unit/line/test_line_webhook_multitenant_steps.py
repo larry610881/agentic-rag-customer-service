@@ -94,7 +94,12 @@ def agent_ready_with_answer(context, answer):
 @when(parsers.parse('系統透過 Bot ID "{bot_id}" 處理 Webhook 事件'))
 def process_webhook_for_bot(context, bot_id):
     _build_use_case(context)
-    body_text = '{"events":[{"type":"message","replyToken":"token-mt-001","source":{"userId":"U-mt-user"},"message":{"type":"text","text":"測試訊息"},"timestamp":1700000000000}]}'
+    body_text = (
+        '{"events":[{"type":"message","replyToken":"token-mt-001",'
+        '"source":{"userId":"U-mt-user"},'
+        '"message":{"type":"text","text":"測試訊息"},'
+        '"timestamp":1700000000000}]}'
+    )
     signature = "valid-sig"
     try:
         _run(
@@ -221,7 +226,8 @@ def verify_factory_called_with_secret(context):
 
 @given(
     parsers.parse(
-        'Bot "{bot_id}" 屬於租戶 "{tenant_id}" 且設定了知識庫 "{kb_ids}" 和系統提示 "{prompt}"'
+        'Bot "{bot_id}" 屬於租戶 "{tenant_id}" 且設定了知識庫 "{kb_ids}" '
+        '和系統提示 "{prompt}"'
     )
 )
 def bot_with_kb_and_prompt(context, bot_id, tenant_id, kb_ids, prompt):
@@ -260,7 +266,8 @@ def verify_agent_system_prompt(context, prompt):
     call_kwargs = context["mock_agent"].process_message.call_args
     # 2026-08-17：LINE 通路規範（格式/長度/角色鎖）由程式注入一次，
     # Issue #91：LINE 改與 web 同一支組裝器（平台防護層 → bot 層）。
-    # Issue #92：LINE 通路後綴已移除——通路差異改用能力設定（output_format / max_tokens）。
+    # Issue #92：LINE 通路後綴已移除——通路差異改用能力設定
+    # （output_format / max_tokens）。
     from src.application.agent.prompt_assembler import resolve_effective_prompt
     expected = resolve_effective_prompt({"system_prompt": "", "bot_prompt": prompt})
     assert call_kwargs.kwargs["system_prompt"] == expected

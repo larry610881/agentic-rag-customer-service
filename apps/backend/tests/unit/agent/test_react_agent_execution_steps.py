@@ -279,7 +279,11 @@ def user_asks_single_query(context):
         AIMessage(
             content="",
             tool_calls=[
-                {"name": "rag_query", "args": {"query": "唯一一次查詢"}, "id": "call_1"},
+                {
+                    "name": "rag_query",
+                    "args": {"query": "唯一一次查詢"},
+                    "id": "call_1",
+                },
             ],
         ),
         AIMessage(content="最終回答"),

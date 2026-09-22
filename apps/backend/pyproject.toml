@@ -96,6 +96,8 @@ ignore = ["B008"]
 "src/application/security/prompt_guard_service.py" = ["E501"]
 # BDD step 描述含 CJK 自然語言字串
 "tests/unit/knowledge/test_separator_chunking_steps.py" = ["E501"]
+# 牌價表：一行一個模型（id / 顯示名 / 各項單價），拆行會失去逐列對照與 diff 可讀性
+"src/domain/platform/model_registry.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

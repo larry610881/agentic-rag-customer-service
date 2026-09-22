@@ -43,7 +43,9 @@ def _make_jwt(payload: dict) -> str:
 
 @given(parsers.parse('一個 user_access 類型的 JWT token 包含 tenant_id "{tid}"'))
 def user_access_token(context, tid):
-    context["token"] = _make_jwt({"type": "user_access", "tenant_id": tid, "sub": "u-1"})
+    context["token"] = _make_jwt(
+        {"type": "user_access", "tenant_id": tid, "sub": "u-1"}
+    )
 
 
 # --- Scenario: tenant_access JWT ---
@@ -106,5 +108,11 @@ def verify_signature(context):
     assert "tenant_id" in params
     assert "error_detail" in params
     # Both should have default values (optional)
-    assert params["tenant_id"].default is None or params["tenant_id"].default == inspect.Parameter.empty
-    assert params["error_detail"].default is None or params["error_detail"].default == inspect.Parameter.empty
+    assert (
+        params["tenant_id"].default is None
+        or params["tenant_id"].default == inspect.Parameter.empty
+    )
+    assert (
+        params["error_detail"].default is None
+        or params["error_detail"].default == inspect.Parameter.empty
+    )

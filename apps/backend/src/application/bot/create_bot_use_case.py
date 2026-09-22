@@ -178,7 +178,9 @@ class CreateBotUseCase:
             escalate_on_miss=command.escalate_on_miss,
             guard_stages=guard_stages,
             output_format=command.output_format,
-            output_schema=dict(command.output_schema) if command.output_schema else None,
+            output_schema=(
+                dict(command.output_schema) if command.output_schema else None
+            ),
             miss_reply=command.miss_reply,
             output_text_field=command.output_text_field,
             gate_soft_threshold=command.gate_soft_threshold,

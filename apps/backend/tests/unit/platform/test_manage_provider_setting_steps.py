@@ -145,7 +145,9 @@ def new_encrypted_key(context):
 
 
 @given(
-    parsers.parse("系統中有 {llm_count:d} 個 LLM 供應商和 {emb_count:d} 個 Embedding 供應商")
+    parsers.parse(
+        "系統中有 {llm_count:d} 個 LLM 供應商和 {emb_count:d} 個 Embedding 供應商"
+    )
 )
 def setup_providers(context, mock_provider_repo, llm_count, emb_count):
     llm_settings = [

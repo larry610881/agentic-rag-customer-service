@@ -186,7 +186,8 @@ class Settings(BaseSettings):
     data_retention_enabled: bool = False
 
     # CORS
-    cors_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174"  # comma-separated allowed origins
+    # comma-separated allowed origins
+    cors_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174"
 
     # App
     # Issue #67 P5：預設 production（fail-closed）；本機開發請在 .env 明確設 development

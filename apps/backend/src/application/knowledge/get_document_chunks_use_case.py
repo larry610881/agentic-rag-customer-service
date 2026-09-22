@@ -29,7 +29,8 @@ class GetDocumentChunksUseCase:
     async def execute(
         self, document_id: str, limit: int = 20, offset: int = 0
     ) -> ChunkPreviewResult:
-        # Try parent aggregation first — only aggregates if find_children returns real list
+        # Try parent aggregation first — only aggregates if find_children
+        # returns real list
         try:
             children = await self._doc_repo.find_children(document_id)
         except Exception:
@@ -44,7 +45,12 @@ class GetDocumentChunksUseCase:
                 )
                 for chunk in child_chunks:
                     all_items.append(
-                        _to_item(chunk, page_number=child.page_number, document_id=child.id.value, document_filename=child.filename)
+                        _to_item(
+                            chunk,
+                            page_number=child.page_number,
+                            document_id=child.id.value,
+                            document_filename=child.filename,
+                        )
                     )
             total = len(all_items)
             paged = all_items[offset : offset + limit]
@@ -66,13 +72,20 @@ class GetDocumentChunksUseCase:
         except Exception:
             pass
         items = [
-            _to_item(c, page_number=page_number, document_id=document_id, document_filename=filename)
+            _to_item(
+                c,
+                page_number=page_number,
+                document_id=document_id,
+                document_filename=filename,
+            )
             for c in chunks
         ]
         return ChunkPreviewResult(chunks=items, total=total)
 
 
-def _to_item(chunk, page_number=None, document_id="", document_filename="") -> ChunkPreviewItem:
+def _to_item(
+    chunk, page_number=None, document_id="", document_filename=""
+) -> ChunkPreviewItem:
     issues: list[str] = []
     if len(chunk.content) < ChunkQualityService.SHORT_THRESHOLD:
         issues.append("too_short")

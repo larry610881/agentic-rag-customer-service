@@ -43,7 +43,8 @@ def seed_n(ctx, tenant_id, kb_id, n):
 
 @given(
     parsers.parse(
-        '租戶 "{tenant_id}" 的 KB "{kb_id}" 有 chunks：{a:d} 筆屬 category "{cat_a}"、{b:d} 筆屬 category "{cat_b}"、{c:d} 筆未分類'
+        '租戶 "{tenant_id}" 的 KB "{kb_id}" 有 chunks：{a:d} 筆屬 category "{cat_a}"、'
+        '{b:d} 筆屬 category "{cat_b}"、{c:d} 筆未分類'
     )
 )
 def seed_categorized(ctx, tenant_id, kb_id, a, cat_a, b, cat_b, c):
@@ -95,7 +96,8 @@ def _run_list(ctx, *, tenant, kb_id, page=1, page_size=50, category_id=None):
 
 @when(
     parsers.parse(
-        '我以 tenant "{tenant}" 身分呼叫 list_kb_chunks(kb_id="{kb_id}", page={page:d}, page_size={page_size:d})'
+        '我以 tenant "{tenant}" 身分呼叫 list_kb_chunks(kb_id="{kb_id}", '
+        "page={page:d}, page_size={page_size:d})"
     )
 )
 def when_list_paginated(ctx, tenant, kb_id, page, page_size):

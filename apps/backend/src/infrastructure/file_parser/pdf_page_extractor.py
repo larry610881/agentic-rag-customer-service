@@ -10,7 +10,9 @@ def extract_pages_as_images(raw_bytes: bytes, dpi: int = 200) -> list[bytes]:
     return list(iter_pages_as_images(raw_bytes, dpi))
 
 
-def iter_pages_as_images(raw_bytes: bytes, dpi: int = 200) -> Generator[bytes, None, None]:
+def iter_pages_as_images(
+    raw_bytes: bytes, dpi: int = 200
+) -> Generator[bytes, None, None]:
     """Yield PNG bytes one page at a time (memory efficient)."""
     import fitz
 

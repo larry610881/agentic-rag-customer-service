@@ -30,7 +30,11 @@ def run_diagnose(context):
 
 @then(parsers.parse('應產生 category 為 "{category}" severity 為 "{severity}" 的提示'))
 def verify_hint_category_severity(context, category: str, severity: str):
-    matching = [h for h in context["hints"] if h.category == category and h.severity == severity]
+    matching = [
+        h
+        for h in context["hints"]
+        if h.category == category and h.severity == severity
+    ]
     assert len(matching) >= 1, (
         f"Expected hint with category={category}, severity={severity}, "
         f"got: {[(h.category, h.severity) for h in context['hints']]}"

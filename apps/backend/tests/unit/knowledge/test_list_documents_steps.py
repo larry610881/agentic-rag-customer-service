@@ -77,7 +77,9 @@ def kb_has_parent_and_children(context, mock_doc_repo, kb_id, parents, children)
 
 @when(parsers.parse('查詢知識庫 "{kb_id}" 的文件列表'), target_fixture="result")
 def query_documents(context, list_use_case, mock_doc_repo, kb_id):
-    if not hasattr(mock_doc_repo.find_top_level_by_kb, 'return_value') or not isinstance(
+    if not hasattr(
+        mock_doc_repo.find_top_level_by_kb, 'return_value'
+    ) or not isinstance(
         mock_doc_repo.find_top_level_by_kb.return_value, list
     ):
         mock_doc_repo.find_top_level_by_kb = AsyncMock(return_value=[])

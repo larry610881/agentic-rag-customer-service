@@ -24,7 +24,9 @@ scenarios("integration/agent/bot_studio.feature")
 
 
 class _StudioFakeAgent(AgentService):
-    """Minimal fake — 模擬真實 agent 行為：start trace、yield 一個 token、加 final node。
+    """Minimal fake — 模擬真實 agent 行為：
+
+    start trace、yield 一個 token、加 final node。
     不依賴任何 LLM provider，讓 use_case stream 完整跑到 _persist_agent_trace。
     """
 

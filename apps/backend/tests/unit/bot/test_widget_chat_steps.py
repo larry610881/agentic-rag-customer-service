@@ -50,7 +50,11 @@ def tenant_exists(context, tenant_id):
     context["tenant_id"] = tenant_id
 
 
-@given(parsers.parse('機器人 "{bot_id}" 屬於租戶 "{tenant_id}" short_code 為 "{short_code}"'))
+@given(
+    parsers.parse(
+        '機器人 "{bot_id}" 屬於租戶 "{tenant_id}" short_code 為 "{short_code}"'
+    )
+)
 def bot_exists(context, mock_bot_repo, bot_id, tenant_id, short_code):
     bot = Bot(
         id=BotId(value=bot_id),
@@ -94,7 +98,9 @@ def bot_keep_history(context, value):
 
 
 @when(parsers.parse('從來源 "{origin}" 發送 widget 訊息 "{message}"'))
-def send_widget_message(context, mock_bot_repo, mock_send_message_use_case, origin, message):
+def send_widget_message(
+    context, mock_bot_repo, mock_send_message_use_case, origin, message
+):
     from src.interfaces.api.widget_router import WidgetChatRequest, validate_widget_bot
 
     short_code = context.get("short_code", "ab3Kx9")
@@ -124,7 +130,10 @@ def send_widget_message(context, mock_bot_repo, mock_send_message_use_case, orig
             async for event in mock_send_message_use_case.execute_stream(command):
                 events.append(event)
                 # If keep_history is False, filter out conversation_id events
-                if not bot.widget_keep_history and event.get("type") == "conversation_id":
+                if (
+                    not bot.widget_keep_history
+                    and event.get("type") == "conversation_id"
+                ):
                     events.pop()
 
         _run(_collect())

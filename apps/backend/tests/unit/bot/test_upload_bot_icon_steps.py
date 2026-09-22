@@ -41,7 +41,9 @@ def mock_bot_repo():
 def mock_file_storage():
     storage = AsyncMock(spec=FileStorageService)
     storage.save_bot_icon = AsyncMock(
-        side_effect=lambda bot_id, content, ext: f"/static/uploads/bots/{bot_id}/fab-icon.{ext}"
+        side_effect=lambda bot_id, content, ext: (
+            f"/static/uploads/bots/{bot_id}/fab-icon.{ext}"
+        )
     )
     storage.delete_bot_icon = AsyncMock()
     return storage

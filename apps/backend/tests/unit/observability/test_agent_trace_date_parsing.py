@@ -23,9 +23,18 @@ from src.application.observability.agent_trace_queries import (
     "value,expected",
     [
         ("2026-03-24T05:48:41Z", datetime(2026, 3, 24, 5, 48, 41, tzinfo=timezone.utc)),
-        ("2026-03-24T05:48:41+00:00", datetime(2026, 3, 24, 5, 48, 41, tzinfo=timezone.utc)),
-        ("2026-03-24T05:48:41.932Z", datetime(2026, 3, 24, 5, 48, 41, 932000, tzinfo=timezone.utc)),
-        ("2026-03-24T05:48:41", datetime(2026, 3, 24, 5, 48, 41, tzinfo=timezone.utc)),  # 沒 tz 預設 UTC
+        (
+            "2026-03-24T05:48:41+00:00",
+            datetime(2026, 3, 24, 5, 48, 41, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-03-24T05:48:41.932Z",
+            datetime(2026, 3, 24, 5, 48, 41, 932000, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-03-24T05:48:41",
+            datetime(2026, 3, 24, 5, 48, 41, tzinfo=timezone.utc),
+        ),  # 沒 tz 預設 UTC
     ],
 )
 def test_parse_iso_handles_common_iso_formats(value, expected):

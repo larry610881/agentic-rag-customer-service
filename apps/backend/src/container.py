@@ -2060,7 +2060,8 @@ class Container(containers.DeclarativeContainer):
         quota_preflight=quota_preflight_service,
     )
 
-    # S-KB-Studio.1: re-embed 需要 record_usage 注入，故必須在 record_usage_use_case 之後
+    # S-KB-Studio.1: re-embed 需要 record_usage 注入，
+    # 故必須在 record_usage_use_case 之後
     reembed_chunk_use_case = providers.Factory(
         ReEmbedChunkUseCase,
         document_repo=document_repository,
@@ -2134,7 +2135,8 @@ class Container(containers.DeclarativeContainer):
         language_detection_service=language_detection_service,
         file_parser_service=file_parser_service,
         document_file_storage=document_file_storage_service,
-        # 與 process_document 對齊：reprocess 也記 PDF rename token + 用 context_service 拿 api_key
+        # 與 process_document 對齊：reprocess 也記 PDF rename token
+        # + 用 context_service 拿 api_key
         record_usage_use_case=record_usage_use_case,
         tenant_repository=tenant_repository,
         chunk_context_service=chunk_context_service,

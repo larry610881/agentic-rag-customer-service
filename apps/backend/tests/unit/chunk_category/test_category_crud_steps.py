@@ -56,7 +56,12 @@ def seed_kb(ctx, tenant_id, kb_id):
     _setup(ctx, tenant_id=tenant_id, kb_id=kb_id)
 
 
-@given(parsers.parse('租戶 "{tenant_id}" 的 KB "{kb_id}" 有分類 "{cat_id}" 含 {n:d} 個 chunks'))
+@given(
+    parsers.parse(
+        '租戶 "{tenant_id}" 的 KB "{kb_id}" 有分類 "{cat_id}" 含 '
+        '{n:d} 個 chunks'
+    )
+)
 def seed_cat_chunks(ctx, tenant_id, kb_id, cat_id, n):
     _setup(ctx, tenant_id=tenant_id, kb_id=kb_id)
     # 建分類
@@ -92,7 +97,12 @@ def seed_cat_only(ctx, tenant_id, kb_id, cat_id):
     ctx["cat_id"] = cat_id
 
 
-@given(parsers.parse('有 {n:d} 個 chunks ["{c1}","{c2}","{c3}","{c4}","{c5}"] 屬於 {kb_id}'))
+@given(
+    parsers.parse(
+        '有 {n:d} 個 chunks ["{c1}","{c2}","{c3}","{c4}","{c5}"] '
+        '屬於 {kb_id}'
+    )
+)
 def seed_five_chunks(ctx, n, c1, c2, c3, c4, c5, kb_id):
     run(ctx["doc_repo"].save(make_doc("doc-1", kb_id, ctx["tenant_id"])))
     chunks = [
@@ -102,7 +112,11 @@ def seed_five_chunks(ctx, n, c1, c2, c3, c4, c5, kb_id):
     run(ctx["doc_repo"].save_chunks(chunks))
 
 
-@given(parsers.parse('租戶 "{tenant_id}" 擁有 KB "{kb_id}" 分類 "{cat_id}" 與 chunk "{chunk_id}"'))
+@given(
+    parsers.parse(
+        '租戶 "{tenant_id}" 擁有 KB "{kb_id}" 分類 "{cat_id}" 與 chunk "{chunk_id}"'
+    )
+)
 def seed_all(ctx, tenant_id, kb_id, cat_id, chunk_id):
     _setup(ctx, tenant_id=tenant_id, kb_id=kb_id)
     run(
@@ -115,7 +129,12 @@ def seed_all(ctx, tenant_id, kb_id, cat_id, chunk_id):
     ctx["cat_id"] = cat_id
 
 
-@when(parsers.parse('我以 tenant "{tenant}" 身分 POST /kb/{kb_id}/categories name="{name}"'))
+@when(
+    parsers.parse(
+        '我以 tenant "{tenant}" 身分 POST /kb/{kb_id}/categories '
+        'name="{name}"'
+    )
+)
 def when_create(ctx, tenant, kb_id, name):
     uc = CreateCategoryUseCase(ctx["cat_repo"], ctx["kb_repo"])
     try:
@@ -132,7 +151,9 @@ def when_create(ctx, tenant, kb_id, name):
         ctx["created"] = None
 
 
-@when(parsers.parse('我以 tenant "{tenant}" 身分 DELETE /kb/{kb_id}/categories/{cat_id}'))
+@when(
+    parsers.parse('我以 tenant "{tenant}" 身分 DELETE /kb/{kb_id}/categories/{cat_id}')
+)
 def when_delete(ctx, tenant, kb_id, cat_id):
     uc = DeleteCategoryUseCase(ctx["cat_repo"], ctx["kb_repo"])
     try:
@@ -154,7 +175,8 @@ def when_delete(ctx, tenant, kb_id, cat_id):
 
 @when(
     parsers.parse(
-        '我以 tenant "{tenant}" 身分 POST /kb/{kb_id}/categories/{cat_id}/assign-chunks body={{"chunk_ids":["{c1}","{c2}","{c3}"]}}'
+        '我以 tenant "{tenant}" 身分 POST /kb/{kb_id}/categories/{cat_id}'
+        '/assign-chunks body={{"chunk_ids":["{c1}","{c2}","{c3}"]}}'
     )
 )
 def when_assign(ctx, tenant, kb_id, cat_id, c1, c2, c3):

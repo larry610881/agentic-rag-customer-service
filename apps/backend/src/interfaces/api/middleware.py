@@ -130,7 +130,10 @@ class CORSMiddlewareWithExclusions:
         """Wrap static file responses with Access-Control-Allow-Origin: *."""
 
         async def send_with_cors(message: object) -> None:
-            if isinstance(message, dict) and message.get("type") == "http.response.start":
+            if (
+                isinstance(message, dict)
+                and message.get("type") == "http.response.start"
+            ):
                 headers = list(message.get("headers", []))
                 headers.append((b"access-control-allow-origin", b"*"))
                 message = {**message, "headers": headers}

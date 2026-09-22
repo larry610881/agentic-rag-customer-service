@@ -126,7 +126,9 @@ def setup_active_run(context):
     active_run.stopped_reason = ""
     active_run.progress_message = "第 3 輪：0.7500 ✓ 接受"
     active_run.started_at = MagicMock()
-    active_run.started_at.isoformat = MagicMock(return_value="2026-03-24T10:00:00+00:00")
+    active_run.started_at.isoformat = MagicMock(
+        return_value="2026-03-24T10:00:00+00:00"
+    )
     active_run.completed_at = None
 
     mock_run_manager.get_run = MagicMock(return_value=active_run)

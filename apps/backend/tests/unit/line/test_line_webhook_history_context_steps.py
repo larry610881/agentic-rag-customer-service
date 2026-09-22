@@ -164,7 +164,8 @@ def given_conv_with_4_messages(context):
 def given_conv_empty(context):
     bot = _make_bot()
     context["bot"] = bot
-    context["seeded_conv"] = None  # _resolve_conversation will create empty Conversation
+    # _resolve_conversation will create empty Conversation
+    context["seeded_conv"] = None
 
 
 @given("LINE webhook bot 已注入 sliding window history_strategy")

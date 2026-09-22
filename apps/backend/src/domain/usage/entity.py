@@ -22,7 +22,8 @@ class UsageRecord:
     cache_creation_tokens: int = 0
     message_id: str | None = None
     bot_id: str | None = None
-    # KB 類任務歸屬 (OCR / Contextual Retrieval / Auto Classification / PDF Rename / Embedding)
+    # KB 類任務歸屬
+    # (OCR / Contextual Retrieval / Auto Classification / PDF Rename / Embedding)
     kb_id: str | None = None
     # Issue #54 Phase B — eval 分流歸因：gate run / optimizer run id
     run_id: str | None = None

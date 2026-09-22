@@ -628,7 +628,8 @@ class ReActAgentService(AgentService):
 
             # Build llm_input/output for trace
             llm_input_text = "\n---\n".join(
-                f"[{type(m).__name__}] {m.content if isinstance(m.content, str) else str(m.content)}"
+                f"[{type(m).__name__}] "
+                f"{m.content if isinstance(m.content, str) else str(m.content)}"
                 for m in messages
             )
             llm_output_text = (
@@ -852,7 +853,8 @@ class ReActAgentService(AgentService):
             has_history_context=bool(history_context),
             history_context=history_context or "",
         )
-        # Worker routing breadcrumb（Supervisor 模式才有；由 send_message_use_case 塞入 metadata）
+        # Worker routing breadcrumb
+        # （Supervisor 模式才有；由 send_message_use_case 塞入 metadata）
         _wr_info = (metadata or {}).get("_worker_routing")
         if isinstance(_wr_info, dict) and _wr_info.get("name"):
             AgentTraceCollector.add_node(
@@ -1105,7 +1107,8 @@ class ReActAgentService(AgentService):
                 }
 
             # Phase 1: 統一附加 node_id + ts_ms 到每個 stream event；
-            # 讓前端 Studio canvas 用 node_id 精準對應 trace 節點，取代 MVP 的字串啟發式。
+            # 讓前端 Studio canvas 用 node_id 精準對應 trace 節點，
+            # 取代 MVP 的字串啟發式。
             def _ev(d: dict[str, Any]) -> dict[str, Any]:
                 d.setdefault("node_id", AgentTraceCollector.last_node_id())
                 d.setdefault("ts_ms", round(AgentTraceCollector.offset_ms(), 1))
@@ -1185,8 +1188,9 @@ class ReActAgentService(AgentService):
                                                 # astream), emit content as one chunk.
                                                 #
                                                 # 重要：messages mode 已 stream 過時
-                                                # （llm_generating_emitted=True）必須直接
-                                                # skip，否則 updates mode 會把同樣內容再
+                                                # （llm_generating_emitted=True）
+                                                # 必須直接 skip，
+                                                # 否則 updates mode 會把同樣內容再
                                                 # 吐一次 → 前端看到回答重複兩遍。
                                                 if llm_generating_emitted:
                                                     llm_generating_emitted = False
@@ -1282,7 +1286,8 @@ class ReActAgentService(AgentService):
                                                             "sources": sources,
                                                         })
                                                         _emitted_sources = True
-                                                # transfer_to_human_agent tool → emit contact event
+                                                # transfer_to_human_agent tool
+                                                # → emit contact event
                                                 if (
                                                     isinstance(content, dict)
                                                     and content.get("contact")
@@ -1415,7 +1420,9 @@ class ReActAgentService(AgentService):
                                     sources.append(s)
                                 elif isinstance(s, dict):
                                     sources.append(Source(
-                                        document_name=s.get("document_name", "rag_query"),
+                                        document_name=s.get(
+                                            "document_name", "rag_query"
+                                        ),
                                         content_snippet=s.get("content_snippet", ""),
                                         score=float(s.get("score", 0.0) or 0.0),
                                         chunk_id=s.get("chunk_id", ""),

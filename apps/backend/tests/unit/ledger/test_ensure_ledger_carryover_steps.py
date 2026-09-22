@@ -116,7 +116,8 @@ def _setup_last_state_for_addon(ctx: dict, target_addon: int) -> None:
 
     公式：addon = topup_sum - max(0, billable - base_total)
     策略：保持 billable <= base_total 則 overage=0，topup_sum=addon。
-          若 addon < 0 需要 overage > 0，用 billable = base_total + |addon|, topup_sum=0。
+          若 addon < 0 需要 overage > 0，
+          用 billable = base_total + |addon|, topup_sum=0。
     """
     if target_addon >= 0:
         ctx["last_billable"] = 0

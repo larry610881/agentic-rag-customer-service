@@ -36,7 +36,8 @@ class BillingTransaction:
     transaction_type: str = TRANSACTION_TYPE_AUTO_TOPUP
     addon_tokens_added: int = 0
     amount_currency: str = "TWD"  # snapshot from plan.currency
-    amount_value: Decimal = field(default_factory=lambda: Decimal("0"))  # snapshot from plan.addon_price
+    # snapshot from plan.addon_price
+    amount_value: Decimal = field(default_factory=lambda: Decimal("0"))
     triggered_by: str = TRIGGERED_BY_SYSTEM  # 'system' | 'admin'
     reason: str = ""
     created_at: datetime = field(

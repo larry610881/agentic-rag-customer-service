@@ -739,7 +739,10 @@ async def run_validation_eval(
         Provide[Container.run_validation_eval_use_case]
     ),
 ) -> dict:
-    """Run N evaluation repeats and return PASS/FAIL verdict with per-case pass rates."""
+    (
+        """Run N evaluation repeats and return PASS/FAIL verdict """
+        """with per-case pass rates."""
+    )
     if body.repeats < 1 or body.repeats > 100:
         raise ApiError(
             422,

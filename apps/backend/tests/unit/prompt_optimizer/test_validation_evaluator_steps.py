@@ -34,7 +34,12 @@ def _make_chat_result(passed: bool) -> ChatResult:
         conversation_id="conv-1",
         tool_calls=[],
         sources=[],
-        usage={"total_tokens": 100, "input_tokens": 50, "output_tokens": 50, "estimated_cost": 0.01},
+        usage={
+            "total_tokens": 100,
+            "input_tokens": 50,
+            "output_tokens": 50,
+            "estimated_cost": 0.01,
+        },
         latency_ms=200,
     )
 
@@ -59,8 +64,18 @@ def dataset_2_p1(context):
     context["dataset"] = Dataset(
         metadata=DatasetMetadata(tenant_id="t1", agent_mode="router"),
         test_cases=(
-            TestCase(id="case-1", question="Q1", priority="P1", assertions=(_make_assertion(),)),
-            TestCase(id="case-2", question="Q2", priority="P1", assertions=(_make_assertion(),)),
+            TestCase(
+                id="case-1",
+                question="Q1",
+                priority="P1",
+                assertions=(_make_assertion(),),
+            ),
+            TestCase(
+                id="case-2",
+                question="Q2",
+                priority="P1",
+                assertions=(_make_assertion(),),
+            ),
         ),
     )
 
@@ -70,8 +85,18 @@ def dataset_p0_p1(context):
     context["dataset"] = Dataset(
         metadata=DatasetMetadata(tenant_id="t1", agent_mode="router"),
         test_cases=(
-            TestCase(id="p0-case", question="Q-P0", priority="P0", assertions=(_make_assertion(),)),
-            TestCase(id="p1-case", question="Q-P1", priority="P1", assertions=(_make_assertion(),)),
+            TestCase(
+                id="p0-case",
+                question="Q-P0",
+                priority="P0",
+                assertions=(_make_assertion(),),
+            ),
+            TestCase(
+                id="p1-case",
+                question="Q-P1",
+                priority="P1",
+                assertions=(_make_assertion(),),
+            ),
         ),
     )
 
@@ -81,7 +106,12 @@ def dataset_1_p1(context):
     context["dataset"] = Dataset(
         metadata=DatasetMetadata(tenant_id="t1", agent_mode="router"),
         test_cases=(
-            TestCase(id="p1-case", question="Q-P1", priority="P1", assertions=(_make_assertion(),)),
+            TestCase(
+                id="p1-case",
+                question="Q-P1",
+                priority="P1",
+                assertions=(_make_assertion(),),
+            ),
         ),
     )
 
@@ -91,7 +121,12 @@ def dataset_1_p2(context):
     context["dataset"] = Dataset(
         metadata=DatasetMetadata(tenant_id="t1", agent_mode="router"),
         test_cases=(
-            TestCase(id="p2-case", question="Q-P2", priority="P2", assertions=(_make_assertion(),)),
+            TestCase(
+                id="p2-case",
+                question="Q-P2",
+                priority="P2",
+                assertions=(_make_assertion(),),
+            ),
         ),
     )
 
@@ -158,21 +193,27 @@ def eval_fn_p2_3_of_5(context):
 @when("執行驗收評估 repeats=1", target_fixture="result")
 def run_validation_1(context):
     return _run(
-        context["validator"].validate(context["dataset"], context["eval_fn"], n_repeats=1)
+        context["validator"].validate(
+            context["dataset"], context["eval_fn"], n_repeats=1
+        )
     )
 
 
 @when("執行驗收評估 repeats=5", target_fixture="result")
 def run_validation_5(context):
     return _run(
-        context["validator"].validate(context["dataset"], context["eval_fn"], n_repeats=5)
+        context["validator"].validate(
+            context["dataset"], context["eval_fn"], n_repeats=5
+        )
     )
 
 
 @when("執行驗收評估 repeats=3", target_fixture="result")
 def run_validation_3(context):
     return _run(
-        context["validator"].validate(context["dataset"], context["eval_fn"], n_repeats=3)
+        context["validator"].validate(
+            context["dataset"], context["eval_fn"], n_repeats=3
+        )
     )
 
 

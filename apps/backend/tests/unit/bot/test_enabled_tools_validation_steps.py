@@ -47,7 +47,11 @@ def mock_repo(accessible_store):
             for t in tools:
                 seen[t.name] = t
         # Ensure canonical built-in names are part of the universe
-        for canonical in ("rag_query", "query_dm_with_image", "transfer_to_human_agent"):
+        for canonical in (
+            "rag_query",
+            "query_dm_with_image",
+            "transfer_to_human_agent",
+        ):
             seen.setdefault(
                 canonical,
                 BuiltInTool(name=canonical, label=canonical, description=""),

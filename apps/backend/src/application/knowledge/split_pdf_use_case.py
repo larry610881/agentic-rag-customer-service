@@ -43,7 +43,9 @@ class SplitPdfUseCase:
 
         parent = await self._doc_repo.find_by_id(parent_doc_id)
         if parent is None:
-            await self._task_repo.update_status(task_id, "failed", error_message="Document not found")
+            await self._task_repo.update_status(
+                task_id, "failed", error_message="Document not found"
+            )
             return
 
         await self._doc_repo.update_status(parent_doc_id, "processing")
@@ -76,7 +78,9 @@ class SplitPdfUseCase:
 
         if total_pages == 0:
             await self._doc_repo.update_status(parent_doc_id, "failed")
-            await self._task_repo.update_status(task_id, "failed", error_message="PDF has no pages")
+            await self._task_repo.update_status(
+                task_id, "failed", error_message="PDF has no pages"
+            )
             return
 
         # Phase 1: 全部頁面拆完 + 寫入 DB（不 enqueue OCR）
@@ -145,7 +149,9 @@ class SplitPdfUseCase:
 
             # Update parent task progress（split 階段佔 0~30%）
             progress = round((page_num / total_pages) * 30)
-            await self._task_repo.update_status(task_id, "processing", progress=progress)
+            await self._task_repo.update_status(
+                task_id, "processing", progress=progress
+            )
 
             # Force GC every 10 pages to reclaim memory
             if page_num % 10 == 0:

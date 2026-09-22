@@ -26,8 +26,16 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             filename=model.filename,
             content_type=model.content_type,
             content=model.content,
-            raw_content=model.raw_content or b"" if "raw_content" not in sa_inspect(model).unloaded else b"",
-            storage_path=model.storage_path if "storage_path" not in sa_inspect(model).unloaded else "",
+            raw_content=(
+                model.raw_content or b""
+                if "raw_content" not in sa_inspect(model).unloaded
+                else b""
+            ),
+            storage_path=(
+                model.storage_path
+                if "storage_path" not in sa_inspect(model).unloaded
+                else ""
+            ),
             status=model.status,
             parent_id=model.parent_id,
             page_number=model.page_number,
@@ -452,7 +460,8 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         )
         if category_id is not None:
             stmt = stmt.where(ChunkModel.category_id == category_id)
-        # Order by (document_id, chunk_index) stable ordering; updated_at 待 Day 1 migration 後改
+        # Order by (document_id, chunk_index) stable ordering;
+        # updated_at 待 Day 1 migration 後改
         stmt = (
             stmt.order_by(ChunkModel.document_id, ChunkModel.chunk_index)
             .limit(page_size)

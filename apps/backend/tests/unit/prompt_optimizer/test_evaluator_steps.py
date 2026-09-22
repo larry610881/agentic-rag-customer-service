@@ -200,7 +200,8 @@ def given_mixed_priority(ctx):
 def given_p1_partial(ctx):
     ctx["chat_results"] = [
         _make_chat_result(answer="P0 通過"),       # P0: all pass → score=1.0
-        _make_chat_result(answer="P1 部分通過"),    # P1: 1/2 pass (response_not_empty passes, contains_all fails)
+        # P1: 1/2 pass (response_not_empty passes, contains_all fails)
+        _make_chat_result(answer="P1 部分通過"),
         _make_chat_result(answer="P2 通過"),       # P2: all pass → score=1.0
     ]
 

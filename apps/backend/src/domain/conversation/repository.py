@@ -39,7 +39,9 @@ class ConversationRepository(ABC):
     async def find_latest_by_visitor(
         self, visitor_id: str, bot_id: str
     ) -> Conversation | None:
-        """Find the most recent conversation for an external user (e.g. LINE user_id)."""
+        """Find the most recent conversation for an external user
+        (e.g. LINE user_id).
+        """
         ...
 
     @abstractmethod
@@ -80,5 +82,7 @@ class ConversationRepository(ABC):
     async def find_by_ids(
         self, conversation_ids: list[str]
     ) -> list[Conversation]:
-        """S-Gov.6b: 批次取 conversation header（給 semantic search hydrate 用，不載 messages）。"""
+        """S-Gov.6b: 批次取 conversation header
+        （給 semantic search hydrate 用，不載 messages）。
+        """
         ...

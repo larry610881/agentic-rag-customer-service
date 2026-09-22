@@ -61,7 +61,8 @@ def setup_bot(ctx, name, mode):
 
 @given(
     parsers.parse(
-        '已建立 Bot "{name}" 綁定知識庫 agent_mode 為 "{mode}" max_tool_calls 為 {max_calls:d}'
+        '已建立 Bot "{name}" 綁定知識庫 agent_mode 為 "{mode}" '
+        'max_tool_calls 為 {max_calls:d}'
     )
 )
 def setup_bot_max_calls(ctx, name, mode, max_calls):

@@ -206,7 +206,8 @@ def result_empty(ctx):
 def verify_chat_scope(ctx):
     """移除 override 後：admin 帶 cross-tenant bot_id → use case 收到
     tenant_id=SYSTEM + bot_id=他租戶 → 找不到該 bot → 4xx 拒絕。
-    Router 對「bot 不屬此 tenant」回 400 (Bad Request, "Bot does not belong to tenant")，
+    Router 對「bot 不屬此 tenant」回 400
+    (Bad Request, "Bot does not belong to tenant")，
     其他可能拒絕路徑（IDOR 防枚舉 / EntityNotFound）回 403/404/422。
     凡 4xx 都是合法防禦結果。"""
     assert ctx["response"].status_code in (
@@ -214,7 +215,10 @@ def verify_chat_scope(ctx):
         403,
         404,
         422,
-    ), f"expected 4xx (cross-tenant rejected), got {ctx['response'].status_code}: {ctx['response'].text[:200]}"
+    ), (
+        f"expected 4xx (cross-tenant rejected), got "
+        f"{ctx['response'].status_code}: {ctx['response'].text[:200]}"
+    )
 
 
 @then("SubmitFeedbackCommand 的 tenant_id 應為 SYSTEM_TENANT_ID")
@@ -225,4 +229,7 @@ def verify_feedback_scope(ctx):
         403,
         404,
         422,
-    ), f"expected 4xx (cross-tenant rejected), got {ctx['response'].status_code}: {ctx['response'].text[:200]}"
+    ), (
+        f"expected 4xx (cross-tenant rejected), got "
+        f"{ctx['response'].status_code}: {ctx['response'].text[:200]}"
+    )

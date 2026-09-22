@@ -101,7 +101,8 @@ def verify_bot_id_none(context):
 
 @given(
     parsers.parse(
-        '租戶 "{tenant_id}" 有 {total:d} 筆對話，其中 {bot_count:d} 筆屬於 bot "{bot_id}"'
+        '租戶 "{tenant_id}" 有 {total:d} 筆對話，'
+        '其中 {bot_count:d} 筆屬於 bot "{bot_id}"'
     )
 )
 def setup_conversations_with_bot(context, tenant_id, total, bot_count, bot_id):

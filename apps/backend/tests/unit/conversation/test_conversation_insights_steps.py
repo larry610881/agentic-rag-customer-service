@@ -40,7 +40,9 @@ def ctx():
 # ---- Given ----
 
 
-def _make_conversation(conv_id: str, tenant_id: str, msg_count: int = 3) -> Conversation:
+def _make_conversation(
+    conv_id: str, tenant_id: str, msg_count: int = 3
+) -> Conversation:
     msgs = [
         Message(
             id=MessageId(value=f"msg-{i}"),

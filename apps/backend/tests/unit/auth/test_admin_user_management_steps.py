@@ -195,7 +195,11 @@ def reset_password(context, mock_user_repo, mock_password_service, email, passwo
         password_service=mock_password_service,
     )
     try:
-        _run(use_case.execute(ResetPasswordCommand(user_id=user.id.value, new_password=password)))
+        _run(
+            use_case.execute(
+                ResetPasswordCommand(user_id=user.id.value, new_password=password)
+            )
+        )
         context["password_reset"] = True
         context["error"] = None
     except EntityNotFoundError as e:

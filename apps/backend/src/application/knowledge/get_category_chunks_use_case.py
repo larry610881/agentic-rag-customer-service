@@ -39,7 +39,9 @@ class GetCategoryChunksUseCase:
         self._doc_repo = document_repository
         self._vector_store = vector_store
 
-    async def execute(self, kb_id: str, category_id: str) -> CategoryChunksResult | None:
+    async def execute(
+        self, kb_id: str, category_id: str
+    ) -> CategoryChunksResult | None:
         cat = await self._cat_repo.find_by_id(category_id)
         if cat is None:
             return None
@@ -85,7 +87,9 @@ class GetCategoryChunksUseCase:
                 for i, vid in enumerate(ids_with_vec):
                     vec_norm = np.linalg.norm(arr[i])
                     if vec_norm > 0:
-                        sim = float(np.dot(arr[i], centroid) / (vec_norm * centroid_norm))
+                        sim = float(
+                            np.dot(arr[i], centroid) / (vec_norm * centroid_norm)
+                        )
                         cohesion_map[vid] = round(max(0.0, min(1.0, sim)), 3)
 
         # Build result, sorted by cohesion (lowest last for PM to spot outliers)

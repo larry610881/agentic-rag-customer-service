@@ -151,17 +151,27 @@ class SQLAlchemyBotRepository(BotRepository):
             gate_budget_usd=model.gate_budget_usd,
             gate_excluded_cases=list(model.gate_excluded_cases or []),
             fab_icon_url=model.fab_icon_url or "",
-            widget_enabled=model.widget_enabled if model.widget_enabled is not None else False,
+            widget_enabled=(
+                model.widget_enabled if model.widget_enabled is not None else False
+            ),
             widget_allowed_origins=list(model.widget_allowed_origins or []),
-            widget_keep_history=model.widget_keep_history if model.widget_keep_history is not None else True,
+            widget_keep_history=(
+                model.widget_keep_history
+                if model.widget_keep_history is not None
+                else True
+            ),
             widget_welcome_message=model.widget_welcome_message or "",
             widget_placeholder_text=model.widget_placeholder_text or "",
             widget_greeting_messages=list(model.widget_greeting_messages or []),
             widget_greeting_animation=model.widget_greeting_animation or "fade",
-            memory_enabled=model.memory_enabled if model.memory_enabled is not None else False,
+            memory_enabled=(
+                model.memory_enabled if model.memory_enabled is not None else False
+            ),
             memory_extraction_threshold=model.memory_extraction_threshold or 3,
             memory_extraction_prompt=model.memory_extraction_prompt or "",
-            rerank_enabled=model.rerank_enabled if model.rerank_enabled is not None else False,
+            rerank_enabled=(
+                model.rerank_enabled if model.rerank_enabled is not None else False
+            ),
             rerank_model=model.rerank_model or "",
             rerank_top_n=model.rerank_top_n or 20,
             rag_retrieval_modes=(
@@ -198,7 +208,11 @@ class SQLAlchemyBotRepository(BotRepository):
             summary_model=model.summary_model or "",
             line_channel_secret=model.line_channel_secret,
             line_channel_access_token=model.line_channel_access_token,
-            line_show_sources=model.line_show_sources if model.line_show_sources is not None else False,
+            line_show_sources=(
+                model.line_show_sources
+                if model.line_show_sources is not None
+                else False
+            ),
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -315,7 +329,11 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.tool_configs = _tool_configs_to_dict(bot.tool_configs)
                 existing.customer_service_url = bot.customer_service_url
                 existing.intent_routes = [
-                    {"name": r.name, "description": r.description, "worker_prompt": r.worker_prompt}
+                    {
+                        "name": r.name,
+                        "description": r.description,
+                        "worker_prompt": r.worker_prompt,
+                    }
                     for r in bot.intent_routes
                 ]
                 existing.router_model = bot.router_model
@@ -413,7 +431,11 @@ class SQLAlchemyBotRepository(BotRepository):
                     tool_configs=_tool_configs_to_dict(bot.tool_configs),
                     customer_service_url=bot.customer_service_url,
                     intent_routes=[
-                        {"name": r.name, "description": r.description, "worker_prompt": r.worker_prompt}
+                        {
+                            "name": r.name,
+                            "description": r.description,
+                            "worker_prompt": r.worker_prompt,
+                        }
                         for r in bot.intent_routes
                     ],
                     router_model=bot.router_model,

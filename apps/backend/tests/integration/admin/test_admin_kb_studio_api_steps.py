@@ -80,7 +80,13 @@ async def _insert_doc(conn, doc_id: str, kb_id: str, tenant_id: str) -> None:
             "VALUES (:id, :kb, :tid, :fn, 'pdf', '', '', 'processed', 1, "
             "100, 100, 100, 1.0, '', :at, :at)"
         ),
-        {"id": doc_id, "kb": kb_id, "tid": tenant_id, "fn": f"{doc_id}.pdf", "at": _now()},
+        {
+            "id": doc_id,
+            "kb": kb_id,
+            "tid": tenant_id,
+            "fn": f"{doc_id}.pdf",
+            "at": _now(),
+        },
     )
 
 
@@ -208,7 +214,9 @@ def seed_kb_with_chunks(ctx, app, test_engine, kb_id, n):
     ctx["chunk_count"] = n
 
 
-@given(parsers.parse('系統已 seed chunk "{chunk_id}" 於 doc "{doc_id}" 於 kb "{kb_id}"'))
+@given(
+    parsers.parse('系統已 seed chunk "{chunk_id}" 於 doc "{doc_id}" 於 kb "{kb_id}"')
+)
 def seed_single_chunk(ctx, app, test_engine, chunk_id, doc_id, kb_id):
     tenant_id = ctx.setdefault("tenant_id", "t-kb-studio")
     _ensure_tenant_and_login(app, test_engine, tenant_id)
@@ -352,7 +360,8 @@ def seed_category_with_chunks(ctx, app, test_engine, cat_id, kb_id, n):
 
 @given(
     parsers.parse(
-        '系統已 seed 分類 "{cat_id}" 與 {n:d} 個 chunks ["{c1}","{c2}","{c3}","{c4}","{c5}"]'
+        '系統已 seed 分類 "{cat_id}" 與 {n:d} 個 chunks '
+        '["{c1}","{c2}","{c3}","{c4}","{c5}"]'
     )
 )
 def seed_category_and_chunks(ctx, app, test_engine, cat_id, n, c1, c2, c3, c4, c5):

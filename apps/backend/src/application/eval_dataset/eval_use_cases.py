@@ -224,12 +224,18 @@ def _get_model_pricing(model_id: str) -> dict[str, float]:
     # Exact match first
     for m in all_models:
         if m["model_id"] == model_id:
-            return {"input": m.get("input_price", 0.0), "output": m.get("output_price", 0.0)}
+            return {
+                "input": m.get("input_price", 0.0),
+                "output": m.get("output_price", 0.0),
+            }
 
     # Longest prefix match (sort by model_id length descending)
     for m in sorted(all_models, key=lambda x: len(x["model_id"]), reverse=True):
         if model_id.startswith(m["model_id"]):
-            return {"input": m.get("input_price", 0.0), "output": m.get("output_price", 0.0)}
+            return {
+                "input": m.get("input_price", 0.0),
+                "output": m.get("output_price", 0.0),
+            }
 
     return {}
 
@@ -292,7 +298,9 @@ class EstimateCostUseCase:
         # Per-call costs using real token estimates
         avg_input = token_breakdown["weighted_avg_input"]
         eval_cost_per_call = _estimate_call_cost(
-            eval_model, avg_input_tokens=avg_input, avg_output_tokens=DEFAULT_OUTPUT_TOKENS
+            eval_model,
+            avg_input_tokens=avg_input,
+            avg_output_tokens=DEFAULT_OUTPUT_TOKENS,
         )
         mutator_cost_per_call = _estimate_call_cost(
             mutator_model, avg_input_tokens=avg_input + 500, avg_output_tokens=800
@@ -373,7 +381,9 @@ class EstimateCostUseCase:
             try:
                 bot = await self._bot_repo.find_by_id(bot_id)
                 if bot:
-                    rag_top_k = bot.llm_params.rag_top_k if hasattr(bot, "llm_params") else 5
+                    rag_top_k = (
+                        bot.llm_params.rag_top_k if hasattr(bot, "llm_params") else 5
+                    )
                     tenant_id = bot.tenant_id
 
                     # Bot-level prompt chars
@@ -390,10 +400,15 @@ class EstimateCostUseCase:
                             getattr(sys_config, "system_prompt", "") or ""
                         )
 
-                    prompt_tokens = int((bot_prompt_chars + sys_chars) / CHARS_PER_TOKEN)
+                    prompt_tokens = int(
+                        (bot_prompt_chars + sys_chars) / CHARS_PER_TOKEN
+                    )
             except Exception as e:
                 import logging
-                logging.getLogger(__name__).warning("Failed to calculate prompt tokens: %s", e)
+
+                logging.getLogger(__name__).warning(
+                    "Failed to calculate prompt tokens: %s", e
+                )
                 prompt_tokens = 500  # fallback
 
         if prompt_tokens == 0:
@@ -440,9 +455,15 @@ class EstimateCostUseCase:
             for a in tc.assertions:
                 a_type = a.type if hasattr(a, "type") else a.get("type", "")
                 a_params = a.params if hasattr(a, "params") else a.get("params", {})
-                if a_type == "tool_was_called" and a_params.get("tool_name") == "rag_query":
+                if (
+                    a_type == "tool_was_called"
+                    and a_params.get("tool_name") == "rag_query"
+                ):
                     has_rag_call = True
-                if a_type == "tool_not_called" and a_params.get("tool_name") == "rag_query":
+                if (
+                    a_type == "tool_not_called"
+                    and a_params.get("tool_name") == "rag_query"
+                ):
                     has_no_rag = True
             if has_rag_call:
                 rag_case_count += 1

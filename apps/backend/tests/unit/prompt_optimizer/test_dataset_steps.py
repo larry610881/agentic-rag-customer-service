@@ -222,7 +222,8 @@ def then_validation_error(load_error):
 def then_assertion_type_error(load_error):
     assert load_error is not None
     assert isinstance(load_error, DatasetValidationError)
-    assert "assertion" in str(load_error).lower() or "unknown" in str(load_error).lower()
+    msg = str(load_error).lower()
+    assert "assertion" in msg or "unknown" in msg
 
 
 @then("應拋出 DatasetValidationError 並包含 duplicate 錯誤訊息")
@@ -237,8 +238,12 @@ def then_duplicate_error(load_error):
 def then_default_assertions_merged(result):
     for tc in result.test_cases:
         types = [a.type for a in tc.assertions]
-        assert "response_not_empty" in types, f"Case {tc.id} missing default assertion 'response_not_empty'"
-        assert "max_length" in types, f"Case {tc.id} missing default assertion 'max_length'"
+        assert "response_not_empty" in types, (
+            f"Case {tc.id} missing default assertion 'response_not_empty'"
+        )
+        assert "max_length" in types, (
+            f"Case {tc.id} missing default assertion 'max_length'"
+        )
     # tc-01 should have defaults + its own
     tc01 = next(tc for tc in result.test_cases if tc.id == "tc-01")
     assert len(tc01.assertions) == 3  # 2 defaults + 1 own

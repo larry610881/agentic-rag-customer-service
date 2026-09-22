@@ -67,7 +67,8 @@ def seeded_active_only_input(context, provider, model_id, inp):
 
 @given(
     parsers.parse(
-        '已有一筆 "{provider}" "{model_id}" pricing 排程 effective_from 為 {hrs:d} 小時後 input={inp:g}'
+        '已有一筆 "{provider}" "{model_id}" pricing 排程 '
+        'effective_from 為 {hrs:d} 小時後 input={inp:g}'
     )
 )
 def seeded_scheduled(context, provider, model_id, hrs, inp):
@@ -112,7 +113,8 @@ def seeded_active_with_id(context, provider, model_id, pid):
 
 @when(
     parsers.parse(
-        '我建立一筆 pricing "{provider}" "{model_id}" input={inp:g} output={out:g} effective_from 為未來時間'
+        '我建立一筆 pricing "{provider}" "{model_id}" '
+        'input={inp:g} output={out:g} effective_from 為未來時間'
     )
 )
 def create_future(context, provider, model_id, inp, out):
@@ -141,7 +143,8 @@ def create_future(context, provider, model_id, inp, out):
 
 @when(
     parsers.parse(
-        '我建立新版本 "{provider}" "{model_id}" input={inp:g} output={out:g} effective_from 為 1 分鐘後'
+        '我建立新版本 "{provider}" "{model_id}" '
+        'input={inp:g} output={out:g} effective_from 為 1 分鐘後'
     )
 )
 def create_new_version(context, provider, model_id, inp, out):
@@ -169,7 +172,8 @@ def create_new_version(context, provider, model_id, inp, out):
 
 @when(
     parsers.parse(
-        '我建立一筆 pricing "{provider}" "{model_id}" input={inp:g} output={out:g} effective_from 為 1 分鐘前'
+        '我建立一筆 pricing "{provider}" "{model_id}" '
+        'input={inp:g} output={out:g} effective_from 為 1 分鐘前'
     )
 )
 def create_past(context, provider, model_id, inp, out):
@@ -197,7 +201,8 @@ def create_past(context, provider, model_id, inp, out):
 
 @when(
     parsers.parse(
-        '我建立一筆 pricing "{provider}" "{model_id}" input={inp:g} output={out:g} effective_from 為未來時間 但 note 為空字串'
+        '我建立一筆 pricing "{provider}" "{model_id}" '
+        'input={inp:g} output={out:g} effective_from 為未來時間 但 note 為空字串'
     )
 )
 def create_empty_note(context, provider, model_id, inp, out):

@@ -55,7 +55,12 @@ def _seed_chunk(
     )
 
 
-@given(parsers.parse('租戶 "{tenant_id}" 的 KB "{kb_id}" 有一個 chunk "{chunk_id}" content="{content}"'))
+@given(
+    parsers.parse(
+        '租戶 "{tenant_id}" 的 KB "{kb_id}" 有一個 chunk "{chunk_id}" '
+        'content="{content}"'
+    )
+)
 def seed_chunk(ctx, tenant_id, kb_id, chunk_id, content):
     _seed_chunk(
         ctx, chunk_id=chunk_id, kb_id=kb_id, tenant_id=tenant_id, content=content
@@ -67,7 +72,12 @@ def seed_chunk_simple(ctx, tenant_id, chunk_id):
     _seed_chunk(ctx, chunk_id=chunk_id, tenant_id=tenant_id)
 
 
-@given(parsers.parse('租戶 "{tenant_id}" 的 chunk "{chunk_id}" content="{content}" context_text="{ctx_text}"'))
+@given(
+    parsers.parse(
+        '租戶 "{tenant_id}" 的 chunk "{chunk_id}" content="{content}" '
+        'context_text="{ctx_text}"'
+    )
+)
 def seed_chunk_with_ctx(ctx, tenant_id, chunk_id, content, ctx_text):
     _seed_chunk(
         ctx,
@@ -106,17 +116,30 @@ def _run_update(ctx, *, tenant, content=None, context_text=None):
         ctx["error"] = e
 
 
-@when(parsers.parse('我以 tenant "{tenant}" 身分 PATCH chunk "{chunk_id}" 設 content="{new}"'))
+@when(
+    parsers.parse(
+        '我以 tenant "{tenant}" 身分 PATCH chunk "{chunk_id}" 設 content="{new}"'
+    )
+)
 def when_patch_content(ctx, tenant, chunk_id, new):
     _run_update(ctx, tenant=tenant, content=new)
 
 
-@when(parsers.parse('我以 tenant "{tenant}" 身分嘗試 PATCH chunk "{chunk_id}" content="{new}"'))
+@when(
+    parsers.parse(
+        '我以 tenant "{tenant}" 身分嘗試 PATCH chunk "{chunk_id}" content="{new}"'
+    )
+)
 def when_try_patch(ctx, tenant, chunk_id, new):
     _run_update(ctx, tenant=tenant, content=new)
 
 
-@when(parsers.parse('我以 tenant "{tenant}" 身分 PATCH chunk "{chunk_id}" 設 context_text="{new}"'))
+@when(
+    parsers.parse(
+        '我以 tenant "{tenant}" 身分 PATCH chunk "{chunk_id}" 設 '
+        'context_text="{new}"'
+    )
+)
 def when_patch_ctx(ctx, tenant, chunk_id, new):
     _run_update(ctx, tenant=tenant, context_text=new)
 

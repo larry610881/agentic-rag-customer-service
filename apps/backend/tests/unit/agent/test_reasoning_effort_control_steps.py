@@ -168,8 +168,13 @@ def _bot(effort, *, mode="deep"):
     from src.domain.bot.mode_presets import preset_values
 
     b = Bot(
-        id=BotId(value="bot-e"), tenant_id="t1", name="E", knowledge_base_ids=["kb-1"], mode=mode,
-        line_channel_secret="s", line_channel_access_token="t",
+        id=BotId(value="bot-e"),
+        tenant_id="t1",
+        name="E",
+        knowledge_base_ids=["kb-1"],
+        mode=mode,
+        line_channel_secret="s",
+        line_channel_access_token="t",
         llm_params=BotLLMParams(reasoning_effort=effort),
     )
     # Issue #92：情境預設只填值，mode 本身不再驅動行為

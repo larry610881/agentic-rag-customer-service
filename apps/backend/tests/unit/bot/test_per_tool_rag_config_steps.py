@@ -18,14 +18,22 @@ def context() -> dict:
 
 # ── Given ───────────────────────────────────────────────────────────
 
-@given(parsers.parse("一個 Bot 預設 rag_top_k={top_k:d} 且 rag_score_threshold={threshold:f}"))
+@given(
+    parsers.parse(
+        "一個 Bot 預設 rag_top_k={top_k:d} 且 rag_score_threshold={threshold:f}"
+    )
+)
 def bot_with_defaults(context, top_k: int, threshold: float) -> None:
     context["bot"] = Bot(
         llm_params=BotLLMParams(rag_top_k=top_k, rag_score_threshold=threshold),
     )
 
 
-@given(parsers.parse("一個 Bot 預設 rag_top_k={top_k:d} rag_score_threshold={threshold:f}"))
+@given(
+    parsers.parse(
+        "一個 Bot 預設 rag_top_k={top_k:d} rag_score_threshold={threshold:f}"
+    )
+)
 def bot_with_top_k_and_threshold(context, top_k: int, threshold: float) -> None:
     context["bot"] = Bot(
         llm_params=BotLLMParams(rag_top_k=top_k, rag_score_threshold=threshold),
@@ -153,13 +161,21 @@ def all_none(context) -> None:
     assert cfg.rerank_top_n is None
 
 
-@then(parsers.parse('Bot 的 tool_configs 中 "{tool_name}" 的 rag_top_k 應為 {expected:d}'))
+@then(
+    parsers.parse(
+        'Bot 的 tool_configs 中 "{tool_name}" 的 rag_top_k 應為 {expected:d}'
+    )
+)
 def assert_bot_tool_top_k(context, tool_name: str, expected: int) -> None:
     bot: Bot = context["bot"]
     assert bot.tool_configs[tool_name].rag_top_k == expected
 
 
-@then(parsers.parse('Bot 的 tool_configs 中 "{tool_name}" 的 rag_score_threshold 應為 None'))
+@then(
+    parsers.parse(
+        'Bot 的 tool_configs 中 "{tool_name}" 的 rag_score_threshold 應為 None'
+    )
+)
 def assert_bot_tool_threshold_none(context, tool_name: str) -> None:
     bot: Bot = context["bot"]
     assert bot.tool_configs[tool_name].rag_score_threshold is None

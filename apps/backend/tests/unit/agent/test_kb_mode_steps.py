@@ -69,7 +69,11 @@ def _spy_trace(context, uc):
 
 def _setup_web(context, *, mode, score, rerank=False, memory=False, miss_reply=""):
     bot = Bot(
-        id=BotId(value="bot-kb"), tenant_id="t1", name="KB", knowledge_base_ids=["kb-1"], mode=mode,
+        id=BotId(value="bot-kb"),
+        tenant_id="t1",
+        name="KB",
+        knowledge_base_ids=["kb-1"],
+        mode=mode,
         memory_extraction_threshold=1,
         miss_reply=miss_reply,
     )
@@ -425,7 +429,8 @@ def google_react_service(context):
     from src.infrastructure.langgraph.react_agent_service import ReActAgentService
 
     svc = ReActAgentService.__new__(ReActAgentService)
-    svc._llm_service = MagicMock()          # 非 DynamicLLMServiceProxy → 走 fallback 分支
+    # 非 DynamicLLMServiceProxy → 走 fallback 分支
+    svc._llm_service = MagicMock()
     context["react_service"] = svc
 
 
@@ -450,7 +455,10 @@ def chat_model_kind(context, kind):
 # --- Issue #87：對話歷史併進單一 system prompt ---
 
 
-@given(parsers.parse('系統提示 "{prompt}" 與對話歷史 "{history}"'), target_fixture="merge_inputs")
+@given(
+    parsers.parse('系統提示 "{prompt}" 與對話歷史 "{history}"'),
+    target_fixture="merge_inputs",
+)
 def merge_inputs(prompt, history):
     return (None if prompt == "-" else prompt, None if history == "-" else history)
 

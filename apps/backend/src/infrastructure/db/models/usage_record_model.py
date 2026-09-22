@@ -44,7 +44,8 @@ class UsageRecordModel(Base):
     bot_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True
     )
-    # KB 類任務歸屬 (OCR / Contextual Retrieval / Auto Classification / PDF Rename / Embedding)
+    # KB 類任務歸屬
+    # (OCR / Contextual Retrieval / Auto Classification / PDF Rename / Embedding)
     kb_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True
     )
@@ -80,7 +81,17 @@ class UsageRecordModel(Base):
     __table_args__ = (
         Index("ix_token_usage_records_tenant_created", "tenant_id", "created_at"),
         Index("ix_token_usage_records_message_id", "message_id"),
-        Index("ix_token_usage_records_tenant_bot_created", "tenant_id", "bot_id", "created_at"),
-        Index("ix_token_usage_records_tenant_kb_created", "tenant_id", "kb_id", "created_at"),
+        Index(
+            "ix_token_usage_records_tenant_bot_created",
+            "tenant_id",
+            "bot_id",
+            "created_at",
+        ),
+        Index(
+            "ix_token_usage_records_tenant_kb_created",
+            "tenant_id",
+            "kb_id",
+            "created_at",
+        ),
         Index("ix_token_usage_records_run_id", "run_id"),
     )

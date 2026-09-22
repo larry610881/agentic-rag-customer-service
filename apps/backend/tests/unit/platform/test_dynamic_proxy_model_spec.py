@@ -58,7 +58,9 @@ def _build_mock_proxy():
 
 
 def test_proxy_generate_passes_provider_when_model_has_prefix():
-    """proxy.generate(model='litellm:haiku') 必須傳 provider_name='litellm' 給 factory."""
+    """proxy.generate(model='litellm:haiku') 必須傳 provider_name='litellm'
+    給 factory.
+    """
     proxy, factory = _build_mock_proxy()
     result = _run(
         proxy.generate(

@@ -66,7 +66,8 @@ def seed_pricing_active(ctx, client, admin_headers, provider, model_id):
     )
 )
 def seed_pricing_with_id(ctx, test_engine, provider, model_id, pid_ignored):
-    # 用 raw SQL 塞 effective_from=1 小時前，避免 deactivate 時 effective_to<effective_from
+    # 用 raw SQL 塞 effective_from=1 小時前，
+    # 避免 deactivate 時 effective_to<effective_from
     import asyncio
 
     pid = str(uuid4())
@@ -77,7 +78,8 @@ def seed_pricing_with_id(ctx, test_engine, provider, model_id, pid_ignored):
                 text(
                     "INSERT INTO model_pricing "
                     "(id, provider, model_id, display_name, category, "
-                    "input_price, output_price, cache_read_price, cache_creation_price, "
+                    "input_price, output_price, cache_read_price, "
+                    "cache_creation_price, "
                     "effective_from, created_by, created_at, note) "
                     "VALUES (:id, :prov, :mid, :mid, 'llm', 1.0, 5.0, 0, 0, "
                     ":ef, 'seed', :at, 'seed')"
@@ -113,8 +115,10 @@ def seed_usage_rows(ctx, test_engine, n, prefix, model_id):
                 await conn.execute(
                     text(
                         "INSERT INTO token_usage_records "
-                        "(id, tenant_id, request_type, model, input_tokens, output_tokens, "
-                        "estimated_cost, cache_read_tokens, cache_creation_tokens, created_at) "
+                        "(id, tenant_id, request_type, model, input_tokens, "
+                        "output_tokens, "
+                        "estimated_cost, cache_read_tokens, cache_creation_tokens, "
+                        "created_at) "
                         "VALUES (:id, :tid, :rt, :model, :it, :ot, :cost, 0, 0, :at)"
                     ),
                     {
@@ -139,7 +143,8 @@ def seed_usage_rows(ctx, test_engine, n, prefix, model_id):
 
 @given(
     parsers.parse(
-        '系統已 seed 新版本 pricing "{provider}" "{model_id}" input={inp:g} output={out:g}'
+        '系統已 seed 新版本 pricing "{provider}" "{model_id}" input={inp:g} '
+        "output={out:g}"
     )
 )
 def seed_new_pricing_version(ctx, client, admin_headers, provider, model_id, inp, out):
@@ -174,7 +179,8 @@ def seed_audit(ctx, test_engine):
                 text(
                     "INSERT INTO model_pricing "
                     "(id, provider, model_id, display_name, category, "
-                    "input_price, output_price, cache_read_price, cache_creation_price, "
+                    "input_price, output_price, cache_read_price, "
+                    "cache_creation_price, "
                     "effective_from, created_by, created_at, note) "
                     "VALUES (:id, 'openai', 'gpt-5', 'GPT-5', 'llm', "
                     "1.25, 10.0, 0, 0, :ef, 'seed', :at, 'seed')"
@@ -185,8 +191,10 @@ def seed_audit(ctx, test_engine):
                 text(
                     "INSERT INTO pricing_recalc_audit "
                     "(id, pricing_id, recalc_from, recalc_to, affected_rows, "
-                    "cost_before_total, cost_after_total, executed_by, executed_at, reason) "
-                    "VALUES (:id, :pid, :rf, :rt, 1, 0.01, 0.012, 'admin', :eat, '測試 seed')"
+                    "cost_before_total, cost_after_total, executed_by, "
+                    "executed_at, reason) "
+                    "VALUES (:id, :pid, :rf, :rt, 1, 0.01, 0.012, 'admin', "
+                    ":eat, '測試 seed')"
                 ),
                 {
                     "id": str(uuid4()),
@@ -243,7 +251,10 @@ def post_deactivate(ctx, client, pid_ignored):
     )
 
 
-@when("我送出 POST /api/v1/admin/pricing/recalculate:dry-run body 含 pricing_id 與過去 1 小時區間")
+@when(
+    "我送出 POST /api/v1/admin/pricing/recalculate:dry-run body 含 pricing_id "
+    "與過去 1 小時區間"
+)
 def post_dry_run(ctx, client):
     body = {
         "pricing_id": ctx["pid"],
@@ -257,7 +268,12 @@ def post_dry_run(ctx, client):
     )
 
 
-@when(parsers.parse('我送出 POST /api/v1/admin/pricing/recalculate:execute body 含該 dry_run_token 與 reason="{reason}"'))
+@when(
+    parsers.parse(
+        '我送出 POST /api/v1/admin/pricing/recalculate:execute body 含該 '
+        'dry_run_token 與 reason="{reason}"'
+    )
+)
 def post_execute(ctx, client, reason):
     token = ctx["resp"].json()["dry_run_token"]
     ctx["resp"] = client.post(
@@ -348,9 +364,11 @@ def _seed_pricing(
                 text(
                     "INSERT INTO model_pricing "
                     "(id, provider, model_id, display_name, category, "
-                    "input_price, output_price, cache_read_price, cache_creation_price, "
+                    "input_price, output_price, cache_read_price, "
+                    "cache_creation_price, "
                     "effective_from, created_by, note) "
-                    "VALUES (:id, :prov, :mid, :dn, 'llm', :ip, :op, 0, 0, :ef, 'seed', 'seed')"
+                    "VALUES (:id, :prov, :mid, :dn, 'llm', :ip, :op, 0, 0, :ef, "
+                    "'seed', 'seed')"
                 ),
                 {
                     "id": pid,

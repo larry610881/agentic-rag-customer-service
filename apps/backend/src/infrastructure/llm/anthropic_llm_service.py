@@ -352,7 +352,9 @@ class AnthropicLLMService(LLMService):
                         if text:
                             yield text
         # Write final usage to collector
-        if usage_collector is not None and (input_tokens or output_tokens or cache_read_tokens):
+        if usage_collector is not None and (
+            input_tokens or output_tokens or cache_read_tokens
+        ):
             usage = calculate_usage(
                 model=self._model,
                 input_tokens=input_tokens,

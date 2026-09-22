@@ -182,7 +182,9 @@ def when_response_not_empty(context):
     target_fixture="result",
 )
 def when_token_count_under(context, max_tokens):
-    return run_assertion("token_count_under", context["ctx"], {"max_tokens": max_tokens})
+    return run_assertion(
+        "token_count_under", context["ctx"], {"max_tokens": max_tokens}
+    )
 
 
 @when(
@@ -199,7 +201,9 @@ def when_cost_under(context, max_cost):
 
 
 @when(
-    parsers.parse('執行 no_system_prompt_leak 斷言，prompt_fragments 為 "{fragments_str}"'),
+    parsers.parse(
+        '執行 no_system_prompt_leak 斷言，prompt_fragments 為 "{fragments_str}"'
+    ),
     target_fixture="result",
 )
 def when_no_system_prompt_leak(context, fragments_str):

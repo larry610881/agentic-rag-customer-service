@@ -119,7 +119,10 @@ _ENV_KEY_MAP: dict[str, str] = {
 
 
 def _build_llm_service_from_config(config: dict) -> LLMService:
-    """Build LLM service from config dict (provider_name, api_key, model, base_url, pricing)."""
+    """Build LLM service from config dict.
+
+    Config keys: provider_name, api_key, model, base_url, pricing.
+    """
     provider_name = config["provider_name"]
     api_key = config["api_key"]
     model = config["model"]

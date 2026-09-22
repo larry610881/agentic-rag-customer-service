@@ -96,7 +96,9 @@ def verify_effective_tenant_id(context):
 
 @then("不應拋出 DomainException")
 def verify_no_exception(context):
-    assert context["error"] is None, f"Unexpected DomainException: {context.get('error')}"
+    assert context["error"] is None, (
+        f"Unexpected DomainException: {context.get('error')}"
+    )
 
 
 # ── Scenario 2: 一般租戶跨租戶失敗（重用 conversation_bot_filter 的步驟） ──

@@ -90,8 +90,13 @@ class ProcessDocumentUseCase:
         self._context_service = chunk_context_service
         self._tenant_repo = tenant_repository
 
-    def _resolve_splitter(self, kb) -> TextSplitterService:  # type: ignore[no-untyped-def]
-        """Per-KB splitter 解析。kb.chunk_strategy 命中 overrides → 用 override；否則 default。"""
+    def _resolve_splitter(  # type: ignore[no-untyped-def]
+        self, kb
+    ) -> TextSplitterService:
+        """Per-KB splitter 解析。
+
+        kb.chunk_strategy 命中 overrides → 用 override；否則 default。
+        """
         strategy = (getattr(kb, "chunk_strategy", "") if kb else "") or ""
         return self._text_splitter_overrides.get(strategy, self._splitter)
 
@@ -148,9 +153,10 @@ class ProcessDocumentUseCase:
                 except FileNotFoundError:
                     log.warning("document.file_storage.missing")
                 except Exception as storage_exc:  # noqa: BLE001
-                    # 2026-09-08：GCS 權限 / 網路等非「找不到」錯誤（POC VM worker SA 403）。
-                    # 資料庫若有原始內容副本就用副本繼續，不讓一次儲存端故障卡死整批文件；
-                    # 沒有副本（簽名網址直傳）才視為真失敗。
+                    # 2026-09-08：GCS 權限 / 網路等非「找不到」錯誤
+                    # （POC VM worker SA 403）。
+                    # 資料庫若有原始內容副本就用副本繼續，不讓一次儲存端故障
+                    # 卡死整批文件；沒有副本（簽名網址直傳）才視為真失敗。
                     if document.raw_content:
                         log.warning(
                             "document.file_storage.load_failed_fallback_db",
@@ -290,7 +296,11 @@ class ProcessDocumentUseCase:
             # Detect language
             language = self._language_detector.detect(preprocessed)
             preprocess_ms = round((time.perf_counter() - t0) * 1000)
-            log.info("document.preprocess.done", language=language, duration_ms=preprocess_ms)
+            log.info(
+                "document.preprocess.done",
+                language=language,
+                duration_ms=preprocess_ms,
+            )
 
             # Split text into chunks（Issue #45: per-KB chunk_strategy 路由）
             t0 = time.perf_counter()
@@ -368,7 +378,11 @@ class ProcessDocumentUseCase:
             if not context_model and self._tenant_repo:
                 try:
                     tenant = await self._tenant_repo.find_by_id(document.tenant_id)
-                    context_model = getattr(tenant, "default_context_model", "") if tenant else ""
+                    context_model = (
+                        getattr(tenant, "default_context_model", "")
+                        if tenant
+                        else ""
+                    )
                 except Exception:
                     pass
             if self._context_service and context_model:
@@ -446,7 +460,11 @@ class ProcessDocumentUseCase:
             t0 = time.perf_counter()
             await self._doc_repo.save_chunks(chunks)
             save_ms = round((time.perf_counter() - t0) * 1000)
-            log.info("document.chunks.saved", chunk_count=len(chunks), duration_ms=save_ms)
+            log.info(
+                "document.chunks.saved",
+                chunk_count=len(chunks),
+                duration_ms=save_ms,
+            )
 
             # 80% — embedding
             await _update_progress(task_id, 80)
@@ -574,7 +592,9 @@ class ProcessDocumentUseCase:
                 )
 
             # Auto-classify: if no more pending/processing docs in KB
-            await self._maybe_trigger_classification(document.kb_id, document.tenant_id, log)
+            await self._maybe_trigger_classification(
+                document.kb_id, document.tenant_id, log
+            )
 
         except Exception as e:
             log.exception("document.process.failed", error=str(e))

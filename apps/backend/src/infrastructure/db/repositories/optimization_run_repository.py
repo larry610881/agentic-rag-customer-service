@@ -77,12 +77,14 @@ class SQLAlchemyOptimizationRunRepository(OptimizationRunRepository):
 
         query = text(f"""
             SELECT run_id, tenant_id, target_field, bot_id,
-                   MAX(CASE WHEN iteration = 0 THEN score ELSE NULL END) as baseline_score,
+                   MAX(CASE WHEN iteration = 0 THEN score ELSE NULL END)
+                       as baseline_score,
                    MAX(CASE WHEN is_best THEN score ELSE 0 END) as best_score,
                    MAX(iteration) as total_iterations,
                    MIN(created_at) as started_at,
                    MAX(created_at) as last_updated_at,
-                   MAX(CASE WHEN details IS NOT NULL THEN details->>'type' ELSE NULL END) as run_type
+                   MAX(CASE WHEN details IS NOT NULL
+                       THEN details->>'type' ELSE NULL END) as run_type
             FROM prompt_opt_runs
             {base_where}
             GROUP BY run_id, tenant_id, target_field, bot_id

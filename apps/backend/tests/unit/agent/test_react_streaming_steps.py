@@ -124,7 +124,11 @@ def setup_double_tool_call(context):
         AIMessage(
             content="",
             tool_calls=[
-                {"name": "lookup_tool", "args": {"query": "第二次查詢"}, "id": "call_2"},
+                {
+                    "name": "lookup_tool",
+                    "args": {"query": "第二次查詢"},
+                    "id": "call_2",
+                },
             ],
         ),
         AIMessage(content="綜合兩次查詢結果，這是最終回答。"),

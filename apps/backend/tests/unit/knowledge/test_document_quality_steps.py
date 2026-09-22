@@ -310,7 +310,9 @@ def processed_doc(context):
     mock_file_storage_rp.load = AsyncMock(side_effect=FileNotFoundError)
 
     mock_kb_repo_rp = AsyncMock()
-    mock_kb_repo_rp.find_by_id = AsyncMock(return_value=KnowledgeBase(ocr_mode="general"))
+    mock_kb_repo_rp.find_by_id = AsyncMock(
+        return_value=KnowledgeBase(ocr_mode="general")
+    )
     context["reprocess_use_case"] = ReprocessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,
@@ -412,7 +414,9 @@ def processed_doc_will_fail(context):
     mock_file_storage_rp.load = AsyncMock(side_effect=FileNotFoundError)
 
     mock_kb_repo_rp = AsyncMock()
-    mock_kb_repo_rp.find_by_id = AsyncMock(return_value=KnowledgeBase(ocr_mode="general"))
+    mock_kb_repo_rp.find_by_id = AsyncMock(
+        return_value=KnowledgeBase(ocr_mode="general")
+    )
     context["reprocess_use_case"] = ReprocessDocumentUseCase(
         document_repository=mock_doc_repo,
         processing_task_repository=mock_task_repo,

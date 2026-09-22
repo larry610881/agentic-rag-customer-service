@@ -75,7 +75,9 @@ class ClusterClassificationService:
             chunk_to_category_map: {chunk_id: category_id}
         """
         if len(chunk_ids) < MIN_CHUNKS_FOR_CLUSTERING:
-            logger.info("classification.skip", reason="too_few_chunks", count=len(chunk_ids))
+            logger.info(
+                "classification.skip", reason="too_few_chunks", count=len(chunk_ids)
+            )
             return [], {}
 
         # Token-Gov.0: 重置 token 累計（S-LLM-Cache.1 含 cache 欄位）

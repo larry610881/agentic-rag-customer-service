@@ -388,7 +388,11 @@ class SendMessageUseCase:
                 "name": s.name,
                 "enabled_tools": s.enabled_tools,
                 "transport": s.transport,
-                **({"command": s.command, "args": s.args} if s.transport == "stdio" else {}),
+                **(
+                    {"command": s.command, "args": s.args}
+                    if s.transport == "stdio"
+                    else {}
+                ),
             }
             for s in bot.mcp_servers
         ]
@@ -474,7 +478,8 @@ class SendMessageUseCase:
         cfg["eval_provider"] = getattr(bot, "eval_provider", "")
         cfg["eval_model"] = getattr(bot, "eval_model", "")
         cfg["intent_routes"] = list(getattr(bot, "intent_routes", []))
-        # S-KB-Followup.2: bot-level model 空 → fallback tenant default → 空 → 系統 default
+        # S-KB-Followup.2: bot-level model 空 → fallback tenant default
+        # → 空 → 系統 default
         _bot_router_model = getattr(bot, "router_model", "")
         _bot_summary_model = getattr(bot, "summary_model", "")
         _tenant_default_intent = ""
@@ -483,8 +488,12 @@ class SendMessageUseCase:
             try:
                 _tenant = await self._tenant_repo.find_by_id(command.tenant_id)
                 if _tenant is not None:
-                    _tenant_default_intent = getattr(_tenant, "default_intent_model", "")
-                    _tenant_default_summary = getattr(_tenant, "default_summary_model", "")
+                    _tenant_default_intent = getattr(
+                        _tenant, "default_intent_model", ""
+                    )
+                    _tenant_default_summary = getattr(
+                        _tenant, "default_summary_model", ""
+                    )
             except Exception:
                 pass
         cfg["router_model"] = _bot_router_model or _tenant_default_intent
@@ -508,7 +517,9 @@ class SendMessageUseCase:
     async def _resolve_and_load_memory(
         self, command: SendMessageCommand, bot_cfg: dict[str, Any]
     ) -> str:
-        """Resolve visitor identity and load memory context（共用 ConversationMemoryService）。"""
+        """Resolve visitor identity and load memory context
+        （共用 ConversationMemoryService）。
+        """
         return await self._memory.load_prompt(
             tenant_id=command.tenant_id,
             source=command.identity_source,
@@ -614,7 +625,9 @@ class SendMessageUseCase:
     def _abuse_subject(command: SendMessageCommand) -> AbuseSubject | None:
         if command.subject_kind and command.subject_id:
             try:
-                return AbuseSubject(SubjectKind(command.subject_kind), command.subject_id)
+                return AbuseSubject(
+                    SubjectKind(command.subject_kind), command.subject_id
+                )
             except ValueError:
                 return None
         if command.identity_source == "widget" and command.visitor_id:
@@ -915,7 +928,12 @@ class SendMessageUseCase:
         estimate = self._token_estimator or (lambda text: max(1, len(text) // 2))
         prompt_text = "\n".join(
             str(gen_kwargs.get(k) or "")
-            for k in ("system_prompt", "history_context", "router_context", "user_message")
+            for k in (
+                "system_prompt",
+                "history_context",
+                "router_context",
+                "user_message",
+            )
         )
         usage = TokenUsage(
             model=str(bot_cfg.get("llm_model") or "unknown"),
@@ -1564,7 +1582,8 @@ class SendMessageUseCase:
                 "refund_step": refund_step_value,
             })
 
-        # Issue #96 / #99 一-6：收尾「存對話 → 記帳 → 存 trace」抽成 _stream_finalize（shielded）
+        # Issue #96 / #99 一-6：收尾「存對話 → 記帳 → 存 trace」
+        # 抽成 _stream_finalize（shielded）
         assistant_msg, cv_id, stream_trace_id, stream_trace_nodes = (
             await self._stream_finalize(
                 command, conversation, full_answer, tool_calls_to_save, latency_ms,
@@ -1660,8 +1679,9 @@ class SendMessageUseCase:
     ) -> tuple[Any, str | None, str | None, list[dict[str, Any]] | None]:
         """收尾「存對話 → 記帳 → 存 trace」（Issue #96 M12）。
 
-        整段包在 shielded scope：客戶端此時斷線，Starlette 的取消會延後到本區塊結束後
-        才生效，訊息與用量不會只存一半。回傳 (assistant_msg, cv_id, trace_id, trace_nodes)。
+        整段包在 shielded scope：客戶端此時斷線，Starlette 的取消會延後到
+        本區塊結束後才生效，訊息與用量不會只存一半。
+        回傳 (assistant_msg, cv_id, trace_id, trace_nodes)。
         """
         assistant_msg = None
         cv_id: str | None = None
@@ -1716,7 +1736,9 @@ class SendMessageUseCase:
         stream_trace_id: str | None,
         stream_trace_nodes: list[dict[str, Any]] | None,
     ) -> AsyncIterator[dict[str, Any]]:
-        """尾端事件：message_id / config_version / config_hash / conversation_id / done。"""
+        """尾端事件：message_id / config_version / config_hash / conversation_id
+        / done。
+        """
         try:
             if assistant_msg is not None:
                 yield {
@@ -1959,7 +1981,9 @@ class SendMessageUseCase:
         router_context: str,
         metadata: dict[str, Any],
     ) -> dict[str, Any]:
-        """process_message / process_message_stream 共用參數（重試時只換 system_prompt）。"""
+        """process_message / process_message_stream 共用參數
+        （重試時只換 system_prompt）。
+        """
         return {
             "tenant_id": command.tenant_id,
             "kb_id": bot_cfg["kb_id"],

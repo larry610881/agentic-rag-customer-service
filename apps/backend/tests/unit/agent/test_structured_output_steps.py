@@ -85,7 +85,12 @@ def _setup_web(
     model="", miss_reply="", schema=None, text_field="answer", replies=None,
 ):
     bot = Bot(
-        id=BotId(value="bot-so"), tenant_id="t1", name="SO", knowledge_base_ids=["kb-1"], mode=mode, output_format=output_format,
+        id=BotId(value="bot-so"),
+        tenant_id="t1",
+        name="SO",
+        knowledge_base_ids=["kb-1"],
+        mode=mode,
+        output_format=output_format,
         output_schema=schema, miss_reply=miss_reply, llm_provider=provider,
         llm_model=model, output_text_field=text_field,
     )
@@ -499,7 +504,9 @@ def strict_is(context, value):
 # --- Issue #85：防護攔截套用輸出格式 ---
 
 
-@given(parsers.parse('一個輸出格式為 "{fmt}" 的輸出規格'), target_fixture="blocked_spec")
+@given(
+    parsers.parse('一個輸出格式為 "{fmt}" 的輸出規格'), target_fixture="blocked_spec"
+)
 def blocked_spec(fmt):
     from src.application.agent.output_format import OutputSpec
 

@@ -123,8 +123,12 @@ class UploadDocumentUseCase:
 
         return UploadDocumentResult(document=document, task=task)
 
-    async def request_upload(self, command: RequestUploadCommand) -> RequestUploadResult:
-        """Create document + processing task, return signed URL for direct GCS upload."""
+    async def request_upload(
+        self, command: RequestUploadCommand
+    ) -> RequestUploadResult:
+        """Create document + processing task, return signed URL for direct
+        GCS upload.
+        """
         if command.content_type not in _SUPPORTED_TYPES:
             raise UnsupportedFileTypeError(command.content_type)
 
@@ -169,8 +173,12 @@ class UploadDocumentUseCase:
             storage_path=storage_path,
         )
 
-    async def confirm_upload(self, document_id: str, task_id: str) -> UploadDocumentResult:
-        """Confirm direct upload completed, return document + task for background processing."""
+    async def confirm_upload(
+        self, document_id: str, task_id: str
+    ) -> UploadDocumentResult:
+        """Confirm direct upload completed, return document + task for
+        background processing.
+        """
         doc = await self._doc_repo.find_by_id(document_id)
         if doc is None:
             raise EntityNotFoundError("Document", document_id)
