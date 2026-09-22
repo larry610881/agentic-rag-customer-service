@@ -16,24 +16,28 @@ pool:
 steps:
   - checkout: none
   - bash: |
-      set -euo pipefail
-      URL="$(System.OidcRequestUri)?api-version=7.1&serviceConnectionId=${{ parameters.serviceConnectionId }}"
-      echo "request: $URL"
-      RESP=$(curl -sS -X POST -H "Content-Length: 0" \
-        -H "Authorization: Bearer $(System.AccessToken)" "$URL")
-      python3 - "$RESP" <<'PY'
+      set -uo pipefail
+      decode() {
+        python3 - "$1" <<'PY'
       import sys, json, base64
       resp = sys.argv[1]
       try:
           tok = json.loads(resp)["oidcToken"]
       except Exception:
-          print("no oidcToken in response:", resp[:500]); sys.exit(1)
+          print("  no oidcToken in response:", resp[:400]); sys.exit(0)
       h, p, _ = tok.split(".")
       dec = lambda s: json.loads(base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)))
-      print("header:", json.dumps(dec(h)))
+      print("  header:", json.dumps(dec(h)))
       pl = dec(p)
       keep = ("iss", "sub", "aud", "exp", "iat", "nbf", "tid", "appid", "idtyp", "ver", "oid", "azp")
-      print("claims:", json.dumps({k: pl[k] for k in pl if k in keep}, indent=2, ensure_ascii=False))
-      print("other claim names:", sorted(k for k in pl if k not in keep))
+      print("  claims:", json.dumps({k: pl[k] for k in pl if k in keep}, indent=2, ensure_ascii=False))
+      print("  other claim names:", sorted(k for k in pl if k not in keep))
       PY
+      }
+      echo "== A. 不帶 serviceConnectionId（pipeline 自身的 ID token）"
+      RESP=$(curl -sS -X POST -H "Content-Length: 0" -H "Authorization: Bearer $(System.AccessToken)"         "$(System.OidcRequestUri)?api-version=7.1")
+      decode "$RESP"
+      echo "== B. 帶 serviceConnectionId=${{ parameters.serviceConnectionId }}"
+      RESP=$(curl -sS -X POST -H "Content-Length: 0" -H "Authorization: Bearer $(System.AccessToken)"         "$(System.OidcRequestUri)?api-version=7.1&serviceConnectionId=${{ parameters.serviceConnectionId }}")
+      decode "$RESP"
     displayName: 解出 OIDC token 的 issuer / subject / audience
