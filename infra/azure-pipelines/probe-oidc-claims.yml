@@ -1,14 +1,17 @@
-# 探針：印出管線向 Azure DevOps 請到的 OIDC token 的 issuer / subject / audience，
-# 用來確認要給 GCP Workload Identity Federation 的 provider 設定值。
-# 只印 header 與非機密 claims，不印 token 本體。手動觸發，不觸發 CI。
+# 探針：印出「這條管線」向 Azure DevOps 請到的 OIDC token 的 issuer / subject / audience
+# 與識別用 claim，用來確認（或日後重新確認）GCP Workload Identity Federation provider 的設定值。
+# 只印非機密 claim，不印 token 本體。手動觸發，不觸發 CI。
+#
+# Azure 上對應的管線：probes/probe-oidc-claims（id 3934）。正式管線 agentic-rag-customer-service
+# 的 token 只差 sub 的最後一段與 def_id，其餘相同。
+#
+# 2026-09-22 實測結果：
+#   iss  https://vstoken.dev.azure.com/18185d85-4caa-4a99-b7e8-81ac197c4c52
+#   sub  p://PIC-DevOps/檯帳系列-平台POC/<管線名稱>
+#   aud  api://AzureADTokenExchange
+#   其他 def_id, prj_id, org_id, rpo_id, rpo_ref, rpo_uri, rpo_ver, run_id, jti
 trigger: none
 pr: none
-
-parameters:
-  - name: serviceConnectionId
-    displayName: 服務連線 GUID
-    type: string
-    default: 564a27b2-b280-41aa-9f7b-7d080c424f80
 
 pool:
   vmImage: ubuntu-latest
@@ -16,28 +19,21 @@ pool:
 steps:
   - checkout: none
   - bash: |
-      set -uo pipefail
-      decode() {
-        python3 - "$1" <<'PY'
+      set -euo pipefail
+      RESP=$(curl -sS -X POST -H "Content-Length: 0" -H "Authorization: Bearer $(System.AccessToken)" \
+        "$(System.OidcRequestUri)?api-version=7.1")
+      python3 - "$RESP" <<'PY'
       import sys, json, base64
       resp = sys.argv[1]
       try:
           tok = json.loads(resp)["oidcToken"]
       except Exception:
-          print("  no oidcToken in response:", resp[:400]); sys.exit(0)
+          print("no oidcToken in response:", resp[:400]); sys.exit(1)
       h, p, _ = tok.split(".")
       dec = lambda s: json.loads(base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)))
-      print("  header:", json.dumps(dec(h)))
+      print("header:", json.dumps(dec(h)))
       pl = dec(p)
-      keep = ("iss", "sub", "aud", "exp", "iat", "nbf", "tid", "appid", "idtyp", "ver", "oid", "azp")
-      print("  claims:", json.dumps({k: pl[k] for k in pl if k in keep}, indent=2, ensure_ascii=False))
-      print("  other claim names:", sorted(k for k in pl if k not in keep))
+      hide = ("jti", "run_id")
+      print("claims:", json.dumps({k: v for k, v in pl.items() if k not in hide}, indent=2, ensure_ascii=False))
       PY
-      }
-      echo "== A. 不帶 serviceConnectionId（pipeline 自身的 ID token）"
-      RESP=$(curl -sS -X POST -H "Content-Length: 0" -H "Authorization: Bearer $(System.AccessToken)"         "$(System.OidcRequestUri)?api-version=7.1")
-      decode "$RESP"
-      echo "== B. 帶 serviceConnectionId=${{ parameters.serviceConnectionId }}"
-      RESP=$(curl -sS -X POST -H "Content-Length: 0" -H "Authorization: Bearer $(System.AccessToken)"         "$(System.OidcRequestUri)?api-version=7.1&serviceConnectionId=${{ parameters.serviceConnectionId }}")
-      decode "$RESP"
-    displayName: 解出 OIDC token 的 issuer / subject / audience
+    displayName: 解出 OIDC token 的 issuer / subject / audience / 識別 claim

@@ -4,10 +4,10 @@
 #   CI（每個 PR / push）→ Package（只有 main）→ Release（自動部署，無人工閘門）
 #
 # 前置設定見 docs/azure-devops-setup.md：
-#   - GCP 認證預設走 Workload Identity Federation（無長期金鑰）；要退回服務帳號
-#     金鑰時，手動觸發時把參數 gcpAuthMethod 改成 sa-key，或改下面的 default
+#   - GCP 認證預設走 Workload Identity Federation（無長期金鑰、不需要 Azure 服務連線，
+#     用管線本身的 OIDC token）；要退回服務帳號金鑰時，手動觸發時把參數 gcpAuthMethod
+#     改成 sa-key，或改下面的 default
 #   - 變數群組 `agentic-rag-gcp-<environment>`（一個環境一組，見 docs/azure-devops-setup.md §4）
-#   - 變數群組 `agentic-rag-runtime`（Cloud Run 執行期祕密，全部標記為 secret）
 #   - Environment `poc`（只留部署歷史；**不要加 approvals**，加了就變成要人核准）
 # =============================================================================
 

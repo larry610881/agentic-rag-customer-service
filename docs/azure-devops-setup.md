@@ -78,53 +78,77 @@ az repos policy comment-required create \
 Pipelines → New pipeline → Azure Repos Git → 選本 repo → Existing Azure Pipelines YAML file
 → `/azure-pipelines.yml`。
 
-> **先確認平行度**：私有專案的 Microsoft-hosted agent 預設 0 個平行工作，
-> 要先申請免費授權（[表單](https://aka.ms/azpipelines-parallelism-request)，
-> 通常 2–3 個工作天），否則管線會一直卡在 "waiting for an available agent"。
-> 不想等就改用 self-hosted agent，`pool:` 換成自架的 agent pool 名稱。
+> **平行度**：PIC-DevOps 組織的 Microsoft-hosted agent 已可用（2026-09-22 探針管線實跑在
+> `Azure Pipelines` pool 的 ubuntu-24.04 上）。若日後出現 "waiting for an available agent"
+> 或 "No hosted parallelism"，是組織額度被用完或收回，向組織管理員申請
+> （[表單](https://aka.ms/azpipelines-parallelism-request)）。
 
 ### 2. GCP 認證：Workload Identity Federation（預設）
 
-原理一句話：Azure DevOps 對「一條服務連線」簽發短效 OIDC 權杖 → GCP 的 workload identity
-pool provider 信任它 → 換成部署 SA 的短效權杖。全程沒有長期金鑰。
+原理一句話：Azure DevOps 對「這條管線」簽發短效 OIDC token → GCP 的 workload identity
+pool provider 信任它 → 換成部署 SA 的短效權杖。全程沒有長期金鑰，**也不需要任何 Azure 服務連線**。
 
-**整個接線只需要三個值**，其餘（專案 ID、region、VM 名稱）已寫死在 `azure-pipelines.yml`。
+管線拿到的 token 長這樣（2026-09-22 用 `infra/azure-pipelines/probe-oidc-claims.yml` 實測）：
+
+| claim | 值 |
+|---|---|
+| `iss` | `https://vstoken.dev.azure.com/18185d85-4caa-4a99-b7e8-81ac197c4c52`（尾段 = PIC-DevOps 組織 GUID） |
+| `sub` | `p://PIC-DevOps/檯帳系列-平台POC/agentic-rag-customer-service` |
+| `aud` | `api://AzureADTokenExchange` |
+| `prj_id` | `d80a45a4-e680-4e61-be01-3d5df3662f3c`（專案 GUID） |
+| `def_id` | `3888`（管線定義 id） |
+| `rpo_ref` | 觸發的分支，例如 `refs/heads/main` |
+
+**整個接線只需要兩個值**，都由 infra 提供；其餘（專案 ID、region、VM 名稱）放 Library 變數群組。
 
 | 值 | 誰提供 | 怎麼拿 |
 |---|---|---|
-| `GCP_WIF_SERVICE_CONNECTION_ID` | 你（Azure） | 見 2.1 |
 | `GCP_WIF_PROVIDER` | infra（GCP） | 見 2.2，格式 `projects/<專案編號>/locations/global/workloadIdentityPools/<pool>/providers/<provider>` |
 | `GCP_DEPLOY_SA` | infra（GCP） | 部署用 SA 的 email |
 
-#### 2.1 你在 Azure 做的：建一條服務連線當「身分」
+> **為什麼不用服務連線**：2025-11 起 Azure Resource Manager 服務連線改由 Microsoft Entra 簽發
+> token（issuer 變成 `login.microsoftonline.com/<tenant>/v2.0`，subject 變成 `/eid1/c/pub/...`），
+> 沒有真實 Azure 租戶就換不到；而且對服務連線請 token 必須有 task **明確引用**該連線，純 script
+> 步驟會被拒（`There is no explicit reference to service connection`）。管線層級的 token 兩個問題
+> 都沒有，issuer 仍是 `vstoken.dev.azure.com`。Microsoft 已宣布服務連線的 vstoken issuer
+> 2027-07 停用，管線層級 token 是否跟進未定；若哪天 Package 認證失敗且 log 印出的 `iss` 變了，
+> 跑一次探針管線取得新值，請 infra 更新 provider 的 `--issuer-uri` 即可。
 
-1. Project settings → Service connections → New → **Azure Resource Manager** →
-   **Workload Identity federation (manual)**，名稱例如 `gcp-poc`。
-2. 訂閱 / 租戶欄位填佔位值；**不要按 Verify**（沒有真的 Azure 訂閱會失敗），直接存。
-3. 點進該連線，網址列 `...?resourceId=<GUID>`，這個 GUID 就是 `GCP_WIF_SERVICE_CONNECTION_ID`。
-4. 把兩個值交給 infra：**組織 GUID**（開 `https://dev.azure.com/PIC-DevOps/_apis/connectionData`，
-   取 `instanceId`）與**服務連線名稱**（如 `gcp-poc`）。infra 用它們設定 provider 的 issuer 與
-   attribute condition。
+#### 2.1 你在 Azure 做的：什麼都不用建
+
+不需要服務連線、不需要 app registration。只要把下面三個識別碼交給 infra
+（都不是機密，已寫在本文件）：
+
+| 給 infra 的值 | 值 |
+|---|---|
+| Azure DevOps 組織 GUID | `18185d85-4caa-4a99-b7e8-81ac197c4c52` |
+| 專案 GUID | `d80a45a4-e680-4e61-be01-3d5df3662f3c` |
+| 正式管線定義 id | `3888`（Pipelines 頁面網址 `definitionId=`） |
+
+要重新確認這些值（例如管線重建、專案改名），手動跑 `probes/probe-oidc-claims` 管線，
+log 會印出 token 的全部識別 claim。
 
 #### 2.2 infra 在 GCP 做的（Larry 的帳號沒有 IAM 權限，做不了也查不到）
 
 ```bash
 PROJECT_ID=project-pic-ai-innovation-poc
-ADO_ORG_ID=<Azure DevOps 組織 GUID>      # 2.1 第 4 步
-ADO_ORG=PIC-DevOps
-ADO_PROJECT='檯帳系列-平台POC'
+ADO_ORG_ID=18185d85-4caa-4a99-b7e8-81ac197c4c52   # Azure DevOps 組織 GUID（token 的 iss 尾段）
+ADO_PRJ_ID=d80a45a4-e680-4e61-be01-3d5df3662f3c   # Azure DevOps 專案 GUID（token 的 prj_id）
+ADO_DEF_ID=3888                                     # 正式管線定義 id（token 的 def_id）
 POOL=azure-devops                         # 名稱自訂
 PROVIDER=ado-pic-devops                   # 名稱自訂
 SA=poc-rag-deploy-sa                      # 交付文件已有此 SA 可沿用；沒有就建
 
 gcloud iam workload-identity-pools create "$POOL" --project="$PROJECT_ID" \
   --location=global --display-name="Azure DevOps"
+# subject 用 <專案 GUID>/<管線 id>（純 ASCII，避開 sub 裡的中文專案名）；
+# attribute condition 只放行這個 Azure DevOps 專案。
 gcloud iam workload-identity-pools providers create-oidc "$PROVIDER" \
   --project="$PROJECT_ID" --location=global --workload-identity-pool="$POOL" \
   --issuer-uri="https://vstoken.dev.azure.com/$ADO_ORG_ID" \
   --allowed-audiences="api://AzureADTokenExchange" \
-  --attribute-mapping="google.subject=assertion.sub" \
-  --attribute-condition="assertion.sub.startsWith('sc://$ADO_ORG/$ADO_PROJECT/')"
+  --attribute-mapping="google.subject=assertion.prj_id+'/'+string(assertion.def_id),attribute.rpo_ref=assertion.rpo_ref,attribute.pipeline=assertion.sub" \
+  --attribute-condition="assertion.prj_id=='$ADO_PRJ_ID'"
 
 SA_EMAIL="$SA@$PROJECT_ID.iam.gserviceaccount.com"
 gcloud iam service-accounts describe "$SA_EMAIL" --project="$PROJECT_ID" >/dev/null 2>&1 \
@@ -132,10 +156,10 @@ gcloud iam service-accounts describe "$SA_EMAIL" --project="$PROJECT_ID" >/dev/n
 
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 POOL_NAME="projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL"
-# 讓這個 ADO 專案的任何服務連線都能扮演此 SA（attribute condition 已限定專案）
+# 只有正式管線（專案 GUID/管線 id）能扮演此 SA；探針或其他管線拿到 token 也換不到 SA
 gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" --project="$PROJECT_ID" \
   --role=roles/iam.workloadIdentityUser \
-  --member="principalSet://iam.googleapis.com/$POOL_NAME/*"
+  --member="principal://iam.googleapis.com/$POOL_NAME/subject/$ADO_PRJ_ID/$ADO_DEF_ID"
 
 for ROLE in roles/artifactregistry.writer roles/run.admin roles/iam.serviceAccountUser \
             roles/iap.tunnelResourceAccessor roles/compute.instanceAdmin.v1; do
@@ -175,11 +199,10 @@ Library → Secure files 上傳金鑰，檔名固定 `gcp-sa-key.json`，服務�
 用管線參數 `environment` 切換；加新環境 = 加一組 group + 在 `parameters.environment.values` 加一個選項，
 YAML 其他地方不動。
 
-`agentic-rag-gcp-poc` 的九個值：
+`agentic-rag-gcp-poc` 的八個值（2026-09-22 已用 CLI 建好，group id 390）：
 
 | 變數 | 值 | 來源 | 機密 |
 |---|---|---|:---:|
-| `GCP_WIF_SERVICE_CONNECTION_ID` | 服務連線 GUID | 你（2.1） | 否 |
 | `GCP_WIF_PROVIDER` | `projects/<編號>/locations/global/workloadIdentityPools/<pool>/providers/<provider>` | infra（2.2 的 echo） | 否 |
 | `GCP_DEPLOY_SA` | `<sa>@project-pic-ai-innovation-poc.iam.gserviceaccount.com` | infra（2.2 的 echo） | 否 |
 | `GCP_PROJECT_ID` | `project-pic-ai-innovation-poc` | 固定 | 否 |
@@ -189,14 +212,19 @@ YAML 其他地方不動。
 | `WORKER_VM_USER` | `larry610881_gcpmail_pcsc_net_tw` | 固定 | 否 |
 | `WORKER_REPO_PATH` | `/home/larry610881_gcpmail_pcsc_net_tw/agentic-rag-customer-service` | 固定 | 否 |
 
-這九個都不是憑證，不用勾 secret（勾了就不能在 template expression 用，而且 log 會遮罩到難以除錯）。
+這八個都不是憑證，不用勾 secret（勾了就不能在 template expression 用，而且 log 會遮罩到難以除錯）。
 WIF 路徑沒有任何長期祕密；只有備援的 `sa-key` 路徑用 Secure Files 放金鑰。
 
 建好後回到管線頁，第一次載入會出現「Variable group was not found or is not authorized」，
 按 **Authorize resources**（或在該 group 的 Pipeline permissions 加這條管線）。
 
-infra 還沒回覆前，`GCP_WIF_PROVIDER` / `GCP_DEPLOY_SA` 先填佔位字串也能建管線：CI 階段照跑，
-只有 Package 的認證步驟會失敗。
+infra 還沒回覆前，`GCP_WIF_PROVIDER` / `GCP_DEPLOY_SA` 先填 `TBD`（目前狀態）也能建管線：
+CI 階段照跑，只有 Package 的認證步驟會失敗。infra 回值後用 CLI 更新：
+
+```bash
+az pipelines variable-group variable update --group-id 390 --name GCP_WIF_PROVIDER --value '<infra 給的值>'
+az pipelines variable-group variable update --group-id 390 --name GCP_DEPLOY_SA --value '<infra 給的值>'
+```
 
 > 舊版文件裡的 `agentic-rag-runtime`（Cloud Run 執行期環境變數）**不再需要**：Release 只換映像，
 > 環境變數沿用服務現況（見第六節）。
@@ -264,11 +292,13 @@ GitHub Actions 那條線上真的發生過（快取計費與自動分類記帳�
 
 ## 五、驗收清單
 
-- [ ] Azure：服務連線 `gcp-poc` 已建（未 Verify），GUID 已取得
-- [ ] infra：pool / provider / SA 已建，回覆 `GCP_WIF_PROVIDER` 與 `GCP_DEPLOY_SA` 兩個值
+- [x] Azure：hosted agent 可用、探針管線取得 OIDC token（2026-09-22）；不需要服務連線
+- [x] Library：`agentic-rag-gcp-poc` 建好並 Authorize（2026-09-22，group 390；infra 兩值先 `TBD`）
+- [ ] infra：pool / provider / SA 已建（2.2 腳本），回覆 `GCP_WIF_PROVIDER` 與 `GCP_DEPLOY_SA` 兩個值
 - [ ] infra：SA 具五個角色（VM 開 OS Login 時加 `compute.osAdminLogin`）
-- [ ] Library：`agentic-rag-gcp-poc` 九個值填好並 Authorize 給管線
-- [ ] 管線指向 `/azure-pipelines.yml`，首次排程 `coverageFailUnder` 填 78
+- [ ] Library：把 infra 兩值填進 group 390
+- [ ] main 加 branch policy（至少 1 reviewer + CI build validation）；合入即部署，不能再直推
+- [ ] 管線 3888 指向 `/azure-pipelines.yml`，首次排程 `coverageFailUnder` 填 78
 - [ ] main 推一次 → CI 綠 → Package 推出 `rc-<sha>` → Release 部署且 `/health` 200 → VM worker HEAD 等於本次 commit
 
 ## 六、2026-09-16 更新（掛上 Azure 前對齊現況）
@@ -287,3 +317,17 @@ GitHub Actions 那條線上真的發生過（快取計費與自動分類記帳�
 
 GCP 端無法從 Larry 帳號驗證（IAM 讀取全被擋）：WIF pool / provider、deploy SA 的五個角色、
 `iam.workloadIdentityUser` 綁定，請 infra 負責人確認，或直接跑一次 Package 看 403 訊息。
+
+## 七、2026-09-22 更新（服務連線走不通，改用管線層級 token）
+
+用 `az devops` CLI 實際接線時發現兩件事，都靠探針管線（`infra/azure-pipelines/probe-oidc-claims.yml`）
+實測確認：
+
+| 現象 | 處置 |
+|---|---|
+| 新建的 ARM 服務連線 issuer 是 `login.microsoftonline.com/<tenant>/v2.0`、subject 是 `/eid1/c/pub/...`（Entra 簽發，2025-11 起的新格式） | 沒有真實 Azure 租戶就換不到 token；放棄服務連線 |
+| 純 script 對服務連線請 token 被拒：`There is no explicit reference to service connection ... from current stage` | 舊版 `steps-gcp-auth-wif.yml` 會在此失敗；改成不帶 `serviceConnectionId` 請管線自身的 token |
+| 管線層級 token：`iss=https://vstoken.dev.azure.com/<org GUID>`、`sub=p://<org>/<project>/<pipeline>`、帶 `prj_id` / `def_id` / `rpo_ref` | GCP provider 以 `prj_id/def_id` 當 subject 綁 SA（見 2.2） |
+
+同時：Library group `agentic-rag-gcp-poc`（id 390）已用 CLI 建好，變數從九個減為八個；
+臨時建的服務連線 `gcp-poc-wif` 已刪；UI 精靈留下的 draft 服務連線刪不掉也不影響任何事。

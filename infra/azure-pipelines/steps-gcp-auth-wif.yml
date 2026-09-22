@@ -1,14 +1,22 @@
 # GCP 認證 —— Workload Identity Federation（無長期金鑰，預設路徑）
 #
-# 流程：Azure DevOps 發一張短效 OIDC token（subject 為
-# `sc://<組織>/<專案>/<服務連線>`）→ GCP 的 workload identity pool provider 信任
-# 該 issuer → STS 換成部署用服務帳號的短效存取權杖。整段沒有任何長期祕密。
+# 流程：Azure DevOps 對「這條管線本身」簽發短效 OIDC token（不需要任何服務連線）
+#   iss = https://vstoken.dev.azure.com/<Azure DevOps 組織 GUID>
+#   sub = p://<組織>/<專案>/<管線名稱>
+#   aud = api://AzureADTokenExchange
+#   另有 prj_id（專案 GUID）、def_id（管線定義 id）、rpo_ref（分支）等 claim
+# → GCP 的 workload identity pool provider 信任該 issuer，並以 prj_id + def_id 綁定
+#   部署用服務帳號 → STS 換成短效存取權杖。整段沒有任何長期祕密。
 #
-# 需要的變數（只有這三個要放 `agentic-rag-gcp` 變數群組；其餘常數在 azure-pipelines.yml）：
-#   GCP_WIF_PROVIDER              GCP 端 provider 的完整資源路徑，infra 建好後給你：
-#                                 projects/<專案編號>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
-#   GCP_DEPLOY_SA                 部署用服務帳號 email（infra 給）
-#   GCP_WIF_SERVICE_CONNECTION_ID Azure DevOps 服務連線的 GUID（你自己建，網址列 resourceId=）
+# 為什麼不用服務連線：2025-11 起 Azure Resource Manager 服務連線改由 Entra 簽發 token
+# （issuer 變成 login.microsoftonline.com/<tenant>），沒有真實 Azure 租戶就換不到；而且
+# 對服務連線請 token 必須有 task 明確引用它，純 script 步驟拿不到。管線層級的 token
+# 兩個問題都沒有（2026-09-22 以 infra/azure-pipelines/probe-oidc-claims.yml 實測）。
+#
+# 需要的變數（放 `agentic-rag-gcp-<environment>` 變數群組）：
+#   GCP_WIF_PROVIDER   GCP 端 provider 的完整資源路徑，infra 建好後給你：
+#                      projects/<專案編號>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
+#   GCP_DEPLOY_SA      部署用服務帳號 email（infra 給）
 #
 # 注意：OIDC token 只有約 10 分鐘效期。gcloud 換到的存取權杖有 1 小時，
 # 但存取權杖過期後 gcloud 會回頭重讀 token 檔，此時 OIDC token 早已失效。
@@ -22,20 +30,22 @@ steps:
         -H "Authorization: Bearer $SYSTEM_ACCESSTOKEN" \
         -H "Content-Type: application/json" \
         -H "Content-Length: 0" \
-        "$(System.OidcRequestUri)?api-version=7.1&serviceConnectionId=$(GCP_WIF_SERVICE_CONNECTION_ID)")
+        "$(System.OidcRequestUri)?api-version=7.1")
       TOKEN=$(printf '%s' "$RESP" | jq -r '.oidcToken // empty')
       if [ -z "$TOKEN" ]; then
         # 不要印 $RESP 全文，錯誤回應可能夾帶其他權杖
         echo "##vso[task.logissue type=error]取不到 OIDC token（HTTP 回應無 oidcToken 欄位）"
-        echo "檢查：服務連線 GUID 是否正確、管線是否有該服務連線的使用權限"
+        echo "檢查：專案是否為 Private（Public 專案不發 OIDC token）、System.AccessToken 是否可用"
         exit 1
       fi
       umask 077
       printf '%s' "$TOKEN" > "$(Agent.TempDirectory)/gcp-oidc-token.txt"
-      echo "已取得 OIDC token（長度 ${#TOKEN}）"
+      # 只印非機密 claim，方便對照 GCP provider 的 issuer / attribute condition
+      printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | awk '{ l=length($0)%4; if (l) $0=$0 substr("===",1,4-l); print }' \
+        | base64 -d 2>/dev/null | jq -c '{iss, sub, aud, prj_id, def_id, rpo_ref}' || true
     env:
       SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-    displayName: 取得 Azure DevOps OIDC token
+    displayName: 取得 Azure DevOps OIDC token（管線層級，不經服務連線）
 
   - script: |
       set -euo pipefail
