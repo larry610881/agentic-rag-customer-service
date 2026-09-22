@@ -62,9 +62,13 @@
 - ✅ 驗收：PostgreSQL 中有訂單/商品/客戶資料
 
 ### 0.4 CI Pipeline
-- ✅ `.github/workflows/ci.yml`（lint + test + build）
+- ✅ `.github/workflows/ci.yml`（lint + test + build）—— 09-03 起停用，改 Azure DevOps
 - ✅ PR 自動觸發 CI
 - ⬜ 驗收：PR 建立時自動執行 pipeline
+- ✅ 09-22 Azure DevOps 接線：CLI 通、hosted agent 可用、Library group 390 建好、**GCP WIF 改用管線層級 OIDC token（不需服務連線；ARM 連線已改 Entra 簽發且純 script 被拒）**，`steps-gcp-auth-wif.yml` + 探針 + 文件 §2/§4/§5/§7 已併 main（d41f333）
+- ⬜ Larry：建 Environment `poc`（PAT 缺 scope）；main branch policy
+- ⬜ infra：pool / provider / SA（docs §2.2）→ 填 `GCP_WIF_PROVIDER` / `GCP_DEPLOY_SA`
+- ⬜ 首次跑 `coverageFailUnder=78` → CI 綠 → Package/Release 通 → 覆蓋率回 80
 
 ---
 
