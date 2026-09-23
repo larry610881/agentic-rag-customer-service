@@ -55,6 +55,33 @@ async def _update_progress(task_id: str, progress: int) -> None:
         pass
 
 
+async def _close_repo_session(repo: Any) -> None:
+    """Best-effort close: return the connection to the pool before a
+    long-running LLM/OCR call."""
+    if hasattr(repo, "_session"):
+        try:
+            await repo._session.close()
+        except Exception:
+            pass
+
+
+def _document_needs_ocr(raw_content: Any, document: Any, ocr_mode: str) -> bool:
+    """Determine if this is a long-running OCR path.
+
+    auto / catalog 都走 OCR（auto 內部走 page-type dispatcher）
+    """
+    return bool(
+        raw_content
+        and (
+            document.content_type.startswith("image/")
+            or (
+                document.content_type == "application/pdf"
+                and ocr_mode in ("catalog", "auto")
+            )
+        )
+    )
+
+
 class ProcessDocumentUseCase:
     def __init__(
         self,
@@ -100,6 +127,479 @@ class ProcessDocumentUseCase:
         strategy = (getattr(kb, "chunk_strategy", "") if kb else "") or ""
         return self._text_splitter_overrides.get(strategy, self._splitter)
 
+    async def _fetch_document_or_raise(self, document_id: str):
+        document = await self._doc_repo.find_by_id(document_id)
+        if document is None:
+            raise ValueError(f"Document '{document_id}' not found")
+        return document
+
+    async def _load_raw_content(self, document: Any, log: Any) -> Any:
+        """Load raw content: prefer file storage, fallback to DB BYTEA."""
+        raw_content = None
+        if document.storage_path:
+            try:
+                raw_content = await self._file_storage.load(
+                    document.storage_path
+                )
+            except FileNotFoundError:
+                log.warning("document.file_storage.missing")
+            except Exception as storage_exc:  # noqa: BLE001
+                # 2026-09-08：GCS 權限 / 網路等非「找不到」錯誤
+                # （POC VM worker SA 403）。
+                # 資料庫若有原始內容副本就用副本繼續，不讓一次儲存端故障
+                # 卡死整批文件；沒有副本（簽名網址直傳）才視為真失敗。
+                if document.raw_content:
+                    log.warning(
+                        "document.file_storage.load_failed_fallback_db",
+                        error=str(storage_exc)[:200],
+                    )
+                else:
+                    raise
+        if raw_content is None:
+            raw_content = document.raw_content
+        return raw_content
+
+    async def _run_ocr_or_parse(
+        self,
+        document: Any,
+        ocr_mode: str,
+        ocr_engine: Any,
+        ocr_usage: OcrUsageTally,
+        raw_content: Any,
+        task_id: str,
+        log: Any,
+        kb: Any,
+    ) -> tuple[str, Any]:
+        """Dispatch to image-OCR / async-PDF-OCR / sync parse.
+
+        Returns (content, ocr_legacy_source) — legacy_source 只在同步 parse()
+        路徑設定（Issue #73 相容：同步 parse() 回純字串、無法帶 tally，記帳退回
+        last_*）。
+        """
+        # PNG/image: single page OCR (child of split PDF)
+        if (
+            document.content_type.startswith("image/")
+            and ocr_engine is not None
+        ):
+            # KB.ocr_slice_grid 空 = 不切片；"2x3" / "3x2" 啟用切片 OCR
+            # 提升 rare brand char 辨識率（薈/樟腦/萃這類）
+            slice_grid = getattr(kb, "ocr_slice_grid", "") if kb else ""
+            content = await ocr_image(
+                ocr_engine,
+                raw_content,
+                ocr_mode=ocr_mode,
+                slice_grid=slice_grid,
+                usage=ocr_usage,
+            )
+            await _update_progress(task_id, 70)
+            return content, None
+
+        # PDF: use async path with progress callback (no DB held)
+        if (
+            document.content_type == "application/pdf"
+            and hasattr(self._file_parser, "parse_pdf_async")
+        ):
+            async def _on_progress(done: int, total: int) -> None:
+                pct = round(done / total * 70) if total else 0
+                await _update_progress(task_id, pct)
+                log.info("ocr.progress", done=done, total=total)
+
+            content = await self._file_parser.parse_pdf_async(
+                raw_content,
+                ocr_mode=ocr_mode,
+                on_progress=_on_progress,
+                engine=ocr_engine,
+                usage=ocr_usage,
+            )
+            return content, None
+
+        # 同步 parse() 回純字串、無法帶 tally → 記帳退回 last_*（#73 相容）
+        content = await asyncio.to_thread(
+            self._file_parser.parse,
+            raw_content,
+            document.content_type,
+            ocr_mode,
+        )
+        return content, self._file_parser
+
+    async def _parse_document_content(
+        self,
+        document: Any,
+        document_id: str,
+        kb: Any,
+        ocr_mode: str,
+        needs_ocr: bool,
+        raw_content: Any,
+        task_id: str,
+        log: Any,
+    ) -> tuple[str, int]:
+        """Parse raw content → text, or fall back to `document.content` for
+        legacy documents without raw_content."""
+        if not raw_content:
+            # Fallback for legacy documents without raw_content
+            return document.content, 0
+
+        t0 = time.perf_counter()
+
+        # Issue #78：引擎依 KB.ocr_model → 租戶 default_ocr_model →
+        # 環境預設動態選擇；用量累加到本次文件自己的 tally。
+        ocr_usage = OcrUsageTally()
+        ocr_engine, ocr_spec = (
+            await select_ocr_engine(
+                self._file_parser,
+                kb=kb,
+                tenant_repo=self._tenant_repo,
+                tenant_id=document.tenant_id,
+            )
+            if needs_ocr
+            else (None, "")
+        )
+
+        content, ocr_legacy_source = await self._run_ocr_or_parse(
+            document, ocr_mode, ocr_engine, ocr_usage, raw_content, task_id,
+            log, kb,
+        )
+
+        parse_ms = round((time.perf_counter() - t0) * 1000)
+        log.info("document.parse.done", duration_ms=parse_ms)
+
+        # Refresh session after long OCR — old connection may be dead
+        if needs_ocr:
+            self._refresh_repo_sessions()
+
+        await self._doc_repo.update_content(document_id, content)
+
+        # Record OCR token usage（Issue #73：與 reprocess 共用 helper；
+        # #78：model 為實際 spec）
+        await record_ocr_usage(
+            self._record_usage,
+            usage=ocr_usage,
+            tenant_id=document.tenant_id,
+            kb_id=document.kb_id,
+            fallback_model=ocr_spec,
+            legacy_source=ocr_legacy_source,
+        )
+
+        return content, parse_ms
+
+    def _refresh_repo_sessions(self) -> Any:
+        """Long OCR/LLM calls may leave the pooled session dead — refresh
+        doc/task/kb repos onto a fresh session (best-effort). Returns the
+        new session, or None if no refresh was needed/possible."""
+        if not hasattr(self._doc_repo, "_session"):
+            return None
+        try:
+            from src.infrastructure.db.engine import async_session_factory
+            new_session = async_session_factory()
+            self._doc_repo._session = new_session
+            self._task_repo._session = new_session
+            self._kb_repo._session = new_session
+            return new_session
+        except Exception:
+            return None
+
+    def _refresh_record_usage_session(self, new_session: Any) -> None:
+        # 關鍵：record_usage 的 usage_repository 也綁同一個 ContextVar
+        # session（已被 close 了），需顯式 refresh
+        if (
+            new_session is not None
+            and self._record_usage is not None
+            and hasattr(self._record_usage, "_repo")
+            and hasattr(self._record_usage._repo, "_session")
+        ):
+            self._record_usage._repo._session = new_session
+
+    @staticmethod
+    def _preprocess_and_detect_language(
+        content: str, document: Any, language_detector: Any, log: Any
+    ) -> tuple[str, str, int]:
+        t0 = time.perf_counter()
+        preprocessed = TextPreprocessor.preprocess(content, document.content_type)
+        language = language_detector.detect(preprocessed)
+        preprocess_ms = round((time.perf_counter() - t0) * 1000)
+        log.info(
+            "document.preprocess.done",
+            language=language,
+            duration_ms=preprocess_ms,
+        )
+        return preprocessed, language, preprocess_ms
+
+    def _split_into_chunks(
+        self, preprocessed: str, document: Any, document_id: str, kb: Any
+    ) -> tuple[list, int, str]:
+        t0 = time.perf_counter()
+        splitter = self._resolve_splitter(kb)
+        chunks = splitter.split(
+            preprocessed,
+            document_id,
+            document.tenant_id,
+            content_type=document.content_type,
+        )
+        split_ms = round((time.perf_counter() - t0) * 1000)
+        return chunks, split_ms, type(splitter).__name__
+
+    async def _finish_as_empty(
+        self, document_id: str, task_id: str, log: Any, reason: str
+    ) -> None:
+        log.warning(reason)
+        await self._doc_repo.update_status(
+            document_id, "processed", chunk_count=0
+        )
+        await self._task_repo.update_status(task_id, "completed", progress=100)
+
+    async def _score_filter_dedup_chunks(
+        self, document_id: str, chunks: list, log: Any
+    ) -> list:
+        # Calculate chunk quality (before filtering, for full picture)
+        quality = ChunkQualityService.calculate(chunks)
+        await self._doc_repo.update_quality(
+            document_id,
+            quality_score=quality.score,
+            avg_chunk_length=quality.avg_chunk_length,
+            min_chunk_length=quality.min_chunk_length,
+            max_chunk_length=quality.max_chunk_length,
+            quality_issues=list(quality.issues),
+        )
+        log.info(
+            "document.quality.calculated",
+            quality_score=quality.score,
+            issues=quality.issues,
+        )
+
+        # Filter low-quality chunks
+        filter_result = ChunkFilterService.filter(chunks)
+        if filter_result.rejected_count:
+            log.info(
+                "document.chunks.filtered",
+                rejected=filter_result.rejected_count,
+            )
+        chunks = filter_result.accepted
+
+        # Deduplicate
+        pre_dedup = len(chunks)
+        chunks = ChunkDeduplicationService.deduplicate(chunks)
+        if len(chunks) < pre_dedup:
+            log.info(
+                "document.chunks.deduplicated",
+                before=pre_dedup,
+                after=len(chunks),
+            )
+
+        return chunks
+
+    async def _resolve_context_model(self, document: Any, kb: Any) -> str:
+        """Resolve: KB setting → tenant default → skip."""
+        context_model = getattr(kb, "context_model", "") if kb else ""
+        if not context_model and self._tenant_repo:
+            try:
+                tenant = await self._tenant_repo.find_by_id(document.tenant_id)
+                context_model = (
+                    getattr(tenant, "default_context_model", "")
+                    if tenant
+                    else ""
+                )
+            except Exception:
+                pass
+        return context_model
+
+    async def _run_context_enrichment(
+        self,
+        context_service: ChunkContextService,
+        content: str,
+        chunks: list,
+        context_model: str,
+    ) -> tuple[list, int, int]:
+        # Issue #45: Splitter 已填 context_text 的 chunk 跳過 LLM
+        # （separator splitter deterministic 抽頁面 metadata，無需 LLM 覆寫）
+        needs_context = [c for c in chunks if not c.context_text]
+        preserved_count = len(chunks) - len(needs_context)
+
+        if not needs_context:
+            return chunks, 0, preserved_count
+
+        # Close session before LLM calls (same pattern as OCR)
+        await _close_repo_session(self._doc_repo)
+
+        t0 = time.perf_counter()
+        enriched = await context_service.generate_contexts(
+            content, needs_context, model=context_model
+        )
+        ctx_ms = round((time.perf_counter() - t0) * 1000)
+        # merge by id（既有 context_text 的 chunk 不被覆蓋）
+        enriched_by_id = {c.id.value: c for c in enriched}
+        chunks = [enriched_by_id.get(c.id.value, c) for c in chunks]
+
+        return chunks, ctx_ms, preserved_count
+
+    async def _enrich_chunks_with_context(
+        self, document: Any, kb: Any, content: str, chunks: list,
+        task_id: str, log: Any,
+    ) -> list:
+        """Contextual Enrichment (Contextual Retrieval)."""
+        context_model = await self._resolve_context_model(document, kb)
+        if not (self._context_service and context_model):
+            return chunks
+
+        chunks, ctx_ms, preserved_count = await self._run_context_enrichment(
+            self._context_service, content, chunks, context_model
+        )
+
+        ctx_count = sum(1 for c in chunks if c.context_text)
+        log.info(
+            "document.context.done",
+            enriched=ctx_count,
+            total=len(chunks),
+            duration_ms=ctx_ms,
+            splitter_preserved=preserved_count,
+        )
+
+        # Refresh session after LLM calls — must be done **before**
+        # record_usage（否則 usage_repo._session 仍是已關閉的 session
+        # → record_usage.save 沉默失敗，token 永遠寫不進 DB）。
+        # S-LLM-Cache.1 fix：同步 refresh record_usage 的 inner repo session。
+        new_session = self._refresh_repo_sessions()
+        self._refresh_record_usage_session(new_session)
+
+        # Token-Gov.0: 記錄 contextual retrieval token 用量
+        # S-LLM-Cache.1: 加上 cache_read / cache_creation 欄位
+        await record_context_usage(
+            self._record_usage,
+            context_service=self._context_service,
+            tenant_id=document.tenant_id,
+            kb_id=document.kb_id,
+            fallback_model=context_model,
+        )
+
+        await _update_progress(task_id, 73)
+
+        return chunks
+
+    async def _save_chunks(self, document_id: str, chunks: list, log: Any) -> int:
+        t0 = time.perf_counter()
+        await self._doc_repo.save_chunks(chunks)
+        save_ms = round((time.perf_counter() - t0) * 1000)
+        log.info(
+            "document.chunks.saved",
+            chunk_count=len(chunks),
+            duration_ms=save_ms,
+        )
+        return save_ms
+
+    @staticmethod
+    def _build_embed_texts(chunks: list) -> list[str]:
+        return [
+            f"{c.context_text}\n\n{c.content}" if c.context_text else c.content
+            for c in chunks
+        ]
+
+    async def _embed_chunks(
+        self, chunks: list, document: Any, log: Any
+    ) -> tuple[list, int]:
+        t0 = time.perf_counter()
+        texts = self._build_embed_texts(chunks)
+        embed_result = await self._embedding.embed_texts_with_usage(texts)
+        vectors = embed_result.vectors
+        embed_ms = round((time.perf_counter() - t0) * 1000)
+        log.info(
+            "document.embed.done",
+            vector_count=len(vectors),
+            duration_ms=embed_ms,
+            total_tokens=embed_result.total_tokens,
+        )
+
+        # Record embedding token usage（Issue #73：用量來自供應商回傳）
+        await record_embedding_usage(
+            self._record_usage,
+            result=embed_result,
+            tenant_id=document.tenant_id,
+            kb_id=document.kb_id,
+        )
+
+        return vectors, embed_ms
+
+    @staticmethod
+    def _build_upsert_payloads(
+        document: Any, document_id: str, chunks: list, language: str
+    ) -> list[dict]:
+        # Issue #44: propagate document.source / source_id to every chunk
+        # payload so DELETE /by-source filter expressions can find them.
+        doc_source = getattr(document, "source", "") or ""
+        doc_source_id = getattr(document, "source_id", "") or ""
+        return [
+            {
+                "tenant_id": document.tenant_id,
+                "document_id": document_id,
+                "content": c.content,
+                "chunk_index": c.chunk_index,
+                "content_type": document.content_type,
+                "language": language,
+                "source": doc_source,
+                "source_id": doc_source_id,
+                **{
+                    k: v
+                    for k, v in c.metadata.items()
+                    if k not in ("document_id", "tenant_id", "source", "source_id")
+                },
+            }
+            for c in chunks
+        ]
+
+    async def _upsert_vectors(
+        self, document: Any, document_id: str, chunks: list, vectors: list,
+        language: str, log: Any,
+    ) -> int:
+        # Ensure Milvus collection exists
+        collection = f"kb_{document.kb_id}"
+        vector_size = len(vectors[0]) if vectors else 3072
+        await self._vector_store.ensure_collection(collection, vector_size)
+
+        # Upsert vectors with tenant_id in payload
+        t0 = time.perf_counter()
+        chunk_ids = [c.id.value for c in chunks]
+        payloads = self._build_upsert_payloads(document, document_id, chunks, language)
+        await self._vector_store.upsert(collection, chunk_ids, vectors, payloads)
+        upsert_ms = round((time.perf_counter() - t0) * 1000)
+        log.info(
+            "document.upsert.done",
+            collection=collection,
+            point_count=len(chunk_ids),
+            duration_ms=upsert_ms,
+        )
+        return upsert_ms
+
+    async def _maybe_rename_child_page(
+        self, document: Any, document_id: str, content: str, kb: Any, log: Any
+    ) -> None:
+        # If child document (PDF page), generate semantic filename
+        # 共用 helper — process + reprocess 都呼叫，避免 pipeline drift
+        if document.parent_id and document.page_number:
+            from src.application.knowledge._child_rename import (
+                rename_child_page_if_pdf,
+            )
+            await rename_child_page_if_pdf(
+                document_id=document_id,
+                page_number=document.page_number,
+                content=content,
+                kb=kb,
+                tenant_id=document.tenant_id,
+                doc_repo=self._doc_repo,
+                tenant_repo=self._tenant_repo,
+                record_usage=self._record_usage,
+                context_service=self._context_service,
+                log=log,
+            )
+
+    async def _maybe_aggregate_parent(self, document: Any, log: Any) -> None:
+        # If child document, check if all siblings done → update parent
+        # 共用邏輯抽到 _parent_aggregation.py，process + reprocess 都呼叫這支
+        if document.parent_id:
+            from src.application.knowledge._parent_aggregation import (
+                aggregate_parent_status_if_complete,
+            )
+            await aggregate_parent_status_if_complete(
+                self._doc_repo, document.parent_id, log
+            )
+
     async def execute(
         self, document_id: str, task_id: str
     ) -> None:
@@ -114,11 +614,7 @@ class ProcessDocumentUseCase:
             )
 
             # Fetch document
-            document = await self._doc_repo.find_by_id(document_id)
-            if document is None:
-                raise ValueError(
-                    f"Document '{document_id}' not found"
-                )
+            document = await self._fetch_document_or_raise(document_id)
 
             log = log.bind(
                 tenant_id=document.tenant_id,
@@ -144,28 +640,7 @@ class ProcessDocumentUseCase:
             )
 
             # Load raw content: prefer file storage, fallback to DB BYTEA
-            raw_content = None
-            if document.storage_path:
-                try:
-                    raw_content = await self._file_storage.load(
-                        document.storage_path
-                    )
-                except FileNotFoundError:
-                    log.warning("document.file_storage.missing")
-                except Exception as storage_exc:  # noqa: BLE001
-                    # 2026-09-08：GCS 權限 / 網路等非「找不到」錯誤
-                    # （POC VM worker SA 403）。
-                    # 資料庫若有原始內容副本就用副本繼續，不讓一次儲存端故障
-                    # 卡死整批文件；沒有副本（簽名網址直傳）才視為真失敗。
-                    if document.raw_content:
-                        log.warning(
-                            "document.file_storage.load_failed_fallback_db",
-                            error=str(storage_exc)[:200],
-                        )
-                    else:
-                        raise
-            if raw_content is None:
-                raw_content = document.raw_content
+            raw_content = await self._load_raw_content(document, log)
 
             # Fetch KB to get ocr_mode
             kb = await self._kb_repo.find_by_id(document.kb_id)
@@ -173,390 +648,84 @@ class ProcessDocumentUseCase:
 
             # ── Parse raw content → text ──
             # Determine if this is a long-running OCR path
-            # auto / catalog 都走 OCR（auto 內部走 page-type dispatcher）
-            needs_ocr = (
-                raw_content
-                and (
-                    document.content_type.startswith("image/")
-                    or (
-                        document.content_type == "application/pdf"
-                        and ocr_mode in ("catalog", "auto")
-                    )
-                )
-            )
+            needs_ocr = _document_needs_ocr(raw_content, document, ocr_mode)
 
             # OCR is long-running (10s+/page). Close session before OCR
             # to return the connection to the pool. Non-OCR (JSON/TXT/CSV)
             # is fast and doesn't need session close.
-            if needs_ocr and hasattr(self._doc_repo, '_session'):
-                try:
-                    await self._doc_repo._session.close()
-                except Exception:
-                    pass
+            if needs_ocr:
+                await _close_repo_session(self._doc_repo)
 
-            if raw_content:
-                t0 = time.perf_counter()
-
-                # Issue #78：引擎依 KB.ocr_model → 租戶 default_ocr_model →
-                # 環境預設動態選擇；用量累加到本次文件自己的 tally。
-                ocr_usage = OcrUsageTally()
-                ocr_legacy_source = None
-                ocr_engine, ocr_spec = (
-                    await select_ocr_engine(
-                        self._file_parser,
-                        kb=kb,
-                        tenant_repo=self._tenant_repo,
-                        tenant_id=document.tenant_id,
-                    )
-                    if needs_ocr
-                    else (None, "")
-                )
-
-                # PNG/image: single page OCR (child of split PDF)
-                if (
-                    document.content_type.startswith("image/")
-                    and ocr_engine is not None
-                ):
-                    # KB.ocr_slice_grid 空 = 不切片；"2x3" / "3x2" 啟用切片 OCR
-                    # 提升 rare brand char 辨識率（薈/樟腦/萃這類）
-                    slice_grid = getattr(kb, "ocr_slice_grid", "") if kb else ""
-                    content = await ocr_image(
-                        ocr_engine,
-                        raw_content,
-                        ocr_mode=ocr_mode,
-                        slice_grid=slice_grid,
-                        usage=ocr_usage,
-                    )
-                    await _update_progress(task_id, 70)
-
-                # PDF: use async path with progress callback (no DB held)
-                elif (
-                    document.content_type == "application/pdf"
-                    and hasattr(self._file_parser, "parse_pdf_async")
-                ):
-                    async def _on_progress(done: int, total: int) -> None:
-                        pct = round(done / total * 70) if total else 0
-                        await _update_progress(task_id, pct)
-                        log.info("ocr.progress", done=done, total=total)
-
-                    content = await self._file_parser.parse_pdf_async(
-                        raw_content,
-                        ocr_mode=ocr_mode,
-                        on_progress=_on_progress,
-                        engine=ocr_engine,
-                        usage=ocr_usage,
-                    )
-                else:
-                    # 同步 parse() 回純字串、無法帶 tally → 記帳退回 last_*（#73 相容）
-                    ocr_legacy_source = self._file_parser
-                    content = await asyncio.to_thread(
-                        self._file_parser.parse,
-                        raw_content,
-                        document.content_type,
-                        ocr_mode,
-                    )
-
-                parse_ms = round((time.perf_counter() - t0) * 1000)
-                log.info("document.parse.done", duration_ms=parse_ms)
-
-                # Refresh session after long OCR — old connection may be dead
-                if needs_ocr and hasattr(self._doc_repo, '_session'):
-                    try:
-                        from src.infrastructure.db.engine import async_session_factory
-                        new_session = async_session_factory()
-                        self._doc_repo._session = new_session
-                        self._task_repo._session = new_session
-                        self._kb_repo._session = new_session
-                    except Exception:
-                        pass
-
-                await self._doc_repo.update_content(document_id, content)
-
-                # Record OCR token usage（Issue #73：與 reprocess 共用 helper；
-                # #78：model 為實際 spec）
-                await record_ocr_usage(
-                    self._record_usage,
-                    usage=ocr_usage,
-                    tenant_id=document.tenant_id,
-                    kb_id=document.kb_id,
-                    fallback_model=ocr_spec,
-                    legacy_source=ocr_legacy_source,
-                )
-            else:
-                # Fallback for legacy documents without raw_content
-                content = document.content
-                parse_ms = 0
-
-            # Pre-process: normalize + boilerplate removal
-            t0 = time.perf_counter()
-            preprocessed = TextPreprocessor.preprocess(
-                content, document.content_type
+            content, parse_ms = await self._parse_document_content(
+                document, document_id, kb, ocr_mode, needs_ocr, raw_content,
+                task_id, log,
             )
 
-            # Detect language
-            language = self._language_detector.detect(preprocessed)
-            preprocess_ms = round((time.perf_counter() - t0) * 1000)
-            log.info(
-                "document.preprocess.done",
-                language=language,
-                duration_ms=preprocess_ms,
+            # Pre-process: normalize + boilerplate removal + detect language
+            preprocessed, language, preprocess_ms = (
+                self._preprocess_and_detect_language(
+                    content, document, self._language_detector, log
+                )
             )
 
             # Split text into chunks（Issue #45: per-KB chunk_strategy 路由）
-            t0 = time.perf_counter()
-            splitter = self._resolve_splitter(kb)
-            chunks = splitter.split(
-                preprocessed,
-                document_id,
-                document.tenant_id,
-                content_type=document.content_type,
+            chunks, split_ms, splitter_name = self._split_into_chunks(
+                preprocessed, document, document_id, kb
             )
-            split_ms = round((time.perf_counter() - t0) * 1000)
             log.info(
                 "document.split.done",
                 chunk_count=len(chunks),
                 duration_ms=split_ms,
-                splitter=type(splitter).__name__,
+                splitter=splitter_name,
             )
 
             # Empty chunks early return
             if not chunks:
-                log.warning("document.process.empty")
-                await self._doc_repo.update_status(
-                    document_id, "processed", chunk_count=0
+                await self._finish_as_empty(
+                    document_id, task_id, log, "document.process.empty"
                 )
-                await self._task_repo.update_status(task_id, "completed", progress=100)
                 return
 
-            # Calculate chunk quality (before filtering, for full picture)
-            quality = ChunkQualityService.calculate(chunks)
-            await self._doc_repo.update_quality(
-                document_id,
-                quality_score=quality.score,
-                avg_chunk_length=quality.avg_chunk_length,
-                min_chunk_length=quality.min_chunk_length,
-                max_chunk_length=quality.max_chunk_length,
-                quality_issues=list(quality.issues),
+            chunks = await self._score_filter_dedup_chunks(
+                document_id, chunks, log
             )
-            log.info(
-                "document.quality.calculated",
-                quality_score=quality.score,
-                issues=quality.issues,
-            )
-
-            # Filter low-quality chunks
-            filter_result = ChunkFilterService.filter(chunks)
-            if filter_result.rejected_count:
-                log.info(
-                    "document.chunks.filtered",
-                    rejected=filter_result.rejected_count,
-                )
-            chunks = filter_result.accepted
-
-            # Deduplicate
-            pre_dedup = len(chunks)
-            chunks = ChunkDeduplicationService.deduplicate(chunks)
-            if len(chunks) < pre_dedup:
-                log.info(
-                    "document.chunks.deduplicated",
-                    before=pre_dedup,
-                    after=len(chunks),
-                )
 
             # Empty after filtering/dedup
             if not chunks:
-                log.warning("document.process.empty_after_filter")
-                await self._doc_repo.update_status(
-                    document_id, "processed", chunk_count=0
+                await self._finish_as_empty(
+                    document_id, task_id, log,
+                    "document.process.empty_after_filter",
                 )
-                await self._task_repo.update_status(task_id, "completed", progress=100)
                 return
 
             # ── Contextual Enrichment (Contextual Retrieval) ──
-            # Resolve: KB setting → tenant default → skip
-            context_model = getattr(kb, "context_model", "") if kb else ""
-            if not context_model and self._tenant_repo:
-                try:
-                    tenant = await self._tenant_repo.find_by_id(document.tenant_id)
-                    context_model = (
-                        getattr(tenant, "default_context_model", "")
-                        if tenant
-                        else ""
-                    )
-                except Exception:
-                    pass
-            if self._context_service and context_model:
-                # Issue #45: Splitter 已填 context_text 的 chunk 跳過 LLM
-                # （separator splitter deterministic 抽頁面 metadata，無需 LLM 覆寫）
-                needs_context = [c for c in chunks if not c.context_text]
-                preserved_count = len(chunks) - len(needs_context)
-
-                if needs_context:
-                    # Close session before LLM calls (same pattern as OCR)
-                    if hasattr(self._doc_repo, '_session'):
-                        try:
-                            await self._doc_repo._session.close()
-                        except Exception:
-                            pass
-
-                    t0 = time.perf_counter()
-                    enriched = await self._context_service.generate_contexts(
-                        content, needs_context, model=context_model
-                    )
-                    ctx_ms = round((time.perf_counter() - t0) * 1000)
-                    # merge by id（既有 context_text 的 chunk 不被覆蓋）
-                    enriched_by_id = {c.id.value: c for c in enriched}
-                    chunks = [enriched_by_id.get(c.id.value, c) for c in chunks]
-                else:
-                    ctx_ms = 0
-
-                ctx_count = sum(1 for c in chunks if c.context_text)
-                log.info(
-                    "document.context.done",
-                    enriched=ctx_count,
-                    total=len(chunks),
-                    duration_ms=ctx_ms,
-                    splitter_preserved=preserved_count,
-                )
-
-                # Refresh session after LLM calls — must be done **before**
-                # record_usage（否則 usage_repo._session 仍是已關閉的 session
-                # → record_usage.save 沉默失敗，token 永遠寫不進 DB）。
-                # S-LLM-Cache.1 fix：同步 refresh record_usage 的 inner repo session。
-                if hasattr(self._doc_repo, '_session'):
-                    try:
-                        from src.infrastructure.db.engine import async_session_factory
-                        new_session = async_session_factory()
-                        self._doc_repo._session = new_session
-                        self._task_repo._session = new_session
-                        self._kb_repo._session = new_session
-                        # 關鍵：record_usage 的 usage_repository 也綁同一個
-                        # ContextVar session（已被 close 了），需顯式 refresh
-                        if (
-                            self._record_usage is not None
-                            and hasattr(self._record_usage, "_repo")
-                            and hasattr(self._record_usage._repo, "_session")
-                        ):
-                            self._record_usage._repo._session = new_session
-                    except Exception:
-                        pass
-
-                # Token-Gov.0: 記錄 contextual retrieval token 用量
-                # S-LLM-Cache.1: 加上 cache_read / cache_creation 欄位
-                await record_context_usage(
-                    self._record_usage,
-                    context_service=self._context_service,
-                    tenant_id=document.tenant_id,
-                    kb_id=document.kb_id,
-                    fallback_model=context_model,
-                )
-
-                await _update_progress(task_id, 73)
+            chunks = await self._enrich_chunks_with_context(
+                document, kb, content, chunks, task_id, log
+            )
 
             # 75% — chunks saved
             await _update_progress(task_id, 75)
 
             # Save chunks to DB
-            t0 = time.perf_counter()
-            await self._doc_repo.save_chunks(chunks)
-            save_ms = round((time.perf_counter() - t0) * 1000)
-            log.info(
-                "document.chunks.saved",
-                chunk_count=len(chunks),
-                duration_ms=save_ms,
-            )
+            save_ms = await self._save_chunks(document_id, chunks, log)
 
             # 80% — embedding
             await _update_progress(task_id, 80)
 
             # Embed chunks (with context if available)
-            t0 = time.perf_counter()
-            texts = [
-                f"{c.context_text}\n\n{c.content}" if c.context_text else c.content
-                for c in chunks
-            ]
-            embed_result = await self._embedding.embed_texts_with_usage(texts)
-            vectors = embed_result.vectors
-            embed_ms = round((time.perf_counter() - t0) * 1000)
-            log.info(
-                "document.embed.done",
-                vector_count=len(vectors),
-                duration_ms=embed_ms,
-                total_tokens=embed_result.total_tokens,
-            )
-
-            # Record embedding token usage（Issue #73：用量來自供應商回傳）
-            await record_embedding_usage(
-                self._record_usage,
-                result=embed_result,
-                tenant_id=document.tenant_id,
-                kb_id=document.kb_id,
-            )
+            vectors, embed_ms = await self._embed_chunks(chunks, document, log)
 
             # 90% — upserting vectors
             await _update_progress(task_id, 90)
 
-            # Ensure Milvus collection exists
-            collection = f"kb_{document.kb_id}"
-            vector_size = len(vectors[0]) if vectors else 3072
-            await self._vector_store.ensure_collection(
-                collection, vector_size
-            )
-
-            # Upsert vectors with tenant_id in payload
-            t0 = time.perf_counter()
-            chunk_ids = [c.id.value for c in chunks]
-            # Issue #44: propagate document.source / source_id to every chunk
-            # payload so DELETE /by-source filter expressions can find them.
-            doc_source = getattr(document, "source", "") or ""
-            doc_source_id = getattr(document, "source_id", "") or ""
-            payloads = [
-                {
-                    "tenant_id": document.tenant_id,
-                    "document_id": document_id,
-                    "content": c.content,
-                    "chunk_index": c.chunk_index,
-                    "content_type": document.content_type,
-                    "language": language,
-                    "source": doc_source,
-                    "source_id": doc_source_id,
-                    **{
-                        k: v
-                        for k, v in c.metadata.items()
-                        if k not in ("document_id", "tenant_id", "source", "source_id")
-                    },
-                }
-                for c in chunks
-            ]
-            await self._vector_store.upsert(
-                collection, chunk_ids, vectors, payloads
-            )
-            upsert_ms = round((time.perf_counter() - t0) * 1000)
-            log.info(
-                "document.upsert.done",
-                collection=collection,
-                point_count=len(chunk_ids),
-                duration_ms=upsert_ms,
+            upsert_ms = await self._upsert_vectors(
+                document, document_id, chunks, vectors, language, log
             )
 
             # If child document (PDF page), generate semantic filename
-            # 共用 helper — process + reprocess 都呼叫，避免 pipeline drift
-            if document.parent_id and document.page_number:
-                from src.application.knowledge._child_rename import (
-                    rename_child_page_if_pdf,
-                )
-                await rename_child_page_if_pdf(
-                    document_id=document_id,
-                    page_number=document.page_number,
-                    content=content,
-                    kb=kb,
-                    tenant_id=document.tenant_id,
-                    doc_repo=self._doc_repo,
-                    tenant_repo=self._tenant_repo,
-                    record_usage=self._record_usage,
-                    context_service=self._context_service,
-                    log=log,
-                )
+            await self._maybe_rename_child_page(
+                document, document_id, content, kb, log
+            )
 
             # Update doc → processed
             await self._doc_repo.update_status(
@@ -582,14 +751,7 @@ class ProcessDocumentUseCase:
             )
 
             # If child document, check if all siblings done → update parent
-            # 共用邏輯抽到 _parent_aggregation.py，process + reprocess 都呼叫這支
-            if document.parent_id:
-                from src.application.knowledge._parent_aggregation import (
-                    aggregate_parent_status_if_complete,
-                )
-                await aggregate_parent_status_if_complete(
-                    self._doc_repo, document.parent_id, log
-                )
+            await self._maybe_aggregate_parent(document, log)
 
             # Auto-classify: if no more pending/processing docs in KB
             await self._maybe_trigger_classification(

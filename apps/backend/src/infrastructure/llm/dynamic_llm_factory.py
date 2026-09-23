@@ -5,6 +5,7 @@ from threading import Lock
 from cachetools import TTLCache
 
 from src.config import Settings
+from src.domain.platform.entity import ProviderSetting
 from src.domain.platform.model_registry import DEFAULT_MODELS as _REGISTRY
 from src.domain.platform.services import EncryptionService
 from src.domain.platform.value_objects import ProviderName, ProviderType
@@ -147,6 +148,73 @@ def _build_llm_service_from_config(config: dict) -> LLMService:
     )
 
 
+def _select_llm_setting(
+    enabled: list[ProviderSetting], provider_name: str
+) -> ProviderSetting:
+    """Pick the override provider if given and enabled, else the first one."""
+    if not provider_name:
+        return enabled[0]
+    setting = next(
+        (s for s in enabled if s.provider_name.value == provider_name),
+        None,
+    )
+    if setting is None:
+        logger.warning(
+            "dynamic_llm.override_not_found",
+            provider_name=provider_name,
+        )
+        setting = enabled[0]
+    return setting
+
+
+def _resolve_llm_model(setting: ProviderSetting, model: str) -> str:
+    """Resolve model: override → DB default → hardcoded default."""
+    if model:
+        return model
+    default_model = next(
+        (m.model_id for m in setting.models if m.is_default),
+        setting.models[0].model_id if setting.models else None,
+    )
+    return default_model or _DEFAULT_MODELS.get(setting.provider_name.value, "")
+
+
+def _resolve_llm_base_url(setting: ProviderSetting) -> str:
+    if setting.base_url:
+        return setting.base_url
+    if setting.provider_name == ProviderName.OLLAMA:
+        # Ollama base_url 優先從環境變數讀，讓 pod URL 可動態設定
+        cfg = Settings()
+        ollama_root = cfg.ollama_base_url.rstrip("/")
+        return f"{ollama_root}/v1"
+    return _DEFAULT_BASE_URLS.get(setting.provider_name.value, "")
+
+
+def _build_llm_pricing(setting: ProviderSetting) -> dict[str, dict[str, float]]:
+    """Build pricing dict from DB models, fallback to registry."""
+    pricing: dict[str, dict[str, float]] = {}
+    registry_models = _REGISTRY.get(
+        setting.provider_name.value, {},
+    ).get("llm", [])
+    registry_pricing = {
+        rm["model_id"]: {
+            "input": rm["input_price"],
+            "output": rm["output_price"],
+        }
+        for rm in registry_models
+        if rm.get("input_price", 0) > 0
+        or rm.get("output_price", 0) > 0
+    }
+    for m in setting.models:
+        if m.input_price > 0 or m.output_price > 0:
+            pricing[m.model_id] = {
+                "input": m.input_price,
+                "output": m.output_price,
+            }
+        elif m.model_id in registry_pricing:
+            pricing[m.model_id] = registry_pricing[m.model_id]
+    return pricing
+
+
 class DynamicLLMServiceFactory:
     """Resolves LLM service: DB-first, .env fallback."""
 
@@ -183,14 +251,9 @@ class DynamicLLMServiceFactory:
         )
 
         # Try cache first
-        if self._cache_service is not None:
-            cached = await self._cache_service.get(cache_key)
-            if cached is not None:
-                try:
-                    config = json.loads(self._encryption.decrypt(cached))
-                    return _build_llm_service_from_config(config)
-                except Exception:
-                    logger.warning("dynamic_llm.cache_decrypt_failed")
+        cached_service = await self._get_cached_service(cache_key)
+        if cached_service is not None:
+            return cached_service
 
         try:
             repo = self._repo_factory()
@@ -201,75 +264,21 @@ class DynamicLLMServiceFactory:
                 return self._fallback
 
             # Select provider: override or first enabled
-            if provider_name:
-                setting = next(
-                    (s for s in enabled if s.provider_name.value == provider_name),
-                    None,
-                )
-                if setting is None:
-                    logger.warning(
-                        "dynamic_llm.override_not_found",
-                        provider_name=provider_name,
-                    )
-                    setting = enabled[0]
-            else:
-                setting = enabled[0]
+            setting = _select_llm_setting(enabled, provider_name)
 
             # Resolve API key: DB-encrypted first, then .env fallback
-            if setting.api_key_encrypted:
-                api_key = self._encryption.decrypt(setting.api_key_encrypted)
-            else:
-                cfg = Settings()
-                attr = _ENV_KEY_MAP.get(setting.provider_name.value, "")
-                api_key = getattr(cfg, attr, "") if attr else ""
+            api_key = self._resolve_setting_api_key(setting)
 
             # Resolve model: override → DB default → hardcoded default
-            if model:
-                resolved_model = model
-            else:
-                default_model = next(
-                    (m.model_id for m in setting.models if m.is_default),
-                    setting.models[0].model_id if setting.models else None,
-                )
-                resolved_model = default_model or _DEFAULT_MODELS.get(
-                    setting.provider_name.value, ""
-                )
+            resolved_model = _resolve_llm_model(setting, model)
 
-            if setting.base_url:
-                base_url = setting.base_url
-            elif setting.provider_name == ProviderName.OLLAMA:
-                # Ollama base_url 優先從環境變數讀，讓 pod URL 可動態設定
-                cfg = Settings()
-                ollama_root = cfg.ollama_base_url.rstrip("/")
-                base_url = f"{ollama_root}/v1"
-            else:
-                base_url = _DEFAULT_BASE_URLS.get(setting.provider_name.value, "")
+            base_url = _resolve_llm_base_url(setting)
 
             if setting.provider_name == ProviderName.MOCK:
                 return self._fallback
 
             # Build pricing dict from DB models, fallback to registry
-            pricing: dict[str, dict[str, float]] = {}
-            registry_models = _REGISTRY.get(
-                setting.provider_name.value, {},
-            ).get("llm", [])
-            registry_pricing = {
-                rm["model_id"]: {
-                    "input": rm["input_price"],
-                    "output": rm["output_price"],
-                }
-                for rm in registry_models
-                if rm.get("input_price", 0) > 0
-                or rm.get("output_price", 0) > 0
-            }
-            for m in setting.models:
-                if m.input_price > 0 or m.output_price > 0:
-                    pricing[m.model_id] = {
-                        "input": m.input_price,
-                        "output": m.output_price,
-                    }
-                elif m.model_id in registry_pricing:
-                    pricing[m.model_id] = registry_pricing[m.model_id]
+            pricing = _build_llm_pricing(setting)
 
             config = {
                 "provider_name": setting.provider_name.value,
@@ -297,6 +306,29 @@ class DynamicLLMServiceFactory:
         except Exception:
             logger.exception("dynamic_llm.error")
             return self._fallback
+
+    async def _get_cached_service(self, cache_key: str) -> LLMService | None:
+        """Return a service built from the cached encrypted config, if any."""
+        if self._cache_service is None:
+            return None
+        cached = await self._cache_service.get(cache_key)
+        if cached is None:
+            return None
+        try:
+            config = json.loads(self._encryption.decrypt(cached))
+            return _build_llm_service_from_config(config)
+        except Exception:
+            logger.warning("dynamic_llm.cache_decrypt_failed")
+            return None
+
+    def _resolve_setting_api_key(self, setting: ProviderSetting) -> str:
+        """DB-encrypted API key first, then .env fallback."""
+        if setting.api_key_encrypted:
+            return self._encryption.decrypt(setting.api_key_encrypted)
+        cfg = Settings()
+        attr = _ENV_KEY_MAP.get(setting.provider_name.value, "")
+        api_key: str = getattr(cfg, attr, "") if attr else ""
+        return api_key
 
     async def resolve_api_key(self, provider_name: str) -> str:
         """Resolve API key for a provider: DB-encrypted first, then .env fallback.

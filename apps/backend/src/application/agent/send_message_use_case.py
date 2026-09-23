@@ -317,17 +317,11 @@ class SendMessageUseCase:
         }
         if not (command.bot_id and self._bot_repo):
             # No bot — 仍須載入平台防護層（Issue #91：任何路徑都不得缺這一層）
-            if self._sys_prompt_repo:
-                sys_cfg = await self._sys_prompt_repo.get()
-                cfg["system_prompt"] = sys_cfg.system_prompt
-                cfg["effective_prompt"] = resolve_effective_prompt(cfg)
+            await self._apply_platform_prompt_only(cfg)
             return cfg
         bot = await self._bot_repo.find_by_id(command.bot_id)
         if bot is None:
-            if self._sys_prompt_repo:
-                sys_cfg = await self._sys_prompt_repo.get()
-                cfg["system_prompt"] = sys_cfg.system_prompt
-                cfg["effective_prompt"] = resolve_effective_prompt(cfg)
+            await self._apply_platform_prompt_only(cfg)
             return cfg
         if bot.tenant_id != command.tenant_id:
             msg = (
@@ -344,19 +338,7 @@ class SendMessageUseCase:
         cfg["kb_ids"] = bot.knowledge_base_ids or None
         if not cfg["kb_id"] and cfg["kb_ids"]:
             cfg["kb_id"] = cfg["kb_ids"][0]
-        llm_params: dict = {
-            "temperature": bot.llm_params.temperature,
-            "max_tokens": bot.llm_params.max_tokens,
-            "frequency_penalty": bot.llm_params.frequency_penalty,
-            # Issue #72 前置：與 LINE 通路對齊，bot 的 reasoning_effort 一併帶入
-            # （worker 覆寫以 spread 保留此值；合法性由 provider 端 gate 判斷）
-            "reasoning_effort": bot.llm_params.reasoning_effort,
-        }
-        if bot.llm_provider:
-            llm_params["provider_name"] = bot.llm_provider
-        if bot.llm_model:
-            llm_params["model"] = bot.llm_model
-        cfg["llm_params"] = llm_params
+        cfg["llm_params"] = self._build_bot_llm_params(bot)
         cfg["history_limit"] = bot.llm_params.history_limit
         cfg["enabled_tools"] = (
             bot.enabled_tools
@@ -382,69 +364,13 @@ class SendMessageUseCase:
         cfg["miss_reply"] = getattr(bot, "miss_reply", "") or ""
         cfg["output_text_field"] = getattr(bot, "output_text_field", "") or "answer"
         cfg["tool_rag_params"] = build_tool_rag_params_map(bot=bot)
-        cfg["mcp_servers"] = [
-            {
-                "url": s.url,
-                "name": s.name,
-                "enabled_tools": s.enabled_tools,
-                "transport": s.transport,
-                **(
-                    {"command": s.command, "args": s.args}
-                    if s.transport == "stdio"
-                    else {}
-                ),
-            }
-            for s in bot.mcp_servers
-        ]
+        cfg["mcp_servers"] = self._build_inline_mcp_servers(bot)
 
         # Registry-based MCP bindings → resolved server configs
         if bot.mcp_bindings and self._mcp_registry_repo:
-            registry_servers: list[dict[str, Any]] = []
-            for binding in bot.mcp_bindings:
-                reg = await self._mcp_registry_repo.find_by_id(
-                    binding.registry_id
-                )
-                if not reg or not reg.is_enabled:
-                    continue
-                # Tenant scope check: skip if not accessible
-                if (
-                    reg.scope == "tenant"
-                    and command.tenant_id not in reg.tenant_ids
-                ):
-                    continue
-
-                # Decrypt env_values (stored encrypted in DB)
-                decrypted_env: dict[str, str] = {}
-                for k, v in binding.env_values.items():
-                    if not v:
-                        decrypted_env[k] = ""
-                    elif self._encryption:
-                        try:
-                            decrypted_env[k] = self._encryption.decrypt(v)
-                        except Exception:
-                            # Fallback: pre-migration plaintext data
-                            decrypted_env[k] = v
-                    else:
-                        decrypted_env[k] = v
-
-                server_cfg: dict[str, Any] = {
-                    "name": reg.name,
-                    "transport": reg.transport,
-                }
-                if reg.transport == "stdio":
-                    server_cfg["command"] = reg.command
-                    server_cfg["args"] = reg.args
-                    server_cfg["env"] = decrypted_env
-                else:
-                    resolved_url = reg.url
-                    for key, value in decrypted_env.items():
-                        resolved_url = resolved_url.replace(
-                            f"{{{key}}}", value
-                        )
-                    server_cfg["url"] = resolved_url
-                if binding.enabled_tools:
-                    server_cfg["enabled_tools"] = binding.enabled_tools
-                registry_servers.append(server_cfg)
+            registry_servers = await self._resolve_registry_mcp_servers(
+                self._mcp_registry_repo, bot, command.tenant_id
+            )
             if registry_servers:
                 cfg["mcp_servers"] = registry_servers
 
@@ -485,17 +411,12 @@ class SendMessageUseCase:
         _tenant_default_intent = ""
         _tenant_default_summary = ""
         if (not _bot_router_model or not _bot_summary_model) and self._tenant_repo:
-            try:
-                _tenant = await self._tenant_repo.find_by_id(command.tenant_id)
-                if _tenant is not None:
-                    _tenant_default_intent = getattr(
-                        _tenant, "default_intent_model", ""
-                    )
-                    _tenant_default_summary = getattr(
-                        _tenant, "default_summary_model", ""
-                    )
-            except Exception:
-                pass
+            (
+                _tenant_default_intent,
+                _tenant_default_summary,
+            ) = await self._load_tenant_default_models(
+                self._tenant_repo, command.tenant_id
+            )
         cfg["router_model"] = _bot_router_model or _tenant_default_intent
         cfg["summary_model"] = _bot_summary_model or _tenant_default_summary
 
@@ -513,6 +434,117 @@ class SendMessageUseCase:
         cfg["effective_prompt"] = resolve_effective_prompt(cfg)
 
         return cfg
+
+    async def _apply_platform_prompt_only(self, cfg: dict[str, Any]) -> None:
+        """無 bot 路徑：只載入平台防護層並組裝 effective prompt（Issue #91）。"""
+        if self._sys_prompt_repo:
+            sys_cfg = await self._sys_prompt_repo.get()
+            cfg["system_prompt"] = sys_cfg.system_prompt
+            cfg["effective_prompt"] = resolve_effective_prompt(cfg)
+
+    @staticmethod
+    def _build_bot_llm_params(bot: Any) -> dict:
+        """bot 層 LLM 參數（provider / model 有值才帶入）。"""
+        llm_params: dict = {
+            "temperature": bot.llm_params.temperature,
+            "max_tokens": bot.llm_params.max_tokens,
+            "frequency_penalty": bot.llm_params.frequency_penalty,
+            # Issue #72 前置：與 LINE 通路對齊，bot 的 reasoning_effort 一併帶入
+            # （worker 覆寫以 spread 保留此值；合法性由 provider 端 gate 判斷）
+            "reasoning_effort": bot.llm_params.reasoning_effort,
+        }
+        if bot.llm_provider:
+            llm_params["provider_name"] = bot.llm_provider
+        if bot.llm_model:
+            llm_params["model"] = bot.llm_model
+        return llm_params
+
+    @staticmethod
+    def _build_inline_mcp_servers(bot: Any) -> list[dict[str, Any]]:
+        """bot 直接設定的 MCP server（非 registry binding）。"""
+        return [
+            {
+                "url": s.url,
+                "name": s.name,
+                "enabled_tools": s.enabled_tools,
+                "transport": s.transport,
+                **(
+                    {"command": s.command, "args": s.args}
+                    if s.transport == "stdio"
+                    else {}
+                ),
+            }
+            for s in bot.mcp_servers
+        ]
+
+    def _decrypt_env_values(self, env_values: dict[str, str]) -> dict[str, str]:
+        """Decrypt env_values (stored encrypted in DB)."""
+        decrypted_env: dict[str, str] = {}
+        for k, v in env_values.items():
+            if not v:
+                decrypted_env[k] = ""
+            elif self._encryption:
+                try:
+                    decrypted_env[k] = self._encryption.decrypt(v)
+                except Exception:
+                    # Fallback: pre-migration plaintext data
+                    decrypted_env[k] = v
+            else:
+                decrypted_env[k] = v
+        return decrypted_env
+
+    async def _resolve_registry_mcp_servers(
+        self, registry_repo: Any, bot: Any, tenant_id: str
+    ) -> list[dict[str, Any]]:
+        """Registry-based MCP bindings → resolved server configs."""
+        registry_servers: list[dict[str, Any]] = []
+        for binding in bot.mcp_bindings:
+            reg = await registry_repo.find_by_id(binding.registry_id)
+            if not reg or not reg.is_enabled:
+                continue
+            # Tenant scope check: skip if not accessible
+            if reg.scope == "tenant" and tenant_id not in reg.tenant_ids:
+                continue
+
+            decrypted_env = self._decrypt_env_values(binding.env_values)
+
+            server_cfg: dict[str, Any] = {
+                "name": reg.name,
+                "transport": reg.transport,
+            }
+            if reg.transport == "stdio":
+                server_cfg["command"] = reg.command
+                server_cfg["args"] = reg.args
+                server_cfg["env"] = decrypted_env
+            else:
+                resolved_url = reg.url
+                for key, value in decrypted_env.items():
+                    resolved_url = resolved_url.replace(f"{{{key}}}", value)
+                server_cfg["url"] = resolved_url
+            if binding.enabled_tools:
+                server_cfg["enabled_tools"] = binding.enabled_tools
+            registry_servers.append(server_cfg)
+        return registry_servers
+
+    @staticmethod
+    async def _load_tenant_default_models(
+        tenant_repo: "TenantRepository", tenant_id: str
+    ) -> tuple[str, str]:
+        """租戶層預設 (intent, summary) 模型；查詢失敗或無租戶回空字串。"""
+        tenant_default_intent = ""
+        tenant_default_summary = ""
+        try:
+            _tenant = await tenant_repo.find_by_id(tenant_id)
+            if _tenant is not None:
+                tenant_default_intent = getattr(
+                    _tenant, "default_intent_model", ""
+                )
+                tenant_default_summary = getattr(
+                    _tenant, "default_summary_model", ""
+                )
+        except Exception:
+            pass
+        return tenant_default_intent, tenant_default_summary
 
     async def _resolve_and_load_memory(
         self, command: SendMessageCommand, bot_cfg: dict[str, Any]
@@ -756,37 +788,16 @@ class SendMessageUseCase:
             # No workers configured — also try legacy intent_routes
             intent_routes = bot_cfg.get("intent_routes", [])
             if intent_routes:
-                # Token-Gov.7 A: 包 trace node 記錄 intent classifier LLM 時間
-                t_start = AgentTraceCollector.offset_ms()
-                matched = await self._intent_classifier.classify(
-                    user_message=message,
+                bot_cfg = await self._route_legacy_intent(
+                    self._intent_classifier,
+                    bot_cfg,
+                    intent_routes,
+                    message=message,
                     router_context=router_context,
-                    intent_routes=intent_routes,
                     tenant_id=tenant_id,
                     bot_id=bot_id,
-                    test_mode=test_mode,  # M14：影子執行不記生產 token
+                    test_mode=test_mode,
                 )
-                t_end = AgentTraceCollector.offset_ms()
-                AgentTraceCollector.add_node(
-                    node_type="intent_classify",
-                    label=(
-                        f"意圖分類 → {matched.name}" if matched
-                        else "意圖分類 → 預設 fallback"
-                    ),
-                    parent_id=None,
-                    start_ms=t_start,
-                    end_ms=t_end,
-                    matched=matched.name if matched else None,
-                    candidates=[r.name for r in intent_routes],
-                )
-                if matched:
-                    # Issue #91：只換 bot 層，平台防護層不受影響
-                    bot_cfg = apply_worker_override(
-                        bot_cfg, matched.worker_prompt
-                    )
-                    bot_cfg["effective_prompt"] = resolve_effective_prompt(
-                        bot_cfg
-                    )
             return bot_cfg
 
         # Token-Gov.7 A: 包 trace node 記錄 intent classifier LLM 時間
@@ -827,6 +838,56 @@ class SendMessageUseCase:
         if not matched:
             return bot_cfg
 
+        return self._apply_matched_worker(bot_cfg, matched, outcome)
+
+
+    @staticmethod
+    async def _route_legacy_intent(
+        intent_classifier: IntentClassifier,
+        bot_cfg: dict[str, Any],
+        intent_routes: list,
+        *,
+        message: str,
+        router_context: str,
+        tenant_id: str,
+        bot_id: str,
+        test_mode: bool,
+    ) -> dict[str, Any]:
+        """無 worker 時走舊版 intent_routes 分類；命中則只換 bot 層 prompt。"""
+        # Token-Gov.7 A: 包 trace node 記錄 intent classifier LLM 時間
+        t_start = AgentTraceCollector.offset_ms()
+        matched = await intent_classifier.classify(
+            user_message=message,
+            router_context=router_context,
+            intent_routes=intent_routes,
+            tenant_id=tenant_id,
+            bot_id=bot_id,
+            test_mode=test_mode,  # M14：影子執行不記生產 token
+        )
+        t_end = AgentTraceCollector.offset_ms()
+        AgentTraceCollector.add_node(
+            node_type="intent_classify",
+            label=(
+                f"意圖分類 → {matched.name}" if matched
+                else "意圖分類 → 預設 fallback"
+            ),
+            parent_id=None,
+            start_ms=t_start,
+            end_ms=t_end,
+            matched=matched.name if matched else None,
+            candidates=[r.name for r in intent_routes],
+        )
+        if matched:
+            # Issue #91：只換 bot 層，平台防護層不受影響
+            bot_cfg = apply_worker_override(bot_cfg, matched.worker_prompt)
+            bot_cfg["effective_prompt"] = resolve_effective_prompt(bot_cfg)
+        return bot_cfg
+
+    @staticmethod
+    def _apply_matched_worker(
+        bot_cfg: dict[str, Any], matched: Any, outcome: Any
+    ) -> dict[str, Any]:
+        """命中 worker → 以 worker 設定覆寫 bot_cfg（回傳新 dict）。"""
         # Override bot_cfg with worker settings
         # Issue #91：worker 只取代 bot 層，平台防護層原封不動
         cfg = apply_worker_override(bot_cfg, matched.worker_prompt)
@@ -903,6 +964,308 @@ class SendMessageUseCase:
             kb_count=len(matched.knowledge_base_ids),
         )
         return cfg
+
+    # ── 管線共用小段（非串流 / 串流同一份）──
+
+    @staticmethod
+    def _inject_retrieval_metadata(
+        metadata: dict[str, Any], bot_cfg: dict[str, Any]
+    ) -> None:
+        """Inject rerank / retrieval-mode / rewrite / HyDE config for RAG tool."""
+        metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
+        metadata["rerank_model"] = bot_cfg.get("rerank_model", "")
+        metadata["rerank_top_n"] = bot_cfg.get("rerank_top_n", 20)
+        # Issue #43 — Bot-level RAG retrieval modes
+        metadata["rag_retrieval_modes"] = list(
+            bot_cfg.get("rag_retrieval_modes", ["raw"]) or ["raw"]
+        )
+        metadata["query_rewrite_model"] = bot_cfg.get("query_rewrite_model", "")
+        metadata["query_rewrite_extra_hint"] = bot_cfg.get(
+            "query_rewrite_extra_hint", ""
+        )
+        metadata["hyde_model"] = bot_cfg.get("hyde_model", "")
+        metadata["hyde_extra_hint"] = bot_cfg.get("hyde_extra_hint", "")
+        metadata["bot_prompt"] = bot_cfg.get("bot_prompt", "")
+
+    @staticmethod
+    def _prepend_memory(memory_prompt: str, history_context: str) -> str:
+        """長期記憶置於歷史脈絡之前（無記憶時原樣回傳）。"""
+        if not memory_prompt:
+            return history_context
+        return (
+            memory_prompt + "\n\n" + history_context
+            if history_context
+            else memory_prompt
+        )
+
+    @staticmethod
+    def _apply_fast_lane_metadata(
+        bot_cfg: dict[str, Any], metadata: dict[str, Any]
+    ) -> None:
+        """Issue #92：快速道的檢索能力由各自欄位決定，不再由 mode 壓制。"""
+        if bot_cfg.get("_direct_retrieval"):
+            metadata["rerank_enabled"] = bool(bot_cfg.get("rerank_enabled"))
+            metadata["rag_retrieval_modes"] = ["raw"]
+
+    @staticmethod
+    def _with_refund_marker(
+        tool_calls: list[dict[str, Any]], refund_step: str | None
+    ) -> list[dict[str, Any]]:
+        """複製 tool_calls，有 refund_step 時附上內部 metadata marker。"""
+        tool_calls_to_save = tool_calls[:]
+        if refund_step:
+            tool_calls_to_save.append({
+                "tool_name": _REFUND_METADATA_MARKER,
+                "refund_step": refund_step,
+            })
+        return tool_calls_to_save
+
+    @staticmethod
+    def _apply_output_guard_block(
+        response: AgentResponse,
+        guard_result: Any,
+        bot_cfg: dict[str, Any],
+        fin: FinalizedAnswer,
+    ) -> FinalizedAnswer:
+        """輸出防護未通過 → 以攔截文案（套輸出格式）取代回答；否則原樣回傳 fin。"""
+        if guard_result is None or guard_result.passed:
+            return fin
+        # Issue #85：攔截也要套 bot 的輸出格式。原本回純文字，
+        # 導致 output_format=json 的 bot 在防護觸發時破壞契約。
+        fin = resolve_guard_blocked(
+            OutputSpec.from_cfg(bot_cfg), guard_result.blocked_response
+        )
+        response.answer = fin.text
+        # Sprint A++ Guard UX
+        response.guard_blocked = "output"
+        response.guard_rule_matched = guard_result.rule_matched
+        return fin
+
+    @staticmethod
+    def _blocked_done_event(
+        trace_id: str | None, nodes: Any, test_mode: bool
+    ) -> dict[str, Any]:
+        """M10：攔截路徑的 done 事件帶上 trace_id（test_mode 另帶 nodes）。"""
+        done: dict[str, Any] = {"type": "done"}
+        if trace_id:
+            done["trace_id"] = trace_id
+        if test_mode and nodes:
+            done["trace_nodes"] = nodes
+        return done
+
+    async def _save_blocked_turn(
+        self, command: SendMessageCommand, conversation: Conversation, reply: str
+    ) -> Any:
+        """攔截回合：非 test_mode 時存 user + 攔截回覆，回傳 assistant message。"""
+        if command.test_mode:
+            return None
+        conversation.add_message("user", command.message)
+        assistant_msg = conversation.add_message("assistant", reply)
+        _bump_conversation_counters(conversation)
+        await self._conversation_repo.save(conversation)
+        return assistant_msg
+
+    @staticmethod
+    def _is_kb_miss(fast_plan: Any) -> bool:
+        """Issue #70：kb 模式快速道未命中（通路以 miss_reply 回覆）。"""
+        return fast_plan is not None and bool(getattr(fast_plan, "miss", False))
+
+    async def _classifier_block_result(
+        self,
+        command: SendMessageCommand,
+        bot_cfg: dict[str, Any],
+        guard: EffectiveGuard,
+    ) -> Any:
+        """分類器判定攻擊時取得攔截結果；未判定攻擊或階段關閉回 None。"""
+        if not bot_cfg.get("_classifier_attack"):
+            return None
+        return await self._guard_pipeline.block_by_classifier(
+            guard,
+            message=command.message,
+            tenant_id=command.tenant_id,
+            bot_id=command.bot_id,
+            user_id=command.visitor_id,
+            dry_run=command.test_mode,  # H6
+        )
+
+    async def _stream_check_input(
+        self,
+        command: SendMessageCommand,
+        guard: EffectiveGuard,
+        metadata: dict[str, Any],
+    ) -> Any:
+        """串流：regex 輸入防護；通過時打 F1 標記。回傳未通過的結果，否則 None。
+
+        Issue #75：regex_input 階段關閉時 pipeline 回 None（視同通過）。
+        """
+        guard_result = await self._guard_pipeline.check_input(
+            guard,
+            command.message,
+            tenant_id=command.tenant_id,
+            bot_id=command.bot_id,
+            user_id=command.visitor_id,
+            dry_run=command.test_mode,  # H6
+        )
+        if guard_result is None:
+            return None
+        if guard_result.passed:
+            metadata["_input_guard_checked"] = True  # F1：咽喉點不重跑
+            return None
+        return guard_result
+
+    async def _stream_input_guard_blocked(
+        self,
+        command: SendMessageCommand,
+        conversation: Conversation,
+        guard: EffectiveGuard,
+        guard_result: Any,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """串流：regex 輸入防護命中 → 存對話、送攔截事件、存 trace、done。"""
+        await self._record_abuse(command, guard, guard_hit=True)  # Issue #68 P7
+        assistant_msg = await self._save_blocked_turn(
+            command, conversation, guard_result.blocked_response
+        )
+        yield {
+            "type": "token",
+            "content": guard_result.blocked_response,
+        }
+        yield {
+            "type": "guard_blocked",
+            "block_type": "input",
+            "rule_matched": guard_result.rule_matched,
+        }
+        # 持久化 trace（含 guard_input_blocked 紅節點），讓 Studio
+        # canvas / admin 觀測頁能看到攔截 DAG
+        gb_trace_id, gb_nodes = await self._persist_agent_trace(
+            conversation_id=conversation.id.value,
+            message_id=(
+                assistant_msg.id.value if assistant_msg else None
+            ),
+            latency_ms=0,
+            source=command.identity_source or "web",
+            persist=not command.test_mode,
+        )
+        # M10：原本丟棄回傳的 (trace_id, nodes)、done 不帶 → 前端拿不到
+        # trace_id 無法 fetch 剛持久化的 guard DAG；test_mode 下 trace 不落庫、
+        # 資訊全失。比照正常結束路徑帶上。
+        yield self._blocked_done_event(gb_trace_id, gb_nodes, command.test_mode)
+
+    async def _stream_classifier_attack_blocked(
+        self,
+        command: SendMessageCommand,
+        conversation: Conversation,
+        bot_cfg: dict[str, Any],
+        guard: EffectiveGuard,
+        gr: Any,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """串流：分類器判定攻擊 → 存對話、送攔截事件、存 trace、done。"""
+        await self._record_abuse(command, guard, attack=True)  # Issue #68 P7
+        attack_msg = await self._save_blocked_turn(
+            command, conversation, gr.blocked_response
+        )
+        # Issue #85：串流攔截同樣套輸出格式，否則 json bot 的前台解析會爆
+        _blocked = resolve_guard_blocked(
+            OutputSpec.from_cfg(bot_cfg), gr.blocked_response
+        )
+        yield {"type": "token", "content": _blocked.text}
+        yield {
+            "type": "guard_blocked",
+            "block_type": "input",
+            "rule_matched": gr.rule_matched,
+        }
+        atk_trace_id, atk_nodes = await self._persist_agent_trace(
+            conversation_id=conversation.id.value,
+            message_id=attack_msg.id.value if attack_msg else None,
+            latency_ms=0,
+            source=command.identity_source or "web",
+            persist=not command.test_mode,
+        )
+        yield self._blocked_done_event(  # M10
+            atk_trace_id, atk_nodes, command.test_mode
+        )
+
+    @staticmethod
+    def _fast_plan_stream_events(
+        fast_plan: Any, sources_list: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """快速道：生成未帶 sources 時補 sources 事件，並附檢索統計事件。
+
+        回傳 (sources_list, 依序要送出的事件)。
+        """
+        events: list[dict[str, Any]] = []
+        if fast_plan is None:
+            return sources_list, events
+        if not sources_list:
+            sources_list = [
+                src.to_dict() if hasattr(src, "to_dict") else src
+                for src in fast_plan.sources
+            ]
+            events.append({"type": "sources", "sources": sources_list})
+        # Issue #70：檢索統計獨立事件（done 事件由多處組裝，獨立事件最單純）
+        events.append({"type": "retrieval", **(retrieval_stats(fast_plan) or {})})
+        return sources_list, events
+
+    @staticmethod
+    def _structured_output_event(
+        out_spec: OutputSpec, fin: FinalizedAnswer
+    ) -> dict[str, Any] | None:
+        """json 輸出格式：依驗證結果產生 structured_output(_failed) 事件。"""
+        if not out_spec.is_json:
+            return None
+        if fin.status == "valid":
+            return {
+                "type": "structured_output",
+                "output": fin.parsed,
+                "display_text": fin.display_text,
+            }
+        if fin.status == "invalid":
+            return {"type": "structured_output_failed", "error": fin.error}
+        return None
+
+    @staticmethod
+    def _accumulate_stream_event(st: _StreamState, event: dict[str, Any]) -> bool:
+        """把串流事件累積進 st；回 True 表示內部事件、不送給客戶端。"""
+        # contact event 不塞進 answer，透過 yield 傳給呼叫者
+        if event["type"] == "token":
+            st.full_answer += event["content"]
+        elif event["type"] == "usage":
+            st.usage_event = event  # Issue #96：留給收尾記帳
+        elif event["type"] == "tool_calls":
+            st.tool_calls = event.get("tool_calls", [])
+        elif event["type"] == "sources":
+            st.sources_list = event.get("sources", [])
+        elif event["type"] == "contact":
+            st.contact_payload = event.get("contact")
+        elif event["type"] == "refund_step":
+            st.refund_step_value = event.get("refund_step")
+            return True
+        return False
+
+    def _client_stream_event(
+        self, event: dict[str, Any], bot_cfg: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """客戶端可見的事件形狀；回 None 表示不送出。"""
+        # Non-debug: hide "direct" tool_calls; strip reasoning for others
+        if event["type"] == "tool_calls" and not self._debug:
+            tcs = event.get("tool_calls", [])
+            # "direct" means no tool used — nothing to show
+            if all(tc.get("tool_name") == "direct" for tc in tcs):
+                return None
+            event = {
+                "type": "tool_calls",
+                "tool_calls": [
+                    {
+                        "tool_name": tc.get("tool_name", ""),
+                        "label": tc.get("label", ""),
+                        "reasoning": "",
+                    }
+                    for tc in tcs
+                ],
+            }
+        # Suppress sources event when bot has show_sources=False
+        if event["type"] == "sources" and not bot_cfg["show_sources"]:
+            return None
+        return event
 
     async def execute(self, command: SendMessageCommand) -> AgentResponse:
         response = await self._execute_locked(command)
@@ -1032,20 +1395,7 @@ class SendMessageUseCase:
         self._guard_pipeline.annotate(guard, metadata)
 
         # Inject rerank config into metadata for RAG tool
-        metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
-        metadata["rerank_model"] = bot_cfg.get("rerank_model", "")
-        metadata["rerank_top_n"] = bot_cfg.get("rerank_top_n", 20)
-        # Issue #43 — Bot-level RAG retrieval modes
-        metadata["rag_retrieval_modes"] = list(
-            bot_cfg.get("rag_retrieval_modes", ["raw"]) or ["raw"]
-        )
-        metadata["query_rewrite_model"] = bot_cfg.get("query_rewrite_model", "")
-        metadata["query_rewrite_extra_hint"] = bot_cfg.get(
-            "query_rewrite_extra_hint", ""
-        )
-        metadata["hyde_model"] = bot_cfg.get("hyde_model", "")
-        metadata["hyde_extra_hint"] = bot_cfg.get("hyde_extra_hint", "")
-        metadata["bot_prompt"] = bot_cfg.get("bot_prompt", "")
+        self._inject_retrieval_metadata(metadata, bot_cfg)
 
         # 提早 start AgentTraceCollector — guard 命中時要 add_node，否則
         # 在 agent_service.start() 之前 add_node 會被 trace=None 吞掉
@@ -1081,12 +1431,7 @@ class SendMessageUseCase:
 
         # Memory: resolve identity + load
         memory_prompt = await self._resolve_and_load_memory(command, bot_cfg)
-        if memory_prompt:
-            history_context = (
-                memory_prompt + "\n\n" + history_context
-                if history_context
-                else memory_prompt
-            )
+        history_context = self._prepend_memory(memory_prompt, history_context)
 
         # Worker routing: classify → override bot_cfg
         bot_cfg = await self._resolve_worker_config(
@@ -1111,9 +1456,7 @@ class SendMessageUseCase:
         # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
         bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
         # Issue #92：快速道的檢索能力由各自欄位決定，不再由 mode 壓制
-        if bot_cfg.get("_direct_retrieval"):
-            metadata["rerank_enabled"] = bool(bot_cfg.get("rerank_enabled"))
-            metadata["rag_retrieval_modes"] = ["raw"]
+        self._apply_fast_lane_metadata(bot_cfg, metadata)
 
         # Issue #68 P7：正常回合也計分（連續無法分流 / 節奏），並套 L1 保守模式
         await self._record_abuse(
@@ -1122,7 +1465,7 @@ class SendMessageUseCase:
         bot_cfg = self._apply_abuse_mode(bot_cfg, abuse_decision)
 
         # Issue #70：kb 模式未命中 → 固定話術，不呼叫生成模型
-        if fast_plan is not None and getattr(fast_plan, "miss", False):
+        if self._is_kb_miss(fast_plan):
             return await self._finalize_kb_miss(
                 command, conversation, bot_cfg, fast_plan, config_hash
             )
@@ -1164,14 +1507,9 @@ class SendMessageUseCase:
             else None
         )
 
-        tool_calls_to_save = response.tool_calls[:]
-        if response.refund_step:
-            tool_calls_to_save.append(
-                {
-                    "tool_name": _REFUND_METADATA_MARKER,
-                    "refund_step": response.refund_step,
-                }
-            )
+        tool_calls_to_save = self._with_refund_marker(
+            response.tool_calls, response.refund_step
+        )
 
         # ── Prompt Guard: output check（Issue #75：output_guard 階段關閉時不跑）──
         guard_result = await self._guard_pipeline.check_output(
@@ -1183,17 +1521,7 @@ class SendMessageUseCase:
             user_message=command.message,
             dry_run=command.test_mode,  # H6
         )
-        if guard_result is not None:
-            if not guard_result.passed:
-                # Issue #85：攔截也要套 bot 的輸出格式。原本回純文字，
-                # 導致 output_format=json 的 bot 在防護觸發時破壞契約。
-                fin = resolve_guard_blocked(
-                    OutputSpec.from_cfg(bot_cfg), guard_result.blocked_response
-                )
-                response.answer = fin.text
-                # Sprint A++ Guard UX
-                response.guard_blocked = "output"
-                response.guard_rule_matched = guard_result.rule_matched
+        fin = self._apply_output_guard_block(response, guard_result, bot_cfg, fin)
 
         structured_content = _build_structured_content(
             contact=response.contact,
@@ -1306,20 +1634,7 @@ class SendMessageUseCase:
         self._guard_pipeline.annotate(guard, metadata)
 
         # Inject rerank config into metadata for RAG tool
-        metadata["rerank_enabled"] = bot_cfg.get("rerank_enabled", False)
-        metadata["rerank_model"] = bot_cfg.get("rerank_model", "")
-        metadata["rerank_top_n"] = bot_cfg.get("rerank_top_n", 20)
-        # Issue #43 — Bot-level RAG retrieval modes
-        metadata["rag_retrieval_modes"] = list(
-            bot_cfg.get("rag_retrieval_modes", ["raw"]) or ["raw"]
-        )
-        metadata["query_rewrite_model"] = bot_cfg.get("query_rewrite_model", "")
-        metadata["query_rewrite_extra_hint"] = bot_cfg.get(
-            "query_rewrite_extra_hint", ""
-        )
-        metadata["hyde_model"] = bot_cfg.get("hyde_model", "")
-        metadata["hyde_extra_hint"] = bot_cfg.get("hyde_extra_hint", "")
-        metadata["bot_prompt"] = bot_cfg.get("bot_prompt", "")
+        self._inject_retrieval_metadata(metadata, bot_cfg)
 
         # 提早 start AgentTraceCollector — guard 命中時要 add_node，否則
         # 在 agent_service.start() 之前 add_node 會被 trace=None 吞掉
@@ -1336,57 +1651,13 @@ class SendMessageUseCase:
         # classifier 已經把 user_message 餵給 LLM → prompt injection 已經
         # compromise 那層 LLM。提前到任何 LLM-touching helper 之前。
         # Issue #75：regex_input 階段關閉時 pipeline 回 None（視同通過）
-        guard_result = await self._guard_pipeline.check_input(
-            guard,
-            command.message,
-            tenant_id=command.tenant_id,
-            bot_id=command.bot_id,
-            user_id=command.visitor_id,
-            dry_run=command.test_mode,  # H6
-        )
+        guard_result = await self._stream_check_input(command, guard, metadata)
         if guard_result is not None:
-            if guard_result.passed:
-                metadata["_input_guard_checked"] = True  # F1：咽喉點不重跑
-            if not guard_result.passed:
-                await self._record_abuse(command, guard, guard_hit=True)  # Issue #68 P7
-                assistant_msg = None
-                if not command.test_mode:
-                    conversation.add_message("user", command.message)
-                    assistant_msg = conversation.add_message(
-                        "assistant", guard_result.blocked_response
-                    )
-                    _bump_conversation_counters(conversation)
-                    await self._conversation_repo.save(conversation)
-                yield {
-                    "type": "token",
-                    "content": guard_result.blocked_response,
-                }
-                yield {
-                    "type": "guard_blocked",
-                    "block_type": "input",
-                    "rule_matched": guard_result.rule_matched,
-                }
-                # 持久化 trace（含 guard_input_blocked 紅節點），讓 Studio
-                # canvas / admin 觀測頁能看到攔截 DAG
-                gb_trace_id, gb_nodes = await self._persist_agent_trace(
-                    conversation_id=conversation.id.value,
-                    message_id=(
-                        assistant_msg.id.value if assistant_msg else None
-                    ),
-                    latency_ms=0,
-                    source=command.identity_source or "web",
-                    persist=not command.test_mode,
-                )
-                # M10：原本丟棄回傳的 (trace_id, nodes)、done 不帶 → 前端拿不到
-                # trace_id 無法 fetch 剛持久化的 guard DAG；test_mode 下 trace 不落庫、
-                # 資訊全失。比照正常結束路徑帶上。
-                gb_done: dict[str, Any] = {"type": "done"}
-                if gb_trace_id:
-                    gb_done["trace_id"] = gb_trace_id
-                if command.test_mode and gb_nodes:
-                    gb_done["trace_nodes"] = gb_nodes
-                yield gb_done
-                return
+            async for gb_event in self._stream_input_guard_blocked(
+                command, conversation, guard, guard_result
+            ):
+                yield gb_event
+            return
 
         history, history_context, router_context = (
             await self._resolve_history(
@@ -1399,12 +1670,7 @@ class SendMessageUseCase:
 
         # Memory: resolve identity + load
         memory_prompt = await self._resolve_and_load_memory(command, bot_cfg)
-        if memory_prompt:
-            history_context = (
-                memory_prompt + "\n\n" + history_context
-                if history_context
-                else memory_prompt
-            )
+        history_context = self._prepend_memory(memory_prompt, history_context)
 
         # Worker routing: classify → override bot_cfg
         bot_cfg = await self._resolve_worker_config(
@@ -1417,49 +1683,12 @@ class SendMessageUseCase:
         # H11：分類器語意攻擊短路（與 LINE 對等）——攻擊句不進生成模型。
         # widget 端由 router 過濾 guard_blocked 事件（H7），只收到固定文案。
         # Issue #75：kb 模式的攻擊判定也在此短路（不進檢索 / 生成）
-        gr = None
-        if bot_cfg.get("_classifier_attack"):
-            gr = await self._guard_pipeline.block_by_classifier(
-                guard,
-                message=command.message,
-                tenant_id=command.tenant_id,
-                bot_id=command.bot_id,
-                user_id=command.visitor_id,
-                dry_run=command.test_mode,  # H6
-            )
+        gr = await self._classifier_block_result(command, bot_cfg, guard)
         if gr is not None:
-            await self._record_abuse(command, guard, attack=True)  # Issue #68 P7
-            attack_msg = None
-            if not command.test_mode:
-                conversation.add_message("user", command.message)
-                attack_msg = conversation.add_message(
-                    "assistant", gr.blocked_response
-                )
-                _bump_conversation_counters(conversation)
-                await self._conversation_repo.save(conversation)
-            # Issue #85：串流攔截同樣套輸出格式，否則 json bot 的前台解析會爆
-            _blocked = resolve_guard_blocked(
-                OutputSpec.from_cfg(bot_cfg), gr.blocked_response
-            )
-            yield {"type": "token", "content": _blocked.text}
-            yield {
-                "type": "guard_blocked",
-                "block_type": "input",
-                "rule_matched": gr.rule_matched,
-            }
-            atk_trace_id, atk_nodes = await self._persist_agent_trace(
-                conversation_id=conversation.id.value,
-                message_id=attack_msg.id.value if attack_msg else None,
-                latency_ms=0,
-                source=command.identity_source or "web",
-                persist=not command.test_mode,
-            )
-            atk_done: dict[str, Any] = {"type": "done"}  # M10
-            if atk_trace_id:
-                atk_done["trace_id"] = atk_trace_id
-            if command.test_mode and atk_nodes:
-                atk_done["trace_nodes"] = atk_nodes
-            yield atk_done
+            async for atk_event in self._stream_classifier_attack_blocked(
+                command, conversation, bot_cfg, guard, gr
+            ):
+                yield atk_event
             return
 
         # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）
@@ -1468,9 +1697,7 @@ class SendMessageUseCase:
         # Issue #61：快速道（direct_retrieval worker）→ 直接檢索、單次生成
         bot_cfg, fast_plan = await self._apply_fast_lane(command, bot_cfg)
         # Issue #92：快速道的檢索能力由各自欄位決定，不再由 mode 壓制
-        if bot_cfg.get("_direct_retrieval"):
-            metadata["rerank_enabled"] = bool(bot_cfg.get("rerank_enabled"))
-            metadata["rag_retrieval_modes"] = ["raw"]
+        self._apply_fast_lane_metadata(bot_cfg, metadata)
 
         # Issue #68 P7：正常回合也計分（連續無法分流 / 節奏），並套 L1 保守模式
         await self._record_abuse(
@@ -1479,13 +1706,37 @@ class SendMessageUseCase:
         bot_cfg = self._apply_abuse_mode(bot_cfg, abuse_decision)
 
         # Issue #70：kb 模式未命中 → 串流固定話術，不呼叫生成模型
-        if fast_plan is not None and getattr(fast_plan, "miss", False):
+        if self._is_kb_miss(fast_plan):
             async for miss_event in self._stream_kb_miss(
                 command, conversation, bot_cfg, fast_plan, config_hash
             ):
                 yield miss_event
             return
 
+        async for gen_event in self._stream_generate_turn(
+            command, conversation, bot_cfg, guard, fast_plan, metadata,
+            history=history,
+            history_context=history_context,
+            router_context=router_context,
+            config_hash=config_hash,
+        ):
+            yield gen_event
+
+    async def _stream_generate_turn(
+        self,
+        command: SendMessageCommand,
+        conversation: Conversation,
+        bot_cfg: dict[str, Any],
+        guard: EffectiveGuard,
+        fast_plan: Any,
+        metadata: dict[str, Any],
+        *,
+        history: Any,
+        history_context: str,
+        router_context: str,
+        config_hash: str | None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """串流生成段：輸出格式決策 → 串流生成 → 快速道補事件 → 收尾。"""
         # Propagate worker routing info to agent service (for trace visualization)
         if bot_cfg.get("_worker_matched_info"):
             metadata["_worker_routing"] = bot_cfg["_worker_matched_info"]
@@ -1509,17 +1760,45 @@ class SendMessageUseCase:
         contact_payload = st.contact_payload
         refund_step_value = st.refund_step_value
         usage_event = st.usage_event
-        if fast_plan is not None and not sources_list:
-            sources_list = [
-                src.to_dict() if hasattr(src, "to_dict") else src
-                for src in fast_plan.sources
-            ]
-            yield {"type": "sources", "sources": sources_list}
-        if fast_plan is not None:
-            # Issue #70：檢索統計獨立事件（done 事件由多處組裝，獨立事件最單純）
-            yield {"type": "retrieval", **(retrieval_stats(fast_plan) or {})}
+        sources_list, fast_events = self._fast_plan_stream_events(
+            fast_plan, sources_list
+        )
+        for fast_event in fast_events:
+            yield fast_event
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
+        async for tail_event in self._stream_finish_turn(
+            command, conversation, bot_cfg, guard, out_spec, fast_plan,
+            full_answer=full_answer,
+            tool_calls=tool_calls,
+            sources_list=sources_list,
+            contact_payload=contact_payload,
+            refund_step_value=refund_step_value,
+            usage_event=usage_event,
+            latency_ms=latency_ms,
+            config_hash=config_hash,
+        ):
+            yield tail_event
+
+    async def _stream_finish_turn(
+        self,
+        command: SendMessageCommand,
+        conversation: Conversation,
+        bot_cfg: dict[str, Any],
+        guard: EffectiveGuard,
+        out_spec: OutputSpec,
+        fast_plan: Any,
+        *,
+        full_answer: str,
+        tool_calls: list[dict[str, Any]],
+        sources_list: list[dict[str, Any]],
+        contact_payload: dict[str, Any] | None,
+        refund_step_value: str | None,
+        usage_event: dict[str, Any] | None,
+        latency_ms: int,
+        config_hash: str | None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """生成後段：輸出格式 → 輸出防護 → 存對話 / 記帳 / trace → 尾端事件。"""
         # Issue #70：串流不重試（token 已送出）；json 驗證結果以事件告知前端，
         # plain_text 對累積全文剝 Markdown 後持久化（token 本身為原文，可接受）
         fin = await finalize_with_retry(
@@ -1543,26 +1822,19 @@ class SendMessageUseCase:
             user_message=command.message,
             dry_run=command.test_mode,  # H6
         )
-        if output_guard is not None:
-            if not output_guard.passed:
-                full_answer = output_guard.blocked_response
-                fin = FinalizedAnswer(text=full_answer)  # 攔截後不再是結構化輸出
-                yield {
-                    "type": "guard_blocked",
-                    "block_type": "output",
-                    "rule_matched": output_guard.rule_matched,
-                    "replacement": full_answer,
-                }
+        if output_guard is not None and not output_guard.passed:
+            full_answer = output_guard.blocked_response
+            fin = FinalizedAnswer(text=full_answer)  # 攔截後不再是結構化輸出
+            yield {
+                "type": "guard_blocked",
+                "block_type": "output",
+                "rule_matched": output_guard.rule_matched,
+                "replacement": full_answer,
+            }
 
-        if out_spec.is_json:
-            if fin.status == "valid":
-                yield {
-                    "type": "structured_output",
-                    "output": fin.parsed,
-                    "display_text": fin.display_text,
-                }
-            elif fin.status == "invalid":
-                yield {"type": "structured_output_failed", "error": fin.error}
+        structured_event = self._structured_output_event(out_spec, fin)
+        if structured_event is not None:
+            yield structured_event
 
         retrieved_chunks = sources_list if sources_list else None
         structured_content = _build_structured_content(
@@ -1575,12 +1847,7 @@ class SendMessageUseCase:
 
         # Save conversation after streaming completes
         # Persist refund_step metadata marker (same logic as execute())
-        tool_calls_to_save = tool_calls[:]
-        if refund_step_value:
-            tool_calls_to_save.append({
-                "tool_name": _REFUND_METADATA_MARKER,
-                "refund_step": refund_step_value,
-            })
+        tool_calls_to_save = self._with_refund_marker(tool_calls, refund_step_value)
 
         # Issue #96 / #99 一-6：收尾「存對話 → 記帳 → 存 trace」
         # 抽成 _stream_finalize（shielded）
@@ -1616,41 +1883,12 @@ class SendMessageUseCase:
         """從 agent service 串流事件並累積到 st；生成中斷線以估算補記（#99）。"""
         try:
             async for event in self._agent_service.process_message_stream(**gen_kwargs):
-                # contact event 不塞進 answer，透過 yield 傳給呼叫者
-                if event["type"] == "token":
-                    st.full_answer += event["content"]
-                elif event["type"] == "usage":
-                    st.usage_event = event  # Issue #96：留給收尾記帳
-                elif event["type"] == "tool_calls":
-                    st.tool_calls = event.get("tool_calls", [])
-                elif event["type"] == "sources":
-                    st.sources_list = event.get("sources", [])
-                elif event["type"] == "contact":
-                    st.contact_payload = event.get("contact")
-                elif event["type"] == "refund_step":
-                    st.refund_step_value = event.get("refund_step")
+                if self._accumulate_stream_event(st, event):
                     continue  # Internal metadata, not sent to client
-                # Non-debug: hide "direct" tool_calls; strip reasoning for others
-                if event["type"] == "tool_calls" and not self._debug:
-                    tcs = event.get("tool_calls", [])
-                    # "direct" means no tool used — nothing to show
-                    if all(tc.get("tool_name") == "direct" for tc in tcs):
-                        continue
-                    event = {
-                        "type": "tool_calls",
-                        "tool_calls": [
-                            {
-                                "tool_name": tc.get("tool_name", ""),
-                                "label": tc.get("label", ""),
-                                "reasoning": "",
-                            }
-                            for tc in tcs
-                        ],
-                    }
-                # Suppress sources event when bot has show_sources=False
-                if event["type"] == "sources" and not bot_cfg["show_sources"]:
+                client_event = self._client_stream_event(event, bot_cfg)
+                if client_event is None:
                     continue
-                yield event
+                yield client_event
         except asyncio.CancelledError:
             # Issue #96 / #99：生成中斷線——供應商已對已生成部分計費，但沒有 usage 數字。
             # 以已串出文字與提示估算 token 補記（estimated=True），訊息不存（另案）。

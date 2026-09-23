@@ -42,6 +42,95 @@ class ClassifyKbUseCase:
         self._classification = classification_service
         self._record_usage = record_usage
 
+    async def _resolve_classification_model(self, kb: object, tenant_id: str) -> str:
+        """Resolve model: KB → tenant default → hardcode（靜默 fallback）。"""
+        classification_model = getattr(kb, "classification_model", "")
+        if not classification_model:
+            try:
+                from sqlalchemy import select
+
+                from src.infrastructure.db.engine import async_session_factory
+                from src.infrastructure.db.models.tenant_model import TenantModel
+                async with async_session_factory() as session:
+                    stmt = select(TenantModel.default_classification_model).where(
+                        TenantModel.id == tenant_id
+                    )
+                    result = await session.execute(stmt)
+                    classification_model = result.scalar_one_or_none() or ""
+            except Exception:
+                pass
+        return classification_model
+
+    async def _record_classification_usage(self, kb_id: str, tenant_id: str) -> None:
+        """Token-Gov.0: 記錄 auto-classification token 用量。
+
+        S-LLM-Cache.1: 加上 cache_read / cache_creation 欄位。
+        Session refresh fix：LLM 長時間呼叫後 ContextVar session 可能已超時
+        （asyncpg idle 或 PG idle_in_transaction_session_timeout）；refresh
+        一個新 session 給 record_usage 用，避免 silently 寫不進 DB。
+        """
+        if not self._record_usage:
+            return
+        total_tokens = (
+            self._classification.last_input_tokens
+            + self._classification.last_output_tokens
+        )
+        if total_tokens <= 0:
+            return
+
+        try:
+            from src.infrastructure.db.engine import async_session_factory
+            _new_session = async_session_factory()
+            if (
+                hasattr(self._record_usage, "_repo")
+                and hasattr(self._record_usage._repo, "_session")
+            ):
+                self._record_usage._repo._session = _new_session
+        except Exception:
+            pass
+
+        cls_in = self._classification.last_input_tokens
+        cls_out = self._classification.last_output_tokens
+        cls_cache_read = getattr(self._classification, "last_cache_read_tokens", 0)
+        cls_cache_creation = getattr(
+            self._classification, "last_cache_creation_tokens", 0
+        )
+        await self._record_usage.execute(
+            tenant_id=tenant_id,
+            request_type=UsageCategory.AUTO_CLASSIFICATION.value,
+            usage=TokenUsage(
+                model=self._classification.last_model,
+                input_tokens=cls_in,
+                output_tokens=cls_out,
+                cache_read_tokens=cls_cache_read,
+                cache_creation_tokens=cls_cache_creation,
+            ),
+            kb_id=kb_id,
+        )
+
+    async def _assign_chunks_to_categories(
+        self, categories: list, chunk_to_cat: dict
+    ) -> None:
+        """Assign chunks to their categories (use independent session)."""
+        from sqlalchemy import update
+
+        from src.infrastructure.db.engine import async_session_factory
+        from src.infrastructure.db.models.chunk_model import ChunkModel
+
+        async with async_session_factory() as session:
+            for cat in categories:
+                chunk_ids_for_cat = [
+                    cid for cid, cat_id in chunk_to_cat.items()
+                    if cat_id == cat.id
+                ]
+                if chunk_ids_for_cat:
+                    await session.execute(
+                        update(ChunkModel)
+                        .where(ChunkModel.id.in_(chunk_ids_for_cat))
+                        .values(category_id=cat.id)
+                    )
+            await session.commit()
+
     async def execute(self, kb_id: str, tenant_id: str) -> None:
         log = logger.bind(kb_id=kb_id, tenant_id=tenant_id)
         log.info("classify_kb.start")
@@ -81,21 +170,9 @@ class ClassifyKbUseCase:
         fetched_contents = [r[2].get("content", "") for r in results]
 
         # 3. Classify — resolve model: KB → tenant default → hardcode
-        classification_model = getattr(kb, "classification_model", "")
-        if not classification_model:
-            try:
-                from sqlalchemy import select
-
-                from src.infrastructure.db.engine import async_session_factory
-                from src.infrastructure.db.models.tenant_model import TenantModel
-                async with async_session_factory() as session:
-                    stmt = select(TenantModel.default_classification_model).where(
-                        TenantModel.id == tenant_id
-                    )
-                    result = await session.execute(stmt)
-                    classification_model = result.scalar_one_or_none() or ""
-            except Exception:
-                pass
+        classification_model = await self._resolve_classification_model(
+            kb, tenant_id
+        )
         categories, chunk_to_cat = await self._classification.classify(
             chunk_ids=fetched_ids,
             chunk_contents=fetched_contents,
@@ -109,46 +186,7 @@ class ClassifyKbUseCase:
             log.info("classify_kb.no_categories_generated")
             return
 
-        # Token-Gov.0: 記錄 auto-classification token 用量
-        # S-LLM-Cache.1: 加上 cache_read / cache_creation 欄位
-        # Session refresh fix：LLM 長時間呼叫後 ContextVar session 可能已超時
-        # （asyncpg idle 或 PG idle_in_transaction_session_timeout）；refresh
-        # 一個新 session 給 record_usage 用，避免 silently 寫不進 DB。
-        if self._record_usage and (
-            self._classification.last_input_tokens
-            + self._classification.last_output_tokens
-        ) > 0:
-            try:
-                from src.infrastructure.db.engine import async_session_factory
-                _new_session = async_session_factory()
-                if (
-                    hasattr(self._record_usage, "_repo")
-                    and hasattr(self._record_usage._repo, "_session")
-                ):
-                    self._record_usage._repo._session = _new_session
-            except Exception:
-                pass
-
-            cls_in = self._classification.last_input_tokens
-            cls_out = self._classification.last_output_tokens
-            cls_cache_read = getattr(
-                self._classification, "last_cache_read_tokens", 0
-            )
-            cls_cache_creation = getattr(
-                self._classification, "last_cache_creation_tokens", 0
-            )
-            await self._record_usage.execute(
-                tenant_id=tenant_id,
-                request_type=UsageCategory.AUTO_CLASSIFICATION.value,
-                usage=TokenUsage(
-                    model=self._classification.last_model,
-                    input_tokens=cls_in,
-                    output_tokens=cls_out,
-                    cache_read_tokens=cls_cache_read,
-                    cache_creation_tokens=cls_cache_creation,
-                ),
-                kb_id=kb_id,
-            )
+        await self._record_classification_usage(kb_id, tenant_id)
 
         # 4. Delete old categories
         await self._cat_repo.delete_by_kb(kb_id)
@@ -157,24 +195,7 @@ class ClassifyKbUseCase:
         await self._cat_repo.save_batch(categories)
 
         # 6. Assign chunks to categories (use independent session)
-        from sqlalchemy import update
-
-        from src.infrastructure.db.engine import async_session_factory
-        from src.infrastructure.db.models.chunk_model import ChunkModel
-
-        async with async_session_factory() as session:
-            for cat in categories:
-                chunk_ids_for_cat = [
-                    cid for cid, cat_id in chunk_to_cat.items()
-                    if cat_id == cat.id
-                ]
-                if chunk_ids_for_cat:
-                    await session.execute(
-                        update(ChunkModel)
-                        .where(ChunkModel.id.in_(chunk_ids_for_cat))
-                        .values(category_id=cat.id)
-                    )
-            await session.commit()
+        await self._assign_chunks_to_categories(categories, chunk_to_cat)
 
         # 7. Update counts
         await self._cat_repo.update_chunk_counts(kb_id)

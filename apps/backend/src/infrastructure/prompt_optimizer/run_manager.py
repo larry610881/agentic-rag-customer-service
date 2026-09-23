@@ -129,6 +129,11 @@ class RunManager:
                     pass
                 run.progress_queue.put_nowait(progress)
 
+    def _apply_status_update(self, run: ActiveRun, status: str) -> None:
+        run.status = status
+        if status in ("completed", "stopped", "failed"):
+            run.completed_at = datetime.now(timezone.utc)
+
     def update_run(
         self,
         run_id: str,
@@ -146,9 +151,7 @@ class RunManager:
         if not run:
             return
         if status is not None:
-            run.status = status
-            if status in ("completed", "stopped", "failed"):
-                run.completed_at = datetime.now(timezone.utc)
+            self._apply_status_update(run, status)
         if baseline_score is not None:
             run.baseline_score = baseline_score
         if best_score is not None:

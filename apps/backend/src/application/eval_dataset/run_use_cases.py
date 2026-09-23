@@ -230,16 +230,9 @@ class StartRunUseCase:
                 return self._encryption.decrypt(s.api_key_encrypted)
         return ""
 
-    async def _run_optimization(
-        self, run_id: str, command: StartRunCommand, ds: dict, mutator_api_key: str = ""
-    ) -> None:
-        """Background task: run the Karpathy optimization loop.
-
-        Uses its own DB connections (sync RunHistoryClient) — never touches
-        request-scoped sessions.
-        """
-        from prompt_optimizer.api_client import AgentAPIClient
-        from prompt_optimizer.config import OptimizationConfig, PromptTarget
+    def _build_cli_dataset(self, ds: dict, command: StartRunCommand):
+        """Build CLI-compatible dataset + PromptTarget from a dataset snapshot."""
+        from prompt_optimizer.config import PromptTarget
         from prompt_optimizer.dataset import (
             Assertion,
             CostConfigData,
@@ -249,8 +242,259 @@ class StartRunUseCase:
         from prompt_optimizer.dataset import (
             Dataset as CLIDataset,
         )
-        from prompt_optimizer.evaluator import Evaluator
+
+        # H16：dataset 層 default_assertions（含 no_role_switch /
+        # no_system_prompt_leak 等安全預設）必須併入每個 case 的 assertions——
+        # Evaluator._evaluate_case 只讀 tc.assertions，從不讀 CLIDataset.
+        # default_assertions，不併就等於優化分數完全忽略安全預設，mutator 可接受
+        # 違反安全預設的 prompt。per-case 已於匯入時排除 defaults，併入不會重複。
+        default_raw = ds.get("default_assertions", [])
+        default_assertions = tuple(
+            Assertion(type=a["type"], params=a.get("params", {}))
+            for a in default_raw
+        )
+        # Build CLI-compatible dataset from snapshot
+        test_cases = tuple(
+            TestCase(
+                id=tc["case_id"],
+                question=tc["question"],
+                priority=tc.get("priority", "P1"),
+                category=tc.get("category", ""),
+                assertions=tuple(
+                    Assertion(type=a["type"], params=a.get("params", {}))
+                    for a in merge_case_assertions(
+                        default_raw, tc.get("assertions", [])
+                    )
+                ),
+                conversation_history=tuple(
+                    tc.get("conversation_history", [])
+                ),
+            )
+            for tc in ds["test_cases"]
+        )
+
+        cost_cfg = ds.get("cost_config", {})
+        cli_dataset = CLIDataset(
+            metadata=DatasetMetadata(
+                tenant_id=command.tenant_id,
+                bot_id=ds.get("bot_id") or "",
+                target_prompt=ds["target_prompt"],
+                agent_mode="react",
+                description=ds.get("description", ""),
+                cost_config=CostConfigData(
+                    token_budget=cost_cfg.get("token_budget", 2000),
+                    quality_weight=cost_cfg.get("quality_weight", 0.85),
+                    cost_weight=cost_cfg.get("cost_weight", 0.15),
+                ),
+            ),
+            test_cases=test_cases,
+            # 已併入各 case（見上），此處保留供 metadata 完整性
+            default_assertions=default_assertions,
+        )
+
+        target = PromptTarget(
+            level="bot" if ds.get("bot_id") else "system",
+            field=ds["target_prompt"],
+            bot_id=ds.get("bot_id"),
+            tenant_id=command.tenant_id,
+        )
+
+        return cli_dataset, target
+
+    def _prepare_run_state(self, target):
+        """Build the sync history client + pre-load the current prompt from DB."""
+        from prompt_optimizer.db_client import PromptDBClient
         from prompt_optimizer.history import RunHistoryClient
+
+        # Use sync RunHistoryClient for DB persistence (its own connection)
+        history_client = (
+            RunHistoryClient(self._db_url) if self._db_url else None
+        )
+
+        # Pre-load actual prompt from DB via sync client
+        prompt_store: dict[str, str] = {}
+        prompt_db: PromptDBClient | None = None
+        if self._db_url:
+            try:
+                prompt_db = PromptDBClient(db_url=self._db_url)
+                initial_prompt = prompt_db.read_prompt(target)
+                prompt_store[target.field] = initial_prompt
+            except Exception as e:
+                logger.warning("Failed to pre-load prompt: %s", e)
+
+        # Issue #54 Phase D — 收尾比對用：prompt_store 會被迴圈改寫，
+        # baseline 要在這裡先固定下來
+        baseline_prompt = prompt_store.get(target.field, "")
+
+        return history_client, prompt_db, prompt_store, baseline_prompt
+
+    @staticmethod
+    def _make_prompt_accessors(prompt_store: dict[str, str]):
+        """Build the read/write closures KarpathyLoopRunner uses for the
+        candidate prompt (Issue #54 Phase D — 候選 prompt 只存記憶體；
+        受測對話由 _ShadowAPIClient 以 config_override 帶入，全程不寫線上表)。"""
+        from prompt_optimizer.config import PromptTarget
+
+        def read_prompt(t: PromptTarget) -> str:
+            return prompt_store.get(t.field, "")
+
+        def write_prompt(t: PromptTarget, prompt: str) -> None:
+            prompt_store[t.field] = prompt
+
+        return read_prompt, write_prompt
+
+    def _make_mutator_usage_recorder(self, command, run_id, bot_id_for_usage):
+        """Issue #54 Phase B — mutator LLM 用量落帳（prompt_optimize 分類，
+        fail-open：記帳失敗只 warn 不影響優化迴圈）"""
+
+        async def _record_mutator_usage(
+            model_name: str, usage_meta: dict
+        ) -> None:
+            if self._record_usage_factory is None:
+                return
+            try:
+                from src.domain.rag.value_objects import TokenUsage
+                from src.infrastructure.db.session_middleware import (
+                    independent_session_scope,
+                )
+
+                usage = TokenUsage(
+                    model=model_name,
+                    input_tokens=int(usage_meta.get("input_tokens", 0)),
+                    output_tokens=int(usage_meta.get("output_tokens", 0)),
+                    estimated_cost=0.0,  # RecordUsage 會依 registry 估價
+                )
+                async with independent_session_scope():
+                    record_usage = self._record_usage_factory()
+                    await record_usage.execute(
+                        tenant_id=command.tenant_id,
+                        request_type=UsageCategory.PROMPT_OPTIMIZE.value,
+                        usage=usage,
+                        bot_id=bot_id_for_usage,
+                        run_id=run_id,
+                    )
+            except Exception:
+                logger.warning(
+                    "mutator usage recording failed (fail-open)",
+                    exc_info=True,
+                )
+
+        return _record_mutator_usage
+
+    def _make_progress_callback(self, run_id: str):
+        """Progress callback: update RunManager on each case/iteration."""
+        from prompt_optimizer.runner import ProgressEvent
+
+        async def _on_progress(evt: ProgressEvent) -> None:
+            self._run_manager.update_run(
+                run_id,
+                current_iteration=evt.iteration,
+                current_score=evt.score if evt.score > 0 else None,
+                baseline_score=(
+                    evt.baseline_score if evt.baseline_score > 0 else None
+                ),
+                best_score=evt.best_score if evt.best_score > 0 else None,
+                progress_message=evt.message,
+            )
+            # Append to score_log on iteration completion
+            if evt.phase == "iteration_done":
+                active = self._run_manager.get_run(run_id)
+                if active:
+                    active.score_log.append(
+                        {"iteration": evt.iteration, "score": evt.score}
+                    )
+            await self._run_manager.publish_progress(
+                run_id,
+                RunProgress(
+                    run_id=run_id,
+                    event=evt.phase,
+                    iteration=evt.iteration,
+                    max_iterations=evt.max_iterations,
+                    score=evt.score,
+                    best_score=evt.best_score,
+                    baseline_score=evt.baseline_score,
+                    message=evt.message,
+                ),
+            )
+
+        return _on_progress
+
+    @staticmethod
+    def _make_iteration_callback(run_id: str, command, ds: dict, history_client):
+        """Iteration callback: save each iteration to DB immediately."""
+        from prompt_optimizer.runner import IterationResult
+
+        def _on_iteration(it: IterationResult) -> None:
+            if not history_client:
+                return
+            history_client.save_iteration(
+                run_id=run_id,
+                iteration=it.iteration,
+                tenant_id=command.tenant_id,
+                target_field=ds["target_prompt"],
+                bot_id=ds.get("bot_id"),
+                prompt_snapshot=it.prompt_snapshot,
+                score=it.eval_summary.final_score,
+                passed_count=sum(
+                    1
+                    for cr in it.eval_summary.case_results
+                    if cr.score >= 1.0
+                ),
+                total_count=len(it.eval_summary.case_results),
+                is_best=it.is_best,
+                details={
+                    "quality_score": it.eval_summary.quality_score,
+                    "cost_score": it.eval_summary.cost_score,
+                    "avg_total_tokens": it.eval_summary.avg_total_tokens,
+                    "accepted": it.accepted,
+                    "case_results": [
+                        {
+                            "case_id": cr.case_id,
+                            "question": cr.question,
+                            "priority": cr.priority,
+                            "category": cr.category,
+                            "score": cr.score,
+                            "passed_count": cr.passed_count,
+                            "total_count": cr.total_count,
+                            "p0_failed": cr.p0_failed,
+                            "answer_snippet": cr.answer_snippet,
+                            "assertion_results": [
+                                {
+                                    "passed": ar.passed,
+                                    "assertion_type": ar.assertion_type,
+                                    "message": ar.message,
+                                }
+                                for ar in cr.assertion_results
+                            ],
+                        }
+                        for cr in it.eval_summary.case_results
+                    ],
+                },
+            )
+
+        return _on_iteration
+
+    @staticmethod
+    async def _cleanup_run_resources(api_client, history_client, prompt_db) -> None:
+        if api_client:
+            await api_client.close()
+        if history_client:
+            history_client.close()
+        if prompt_db:
+            prompt_db.close()
+
+    async def _run_optimization(
+        self, run_id: str, command: StartRunCommand, ds: dict, mutator_api_key: str = ""
+    ) -> None:
+        """Background task: run the Karpathy optimization loop.
+
+        Uses its own DB connections (sync RunHistoryClient) — never touches
+        request-scoped sessions.
+        """
+        from prompt_optimizer.api_client import AgentAPIClient
+        from prompt_optimizer.config import OptimizationConfig
+        from prompt_optimizer.evaluator import Evaluator
+        from prompt_optimizer.mutator import PromptMutator
         from prompt_optimizer.runner import KarpathyLoopRunner
 
         history_client = None
@@ -259,61 +503,7 @@ class StartRunUseCase:
         # `if prompt_db:` 拋 UnboundLocalError 遮蔽原始錯誤
 
         try:
-            # H16：dataset 層 default_assertions（含 no_role_switch /
-            # no_system_prompt_leak 等安全預設）必須併入每個 case 的 assertions——
-            # Evaluator._evaluate_case 只讀 tc.assertions，從不讀 CLIDataset.
-            # default_assertions，不併就等於優化分數完全忽略安全預設，mutator 可接受
-            # 違反安全預設的 prompt。per-case 已於匯入時排除 defaults，併入不會重複。
-            default_raw = ds.get("default_assertions", [])
-            default_assertions = tuple(
-                Assertion(type=a["type"], params=a.get("params", {}))
-                for a in default_raw
-            )
-            # Build CLI-compatible dataset from snapshot
-            test_cases = tuple(
-                TestCase(
-                    id=tc["case_id"],
-                    question=tc["question"],
-                    priority=tc.get("priority", "P1"),
-                    category=tc.get("category", ""),
-                    assertions=tuple(
-                        Assertion(type=a["type"], params=a.get("params", {}))
-                        for a in merge_case_assertions(
-                            default_raw, tc.get("assertions", [])
-                        )
-                    ),
-                    conversation_history=tuple(
-                        tc.get("conversation_history", [])
-                    ),
-                )
-                for tc in ds["test_cases"]
-            )
-
-            cost_cfg = ds.get("cost_config", {})
-            cli_dataset = CLIDataset(
-                metadata=DatasetMetadata(
-                    tenant_id=command.tenant_id,
-                    bot_id=ds.get("bot_id") or "",
-                    target_prompt=ds["target_prompt"],
-                    agent_mode="react",
-                    description=ds.get("description", ""),
-                    cost_config=CostConfigData(
-                        token_budget=cost_cfg.get("token_budget", 2000),
-                        quality_weight=cost_cfg.get("quality_weight", 0.85),
-                        cost_weight=cost_cfg.get("cost_weight", 0.15),
-                    ),
-                ),
-                test_cases=test_cases,
-                # 已併入各 case（見上），此處保留供 metadata 完整性
-                default_assertions=default_assertions,
-            )
-
-            target = PromptTarget(
-                level="bot" if ds.get("bot_id") else "system",
-                field=ds["target_prompt"],
-                bot_id=ds.get("bot_id"),
-                tenant_id=command.tenant_id,
-            )
+            cli_dataset, target = self._build_cli_dataset(ds, command)
 
             config = OptimizationConfig(
                 api_base_url=self._api_base_url,
@@ -334,73 +524,19 @@ class StartRunUseCase:
                 run_id=run_id,
             )
 
-            # Use sync RunHistoryClient for DB persistence (its own connection)
-            history_client = (
-                RunHistoryClient(self._db_url) if self._db_url else None
+            history_client, prompt_db, prompt_store, baseline_prompt = (
+                self._prepare_run_state(target)
             )
 
-            # Pre-load actual prompt from DB via sync client
-            from prompt_optimizer.db_client import PromptDBClient
+            read_prompt, write_prompt = self._make_prompt_accessors(prompt_store)
 
-            prompt_store: dict[str, str] = {}
-            prompt_db: PromptDBClient | None = None
-            if self._db_url:
-                try:
-                    prompt_db = PromptDBClient(db_url=self._db_url)
-                    initial_prompt = prompt_db.read_prompt(target)
-                    prompt_store[target.field] = initial_prompt
-                except Exception as e:
-                    logger.warning("Failed to pre-load prompt: %s", e)
-
-            # Issue #54 Phase D — 收尾比對用：prompt_store 會被迴圈改寫，
-            # baseline 要在這裡先固定下來
-            baseline_prompt = prompt_store.get(ds["target_prompt"], "")
-
-            def read_prompt(t: PromptTarget) -> str:
-                return prompt_store.get(t.field, "")
-
-            def write_prompt(t: PromptTarget, prompt: str) -> None:
-                # Issue #54 Phase D — 候選 prompt 只存記憶體；受測對話由
-                # _ShadowAPIClient 以 config_override 帶入，全程不寫線上表
-                prompt_store[t.field] = prompt
-
-            from prompt_optimizer.mutator import PromptMutator
 
             # Issue #54 Phase B — mutator LLM 用量落帳（prompt_optimize 分類，
             # fail-open：記帳失敗只 warn 不影響優化迴圈）
             bot_id_for_usage = ds.get("bot_id") or None
-
-            async def _record_mutator_usage(
-                model_name: str, usage_meta: dict
-            ) -> None:
-                if self._record_usage_factory is None:
-                    return
-                try:
-                    from src.domain.rag.value_objects import TokenUsage
-                    from src.infrastructure.db.session_middleware import (
-                        independent_session_scope,
-                    )
-
-                    usage = TokenUsage(
-                        model=model_name,
-                        input_tokens=int(usage_meta.get("input_tokens", 0)),
-                        output_tokens=int(usage_meta.get("output_tokens", 0)),
-                        estimated_cost=0.0,  # RecordUsage 會依 registry 估價
-                    )
-                    async with independent_session_scope():
-                        record_usage = self._record_usage_factory()
-                        await record_usage.execute(
-                            tenant_id=command.tenant_id,
-                            request_type=UsageCategory.PROMPT_OPTIMIZE.value,
-                            usage=usage,
-                            bot_id=bot_id_for_usage,
-                            run_id=run_id,
-                        )
-                except Exception:
-                    logger.warning(
-                        "mutator usage recording failed (fail-open)",
-                        exc_info=True,
-                    )
+            _record_mutator_usage = self._make_mutator_usage_recorder(
+                command, run_id, bot_id_for_usage
+            )
 
             mutator = (
                 PromptMutator(
@@ -436,88 +572,12 @@ class StartRunUseCase:
             )
 
             # Progress callback: update RunManager on each case/iteration
-            from prompt_optimizer.runner import IterationResult, ProgressEvent
-
-            async def _on_progress(evt: ProgressEvent) -> None:
-                self._run_manager.update_run(
-                    run_id,
-                    current_iteration=evt.iteration,
-                    current_score=evt.score if evt.score > 0 else None,
-                    baseline_score=(
-                        evt.baseline_score if evt.baseline_score > 0 else None
-                    ),
-                    best_score=evt.best_score if evt.best_score > 0 else None,
-                    progress_message=evt.message,
-                )
-                # Append to score_log on iteration completion
-                if evt.phase == "iteration_done":
-                    active = self._run_manager.get_run(run_id)
-                    if active:
-                        active.score_log.append(
-                            {"iteration": evt.iteration, "score": evt.score}
-                        )
-                await self._run_manager.publish_progress(
-                    run_id,
-                    RunProgress(
-                        run_id=run_id,
-                        event=evt.phase,
-                        iteration=evt.iteration,
-                        max_iterations=evt.max_iterations,
-                        score=evt.score,
-                        best_score=evt.best_score,
-                        baseline_score=evt.baseline_score,
-                        message=evt.message,
-                    ),
-                )
+            _on_progress = self._make_progress_callback(run_id)
 
             # Iteration callback: save each iteration to DB immediately
-            def _on_iteration(it: IterationResult) -> None:
-                if not history_client:
-                    return
-                history_client.save_iteration(
-                    run_id=run_id,
-                    iteration=it.iteration,
-                    tenant_id=command.tenant_id,
-                    target_field=ds["target_prompt"],
-                    bot_id=ds.get("bot_id"),
-                    prompt_snapshot=it.prompt_snapshot,
-                    score=it.eval_summary.final_score,
-                    passed_count=sum(
-                        1
-                        for cr in it.eval_summary.case_results
-                        if cr.score >= 1.0
-                    ),
-                    total_count=len(it.eval_summary.case_results),
-                    is_best=it.is_best,
-                    details={
-                        "quality_score": it.eval_summary.quality_score,
-                        "cost_score": it.eval_summary.cost_score,
-                        "avg_total_tokens": it.eval_summary.avg_total_tokens,
-                        "accepted": it.accepted,
-                        "case_results": [
-                            {
-                                "case_id": cr.case_id,
-                                "question": cr.question,
-                                "priority": cr.priority,
-                                "category": cr.category,
-                                "score": cr.score,
-                                "passed_count": cr.passed_count,
-                                "total_count": cr.total_count,
-                                "p0_failed": cr.p0_failed,
-                                "answer_snippet": cr.answer_snippet,
-                                "assertion_results": [
-                                    {
-                                        "passed": ar.passed,
-                                        "assertion_type": ar.assertion_type,
-                                        "message": ar.message,
-                                    }
-                                    for ar in cr.assertion_results
-                                ],
-                            }
-                            for cr in it.eval_summary.case_results
-                        ],
-                    },
-                )
+            _on_iteration = self._make_iteration_callback(
+                run_id, command, ds, history_client
+            )
 
             # Run the optimization loop
             result = await runner.run(
@@ -599,12 +659,7 @@ class StartRunUseCase:
                 RunProgress(run_id=run_id, event="error", message=str(e)),
             )
         finally:
-            if api_client:
-                await api_client.close()
-            if history_client:
-                history_client.close()
-            if prompt_db:
-                prompt_db.close()
+            await self._cleanup_run_resources(api_client, history_client, prompt_db)
 
 
 class ListRunsUseCase:

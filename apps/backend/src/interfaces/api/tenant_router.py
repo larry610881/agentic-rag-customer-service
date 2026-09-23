@@ -252,6 +252,33 @@ async def get_tenant(
     return _to_response(tenant)
 
 
+_UPDATE_TENANT_OPTIONAL_FIELDS = (
+    "plan",
+    "monthly_token_limit",
+    "included_categories",  # 含顯式 null
+    "prompt_gate_enabled",
+    "default_ocr_model",
+    "default_context_model",
+    "default_classification_model",
+    "default_summary_model",
+    "default_intent_model",
+)
+
+
+def _build_update_tenant_cmd_kwargs(
+    tenant_id: str, actor: CurrentTenant, body: UpdateTenantConfigRequest
+) -> dict:
+    """Bug 2 修復：用 model_fields_set 區分「client 未傳」vs「client 顯式傳 None」。
+    只把 client 顯式傳入的欄位放進 command，未傳者維持 _UNSET sentinel，
+    讓 UpdateTenantUseCase 能正確保留 / 重置欄位。"""
+    fields_set = body.model_fields_set
+    cmd_kwargs: dict = {"tenant_id": tenant_id, "actor_user_id": actor.user_id}
+    for field_name in _UPDATE_TENANT_OPTIONAL_FIELDS:
+        if field_name in fields_set:
+            cmd_kwargs[field_name] = getattr(body, field_name)
+    return cmd_kwargs
+
+
 @router.patch("/{tenant_id}/config", response_model=TenantResponse)
 @inject
 async def update_tenant_config(
@@ -262,29 +289,7 @@ async def update_tenant_config(
         Provide[Container.update_tenant_use_case]
     ),
 ) -> TenantResponse:
-    # Bug 2 修復：用 model_fields_set 區分「client 未傳」vs「client 顯式傳 None」。
-    # 只把 client 顯式傳入的欄位放進 command，未傳者維持 _UNSET sentinel，
-    # 讓 UpdateTenantUseCase 能正確保留 / 重置欄位。
-    fields_set = body.model_fields_set
-    cmd_kwargs: dict = {"tenant_id": tenant_id, "actor_user_id": actor.user_id}
-    if "plan" in fields_set:
-        cmd_kwargs["plan"] = body.plan
-    if "monthly_token_limit" in fields_set:
-        cmd_kwargs["monthly_token_limit"] = body.monthly_token_limit
-    if "included_categories" in fields_set:
-        cmd_kwargs["included_categories"] = body.included_categories  # 含顯式 null
-    if "prompt_gate_enabled" in fields_set:
-        cmd_kwargs["prompt_gate_enabled"] = body.prompt_gate_enabled
-    if "default_ocr_model" in fields_set:
-        cmd_kwargs["default_ocr_model"] = body.default_ocr_model
-    if "default_context_model" in fields_set:
-        cmd_kwargs["default_context_model"] = body.default_context_model
-    if "default_classification_model" in fields_set:
-        cmd_kwargs["default_classification_model"] = body.default_classification_model
-    if "default_summary_model" in fields_set:
-        cmd_kwargs["default_summary_model"] = body.default_summary_model
-    if "default_intent_model" in fields_set:
-        cmd_kwargs["default_intent_model"] = body.default_intent_model
+    cmd_kwargs = _build_update_tenant_cmd_kwargs(tenant_id, actor, body)
 
     try:
         tenant = await use_case.execute(UpdateTenantCommand(**cmd_kwargs))

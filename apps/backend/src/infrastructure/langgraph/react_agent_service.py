@@ -4,8 +4,9 @@
 支援 RAG 知識庫查詢和 MCP 外部工具呼叫。
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import AsyncExitStack
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
@@ -104,6 +105,492 @@ def merge_history_into_system(
     if not system_prompt:
         return history_block
     return f"{system_prompt}\n\n{history_block}"
+
+
+def _flatten_list_message_contents(messages: list[Any]) -> None:
+    """Join list content blocks into a single string (in place)."""
+    for msg in messages:
+        if isinstance(msg.content, list):
+            msg.content = "\n".join(
+                b.text if hasattr(b, "text") else str(b)
+                for b in msg.content
+            )
+
+
+def _extract_node_token_usage(response: Any) -> dict[str, Any] | None:
+    """Extract token usage from an agent LLM response (None if absent)."""
+    has_usage = (
+        isinstance(response, AIMessage)
+        and hasattr(response, "usage_metadata")
+        and response.usage_metadata
+    )
+    if not has_usage:
+        return None
+    um = response.usage_metadata
+    node_token_usage: dict[str, Any] = {
+        "input_tokens": um.get("input_tokens", 0),
+        "output_tokens": um.get("output_tokens", 0),
+        # Issue #72：實證這一輪是否真的在 thinking（含在 output 內）
+        "reasoning_tokens": reasoning_tokens_of_metadata(um),
+    }
+    model_name = ""
+    if hasattr(response, "response_metadata"):
+        model_name = response.response_metadata.get("model_name", "")
+    if model_name:
+        node_token_usage["model"] = model_name
+    return node_token_usage
+
+
+def _answer_preview(response: Any) -> str:
+    content_preview = ""
+    if isinstance(response, AIMessage) and response.content:
+        content_preview = (
+            response.content[:100]
+            if isinstance(response.content, str)
+            else str(response.content)[:100]
+        )
+    return content_preview
+
+
+def _record_agent_llm_node(
+    response: Any,
+    messages: list[Any],
+    *,
+    call_count: int,
+    elapsed_ms: float,
+    trace_start_ms: float,
+    trace_end_ms: float,
+    llm_meta: dict[str, Any],
+) -> str:
+    """Log the agent decision and add its agent_llm trace node; return node id."""
+    # Extract token usage from response
+    node_token_usage = _extract_node_token_usage(response)
+
+    # Build llm_input/output for trace
+    llm_input_text = "\n---\n".join(
+        f"[{type(m).__name__}] "
+        f"{m.content if isinstance(m.content, str) else str(m.content)}"
+        for m in messages
+    )
+    llm_output_text = (
+        response.content
+        if isinstance(response, AIMessage) and isinstance(response.content, str)
+        else str(getattr(response, "content", ""))
+    )
+
+    if isinstance(response, AIMessage) and response.tool_calls:
+        tc_summary = [
+            {
+                "name": tc["name"],
+                "args_keys": list(tc.get("args", {}).keys()),
+            }
+            for tc in response.tool_calls
+        ]
+        logger.info(
+            "react.agent_node.tool_calls",
+            iteration=call_count,
+            elapsed_ms=elapsed_ms,
+            tool_calls=tc_summary,
+        )
+        return AgentTraceCollector.add_node(
+            node_type="agent_llm",
+            label=f"ReAct 迭代 {call_count}",
+            parent_id=None,
+            start_ms=trace_start_ms,
+            end_ms=trace_end_ms,
+            token_usage=node_token_usage,
+            iteration=call_count,
+            decision="tool_call",
+            tool_calls=[tc["name"] for tc in response.tool_calls],
+            llm_input=llm_input_text,
+            llm_output=str(response.tool_calls),
+            **llm_meta,
+        )
+
+    content_preview = _answer_preview(response)
+    logger.info(
+        "react.agent_node.final_answer",
+        iteration=call_count,
+        elapsed_ms=elapsed_ms,
+        answer_preview=content_preview,
+    )
+    return AgentTraceCollector.add_node(
+        node_type="agent_llm",
+        label=f"ReAct 迭代 {call_count} (回覆)",
+        parent_id=None,
+        start_ms=trace_start_ms,
+        end_ms=trace_end_ms,
+        token_usage=node_token_usage,
+        iteration=call_count,
+        decision="final_answer",
+        answer_preview=content_preview,
+        llm_input=llm_input_text,
+        llm_output=llm_output_text,
+        **llm_meta,
+    )
+
+
+def _tool_call_names(last_msg: Any) -> list[str]:
+    if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
+        return [tc["name"] for tc in last_msg.tool_calls]
+    return []
+
+
+def _preregister_tool_trace_nodes(
+    tool_names: list[str], trace_start_ms: float
+) -> dict[str, str]:
+    """Add a placeholder tool_call node per tool and set it as tool parent."""
+    tool_node_ids: dict[str, str] = {}
+    for tn in tool_names:
+        nid = AgentTraceCollector.add_node(
+            node_type="tool_call",
+            label=tn,
+            parent_id=None,
+            start_ms=trace_start_ms,
+            end_ms=trace_start_ms,  # placeholder, updated below
+            tool_name=tn,
+        )
+        tool_node_ids[tn] = nid
+        # Set as parent so inner nodes (RAG search, rerank) become children
+        AgentTraceCollector.set_tool_parent(nid)
+    return tool_node_ids
+
+
+def _update_tool_trace_node(
+    trace: Any, nid: str, trace_end_ms: float, content_str: str
+) -> None:
+    """Update the pre-registered node with result data."""
+    for node in trace.nodes:
+        if node.node_id == nid:
+            node.end_ms = trace_end_ms
+            node.duration_ms = round(trace_end_ms - node.start_ms, 1)
+            node.metadata["result_length"] = len(content_str)
+            node.metadata["result_preview"] = content_str
+            record_tool_output(node, content_str)
+            break
+
+
+def _finalize_tool_trace_nodes(
+    result: dict[str, Any],
+    tool_node_ids: dict[str, str],
+    elapsed_ms: float,
+    trace_end_ms: float,
+) -> None:
+    trace = AgentTraceCollector.current()
+    for msg in result.get("messages", []):
+        if not isinstance(msg, ToolMessage):
+            continue
+        content_str = (
+            msg.content
+            if isinstance(msg.content, str)
+            else str(msg.content)
+        )
+        tool_name = getattr(msg, "name", "unknown")
+        logger.info(
+            "react.tools_node.result",
+            tool_name=tool_name,
+            elapsed_ms=elapsed_ms,
+            result_length=len(content_str),
+            result_preview=content_str[:200],
+        )
+        nid = tool_node_ids.get(tool_name)
+        if trace and nid:
+            _update_tool_trace_node(trace, nid, trace_end_ms, content_str)
+
+
+def _stamp_stream_event(d: dict[str, Any]) -> dict[str, Any]:
+    """Phase 1: 附加 node_id + ts_ms 到 stream event（yield 當下取值）。"""
+    d.setdefault("node_id", AgentTraceCollector.last_node_id())
+    d.setdefault("ts_ms", round(AgentTraceCollector.offset_ms(), 1))
+    return d
+
+
+@dataclass
+class _StreamState:
+    """Mutable state shared across process_message_stream event handlers."""
+
+    tool_calls_emitted: list[dict[str, Any]] = field(default_factory=list)
+    call_count: int = 0
+    llm_generating_emitted: bool = False
+    all_ai_messages: list[AIMessage] = field(default_factory=list)
+
+
+def _history_loaded_status(history_len: int, history_context: str) -> str:
+    # 載入狀態 — 同 non-stream 版本：lost 表 turns>0 但 context 空
+    if history_len == 0:
+        return "empty"
+    if history_context:
+        return "loaded"
+    return "lost"
+
+
+def _add_worker_routing_trace(
+    metadata: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Worker routing breadcrumb; return the worker_routing event (or None)."""
+    _wr_info_s = (metadata or {}).get("_worker_routing")
+    if not (isinstance(_wr_info_s, dict) and _wr_info_s.get("name")):
+        return None
+    AgentTraceCollector.add_node(
+        "worker_routing",
+        f"✓ 分流結果：{_wr_info_s['name']}",
+        None, 0.0, 0.0,
+        worker_name=_wr_info_s["name"],
+        worker_llm=_wr_info_s.get("llm_model") or "(default)",
+        worker_llm_provider=_wr_info_s.get("llm_provider") or "",
+        worker_kb_count=_wr_info_s.get("kb_count", 0),
+    )
+    # Phase 1: 讓 Studio canvas 知道路由到哪個 worker（藍圖點亮對應卡片）
+    return {
+        "type": "worker_routing",
+        "worker_name": _wr_info_s["name"],
+        "worker_llm": _wr_info_s.get("llm_model") or "(default)",
+        "worker_llm_provider": _wr_info_s.get("llm_provider") or "",
+        "worker_kb_count": _wr_info_s.get("kb_count", 0),
+    }
+
+
+def _start_stream_trace(
+    *,
+    tenant_id: str,
+    user_message: str,
+    history: list[Message] | None,
+    llm_params: dict[str, Any] | None,
+    metadata: dict[str, Any] | None,
+    history_context: str,
+    bot_id: str,
+) -> dict[str, Any] | None:
+    """Start the agent trace + user_input / worker_routing nodes.
+
+    Returns the worker_routing stream event, if routing info is present.
+    """
+    history_len = len(history) if history else 0
+    _llm_params_s = llm_params or {}
+    AgentTraceCollector.start(
+        tenant_id, "react",
+        llm_model=_llm_params_s.get("model", ""),
+        llm_provider=_llm_params_s.get("provider_name", ""),
+        bot_id=bot_id or None,
+    )
+    history_loaded_status = _history_loaded_status(history_len, history_context)
+    history_chars = len(history_context or "")
+    AgentTraceCollector.add_node(
+        "user_input", "使用者輸入", None, 0.0, 0.0,
+        message_preview=user_message[:200],
+        history_turns=history_len,
+        history_loaded_status=history_loaded_status,
+        history_context_chars=history_chars,
+        has_history_context=bool(history_context),
+        history_context=history_context or "",
+    )
+    return _add_worker_routing_trace(metadata)
+
+
+def _add_first_token_node(iteration: int) -> None:
+    _t_ft = AgentTraceCollector.offset_ms()
+    AgentTraceCollector.add_node(
+        node_type="first_token",
+        label=f"首 token（迭代 {iteration}）",
+        parent_id=None,
+        start_ms=_t_ft,
+        end_ms=_t_ft,
+        iteration=iteration,
+    )
+
+
+def _ai_content_to_text(raw: Any) -> str:
+    """Normalize AIMessage content (str / content blocks) to plain text."""
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, list):
+        return "".join(
+            block.get("text", "")
+            for block in raw
+            if isinstance(block, dict)
+            and block.get("type") == "text"
+        )
+    return str(raw)
+
+
+_NO_RAG_RESULT = "知識庫中沒有找到相關資訊"
+
+
+def _iter_tool_message_events(
+    msg: Any, tool_calls_emitted: list[dict[str, Any]]
+) -> Iterator[dict[str, Any]]:
+    """Events for one tool-node message: done status, backfill, sources."""
+    if hasattr(msg, "name") and msg.name:
+        yield {
+            "type": "status",
+            "status": f"{msg.name}_done",
+        }
+    # Backfill tool_output to tool_calls_emitted
+    if (
+        hasattr(msg, "content")
+        and msg.content
+        and hasattr(msg, "name")
+        and msg.name
+    ):
+        content_str = str(msg.content)[:500] if msg.content else ""
+        _backfill_tool_output(tool_calls_emitted, msg, content_str)
+    # Extract sources from tool results
+    if hasattr(msg, "content") and msg.content:
+        yield from _iter_tool_source_events(msg)
+
+
+def _iter_tool_source_events(msg: Any) -> Iterator[dict[str, Any]]:
+    _emitted_sources = False
+    # 1. JSON parse (MCP tools)
+    try:
+        import json
+
+        content = (
+            json.loads(msg.content)
+            if isinstance(msg.content, str)
+            else msg.content
+        )
+        if isinstance(content, dict) and "sources" in content:
+            sources = content["sources"]
+            if sources:
+                yield {
+                    "type": "sources",
+                    "sources": sources,
+                }
+                _emitted_sources = True
+        # transfer_to_human_agent tool → emit contact event
+        if isinstance(content, dict) and content.get("contact"):
+            yield {
+                "type": "contact",
+                "contact": content["contact"],
+            }
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # 2. rag_query plain text → chunks
+    if (
+        not _emitted_sources
+        and hasattr(msg, "name")
+        and msg.name == "rag_query"
+    ):
+        ctx = msg.content if isinstance(msg.content, str) else str(msg.content)
+        if ctx.strip() and _NO_RAG_RESULT not in ctx:
+            rag_sources = [
+                {
+                    "content_snippet": c.strip(),
+                    "source": "rag_query",
+                }
+                for c in ctx.split("\n---\n")
+                if c.strip()
+            ]
+            if rag_sources:
+                yield {
+                    "type": "sources",
+                    "sources": rag_sources,
+                }
+
+
+def _record_stream_timeout(timeout_s: Any) -> str:
+    """Log + add a failed trace node for a stream timeout; return the message."""
+    logger.error(
+        "react.stream.timeout", timeout_s=timeout_s
+    )
+    # Phase 1: 失敗節點寫入 trace（outcome=failed），讓 Studio 紅框可見
+    _err_msg = f"Agent 回應逾時（{timeout_s}s），請縮短問題或更換模型"
+    _err_ms = AgentTraceCollector.offset_ms()
+    AgentTraceCollector.add_node(
+        "agent_llm",
+        "agent timeout",
+        None,
+        _err_ms,
+        _err_ms,
+        outcome="failed",
+        error_message=_err_msg,
+    )
+    return _err_msg
+
+
+def _tool_call_entries(msg: AIMessage, iteration: int) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for tc in msg.tool_calls:
+        entry: dict[str, Any] = {
+            "tool_name": tc["name"],
+            "label": resolve_tool_label(tc["name"]),
+            "tool_call_id": tc.get("id", ""),
+            "reasoning": "",
+            "tool_input": tc.get("args", {}),
+            "iteration": iteration,
+        }
+        entries.append(entry)
+    return entries
+
+
+def _source_from_dict(s: dict[str, Any]) -> Source:
+    return Source(
+        document_name=s.get("document_name", "rag_query"),
+        content_snippet=s.get("content_snippet", ""),
+        score=float(s.get("score", 0.0) or 0.0),
+        chunk_id=s.get("chunk_id", ""),
+        document_id=s.get("document_id", ""),
+        kb_id=s.get("kb_id", ""),
+        # 保留 dm_image_query_tool 的圖卡資訊；rag_query
+        # 來源沒有這兩欄會是空字串 / 0
+        image_url=s.get("image_url", ""),
+        page_number=int(s.get("page_number", 0) or 0),
+    )
+
+
+def _collect_tool_message_sources(msg: Any, sources: list[Any]) -> Any:
+    """Append Sources parsed from a ToolMessage to *sources* (in place).
+
+    Returns the transfer_to_human_agent contact if present, else None.
+    """
+    import json as _json
+
+    contact: Any = None
+    _found = False
+    # 1. Try JSON (MCP tools)
+    try:
+        parsed = (
+            _json.loads(msg.content)
+            if isinstance(msg.content, str)
+            else msg.content
+        )
+        if isinstance(parsed, dict) and parsed.get("sources"):
+            for s in parsed["sources"]:
+                if isinstance(s, Source):
+                    sources.append(s)
+                elif isinstance(s, dict):
+                    sources.append(_source_from_dict(s))
+            _found = True
+        # transfer_to_human_agent tool → capture contact
+        if isinstance(parsed, dict) and parsed.get("contact"):
+            contact = parsed["contact"]
+    except (_json.JSONDecodeError, TypeError):
+        pass
+    # 2. rag_query plain text — split into chunks
+    if (
+        not _found
+        and hasattr(msg, "name")
+        and msg.name == "rag_query"
+    ):
+        sources.extend(_rag_text_sources(msg.content))
+    return contact
+
+
+def _rag_text_sources(raw: Any) -> list[Source]:
+    """rag_query plain-text result → one Source per chunk."""
+    ctx = raw if isinstance(raw, str) else str(raw)
+    if not ctx.strip() or _NO_RAG_RESULT in ctx:
+        return []
+    return [
+        Source(
+            document_name="rag_query",
+            content_snippet=c.strip(),
+            score=0.0,
+            chunk_id="",
+        )
+        for c in ctx.split("\n---\n")
+        if c.strip()
+    ]
 
 
 class ReActAgentService(AgentService):
@@ -585,12 +1072,7 @@ class ReActAgentService(AgentService):
             messages = list(state["messages"])
             # Sanitize: some LLMs (DeepSeek) require string content,
             # but MCP ToolMessages may have list content blocks.
-            for msg in messages:
-                if isinstance(msg.content, list):
-                    msg.content = "\n".join(
-                        b.text if hasattr(b, "text") else str(b)
-                        for b in msg.content
-                    )
+            _flatten_list_message_contents(messages)
 
             logger.info(
                 "react.agent_node.start",
@@ -605,95 +1087,15 @@ class ReActAgentService(AgentService):
             elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
             trace_end_ms = AgentTraceCollector.offset_ms()
 
-            # Extract token usage from response
-            node_token_usage = None
-            has_usage = (
-                isinstance(response, AIMessage)
-                and hasattr(response, "usage_metadata")
-                and response.usage_metadata
+            last_agent_node_id = _record_agent_llm_node(
+                response,
+                messages,
+                call_count=call_count,
+                elapsed_ms=elapsed_ms,
+                trace_start_ms=trace_start_ms,
+                trace_end_ms=trace_end_ms,
+                llm_meta=_llm_meta,
             )
-            if has_usage:
-                um = response.usage_metadata
-                node_token_usage = {
-                    "input_tokens": um.get("input_tokens", 0),
-                    "output_tokens": um.get("output_tokens", 0),
-                    # Issue #72：實證這一輪是否真的在 thinking（含在 output 內）
-                    "reasoning_tokens": reasoning_tokens_of_metadata(um),
-                }
-                model_name = ""
-                if hasattr(response, "response_metadata"):
-                    model_name = response.response_metadata.get("model_name", "")
-                if model_name:
-                    node_token_usage["model"] = model_name
-
-            # Build llm_input/output for trace
-            llm_input_text = "\n---\n".join(
-                f"[{type(m).__name__}] "
-                f"{m.content if isinstance(m.content, str) else str(m.content)}"
-                for m in messages
-            )
-            llm_output_text = (
-                response.content
-                if isinstance(response, AIMessage) and isinstance(response.content, str)
-                else str(getattr(response, "content", ""))
-            )
-
-            if isinstance(response, AIMessage) and response.tool_calls:
-                tc_summary = [
-                    {
-                        "name": tc["name"],
-                        "args_keys": list(tc.get("args", {}).keys()),
-                    }
-                    for tc in response.tool_calls
-                ]
-                logger.info(
-                    "react.agent_node.tool_calls",
-                    iteration=call_count,
-                    elapsed_ms=elapsed_ms,
-                    tool_calls=tc_summary,
-                )
-                last_agent_node_id = AgentTraceCollector.add_node(
-                    node_type="agent_llm",
-                    label=f"ReAct 迭代 {call_count}",
-                    parent_id=None,
-                    start_ms=trace_start_ms,
-                    end_ms=trace_end_ms,
-                    token_usage=node_token_usage,
-                    iteration=call_count,
-                    decision="tool_call",
-                    tool_calls=[tc["name"] for tc in response.tool_calls],
-                    llm_input=llm_input_text,
-                    llm_output=str(response.tool_calls),
-                    **_llm_meta,
-                )
-            else:
-                content_preview = ""
-                if isinstance(response, AIMessage) and response.content:
-                    content_preview = (
-                        response.content[:100]
-                        if isinstance(response.content, str)
-                        else str(response.content)[:100]
-                    )
-                logger.info(
-                    "react.agent_node.final_answer",
-                    iteration=call_count,
-                    elapsed_ms=elapsed_ms,
-                    answer_preview=content_preview,
-                )
-                last_agent_node_id = AgentTraceCollector.add_node(
-                    node_type="agent_llm",
-                    label=f"ReAct 迭代 {call_count} (回覆)",
-                    parent_id=None,
-                    start_ms=trace_start_ms,
-                    end_ms=trace_end_ms,
-                    token_usage=node_token_usage,
-                    iteration=call_count,
-                    decision="final_answer",
-                    answer_preview=content_preview,
-                    llm_input=llm_input_text,
-                    llm_output=llm_output_text,
-                    **_llm_meta,
-                )
 
             return {"messages": [response]}
 
@@ -706,9 +1108,7 @@ class ReActAgentService(AgentService):
             t0 = time.monotonic()
             trace_start_ms = AgentTraceCollector.offset_ms()
             last_msg = state["messages"][-1]
-            tool_names = []
-            if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
-                tool_names = [tc["name"] for tc in last_msg.tool_calls]
+            tool_names = _tool_call_names(last_msg)
 
             logger.info(
                 "react.tools_node.start",
@@ -716,19 +1116,7 @@ class ReActAgentService(AgentService):
             )
 
             # Pre-register tool trace nodes so inner nodes can be children
-            tool_node_ids: dict[str, str] = {}
-            for tn in tool_names:
-                nid = AgentTraceCollector.add_node(
-                    node_type="tool_call",
-                    label=tn,
-                    parent_id=None,
-                    start_ms=trace_start_ms,
-                    end_ms=trace_start_ms,  # placeholder, updated below
-                    tool_name=tn,
-                )
-                tool_node_ids[tn] = nid
-                # Set as parent so inner nodes (RAG search, rerank) become children
-                AgentTraceCollector.set_tool_parent(nid)
+            tool_node_ids = _preregister_tool_trace_nodes(tool_names, trace_start_ms)
 
             result = await _tool_node.ainvoke(state)
 
@@ -737,37 +1125,9 @@ class ReActAgentService(AgentService):
             AgentTraceCollector.clear_tool_parent()
 
             # Update tool trace nodes with final timing + result
-            trace = AgentTraceCollector.current()
-            for msg in result.get("messages", []):
-                if isinstance(msg, ToolMessage):
-                    content_str = (
-                        msg.content
-                        if isinstance(msg.content, str)
-                        else str(msg.content)
-                    )
-                    tool_name = getattr(msg, "name", "unknown")
-                    logger.info(
-                        "react.tools_node.result",
-                        tool_name=tool_name,
-                        elapsed_ms=elapsed_ms,
-                        result_length=len(content_str),
-                        result_preview=content_str[:200],
-                    )
-                    # Update pre-registered node with result data
-                    nid = tool_node_ids.get(tool_name)
-                    if trace and nid:
-                        for node in trace.nodes:
-                            if node.node_id == nid:
-                                node.end_ms = trace_end_ms
-                                node.duration_ms = round(
-                                    trace_end_ms - node.start_ms, 1
-                                )
-                                node.metadata["result_length"] = len(
-                                    content_str
-                                )
-                                node.metadata["result_preview"] = content_str
-                                record_tool_output(node, content_str)
-                                break
+            _finalize_tool_trace_nodes(
+                result, tool_node_ids, elapsed_ms, trace_end_ms
+            )
 
             return result
 
@@ -993,6 +1353,100 @@ class ReActAgentService(AgentService):
             })
         return events
 
+    async def _load_mcp_tools_into(
+        self,
+        stack: AsyncExitStack,
+        tools: list[BaseTool],
+        mcp_servers: list[dict[str, Any]] | None,
+    ) -> None:
+        """Load MCP tools (sessions kept alive by *stack*) and append to tools."""
+        if self._cached_tool_loader:
+            for server in (mcp_servers or []):
+                mcp_tools = await self._cached_tool_loader.load_tools(
+                    stack, server, server.get("enabled_tools")
+                )
+                tools.extend(mcp_tools)
+
+    def _iter_message_chunk_events(
+        self, data: Any, st: "_StreamState"
+    ) -> Iterator[dict[str, Any]]:
+        """"messages" stream mode: per-token LLM chunk → events."""
+        msg_chunk, chunk_meta = data
+        was_generating = st.llm_generating_emitted
+        events, st.llm_generating_emitted = (
+            self._handle_text_chunk(
+                msg_chunk,
+                chunk_meta,
+                st.llm_generating_emitted,
+            )
+        )
+        # Issue #49 TTFT：False→True 轉換點 = 該輪生成的
+        # 第一個 token 抵達。記零長度節點供延遲分析
+        # （web 串流體感 = start_ms；LINE 非串流無此節點）
+        if not was_generating and st.llm_generating_emitted:
+            _add_first_token_node(st.call_count + 1)
+        yield from events
+
+    def _iter_update_events(
+        self, data: dict[str, Any], st: "_StreamState"
+    ) -> Iterator[dict[str, Any]]:
+        """"updates" stream mode: node completions → events."""
+        for node_name, node_output in data.items():
+            if node_name == "agent":
+                for msg in node_output.get("messages", []):
+                    if isinstance(msg, AIMessage):
+                        yield from self._iter_agent_message_events(msg, st)
+
+            elif node_name == "tools":
+                for msg in node_output.get("messages", []):
+                    yield from _iter_tool_message_events(
+                        msg, st.tool_calls_emitted
+                    )
+                yield {
+                    "type": "status",
+                    "status": "react_thinking",
+                }
+
+    def _iter_agent_message_events(
+        self, msg: AIMessage, st: "_StreamState"
+    ) -> Iterator[dict[str, Any]]:
+        st.all_ai_messages.append(msg)
+        if msg.tool_calls:
+            st.call_count += 1
+            st.llm_generating_emitted = False
+            yield from self._handle_tool_call_chunk(
+                msg,
+                st.call_count,
+                st.tool_calls_emitted,
+            )
+            return
+        if not msg.content:
+            return
+        # Fallback: if messages mode didn't stream tokens (e.g. mock LLM
+        # without astream), emit content as one chunk.
+        #
+        # 重要：messages mode 已 stream 過時（llm_generating_emitted=True）
+        # 必須直接 skip，否則 updates mode 會把同樣內容再吐一次
+        # → 前端看到回答重複兩遍。
+        if st.llm_generating_emitted:
+            st.llm_generating_emitted = False
+            return
+        # 對 ChatAnthropic 直連，msg.content 可能是 list[dict] (content blocks)
+        # 同 _handle_text_chunk 的處理邏輯，避免前端看到 [{'text': ...}] 的 repr。
+        content = _ai_content_to_text(msg.content)
+        if not content:
+            return
+        # Issue #49 TTFT：非串流 fallback 整包一次抵達，首 token = 全文到達
+        _add_first_token_node(st.call_count + 1)
+        yield {
+            "type": "status",
+            "status": "llm_generating",
+        }
+        yield {
+            "type": "token",
+            "content": content,
+        }
+
     async def process_message_stream(
         self,
         tenant_id: str,
@@ -1031,12 +1485,7 @@ class ReActAgentService(AgentService):
             )
 
             # Load MCP tools — sessions kept alive by stack
-            if self._cached_tool_loader:
-                for server in (mcp_servers or []):
-                    mcp_tools = await self._cached_tool_loader.load_tools(
-                        stack, server, server.get("enabled_tools")
-                    )
-                    tools.extend(mcp_tools)
+            await self._load_mcp_tools_into(stack, tools, mcp_servers)
 
             llm = await self._resolve_llm_model(llm_params, with_tools=bool(tools))
             assembled_prompt = merge_history_into_system(
@@ -1059,60 +1508,20 @@ class ReActAgentService(AgentService):
             )
 
             # Start agent trace
-            history_len = len(history) if history else 0
-            _llm_params_s = llm_params or {}
-            AgentTraceCollector.start(
-                tenant_id, "react",
-                llm_model=_llm_params_s.get("model", ""),
-                llm_provider=_llm_params_s.get("provider_name", ""),
-                bot_id=bot_id or None,
+            _wr_event = _start_stream_trace(
+                tenant_id=tenant_id,
+                user_message=user_message,
+                history=history,
+                llm_params=llm_params,
+                metadata=metadata,
+                history_context=history_context,
+                bot_id=bot_id,
             )
-            # 載入狀態 — 同 non-stream 版本：lost 表 turns>0 但 context 空
-            if history_len == 0:
-                history_loaded_status = "empty"
-            elif history_context:
-                history_loaded_status = "loaded"
-            else:
-                history_loaded_status = "lost"
-            history_chars = len(history_context or "")
-            AgentTraceCollector.add_node(
-                "user_input", "使用者輸入", None, 0.0, 0.0,
-                message_preview=user_message[:200],
-                history_turns=history_len,
-                history_loaded_status=history_loaded_status,
-                history_context_chars=history_chars,
-                has_history_context=bool(history_context),
-                history_context=history_context or "",
-            )
-            # Worker routing breadcrumb
-            _wr_info_s = (metadata or {}).get("_worker_routing")
-            _wr_event: dict[str, Any] | None = None
-            if isinstance(_wr_info_s, dict) and _wr_info_s.get("name"):
-                AgentTraceCollector.add_node(
-                    "worker_routing",
-                    f"✓ 分流結果：{_wr_info_s['name']}",
-                    None, 0.0, 0.0,
-                    worker_name=_wr_info_s["name"],
-                    worker_llm=_wr_info_s.get("llm_model") or "(default)",
-                    worker_llm_provider=_wr_info_s.get("llm_provider") or "",
-                    worker_kb_count=_wr_info_s.get("kb_count", 0),
-                )
-                # Phase 1: 讓 Studio canvas 知道路由到哪個 worker（藍圖點亮對應卡片）
-                _wr_event = {
-                    "type": "worker_routing",
-                    "worker_name": _wr_info_s["name"],
-                    "worker_llm": _wr_info_s.get("llm_model") or "(default)",
-                    "worker_llm_provider": _wr_info_s.get("llm_provider") or "",
-                    "worker_kb_count": _wr_info_s.get("kb_count", 0),
-                }
 
             # Phase 1: 統一附加 node_id + ts_ms 到每個 stream event；
             # 讓前端 Studio canvas 用 node_id 精準對應 trace 節點，
             # 取代 MVP 的字串啟發式。
-            def _ev(d: dict[str, Any]) -> dict[str, Any]:
-                d.setdefault("node_id", AgentTraceCollector.last_node_id())
-                d.setdefault("ts_ms", round(AgentTraceCollector.offset_ms(), 1))
-                return d
+            _ev = _stamp_stream_event
 
             if _wr_event is not None:
                 yield _ev(_wr_event)
@@ -1123,10 +1532,7 @@ class ReActAgentService(AgentService):
             # Stream graph execution with dual mode:
             #   "messages" → per-token LLM streaming
             #   "updates"  → node completions (tool_calls, tool results, sources)
-            tool_calls_emitted: list[dict[str, Any]] = []
-            call_count = 0
-            llm_generating_emitted = False
-            all_ai_messages: list[AIMessage] = []
+            st = _StreamState()
 
             import asyncio
 
@@ -1141,213 +1547,14 @@ class ReActAgentService(AgentService):
                         mode, data = event
 
                         if mode == "messages":
-                            msg_chunk, chunk_meta = data
-                            was_generating = llm_generating_emitted
-                            events, llm_generating_emitted = (
-                                self._handle_text_chunk(
-                                    msg_chunk,
-                                    chunk_meta,
-                                    llm_generating_emitted,
-                                )
-                            )
-                            # Issue #49 TTFT：False→True 轉換點 = 該輪生成的
-                            # 第一個 token 抵達。記零長度節點供延遲分析
-                            # （web 串流體感 = start_ms；LINE 非串流無此節點）
-                            if not was_generating and llm_generating_emitted:
-                                _t_ft = AgentTraceCollector.offset_ms()
-                                AgentTraceCollector.add_node(
-                                    node_type="first_token",
-                                    label=f"首 token（迭代 {call_count + 1}）",
-                                    parent_id=None,
-                                    start_ms=_t_ft,
-                                    end_ms=_t_ft,
-                                    iteration=call_count + 1,
-                                )
-                            for ev in events:
+                            for ev in self._iter_message_chunk_events(data, st):
                                 yield _ev(ev)
 
                         elif mode == "updates":
-                            for node_name, node_output in data.items():
-                                if node_name == "agent":
-                                    messages = node_output.get("messages", [])
-                                    for msg in messages:
-                                        if isinstance(msg, AIMessage):
-                                            all_ai_messages.append(msg)
-                                            if msg.tool_calls:
-                                                call_count += 1
-                                                llm_generating_emitted = False
-                                                for ev in self._handle_tool_call_chunk(
-                                                    msg,
-                                                    call_count,
-                                                    tool_calls_emitted,
-                                                ):
-                                                    yield _ev(ev)
-                                            elif msg.content:
-                                                # Fallback: if messages mode didn't
-                                                # stream tokens (e.g. mock LLM without
-                                                # astream), emit content as one chunk.
-                                                #
-                                                # 重要：messages mode 已 stream 過時
-                                                # （llm_generating_emitted=True）
-                                                # 必須直接 skip，
-                                                # 否則 updates mode 會把同樣內容再
-                                                # 吐一次 → 前端看到回答重複兩遍。
-                                                if llm_generating_emitted:
-                                                    llm_generating_emitted = False
-                                                    continue
-                                                # 對 ChatAnthropic 直連，msg.content
-                                                # 可能是 list[dict] (content blocks)
-                                                # 同 _handle_text_chunk 的處理邏輯，
-                                                # 避免前端看到 [{'text': ...}] 的 repr。
-                                                raw = msg.content
-                                                if isinstance(raw, str):
-                                                    content = raw
-                                                elif isinstance(raw, list):
-                                                    content = "".join(
-                                                        block.get("text", "")
-                                                        for block in raw
-                                                        if isinstance(block, dict)
-                                                        and block.get("type") == "text"
-                                                    )
-                                                else:
-                                                    content = str(raw)
-                                                if not content:
-                                                    continue
-                                                # Issue #49 TTFT：非串流 fallback
-                                                # 整包一次抵達，首 token = 全文到達
-                                                _t_ft = (
-                                                    AgentTraceCollector.offset_ms()
-                                                )
-                                                AgentTraceCollector.add_node(
-                                                    node_type="first_token",
-                                                    label=(
-                                                        f"首 token（迭代 "
-                                                        f"{call_count + 1}）"
-                                                    ),
-                                                    parent_id=None,
-                                                    start_ms=_t_ft,
-                                                    end_ms=_t_ft,
-                                                    iteration=call_count + 1,
-                                                )
-                                                yield _ev({
-                                                    "type": "status",
-                                                    "status": "llm_generating",
-                                                })
-                                                yield _ev({
-                                                    "type": "token",
-                                                    "content": content,
-                                                })
-
-                                elif node_name == "tools":
-                                    messages = node_output.get("messages", [])
-                                    for msg in messages:
-                                        if hasattr(msg, "name") and msg.name:
-                                            yield _ev({
-                                                "type": "status",
-                                                "status": f"{msg.name}_done",
-                                            })
-                                        # Backfill tool_output to tool_calls_emitted
-                                        if (
-                                            hasattr(msg, "content")
-                                            and msg.content
-                                            and hasattr(msg, "name")
-                                            and msg.name
-                                        ):
-                                            content_str = (
-                                                str(msg.content)[:500]
-                                                if msg.content
-                                                else ""
-                                            )
-                                            _backfill_tool_output(
-                                                tool_calls_emitted,
-                                                msg,
-                                                content_str,
-                                            )
-                                        # Extract sources from tool results
-                                        if hasattr(msg, "content") and msg.content:
-                                            _emitted_sources = False
-                                            # 1. JSON parse (MCP tools)
-                                            try:
-                                                import json
-
-                                                content = (
-                                                    json.loads(msg.content)
-                                                    if isinstance(msg.content, str)
-                                                    else msg.content
-                                                )
-                                                if (
-                                                    isinstance(content, dict)
-                                                    and "sources" in content
-                                                ):
-                                                    sources = content["sources"]
-                                                    if sources:
-                                                        yield _ev({
-                                                            "type": "sources",
-                                                            "sources": sources,
-                                                        })
-                                                        _emitted_sources = True
-                                                # transfer_to_human_agent tool
-                                                # → emit contact event
-                                                if (
-                                                    isinstance(content, dict)
-                                                    and content.get("contact")
-                                                ):
-                                                    yield _ev({
-                                                        "type": "contact",
-                                                        "contact": content["contact"],
-                                                    })
-                                            except (json.JSONDecodeError, TypeError):
-                                                pass
-                                            # 2. rag_query plain text → chunks
-                                            if (
-                                                not _emitted_sources
-                                                and hasattr(msg, "name")
-                                                and msg.name == "rag_query"
-                                            ):
-                                                ctx = (
-                                                    msg.content
-                                                    if isinstance(msg.content, str)
-                                                    else str(msg.content)
-                                                )
-                                                _no_result = "知識庫中沒有找到相關資訊"
-                                                if (
-                                                    ctx.strip()
-                                                    and _no_result not in ctx
-                                                ):
-                                                    rag_sources = [
-                                                        {
-                                                            "content_snippet": c.strip(),  # noqa: E501
-                                                            "source": "rag_query",
-                                                        }
-                                                        for c in ctx.split("\n---\n")
-                                                        if c.strip()
-                                                    ]
-                                                    if rag_sources:
-                                                        yield _ev({
-                                                            "type": "sources",
-                                                            "sources": rag_sources,
-                                                        })
-                                    yield _ev({
-                                        "type": "status",
-                                        "status": "react_thinking",
-                                    })
+                            for ev in self._iter_update_events(data, st):
+                                yield _ev(ev)
             except asyncio.TimeoutError:
-                timeout_s = _settings.agent_stream_timeout
-                logger.error(
-                    "react.stream.timeout", timeout_s=timeout_s
-                )
-                # Phase 1: 失敗節點寫入 trace（outcome=failed），讓 Studio 紅框可見
-                _err_msg = f"Agent 回應逾時（{timeout_s}s），請縮短問題或更換模型"
-                _err_ms = AgentTraceCollector.offset_ms()
-                AgentTraceCollector.add_node(
-                    "agent_llm",
-                    "agent timeout",
-                    None,
-                    _err_ms,
-                    _err_ms,
-                    outcome="failed",
-                    error_message=_err_msg,
-                )
+                _err_msg = _record_stream_timeout(_settings.agent_stream_timeout)
                 yield _ev({"type": "error", "message": _err_msg})
 
             # Trace: final_response node
@@ -1358,7 +1565,7 @@ class ReActAgentService(AgentService):
 
             # Yield usage event before done
             usage_event = build_usage_event(
-                extract_usage_from_langchain_messages(all_ai_messages)
+                extract_usage_from_langchain_messages(st.all_ai_messages)
             )
             if usage_event:
                 yield _ev(usage_event)
@@ -1370,8 +1577,6 @@ class ReActAgentService(AgentService):
         result: dict[str, Any],
     ) -> AgentResponse:
         """Extract final answer and tool calls from graph result."""
-        import json as _json
-
         messages = result.get("messages", [])
 
         # Find the last AI message as the answer
@@ -1385,16 +1590,7 @@ class ReActAgentService(AgentService):
             if isinstance(msg, AIMessage):
                 if msg.tool_calls:
                     iteration += 1
-                    for tc in msg.tool_calls:
-                        entry: dict[str, Any] = {
-                            "tool_name": tc["name"],
-                            "label": resolve_tool_label(tc["name"]),
-                            "tool_call_id": tc.get("id", ""),
-                            "reasoning": "",
-                            "tool_input": tc.get("args", {}),
-                            "iteration": iteration,
-                        }
-                        tool_calls.append(entry)
+                    tool_calls.extend(_tool_call_entries(msg, iteration))
                 elif msg.content:
                     answer = (
                         msg.content
@@ -1406,60 +1602,9 @@ class ReActAgentService(AgentService):
                 _backfill_tool_output(tool_calls, msg, content)
                 # Extract sources from tool results
                 if hasattr(msg, "content") and msg.content:
-                    _found = False
-                    # 1. Try JSON (MCP tools)
-                    try:
-                        parsed = (
-                            _json.loads(msg.content)
-                            if isinstance(msg.content, str)
-                            else msg.content
-                        )
-                        if isinstance(parsed, dict) and parsed.get("sources"):
-                            for s in parsed["sources"]:
-                                if isinstance(s, Source):
-                                    sources.append(s)
-                                elif isinstance(s, dict):
-                                    sources.append(Source(
-                                        document_name=s.get(
-                                            "document_name", "rag_query"
-                                        ),
-                                        content_snippet=s.get("content_snippet", ""),
-                                        score=float(s.get("score", 0.0) or 0.0),
-                                        chunk_id=s.get("chunk_id", ""),
-                                        document_id=s.get("document_id", ""),
-                                        kb_id=s.get("kb_id", ""),
-                                        # 保留 dm_image_query_tool 的圖卡資訊；rag_query
-                                        # 來源沒有這兩欄會是空字串 / 0
-                                        image_url=s.get("image_url", ""),
-                                        page_number=int(s.get("page_number", 0) or 0),
-                                    ))
-                            _found = True
-                        # transfer_to_human_agent tool → capture contact
-                        if isinstance(parsed, dict) and parsed.get("contact"):
-                            contact = parsed["contact"]
-                    except (_json.JSONDecodeError, TypeError):
-                        pass
-                    # 2. rag_query plain text — split into chunks
-                    if (
-                        not _found
-                        and hasattr(msg, "name")
-                        and msg.name == "rag_query"
-                    ):
-                        ctx = (
-                            msg.content
-                            if isinstance(msg.content, str)
-                            else str(msg.content)
-                        )
-                        _no_result = "知識庫中沒有找到相關資訊"
-                        if ctx.strip() and _no_result not in ctx:
-                            for c in ctx.split("\n---\n"):
-                                if c.strip():
-                                    sources.append(Source(
-                                        document_name="rag_query",
-                                        content_snippet=c.strip(),
-                                        score=0.0,
-                                        chunk_id="",
-                                    ))
+                    found_contact = _collect_tool_message_sources(msg, sources)
+                    if found_contact is not None:
+                        contact = found_contact
 
         if not tool_calls:
             tool_calls = [{"tool_name": "direct", "reasoning": ""}]

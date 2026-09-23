@@ -169,17 +169,10 @@ class QueryRAGUseCase:
                 bot_id=bot_id,
             )
 
-    async def retrieve(self, command: QueryRAGCommand) -> RetrieveResult:
-        """只做 embed + search，不呼叫 LLM。供 Agent tool 使用。
-
-        Issue #43: 多 retrieval mode（raw / rewrite / hyde）並行展開 →
-        對每個 (mode, kb_id) 呼叫向量搜尋 → 結果 union by chunk_id
-        （保留最高分）→ 既有 rerank + top_k 流程不變。
-        """
-        t_total = time.perf_counter()
-        effective_kb_ids = command.kb_ids or [command.kb_id]
-
-        # Issue #43 — modes 驗證 + normalize
+    async def _validate_modes_and_kbs(
+        self, command: QueryRAGCommand, effective_kb_ids: list[str]
+    ) -> list[str]:
+        """Issue #43 — modes 驗證 + normalize，並確認每個 KB 存在。"""
         # 空 list = explicit error；不會 silent fallback（caller 該明確傳 ["raw"]）
         if not command.retrieval_modes:
             raise ValueError(
@@ -192,6 +185,49 @@ class QueryRAGUseCase:
             kb = await self._kb_repo.find_by_id(kid)
             if kb is None:
                 raise EntityNotFoundError("KnowledgeBase", kid)
+        return modes
+
+    async def _rerank_or_truncate(
+        self,
+        command: QueryRAGCommand,
+        all_results: list[Any],
+        search_limit: int,
+        bot_id: str | None,
+    ) -> list[Any]:
+        final_k = command.top_k
+        if not (command.rerank_enabled and len(all_results) > final_k):
+            return all_results[:command.top_k]
+        rerank_input = all_results[:search_limit]
+        reranked = await llm_rerank(
+            query=command.query,
+            chunks=[
+                {"content": r.payload.get("content", ""), "_idx": i}
+                for i, r in enumerate(rerank_input)
+            ],
+            model=command.rerank_model or "claude-haiku-4-5-20251001",
+            top_k=final_k,
+            record_usage=self._record_usage,
+            tenant_id=command.tenant_id,
+            bot_id=bot_id,
+        )
+        results = []
+        for rc in reranked:
+            idx = rc.get("_idx", 0)
+            if idx < len(rerank_input):
+                results.append(rerank_input[idx])
+        return results
+
+    async def retrieve(self, command: QueryRAGCommand) -> RetrieveResult:
+        """只做 embed + search，不呼叫 LLM。供 Agent tool 使用。
+
+        Issue #43: 多 retrieval mode（raw / rewrite / hyde）並行展開 →
+        對每個 (mode, kb_id) 呼叫向量搜尋 → 結果 union by chunk_id
+        （保留最高分）→ 既有 rerank + top_k 流程不變。
+        """
+        t_total = time.perf_counter()
+        effective_kb_ids = command.kb_ids or [command.kb_id]
+
+        modes = await self._validate_modes_and_kbs(command, effective_kb_ids)
 
         # Issue #73：用量歸屬的 bot（command 明確給 > trace 上下文 > 無）
         bot_id = command.bot_id or _trace_bot_id()
@@ -241,12 +277,7 @@ class QueryRAGUseCase:
         # additional first-class metadata filters via extra_filters. We
         # explicitly drop any incoming tenant_id key so a misbehaving
         # caller cannot widen the tenant scope.
-        base_filters: dict[str, Any] = {"tenant_id": command.tenant_id}
-        if command.extra_filters:
-            for k, v in command.extra_filters.items():
-                if k == "tenant_id":
-                    continue
-                base_filters[k] = v
+        base_filters = _build_base_filters(command)
 
         search_tasks = [
             self._vector_store.search(
@@ -262,18 +293,8 @@ class QueryRAGUseCase:
 
         # 4. Union by chunk_id — 保留最高分；記錄該 chunk 由哪些 mode 命中
         # mode_hit_map: chunk_id → set(modes); kb_map: chunk_id → kb_id
-        merged: dict[str, Any] = {}
-        kb_map: dict[str, str] = {}
-        mode_hit_map: dict[str, set[str]] = {}
-        for (mode, kid), batch in zip(plan, search_results, strict=True):
-            for r in batch:
-                cid = r.id
-                mode_hit_map.setdefault(cid, set()).add(mode)
-                if cid not in merged or r.score > merged[cid].score:
-                    merged[cid] = r
-                    kb_map[cid] = kid
-        all_results: list[Any] = sorted(
-            merged.values(), key=lambda r: r.score, reverse=True
+        all_results, kb_map, mode_hit_map = _merge_search_results(
+            plan, search_results
         )
         search_ms = int((time.perf_counter() - t0) * 1000)
 
@@ -281,73 +302,22 @@ class QueryRAGUseCase:
         # parent_id 用 label-based 反查 — ContextVar tool_parent() 在 LLM parallel
         # tool calls 場景會被「最後一個 tool」覆蓋。
         # 用 find_last_node_by 確保 parent 永遠指向真正的 rag_query 呼叫者。
-        now_ms = AgentTraceCollector.offset_ms()
-        retrieval_node_id = AgentTraceCollector.add_node(
-            node_type="tool_result",
-            label="RAG 向量搜尋",
-            parent_id=(
-                AgentTraceCollector.find_last_node_by("tool_call", "rag_query")
-                or AgentTraceCollector.tool_parent()
-            ),
-            # Issue #57：涵蓋 embed + search 兩段，子節點各自拆出
-            start_ms=now_ms - search_ms - embed_ms,
-            end_ms=now_ms,
-            result_count=len(all_results),
-            top_score=round(all_results[0].score, 4) if all_results else 0,
-            kb_ids=effective_kb_ids,
-            modes=ordered_modes,
-            mode_queries={m: mode_queries[m] for m in ordered_modes},
-            chunk_scores=[
-                {
-                    "rank": i + 1,
-                    "score": round(r.score, 4),
-                    "preview": r.payload.get("content", "")[:80],
-                    "modes": sorted(mode_hit_map.get(r.id, set())),
-                }
-                for i, r in enumerate(all_results)
-            ],
+        _trace_retrieval(
+            all_results=all_results,
+            mode_hit_map=mode_hit_map,
+            mode_queries=mode_queries,
+            ordered_modes=ordered_modes,
+            effective_kb_ids=effective_kb_ids,
+            search_count=len(plan),
+            embed_ms=embed_ms,
+            search_ms=search_ms,
         )
-        if retrieval_node_id:
-            AgentTraceCollector.add_node(
-                node_type="embed_query", label="Embedding",
-                parent_id=retrieval_node_id,
-                start_ms=now_ms - search_ms - embed_ms,
-                end_ms=now_ms - search_ms,
-                modes=ordered_modes,
-            )
-            AgentTraceCollector.add_node(
-                node_type="vector_search", label="Milvus 搜尋",
-                parent_id=retrieval_node_id,
-                start_ms=now_ms - search_ms,
-                end_ms=now_ms,
-                searches=len(plan),
-                kb_ids=effective_kb_ids,
-            )
 
         # 5. Rerank if enabled — 用 raw query 作 rerank judge
         # （rerank LLM 看的是「使用者真正想問什麼」，不是改寫過或假答案）
-        final_k = command.top_k
-        if command.rerank_enabled and len(all_results) > final_k:
-            rerank_input = all_results[:search_limit]
-            reranked = await llm_rerank(
-                query=command.query,
-                chunks=[
-                    {"content": r.payload.get("content", ""), "_idx": i}
-                    for i, r in enumerate(rerank_input)
-                ],
-                model=command.rerank_model or "claude-haiku-4-5-20251001",
-                top_k=final_k,
-                record_usage=self._record_usage,
-                tenant_id=command.tenant_id,
-                bot_id=bot_id,
-            )
-            results = []
-            for rc in reranked:
-                idx = rc.get("_idx", 0)
-                if idx < len(rerank_input):
-                    results.append(rerank_input[idx])
-        else:
-            results = all_results[:command.top_k]
+        results = await self._rerank_or_truncate(
+            command, all_results, search_limit, bot_id
+        )
 
         if not results:
             logger.info(
@@ -390,3 +360,88 @@ class QueryRAGUseCase:
             mode_queries=mode_queries,
         )
 
+
+def _build_base_filters(command: QueryRAGCommand) -> dict[str, Any]:
+    """tenant_id 強制帶入；extra_filters 內的 tenant_id 一律丟棄。"""
+    base_filters: dict[str, Any] = {"tenant_id": command.tenant_id}
+    if command.extra_filters:
+        for k, v in command.extra_filters.items():
+            if k == "tenant_id":
+                continue
+            base_filters[k] = v
+    return base_filters
+
+
+def _merge_search_results(
+    plan: list[tuple[str, str]], search_results: list[Any]
+) -> tuple[list[Any], dict[str, str], dict[str, set[str]]]:
+    """Union by chunk_id（保留最高分）→ (sorted results, kb_map, mode_hit_map)。"""
+    merged: dict[str, Any] = {}
+    kb_map: dict[str, str] = {}
+    mode_hit_map: dict[str, set[str]] = {}
+    for (mode, kid), batch in zip(plan, search_results, strict=True):
+        for r in batch:
+            cid = r.id
+            mode_hit_map.setdefault(cid, set()).add(mode)
+            if cid not in merged or r.score > merged[cid].score:
+                merged[cid] = r
+                kb_map[cid] = kid
+    all_results: list[Any] = sorted(
+        merged.values(), key=lambda r: r.score, reverse=True
+    )
+    return all_results, kb_map, mode_hit_map
+
+
+def _trace_retrieval(
+    *,
+    all_results: list[Any],
+    mode_hit_map: dict[str, set[str]],
+    mode_queries: dict[str, str],
+    ordered_modes: list[str],
+    effective_kb_ids: list[str],
+    search_count: int,
+    embed_ms: int,
+    search_ms: int,
+) -> None:
+    now_ms = AgentTraceCollector.offset_ms()
+    retrieval_node_id = AgentTraceCollector.add_node(
+        node_type="tool_result",
+        label="RAG 向量搜尋",
+        parent_id=(
+            AgentTraceCollector.find_last_node_by("tool_call", "rag_query")
+            or AgentTraceCollector.tool_parent()
+        ),
+        # Issue #57：涵蓋 embed + search 兩段，子節點各自拆出
+        start_ms=now_ms - search_ms - embed_ms,
+        end_ms=now_ms,
+        result_count=len(all_results),
+        top_score=round(all_results[0].score, 4) if all_results else 0,
+        kb_ids=effective_kb_ids,
+        modes=ordered_modes,
+        mode_queries={m: mode_queries[m] for m in ordered_modes},
+        chunk_scores=[
+            {
+                "rank": i + 1,
+                "score": round(r.score, 4),
+                "preview": r.payload.get("content", "")[:80],
+                "modes": sorted(mode_hit_map.get(r.id, set())),
+            }
+            for i, r in enumerate(all_results)
+        ],
+    )
+    if retrieval_node_id:
+        AgentTraceCollector.add_node(
+            node_type="embed_query", label="Embedding",
+            parent_id=retrieval_node_id,
+            start_ms=now_ms - search_ms - embed_ms,
+            end_ms=now_ms - search_ms,
+            modes=ordered_modes,
+        )
+        AgentTraceCollector.add_node(
+            node_type="vector_search", label="Milvus 搜尋",
+            parent_id=retrieval_node_id,
+            start_ms=now_ms - search_ms,
+            end_ms=now_ms,
+            searches=search_count,
+            kb_ids=effective_kb_ids,
+        )

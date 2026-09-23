@@ -36,6 +36,14 @@ ENDPOINT_GROUP_MAP: dict[str, str | None] = {
 WINDOW_SECONDS = 60
 
 
+def _inject_remaining_header(message: dict, remaining_str: str | None) -> dict:
+    if message["type"] == "http.response.start" and remaining_str:
+        raw_headers = list(message.get("headers", []))
+        raw_headers.append((b"x-ratelimit-remaining", remaining_str.encode()))
+        return {**message, "headers": raw_headers}
+    return message
+
+
 def _resolve_endpoint_group(path: str) -> str | None:
     """Map request path to endpoint group. Returns None for exempt paths."""
     # Issue #68 P7b：widget 簽發端點獨立群組（每 IP 節流，防換身分重置分數）
@@ -105,7 +113,39 @@ class RateLimitMiddleware:
         with trace_step("rate_limit_config"):
             config = await self._config_loader.get_config(tenant_id, endpoint_group)
 
-        # Multi-layer checks: global → tenant/IP → user
+        checks = await self._build_checks(
+            tenant_id, user_id, client_ip, endpoint_group, config, scope
+        )
+
+        min_remaining = await self._enforce_checks(checks, tenant_id, send)
+        if min_remaining is None:
+            return
+
+        remaining_str = (
+            str(int(min_remaining))
+            if min_remaining != float("inf")
+            else None
+        )
+
+        async def send_wrapper(message: dict) -> None:
+            await send(_inject_remaining_header(message, remaining_str))
+
+        await self.app(scope, receive, send_wrapper)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    async def _build_checks(
+        self,
+        tenant_id: str | None,
+        user_id: str | None,
+        client_ip: str,
+        endpoint_group: str,
+        config: Any,
+        scope: Scope,
+    ) -> list[tuple[str, int]]:
+        """Multi-layer checks: global → tenant/IP → user → abuse."""
         checks: list[tuple[str, int]] = []
 
         # Layer 1: Global
@@ -137,7 +177,12 @@ class RateLimitMiddleware:
                 (f"rl:abuse:{abuse_key}:{WINDOW_SECONDS}", self._abuse_slow_rpm)
             )
 
-        # Execute checks — strictest wins
+        return checks
+
+    async def _enforce_checks(
+        self, checks: list[tuple[str, int]], tenant_id: str | None, send: Send
+    ) -> float | None:
+        """Execute checks — strictest wins. Returns None if a 429 was sent."""
         min_remaining = float("inf")
         with trace_step("rate_limit_redis"):
             for key, limit in checks:
@@ -154,30 +199,9 @@ class RateLimitMiddleware:
                             await self._abuse_alerts.rate_limited(tenant_id)
                         except Exception:
                             pass
-                    return
+                    return None
                 min_remaining = min(min_remaining, result.remaining)
-
-        # Inject X-RateLimit-Remaining header into response
-        remaining_str = (
-            str(int(min_remaining))
-            if min_remaining != float("inf")
-            else None
-        )
-
-        async def send_wrapper(message: dict) -> None:
-            if message["type"] == "http.response.start" and remaining_str:
-                raw_headers = list(message.get("headers", []))
-                raw_headers.append(
-                    (b"x-ratelimit-remaining", remaining_str.encode())
-                )
-                message = {**message, "headers": raw_headers}
-            await send(message)
-
-        await self.app(scope, receive, send_wrapper)
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+        return min_remaining
 
     @staticmethod
     async def _send_429(send: Send, retry_after: int, limit: int) -> None:

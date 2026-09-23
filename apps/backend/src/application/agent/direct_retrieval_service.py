@@ -122,6 +122,33 @@ class DirectRetrievalService:
         # 預設值；呼叫端可依 bot.mode 逐次覆寫（Issue #66）
         self._allow_rerank = allow_rerank
 
+    def _start_dm_task(
+        self,
+        *,
+        tenant_id: str,
+        bot: Any,
+        kb_id: str,
+        kb_ids: list[str],
+        enabled_tools: list[str] | None,
+        tool_rag_params: dict | None,
+        search_query: str,
+        threshold: float,
+    ) -> asyncio.Task | None:
+        """啟用 DM 工具時建立並行的 DM 圖卡查詢 task；未啟用回 None。"""
+        dm_tool = self._dm_tool
+        if dm_tool is None or "query_dm_with_image" not in (enabled_tools or []):
+            return None
+        dm_params = (tool_rag_params or {}).get("query_dm_with_image", {}) or {}
+        dm_kb_ids = dm_params.get("kb_ids") or kb_ids
+        return asyncio.create_task(dm_tool.invoke(
+            tenant_id=tenant_id,
+            kb_id=dm_kb_ids[0] if dm_kb_ids else kb_id,
+            query=search_query,
+            kb_ids=dm_kb_ids,
+            top_k=dm_params.get("rag_top_k") or bot.llm_params.rag_top_k,
+            score_threshold=dm_params.get("rag_score_threshold") or threshold,
+        ))
+
     async def plan(
         self,
         *,
@@ -155,19 +182,11 @@ class DirectRetrievalService:
         t_dr = AgentTraceCollector.offset_ms()
 
         # DM 圖卡：與文字檢索並行呼叫 DM 工具本體（image_url 不在向量 payload）
-        dm_task = None
-        dm_tool = self._dm_tool
-        if dm_tool is not None and "query_dm_with_image" in (enabled_tools or []):
-            dm_params = (tool_rag_params or {}).get("query_dm_with_image", {}) or {}
-            dm_kb_ids = dm_params.get("kb_ids") or kb_ids
-            dm_task = asyncio.create_task(dm_tool.invoke(
-                tenant_id=tenant_id,
-                kb_id=dm_kb_ids[0] if dm_kb_ids else kb_id,
-                query=search_query,
-                kb_ids=dm_kb_ids,
-                top_k=dm_params.get("rag_top_k") or bot.llm_params.rag_top_k,
-                score_threshold=dm_params.get("rag_score_threshold") or threshold,
-            ))
+        dm_task = self._start_dm_task(
+            tenant_id=tenant_id, bot=bot, kb_id=kb_id, kb_ids=kb_ids,
+            enabled_tools=enabled_tools, tool_rag_params=tool_rag_params,
+            search_query=search_query, threshold=threshold,
+        )
 
         # M16：讀 worker 為 rag_query 設的 per-tool 參數，缺時退回 bot 全域
         rq = (tool_rag_params or {}).get("rag_query", {}) or {}

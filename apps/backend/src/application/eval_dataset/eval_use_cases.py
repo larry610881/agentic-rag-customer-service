@@ -366,16 +366,12 @@ class EstimateCostUseCase:
             },
         }
 
-    async def _calculate_token_breakdown(
-        self, bot_id: str, dataset
-    ) -> dict:
-        """Calculate input token breakdown from bot prompts + RAG + dataset."""
+    async def _resolve_prompt_and_rag_config(
+        self, bot_id: str
+    ) -> tuple[int, int, str]:
+        """Step 1: prompt tokens + rag_top_k + tenant_id from bot + system config."""
         prompt_tokens = 0
-        rag_context_tokens = 0
         rag_top_k = 5
-        avg_chunk_chars = DEFAULT_AVG_CHUNK_CHARS
-
-        # 1. Prompt tokens + RAG config from bot + system config
         tenant_id = ""
         if bot_id and self._bot_repo:
             try:
@@ -414,7 +410,13 @@ class EstimateCostUseCase:
         if prompt_tokens == 0:
             prompt_tokens = 500  # fallback
 
-        # 2. RAG context tokens — query real avg chunk size from DB
+        return prompt_tokens, rag_top_k, tenant_id
+
+    async def _resolve_rag_context_tokens(
+        self, tenant_id: str, rag_top_k: int
+    ) -> tuple[int, int]:
+        """Step 2: RAG context tokens — query real avg chunk size from DB."""
+        avg_chunk_chars = DEFAULT_AVG_CHUNK_CHARS
         if tenant_id and self._get_avg_chunk_size:
             try:
                 real_avg = await self._get_avg_chunk_size(tenant_id)
@@ -424,6 +426,74 @@ class EstimateCostUseCase:
                 pass  # use default
 
         rag_context_tokens = int(rag_top_k * avg_chunk_chars / CHARS_PER_TOKEN)
+        return rag_context_tokens, avg_chunk_chars
+
+    @staticmethod
+    def _calculate_avg_history_tokens(dataset) -> int:
+        """Step 4: avg history tokens across test cases with conversation_history."""
+        history_chars = 0
+        history_case_count = 0
+        for tc in dataset.test_cases:
+            if tc.conversation_history:
+                history_case_count += 1
+                for msg in tc.conversation_history:
+                    content = msg.get("content", "") if isinstance(msg, dict) else ""
+                    history_chars += len(content)
+        return int(
+            history_chars / CHARS_PER_TOKEN / max(history_case_count, 1)
+        ) if history_case_count else 0
+
+    @staticmethod
+    def _case_has_rag_assertions(tc) -> tuple[bool, bool]:
+        """Whether a test case asserts rag_query was/was-not called."""
+        has_rag_call = False
+        has_no_rag = False
+        for a in tc.assertions:
+            a_type = a.type if hasattr(a, "type") else a.get("type", "")
+            a_params = a.params if hasattr(a, "params") else a.get("params", {})
+            if (
+                a_type == "tool_was_called"
+                and a_params.get("tool_name") == "rag_query"
+            ):
+                has_rag_call = True
+            if (
+                a_type == "tool_not_called"
+                and a_params.get("tool_name") == "rag_query"
+            ):
+                has_no_rag = True
+        return has_rag_call, has_no_rag
+
+    @classmethod
+    def _classify_rag_cases(cls, dataset) -> tuple[int, int, float]:
+        """Step 5: classify cases into RAG vs non-RAG."""
+        rag_case_count = 0
+        no_rag_case_count = 0
+        for tc in dataset.test_cases:
+            has_rag_call, has_no_rag = cls._case_has_rag_assertions(tc)
+            if has_rag_call:
+                rag_case_count += 1
+            elif has_no_rag:
+                no_rag_case_count += 1
+            else:
+                rag_case_count += 1  # conservative: assume RAG
+
+        total = max(rag_case_count + no_rag_case_count, 1)
+        rag_ratio = rag_case_count / total
+        return rag_case_count, no_rag_case_count, rag_ratio
+
+    async def _calculate_token_breakdown(
+        self, bot_id: str, dataset
+    ) -> dict:
+        """Calculate input token breakdown from bot prompts + RAG + dataset."""
+        # 1. Prompt tokens + RAG config from bot + system config
+        prompt_tokens, rag_top_k, tenant_id = (
+            await self._resolve_prompt_and_rag_config(bot_id)
+        )
+
+        # 2. RAG context tokens — query real avg chunk size from DB
+        rag_context_tokens, avg_chunk_chars = await self._resolve_rag_context_tokens(
+            tenant_id, rag_top_k
+        )
 
         # 3. Avg question tokens from dataset
         total_question_chars = sum(
@@ -434,46 +504,12 @@ class EstimateCostUseCase:
         )
 
         # 4. Avg history tokens
-        history_chars = 0
-        history_case_count = 0
-        for tc in dataset.test_cases:
-            if tc.conversation_history:
-                history_case_count += 1
-                for msg in tc.conversation_history:
-                    content = msg.get("content", "") if isinstance(msg, dict) else ""
-                    history_chars += len(content)
-        avg_history_tokens = int(
-            history_chars / CHARS_PER_TOKEN / max(history_case_count, 1)
-        ) if history_case_count else 0
+        avg_history_tokens = self._calculate_avg_history_tokens(dataset)
 
         # 5. Classify cases: RAG vs non-RAG
-        rag_case_count = 0
-        no_rag_case_count = 0
-        for tc in dataset.test_cases:
-            has_rag_call = False
-            has_no_rag = False
-            for a in tc.assertions:
-                a_type = a.type if hasattr(a, "type") else a.get("type", "")
-                a_params = a.params if hasattr(a, "params") else a.get("params", {})
-                if (
-                    a_type == "tool_was_called"
-                    and a_params.get("tool_name") == "rag_query"
-                ):
-                    has_rag_call = True
-                if (
-                    a_type == "tool_not_called"
-                    and a_params.get("tool_name") == "rag_query"
-                ):
-                    has_no_rag = True
-            if has_rag_call:
-                rag_case_count += 1
-            elif has_no_rag:
-                no_rag_case_count += 1
-            else:
-                rag_case_count += 1  # conservative: assume RAG
-
-        total = max(rag_case_count + no_rag_case_count, 1)
-        rag_ratio = rag_case_count / total
+        rag_case_count, no_rag_case_count, rag_ratio = self._classify_rag_cases(
+            dataset
+        )
 
         # Weighted average input tokens
         base_input = prompt_tokens + avg_question_tokens + avg_history_tokens

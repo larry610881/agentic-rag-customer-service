@@ -6,7 +6,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 from uuid import uuid4
 
 from src.application.agent.guard_responses import blocked_input_response
@@ -96,6 +96,28 @@ class WebhookContext:
     received_monotonic: float = 0.0
     bot_load_end_ms: float = 0.0
     verify_end_ms: float = 0.0
+
+
+@dataclass
+class _LineTurnConfig:
+    """LINE 單一回合在分流 / 防護 / 生成間逐步覆寫的設定。
+
+    僅承載 _process_single_event 原本的區域變數（C901 拆分用），不含新邏輯。
+    """
+
+    llm_params: dict
+    mcp_servers: list[dict[str, Any]] | None
+    rerank_metadata: dict[str, Any]
+    system_prompt: str | None
+    enabled_tools: Any
+    kb_ids: Any
+    kb_id: str
+    max_tool_calls: int
+    tool_rag_params: dict
+    direct_retrieval_worker: Any = None
+    rewritten_query: str = ""
+    classifier_attack: bool = False
+    unrouted_turn: bool = False
 
 
 def _bot_to_json(bot: Bot, encryption: Any | None = None) -> str:
@@ -546,6 +568,145 @@ class HandleWebhookUseCase:
         t0 = time.monotonic()
         config_hash: str | None = None
 
+        from src.infrastructure.observability.agent_trace_collector import (
+            AgentTraceCollector,
+        )
+        self._start_line_trace(bot, timing, t0)
+
+        t_conv = AgentTraceCollector.offset_ms()
+        # Resolve conversation (timeout-based segmentation)
+        conversation = await self._resolve_conversation(event.user_id, bot)
+        AgentTraceCollector.span("conversation_load", "對話載入", t_conv)
+
+        # Issue #75：本回合的有效防護階段（租戶層 + bot 層），三通路同一份 helper
+        guard = await self._guard_pipeline.effective(bot.tenant_id, bot)
+        # Issue #68 P7：進入回合前查異常等級（L3+ 回固定文案或靜默；L2 固定文案）
+        abuse_decision = await self._abuse_gate(bot, event, line_service, guard)
+        if abuse_decision is None:
+            return
+        if await self._quota_gate(bot, event, line_service):  # Issue #74
+            return
+        t_hist = AgentTraceCollector.offset_ms()
+
+        # Extract history from existing conversation
+        history = conversation.messages if conversation.messages else None
+        history_context, router_context = await self._line_history_context(
+            bot, history
+        )
+
+        AgentTraceCollector.add_node(
+            node_type="history_load",
+            label="載入對話歷史",
+            parent_id=None,
+            start_ms=t_hist,
+            end_ms=AgentTraceCollector.offset_ms(),
+            history_len=len(history) if history else 0,
+        )
+
+        # Issue #66 fast / Issue #70 kb：bot 層級 profile
+        bot_mode = getattr(bot, "mode", "deep") or "deep"
+        is_fast_bot = bot_mode == "fast"
+        is_kb_bot = bot_mode == "kb"
+        turn = self._initial_turn_config(bot, guard)
+
+        # ── Input guard 與 intent 分類「並行」執行（F2，POC 問題 1）──
+        # 兩者都是阻塞 LLM 呼叫，串行要付兩段延遲。權衡（Larry 2026-07-16 核可）：
+        # 並行代表 classifier 會在 guard 判定前收到原文一次，但 classifier
+        # 輸出僅為 worker 選擇（enum），且 guard 命中時其結果直接丟棄。
+        # Issue #75：regex_input 階段關閉時 pipeline 直接回 None（不建 task）
+        t_guard0 = AgentTraceCollector.offset_ms()
+        guard_task = self._start_input_guard_task(guard, event, bot)
+
+        await self._classify_line_turn(
+            turn, bot, event, guard, router_context, is_kb_bot=is_kb_bot
+        )
+
+        # ── 收斂並行 guard 結果：命中 → 不進 agent，改用 blocked 回覆，
+        # 其餘下游（persist / reply / trace）與 guard 在咽喉點命中時完全一致
+        # Issue #70：快速道 / kb 檢索 plan、結構化輸出結果（各分支共用，持久化時讀）
+        plan = None
+        output_obj: dict[str, Any] | None = None
+        display_text: str | None = None
+
+        guard_result = await self._collect_input_guard(guard_task, t_guard0)
+        blocked = await self._classifier_block(turn, bot, event, guard)
+        result = await self._blocked_turn_result(
+            bot, event, guard, guard_result, blocked
+        )
+        if result is None:
+            # Issue #68 P7：正常回合計分 + L1 保守模式（不呼叫工具、加婉拒指令）
+            await self._record_abuse(bot, event, guard, unrouted=turn.unrouted_turn)
+            (
+                result, plan, output_obj, display_text, config_hash,
+            ) = await self._run_normal_turn(
+                turn, bot, event, abuse_decision, guard_result,
+                history=history,
+                history_context=history_context,
+                router_context=router_context,
+                is_fast_bot=is_fast_bot,
+                is_kb_bot=is_kb_bot,
+            )
+        t1 = time.monotonic()
+
+        # Issue #57：trace 不在此 finish——reply 推送與持久化也要成為節點，
+        # finish 移到 finally 內持久化 trace 之前（含 request 根節點）。
+
+        # Save messages to conversation
+        assistant_msg = self._append_turn_messages(
+            conversation, event, result,
+            latency_ms=round((t1 - t0) * 1000),
+            plan=plan, output_obj=output_obj, display_text=display_text,
+        )
+
+        reply_text, extra_messages = self._build_line_reply(
+            bot, result, display_text
+        )
+        message_id = assistant_msg.id.value
+
+        # ── Issue #49：回覆先行，持久化後移 ──
+        # 使用者體感延遲以 reply 送達為終點，存對話 / trace / usage
+        # 挪到 reply 之後。放在 finally 保留「reply 失敗時仍持久化」
+        # 的語義（與重排前 persist-then-reply 的 durability 一致）。
+        t_reply = AgentTraceCollector.offset_ms()
+        try:
+            await line_service.reply_with_quick_reply(
+                event.reply_token, reply_text, message_id,
+                extra_messages=extra_messages or None,
+            )
+        finally:
+            t2 = time.monotonic()
+            AgentTraceCollector.span(
+                "reply_push", "LINE 回覆推送", t_reply,
+                extra_messages=len(extra_messages),
+            )
+            await self._persist_line_turn(
+                bot, event, conversation, result,
+                message_id=message_id, config_hash=config_hash,
+            )
+
+            t3 = time.monotonic()
+
+            logger.info(
+                "line.webhook.timing",
+                user_id=event.user_id,
+                short_code=short_code,
+                llm_provider=bot.llm_provider or "(default)",
+                llm_model=bot.llm_model or "(default)",
+                process_message_ms=round((t1 - t0) * 1000),
+                reply_ms=round((t2 - t1) * 1000),
+                persist_ms=round((t3 - t2) * 1000),
+                # total_ms = 使用者體感（t0 → reply 完成），不含持久化
+                total_ms=round((t2 - t0) * 1000),
+                answer_len=len(result.answer),
+            )
+
+    # ── _process_single_event 的分段（僅重組既有程式；管線步驟邏輯未新增）──
+
+    @staticmethod
+    def _start_line_trace(
+        bot: Bot, timing: "WebhookContext | None", t0: float
+    ) -> None:
+        """啟動本回合 trace；有 webhook timing 時補 bot 查詢 / 驗簽節點。"""
         # Issue #49 斷點儀表：trace 從 t0 起算。之前 collector 在
         # process_message 內才啟動，前置 ~1.4s（歷史載入/守門/意圖分類）
         # 在 trace 中整塊不可見，只能用 total 減總推回。現在各段獨立成節點。
@@ -576,24 +737,10 @@ class HandleWebhookUseCase:
                 start_ms=timing.bot_load_end_ms, end_ms=timing.verify_end_ms,
             )
 
-        t_conv = AgentTraceCollector.offset_ms()
-        # Resolve conversation (timeout-based segmentation)
-        conversation = await self._resolve_conversation(event.user_id, bot)
-        AgentTraceCollector.span("conversation_load", "對話載入", t_conv)
-
-        # Issue #75：本回合的有效防護階段（租戶層 + bot 層），三通路同一份 helper
-        guard = await self._guard_pipeline.effective(bot.tenant_id, bot)
-        # Issue #68 P7：進入回合前查異常等級（L3+ 回固定文案或靜默；L2 固定文案）
-        abuse_decision = await self._abuse_gate(bot, event, line_service, guard)
-        if abuse_decision is None:
-            return
-        if await self._quota_gate(bot, event, line_service):  # Issue #74
-            return
-        t_hist = AgentTraceCollector.offset_ms()
-
-        # Extract history from existing conversation
-        history = conversation.messages if conversation.messages else None
-
+    async def _line_history_context(
+        self, bot: Bot, history: list | None
+    ) -> tuple[str, str]:
+        """raw history → (history_context, router_context)。"""
         # 將 raw history list 過 history_strategy 轉成 LLM 可用的字串。
         # 行為對齊 send_message_use_case._resolve_history (L464-512)，
         # inline 而非抽 service — 避免 refactor 動到 working API path。
@@ -623,16 +770,11 @@ class HandleWebhookUseCase:
                     history_len=len(history),
                     fallback_chars=len(history_context),
                 )
+        return history_context, router_context
 
-        AgentTraceCollector.add_node(
-            node_type="history_load",
-            label="載入對話歷史",
-            parent_id=None,
-            start_ms=t_hist,
-            end_ms=AgentTraceCollector.offset_ms(),
-            history_len=len(history) if history else 0,
-        )
-
+    @staticmethod
+    def _line_llm_params(bot: Bot) -> dict:
+        """bot 層 LLM 參數（provider / model 有值才帶入）。"""
         llm_params: dict = {
             "temperature": bot.llm_params.temperature,
             "max_tokens": bot.llm_params.max_tokens,
@@ -646,12 +788,11 @@ class HandleWebhookUseCase:
             llm_params["provider_name"] = bot.llm_provider
         if bot.llm_model:
             llm_params["model"] = bot.llm_model
-        # Issue #66 fast / Issue #70 kb：bot 層級 profile
-        bot_mode = getattr(bot, "mode", "deep") or "deep"
-        is_fast_bot = bot_mode == "fast"
-        is_kb_bot = bot_mode == "kb"
+        return llm_params
 
-        # Resolve MCP servers from bot bindings
+    @staticmethod
+    def _line_mcp_servers(bot: Bot) -> list[dict[str, Any]] | None:
+        """Resolve MCP servers from bot bindings（無 binding 回 None）。"""
         mcp_servers = None
         if bot.mcp_bindings:
             mcp_servers = []
@@ -664,6 +805,14 @@ class HandleWebhookUseCase:
                 if binding.enabled_tools:
                     server_cfg["enabled_tools"] = binding.enabled_tools
                 mcp_servers.append(server_cfg)
+        return mcp_servers
+
+    def _initial_turn_config(
+        self, bot: Bot, guard: Any
+    ) -> "_LineTurnConfig":
+        """回合初始設定：bot 本體的 LLM / MCP / rerank / prompt / KB / 工具。"""
+        llm_params = self._line_llm_params(bot)
+        mcp_servers = self._line_mcp_servers(bot)
 
         # Build rerank metadata so RAG tools inherit Bot's rerank config.
         rerank_metadata: dict[str, Any] = {
@@ -674,13 +823,26 @@ class HandleWebhookUseCase:
         # Issue #75：trace 節點 + agent metadata 帶有效階段（咽喉點依此跳過關閉的階段）
         self._guard_pipeline.annotate(guard, rerank_metadata)
 
-        # ── Input guard 與 intent 分類「並行」執行（F2，POC 問題 1）──
-        # 兩者都是阻塞 LLM 呼叫，串行要付兩段延遲。權衡（Larry 2026-07-16 核可）：
-        # 並行代表 classifier 會在 guard 判定前收到原文一次，但 classifier
-        # 輸出僅為 worker 選擇（enum），且 guard 命中時其結果直接丟棄。
-        # Issue #75：regex_input 階段關閉時 pipeline 直接回 None（不建 task）
+        # ── Worker Routing（Subagent 分流；與 Web path 一致） ──
+        # 預設用 bot 本體設定。Issue #91：這個變數在組裝前只代表「bot 層」，
+        # 平台防護層在下方 assemble 時才接上，worker 覆寫也只換這一層。
+        return _LineTurnConfig(
+            llm_params=llm_params,
+            mcp_servers=mcp_servers,
+            rerank_metadata=rerank_metadata,
+            system_prompt=bot.bot_prompt or None,
+            enabled_tools=bot.enabled_tools,
+            kb_ids=bot.knowledge_base_ids,
+            kb_id=bot.knowledge_base_ids[0] if bot.knowledge_base_ids else "",
+            max_tool_calls=bot.max_tool_calls or 5,
+            tool_rag_params=build_tool_rag_params_map(bot=bot),
+        )
+
+    def _start_input_guard_task(
+        self, guard: Any, event: LineTextMessageEvent, bot: Bot
+    ) -> "asyncio.Task[Any] | None":
+        """regex 輸入防護背景 task（與意圖分類並行）；階段關閉回 None。"""
         guard_task: asyncio.Task[Any] | None = None
-        t_guard0 = AgentTraceCollector.offset_ms()
         if self._guard_pipeline.regex_input_enabled(guard):
             guard_task = asyncio.create_task(
                 self._guard_pipeline.check_input(
@@ -691,126 +853,34 @@ class HandleWebhookUseCase:
                     user_id=event.user_id,  # L9：guard_logs 補使用者歸因
                 )
             )
+        return guard_task
 
-        # ── Worker Routing（Subagent 分流；與 Web path 一致） ──
-        # 預設用 bot 本體設定。Issue #91：這個變數在組裝前只代表「bot 層」，
-        # 平台防護層在下方 assemble 時才接上，worker 覆寫也只換這一層。
-        system_prompt = bot.bot_prompt or None
-        enabled_tools = bot.enabled_tools
-        kb_ids = bot.knowledge_base_ids
-        kb_id = bot.knowledge_base_ids[0] if bot.knowledge_base_ids else ""
-        max_tool_calls = bot.max_tool_calls or 5
-        tool_rag_params = build_tool_rag_params_map(bot=bot)
-
-        direct_retrieval_worker = None
-        rewritten_query = ""
-        classifier_attack = False
-        unrouted_turn = False
+    async def _classify_line_turn(
+        self,
+        turn: "_LineTurnConfig",
+        bot: Bot,
+        event: LineTextMessageEvent,
+        guard: Any,
+        router_context: str,
+        *,
+        is_kb_bot: bool,
+    ) -> None:
+        """worker 分流（非 kb）或 kb 模式的攻擊判定，結果寫回 turn。"""
         # Issue #70：kb 模式不分流、不呼叫意圖分類（與 web 通路一致）
         if self._worker_config_repo and self._intent_classifier and not is_kb_bot:
             workers = await self._worker_config_repo.find_by_bot_id(
                 bot.id.value
             )
             if workers:
-                # Token-Gov.7 A: 包 trace node 記錄 intent classifier LLM 時間
-                from src.infrastructure.observability.agent_trace_collector import (
-                    AgentTraceCollector,
+                await self._route_line_worker(
+                    self._intent_classifier,
+                    turn, bot, event, guard, router_context, workers,
                 )
-                # M19：router_model 空時退回租戶 default_intent_model（與 web 一致），
-                # 否則 LINE 用系統預設 LLM、同一 bot 兩通路分類模型不同。
-                _router_model = bot.router_model
-                if not _router_model and self._tenant_repo:
-                    try:
-                        _tenant = await self._tenant_repo.find_by_id(
-                            bot.tenant_id
-                        )
-                        if _tenant:
-                            _router_model = getattr(
-                                _tenant, "default_intent_model", ""
-                            )
-                    except Exception:
-                        logger.warning(
-                            "line.router_model_fallback_failed", exc_info=True
-                        )
-                t_start = AgentTraceCollector.offset_ms()
-                # Issue #51：同一次分類呼叫多產出「上下文改寫檢索查詢」，
-                # 供快速道 follow-up 短句（「價格呢」）檢索命中正確商品
-                # 2026-08-17：同一次呼叫再多產出「攻擊判定」（三行協定）——
-                # 純攻擊 → 前置語意閘門回固定文案、不進生成
-                outcome = await self._intent_classifier.classify_sanitize(
-                    user_message=event.message_text,
-                    router_context=router_context,
-                    workers=workers,
-                    router_model=_router_model,  # M19
-                    # H9：漏傳則分類器 token 以 tenant_id="" 落孤兒帳（計費繞過），
-                    # 與 web 通路（send_message_use_case）行為不一致
-                    tenant_id=bot.tenant_id,
-                    bot_id=bot.id.value,
-                )
-                matched, rewritten_query = outcome.worker, outcome.query
-                # Issue #75：classifier_attack 階段關閉時忽略分類器的攻擊判定
-                classifier_attack = self._guard_pipeline.classifier_attack(
-                    guard, outcome.is_attack
-                )
-                unrouted_turn = matched is None
-                t_end = AgentTraceCollector.offset_ms()
-                AgentTraceCollector.add_node(
-                    node_type="intent_classify",
-                    label=(
-                        f"意圖分類 → {matched.name}" if matched
-                        else "意圖分類 → 預設 fallback"
-                    ),
-                    parent_id=None,
-                    start_ms=t_start,
-                    end_ms=t_end,
-                    matched=matched.name if matched else None,
-                    candidates=[w.name for w in workers],
-                    classifier_model=bot.router_model,
-                    rewritten_query=rewritten_query or None,
-                )
-                if matched:
-                    if matched.worker_prompt:
-                        system_prompt = inject_runtime_vars(matched.worker_prompt)
-                    if matched.llm_provider:
-                        llm_params["provider_name"] = matched.llm_provider
-                    if matched.llm_model:
-                        llm_params["model"] = matched.llm_model
-                    llm_params["temperature"] = matched.temperature
-                    llm_params["max_tokens"] = matched.max_tokens
-                    max_tool_calls = matched.max_tool_calls
-                    if matched.enabled_mcp_ids and mcp_servers:
-                        mcp_servers = [
-                            s for s in mcp_servers
-                            if s.get("name") in matched.enabled_mcp_ids
-                            or s.get("registry_id") in matched.enabled_mcp_ids
-                        ]
-                    if matched.knowledge_base_ids:
-                        kb_ids = matched.knowledge_base_ids
-                        kb_id = matched.knowledge_base_ids[0]
-                    if matched.enabled_tools is not None:
-                        enabled_tools = list(matched.enabled_tools)
-                    tool_rag_params = build_tool_rag_params_map(
-                        bot=bot, worker=matched,
-                    )
-                    if getattr(matched, "direct_retrieval", False):
-                        direct_retrieval_worker = matched
-                    rerank_metadata["_worker_routing"] = {
-                        "name": matched.name,
-                        "llm_model": matched.llm_model or "",
-                        "llm_provider": matched.llm_provider or "",
-                        "kb_count": len(matched.knowledge_base_ids),
-                    }
-                    logger.info(
-                        "worker_routing.matched",
-                        channel="line",
-                        worker_name=matched.name,
-                        llm_model=matched.llm_model,
-                    )
 
         # Issue #75：kb 模式不分流，但「分類器攻擊判定」仍是可勾選階段——
         # 開啟時不帶 worker 只做攻擊判定（與 web 通路同一份 helper）
         if is_kb_bot:
-            classifier_attack = await self._guard_pipeline.kb_attack_check(
+            turn.classifier_attack = await self._guard_pipeline.kb_attack_check(
                 guard,
                 message=event.message_text,
                 router_context=router_context,
@@ -819,13 +889,130 @@ class HandleWebhookUseCase:
                 bot_id=bot.id.value,
             )
 
-        # ── 收斂並行 guard 結果：命中 → 不進 agent，改用 blocked 回覆，
-        # 其餘下游（persist / reply / trace）與 guard 在咽喉點命中時完全一致
-        # Issue #70：快速道 / kb 檢索 plan、結構化輸出結果（各分支共用，持久化時讀）
-        plan = None
-        output_obj: dict[str, Any] | None = None
-        display_text: str | None = None
+    async def _line_router_model(self, bot: Bot) -> str:
+        """M19：router_model 空時退回租戶 default_intent_model（與 web 一致）。"""
+        # 否則 LINE 用系統預設 LLM、同一 bot 兩通路分類模型不同。
+        _router_model = bot.router_model
+        if not _router_model and self._tenant_repo:
+            try:
+                _tenant = await self._tenant_repo.find_by_id(
+                    bot.tenant_id
+                )
+                if _tenant:
+                    _router_model = getattr(
+                        _tenant, "default_intent_model", ""
+                    )
+            except Exception:
+                logger.warning(
+                    "line.router_model_fallback_failed", exc_info=True
+                )
+        return _router_model
 
+    async def _route_line_worker(
+        self,
+        intent_classifier: Any,
+        turn: "_LineTurnConfig",
+        bot: Bot,
+        event: LineTextMessageEvent,
+        guard: Any,
+        router_context: str,
+        workers: list,
+    ) -> None:
+        """意圖分類 → 命中 worker 時覆寫 turn（分類器攻擊 / 無法分流一併記錄）。"""
+        # Token-Gov.7 A: 包 trace node 記錄 intent classifier LLM 時間
+        from src.infrastructure.observability.agent_trace_collector import (
+            AgentTraceCollector,
+        )
+        _router_model = await self._line_router_model(bot)
+        t_start = AgentTraceCollector.offset_ms()
+        # Issue #51：同一次分類呼叫多產出「上下文改寫檢索查詢」，
+        # 供快速道 follow-up 短句（「價格呢」）檢索命中正確商品
+        # 2026-08-17：同一次呼叫再多產出「攻擊判定」（三行協定）——
+        # 純攻擊 → 前置語意閘門回固定文案、不進生成
+        outcome = await intent_classifier.classify_sanitize(
+            user_message=event.message_text,
+            router_context=router_context,
+            workers=workers,
+            router_model=_router_model,  # M19
+            # H9：漏傳則分類器 token 以 tenant_id="" 落孤兒帳（計費繞過），
+            # 與 web 通路（send_message_use_case）行為不一致
+            tenant_id=bot.tenant_id,
+            bot_id=bot.id.value,
+        )
+        matched, turn.rewritten_query = outcome.worker, outcome.query
+        # Issue #75：classifier_attack 階段關閉時忽略分類器的攻擊判定
+        turn.classifier_attack = self._guard_pipeline.classifier_attack(
+            guard, outcome.is_attack
+        )
+        turn.unrouted_turn = matched is None
+        t_end = AgentTraceCollector.offset_ms()
+        AgentTraceCollector.add_node(
+            node_type="intent_classify",
+            label=(
+                f"意圖分類 → {matched.name}" if matched
+                else "意圖分類 → 預設 fallback"
+            ),
+            parent_id=None,
+            start_ms=t_start,
+            end_ms=t_end,
+            matched=matched.name if matched else None,
+            candidates=[w.name for w in workers],
+            classifier_model=bot.router_model,
+            rewritten_query=turn.rewritten_query or None,
+        )
+        if matched:
+            self._apply_line_worker(turn, bot, matched)
+
+    @staticmethod
+    def _apply_line_worker(turn: "_LineTurnConfig", bot: Bot, matched: Any) -> None:
+        """命中 worker → 就地覆寫本回合設定。"""
+        llm_params = turn.llm_params
+        if matched.worker_prompt:
+            turn.system_prompt = inject_runtime_vars(matched.worker_prompt)
+        if matched.llm_provider:
+            llm_params["provider_name"] = matched.llm_provider
+        if matched.llm_model:
+            llm_params["model"] = matched.llm_model
+        llm_params["temperature"] = matched.temperature
+        llm_params["max_tokens"] = matched.max_tokens
+        turn.max_tool_calls = matched.max_tool_calls
+        if matched.enabled_mcp_ids and turn.mcp_servers:
+            turn.mcp_servers = [
+                s for s in turn.mcp_servers
+                if s.get("name") in matched.enabled_mcp_ids
+                or s.get("registry_id") in matched.enabled_mcp_ids
+            ]
+        if matched.knowledge_base_ids:
+            turn.kb_ids = matched.knowledge_base_ids
+            turn.kb_id = matched.knowledge_base_ids[0]
+        if matched.enabled_tools is not None:
+            turn.enabled_tools = list(matched.enabled_tools)
+        turn.tool_rag_params = build_tool_rag_params_map(
+            bot=bot, worker=matched,
+        )
+        if getattr(matched, "direct_retrieval", False):
+            turn.direct_retrieval_worker = matched
+        turn.rerank_metadata["_worker_routing"] = {
+            "name": matched.name,
+            "llm_model": matched.llm_model or "",
+            "llm_provider": matched.llm_provider or "",
+            "kb_count": len(matched.knowledge_base_ids),
+        }
+        logger.info(
+            "worker_routing.matched",
+            channel="line",
+            worker_name=matched.name,
+            llm_model=matched.llm_model,
+        )
+
+    @staticmethod
+    async def _collect_input_guard(
+        guard_task: "asyncio.Task[Any] | None", t_guard0: float
+    ) -> Any:
+        """等待並行的輸入防護 task，並記錄並行節點；無 task 回 None。"""
+        from src.infrastructure.observability.agent_trace_collector import (
+            AgentTraceCollector,
+        )
         guard_result = None
         if guard_task is not None:
             guard_result = await guard_task
@@ -839,8 +1026,18 @@ class HandleWebhookUseCase:
                 parallel=True,
                 passed=bool(guard_result.passed),
             )
+        return guard_result
+
+    async def _classifier_block(
+        self,
+        turn: "_LineTurnConfig",
+        bot: Bot,
+        event: LineTextMessageEvent,
+        guard: Any,
+    ) -> Any:
+        """分類器判純攻擊時取得攔截結果；否則 None。"""
         blocked = None
-        if classifier_attack:
+        if turn.classifier_attack:
             # 前置語意閘門：分類器判純攻擊 → 與 regex 攔截同一份固定文案，
             # 不呼叫檢索與生成（攻擊句不進主模型；拒答 ≈ 分類耗時）
             blocked = await self._guard_pipeline.block_by_classifier(
@@ -850,6 +1047,17 @@ class HandleWebhookUseCase:
                 bot_id=bot.id.value,
                 user_id=event.user_id,
             )
+        return blocked
+
+    async def _blocked_turn_result(
+        self,
+        bot: Bot,
+        event: LineTextMessageEvent,
+        guard: Any,
+        guard_result: Any,
+        blocked: Any,
+    ) -> AgentResponse | None:
+        """輸入防護 / 分類器攔截 → 攔截回應（並計分）；未攔截回 None。"""
         # Issue #85：攔截也要守住 bot 的輸出格式契約（與 web / widget 同一份
         # helper）。這裡的 spec 不需要供應商資訊——攔截不呼叫模型，只是把固定
         # 文案包成 bot 宣告的形狀。
@@ -858,176 +1066,264 @@ class HandleWebhookUseCase:
         # （json bot 同時帶 structured_output）
         if guard_result is not None and not guard_result.passed:
             await self._record_abuse(bot, event, guard, guard_hit=True)  # Issue #68 P7
-            result = blocked_input_response(guard_result, _blocked_spec)
-        elif blocked is not None:
+            return blocked_input_response(guard_result, _blocked_spec)
+        if blocked is not None:
             await self._record_abuse(bot, event, guard, attack=True)  # Issue #68 P7
-            result = blocked_input_response(blocked, _blocked_spec)
-        else:
-            # Issue #68 P7：正常回合計分 + L1 保守模式（不呼叫工具、加婉拒指令）
-            await self._record_abuse(bot, event, guard, unrouted=unrouted_turn)
-            if abuse_decision.conservative:
-                enabled_tools = []
-                mcp_servers = []
-                system_prompt = (system_prompt or "") + CONSERVATIVE_PROMPT_SUFFIX
-            if guard_result is not None:
-                # 告知 GuardedAgentService 咽喉點：input guard 已在入口跑過，
-                # 不要再付一次 LLM roundtrip（見 guarded_agent_service.py）
-                rerank_metadata["_input_guard_checked"] = True
-            # LINE 通路規範（格式 / 長度 / 角色鎖）在此注入一次，
-            # 快速道與完整 ReAct 共用；bot_prompt / worker_prompt 不再各抄一份
-            # Issue #91：平台防護層必須在最前，且不受 bot / worker 設定影響。
-            # Issue #92：LINE 後綴已移除——通路差異改用能力設定表達
-            # （Markdown 由 output_format=plain_text 伺服端剝除、長度由 max_tokens）。
-            _platform_prompt = ""
-            if self._sys_prompt_repo:
-                _sys_cfg = await self._sys_prompt_repo.get()
-                _platform_prompt = _sys_cfg.system_prompt
-            system_prompt = resolve_effective_prompt(
-                {
-                    "system_prompt": _platform_prompt,
-                    "bot_prompt": system_prompt or "",
-                }
-            )
+            return blocked_input_response(blocked, _blocked_spec)
+        return None
 
-            # channel-parity 二-6：LINE user_id 穩定，長期記憶接上（與 web 同一份服務）
-            if self._memory_service is not None:
-                memory_prompt = await self._memory_service.load_prompt(
-                    tenant_id=bot.tenant_id,
-                    source="line",
-                    external_id=event.user_id,
-                    memory_enabled=bool(getattr(bot, "memory_enabled", False)),
-                )
-                if memory_prompt:
-                    history_context = (
-                        memory_prompt + "\n\n" + history_context
-                        if history_context
-                        else memory_prompt
-                    )
-
-            # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）
-            config_hash = await self._fingerprint_config(
-                bot=bot,
-                system_prompt=system_prompt,
-                worker_name=str(
-                    (rerank_metadata.get("_worker_routing") or {}).get("name", "")
-                ),
-                llm_params=llm_params,
-                kb_ids=kb_ids,
-                enabled_tools=enabled_tools,
-                max_tool_calls=max_tool_calls,
-                direct_retrieval=direct_retrieval_worker is not None,
-            )
-            result = None
-            # Issue #70：輸出格式共用決策（與 web 同一份 helper；供應商取生效值）
-            out_spec = OutputSpec.from_bot(
-                bot,
-                provider=llm_params.get("provider_name", ""),
-                model=llm_params.get("model", ""),
-            )
-            llm_patch, prompt_suffix = resolve_structured_llm_params(out_spec)
-            llm_params = {**llm_params, **llm_patch}
-            base_kwargs: dict[str, Any] = {
-                "tenant_id": bot.tenant_id,
-                "kb_id": kb_id,
-                "user_message": event.message_text,
-                "kb_ids": kb_ids,
-                "llm_params": llm_params,
-                "history": history,
-                "history_context": history_context,
-                "router_context": router_context,
-                # 轉真人工具靠這個 URL 產生聯絡卡；漏傳 → 有文字沒按鈕
-                "customer_service_url": bot.customer_service_url,
-                "bot_id": bot.id.value,  # L9：output guard_logs 補 bot 歸因
+    async def _assemble_line_prompt(self, bot_layer_prompt: str | None) -> str:
+        """平台防護層 + bot / worker 層組裝成送模型的 system prompt。"""
+        # LINE 通路規範（格式 / 長度 / 角色鎖）在此注入一次，
+        # 快速道與完整 ReAct 共用；bot_prompt / worker_prompt 不再各抄一份
+        # Issue #91：平台防護層必須在最前，且不受 bot / worker 設定影響。
+        # Issue #92：LINE 後綴已移除——通路差異改用能力設定表達
+        # （Markdown 由 output_format=plain_text 伺服端剝除、長度由 max_tokens）。
+        _platform_prompt = ""
+        if self._sys_prompt_repo:
+            _sys_cfg = await self._sys_prompt_repo.get()
+            _platform_prompt = _sys_cfg.system_prompt
+        return resolve_effective_prompt(
+            {
+                "system_prompt": _platform_prompt,
+                "bot_prompt": bot_layer_prompt or "",
             }
-            gen_kwargs: dict[str, Any] | None = None
-            if (
-                (direct_retrieval_worker is not None or is_fast_bot or is_kb_bot)
-                and self._direct_retrieval is not None
-                and (kb_ids or is_kb_bot)
-            ):
-                # Issue #50 workflow 快速道（Issue #61 共用服務）：檢索過門檻 → 單次
-                # 生成；未過門檻 / 異常 → None → 落回完整 ReAct（升級）。
-                # Issue #70 kb：knowledge_only，未命中回 miss plan（固定話術、不生成）
-                plan = await self._direct_retrieval.plan(
-                    tenant_id=bot.tenant_id,
-                    bot=bot,
-                    kb_id=kb_id,
-                    kb_ids=kb_ids,
-                    system_prompt=system_prompt,
-                    enabled_tools=enabled_tools,
-                    tool_rag_params=tool_rag_params,
-                    user_message=event.message_text,
-                    retrieval_query=rewritten_query,
-                    allow_rerank=not is_fast_bot and not is_kb_bot,  # Issue #66 / #70
-                    knowledge_only=is_kb_bot,
+        )
+
+    async def _prepend_line_memory(
+        self, bot: Bot, event: LineTextMessageEvent, history_context: str
+    ) -> str:
+        """長期記憶置於歷史脈絡之前（共用 memory service）。"""
+        # channel-parity 二-6：LINE user_id 穩定，長期記憶接上（與 web 同一份服務）
+        if self._memory_service is not None:
+            memory_prompt = await self._memory_service.load_prompt(
+                tenant_id=bot.tenant_id,
+                source="line",
+                external_id=event.user_id,
+                memory_enabled=bool(getattr(bot, "memory_enabled", False)),
+            )
+            if memory_prompt:
+                history_context = (
+                    memory_prompt + "\n\n" + history_context
+                    if history_context
+                    else memory_prompt
                 )
-                if plan is not None and getattr(plan, "miss", False):
-                    miss = resolve_miss_reply(out_spec)
-                    result = AgentResponse(answer=miss.text)
-                    output_obj, display_text = miss.parsed, miss.display_text
-                elif plan is not None:
-                    # 快速道：無檢索工具可綁 → 正常情況恰好一次 LLM 呼叫；
-                    # 沿用 process_message 保留 output guard / trace / parsing 全套機制
-                    gen_kwargs = {
-                        **base_kwargs,
-                        "system_prompt": append_prompt_suffix(
-                            plan.system_prompt, prompt_suffix
-                        ),
-                        "enabled_tools": plan.enabled_tools,
-                        "metadata": rerank_metadata,
-                        "max_tool_calls": plan.max_tool_calls,
-                    }
-            if result is None and gen_kwargs is None:
-                if is_fast_bot:
-                    # Issue #66：fast profile 升級 ReAct 受約束——工具上限 2、無 rerank
-                    max_tool_calls = min(int(max_tool_calls or 5), 2)
-                    rerank_metadata = {
-                        **rerank_metadata,
-                        "rerank_enabled": False,
-                        "rag_retrieval_modes": ["raw"],
-                    }
+        return history_context
+
+    async def _run_normal_turn(
+        self,
+        turn: "_LineTurnConfig",
+        bot: Bot,
+        event: LineTextMessageEvent,
+        abuse_decision: Any,
+        guard_result: Any,
+        *,
+        history: Any,
+        history_context: str,
+        router_context: str,
+        is_fast_bot: bool,
+        is_kb_bot: bool,
+    ) -> tuple[AgentResponse, Any, dict[str, Any] | None, str | None, str | None]:
+        """未攔截回合：組 prompt → 指紋 → 快速道 / 完整 ReAct 生成。
+
+        回傳 (result, plan, output_obj, display_text, config_hash)。
+        """
+        if abuse_decision.conservative:
+            turn.enabled_tools = []
+            turn.mcp_servers = []
+            turn.system_prompt = (
+                (turn.system_prompt or "") + CONSERVATIVE_PROMPT_SUFFIX
+            )
+        if guard_result is not None:
+            # 告知 GuardedAgentService 咽喉點：input guard 已在入口跑過，
+            # 不要再付一次 LLM roundtrip（見 guarded_agent_service.py）
+            turn.rerank_metadata["_input_guard_checked"] = True
+        system_prompt = await self._assemble_line_prompt(turn.system_prompt)
+
+        history_context = await self._prepend_line_memory(
+            bot, event, history_context
+        )
+
+        # Issue #60：prompt 組裝完成 → 有效設定指紋（trace / usage 打標）
+        config_hash = await self._fingerprint_config(
+            bot=bot,
+            system_prompt=system_prompt,
+            worker_name=str(
+                (turn.rerank_metadata.get("_worker_routing") or {}).get("name", "")
+            ),
+            llm_params=turn.llm_params,
+            kb_ids=turn.kb_ids,
+            enabled_tools=turn.enabled_tools,
+            max_tool_calls=turn.max_tool_calls,
+            direct_retrieval=turn.direct_retrieval_worker is not None,
+        )
+        result = None
+        plan = None
+        output_obj: dict[str, Any] | None = None
+        display_text: str | None = None
+        # Issue #70：輸出格式共用決策（與 web 同一份 helper；供應商取生效值）
+        out_spec = OutputSpec.from_bot(
+            bot,
+            provider=turn.llm_params.get("provider_name", ""),
+            model=turn.llm_params.get("model", ""),
+        )
+        llm_patch, prompt_suffix = resolve_structured_llm_params(out_spec)
+        llm_params = {**turn.llm_params, **llm_patch}
+        base_kwargs: dict[str, Any] = {
+            "tenant_id": bot.tenant_id,
+            "kb_id": turn.kb_id,
+            "user_message": event.message_text,
+            "kb_ids": turn.kb_ids,
+            "llm_params": llm_params,
+            "history": history,
+            "history_context": history_context,
+            "router_context": router_context,
+            # 轉真人工具靠這個 URL 產生聯絡卡；漏傳 → 有文字沒按鈕
+            "customer_service_url": bot.customer_service_url,
+            "bot_id": bot.id.value,  # L9：output guard_logs 補 bot 歸因
+        }
+        gen_kwargs: dict[str, Any] | None = None
+        if (
+            (turn.direct_retrieval_worker is not None or is_fast_bot or is_kb_bot)
+            and self._direct_retrieval is not None
+            and (turn.kb_ids or is_kb_bot)
+        ):
+            plan = await self._line_fast_lane_plan(
+                self._direct_retrieval, turn, bot, event, system_prompt,
+                is_fast_bot=is_fast_bot, is_kb_bot=is_kb_bot,
+            )
+            if plan is not None and getattr(plan, "miss", False):
+                miss = resolve_miss_reply(out_spec)
+                result = AgentResponse(answer=miss.text)
+                output_obj, display_text = miss.parsed, miss.display_text
+            elif plan is not None:
+                # 快速道：無檢索工具可綁 → 正常情況恰好一次 LLM 呼叫；
+                # 沿用 process_message 保留 output guard / trace / parsing 全套機制
                 gen_kwargs = {
                     **base_kwargs,
-                    "system_prompt": append_prompt_suffix(system_prompt, prompt_suffix),
-                    "enabled_tools": enabled_tools,
-                    "metadata": rerank_metadata,
-                    "rag_top_k": bot.llm_params.rag_top_k,
-                    "rag_score_threshold": bot.llm_params.rag_score_threshold,
-                    "tool_rag_params": tool_rag_params,
-                    "mcp_servers": mcp_servers,
-                    "max_tool_calls": max_tool_calls,
+                    "system_prompt": append_prompt_suffix(
+                        plan.system_prompt, prompt_suffix
+                    ),
+                    "enabled_tools": plan.enabled_tools,
+                    "metadata": turn.rerank_metadata,
+                    "max_tool_calls": plan.max_tool_calls,
                 }
-            if gen_kwargs is not None:
-                result = await self._agent_service.process_message(**gen_kwargs)
-                # 快速道的檢索來源回填（無 tool call → agent 不會帶 sources）
-                if plan is not None and not result.sources:
-                    result.sources = list(plan.sources)
-                _gen = gen_kwargs
+        if result is None and gen_kwargs is None:
+            gen_kwargs = self._full_react_kwargs(
+                turn, bot, base_kwargs, system_prompt, prompt_suffix,
+                is_fast_bot=is_fast_bot,
+            )
+        if gen_kwargs is not None:
+            result, output_obj, display_text = await self._generate_line_answer(
+                gen_kwargs, out_spec, plan
+            )
+        # result 在此必已賦值（miss plan 或生成結果）；cast 僅供型別檢查
+        return (
+            cast(AgentResponse, result), plan, output_obj, display_text, config_hash,
+        )
 
-                async def _retry(instruction: str) -> str:
-                    second = await self._agent_service.process_message(**{
-                        **_gen,
-                        "system_prompt": append_prompt_suffix(
-                            _gen["system_prompt"], instruction
-                        ),
-                    })
-                    merge_usage(result, second)
-                    return second.answer
+    @staticmethod
+    async def _line_fast_lane_plan(
+        direct_retrieval: Any,
+        turn: "_LineTurnConfig",
+        bot: Bot,
+        event: LineTextMessageEvent,
+        system_prompt: str,
+        *,
+        is_fast_bot: bool,
+        is_kb_bot: bool,
+    ) -> Any:
+        """呼叫共用快速道服務取得 plan（None = 升級完整 ReAct）。"""
+        # Issue #50 workflow 快速道（Issue #61 共用服務）：檢索過門檻 → 單次
+        # 生成；未過門檻 / 異常 → None → 落回完整 ReAct（升級）。
+        # Issue #70 kb：knowledge_only，未命中回 miss plan（固定話術、不生成）
+        return await direct_retrieval.plan(
+            tenant_id=bot.tenant_id,
+            bot=bot,
+            kb_id=turn.kb_id,
+            kb_ids=turn.kb_ids,
+            system_prompt=system_prompt,
+            enabled_tools=turn.enabled_tools,
+            tool_rag_params=turn.tool_rag_params,
+            user_message=event.message_text,
+            retrieval_query=turn.rewritten_query,
+            allow_rerank=not is_fast_bot and not is_kb_bot,  # Issue #66 / #70
+            knowledge_only=is_kb_bot,
+        )
 
-                # json：驗證 → 失敗重試一次 → 仍失敗回未命中話術
-                # plain_text：剝 Markdown
-                fin = await finalize_with_retry(out_spec, result.answer, retry=_retry)
-                result.answer = fin.text
-                output_obj, display_text = fin.parsed, fin.display_text
-        t1 = time.monotonic()
+    @staticmethod
+    def _full_react_kwargs(
+        turn: "_LineTurnConfig",
+        bot: Bot,
+        base_kwargs: dict[str, Any],
+        system_prompt: str,
+        prompt_suffix: str,
+        *,
+        is_fast_bot: bool,
+    ) -> dict[str, Any]:
+        """完整 ReAct 的生成參數（fast profile 升級時受約束）。"""
+        max_tool_calls = turn.max_tool_calls
+        rerank_metadata = turn.rerank_metadata
+        if is_fast_bot:
+            # Issue #66：fast profile 升級 ReAct 受約束——工具上限 2、無 rerank
+            max_tool_calls = min(int(max_tool_calls or 5), 2)
+            rerank_metadata = {
+                **rerank_metadata,
+                "rerank_enabled": False,
+                "rag_retrieval_modes": ["raw"],
+            }
+        return {
+            **base_kwargs,
+            "system_prompt": append_prompt_suffix(system_prompt, prompt_suffix),
+            "enabled_tools": turn.enabled_tools,
+            "metadata": rerank_metadata,
+            "rag_top_k": bot.llm_params.rag_top_k,
+            "rag_score_threshold": bot.llm_params.rag_score_threshold,
+            "tool_rag_params": turn.tool_rag_params,
+            "mcp_servers": turn.mcp_servers,
+            "max_tool_calls": max_tool_calls,
+        }
 
-        # Issue #57：trace 不在此 finish——reply 推送與持久化也要成為節點，
-        # finish 移到 finally 內持久化 trace 之前（含 request 根節點）。
-        trace = None
+    async def _generate_line_answer(
+        self, gen_kwargs: dict[str, Any], out_spec: OutputSpec, plan: Any
+    ) -> tuple[AgentResponse, dict[str, Any] | None, str | None]:
+        """生成 → 快速道來源回填 → 輸出格式驗證（json 失敗重試一次）。"""
+        result = await self._agent_service.process_message(**gen_kwargs)
+        # 快速道的檢索來源回填（無 tool call → agent 不會帶 sources）
+        if plan is not None and not result.sources:
+            result.sources = list(plan.sources)
+        _gen = gen_kwargs
 
-        # Save messages to conversation
+        async def _retry(instruction: str) -> str:
+            second = await self._agent_service.process_message(**{
+                **_gen,
+                "system_prompt": append_prompt_suffix(
+                    _gen["system_prompt"], instruction
+                ),
+            })
+            merge_usage(result, second)
+            return second.answer
+
+        # json：驗證 → 失敗重試一次 → 仍失敗回未命中話術
+        # plain_text：剝 Markdown
+        fin = await finalize_with_retry(out_spec, result.answer, retry=_retry)
+        result.answer = fin.text
+        return result, fin.parsed, fin.display_text
+
+    @staticmethod
+    def _append_turn_messages(
+        conversation: Conversation,
+        event: LineTextMessageEvent,
+        result: AgentResponse,
+        *,
+        latency_ms: int,
+        plan: Any,
+        output_obj: dict[str, Any] | None,
+        display_text: str | None,
+    ) -> Any:
+        """把 user / assistant 訊息加進對話（尚未存檔），回傳 assistant message。"""
         conversation.add_message("user", event.message_text)
-        assistant_msg = conversation.add_message(
+        return conversation.add_message(
             "assistant",
             result.answer,
             tool_calls=[
@@ -1039,7 +1335,7 @@ class HandleWebhookUseCase:
                 {"tool_name": tc.tool_name, "reasoning": getattr(tc, "reasoning", "")}
                 for tc in result.tool_calls
             ],
-            latency_ms=round((t1 - t0) * 1000),
+            latency_ms=latency_ms,
             retrieved_chunks=[
                 # 保留完整欄位（包含 dm tool 的 image_url / page_number）
                 # 之前手動只挑 3 欄會把 DM 圖卡資訊砍掉 → web/Studio 跨 channel
@@ -1054,6 +1350,28 @@ class HandleWebhookUseCase:
             ),
         )
 
+    @staticmethod
+    def _dm_image_sources(sources: list | None) -> list[dict[str, Any]]:
+        """從 query_dm_with_image 的 sources 取出有 image_url 的頁面 payload。"""
+        # result.sources 可能是 list[Source dataclass]（react_agent_service 重建後）
+        # 或 list[dict]（直接從 tool result 透傳）。兩種都要支援。
+        # 之前只檢查 isinstance(s, dict) 導致 Source dataclass 路徑下圖卡完全消失。
+        image_sources: list[dict[str, Any]] = []
+        for s in (sources or []):
+            if isinstance(s, dict):
+                url = s.get("image_url", "")
+                payload = s
+            else:
+                url = getattr(s, "image_url", "") or ""
+                payload = s.to_dict() if hasattr(s, "to_dict") else None
+            if url and payload is not None:
+                image_sources.append(payload)
+        return image_sources
+
+    def _build_line_reply(
+        self, bot: Bot, result: AgentResponse, display_text: str | None
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """組 LINE 回覆文字與附加 Flex 訊息（MCP 卡片 / DM 圖卡 / 聯絡按鈕）。"""
         # Build reply text — optionally append sources
         # LINE 純文字通路：清除 LLM 殘留的 Markdown 符號（prompt 約束的安全網）
         # Issue #70：json 格式顯示 output_text_field 欄位（缺則整段 JSON）
@@ -1061,8 +1379,6 @@ class HandleWebhookUseCase:
         if bot.line_show_sources and result.sources:
             source_lines = _format_line_source_lines(result.sources)
             reply_text += "\n\n📚 參考來源：\n" + "\n".join(source_lines)
-
-        message_id = assistant_msg.id.value
 
         # Build Flex Message cards from MCP tool outputs
         flex_contents = self._extract_flex_from_tool_calls(result.tool_calls)
@@ -1072,19 +1388,7 @@ class HandleWebhookUseCase:
         ]
 
         # Build DM image carousel from query_dm_with_image tool's sources
-        # result.sources 可能是 list[Source dataclass]（react_agent_service 重建後）
-        # 或 list[dict]（直接從 tool result 透傳）。兩種都要支援。
-        # 之前只檢查 isinstance(s, dict) 導致 Source dataclass 路徑下圖卡完全消失。
-        image_sources: list[dict[str, Any]] = []
-        for s in (result.sources or []):
-            if isinstance(s, dict):
-                url = s.get("image_url", "")
-                payload = s
-            else:
-                url = getattr(s, "image_url", "") or ""
-                payload = s.to_dict() if hasattr(s, "to_dict") else None
-            if url and payload is not None:
-                image_sources.append(payload)
+        image_sources = self._dm_image_sources(result.sources)
         if image_sources:
             extra_messages.append({
                 "type": "flex",
@@ -1116,105 +1420,96 @@ class HandleWebhookUseCase:
                 else "抱歉，這題我暫時沒有找到合適的答案，"
                      "請換個方式描述，或輸入「真人客服」由專人為您服務。"
             )
+        return reply_text, extra_messages
 
-        # ── Issue #49：回覆先行，持久化後移 ──
-        # 使用者體感延遲以 reply 送達為終點，存對話 / trace / usage
-        # 挪到 reply 之後。放在 finally 保留「reply 失敗時仍持久化」
-        # 的語義（與重排前 persist-then-reply 的 durability 一致）。
-        t_reply = AgentTraceCollector.offset_ms()
-        try:
-            await line_service.reply_with_quick_reply(
-                event.reply_token, reply_text, message_id,
-                extra_messages=extra_messages or None,
-            )
-        finally:
-            t2 = time.monotonic()
-            AgentTraceCollector.span(
-                "reply_push", "LINE 回覆推送", t_reply,
-                extra_messages=len(extra_messages),
-            )
+    async def _persist_line_turn(
+        self,
+        bot: Bot,
+        event: LineTextMessageEvent,
+        conversation: Conversation,
+        result: AgentResponse,
+        *,
+        message_id: str,
+        config_hash: str | None,
+    ) -> None:
+        """reply 之後的收尾：存對話 → trace → 長期記憶萃取 → 記帳。"""
+        from src.infrastructure.observability.agent_trace_collector import (
+            AgentTraceCollector,
+        )
+        # Persist conversation + messages
+        t_persist = AgentTraceCollector.offset_ms()
+        if self._conversation_repo:
+            # S-Gov.6b: bump counters for cron pending-summary detection
+            from datetime import datetime, timezone
 
-            # Persist conversation + messages
-            t_persist = AgentTraceCollector.offset_ms()
-            if self._conversation_repo:
-                # S-Gov.6b: bump counters for cron pending-summary detection
-                from datetime import datetime, timezone
+            conversation.message_count = len(conversation.messages)
+            conversation.last_message_at = datetime.now(timezone.utc)
+            await self._conversation_repo.save(conversation)
+        AgentTraceCollector.span("persist", "對話持久化", t_persist)
 
-                conversation.message_count = len(conversation.messages)
-                conversation.last_message_at = datetime.now(timezone.utc)
-                await self._conversation_repo.save(conversation)
-            AgentTraceCollector.span("persist", "對話持久化", t_persist)
+        # Issue #57：request 根節點 + finish（total_ms = 根節點 wall clock）
+        AgentTraceCollector.wrap_request()
+        trace = AgentTraceCollector.finish(total_ms=None)
+        if trace:
+            trace.source = "line"
 
-            # Issue #57：request 根節點 + finish（total_ms = 根節點 wall clock）
-            AgentTraceCollector.wrap_request()
-            trace = AgentTraceCollector.finish(total_ms=None)
-            if trace:
-                trace.source = "line"
-
-            # channel-parity 二-2：與 web 同一份 trace 持久化（含 outcome，M20）
-            if trace and self._trace_session_factory:
-                try:
-                    await persist_finished_trace(
-                        trace,
-                        self._trace_session_factory,
-                        conversation_id=conversation.id.value,
-                        message_id=assistant_msg.id.value,
-                        source="line",
-                    )
-                except Exception:
-                    logger.warning("line.trace_persist_failed", exc_info=True)
-
-            # channel-parity 二-6：對話達門檻 → 排程長期記憶萃取（與 web 同一份服務）
-            if self._memory_service is not None:
-                await self._memory_service.schedule_extraction(
-                    tenant_id=bot.tenant_id,
+        # channel-parity 二-2：與 web 同一份 trace 持久化（含 outcome，M20）
+        if trace and self._trace_session_factory:
+            try:
+                await persist_finished_trace(
+                    trace,
+                    self._trace_session_factory,
+                    conversation_id=conversation.id.value,
+                    message_id=message_id,
                     source="line",
-                    external_id=event.user_id,
-                    conversation=conversation,
-                    memory_enabled=bool(getattr(bot, "memory_enabled", False)),
-                    threshold=int(
-                        getattr(bot, "memory_extraction_threshold", 3) or 3
-                    ),
-                    extraction_prompt=str(
-                        getattr(bot, "memory_extraction_prompt", "") or ""
-                    ),
-                    bot_id=bot.id.value,
                 )
+            except Exception:
+                logger.warning("line.trace_persist_failed", exc_info=True)
 
-            # Record token usage
-            if self._record_usage and result.usage:
-                try:
-                    await self._record_usage.execute(
-                        tenant_id=bot.tenant_id,
-                        request_type=UsageCategory.CHAT_LINE.value,
-                        config_hash=config_hash,
-                        usage=result.usage,
-                        bot_id=bot.id.value,
-                        # H8：result.message_id 對 LINE 恆為 None（僅 send_message
-                        # 路徑會設）；正解是本地 message_id = assistant_msg.id.value，
-                        # 否則版本成效 metrics 以 message_id join 不到 LINE 訊息。
-                        # 註：config_version_id 打標待共用管線抽取（channel-parity
-                        # 絞殺者遷移）統一補上，避免在此複製版本解析邏輯。
-                        message_id=message_id,
-                    )
-                except Exception:
-                    logger.warning("line.record_usage_error", exc_info=True)
-
-            t3 = time.monotonic()
-
-            logger.info(
-                "line.webhook.timing",
-                user_id=event.user_id,
-                short_code=short_code,
-                llm_provider=bot.llm_provider or "(default)",
-                llm_model=bot.llm_model or "(default)",
-                process_message_ms=round((t1 - t0) * 1000),
-                reply_ms=round((t2 - t1) * 1000),
-                persist_ms=round((t3 - t2) * 1000),
-                # total_ms = 使用者體感（t0 → reply 完成），不含持久化
-                total_ms=round((t2 - t0) * 1000),
-                answer_len=len(result.answer),
+        # channel-parity 二-6：對話達門檻 → 排程長期記憶萃取（與 web 同一份服務）
+        if self._memory_service is not None:
+            await self._memory_service.schedule_extraction(
+                tenant_id=bot.tenant_id,
+                source="line",
+                external_id=event.user_id,
+                conversation=conversation,
+                memory_enabled=bool(getattr(bot, "memory_enabled", False)),
+                threshold=int(
+                    getattr(bot, "memory_extraction_threshold", 3) or 3
+                ),
+                extraction_prompt=str(
+                    getattr(bot, "memory_extraction_prompt", "") or ""
+                ),
+                bot_id=bot.id.value,
             )
+
+        await self._record_line_usage(bot, result, message_id, config_hash)
+
+    async def _record_line_usage(
+        self,
+        bot: Bot,
+        result: AgentResponse,
+        message_id: str,
+        config_hash: str | None,
+    ) -> None:
+        """Record token usage（fail-open）。"""
+        if self._record_usage and result.usage:
+            try:
+                await self._record_usage.execute(
+                    tenant_id=bot.tenant_id,
+                    request_type=UsageCategory.CHAT_LINE.value,
+                    config_hash=config_hash,
+                    usage=result.usage,
+                    bot_id=bot.id.value,
+                    # H8：result.message_id 對 LINE 恆為 None（僅 send_message
+                    # 路徑會設）；正解是本地 message_id = assistant_msg.id.value，
+                    # 否則版本成效 metrics 以 message_id join 不到 LINE 訊息。
+                    # 註：config_version_id 打標待共用管線抽取（channel-parity
+                    # 絞殺者遷移）統一補上，避免在此複製版本解析邏輯。
+                    message_id=message_id,
+                )
+            except Exception:
+                logger.warning("line.record_usage_error", exc_info=True)
 
     @staticmethod
     def _extract_flex_from_tool_calls(

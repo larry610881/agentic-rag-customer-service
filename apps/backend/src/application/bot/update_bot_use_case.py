@@ -147,22 +147,7 @@ class UpdateBotUseCase:
         self._audit = audit
 
     @staticmethod
-    def _apply_updates(bot: Bot, command: UpdateBotCommand) -> None:
-        """Apply non-_UNSET fields from command to bot entity."""
-
-        def _effective(name: str) -> object:
-            val = getattr(command, name)
-            return getattr(bot, name) if val is _UNSET else val
-
-        # Issue #70：以「更新後的生效組合」驗證（例：切到 json 但既有 miss_reply
-        # 是純文字 → 拒絕），在任何欄位寫入實體之前
-        validate_output_settings(
-            mode=_effective("mode"),
-            output_format=_effective("output_format"),
-            output_schema=_effective("output_schema"),
-            miss_reply=_effective("miss_reply"),
-            output_text_field=_effective("output_text_field"),
-        )
+    def _apply_direct_fields(bot: Bot, command: UpdateBotCommand) -> None:
         _DIRECT_FIELDS = (
             "name", "description", "is_active",
             "bot_prompt",
@@ -197,6 +182,8 @@ class UpdateBotUseCase:
                 continue
             setattr(bot, field, val)
 
+    @staticmethod
+    def _apply_list_fields(bot: Bot, command: UpdateBotCommand) -> None:
         if command.knowledge_base_ids is not _UNSET:
             bot.knowledge_base_ids = list(command.knowledge_base_ids)  # type: ignore[arg-type]
         if command.enabled_tools is not _UNSET:
@@ -207,6 +194,11 @@ class UpdateBotUseCase:
             bot.widget_greeting_messages = list(command.widget_greeting_messages)  # type: ignore[arg-type]
         if command.gate_excluded_cases is not _UNSET:
             bot.gate_excluded_cases = list(command.gate_excluded_cases)  # type: ignore[arg-type]
+
+    @staticmethod
+    def _apply_rerank_and_retrieval_fields(
+        bot: Bot, command: UpdateBotCommand
+    ) -> None:
         if command.rerank_enabled is not _UNSET:
             bot.rerank_enabled = command.rerank_enabled  # type: ignore[assignment]
         if command.rerank_model is not _UNSET:
@@ -221,6 +213,11 @@ class UpdateBotUseCase:
             except ValueError as exc:
                 raise ValidationError(str(exc)) from exc
             bot.rag_retrieval_modes = normalize_modes(modes)
+
+    @staticmethod
+    def _apply_query_rewrite_and_hyde_fields(
+        bot: Bot, command: UpdateBotCommand
+    ) -> None:
         if command.query_rewrite_enabled is not _UNSET:
             bot.query_rewrite_enabled = command.query_rewrite_enabled  # type: ignore[assignment]
         if command.query_rewrite_model is not _UNSET:
@@ -233,6 +230,9 @@ class UpdateBotUseCase:
             bot.hyde_model = command.hyde_model  # type: ignore[assignment]
         if command.hyde_extra_hint is not _UNSET:
             bot.hyde_extra_hint = command.hyde_extra_hint  # type: ignore[assignment]
+
+    @staticmethod
+    def _apply_tool_configs_field(bot: Bot, command: UpdateBotCommand) -> None:
         if command.tool_configs is not _UNSET:
             bot.tool_configs = {
                 name: ToolRagConfig(
@@ -246,6 +246,11 @@ class UpdateBotUseCase:
                 for name, cfg in (command.tool_configs or {}).items()  # type: ignore[union-attr]
                 if isinstance(cfg, dict)
             }
+
+    @staticmethod
+    def _apply_customer_service_and_routes_fields(
+        bot: Bot, command: UpdateBotCommand
+    ) -> None:
         if command.customer_service_url is not _UNSET:
             bot.customer_service_url = command.customer_service_url  # type: ignore[assignment]
         if command.intent_routes is not _UNSET:
@@ -260,6 +265,9 @@ class UpdateBotUseCase:
             ]
         if command.router_model is not _UNSET:
             bot.router_model = command.router_model  # type: ignore[assignment]
+
+    @staticmethod
+    def _apply_mcp_servers_field(bot: Bot, command: UpdateBotCommand) -> None:
         if command.mcp_servers is not _UNSET:
             bot.mcp_servers = [
                 McpServerConfig(
@@ -278,8 +286,8 @@ class UpdateBotUseCase:
                 for s in command.mcp_servers  # type: ignore[union-attr]
             ]
 
-        # mcp_bindings is handled separately (needs encryption + masking)
-
+    @staticmethod
+    def _apply_llm_params(bot: Bot, command: UpdateBotCommand) -> None:
         # LLM params — collect changed fields, apply once
         _LLM_FIELDS = (
             "temperature", "max_tokens", "history_limit",
@@ -296,6 +304,36 @@ class UpdateBotUseCase:
             validate_reasoning_effort(llm_changes["reasoning_effort"])
         if llm_changes:
             bot.llm_params = replace(bot.llm_params, **llm_changes)
+
+    @classmethod
+    def _apply_updates(cls, bot: Bot, command: UpdateBotCommand) -> None:
+        """Apply non-_UNSET fields from command to bot entity."""
+
+        def _effective(name: str) -> object:
+            val = getattr(command, name)
+            return getattr(bot, name) if val is _UNSET else val
+
+        # Issue #70：以「更新後的生效組合」驗證（例：切到 json 但既有 miss_reply
+        # 是純文字 → 拒絕），在任何欄位寫入實體之前
+        validate_output_settings(
+            mode=_effective("mode"),
+            output_format=_effective("output_format"),
+            output_schema=_effective("output_schema"),
+            miss_reply=_effective("miss_reply"),
+            output_text_field=_effective("output_text_field"),
+        )
+
+        cls._apply_direct_fields(bot, command)
+        cls._apply_list_fields(bot, command)
+        cls._apply_rerank_and_retrieval_fields(bot, command)
+        cls._apply_query_rewrite_and_hyde_fields(bot, command)
+        cls._apply_tool_configs_field(bot, command)
+        cls._apply_customer_service_and_routes_fields(bot, command)
+        cls._apply_mcp_servers_field(bot, command)
+
+        # mcp_bindings is handled separately (needs encryption + masking)
+
+        cls._apply_llm_params(bot, command)
 
     def _encrypt_bindings(
         self,

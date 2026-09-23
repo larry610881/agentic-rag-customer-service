@@ -57,29 +57,38 @@ def _parse_iso(value: str) -> datetime:
     return dt
 
 
-def build_where(filters: TraceFilters) -> list[Any]:
-    """從 TraceFilters 組 SQLAlchemy where 條件 list。"""
+def _append_identity_filters(conditions: list[Any], filters: TraceFilters) -> None:
     T = AgentExecutionTraceModel  # noqa: N806
-    conditions: list[Any] = []
-
     if filters.tenant_id is not None:
         conditions.append(T.tenant_id == filters.tenant_id)
     if filters.agent_mode:
         conditions.append(T.agent_mode == filters.agent_mode)
     if filters.conversation_id:
         conditions.append(T.conversation_id == filters.conversation_id)
+
+
+def _append_time_filters(conditions: list[Any], filters: TraceFilters) -> None:
+    T = AgentExecutionTraceModel  # noqa: N806
     # PostgreSQL 不接受 `timestamptz >= str` 直接比較
     # → parse ISO8601 (含 'Z' 結尾的 UTC) 為 datetime
     if filters.date_from:
         conditions.append(T.created_at >= _parse_iso(filters.date_from))
     if filters.date_to:
         conditions.append(T.created_at <= _parse_iso(filters.date_to))
+
+
+def _append_source_filters(conditions: list[Any], filters: TraceFilters) -> None:
+    T = AgentExecutionTraceModel  # noqa: N806
     if filters.source:
         conditions.append(T.source == filters.source)
     if filters.bot_id:
         conditions.append(T.bot_id == filters.bot_id)
     if filters.outcome:
         conditions.append(T.outcome == filters.outcome)
+
+
+def _append_metric_filters(conditions: list[Any], filters: TraceFilters) -> None:
+    T = AgentExecutionTraceModel  # noqa: N806
     if filters.min_total_ms is not None:
         conditions.append(T.total_ms >= filters.min_total_ms)
     if filters.max_total_ms is not None:
@@ -95,6 +104,10 @@ def build_where(filters: TraceFilters) -> list[Any]:
             T.total_tokens["total"].as_string().cast(Integer)
             <= filters.max_total_tokens
         )
+
+
+def _append_keyword_filter(conditions: list[Any], filters: TraceFilters) -> None:
+    T = AgentExecutionTraceModel  # noqa: N806
     if filters.keyword:
         # PostgreSQL JSON cast to text 會 escape 中文（\u9000\u8ca8）
         # 改 cast(JSONB)::text 才會 decode 成原文
@@ -102,6 +115,17 @@ def build_where(filters: TraceFilters) -> list[Any]:
         conditions.append(
             T.nodes.cast(JSONB).cast(Text).ilike(f"%{filters.keyword}%")
         )
+
+
+def build_where(filters: TraceFilters) -> list[Any]:
+    """從 TraceFilters 組 SQLAlchemy where 條件 list。"""
+    conditions: list[Any] = []
+
+    _append_identity_filters(conditions, filters)
+    _append_time_filters(conditions, filters)
+    _append_source_filters(conditions, filters)
+    _append_metric_filters(conditions, filters)
+    _append_keyword_filter(conditions, filters)
 
     return conditions
 

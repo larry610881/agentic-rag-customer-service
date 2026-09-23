@@ -5,7 +5,7 @@
 """
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -26,6 +26,71 @@ _RERANK_SYSTEM_PROMPT = """\
 
 只回覆 JSON array，格式：[{"index": 0, "score": 8}, ...]
 不要加任何其他文字。"""
+
+
+def _build_rerank_user_prompt(query: str, chunks: list[dict]) -> str:
+    chunk_texts = []
+    for i, chunk in enumerate(chunks):
+        content = chunk.get("content", chunk.get("content_snippet", ""))
+        # Truncate long chunks to save tokens
+        if len(content) > 500:
+            content = content[:500] + "..."
+        chunk_texts.append(f"[{i}] {content}")
+
+    return (
+        f"查詢：{query}\n\n"
+        f"搜尋結果（共 {len(chunks)} 筆）：\n\n"
+        + "\n\n".join(chunk_texts)
+    )
+
+
+def _strip_code_fences(raw: str) -> str:
+    if raw.startswith("```"):
+        lines = raw.split("\n")
+        # Remove first line (```json or ```) and last line (```)
+        lines = [ln for ln in lines if not ln.strip().startswith("```")]
+        raw = "\n".join(lines).strip()
+    return raw
+
+
+def _collect_sorted_scores(scores: list, n_chunks: int) -> list[tuple]:
+    """Keep in-range (index, score) pairs, sorted by score descending."""
+    scored = []
+    for item in scores:
+        idx = item.get("index", -1)
+        score = item.get("score", 0)
+        if 0 <= idx < n_chunks:
+            scored.append((idx, score))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored
+
+
+async def _record_rerank_usage(
+    record_usage: "RecordUsageUseCase",
+    *,
+    tenant_id: str,
+    bot_id: str | None,
+    model: str,
+    usage: Any,
+    cache_read: int,
+    cache_creation: int,
+) -> None:
+    from src.domain.rag.value_objects import TokenUsage
+    from src.domain.usage.category import UsageCategory
+
+    await record_usage.execute(
+        tenant_id=tenant_id,
+        request_type=UsageCategory.RERANK.value,
+        usage=TokenUsage(
+            model=model,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cache_read_tokens=cache_read,
+            cache_creation_tokens=cache_creation,
+        ),
+        bot_id=bot_id,
+    )
 
 
 async def llm_rerank(
@@ -58,19 +123,7 @@ async def llm_rerank(
         return chunks
 
     # Build the prompt with numbered chunks
-    chunk_texts = []
-    for i, chunk in enumerate(chunks):
-        content = chunk.get("content", chunk.get("content_snippet", ""))
-        # Truncate long chunks to save tokens
-        if len(content) > 500:
-            content = content[:500] + "..."
-        chunk_texts.append(f"[{i}] {content}")
-
-    user_prompt = (
-        f"查詢：{query}\n\n"
-        f"搜尋結果（共 {len(chunks)} 筆）：\n\n"
-        + "\n\n".join(chunk_texts)
-    )
+    user_prompt = _build_rerank_user_prompt(query, chunks)
 
     try:
         import anthropic
@@ -99,11 +152,7 @@ async def llm_rerank(
         logger.info("rerank.raw_response", raw_preview=raw[:500])
 
         # Strip markdown code fences if present
-        if raw.startswith("```"):
-            lines = raw.split("\n")
-            # Remove first line (```json or ```) and last line (```)
-            lines = [ln for ln in lines if not ln.strip().startswith("```")]
-            raw = "\n".join(lines).strip()
+        raw = _strip_code_fences(raw)
 
         # Parse JSON scores
         scores = json.loads(raw)
@@ -112,14 +161,7 @@ async def llm_rerank(
             return chunks[:top_k]
 
         # Sort by score descending
-        scored = []
-        for item in scores:
-            idx = item.get("index", -1)
-            score = item.get("score", 0)
-            if 0 <= idx < len(chunks):
-                scored.append((idx, score))
-
-        scored.sort(key=lambda x: x[1], reverse=True)
+        scored = _collect_sorted_scores(scores, len(chunks))
 
         # Return top_k chunks in reranked order
         result = []
@@ -158,20 +200,14 @@ async def llm_rerank(
         if record_usage and (
             response.usage.input_tokens + response.usage.output_tokens
         ) > 0:
-            from src.domain.rag.value_objects import TokenUsage
-            from src.domain.usage.category import UsageCategory
-
-            await record_usage.execute(
+            await _record_rerank_usage(
+                record_usage,
                 tenant_id=tenant_id,
-                request_type=UsageCategory.RERANK.value,
-                usage=TokenUsage(
-                    model=model,
-                    input_tokens=response.usage.input_tokens,
-                    output_tokens=response.usage.output_tokens,
-                    cache_read_tokens=cache_read,
-                    cache_creation_tokens=cache_creation,
-                ),
                 bot_id=bot_id,
+                model=model,
+                usage=response.usage,
+                cache_read=cache_read,
+                cache_creation=cache_creation,
             )
 
         logger.info(

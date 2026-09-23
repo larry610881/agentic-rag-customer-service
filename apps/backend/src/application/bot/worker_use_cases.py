@@ -194,15 +194,10 @@ class UpdateWorkerUseCase(_WorkerAuditMixin):
         self._audit = audit
         self._bot_repo = bot_repository
 
-    async def execute(
-        self, command: UpdateWorkerCommand
-    ) -> WorkerConfig | None:
-        worker = await self._repo.find_by_id(command.worker_id)
-        if worker is None:
-            return None
-        if command.bot_id is not None and worker.bot_id != command.bot_id:
-            return None
-        before = _worker_view(worker) if self._audit is not None else None
+    @staticmethod
+    def _apply_basic_updates(
+        worker: WorkerConfig, command: UpdateWorkerCommand
+    ) -> None:
         if command.name is not None:
             worker.name = command.name
         if command.description is not None:
@@ -219,6 +214,11 @@ class UpdateWorkerUseCase(_WorkerAuditMixin):
             worker.max_tokens = command.max_tokens
         if command.max_tool_calls is not None:
             worker.max_tool_calls = command.max_tool_calls
+
+    @staticmethod
+    def _apply_advanced_updates(
+        worker: WorkerConfig, command: UpdateWorkerCommand
+    ) -> None:
         if command.enabled_mcp_ids is not None:
             worker.enabled_mcp_ids = list(command.enabled_mcp_ids)
         if command.knowledge_base_ids is not None:
@@ -234,6 +234,18 @@ class UpdateWorkerUseCase(_WorkerAuditMixin):
             worker.sort_order = command.sort_order
         if command.direct_retrieval is not None:
             worker.direct_retrieval = command.direct_retrieval
+
+    async def execute(
+        self, command: UpdateWorkerCommand
+    ) -> WorkerConfig | None:
+        worker = await self._repo.find_by_id(command.worker_id)
+        if worker is None:
+            return None
+        if command.bot_id is not None and worker.bot_id != command.bot_id:
+            return None
+        before = _worker_view(worker) if self._audit is not None else None
+        self._apply_basic_updates(worker, command)
+        self._apply_advanced_updates(worker, command)
         await self._repo.save(worker)
         await self._record(
             worker_id=worker.id, bot_id=worker.bot_id, action="update",

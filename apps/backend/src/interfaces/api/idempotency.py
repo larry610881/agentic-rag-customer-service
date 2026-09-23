@@ -142,6 +142,51 @@ async def get_last_event_id(
 FrameProducer = Callable[[], AsyncIterator[tuple[int, str]]]
 
 
+async def _sse_plain(producer: FrameProducer) -> AsyncIterator[str]:
+    async for _seq, frame in producer():
+        yield frame
+
+
+async def _sse_replay(
+    claim: StreamClaim, last_event_id: int | None
+) -> AsyncIterator[str]:
+    for seq, frame in claim.frames or []:
+        if last_event_id is None or seq > last_event_id:
+            yield frame
+
+
+async def _sse_record(
+    guard: IdempotencyGuard,
+    claim: StreamClaim,
+    producer: FrameProducer,
+) -> AsyncIterator[str]:
+    frames: list[tuple[int, str]] = []
+    try:
+        async for seq, frame in producer():
+            frames.append((seq, frame))
+            yield frame
+    except BaseException:
+        await guard.abort_stream(claim)
+        raise
+    await guard.finish_stream(claim, frames)
+
+
+async def _begin_idempotent_stream(
+    guard: IdempotencyGuard, *, scope: str, key: str, fingerprint: str
+) -> StreamClaim:
+    try:
+        return await guard.begin_stream(scope=scope, key=key, fingerprint=fingerprint)
+    except IdempotencyKeyReused as e:
+        raise ApiError(422, code="idempotency_key_reused", message=e.message) from None
+    except IdempotencyInProgress as e:
+        raise ApiError(
+            409,
+            code="idempotency_in_progress",
+            message=e.message,
+            headers={"Retry-After": "1"},
+        ) from None
+
+
 async def idempotent_sse(
     guard: IdempotencyGuard | None,
     *,
@@ -158,41 +203,13 @@ async def idempotent_sse(
     - 重播：從快照送 seq > Last-Event-ID 的 frames，標頭 Idempotent-Replayed: true
     """
     if key is None or guard is None:
-        async def _plain() -> AsyncIterator[str]:
-            async for _seq, frame in producer():
-                yield frame
+        return _sse_plain(producer), {}
 
-        return _plain(), {}
-
-    try:
-        claim = await guard.begin_stream(scope=scope, key=key, fingerprint=fingerprint)
-    except IdempotencyKeyReused as e:
-        raise ApiError(422, code="idempotency_key_reused", message=e.message) from None
-    except IdempotencyInProgress as e:
-        raise ApiError(
-            409,
-            code="idempotency_in_progress",
-            message=e.message,
-            headers={"Retry-After": "1"},
-        ) from None
+    claim = await _begin_idempotent_stream(
+        guard, scope=scope, key=key, fingerprint=fingerprint
+    )
 
     if claim.replayed:
-        async def _replay() -> AsyncIterator[str]:
-            for seq, frame in claim.frames or []:
-                if last_event_id is None or seq > last_event_id:
-                    yield frame
+        return _sse_replay(claim, last_event_id), {REPLAYED_HEADER: "true"}
 
-        return _replay(), {REPLAYED_HEADER: "true"}
-
-    async def _record(c: StreamClaim) -> AsyncIterator[str]:
-        frames: list[tuple[int, str]] = []
-        try:
-            async for seq, frame in producer():
-                frames.append((seq, frame))
-                yield frame
-        except BaseException:
-            await guard.abort_stream(c)
-            raise
-        await guard.finish_stream(c, frames)
-
-    return _record(claim), {REPLAYED_HEADER: "false"}
+    return _sse_record(guard, claim, producer), {REPLAYED_HEADER: "false"}
