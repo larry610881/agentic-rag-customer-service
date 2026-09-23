@@ -7,6 +7,54 @@
 
 ---
 
+## 型別檢查不是風格工具 — 真實 CI 第一次跑，把「本地從不跑 make lint」的債連同 10 個線上 bug 一起攤開（2026-09-23，Issue #100）
+
+**Sprint 來源**：Azure DevOps 正式管線首跑（run 180245）CI 三 job 全紅。決定「全部修完再上」，
+不做軟閘、不留暫時 ignore。分支 `ci/lint-gates` 分 B0–B7 八批，每批獨立 commit、獨立驗證。
+
+**主題**：lint 債的真實成本、平行子代理改同一個 working tree、契約守門、通路對等的順手還債
+
+#### 做得好的地方
+- **把型別錯誤當 bug 線索，不當雜訊**。規則是「mypy 指出的若是真 bug，停手先寫會紅的 regression
+  test 再修」。結果 199 個型別錯誤裡挖出 1 個跨租戶隔離漏洞（分類四端點缺 KB 擁有權檢查）、
+  3 個線上 500、1 個「LLM rerank 從未生效」，前端再 6 個使用者可見的壞畫面。沒有型別檢查，
+  這些都要等使用者回報。
+- **給 `_to_response(bot)` 補一個 `bot: Bot` 註記，立刻多抓兩個錯**。沒註記的參數是 mypy 的盲區：
+  intent_routes 讀錯欄位就藏在這種函式裡。補註記的價值大於補 cast。
+- **docstring 就是契約**。FastAPI 把端點 docstring 變成 OpenAPI description，E501 換行讓
+  `openapi.json` 多了一個 `\n`，快照測試當場紅。改成括號內字串拼接，`__doc__` 逐字相同。
+  之後每批都以「`make openapi` 無 diff」當驗收。
+- **平行子代理的分工按檔案切，不按規則切**。四組各拿一份檔案清單、禁止碰清單外（必要時要在
+  報告自首），加上「不 commit、不 stash」，同一個 working tree 四個代理並行沒有互踩；
+  主線在全部收齊後才統一跑全量測試與提交。
+- **LINE 的 MCP bug 用抽共用 service 修，不在 LINE 目錄補一份**（channel-parity 紅線 1）。
+  `McpServerResolver` 讓 web 與 LINE 走同一份 registry 解析；LINE 因此也順帶取得 bot 直接設定的
+  MCP server，跟 web 行為一致。
+
+#### 潛在隱憂
+- **跨租戶檢查仍散在 router 與 use case 兩層**。這次補的四個端點直接在 router 用 repo，沒有
+  use case；建立／刪除走 use case。同一類檢查兩種落點，下一個新端點還會漏。→ 改善：分類讀寫
+  全部收進 use case，或在 router 層做 KB 路徑參數的共用 dependency，並加一條 fence 測試掃
+  所有 `/{kb_id}/` 路徑的端點都有擁有權檢查 → **優先級：高**
+- **`except Exception` 吞掉 TypeError 讓 rerank 靜默失效**。這類「失敗就退回預設」的寫法會把
+  程式錯誤偽裝成可接受的降級。→ 改善：降級分支至少記 error 級 log 並帶例外型別，並在 trace 標記
+  `rerank_degraded` → **優先級：中**
+- **`vite build` 不做型別檢查**，前端的 ReferenceError 就是這樣帶上線五個月。CI 現在有 tsc 閘門，
+  但本地 `npm run build` 仍會放行 → 改善：`build` script 前置 `tsc --noEmit` → **優先級：中**
+- **B3 盤點出 web/LINE 12 處管線重複**，這次只搬了 MCP 一處。複雜度降到 10 以下只是把重複切得
+  更整齊，沒有消除 → 依 channel-parity 現存債順序處理 → **優先級：中**
+- **整合測試 41 個仍紅**（#65），CI 以 `continueOnError` 放行。它是唯一碰真實 DB 的閘門，放著
+  等於跨租戶這類 SQL 層問題沒有自動守門 → **優先級：高**
+
+#### 延伸學習
+- **Type checking as a bug-finding tool**：型別系統抓到的不是「寫法不好」，是「兩處對同一個東西的
+  理解不一致」。欄位改名、SDK 升版、抽象宣告與實作分歧，都是這一類。關鍵字：*gradual typing
+  ROI*、*type coverage*。
+- **Broken windows 與 lint 債**：lint 債的成本不在違規數字，而在「紅燈變常態後沒人看」。首跑
+  416 個 ruff 裡只有 17 個是真缺陷，但正是那 400 個雜訊讓 17 個真缺陷一直沒人看見。
+- **討論題**：這次的跨租戶漏洞，id 是 UUID、實際被猜中的機率很低。這樣的漏洞該不該「提前部署」？
+  判準是機率，還是「資料隔離是紅線、不做機率計算」？兩種立場各會導出什麼樣的上線流程？
+
 ## 另案總收尾 — 用「一份共用 service」而不是「一條共用管線」先還 channel-parity 的債（2026-09-16，Issue #99）
 
 **Sprint 來源**：契約審核留下的另案清單（CI/CD 除外）一次做完：串流冪等與重播、部分計費、

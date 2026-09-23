@@ -258,7 +258,7 @@ graph LR
 
 | Stage | 觸發 | 內容 |
 |-------|------|------|
-| `CI` | 每個 PR 與 main push | 後端 ruff / mypy / 單元測試（覆蓋率門檻 80%）、整合測試（真實 Postgres + Redis service container）、前端 eslint / tsc / vitest；測試結果與覆蓋率上傳到 Tests / Code Coverage 頁籤 |
+| `CI` | 每個 PR 與 main push | 後端 ruff、mypy 兩個獨立步驟 → 單元測試（覆蓋率門檻 80%，首跑以 78 排程）→ OpenAPI 破壞性變更檢查；整合測試（`resources.containers` 起 postgres:16-alpine + redis:7-alpine，測試庫由 conftest 自建，**不灌 `infra/schema.sql`**；#65 修完前 `continueOnError`）；前端 `npm run lint`（eslint src/）/ tsc / vitest；測試結果與覆蓋率上傳到 Tests / Code Coverage 頁籤 |
 | `Package` | 只有 `main` | 先建 widget（打包進後端映像），再 `docker build` 後端推到 Artifact Registry，tag 為 `rc-<commit sha>` 與 `latest` |
 | `Release` | `Package` 成功後**自動**執行 | `gcloud run deploy` 指定 tag → 輪詢 `/health` 直到 200（失敗整條紅燈）→ 把本次 commit 做成 git bundle scp 進 VM、還原、`uv sync`、重啟 `arq-worker.service` → 回讀 VM 的 HEAD 確認等於本次 commit |
 
@@ -331,3 +331,35 @@ GCP 端無法從 Larry 帳號驗證（IAM 讀取全被擋）：WIF pool / provid
 
 同時：Library group `agentic-rag-gcp-poc`（id 390）已用 CLI 建好，變數從九個減為八個；
 臨時建的服務連線 `gcp-poc-wif` 已刪；UI 精靈留下的 draft 服務連線刪不掉也不影響任何事。
+
+## 八、2026-09-22／23 首跑紅燈收斂（Issue #100）
+
+管線第一次真跑（run 180245）CI 三個 job 全紅，**都不是接錯，是 repo 既有的債**——本地
+`make lint` 同樣紅，只是從來沒人在本地跑過。分支 `ci/lint-gates` 逐批清零，不留暫時 ignore：
+
+| 項目 | 首跑 | 收斂後 | 處置 |
+|---|---|---|---|
+| ruff | 416 | 0 | 安全自動修正 → 真缺陷 17 → 行長 291（只加 1 條 per-file-ignores：牌價表）→ 複雜度 25 個函式抽 helper |
+| mypy | 223 錯 / 60 檔 | 0 | 禁整檔 ignore；單行 ignore 只剩 2 處第三方無型別 |
+| 前端 tsc | 106 | 0 | 測試缺 vitest import、fixture 過期、正式碼型別錯 |
+| 前端 eslint | 設定檔無規則、無 TS parser | 0 | 補標準 Vite React-TS flat config |
+| 整合 job | 缺 `resources.containers`，起不來 | 容器、建庫、create_all 全通 | 刪 psql 灌 schema 步驟（與 conftest 的 create_all 衝突） |
+
+**整合 job 驗收（run 180277）**：197 個測試跑完，41 failed 與 #65 本機完全相同，是測試本身
+的問題，管線這段已通。
+
+**型別與 lint 清債順帶抓到的線上 bug**（全部先寫 regression test 再修）：
+
+| 嚴重度 | 症狀 | 影響 |
+|---|---|---|
+| Critical | 分類四個端點缺 KB 擁有權檢查 | 知道他租戶 id 即可讀文件 chunk、改分類名、觸發分類工作 |
+| High | 設了 intent_routes 的 bot 開詳情 500 | Issue #91 改名漏改 |
+| High | 綁 MCP 的 bot 在 LINE 收訊息 AttributeError | LINE 自己複製了一份解析且讀錯欄位；改與 web 共用 `McpServerResolver` |
+| High | 後台「安全規則→攔截記錄」有記錄即整頁空白 | `vite build` 不做型別檢查，4 月起一路帶上線 |
+| Medium | LLM rerank 從未生效 | SDK 移除 temperature 參數，TypeError 被 except 吞掉 |
+| Medium | 其餘：分類並行刪除 500、「全部類型」篩選恆空、intent_routes bot 表單存不了、stdio MCP 存成空 URL 等 | 見 Issue #100 |
+
+**教訓**：型別檢查不是風格工具。這批 bug 共同的形狀是「欄位改名或 SDK 升版後，某一處沒跟著改，
+而那一處剛好沒有型別註記或被 `except Exception` 包住」——單元測試用 mock 走不到，只有型別檢查
+看得到。所以 CI 的 ruff / mypy / tsc 是硬閘門，不做軟閘。
+

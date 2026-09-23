@@ -68,7 +68,9 @@
 - ✅ 09-22 Azure DevOps 接線：CLI 通、hosted agent 可用、Library group 390 建好、**GCP WIF 改用管線層級 OIDC token（不需服務連線；ARM 連線已改 Entra 簽發且純 script 被拒）**，`steps-gcp-auth-wif.yml` + 探針 + 文件 §2/§4/§5/§7 已併 main（d41f333）
 - ⬜ Larry：建 Environment `poc`（PAT 缺 scope）；main branch policy
 - ⬜ infra：pool / provider / SA（docs §2.2）→ 填 `GCP_WIF_PROVIDER` / `GCP_DEPLOY_SA`
-- ⬜ 首次跑 `coverageFailUnder=78` → CI 綠 → Package/Release 通 → 覆蓋率回 80
+- ✅ 09-22／23 首跑紅燈收斂（#100，分支 `ci/lint-gates`）：ruff 416→0、mypy 223→0、前端 tsc 106→0 + eslint 設定建立清零、整合 job 補 `resources.containers` 並驗過；順修 10 個既有 bug（含 1 個跨租戶隔離 Critical），單元測試 2248、覆蓋率 78.45%
+- ⬜ 分支 CI 全綠 → FF main → Package 停在 gcloud 認證（等 infra 兩值）→ Release → 覆蓋率回 80
+- ⬜ channel-parity 後續債：B3 盤點出 web/LINE 12 處管線重複（LLM params、worker 套用、history、memory、blocked turn、prompt 組裝、快速道、生成重試、usage、存訊息）
 
 ---
 
