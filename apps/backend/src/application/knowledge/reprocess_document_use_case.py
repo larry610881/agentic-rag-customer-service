@@ -25,6 +25,7 @@ from src.domain.knowledge.services import (
 )
 from src.domain.knowledge.value_objects import OcrUsageTally, ProcessingTaskId
 from src.domain.rag.services import EmbeddingService, VectorStore
+from src.domain.shared.exceptions import EntityNotFoundError
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -83,8 +84,14 @@ class ReprocessDocumentUseCase:
         return self._text_splitter_overrides.get(strategy, self._splitter)
 
     async def begin_reprocess(
-        self, document_id: str, tenant_id: str
+        self, document_id: str, tenant_id: str, kb_id: str | None = None
     ) -> ProcessingTask:
+        # kb_id：路徑上的 KB（router 已驗 KB 歸屬）；文件須屬於該 KB，否則以自己的
+        # KB 路徑可觸發他租戶文件重處理（B8 fence）。None = 內部呼叫端。
+        if kb_id is not None:
+            owned = await self._doc_repo.find_by_id(document_id)
+            if owned is None or owned.kb_id != kb_id:
+                raise EntityNotFoundError("Document", document_id)
         task = ProcessingTask(
             id=ProcessingTaskId(),
             document_id=document_id,

@@ -16,7 +16,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.application.knowledge._admin_kb_check import ensure_kb_accessible
+from src.application.knowledge._admin_kb_check import (
+    ensure_kb_accessible,
+    tenant_match_or_admin,
+)
 from src.application.rag.query_rag_use_case import (
     QueryRAGCommand,
     QueryRAGUseCase,
@@ -142,7 +145,9 @@ class TestRetrievalUseCase:
         if command.bot_id and self._bot_repo:
             try:
                 bot = await self._bot_repo.find_by_id(command.bot_id)
-                if bot:
+                # bot_id 來自請求；find_by_id 不分租戶。他租戶 bot 的提示詞不得
+                # 被帶進改寫 context（改寫結果會回給呼叫端 → 提示詞外洩，B8 fence）
+                if bot and tenant_match_or_admin(bot.tenant_id, command.tenant_id):
                     bot_system_prompt = bot.bot_prompt or ""
             except Exception:
                 logger.warning(

@@ -3,6 +3,7 @@
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query
 
+from src.application.bot.get_bot_use_case import GetBotUseCase
 from src.application.observability.config_snapshot_use_cases import (
     DiffConfigSnapshotsUseCase,
     GetConfigSnapshotUseCase,
@@ -67,11 +68,18 @@ async def get_config_snapshot(
 async def get_bot_config_timeline(
     bot_id: str,
     limit: int = Query(default=50, ge=1, le=200),
-    _: CurrentTenant = Depends(get_current_tenant),
+    tenant: CurrentTenant = Depends(get_current_tenant),
     use_case: GetConfigTimelineUseCase = Depends(
         Provide[Container.get_config_timeline_use_case]
     ),
+    get_bot: GetBotUseCase = Depends(Provide[Container.get_bot_use_case]),
 ) -> dict:
+    # Issue #101：時間軸以純 bot_id 查 trace，須先驗 bot 歸屬；否則可列他租戶
+    # bot 的 config_hash，再經 /config-snapshots/{hash} 讀到對方的 system prompt。
+    try:
+        await get_bot.execute(bot_id, tenant_id=tenant.tenant_id, role=tenant.role)
+    except EntityNotFoundError as e:
+        raise ApiError(404, code=not_found_code(e), message=e.message) from None
     items = await use_case.execute(bot_id, limit=limit)
     return {
         "bot_id": bot_id,

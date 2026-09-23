@@ -664,7 +664,8 @@ class SendMessageUseCase:
         """Load bot's busy_reply_message for lock rejection."""
         if command.bot_id and self._bot_repo:
             bot = await self._bot_repo.find_by_id(command.bot_id)
-            if bot:
+            # 鎖拒絕可能早於 _load_bot_config 的歸屬檢查；他租戶 bot 不回其設定
+            if bot and bot.tenant_id == command.tenant_id:
                 return bot.busy_reply_message
         return "小編正在努力回覆中，請稍等一下喔～"
 

@@ -42,9 +42,19 @@ class SubmitFeedbackUseCase:
         if conversation is None or conversation.tenant_id != command.tenant_id:
             raise EntityNotFoundError("Conversation", command.conversation_id)
 
+        # message 必須屬於這個 conversation：否則可在他租戶訊息上先佔用回饋
+        # （message_id 唯一），或把回饋掛到別的對話。與上面同一個 404，不透露訊息存在。
+        if not any(m.id.value == command.message_id for m in conversation.messages):
+            raise EntityNotFoundError("Conversation", command.conversation_id)
+
         existing = await self._feedback_repo.find_by_message_id(
             command.message_id
         )
+
+        # find_by_message_id 不分租戶：他租戶訊息上的既有回饋不可被改寫；
+        # 與「對話不屬於本租戶」同一個 404，不透露該訊息存在
+        if existing is not None and existing.tenant_id != command.tenant_id:
+            raise EntityNotFoundError("Conversation", command.conversation_id)
 
         # E8: upsert — 已有回饋則更新（改變心意）
         if existing is not None:
