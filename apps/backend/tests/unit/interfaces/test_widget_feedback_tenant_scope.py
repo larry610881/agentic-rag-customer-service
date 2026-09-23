@@ -21,7 +21,9 @@ from src.domain.shared.exceptions import EntityNotFoundError
 from src.interfaces.api import widget_router as w
 
 
-def _principal() -> w.WidgetPrincipal:
+def _principal(
+    visitor_id: str = "v-1", end_user_id: str | None = None
+) -> w.WidgetPrincipal:
     bot = Bot(
         id=BotId(value="bot-a"),
         tenant_id="tenant-a",
@@ -29,13 +31,22 @@ def _principal() -> w.WidgetPrincipal:
         knowledge_base_ids=[],
         llm_params=BotLLMParams(),
     )
-    return w.WidgetPrincipal(bot=bot, origin="", visitor_id="v-1")
+    return w.WidgetPrincipal(
+        bot=bot, origin="", visitor_id=visitor_id, end_user_id=end_user_id
+    )
 
 
-def _conversation(tenant_id: str, message_ids: list[str]) -> Conversation:
+def _conversation(
+    tenant_id: str,
+    message_ids: list[str],
+    bot_id: str = "bot-a",
+    visitor_id: str | None = "v-1",
+) -> Conversation:
     return Conversation(
         id=ConversationId(value="conv-x"),
         tenant_id=tenant_id,
+        bot_id=bot_id,
+        visitor_id=visitor_id,
         messages=[
             Message(
                 id=MessageId(value=m),
@@ -48,7 +59,11 @@ def _conversation(tenant_id: str, message_ids: list[str]) -> Conversation:
     )
 
 
-def _call(conversation: Conversation, message_id: str) -> tuple[dict, AsyncMock]:
+def _call(
+    conversation: Conversation,
+    message_id: str,
+    principal: w.WidgetPrincipal | None = None,
+) -> tuple[dict, AsyncMock]:
     conv_repo = AsyncMock()
     conv_repo.find_by_id.return_value = conversation
     fb_repo = AsyncMock()
@@ -60,7 +75,7 @@ def _call(conversation: Conversation, message_id: str) -> tuple[dict, AsyncMock]
                 conversation_id="conv-x", message_id=message_id, rating="thumbs_down"
             ),
             response=Response(),
-            principal=_principal(),
+            principal=principal or _principal(),
             use_case=SubmitFeedbackUseCase(fb_repo, conv_repo),
         )
     )
@@ -81,3 +96,36 @@ def test_widget_訪客對自家對話的訊息可正常回饋():
     result, fb_repo = _call(_conversation("tenant-a", ["msg-a"]), "msg-a")
     assert result == {"success": True}
     fb_repo.save.assert_awaited_once()
+
+
+# ---- #102：同租戶內也不能跨 bot、跨訪客 ----
+
+
+def test_widget_訪客不能對同租戶其他訪客的對話回饋():
+    with pytest.raises(EntityNotFoundError):
+        _call(_conversation("tenant-a", ["msg-a"], visitor_id="v-other"), "msg-a")
+
+
+def test_widget_訪客不能對同租戶其他_bot_的對話回饋():
+    with pytest.raises(EntityNotFoundError):
+        _call(_conversation("tenant-a", ["msg-a"], bot_id="bot-other"), "msg-a")
+
+
+def test_沒有訪客綁定的對話不接受_widget_回饋():
+    with pytest.raises(EntityNotFoundError):
+        _call(_conversation("tenant-a", ["msg-a"], visitor_id=None), "msg-a")
+
+
+def test_identify_後仍可對識別前的對話回饋():
+    """identify() 前的對話記的是匿名 visitor_id，之後票帶 end_user_id；兩者都算本人。"""
+    principal = _principal(visitor_id="v-1", end_user_id="host-user-9")
+    result, _ = _call(_conversation("tenant-a", ["msg-a"]), "msg-a", principal)
+    assert result == {"success": True}
+
+
+def test_identify_後的對話以宿主使用者_id_比對():
+    principal = _principal(visitor_id="v-1", end_user_id="host-user-9")
+    conv = _conversation("tenant-a", ["msg-a"], visitor_id="host-user-9")
+    result, _ = _call(conv, "msg-a", principal)
+    assert result == {"success": True}
+

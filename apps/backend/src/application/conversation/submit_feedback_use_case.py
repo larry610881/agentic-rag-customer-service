@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from src.domain.conversation.entity import Conversation
 from src.domain.conversation.feedback_entity import Feedback
 from src.domain.conversation.feedback_repository import FeedbackRepository
 from src.domain.conversation.feedback_value_objects import (
@@ -24,6 +25,10 @@ class SubmitFeedbackCommand:
     user_id: str | None = None
     comment: str | None = None
     tags: list[str] = field(default_factory=list)
+    # #102：訪客通路（widget）限定對話必須屬於該 bot 與該訪客。
+    # None = 不限定（已登入的租戶使用者，已由 tenant_id 範圍保護）。
+    bot_id: str | None = None
+    visitor_ids: tuple[str, ...] | None = None
 
 
 class SubmitFeedbackUseCase:
@@ -40,6 +45,8 @@ class SubmitFeedbackUseCase:
             command.conversation_id
         )
         if conversation is None or conversation.tenant_id != command.tenant_id:
+            raise EntityNotFoundError("Conversation", command.conversation_id)
+        if not _visible_to_caller(conversation, command):
             raise EntityNotFoundError("Conversation", command.conversation_id)
 
         # message 必須屬於這個 conversation：否則可在他租戶訊息上先佔用回饋
@@ -79,3 +86,17 @@ class SubmitFeedbackUseCase:
 
         await self._feedback_repo.save(feedback)
         return feedback
+
+
+def _visible_to_caller(
+    conversation: Conversation, command: SubmitFeedbackCommand
+) -> bool:
+    """訪客通路的對話歸屬：同 bot、且對話的 visitor_id 是呼叫者的身分之一。"""
+    if command.bot_id is not None and conversation.bot_id != command.bot_id:
+        return False
+    if command.visitor_ids is not None:
+        return bool(conversation.visitor_id) and (
+            conversation.visitor_id in command.visitor_ids
+        )
+    return True
+

@@ -600,6 +600,11 @@ async def widget_feedback(
         rating=body.rating,
         comment=body.comment,
         tags=body.tags,
+        # #102：只能對本 bot、本訪客的對話回饋（identify 前後的身分都算本人）
+        bot_id=bot.id.value,
+        visitor_ids=tuple(
+            v for v in (principal.visitor_id, principal.end_user_id) if v
+        ),
     )
     await use_case.execute(command)
 
