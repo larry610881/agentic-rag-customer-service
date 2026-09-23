@@ -327,18 +327,23 @@ async def run(dry_run: bool, batch_size: int) -> int:
     from src.infrastructure.crypto.aes_encryption_service import (
         build_encryption_service,
     )
-    from src.infrastructure.db.engine import async_session_factory
+    from src.infrastructure.db import engine as db
 
     svc = build_encryption_service(settings)
     reports = []
-    async with async_session_factory() as session:
-        for spec in ENCRYPTED_FIELDS:
-            reports.append(
-                await process_field(
-                    session, svc, spec, dry_run=dry_run, batch_size=batch_size
+    try:
+        async with db.async_session_factory() as session:
+            for spec in ENCRYPTED_FIELDS:
+                reports.append(
+                    await process_field(
+                        session, svc, spec, dry_run=dry_run, batch_size=batch_size
+                    )
                 )
-            )
-        leaked = await count_snapshot_env_values(session)
+            leaked = await count_snapshot_env_values(session)
+    finally:
+        # 在 event loop 內釋放連線池；否則 asyncio.run 關掉 loop 後才由 GC 關 asyncpg
+        # 連線，會丟出嚇人的 MissingGreenlet（結果不受影響，但 log 看起來像失敗）
+        await db.engine.dispose()
     print(format_report(reports, dry_run, svc.active_key_id))
     print(f"bot_config_versions 快照含 env_values 的筆數：{leaked}（應為 0）")
     failed = sum(len(r.failures) for r in reports)

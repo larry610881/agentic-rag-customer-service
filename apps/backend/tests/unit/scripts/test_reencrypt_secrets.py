@@ -183,3 +183,26 @@ def test_LINE_憑證重跑冪等():
     session = SelectQueueSession([[("bot-1", V1_ONLY.encrypt("s"))]])
     report = _run(session, LINE_SECRET, dry_run=False, svc=V1_ONLY)
     assert session.updates() == [] and report.already_active == 1
+
+
+# ---- 結束時在 event loop 內釋放連線池（避免 MissingGreenlet 雜訊） ----
+
+
+def test_run_結束前在_event_loop_內釋放連線池(monkeypatch, capsys):
+    """Regression：loop 關閉後才由 GC 關 asyncpg 連線 → MissingGreenlet。"""
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock
+
+    import scripts.reencrypt_secrets as script
+    import src.infrastructure.db.engine as engine_mod
+
+    @asynccontextmanager
+    async def fake_factory():
+        yield SpySession()
+
+    fake_engine = AsyncMock()
+    monkeypatch.setattr(engine_mod, "async_session_factory", fake_factory)
+    monkeypatch.setattr(engine_mod, "engine", fake_engine)
+
+    assert asyncio.run(script.run(dry_run=True, batch_size=10)) == 0
+    fake_engine.dispose.assert_awaited_once()
