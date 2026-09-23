@@ -41,6 +41,12 @@ PUBLIC_ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/{full_path:path}"): "admin SPA fallback",
 }
 
+# 依部署產物有條件掛載的公開路由：不存在時不算清單過期。
+# admin SPA 只在 static/admin/index.html 存在時掛（_mount_admin_spa；CI 的後端 job
+# 不建前端，Package 階段才 build:embed）。由 test_admin_spa_fallback_is_public
+# 以暫存目錄強制掛載，確保 CI 上也驗得到它。
+CONDITIONAL_ROUTES = {("GET", "/{full_path:path}")}
+
 
 @pytest.fixture(scope="module")
 def app():
@@ -94,10 +100,28 @@ def test_public_route_list_is_honest(app):
     unauth, authed = _classify(app)
     stale = sorted(set(PUBLIC_ROUTES) & authed)
     assert stale == [], f"PUBLIC_ROUTES entries that now require auth: {stale}"
-    missing = sorted(set(PUBLIC_ROUTES) - unauth - authed)
+    missing = sorted(set(PUBLIC_ROUTES) - unauth - authed - CONDITIONAL_ROUTES)
     assert missing == [], f"PUBLIC_ROUTES entries that no longer exist: {missing}"
 
 
 def test_scan_covers_the_api_surface(app):
     unauth, authed = _classify(app)
     assert len(unauth | authed) > 150, "route scan lost the included routers"
+
+
+def test_admin_spa_fallback_is_public(tmp_path):
+    """不依賴本機有沒有 build 過前端：用暫存目錄強制掛上 SPA fallback 再分類。"""
+    from fastapi import FastAPI
+
+    from src.main import _mount_admin_spa
+
+    (tmp_path / "admin").mkdir()
+    (tmp_path / "admin" / "index.html").write_text("<html></html>")
+    spa_app = FastAPI()
+    _mount_admin_spa(spa_app, str(tmp_path))
+
+    unauth, authed = _classify(spa_app)
+    assert CONDITIONAL_ROUTES <= unauth, "SPA fallback 應掛載且不帶認證相依"
+    assert CONDITIONAL_ROUTES <= set(PUBLIC_ROUTES)
+    assert not authed
+
