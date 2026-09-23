@@ -213,6 +213,9 @@ class SQLAlchemyBotRepository(BotRepository):
                 if model.line_show_sources is not None
                 else False
             ),
+            busy_reply_message=(
+                getattr(model, "busy_reply_message", None) or Bot.busy_reply_message
+            ),
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -341,6 +344,7 @@ class SQLAlchemyBotRepository(BotRepository):
                 existing.line_channel_secret = bot.line_channel_secret
                 existing.line_channel_access_token = bot.line_channel_access_token
                 existing.line_show_sources = bot.line_show_sources
+                existing.busy_reply_message = bot.busy_reply_message
                 existing.temperature = bot.llm_params.temperature
                 existing.max_tokens = bot.llm_params.max_tokens
                 existing.history_limit = bot.llm_params.history_limit
@@ -443,6 +447,7 @@ class SQLAlchemyBotRepository(BotRepository):
                     line_channel_secret=bot.line_channel_secret,
                     line_channel_access_token=bot.line_channel_access_token,
                     line_show_sources=bot.line_show_sources,
+                    busy_reply_message=bot.busy_reply_message,
                     temperature=bot.llm_params.temperature,
                     max_tokens=bot.llm_params.max_tokens,
                     history_limit=bot.llm_params.history_limit,
