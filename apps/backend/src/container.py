@@ -3071,4 +3071,6 @@ class Container(containers.DeclarativeContainer):
         guard_provider=guard_provider,  # Issue #75
         # Issue #91：LINE 也要載入平台防護層（先前只有 web/widget 有）
         system_prompt_config_repository=system_prompt_config_repository,
+        # Issue #100 B4：LINE 解析 MCP registry 綁定（與 web 共用 McpServerResolver）
+        mcp_registry_repo=mcp_server_repository,
     )

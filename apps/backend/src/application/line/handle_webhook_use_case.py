@@ -10,6 +10,7 @@ from typing import Any, TypeVar, cast
 from uuid import uuid4
 
 from src.application.agent.guard_responses import blocked_input_response
+from src.application.agent.mcp_server_resolver import McpServerResolver
 from src.application.agent.output_format import (
     OutputSpec,
     append_prompt_suffix,
@@ -243,8 +244,11 @@ class HandleWebhookUseCase:
         guard_provider: Any | None = None,
         system_prompt_config_repository: Any | None = None,
         memory_service: Any | None = None,
+        mcp_registry_repo: Any | None = None,
     ):
         self._agent_service = agent_service
+        # channel-parity：MCP server 解析與 web 共用（Issue #100 B4 修 AttributeError）
+        self._mcp_resolver = McpServerResolver(mcp_registry_repo, encryption_service)
         # Issue #91：LINE 先前只用 bot_prompt，平台防護層從未載入 → 通路對等破口
         self._sys_prompt_repo = system_prompt_config_repository
         # Issue #74：共用配額預檢（與 web/widget 同一份；LINE 只做文字回覆適配）
@@ -607,7 +611,8 @@ class HandleWebhookUseCase:
         bot_mode = getattr(bot, "mode", "deep") or "deep"
         is_fast_bot = bot_mode == "fast"
         is_kb_bot = bot_mode == "kb"
-        turn = self._initial_turn_config(bot, guard)
+        mcp_servers = await self._line_mcp_servers(bot)
+        turn = self._initial_turn_config(bot, guard, mcp_servers)
 
         # ── Input guard 與 intent 分類「並行」執行（F2，POC 問題 1）──
         # 兩者都是阻塞 LLM 呼叫，串行要付兩段延遲。權衡（Larry 2026-07-16 核可）：
@@ -790,29 +795,16 @@ class HandleWebhookUseCase:
             llm_params["model"] = bot.llm_model
         return llm_params
 
-    @staticmethod
-    def _line_mcp_servers(bot: Bot) -> list[dict[str, Any]] | None:
-        """Resolve MCP servers from bot bindings（無 binding 回 None）。"""
-        mcp_servers = None
-        if bot.mcp_bindings:
-            mcp_servers = []
-            for binding in bot.mcp_bindings:
-                server_cfg = {
-                    "url": binding.url,
-                    "transport": binding.transport,
-                    "registry_id": binding.registry_id,
-                }
-                if binding.enabled_tools:
-                    server_cfg["enabled_tools"] = binding.enabled_tools
-                mcp_servers.append(server_cfg)
-        return mcp_servers
+    async def _line_mcp_servers(self, bot: Bot) -> list[dict[str, Any]] | None:
+        """Resolve MCP servers（與 web 共用 McpServerResolver；無 server 回 None）。"""
+        servers = await self._mcp_resolver.resolve(bot, bot.tenant_id)
+        return servers or None
 
     def _initial_turn_config(
-        self, bot: Bot, guard: Any
+        self, bot: Bot, guard: Any, mcp_servers: list[dict[str, Any]] | None
     ) -> "_LineTurnConfig":
         """回合初始設定：bot 本體的 LLM / MCP / rerank / prompt / KB / 工具。"""
         llm_params = self._line_llm_params(bot)
-        mcp_servers = self._line_mcp_servers(bot)
 
         # Build rerank metadata so RAG tools inherit Bot's rerank config.
         rerank_metadata: dict[str, Any] = {

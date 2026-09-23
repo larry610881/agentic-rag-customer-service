@@ -27,7 +27,7 @@ from src.application.bot.validate_bot_enabled_tools import (
 )
 from src.application.shared.idempotency_guard import IdempotencyGuard
 from src.container import Container
-from src.domain.bot.entity import VALID_BOT_MODES, VALID_REASONING_EFFORTS
+from src.domain.bot.entity import VALID_BOT_MODES, VALID_REASONING_EFFORTS, Bot
 from src.domain.platform.value_objects import ProviderName
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
 from src.interfaces.api.deps import (
@@ -354,7 +354,7 @@ class BotResponse(BaseModel):
     updated_at: ApiDateTime
 
 
-def _to_response(bot) -> BotResponse:
+def _to_response(bot: Bot) -> BotResponse:
     return BotResponse(
         id=bot.id.value,
         short_code=bot.short_code.value,
@@ -458,7 +458,8 @@ def _to_response(bot) -> BotResponse:
             {
                 "name": r.name,
                 "description": r.description,
-                "system_prompt": r.system_prompt,
+                # 對外欄位名維持 system_prompt；domain 於 Issue #91 正名為 worker_prompt
+                "system_prompt": r.worker_prompt,
             }
             for r in bot.intent_routes
         ],
@@ -470,8 +471,8 @@ def _to_response(bot) -> BotResponse:
             "***" if bot.line_channel_access_token else None
         ),
         line_show_sources=bot.line_show_sources,
-        created_at=bot.created_at.isoformat(),
-        updated_at=bot.updated_at.isoformat(),
+        created_at=bot.created_at,
+        updated_at=bot.updated_at,
     )
 
 

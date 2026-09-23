@@ -17,6 +17,7 @@ from src.application.abuse.abuse_control_service import (
 )
 from src.application.agent.guard_responses import blocked_input_response
 from src.application.agent.intent_classifier import IntentClassifier
+from src.application.agent.mcp_server_resolver import McpServerResolver
 from src.application.agent.output_format import (
     FinalizedAnswer,
     OutputSpec,
@@ -364,15 +365,10 @@ class SendMessageUseCase:
         cfg["miss_reply"] = getattr(bot, "miss_reply", "") or ""
         cfg["output_text_field"] = getattr(bot, "output_text_field", "") or "answer"
         cfg["tool_rag_params"] = build_tool_rag_params_map(bot=bot)
-        cfg["mcp_servers"] = self._build_inline_mcp_servers(bot)
-
-        # Registry-based MCP bindings → resolved server configs
-        if bot.mcp_bindings and self._mcp_registry_repo:
-            registry_servers = await self._resolve_registry_mcp_servers(
-                self._mcp_registry_repo, bot, command.tenant_id
-            )
-            if registry_servers:
-                cfg["mcp_servers"] = registry_servers
+        # inline + registry 綁定（channel-parity：與 LINE 共用 McpServerResolver）
+        cfg["mcp_servers"] = await McpServerResolver(
+            self._mcp_registry_repo, self._encryption
+        ).resolve(bot, command.tenant_id)
 
         cfg["max_tool_calls"] = bot.max_tool_calls or 5
         cfg["bot_id"] = bot.id.value
@@ -458,73 +454,6 @@ class SendMessageUseCase:
         if bot.llm_model:
             llm_params["model"] = bot.llm_model
         return llm_params
-
-    @staticmethod
-    def _build_inline_mcp_servers(bot: Any) -> list[dict[str, Any]]:
-        """bot 直接設定的 MCP server（非 registry binding）。"""
-        return [
-            {
-                "url": s.url,
-                "name": s.name,
-                "enabled_tools": s.enabled_tools,
-                "transport": s.transport,
-                **(
-                    {"command": s.command, "args": s.args}
-                    if s.transport == "stdio"
-                    else {}
-                ),
-            }
-            for s in bot.mcp_servers
-        ]
-
-    def _decrypt_env_values(self, env_values: dict[str, str]) -> dict[str, str]:
-        """Decrypt env_values (stored encrypted in DB)."""
-        decrypted_env: dict[str, str] = {}
-        for k, v in env_values.items():
-            if not v:
-                decrypted_env[k] = ""
-            elif self._encryption:
-                try:
-                    decrypted_env[k] = self._encryption.decrypt(v)
-                except Exception:
-                    # Fallback: pre-migration plaintext data
-                    decrypted_env[k] = v
-            else:
-                decrypted_env[k] = v
-        return decrypted_env
-
-    async def _resolve_registry_mcp_servers(
-        self, registry_repo: Any, bot: Any, tenant_id: str
-    ) -> list[dict[str, Any]]:
-        """Registry-based MCP bindings → resolved server configs."""
-        registry_servers: list[dict[str, Any]] = []
-        for binding in bot.mcp_bindings:
-            reg = await registry_repo.find_by_id(binding.registry_id)
-            if not reg or not reg.is_enabled:
-                continue
-            # Tenant scope check: skip if not accessible
-            if reg.scope == "tenant" and tenant_id not in reg.tenant_ids:
-                continue
-
-            decrypted_env = self._decrypt_env_values(binding.env_values)
-
-            server_cfg: dict[str, Any] = {
-                "name": reg.name,
-                "transport": reg.transport,
-            }
-            if reg.transport == "stdio":
-                server_cfg["command"] = reg.command
-                server_cfg["args"] = reg.args
-                server_cfg["env"] = decrypted_env
-            else:
-                resolved_url = reg.url
-                for key, value in decrypted_env.items():
-                    resolved_url = resolved_url.replace(f"{{{key}}}", value)
-                server_cfg["url"] = resolved_url
-            if binding.enabled_tools:
-                server_cfg["enabled_tools"] = binding.enabled_tools
-            registry_servers.append(server_cfg)
-        return registry_servers
 
     @staticmethod
     async def _load_tenant_default_models(
