@@ -88,12 +88,17 @@ class SQLAlchemyChunkCategoryRepository(ChunkCategoryRepository):
     async def update_chunk_counts(self, kb_id: str) -> None:
         """Recalculate chunk_count for all categories in a KB."""
         async with atomic(self._session):
+            # #102：只數這個 KB 的分類底下的 chunk（原本統計全平台再逐筆更新）
             sub = (
                 select(
                     ChunkModel.category_id,
                     func.count().label("cnt"),
                 )
-                .where(ChunkModel.category_id.isnot(None))
+                .join(
+                    ChunkCategoryModel,
+                    ChunkCategoryModel.id == ChunkModel.category_id,
+                )
+                .where(ChunkCategoryModel.kb_id == kb_id)
                 .group_by(ChunkModel.category_id)
                 .subquery()
             )
@@ -110,7 +115,10 @@ class SQLAlchemyChunkCategoryRepository(ChunkCategoryRepository):
             for cat_id, cnt in rows.all():
                 await self._session.execute(
                     update(ChunkCategoryModel)
-                    .where(ChunkCategoryModel.id == cat_id)
+                    .where(
+                        ChunkCategoryModel.id == cat_id,
+                        ChunkCategoryModel.kb_id == kb_id,
+                    )
                     .values(chunk_count=cnt)
                 )
 

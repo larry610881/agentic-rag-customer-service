@@ -103,6 +103,19 @@ def test_update_chunk_counts_resets_kb_then_sets_counts(session, repo):
     assert "chunk_categories.id = 'cat-2'" in upd2
 
 
+
+def test_update_chunk_counts_only_counts_chunks_of_this_kb(session, repo):
+    """Regression（#102）：計數子查詢原本統計全平台 chunk，每次分類都掃整張表。
+
+    計數必須限定在該 KB 的分類，且逐筆更新也要綁 kb_id（不可能寫到別的 KB）。
+    """
+    session.queue_result()  # reset UPDATE
+    session.queue_result([("cat-1", 3)])
+    _run(repo.update_chunk_counts("kb-1"))
+    _, count, upd = session.all_sql()
+    assert "chunk_categories.kb_id = 'kb-1'" in count
+    assert "chunk_categories.kb_id = 'kb-1'" in upd
+
 def test_delete_by_id_unassigns_chunks_first(session, repo):
     _run(repo.delete_by_id("cat-1"))
     unassign, delete_ = session.all_sql()
