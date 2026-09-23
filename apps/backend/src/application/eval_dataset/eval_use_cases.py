@@ -198,6 +198,7 @@ class EstimateCostCommand:
     patience: int = 5
     budget: int = 200
     tenant_id: str = ""  # Issue #74：估算點數用（空 = 不換算）
+    role: str | None = None  # 歸屬檢查用（B8 fence）；system_admin 可跨租戶
 
 
 # Fallback cost per call if model not found in registry
@@ -281,6 +282,19 @@ class EstimateCostUseCase:
         dataset = await self._dataset_repo.find_by_id(command.dataset_id)
         if dataset is None:
             raise EntityNotFoundError("EvalDataset", command.dataset_id)
+        # B8 fence：dataset / bot 皆以 id 查、不分租戶。估算結果含題數與提示詞
+        # token 數，他租戶的不得估（同 run / validate 的讀取語意）。
+        requester = command.tenant_id or None
+        ensure_dataset_read(dataset, requester, command.role)
+        if (
+            requester is not None
+            and command.role != "system_admin"
+            and command.bot_id
+            and self._bot_repo
+        ):
+            bot = await self._bot_repo.find_by_id(command.bot_id)
+            if bot is None or bot.tenant_id != requester:
+                raise EntityNotFoundError("Bot", command.bot_id)
 
         num_cases = len(dataset.test_cases)
 

@@ -174,17 +174,20 @@ class UploadDocumentUseCase:
         )
 
     async def confirm_upload(
-        self, document_id: str, task_id: str
+        self, document_id: str, task_id: str, kb_id: str | None = None
     ) -> UploadDocumentResult:
         """Confirm direct upload completed, return document + task for
         background processing.
+
+        kb_id：路徑上的 KB（router 已驗 KB 歸屬）；文件須屬於該 KB、task 須屬於該
+        文件，否則可確認並重跑他租戶文件（B8 fence）。None = 內部呼叫端。
         """
         doc = await self._doc_repo.find_by_id(document_id)
-        if doc is None:
+        if doc is None or (kb_id is not None and doc.kb_id != kb_id):
             raise EntityNotFoundError("Document", document_id)
 
         task = await self._task_repo.find_by_id(task_id)
-        if task is None:
+        if task is None or (kb_id is not None and task.document_id != document_id):
             raise EntityNotFoundError("ProcessingTask", task_id)
 
         return UploadDocumentResult(document=doc, task=task)

@@ -236,11 +236,15 @@ async def list_tenants(
 @inject
 async def get_tenant(
     tenant_id: str,
-    _: CurrentTenant = Depends(get_current_tenant),
+    caller: CurrentTenant = Depends(get_current_tenant),
     use_case: GetTenantUseCase = Depends(
         Provide[Container.get_tenant_use_case]
     ),
 ) -> TenantResponse:
+    # Issue #101：非 system_admin 只能讀自己的租戶；他租戶一律 404（防枚舉）
+    if caller.role != "system_admin" and caller.tenant_id != tenant_id:
+        e = EntityNotFoundError("Tenant", tenant_id)
+        raise ApiError(404, code=not_found_code(e), message=e.message)
     try:
         tenant = await use_case.execute(tenant_id)
     except EntityNotFoundError as e:

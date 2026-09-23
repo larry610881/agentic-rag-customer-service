@@ -711,6 +711,7 @@ async def estimate_cost(
         patience=body.patience,
         budget=body.budget,
         tenant_id=tenant.tenant_id,  # Issue #74：點數制估算
+        role=tenant.role,
     )
     try:
         return await use_case.execute(command)

@@ -7,6 +7,7 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
+    Request,
     UploadFile,
     status,
 )
@@ -64,9 +65,45 @@ from src.interfaces.api.idempotency import (
 from src.interfaces.api.schemas.pagination import PaginatedResponse, PaginationQuery
 from src.interfaces.api.types import ApiDateTime
 
+
+@inject
+async def require_kb_document_scope(
+    request: Request,
+    kb_id: str,
+    tenant: CurrentTenant = Depends(get_current_tenant),
+    kb_repo: Any = Depends(Provide[Container.kb_repository]),
+    doc_repo: Any = Depends(Provide[Container.document_repository]),
+) -> None:
+    """本 router 全部端點的歸屬閘門（B8 tenant fence 發現的跨租戶 IDOR）。
+
+    端點以路徑 kb_id / doc_id 定位資源，而 document repository 以 id 查詢不帶租戶
+    條件。原本多數端點（列表、檢視原檔、預覽網址、chunks、刪除、重處理…）只驗登入、
+    不驗歸屬 → 任一租戶帶他租戶的 kb_id / doc_id 即可讀取或刪除。這裡統一：
+    KB 須可存取（system_admin 放行，跨租戶一律 404 防枚舉），路徑有 doc_id 時
+    文件須屬於該 KB。body 內的 doc id（批次、confirm-upload）由 use case 以 kb_id 比對。
+    """
+    from src.application.knowledge._admin_kb_check import ensure_kb_accessible
+
+    try:
+        await ensure_kb_accessible(kb_repo, kb_id, tenant.tenant_id)
+    except EntityNotFoundError as e:
+        raise ApiError(404, code=not_found_code(e), message=e.message) from None
+    doc_id = request.path_params.get("doc_id")
+    if doc_id is None:
+        return
+    doc = await doc_repo.find_by_id(doc_id)
+    if doc is None or doc.kb_id != kb_id:
+        raise ApiError(
+            404,
+            code="document_not_found",
+            message=f"Document '{doc_id}' not found",
+        )
+
+
 router = APIRouter(
     prefix="/api/v1/knowledge-bases/{kb_id}/documents",
     tags=["documents"],
+    dependencies=[Depends(require_kb_document_scope)],
 )
 
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
@@ -489,7 +526,7 @@ async def delete_document(
     ),
 ) -> None:
     try:
-        await use_case.execute(doc_id)
+        await use_case.execute(doc_id, kb_id=kb_id)
     except EntityNotFoundError as e:
         raise ApiError(
             404,
@@ -679,7 +716,9 @@ async def confirm_upload(
     _log = _logging.getLogger("confirm_upload")
 
     try:
-        result = await use_case.confirm_upload(body.document_id, body.task_id)
+        result = await use_case.confirm_upload(
+            body.document_id, body.task_id, kb_id=kb_id
+        )
     except EntityNotFoundError as e:
         raise ApiError(
             404,
@@ -869,7 +908,7 @@ async def batch_delete_documents(
     failed: list[BatchFailedItem] = []
     for doc_id in body.doc_ids:
         try:
-            await use_case.execute(doc_id)
+            await use_case.execute(doc_id, kb_id=kb_id)
             succeeded.append(doc_id)
         except EntityNotFoundError:
             failed.append(BatchFailedItem(id=doc_id, error="Document not found"))
@@ -897,7 +936,9 @@ async def batch_reprocess_documents(
     failed: list[BatchFailedItem] = []
     for doc_id in body.doc_ids:
         try:
-            task = await use_case.begin_reprocess(doc_id, tenant.tenant_id)
+            task = await use_case.begin_reprocess(
+                doc_id, tenant.tenant_id, kb_id=kb_id
+            )
 
             async def _reprocess(d_id: str, t_id: str) -> None:
                 uc = Container.reprocess_document_use_case()
@@ -954,7 +995,7 @@ async def reprocess_document(
         Provide[Container.reprocess_document_use_case]
     ),
 ) -> ReprocessDocumentResponse:
-    task = await use_case.begin_reprocess(doc_id, tenant.tenant_id)
+    task = await use_case.begin_reprocess(doc_id, tenant.tenant_id, kb_id=kb_id)
 
     async def _reprocess(
         d_id: str,

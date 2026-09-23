@@ -43,14 +43,15 @@ def _setup_conversation_and_repos(context, conv_id="conv-1"):
         id=ConversationId(value=conv_id),
         tenant_id="tenant-1",
     )
-    conversation.messages.append(
-        Message(
-            id=MessageId(value="msg-1"),
-            conversation_id=conv_id,
-            role="assistant",
-            content="這是一則回答",
+    for mid in ("msg-1", "msg-2"):
+        conversation.messages.append(
+            Message(
+                id=MessageId(value=mid),
+                conversation_id=conv_id,
+                role="assistant",
+                content="這是一則回答",
+            )
         )
-    )
 
     mock_conv_repo = AsyncMock(spec=ConversationRepository)
     mock_conv_repo.find_by_id = AsyncMock(return_value=conversation)

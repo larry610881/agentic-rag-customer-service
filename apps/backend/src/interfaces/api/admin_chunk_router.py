@@ -7,6 +7,7 @@ Chunk CRUD + retrieval playground + quality summary endpoints for KB Studio.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -223,14 +224,21 @@ async def update_chunk(
 
 
 @router.post("/chunks/{chunk_id}/re-embed")
+@inject
 async def re_embed_chunk(
     chunk_id: str,
     tenant: CurrentTenant = Depends(get_current_tenant),
+    doc_repo: Any = Depends(Provide[Container.document_repository]),
 ) -> dict:
-    # 攻擊面：API 這層只 enqueue，worker 端 use case 第一行 chunk→doc→kb→tenant
-    # 驗證才是 authoritative check。任何 tenant 都能 enqueue 但 worker 會驗，
-    # 不屬於 caller tenant 的會 silently log warning。
+    # 歸屬在這層驗：worker 的 ReEmbedChunkUseCase 只收 chunk_id、不知道呼叫者租戶，
+    # 無從比對（B8 fence：原註解說 worker 會驗，實際沒有 → 任一租戶可替他租戶
+    # chunk 重算 embedding、耗對方用量）。跨租戶一律 404 防枚舉。
+    from src.application.knowledge._admin_kb_check import tenant_match_or_admin
     from src.infrastructure.queue.arq_pool import enqueue
+
+    chunk = await doc_repo.find_chunk_by_id(chunk_id)
+    if chunk is None or not tenant_match_or_admin(chunk.tenant_id, tenant.tenant_id):
+        raise ApiError(404, code="chunk_not_found", message="Chunk not found")
     job_id = await enqueue("reembed_chunk", chunk_id)
     return {"status": "enqueued", "chunk_id": chunk_id, "job_id": job_id}
 

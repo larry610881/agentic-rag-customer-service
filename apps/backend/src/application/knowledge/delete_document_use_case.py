@@ -37,9 +37,11 @@ class DeleteDocumentUseCase:
         self._publish_outbox = publish_outbox_event_use_case
         self._file_storage = document_file_storage
 
-    async def execute(self, doc_id: str) -> None:
+    async def execute(self, doc_id: str, kb_id: str | None = None) -> None:
         doc = await self._doc_repo.find_by_id(doc_id)
-        if doc is None:
+        # kb_id：路徑上的 KB（router 已驗 KB 歸屬）；文件須屬於該 KB，否則以自己的
+        # KB 路徑可刪他租戶文件（B8 fence）。None = 內部呼叫端，維持舊行為。
+        if doc is None or (kb_id is not None and doc.kb_id != kb_id):
             raise EntityNotFoundError("Document", doc_id)
 
         kb_id = doc.kb_id
