@@ -33,6 +33,7 @@ from src.domain.shared.exceptions import (
     DuplicateEntityError,
     EntityNotFoundError,
 )
+from src.domain.shared.secret_masking import mask_args, mask_url
 from src.interfaces.api.deps import CurrentTenant, get_current_tenant, require_role
 from src.interfaces.api.errors import ApiError, not_found_code
 from src.interfaces.api.types import ApiDateTime
@@ -133,9 +134,9 @@ def _to_response(server: Any) -> McpServerResponse:
         name=server.name,
         description=server.description,
         transport=server.transport,
-        url=server.url,
+        url=mask_url(server.url),  # #102：網址與參數裡的憑證遮罩
         command=server.command,
-        args=server.args,
+        args=mask_args(server.args),
         required_env=server.required_env,
         available_tools=[
             ToolMetaSchema(name=t.name, description=t.description)

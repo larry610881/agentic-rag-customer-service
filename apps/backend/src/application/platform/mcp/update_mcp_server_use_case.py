@@ -7,6 +7,7 @@ from src.domain.platform.entity import McpServerRegistration
 from src.domain.platform.repository import McpServerRegistrationRepository
 from src.domain.platform.value_objects import McpRegistryToolMeta
 from src.domain.shared.exceptions import EntityNotFoundError
+from src.domain.shared.secret_masking import keep_if_masked, mask_args, mask_url
 
 _SIMPLE_FIELDS = (
     "name", "description", "transport", "url", "command",
@@ -57,10 +58,16 @@ class UpdateMcpServerUseCase:
         server: McpServerRegistration,
         command: UpdateMcpServerCommand,
     ) -> None:
+        old_url, old_args = server.url, list(server.args)
         for field_name in _SIMPLE_FIELDS:
             value = getattr(command, field_name)
             if value is not None:
                 setattr(server, field_name, value)
+        # #102：回應已遮罩網址與參數；表單原封送回遮罩值時保留原本的憑證
+        if command.url is not None:
+            server.url = keep_if_masked(command.url, old_url, mask_url)
+        if command.args is not None:
+            server.args = keep_if_masked(command.args, old_args, mask_args)
 
         if command.available_tools is not None:
             server.available_tools = [

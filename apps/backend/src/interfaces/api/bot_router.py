@@ -30,6 +30,7 @@ from src.container import Container
 from src.domain.bot.entity import VALID_BOT_MODES, VALID_REASONING_EFFORTS, Bot
 from src.domain.platform.value_objects import ProviderName
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
+from src.domain.shared.secret_masking import mask_url
 from src.interfaces.api.deps import (
     CurrentTenant,
     get_current_tenant,
@@ -395,7 +396,8 @@ def _to_response(bot: Bot) -> BotResponse:
         gate_excluded_cases=bot.gate_excluded_cases,
         mcp_servers=[
             {
-                "url": s.url,
+                # #102：網址裡若直接寫了憑證，回應遮罩（存檔送回遮罩值時保留原值）
+                "url": mask_url(s.url),
                 "name": s.name,
                 "enabled_tools": s.enabled_tools,
                 "tools": [

@@ -37,6 +37,7 @@ from src.domain.prompt_gate.repository import BotConfigVersionRepository
 from src.domain.rag.retrieval_mode import normalize_modes, validate_modes
 from src.domain.shared.cache_service import CacheService
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
+from src.domain.shared.secret_masking import keep_if_masked, mask_url
 
 _UNSET = object()
 
@@ -281,9 +282,15 @@ class UpdateBotUseCase:
     @staticmethod
     def _apply_mcp_servers_field(bot: Bot, command: UpdateBotCommand) -> None:
         if command.mcp_servers is not _UNSET:
+            # #102：回應已遮罩網址裡的憑證；送回遮罩值時沿用同名 server 的原網址
+            old_urls = {s.name: s.url for s in bot.mcp_servers}
             bot.mcp_servers = [
                 McpServerConfig(
-                    url=s.get("url", ""),
+                    url=keep_if_masked(
+                        s.get("url", ""),
+                        old_urls.get(s.get("name", ""), ""),
+                        mask_url,
+                    ),
                     name=s.get("name", ""),
                     enabled_tools=s.get("enabled_tools", []),
                     tools=[
