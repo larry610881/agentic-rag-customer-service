@@ -11,6 +11,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+from anthropic.types import TextBlock
+
 from src.infrastructure.file_parser.ocr_engines.claude_vision_ocr import (
     _PAGE_TYPE_PROMPTS,
     _VALID_PAGE_TYPES,
@@ -54,9 +56,9 @@ def _make_engine_with_fake_client(
         msg = MagicMock(usage=usage)
         # Return classify response if prompt is the classify prompt
         if "請分類為下列其中一種" in prompt_text:
-            msg.content = [MagicMock(text=classify_response)]
+            msg.content = [TextBlock(type="text", text=classify_response)]
         else:
-            msg.content = [MagicMock(text=ocr_response)]
+            msg.content = [TextBlock(type="text", text=ocr_response)]
         call_state["calls"] += 1
         return msg
 

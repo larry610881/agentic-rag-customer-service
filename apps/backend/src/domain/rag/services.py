@@ -167,7 +167,7 @@ class LLMService(ABC):
     ) -> LLMResult: ...
 
     @abstractmethod
-    async def generate_stream(
+    def generate_stream(
         self,
         system_prompt: str,
         user_message: str,

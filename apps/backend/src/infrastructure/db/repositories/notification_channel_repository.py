@@ -1,8 +1,10 @@
 """SQLAlchemy implementation of NotificationChannelRepository."""
 
 from datetime import datetime, timezone
+from typing import Any, cast
 
 from sqlalchemy import delete, select
+from sqlalchemy.engine import CursorResult, Result
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.observability.notification import (
@@ -13,6 +15,12 @@ from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.notification_channel_model import (
     NotificationChannelModel,
 )
+
+
+def _rowcount(result: Result[Any]) -> int:
+    """UPDATE/DELETE 經 AsyncSession.execute 回傳的一定是 CursorResult（有 rowcount），
+    但 execute 的宣告型別是 Result；此處收斂型別。"""
+    return cast(CursorResult[Any], result).rowcount
 
 
 class SQLAlchemyNotificationChannelRepository(NotificationChannelRepository):
@@ -109,4 +117,4 @@ class SQLAlchemyNotificationChannelRepository(NotificationChannelRepository):
                     NotificationChannelModel.id == channel_id
                 )
             )
-        return result.rowcount > 0
+        return _rowcount(result) > 0

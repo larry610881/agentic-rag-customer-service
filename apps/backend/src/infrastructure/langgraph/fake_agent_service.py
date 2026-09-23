@@ -40,6 +40,7 @@ class FakeAgentService(AgentService):
         customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
+        bot_id: str = "",
     ) -> AgentResponse:
         return await self._supervisor.process_message(
             tenant_id, kb_id, user_message, history, metadata=metadata
@@ -65,6 +66,7 @@ class FakeAgentService(AgentService):
         customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
+        bot_id: str = "",
     ) -> AsyncIterator[dict[str, Any]]:
         async for chunk in self._supervisor.process_message_stream(
             tenant_id, kb_id, user_message, history,

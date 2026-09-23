@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, cast
 
 from src.application.bot._guard_stages import validate_bot_guard_stages_for_tenant
 from src.application.bot._output_settings import validate_output_settings
@@ -185,15 +185,25 @@ class UpdateBotUseCase:
     @staticmethod
     def _apply_list_fields(bot: Bot, command: UpdateBotCommand) -> None:
         if command.knowledge_base_ids is not _UNSET:
-            bot.knowledge_base_ids = list(command.knowledge_base_ids)  # type: ignore[arg-type]
+            bot.knowledge_base_ids = list(
+                cast("list[str]", command.knowledge_base_ids)
+            )
         if command.enabled_tools is not _UNSET:
-            bot.enabled_tools = list(command.enabled_tools)  # type: ignore[arg-type]
+            bot.enabled_tools = list(
+                cast("list[str]", command.enabled_tools)
+            )
         if command.widget_allowed_origins is not _UNSET:
-            bot.widget_allowed_origins = list(command.widget_allowed_origins)  # type: ignore[arg-type]
+            bot.widget_allowed_origins = list(
+                cast("list[str]", command.widget_allowed_origins)
+            )
         if command.widget_greeting_messages is not _UNSET:
-            bot.widget_greeting_messages = list(command.widget_greeting_messages)  # type: ignore[arg-type]
+            bot.widget_greeting_messages = list(
+                cast("list[str]", command.widget_greeting_messages)
+            )
         if command.gate_excluded_cases is not _UNSET:
-            bot.gate_excluded_cases = list(command.gate_excluded_cases)  # type: ignore[arg-type]
+            bot.gate_excluded_cases = list(
+                cast("list[str]", command.gate_excluded_cases)
+            )
 
     @staticmethod
     def _apply_rerank_and_retrieval_fields(
@@ -207,7 +217,7 @@ class UpdateBotUseCase:
             bot.rerank_top_n = command.rerank_top_n  # type: ignore[assignment]
         # Issue #43 — Bot-level RAG retrieval modes
         if command.rag_retrieval_modes is not _UNSET:
-            modes = list(command.rag_retrieval_modes)  # type: ignore[arg-type]
+            modes = list(cast("list[str]", command.rag_retrieval_modes))
             try:
                 validate_modes(modes)
             except ValueError as exc:
@@ -243,7 +253,9 @@ class UpdateBotUseCase:
                     rerank_top_n=cfg.get("rerank_top_n"),
                     kb_ids=cfg.get("kb_ids"),
                 )
-                for name, cfg in (command.tool_configs or {}).items()  # type: ignore[union-attr]
+                for name, cfg in cast(
+                    "dict[str, Any]", command.tool_configs or {}
+                ).items()
                 if isinstance(cfg, dict)
             }
 
@@ -261,7 +273,7 @@ class UpdateBotUseCase:
                     # Issue #91 正名；相容舊 payload 的 system_prompt 鍵
                     worker_prompt=r.get("worker_prompt") or r.get("system_prompt", ""),
                 )
-                for r in command.intent_routes  # type: ignore[union-attr]
+                for r in cast("list[dict[str, Any]]", command.intent_routes)
             ]
         if command.router_model is not _UNSET:
             bot.router_model = command.router_model  # type: ignore[assignment]
@@ -283,7 +295,7 @@ class UpdateBotUseCase:
                     ],
                     version=s.get("version", ""),
                 )
-                for s in command.mcp_servers  # type: ignore[union-attr]
+                for s in cast("list[dict[str, Any]]", command.mcp_servers)
             ]
 
     @staticmethod

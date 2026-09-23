@@ -215,17 +215,17 @@ async def list_documents(
     ]
     if failed_doc_ids:
         async with async_session_factory() as session:
-            stmt = select(
+            error_stmt = select(
                 ProcessingTaskModel.document_id,
                 ProcessingTaskModel.error_message,
             ).where(
                 ProcessingTaskModel.document_id.in_(failed_doc_ids),
                 ProcessingTaskModel.status == "failed",
             )
-            rows = await session.execute(stmt)
-            for row in rows.all():
-                if row[1]:
-                    error_map[row[0]] = row[1]
+            error_rows = await session.execute(error_stmt)
+            for error_row in error_rows.all():
+                if error_row[1]:
+                    error_map[error_row[0]] = error_row[1]
 
     # Filter: only show top-level documents (no children)
     top_level = [d for d in documents if d.parent_id is None]
@@ -236,7 +236,7 @@ async def list_documents(
     parent_ids = [d.id.value for d in top_level]
     if parent_ids:
         async with async_session_factory() as session:
-            stmt = (
+            children_stmt = (
                 select(
                     DocumentModel.parent_id,
                     sa_func.count().label("total"),
@@ -247,10 +247,10 @@ async def list_documents(
                 .where(DocumentModel.parent_id.in_(parent_ids))
                 .group_by(DocumentModel.parent_id)
             )
-            rows = await session.execute(stmt)
-            for row in rows.all():
-                children_count_map[row[0]] = row[1]
-                completed_children_count_map[row[0]] = row[2]
+            children_rows = await session.execute(children_stmt)
+            for child_row in children_rows.all():
+                children_count_map[child_row[0]] = child_row[1]
+                completed_children_count_map[child_row[0]] = child_row[2]
 
     return PaginatedResponse(
         items=[

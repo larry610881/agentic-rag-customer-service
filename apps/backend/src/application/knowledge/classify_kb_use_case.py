@@ -139,6 +139,12 @@ class ClassifyKbUseCase:
         if kb is None:
             log.warning("classify_kb.kb_not_found")
             return
+        # 縱深防禦：佇列參數的 tenant 必須是 KB 擁有者（router 已先擋，這裡再擋一次）
+        from src.application.knowledge._admin_kb_check import tenant_match_or_admin
+
+        if not tenant_match_or_admin(kb.tenant_id, tenant_id):
+            log.warning("classify_kb.tenant_mismatch", kb_tenant=kb.tenant_id)
+            return
 
         # 1. Get all chunk IDs in this KB
         chunk_ids_by_doc = await self._doc_repo.find_chunk_ids_by_kb(kb_id)

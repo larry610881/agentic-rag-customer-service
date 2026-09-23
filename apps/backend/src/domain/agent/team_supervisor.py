@@ -19,9 +19,12 @@ class TeamSupervisor(AgentWorker):
         return self._team_name
 
     async def can_handle(self, context: WorkerContext) -> bool:
-        return any(
-            await worker.can_handle(context) for worker in self._workers
-        )
+        # 不可寫成 any(await ... for ...)：含 await 的生成式是 async generator，
+        # any() 無法迭代（TypeError）。
+        for worker in self._workers:
+            if await worker.can_handle(context):
+                return True
+        return False
 
     async def handle(self, context: WorkerContext) -> WorkerResult:
         for worker in self._workers:

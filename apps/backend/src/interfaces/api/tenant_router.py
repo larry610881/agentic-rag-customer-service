@@ -174,8 +174,8 @@ def _to_response(t: Tenant) -> TenantResponse:
         default_classification_model=t.default_classification_model,
         default_summary_model=t.default_summary_model,
         default_intent_model=t.default_intent_model,
-        created_at=t.created_at.isoformat(),
-        updated_at=t.updated_at.isoformat(),
+        created_at=t.created_at,
+        updated_at=t.updated_at,
     )
 
 

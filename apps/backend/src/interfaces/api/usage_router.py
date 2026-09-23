@@ -95,6 +95,8 @@ async def get_usage_by_bot(
         Provide[Container.query_bot_usage_use_case]
     ),
 ) -> list[BotUsageStatResponse]:
+    dt_start: datetime | None
+    dt_end: datetime | None
     if start_date is None and end_date is None:
         dt_end = datetime.now(timezone.utc)
         dt_start = dt_end - timedelta(days=30)
@@ -138,6 +140,8 @@ async def get_daily_usage(
         Provide[Container.query_daily_usage_use_case]
     ),
 ) -> list[DailyUsageStatResponse]:
+    dt_start: datetime | None
+    dt_end: datetime | None
     if start_date is None and end_date is None:
         dt_end = datetime.now(timezone.utc)
         dt_start = dt_end - timedelta(days=30)
@@ -192,6 +196,8 @@ async def get_monthly_usage(
         Provide[Container.query_monthly_usage_use_case]
     ),
 ) -> list[MonthlyUsageStatResponse]:
+    dt_start: datetime | None
+    dt_end: datetime | None
     if start_date is None and end_date is None:
         dt_end = datetime.now(timezone.utc)
         dt_start = dt_end - timedelta(days=365)

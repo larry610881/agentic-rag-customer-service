@@ -102,6 +102,13 @@ class FakeDocumentRepo(DocumentRepository):
             if d.kb_id == kb_id and getattr(d, "status", "") in statuses
         )
 
+    async def count_children_by_status(self, parent_id):
+        counts: dict[str, int] = {}
+        for d in self.docs.values():
+            if getattr(d, "parent_id", None) == parent_id:
+                counts[d.status] = counts.get(d.status, 0) + 1
+        return counts
+
     async def find_stale_pending(self, older_than, limit=200):
         return [
             d for d in self.docs.values()

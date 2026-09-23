@@ -57,6 +57,6 @@ async def get_task(
         status=task.status,
         progress=task.progress,
         error_message=task.error_message,
-        created_at=task.created_at.isoformat(),
-        updated_at=task.updated_at.isoformat(),
+        created_at=task.created_at,
+        updated_at=task.updated_at,
     )

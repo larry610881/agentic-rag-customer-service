@@ -31,8 +31,7 @@ class ProcessMonthlyResetUseCase:
         cycle = current_year_month()
         tenants = await self._tenant_repo.find_all()
 
-        stats = {
-            "cycle": cycle,
+        counts: dict[str, int] = {
             "processed": 0,
             "created": 0,
             "skipped": 0,
@@ -40,19 +39,19 @@ class ProcessMonthlyResetUseCase:
         }
 
         for tenant in tenants:
-            stats["processed"] += 1
+            counts["processed"] += 1
             try:
                 existing = await self._ledger_repo.find_by_tenant_and_cycle(
                     tenant.id.value, cycle
                 )
                 if existing:
-                    stats["skipped"] += 1
+                    counts["skipped"] += 1
                     continue
 
                 await self._ensure_ledger.execute(tenant.id.value, tenant.plan)
-                stats["created"] += 1
+                counts["created"] += 1
             except Exception:
-                stats["failed"] += 1
+                counts["failed"] += 1
                 logger.warning(
                     "monthly_reset.tenant_failed",
                     tenant_id=tenant.id.value,
@@ -60,5 +59,6 @@ class ProcessMonthlyResetUseCase:
                     exc_info=True,
                 )
 
+        stats: dict[str, str | int] = {"cycle": cycle, **counts}
         logger.info("monthly_reset.done", **stats)
         return stats

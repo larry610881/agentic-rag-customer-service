@@ -10,6 +10,7 @@ from src.application.eval_dataset._tenant_guard import ensure_dataset_read
 from src.domain.bot.repository import BotRepository
 from src.domain.eval_dataset.repository import EvalDatasetRepository
 from src.domain.eval_dataset.run_repository import OptimizationRunRepository
+from src.domain.platform.services import EncryptionService
 from src.domain.shared.exceptions import EntityNotFoundError
 from src.domain.usage.category import UsageCategory
 from src.infrastructure.prompt_optimizer.run_manager import (
@@ -85,7 +86,7 @@ class StartRunUseCase:
         db_url: str = "",
         api_base_url: str = "http://localhost:8000",
         provider_setting_repository=None,
-        encryption_service=None,
+        encryption_service: EncryptionService | None = None,
         record_usage_factory=None,
         create_version_factory=None,
         quota_preflight=None,
@@ -224,6 +225,8 @@ class StartRunUseCase:
 
     async def _resolve_llm_api_key(self) -> str:
         """Resolve LLM API key from the first enabled LLM provider setting."""
+        if self._encryption is None:
+            return ""
         settings = await self._provider_repo.find_all()
         for s in settings:
             if s.provider_type.value == "llm" and s.is_enabled and s.api_key_encrypted:
@@ -734,7 +737,7 @@ class ListRunsUseCase:
                 started = dr.get("started_at")
                 started_str = (
                     started.isoformat()
-                    if hasattr(started, "isoformat")
+                    if started is not None and hasattr(started, "isoformat")
                     else str(started)
                 )
                 merged.append({

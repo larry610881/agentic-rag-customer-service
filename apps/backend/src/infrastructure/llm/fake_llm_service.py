@@ -1,6 +1,7 @@
 """FakeLLMService — 確定性回應，用於測試與開發"""
 
 from collections.abc import AsyncIterator
+from typing import Any
 
 from src.domain.rag.services import LLMService
 from src.domain.rag.value_objects import LLMResult, TokenUsage
@@ -40,7 +41,7 @@ class FakeLLMService(LLMService):
         temperature: float | None = None,
         max_tokens: int | None = None,
         frequency_penalty: float | None = None,
-        usage_collector: dict | None = None,
+        usage_collector: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
         result = await self.generate(system_prompt, user_message, context)
         for char in result.text:

@@ -42,6 +42,7 @@ class SupervisorAgentService(AgentService):
         customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
+        bot_id: str = "",
     ) -> AgentResponse:
         _llm_params = llm_params or {}
         AgentTraceCollector.start(
@@ -122,6 +123,7 @@ class SupervisorAgentService(AgentService):
         customer_service_url: str = "",
         mcp_servers: list[dict[str, Any]] | None = None,
         max_tool_calls: int = 5,
+        bot_id: str = "",
     ) -> AsyncIterator[dict[str, Any]]:
         response = await self.process_message(
             tenant_id, kb_id, user_message, history,

@@ -1,16 +1,20 @@
 """Google Cloud Storage implementation of DocumentFileStorageService."""
 
 import asyncio
+from typing import TYPE_CHECKING
 
 from src.domain.knowledge.services import DocumentFileStorageService
+
+if TYPE_CHECKING:
+    from google.cloud import storage
 
 
 class GCSDocumentFileStorageService(DocumentFileStorageService):
     def __init__(self, bucket_name: str) -> None:
         self._bucket_name = bucket_name
-        self._client = None
+        self._client: "storage.Client | None" = None
 
-    def _get_bucket(self):
+    def _get_bucket(self) -> "storage.Bucket":
         if self._client is None:
             from google.cloud import storage
 
@@ -55,7 +59,8 @@ class GCSDocumentFileStorageService(DocumentFileStorageService):
 
         sa_email = getattr(credentials, "service_account_email", "")
 
-        url = await asyncio.to_thread(
+        # google-cloud-storage 無型別標註；generate_signed_url 回傳 URL 字串
+        url: str = await asyncio.to_thread(
             blob.generate_signed_url,
             version="v4",
             expiration=timedelta(seconds=expiry_seconds),
@@ -87,7 +92,8 @@ class GCSDocumentFileStorageService(DocumentFileStorageService):
 
         sa_email = getattr(credentials, "service_account_email", "")
 
-        url = await asyncio.to_thread(
+        # google-cloud-storage 無型別標註；generate_signed_url 回傳 URL 字串
+        url: str = await asyncio.to_thread(
             blob.generate_signed_url,
             version="v4",
             expiration=timedelta(seconds=expiry_seconds),

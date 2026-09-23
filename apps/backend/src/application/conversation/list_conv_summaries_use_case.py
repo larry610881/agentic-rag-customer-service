@@ -50,9 +50,11 @@ class ListConvSummariesUseCase:
         ) or getattr(self._repo, "list_conv_summaries", None)
         if find_method is None:
             return []
-        return await find_method(
+        # getattr 取得的動態 method 無型別；以明確宣告的區域變數承接回傳值
+        summaries: list[object] = await find_method(
             tenant_id=query.tenant_id,
             bot_id=query.bot_id,
             page=query.page,
             page_size=query.page_size,
         )
+        return summaries

@@ -14,9 +14,11 @@ import base64
 import json
 import time
 import uuid
+from collections.abc import Sequence
+from typing import TypedDict, Unpack
 
 import structlog
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from src.infrastructure.logging import get_logger
 from src.infrastructure.logging.error_context import (
@@ -90,6 +92,19 @@ class RequestTimeoutMiddleware:
             })
 
 
+class _CORSOptions(TypedDict, total=False):
+    """Keyword options forwarded verbatim to Starlette's ``CORSMiddleware``."""
+
+    allow_origins: Sequence[str]
+    allow_methods: Sequence[str]
+    allow_headers: Sequence[str]
+    allow_credentials: bool
+    allow_origin_regex: str | None
+    allow_private_network: bool
+    expose_headers: Sequence[str]
+    max_age: int
+
+
 class CORSMiddlewareWithExclusions:
     """Pure ASGI wrapper — bypasses CORSMiddleware for excluded paths.
 
@@ -102,11 +117,11 @@ class CORSMiddlewareWithExclusions:
     any domain can load models, textures, and scripts.
     """
 
-    def __init__(self, app: ASGIApp, **cors_kwargs: object) -> None:
+    def __init__(self, app: ASGIApp, **cors_kwargs: Unpack[_CORSOptions]) -> None:
         from starlette.middleware.cors import CORSMiddleware
 
         self._app = app
-        self._cors = CORSMiddleware(app, **cors_kwargs)  # type: ignore[arg-type]
+        self._cors = CORSMiddleware(app, **cors_kwargs)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -152,9 +167,12 @@ def extract_tenant_id(authorization: str) -> str | None:
         payload = json.loads(base64.urlsafe_b64decode(payload_b64))
         token_type = payload.get("type", "")
         if token_type == "user_access":
-            return payload.get("tenant_id")
+            claim = payload.get("tenant_id")
         elif token_type == "tenant_access":
-            return payload.get("sub")
+            claim = payload.get("sub")
+        else:
+            return None
+        return claim if isinstance(claim, str) else None
     except Exception:
         pass
     return None
@@ -203,7 +221,7 @@ class RequestIDMiddleware:
         # Capture status_code from response start message
         status_code = 500  # default if we never see response.start
 
-        async def send_wrapper(message: dict) -> None:
+        async def send_wrapper(message: Message) -> None:
             nonlocal status_code
             if message["type"] == "http.response.start":
                 status_code = message["status"]

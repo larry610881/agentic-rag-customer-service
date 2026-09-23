@@ -10,7 +10,7 @@ import logging
 from typing import Any
 
 from jose import JWTError, jwt
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from src.domain.ratelimit.rate_limiter_service import RateLimiterService
 from src.infrastructure.logging.trace import trace_step
@@ -36,7 +36,9 @@ ENDPOINT_GROUP_MAP: dict[str, str | None] = {
 WINDOW_SECONDS = 60
 
 
-def _inject_remaining_header(message: dict, remaining_str: str | None) -> dict:
+def _inject_remaining_header(
+    message: Message, remaining_str: str | None
+) -> Message:
     if message["type"] == "http.response.start" and remaining_str:
         raw_headers = list(message.get("headers", []))
         raw_headers.append((b"x-ratelimit-remaining", remaining_str.encode()))
@@ -127,7 +129,7 @@ class RateLimitMiddleware:
             else None
         )
 
-        async def send_wrapper(message: dict) -> None:
+        async def send_wrapper(message: Message) -> None:
             await send(_inject_remaining_header(message, remaining_str))
 
         await self.app(scope, receive, send_wrapper)

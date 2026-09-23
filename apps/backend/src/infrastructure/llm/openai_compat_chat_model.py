@@ -22,6 +22,7 @@ from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 from langchain_core.messages import AIMessageChunk
+from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGenerationChunk
 from langchain_openai import ChatOpenAI
 
@@ -29,15 +30,18 @@ from langchain_openai import ChatOpenAI
 CUMULATIVE_USAGE_HOSTS: tuple[str, ...] = ("generativelanguage.googleapis.com",)
 
 
-def _strip_usage(chunk: ChatGenerationChunk) -> dict | None:
+def _strip_usage(chunk: ChatGenerationChunk) -> UsageMetadata | None:
     msg = chunk.message
-    usage = getattr(msg, "usage_metadata", None)
+    # 只有 AIMessageChunk 有 usage_metadata（其他 chunk 型別等同無 usage）
+    if not isinstance(msg, AIMessageChunk):
+        return None
+    usage = msg.usage_metadata
     if usage:
         msg.usage_metadata = None
     return usage
 
 
-def _usage_only_chunk(usage: dict) -> ChatGenerationChunk:
+def _usage_only_chunk(usage: UsageMetadata) -> ChatGenerationChunk:
     return ChatGenerationChunk(
         message=AIMessageChunk(content="", usage_metadata=usage)
     )
@@ -47,7 +51,7 @@ class LastUsageChatOpenAI(ChatOpenAI):
     """串流只保留最後一筆 usage，避免累計值被逐 chunk 相加。"""
 
     def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:
-        last: dict | None = None
+        last: UsageMetadata | None = None
         for chunk in super()._stream(*args, **kwargs):
             usage = _strip_usage(chunk)
             if usage:
@@ -59,7 +63,7 @@ class LastUsageChatOpenAI(ChatOpenAI):
     async def _astream(
         self, *args: Any, **kwargs: Any
     ) -> AsyncIterator[ChatGenerationChunk]:
-        last: dict | None = None
+        last: UsageMetadata | None = None
         async for chunk in super()._astream(*args, **kwargs):
             usage = _strip_usage(chunk)
             if usage:
@@ -70,7 +74,9 @@ class LastUsageChatOpenAI(ChatOpenAI):
 
 
 def uses_cumulative_usage(base_url: str | None) -> bool:
-    return bool(base_url) and any(h in base_url for h in CUMULATIVE_USAGE_HOSTS)
+    if not base_url:
+        return False
+    return any(h in base_url for h in CUMULATIVE_USAGE_HOSTS)
 
 
 def build_openai_compat_chat_model(**kwargs: Any) -> ChatOpenAI:

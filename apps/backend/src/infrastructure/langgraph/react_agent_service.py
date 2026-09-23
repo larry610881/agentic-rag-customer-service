@@ -538,7 +538,7 @@ def _source_from_dict(s: dict[str, Any]) -> Source:
     )
 
 
-def _collect_tool_message_sources(msg: Any, sources: list[Any]) -> Any:
+def _collect_tool_message_sources(msg: Any, sources: list[Source]) -> Any:
     """Append Sources parsed from a ToolMessage to *sources* (in place).
 
     Returns the transfer_to_human_agent contact if present, else None.
@@ -1118,7 +1118,8 @@ class ReActAgentService(AgentService):
             # Pre-register tool trace nodes so inner nodes can be children
             tool_node_ids = _preregister_tool_trace_nodes(tool_names, trace_start_ms)
 
-            result = await _tool_node.ainvoke(state)
+            # ToolNode 對 dict state 輸入回傳 {"messages": [...]} dict（SDK 標 Any）
+            result: dict[str, Any] = await _tool_node.ainvoke(state)
 
             elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
             trace_end_ms = AgentTraceCollector.offset_ms()
@@ -1582,7 +1583,7 @@ class ReActAgentService(AgentService):
         # Find the last AI message as the answer
         answer = ""
         tool_calls: list[dict[str, Any]] = []
-        sources: list[dict[str, Any]] = []
+        sources: list[Source] = []
         contact: dict[str, Any] | None = None
         iteration = 0
 

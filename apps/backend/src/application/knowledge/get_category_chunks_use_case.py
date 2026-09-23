@@ -43,7 +43,8 @@ class GetCategoryChunksUseCase:
         self, kb_id: str, category_id: str
     ) -> CategoryChunksResult | None:
         cat = await self._cat_repo.find_by_id(category_id)
-        if cat is None:
+        # 分類必須屬於呼叫端給的 KB（擁有權由 router 以 KB 檢查）
+        if cat is None or cat.kb_id != kb_id:
             return None
 
         # Fetch chunks from DB

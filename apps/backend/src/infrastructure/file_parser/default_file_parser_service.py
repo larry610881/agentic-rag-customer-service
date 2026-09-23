@@ -139,4 +139,5 @@ class DefaultFileParserService(FileParserService):
     def _parse_rtf(self, raw_bytes: bytes) -> str:
         from striprtf.striprtf import rtf_to_text
 
-        return rtf_to_text(raw_bytes.decode("utf-8"))
+        # striprtf 無型別 stub（ignore_missing_imports → Any）
+        return rtf_to_text(raw_bytes.decode("utf-8"))  # type: ignore[no-any-return]

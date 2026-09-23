@@ -128,27 +128,37 @@ async def llm_rerank(
     try:
         import anthropic
 
+        from src.infrastructure.llm.anthropic_llm_service import (
+            anthropic_sampling_kwargs,
+        )
         from src.infrastructure.observability.agent_trace_collector import (
             AgentTraceCollector,
         )
 
         t0_ms = AgentTraceCollector.offset_ms()
-        client_kwargs = {}
-        if api_key:
-            client_kwargs["api_key"] = api_key
-        client = anthropic.AsyncAnthropic(**client_kwargs)
+        # api_key=None → SDK 自行讀 ANTHROPIC_API_KEY（與不帶參數相同）
+        client = anthropic.AsyncAnthropic(api_key=api_key or None)
+        # anthropic SDK 1.x 的 create() 已無 temperature 具名參數（直接帶會
+        # TypeError → 重排永遠退回原順序）；改經 extra_body 送，並依模型
+        # 能力表丟棄（Opus 4.7+ / Opus 5 等送 temperature 會 400）。
         response = await client.messages.create(
             model=model,
             max_tokens=500,
-            temperature=0,
             system=_RERANK_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
+            extra_body=anthropic_sampling_kwargs(model, temperature=0) or None,
         )
 
         if not response.content:
             logger.warning("rerank.empty_response")
             return chunks[:top_k]
-        raw = response.content[0].text.strip()
+        # 首個 content block 非文字（thinking / tool_use 等）時無 .text：
+        # 與原本 AttributeError 落入 except 相同，退回原順序
+        first_text = getattr(response.content[0], "text", None)
+        if not isinstance(first_text, str):
+            logger.warning("rerank.non_text_response")
+            return chunks[:top_k]
+        raw = first_text.strip()
         logger.info("rerank.raw_response", raw_preview=raw[:500])
 
         # Strip markdown code fences if present

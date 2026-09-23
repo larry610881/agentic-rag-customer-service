@@ -38,4 +38,5 @@ def setup_logging(log_level: str = "INFO", app_env: str = "development") -> None
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """Return a bound logger with the given module name."""
-    return structlog.get_logger(logger_name=name)
+    # structlog.get_logger 回傳 Any（未型別化的 proxy）
+    return structlog.get_logger(logger_name=name)  # type: ignore[no-any-return]

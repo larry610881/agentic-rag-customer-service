@@ -1350,6 +1350,7 @@ class HandleWebhookUseCase:
         # 之前只檢查 isinstance(s, dict) 導致 Source dataclass 路徑下圖卡完全消失。
         image_sources: list[dict[str, Any]] = []
         for s in (sources or []):
+            payload: dict[str, Any] | None
             if isinstance(s, dict):
                 url = s.get("image_url", "")
                 payload = s

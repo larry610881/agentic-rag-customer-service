@@ -215,7 +215,9 @@ async def list_traces_grouped_by_conversation(
     # Step 3: Python 層 group by + maintain conv_ids 排序
     by_conv: dict[str, list[AgentExecutionTraceModel]] = defaultdict(list)
     for trace in trace_rows:
-        by_conv[trace.conversation_id].append(trace)
+        # 查詢條件 conversation_id IN conv_ids，不會是 None；此處僅供型別收斂
+        if trace.conversation_id is not None:
+            by_conv[trace.conversation_id].append(trace)
 
     # Step 4 (Lv1): 為這 N 個 conversation 一次撈 preview
     # - first_user_message: 最早的 role='user' 訊息（截 200 字）
@@ -306,8 +308,10 @@ async def _load_conversation_previews(
             .distinct(MessageModel.conversation_id)
         )
     ).all()
-    for row in first_user:
-        result[row.conversation_id]["first_user_message"] = _truncate(row.content)
+    for user_row in first_user:
+        result[user_row.conversation_id]["first_user_message"] = _truncate(
+            user_row.content
+        )
 
     # 3. last assistant answer per conversation
     last_asst = (
@@ -327,7 +331,9 @@ async def _load_conversation_previews(
             .distinct(MessageModel.conversation_id)
         )
     ).all()
-    for row in last_asst:
-        result[row.conversation_id]["last_assistant_answer"] = _truncate(row.content)
+    for asst_row in last_asst:
+        result[asst_row.conversation_id]["last_assistant_answer"] = _truncate(
+            asst_row.content
+        )
 
     return result

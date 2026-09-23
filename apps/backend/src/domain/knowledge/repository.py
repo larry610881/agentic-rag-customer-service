@@ -109,6 +109,14 @@ class DocumentRepository(ABC):
         return []
 
     @abstractmethod
+    async def count_children_by_status(self, parent_id: str) -> dict[str, int]:
+        """回傳 parent_id 子文件依 status 分組的數量（{status: count}）。
+
+        父文件聚合（_parent_aggregation）用來判斷子頁是否全部完成。
+        """
+        ...
+
+    @abstractmethod
     async def count_by_kb_status(
         self, kb_id: str, statuses: list[str]
     ) -> int: ...

@@ -108,7 +108,16 @@ class DMMetadataExtractor(ABC):
     special_activities. Implementation enforces a JSON schema (e.g. via
     Anthropic tool use) so callers can persist the dict directly into
     ``KnowledgeBase.dm_metadata``.
+
+    Implementations expose the token usage of the most recent ``extract`` call
+    via the ``last_*`` attributes (callers record usage from them).
     """
+
+    last_input_tokens: int
+    last_output_tokens: int
+    last_cache_read_tokens: int
+    last_cache_creation_tokens: int
+    last_model: str
 
     @abstractmethod
     async def extract(

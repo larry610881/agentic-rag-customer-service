@@ -312,14 +312,34 @@ class UpdateCategoryRequest(BaseModel):
     name: str
 
 
+async def _require_accessible_kb(
+    kb_repo: KnowledgeBaseRepository, kb_id: str, tenant: CurrentTenant
+) -> None:
+    """KB 擁有權檢查（跨租戶一律 404 防枚舉；system_admin 放行）。"""
+    from src.application.knowledge._admin_kb_check import ensure_kb_accessible
+
+    try:
+        await ensure_kb_accessible(kb_repo, kb_id, tenant.tenant_id)
+    except EntityNotFoundError as e:
+        raise ApiError(404, code=not_found_code(e), message=e.message) from None
+
+
+def _category_not_found() -> ApiError:
+    return ApiError(404, code="category_not_found", message="分類不存在")
+
+
 @router.post("/{kb_id}/classify", status_code=status.HTTP_202_ACCEPTED)
 async def classify_knowledge_base(
     kb_id: str,
     tenant: CurrentTenant = Depends(get_current_tenant),
+    kb_repo: KnowledgeBaseRepository = Depends(
+        Provide[Container.kb_repository]
+    ),
 ) -> dict:
     """Trigger async classification job for a KB."""
     from src.infrastructure.queue.arq_pool import enqueue
 
+    await _require_accessible_kb(kb_repo, kb_id, tenant)
     await enqueue("classify_kb", kb_id, tenant.tenant_id)
     return {"status": "accepted", "message": "分類任務已排入佇列"}
 
@@ -332,7 +352,11 @@ async def list_categories(
     cat_repo: ChunkCategoryRepository = Depends(
         Provide[Container.chunk_category_repository]
     ),
+    kb_repo: KnowledgeBaseRepository = Depends(
+        Provide[Container.kb_repository]
+    ),
 ) -> list[CategoryResponse]:
+    await _require_accessible_kb(kb_repo, kb_id, tenant)
     categories = await cat_repo.find_by_kb(kb_id)
     return [
         CategoryResponse(
@@ -341,8 +365,8 @@ async def list_categories(
             name=c.name,
             description=c.description,
             chunk_count=c.chunk_count,
-            created_at=c.created_at.isoformat(),
-            updated_at=c.updated_at.isoformat(),
+            created_at=c.created_at,
+            updated_at=c.updated_at,
         )
         for c in categories
     ]
@@ -358,24 +382,31 @@ async def update_category(
     cat_repo: ChunkCategoryRepository = Depends(
         Provide[Container.chunk_category_repository]
     ),
+    kb_repo: KnowledgeBaseRepository = Depends(
+        Provide[Container.kb_repository]
+    ),
 ) -> CategoryResponse:
+    await _require_accessible_kb(kb_repo, kb_id, tenant)
     cat = await cat_repo.find_by_id(cat_id)
-    if cat is None:
+    # 分類必須屬於路徑上的 KB（否則可用自己的 KB 路徑改到別的 KB 的分類）
+    if cat is None or cat.kb_id != kb_id:
+        raise _category_not_found()
+    await cat_repo.update_name(cat_id, body.name)
+    cat = await cat_repo.find_by_id(cat_id)
+    if cat is None:  # 改名與重新讀取之間被並行刪除
         raise ApiError(
             404,
             code="category_not_found",
             message="分類不存在",
         )
-    await cat_repo.update_name(cat_id, body.name)
-    cat = await cat_repo.find_by_id(cat_id)
     return CategoryResponse(
         id=cat.id,
         kb_id=cat.kb_id,
         name=cat.name,
         description=cat.description,
         chunk_count=cat.chunk_count,
-        created_at=cat.created_at.isoformat(),
-        updated_at=cat.updated_at.isoformat(),
+        created_at=cat.created_at,
+        updated_at=cat.updated_at,
     )
 
 
@@ -405,7 +436,11 @@ async def get_category_chunks(
     use_case: GetCategoryChunksUseCase = Depends(
         Provide[Container.get_category_chunks_use_case]
     ),
+    kb_repo: KnowledgeBaseRepository = Depends(
+        Provide[Container.kb_repository]
+    ),
 ) -> CategoryChunksResponse:
+    await _require_accessible_kb(kb_repo, kb_id, tenant)
     result = await use_case.execute(kb_id, cat_id)
     if result is None:
         raise ApiError(

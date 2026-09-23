@@ -108,7 +108,7 @@ def slice_image_bytes(
     import numpy as np
     from PIL import Image
 
-    img = Image.open(io.BytesIO(image_bytes))
+    img: Image.Image = Image.open(io.BytesIO(image_bytes))
     if img.mode != "RGB":
         img = img.convert("RGB")
     arr = np.array(img.convert("L"))

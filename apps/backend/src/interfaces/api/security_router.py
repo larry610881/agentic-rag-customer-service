@@ -83,7 +83,7 @@ async def get_guard_rules(
         input_guard_prompt=config.input_guard_prompt,
         output_guard_prompt=config.output_guard_prompt,
         blocked_response=config.blocked_response,
-        updated_at=config.updated_at.isoformat(),
+        updated_at=config.updated_at,
     )
 
 
@@ -119,7 +119,7 @@ async def update_guard_rules(
         input_guard_prompt=config.input_guard_prompt,
         output_guard_prompt=config.output_guard_prompt,
         blocked_response=config.blocked_response,
-        updated_at=config.updated_at.isoformat(),
+        updated_at=config.updated_at,
     )
 
 
@@ -142,7 +142,7 @@ async def reset_guard_rules(
         input_guard_prompt=config.input_guard_prompt,
         output_guard_prompt=config.output_guard_prompt,
         blocked_response=config.blocked_response,
-        updated_at=config.updated_at.isoformat(),
+        updated_at=config.updated_at,
     )
 
 

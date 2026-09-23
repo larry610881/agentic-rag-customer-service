@@ -3,8 +3,9 @@
 import json
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from typing import Any, cast
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import CursorResult, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.conversation.feedback_analysis_vo import (
@@ -348,5 +349,8 @@ class SQLAlchemyFeedbackRepository(FeedbackRepository):
                     FeedbackModel.created_at < before,
                 )
             )
-            result = await self._session.execute(stmt)
+            # DML（DELETE）的 execute 結果一定是 CursorResult，才有 rowcount
+            result = cast(
+                "CursorResult[Any]", await self._session.execute(stmt)
+            )
             return result.rowcount

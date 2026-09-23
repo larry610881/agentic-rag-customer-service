@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from datetime import datetime
 from decimal import Decimal
 from math import ceil
 
@@ -601,6 +602,12 @@ async def get_billing_dashboard(
 # --- Conversation Hybrid Search (S-Gov.6b) ---
 
 
+def _parse_iso(value: str | None) -> datetime | None:
+    """use case DTO 的時間為 datetime.isoformat() 字串；還原成 datetime 交給
+    ApiDateTime 統一序列化（與 pydantic 自行解析 ISO 字串結果相同）。"""
+    return datetime.fromisoformat(value) if value else None
+
+
 class ConversationSearchResultResponse(BaseModel):
     conversation_id: str
     tenant_id: str
@@ -674,8 +681,8 @@ async def search_conversations(
             tenant_name=i.tenant_name,
             bot_id=i.bot_id,
             summary=i.summary,
-            first_message_at=i.first_message_at,
-            last_message_at=i.last_message_at,
+            first_message_at=_parse_iso(i.first_message_at),
+            last_message_at=_parse_iso(i.last_message_at),
             message_count=i.message_count,
             score=i.score,
             matched_via=i.matched_via,

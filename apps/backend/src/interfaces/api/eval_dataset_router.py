@@ -162,7 +162,7 @@ def _tc_to_response(tc: EvalTestCase) -> TestCaseResponse:
         conversation_history=tc.conversation_history,
         assertions=tc.assertions,
         tags=tc.tags,
-        created_at=tc.created_at.isoformat(),
+        created_at=tc.created_at,
     )
 
 
@@ -180,8 +180,8 @@ def _to_response(ds: EvalDataset) -> DatasetResponse:
         is_platform_base=ds.is_platform_base,
         test_cases=[_tc_to_response(tc) for tc in ds.test_cases],
         test_case_count=len(ds.test_cases),
-        created_at=ds.created_at.isoformat(),
-        updated_at=ds.updated_at.isoformat(),
+        created_at=ds.created_at,
+        updated_at=ds.updated_at,
     )
 
 
@@ -196,8 +196,8 @@ def _to_summary(ds: EvalDataset) -> DatasetSummaryResponse:
         include_security=ds.include_security,
         is_platform_base=ds.is_platform_base,
         test_case_count=len(ds.test_cases),
-        created_at=ds.created_at.isoformat(),
-        updated_at=ds.updated_at.isoformat(),
+        created_at=ds.created_at,
+        updated_at=ds.updated_at,
     )
 
 
@@ -804,7 +804,9 @@ async def get_exchange_rate(
     try:
         cached = await redis_client.get(cache_key)
         if cached:
-            return _json.loads(cached)
+            # 快取內容由下方 _json.dumps(result) 寫入，必為 dict
+            cached_result: dict = _json.loads(cached)
+            return cached_result
     except Exception:
         pass  # Redis down → fallback to API
 

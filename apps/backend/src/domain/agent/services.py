@@ -34,7 +34,7 @@ class AgentService(ABC):
     ) -> AgentResponse: ...
 
     @abstractmethod
-    async def process_message_stream(
+    def process_message_stream(
         self,
         tenant_id: str,
         kb_id: str,

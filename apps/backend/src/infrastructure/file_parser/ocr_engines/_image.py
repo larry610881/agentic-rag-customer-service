@@ -28,7 +28,7 @@ def _compress_image(image_bytes: bytes) -> tuple[bytes, str]:
 
     from PIL import Image
 
-    img = Image.open(io.BytesIO(image_bytes))
+    img: Image.Image = Image.open(io.BytesIO(image_bytes))
     if img.mode == "RGBA":
         img = img.convert("RGB")
 
@@ -42,7 +42,7 @@ def _compress_image(image_bytes: bytes) -> tuple[bytes, str]:
     scale = 0.7
     while scale > 0.2:
         new_size = (int(img.width * scale), int(img.height * scale))
-        resized = img.resize(new_size, Image.LANCZOS)
+        resized = img.resize(new_size, Image.Resampling.LANCZOS)
         buf = io.BytesIO()
         resized.save(buf, format="JPEG", quality=60)
         if buf.tell() <= _MAX_IMAGE_BYTES:
@@ -50,9 +50,9 @@ def _compress_image(image_bytes: bytes) -> tuple[bytes, str]:
         scale -= 0.1
 
     buf = io.BytesIO()
-    img.resize((int(img.width * 0.2), int(img.height * 0.2)), Image.LANCZOS).save(
-        buf, format="JPEG", quality=40
-    )
+    img.resize(
+        (int(img.width * 0.2), int(img.height * 0.2)), Image.Resampling.LANCZOS
+    ).save(buf, format="JPEG", quality=40)
     return buf.getvalue(), "image/jpeg"
 
 
@@ -67,7 +67,7 @@ def downscale_longest_side(image_bytes: bytes, max_side: int) -> bytes:
 
     from PIL import Image
 
-    img = Image.open(io.BytesIO(image_bytes))
+    img: Image.Image = Image.open(io.BytesIO(image_bytes))
     longest = max(img.width, img.height)
     if longest <= max_side:
         return image_bytes

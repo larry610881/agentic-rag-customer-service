@@ -13,7 +13,8 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from pymilvus import (
     CollectionSchema,
@@ -98,13 +99,16 @@ def _log_milvus_retry(retry_state: Any) -> None:
     )
 
 
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
 def _make_milvus_retry(
     *,
     attempts: int = 3,
     wait_min: float = 1,
     wait_max: float = 16,
     exp_base: float = 4,
-):
+) -> Callable[[_F], _F]:
     """Build a tenacity retry decorator for Milvus client calls.
 
     Defaults: 3 attempts with waits 1s → 4s（exp_base=4, multiplier=1）.

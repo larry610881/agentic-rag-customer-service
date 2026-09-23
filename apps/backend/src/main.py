@@ -6,6 +6,7 @@ import traceback
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from typing import TypedDict
 
 # Early startup banner — printed before any heavy imports so Cloud Run
 # logs always contain at least this line even when the process crashes.
@@ -220,7 +221,15 @@ CORS_EXPOSE_HEADERS = [
 ]
 
 
-def docs_kwargs_for_env(app_env: str) -> dict[str, str | None]:
+class DocsKwargs(TypedDict):
+    """FastAPI 文件端點設定（可直接 ``**`` 展開給 ``FastAPI(...)``）。"""
+
+    docs_url: str | None
+    redoc_url: str | None
+    openapi_url: str | None
+
+
+def docs_kwargs_for_env(app_env: str) -> DocsKwargs:
     """production 關閉 FastAPI 自動文件（10820 曝露）；其他環境維持預設。"""
     if app_env == "production":
         return {"docs_url": None, "redoc_url": None, "openapi_url": None}

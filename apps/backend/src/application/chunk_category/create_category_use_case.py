@@ -47,7 +47,7 @@ class CreateCategoryUseCase:
             kb_id=command.kb_id,
             tenant_id=command.tenant_id,
             name=command.name,
-            description=command.description,
+            description=command.description or "",
             chunk_count=0,
         )
         await self._repo.save(category)

@@ -1,8 +1,18 @@
+from typing import TypedDict
+
 from src.domain.ratelimit.entity import RateLimitConfig
 from src.domain.ratelimit.repository import RateLimitConfigRepository
 from src.domain.ratelimit.value_objects import EndpointGroup, RateLimitConfigId
 
-DEFAULT_CONFIGS = [
+
+class _DefaultConfig(TypedDict):
+    endpoint_group: EndpointGroup
+    requests_per_minute: int
+    burst_size: int
+    per_user_requests_per_minute: int | None
+
+
+DEFAULT_CONFIGS: list[_DefaultConfig] = [
     {
         "endpoint_group": EndpointGroup.FEEDBACK,
         "requests_per_minute": 30,

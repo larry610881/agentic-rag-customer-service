@@ -102,11 +102,8 @@ async def list_summaries(
                     tenant_id=it.get("tenant_id", tenant_id),
                     bot_id=it.get("bot_id"),
                     summary=it.get("summary"),
-                    created_at=(
-                        str(it.get("created_at"))
-                        if it.get("created_at")
-                        else None
-                    ),
+                    # 原值（datetime 或 ISO 字串）交給 ApiDateTime 解析
+                    created_at=it.get("created_at") or None,
                 )
             )
     return ListConvSummariesResponse(items=normalized)

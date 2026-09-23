@@ -21,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import anthropic
+from anthropic.types import ToolParam
 from pydantic import BaseModel, Field
 
 from src.domain.knowledge.services import DMMetadataExtractor
@@ -269,7 +270,7 @@ class LLMDMMetadataExtractor(DMMetadataExtractor):
         return {}
 
     @staticmethod
-    def _build_tool_definition() -> dict[str, Any]:
+    def _build_tool_definition() -> ToolParam:
         """Build Anthropic tool definition from Pydantic schema.
 
         Anthropic 的 input_schema 接 JSON schema (draft-7 ish)，Pydantic 的

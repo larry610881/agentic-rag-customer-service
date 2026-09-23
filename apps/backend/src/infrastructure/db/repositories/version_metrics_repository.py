@@ -101,7 +101,7 @@ class SQLAlchemyVersionMetricsRepository(VersionMetricsRepository):
                 .group_by(FeedbackModel.rating)
             )
         ).all()
-        fb = dict(fb_rows)
+        fb: dict[str, int] = dict(row.tuple() for row in fb_rows)
 
         return VersionMetrics(
             version_id=version_id,

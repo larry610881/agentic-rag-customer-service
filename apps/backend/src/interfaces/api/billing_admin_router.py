@@ -39,7 +39,7 @@ def _to_response(s: BillingSettings) -> BillingSettingsResponse:
     return BillingSettingsResponse(
         usd_per_point=s.usd_per_point,
         updated_by=s.updated_by,
-        updated_at=s.updated_at.isoformat(),
+        updated_at=s.updated_at,
     )
 
 

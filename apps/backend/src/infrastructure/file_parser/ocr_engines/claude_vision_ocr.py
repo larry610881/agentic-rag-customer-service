@@ -9,8 +9,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import time
+from typing import Literal, cast
 
 import anthropic
+from anthropic.types import ImageBlockParam, Message, TextBlock
 
 from src.domain.shared.exceptions import OcrProcessingError
 from src.infrastructure.file_parser.ocr_engines._image import (  # noqa: F401
@@ -39,6 +41,17 @@ from src.infrastructure.file_parser.ocr_engines.prompts import (  # noqa: F401
 from src.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
+
+_ImageMediaType = Literal["image/jpeg", "image/png", "image/gif", "image/webp"]
+
+
+def _first_text(message: Message) -> str:
+    """未帶 tools / thinking 的單輪呼叫，content[0] 應為 TextBlock；
+    萬一不是，以 OcrProcessingError 明確失敗（舊寫法為 AttributeError）。"""
+    block = message.content[0]
+    if not isinstance(block, TextBlock):
+        raise OcrProcessingError(f"unexpected first content block: {block.type}")
+    return block.text
 
 
 class ClaudeVisionOcrEngine(OcrEngine):
@@ -83,12 +96,20 @@ class ClaudeVisionOcrEngine(OcrEngine):
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         return self._client
 
-    def _image_block(self, image_bytes: bytes) -> tuple[dict, str, float]:
+    def _image_block(
+        self, image_bytes: bytes
+    ) -> tuple[ImageBlockParam, str, float]:
         image_bytes, media_type = _compress_image(image_bytes)
         b64 = base64.standard_b64encode(image_bytes).decode()
-        block = {
+        # _compress_image 只會回 image/png、image/jpeg、image/webp（detect_mime
+        # 與壓縮分支皆寫死），必落在 SDK 的 media_type Literal 內
+        block: ImageBlockParam = {
             "type": "image",
-            "source": {"type": "base64", "media_type": media_type, "data": b64},
+            "source": {
+                "type": "base64",
+                "media_type": cast(_ImageMediaType, media_type),
+                "data": b64,
+            },
         }
         return block, media_type, len(image_bytes) / 1024
 
@@ -133,7 +154,7 @@ class ClaudeVisionOcrEngine(OcrEngine):
                     attempt=attempt,
                 )
                 return OcrPageResult(
-                    text=message.content[0].text,
+                    text=_first_text(message),
                     input_tokens=usage.input_tokens,
                     output_tokens=usage.output_tokens,
                     model=self.model_spec,
@@ -194,7 +215,7 @@ class ClaudeVisionOcrEngine(OcrEngine):
                 usage = message.usage
                 self.last_input_tokens += usage.input_tokens
                 self.last_output_tokens += usage.output_tokens
-                raw = message.content[0].text.strip().lower()
+                raw = _first_text(message).strip().lower()
                 page_type = normalize_page_type(raw, fallback="")
                 if page_type:
                     logger.info(

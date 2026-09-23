@@ -13,6 +13,7 @@ Summary tab 用 left list 回傳的 summary 欄位（無需新 endpoint）
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
@@ -35,6 +36,11 @@ from src.interfaces.api.errors import ApiError
 from src.interfaces.api.types import ApiDateTime, ApiMoney
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    """Use case 回傳 isoformat() 字串；還原成 datetime 交給 ApiDateTime 序列化。"""
+    return datetime.fromisoformat(value) if value else None
 
 router = APIRouter(
     prefix="/api/v1/admin/conversations", tags=["admin-conversation-insights"]
@@ -126,10 +132,10 @@ async def get_conversation_messages(
         conversation_id=result.conversation_id,
         tenant_id=result.tenant_id,
         bot_id=result.bot_id,
-        created_at=result.created_at,
+        created_at=_parse_iso(result.created_at),
         summary=result.summary,
         message_count=result.message_count,
-        last_message_at=result.last_message_at,
+        last_message_at=_parse_iso(result.last_message_at),
         messages=[MessageItem(**m) for m in result.messages],
     )
 

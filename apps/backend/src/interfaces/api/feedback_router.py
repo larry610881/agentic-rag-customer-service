@@ -199,7 +199,7 @@ async def list_feedback(
 
     # Enrich with bot_name via conversation → bot lookup
     conv_ids = {f.conversation_id for f in feedbacks}
-    conv_bot_map: dict[str, str | None] = {}
+    conv_bot_map: dict[str, str] = {}
     for cid in conv_ids:
         conv = await conversation_repo.find_by_id(cid)
         if conv and conv.bot_id:
@@ -242,6 +242,8 @@ async def get_feedback_stats(
         Provide[Container.get_feedback_stats_use_case]
     ),
 ) -> FeedbackStatsResponse:
+    dt_start: datetime | None
+    dt_end: datetime | None
     if start_date is None and end_date is None:
         dt_end = datetime.now(timezone.utc)
         dt_start = dt_end - timedelta(days=30)
@@ -331,6 +333,8 @@ async def get_satisfaction_trend(
         Provide[Container.get_satisfaction_trend_use_case]
     ),
 ) -> list[DailyFeedbackStatResponse]:
+    dt_start: datetime | None
+    dt_end: datetime | None
     if start_date is None and end_date is None:
         dt_end = datetime.now(timezone.utc)
         dt_start = dt_end - timedelta(days=30)
@@ -373,6 +377,8 @@ async def get_top_issues(
         Provide[Container.get_top_issues_use_case]
     ),
 ) -> list[TagCountResponse]:
+    dt_start: datetime | None
+    dt_end: datetime | None
     if start_date is None and end_date is None:
         dt_end = datetime.now(timezone.utc)
         dt_start = dt_end - timedelta(days=30)
@@ -437,6 +443,8 @@ async def get_token_cost(
     ),
 ) -> list[ModelCostStatResponse]:
     # Default: last 30 days if neither provided
+    dt_start: datetime | None
+    dt_end: datetime | None
     if start_date is None and end_date is None:
         dt_end = datetime.now(timezone.utc)
         dt_start = dt_end - timedelta(days=30)

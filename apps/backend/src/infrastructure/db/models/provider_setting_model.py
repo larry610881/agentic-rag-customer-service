@@ -26,7 +26,7 @@ class ProviderSettingModel(Base):
     )
     api_key_encrypted: Mapped[str] = mapped_column(Text, nullable=False, default="")
     base_url: Mapped[str] = mapped_column(String(500), nullable=False, default="")
-    models: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
+    models: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     extra_config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,

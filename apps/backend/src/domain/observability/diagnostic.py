@@ -7,6 +7,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.domain.observability.rule_config import DiagnosticRulesConfig
 
 
 @dataclass
@@ -229,7 +233,7 @@ def _apply_combo_rules(
 
 def diagnose(
     dimensions: list[dict],
-    rule_config: object | None = None,
+    rule_config: DiagnosticRulesConfig | None = None,
 ) -> list[DiagnosticHint]:
     """根據 eval dimensions 的分數模式產生診斷提示。
 
@@ -243,8 +247,8 @@ def diagnose(
     single_rules = None
     combo_rules = None
     if rule_config is not None:
-        sr = rule_config.single_rules  # type: ignore[union-attr]
-        cr = rule_config.combo_rules  # type: ignore[union-attr]
+        sr = rule_config.single_rules
+        cr = rule_config.combo_rules
         single_rules = sr if sr is not None else None
         combo_rules = cr if cr is not None else None
 

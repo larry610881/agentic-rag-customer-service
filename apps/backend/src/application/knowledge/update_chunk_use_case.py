@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable, Protocol
 
 import structlog
 
@@ -18,6 +18,12 @@ from src.domain.shared.exceptions import EntityNotFoundError
 
 # 簽名: enqueue(job_name, chunk_id) -> awaitable[str | None]
 EnqueueFunc = Callable[..., Awaitable[str | None]]
+
+
+class JobQueuePool(Protocol):
+    """arq.ArqRedis（或測試 fake）在此用例用到的最小介面。"""
+
+    async def enqueue_job(self, function: str, *args: Any, **kwargs: Any) -> Any: ...
 
 logger = structlog.get_logger(__name__)
 
@@ -36,7 +42,7 @@ class UpdateChunkUseCase:
         self,
         document_repo: DocumentRepository,
         kb_repo: KnowledgeBaseRepository,
-        arq_pool: object | None = None,  # arq.ArqRedis or fake with enqueue_job
+        arq_pool: JobQueuePool | None = None,  # arq.ArqRedis or fake
         enqueue_fn: EnqueueFunc | None = None,
     ) -> None:
         self._doc_repo = document_repo

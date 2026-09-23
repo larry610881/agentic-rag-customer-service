@@ -231,6 +231,7 @@ def setup_classify_kb_record(context):
 def call_classify_kb(context, kb_id, tid):
     mock_kb_repo = AsyncMock()
     mock_kb_repo.find_by_id = AsyncMock(return_value=SimpleNamespace(
+        tenant_id=tid,  # KB 擁有者須與佇列參數一致（classify_kb 擁有權檢查）
         classification_model="anthropic:claude-sonnet-4-6-20260415",
     ))
     mock_doc_repo = AsyncMock()

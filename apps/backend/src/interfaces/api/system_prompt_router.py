@@ -36,7 +36,7 @@ async def get_system_prompts(
     config = await use_case.execute()
     return SystemPromptConfigResponse(
         system_prompt=config.system_prompt,
-        updated_at=config.updated_at.isoformat(),
+        updated_at=config.updated_at,
     )
 
 
@@ -57,5 +57,5 @@ async def update_system_prompts(
     )
     return SystemPromptConfigResponse(
         system_prompt=config.system_prompt,
-        updated_at=config.updated_at.isoformat(),
+        updated_at=config.updated_at,
     )

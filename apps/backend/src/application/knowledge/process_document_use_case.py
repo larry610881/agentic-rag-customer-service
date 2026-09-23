@@ -292,8 +292,12 @@ class ProcessDocumentUseCase:
             from src.infrastructure.db.engine import async_session_factory
             new_session = async_session_factory()
             self._doc_repo._session = new_session
-            self._task_repo._session = new_session
-            self._kb_repo._session = new_session
+            # 只有具 _session 的 SQLAlchemy 實作需要換 session（hasattr 同時讓
+            # 型別檢查收斂到「有此屬性」）
+            if hasattr(self._task_repo, "_session"):
+                self._task_repo._session = new_session
+            if hasattr(self._kb_repo, "_session"):
+                self._kb_repo._session = new_session
             return new_session
         except Exception:
             return None

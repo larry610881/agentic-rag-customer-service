@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from sqlalchemy import func, select, update
+from sqlalchemy.engine import CursorResult, Result
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.prompt_gate.entity import (
@@ -15,6 +18,12 @@ from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.bot_config_version_model import (
     BotConfigVersionModel,
 )
+
+
+def _rowcount(result: Result[Any]) -> int:
+    """UPDATE/DELETE 經 AsyncSession.execute 回傳的一定是 CursorResult（有 rowcount），
+    但 execute 的宣告型別是 Result；此處收斂型別。"""
+    return cast(CursorResult[Any], result).rowcount
 
 
 class SQLAlchemyBotConfigVersionRepository(BotConfigVersionRepository):
@@ -120,7 +129,7 @@ class SQLAlchemyBotConfigVersionRepository(BotConfigVersionRepository):
                     published_at=version.published_at,
                 )
             )
-            if result.rowcount == 0:
+            if _rowcount(result) == 0:
                 current = await self._session.get(
                     BotConfigVersionModel, version.id
                 )
@@ -204,7 +213,7 @@ class SQLAlchemyBotConfigVersionRepository(BotConfigVersionRepository):
                 )
                 .values(status="draft", gate_run_id=None)
             )
-            return result.rowcount
+            return _rowcount(result)
 
     async def revert_stale_validating_versions(self) -> int:
         """M5：revert 所有 validating 且對應 gate_run 非 running/queued（或無 run）的
@@ -231,7 +240,7 @@ class SQLAlchemyBotConfigVersionRepository(BotConfigVersionRepository):
                 )
                 .values(status="draft", gate_run_id=None)
             )
-            return result.rowcount
+            return _rowcount(result)
 
     async def set_current(self, bot_id: str, version_id: str) -> None:
         # 單一交易翻轉：先全部清 False 再設新 current，

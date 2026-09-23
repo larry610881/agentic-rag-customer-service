@@ -270,7 +270,7 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
             .group_by(DocumentModel.status)
         )
         result = await self._session.execute(stmt)
-        return dict(result.all())
+        return dict(result.tuples().all())
 
     async def count_by_kb(self, kb_id: str) -> int:
         stmt = (

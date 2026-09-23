@@ -142,8 +142,8 @@ def _to_response(p: Plan) -> PlanResponse:
         auto_topup_monthly_cap=p.auto_topup_monthly_cap,
         grace_percent=p.grace_percent,
         block_message=p.block_message,
-        created_at=p.created_at.isoformat(),
-        updated_at=p.updated_at.isoformat(),
+        created_at=p.created_at,
+        updated_at=p.updated_at,
     )
 
 

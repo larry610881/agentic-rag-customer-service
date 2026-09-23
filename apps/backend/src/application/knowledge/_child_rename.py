@@ -43,8 +43,8 @@ async def rename_child_page_if_pdf(
                     stmt = select(TenantModel.default_context_model).where(
                         TenantModel.id == doc.tenant_id
                     )
-                    result = await session.execute(stmt)
-                    model = result.scalar_one_or_none() or ""
+                    db_result = await session.execute(stmt)
+                    model = db_result.scalar_one_or_none() or ""
         except Exception:
             pass
 

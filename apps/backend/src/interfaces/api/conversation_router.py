@@ -118,7 +118,11 @@ async def get_conversation(
                 id=m.id.value,
                 role=m.role,
                 content=m.content,
-                structured_content=m.structured_content,
+                structured_content=(
+                    HistoryStructuredContent.model_validate(m.structured_content)
+                    if m.structured_content is not None
+                    else None
+                ),
                 created_at=m.created_at,
             )
             for m in conversation.messages
