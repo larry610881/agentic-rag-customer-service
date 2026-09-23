@@ -1701,7 +1701,10 @@ class HandleWebhookUseCase:
         # feedback_reason:{msg_id}:{tag} — 追問原因回覆
         if len(parts) == 3 and parts[0] == "feedback_reason":
             _, message_id, tag = parts
-            await self._feedback_repo.update_tags(message_id, [tag])
+            # 綁定租戶：不帶 tenant_id 時 repository 不加租戶條件（Issue #102）
+            await self._feedback_repo.update_tags(
+                message_id, [tag], tenant_id=tenant_id
+            )
             if line_service:
                 await line_service.reply_text(
                     event.reply_token, "感謝您的回饋，我們會持續改進！"

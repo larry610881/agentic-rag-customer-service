@@ -24,7 +24,7 @@ class ListFeedbackUseCase:
         return [f for f in feedbacks if f.tenant_id == tenant_id]
 
     async def update_tags(
-        self, feedback_id: str, tags: list[str], tenant_id: str | None = None
+        self, feedback_id: str, tags: list[str], *, tenant_id: str
     ) -> None:
         # feedback_id is actually used as message_id lookup
         # L11：tenant_id 綁定，防以他租戶 message_id 跨租戶注入標籤

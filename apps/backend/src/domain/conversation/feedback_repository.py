@@ -43,9 +43,9 @@ class FeedbackRepository(ABC):
 
     @abstractmethod
     async def update_tags(
-        self, message_id: str, tags: list[str], tenant_id: str | None = None
+        self, message_id: str, tags: list[str], *, tenant_id: str
     ) -> None:
-        """L11：tenant_id 綁定更新條件，防跨租戶標籤注入。"""
+        """L11 / #102：tenant_id 必填並綁定更新條件，防跨租戶標籤注入。"""
         ...
 
     @abstractmethod
