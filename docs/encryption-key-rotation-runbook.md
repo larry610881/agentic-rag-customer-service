@@ -23,10 +23,23 @@
 | `tenant_identity_secrets.secret_encrypted` | widget 宿主身分驗證密鑰 |
 | `notification_channels.config_encrypted` | 通知通道設定；既有明文 JSON 會略過 |
 | `bots.mcp_bindings[].env_values` | MCP registry 綁定的環境值（JSON 內層） |
+| `bots.line_channel_secret`、`bots.line_channel_access_token` | LINE 憑證（#107 起 at-rest 加密，repository 層加解密） |
 
 Redis 快取裡的密文（bot 的 LINE 憑證、LLM / Embedding 設定）不需處理：解密失敗一律當作快取未命中、回 DB 重讀。
 bot 版本快照與稽核紀錄已剝除 `env_values`，不含密文（腳本最後會再數一次，應為 0）。
-**bots 表的 LINE 憑證目前是明文**（at-rest 加密另案），不在輪替範圍。
+
+### LINE 憑證首次加密（#107，只做一次）
+
+#107 上線前 LINE 憑證是明文。部署順序：
+
+1. 先套 migration `apps/backend/migrations/alter_bots_line_credentials_text.sql`（兩欄改 TEXT，
+   加密後的 access token 約 268 字元，VARCHAR(255) 放不下）。**沒套就部署，存 bot 會失敗。**
+2. 部署 #107。此時舊明文照樣讀得到，之後存檔的 bot 會寫成密文。
+3. 跑 `uv run python -m scripts.reencrypt_secrets --dry-run`，看「明文→密文」筆數；再不帶
+   `--dry-run` 執行一次，把其餘明文轉為密文。第二次 dry-run 的「明文→密文」應為 0。
+
+解不開的 LINE 憑證不會被當成明文吞掉：金鑰 id 不在設定中時讀 bot 直接報錯，
+避免後台存檔把原憑證覆寫掉。
 
 ## 二、四步流程
 

@@ -123,14 +123,18 @@ async def dispatch_config_change_notification(entry: AuditEntry) -> None:
     if not entry.tenant_id or entry.entity_type not in NOTIFIABLE_ENTITY_TYPES:
         return
     try:
-        dispatcher = _build_dispatcher(Settings())
+        settings = Settings()
+        dispatcher = _build_dispatcher(settings)
         async with async_session_factory() as session:
             uc = DispatchConfigChangeNotificationUseCase(
                 channel_repo=SQLAlchemyNotificationChannelRepository(session),
                 tenant_repository=SQLAlchemyTenantRepository(session),
                 dispatcher=dispatcher,
                 user_repository=SQLAlchemyUserRepository(session),
-                bot_repository=SQLAlchemyBotRepository(session),
+                # #107：bot repository 需金鑰環解密 LINE 憑證
+                bot_repository=SQLAlchemyBotRepository(
+                    session, encryption=build_encryption_service(settings)
+                ),
                 worker_repository=SQLAlchemyWorkerConfigRepository(session),
             )
             await uc.execute(entry)

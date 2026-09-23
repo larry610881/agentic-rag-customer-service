@@ -1009,9 +1009,14 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
     )
 
+    # Issue #105：金鑰環（active + previous）；空 master key 時沿用開發用全零金鑰。
+    # 需定義在 bot_repository 之前（#107：bot repository 以它加解密 LINE 憑證）。
+    encryption_service = providers.Singleton(build_encryption_service, config)
+
     bot_repository = providers.Factory(
         SQLAlchemyBotRepository,
         session=db_session,
+        encryption=encryption_service,
     )
 
     bot_config_version_repository = providers.Factory(
@@ -1273,8 +1278,6 @@ class Container(containers.DeclarativeContainer):
         redis_client=redis_client,
     )
 
-    # Issue #105：金鑰環（active + previous）；空 master key 時沿用開發用全零金鑰
-    encryption_service = providers.Singleton(build_encryption_service, config)
 
     # Issue #68 P7b：widget 宿主身分綁定（租戶 identity secret）
     tenant_identity_secret_repository = providers.Factory(

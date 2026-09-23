@@ -32,6 +32,7 @@ from sqlalchemy import select, update  # noqa: E402
 
 from src.infrastructure.crypto.aes_encryption_service import (  # noqa: E402
     AESEncryptionService,
+    UnknownEncryptionKeyError,
 )
 from src.infrastructure.db.models.bot_model import BotModel  # noqa: E402
 from src.infrastructure.db.models.notification_channel_model import (  # noqa: E402
@@ -58,6 +59,8 @@ class EncryptedField:
     writers: tuple[str, ...]
     # 此欄位允許既有明文 JSON（遷移前資料），遇到時略過不算失敗
     plaintext_json_ok: bool = False
+    # 此欄位可能有遷移前的明文（#107 LINE 憑證）：解不開且不是金鑰 id 問題 → 加密寫回
+    encrypt_plaintext: bool = False
 
 
 ENCRYPTED_FIELDS: tuple[EncryptedField, ...] = (
@@ -100,6 +103,25 @@ ENCRYPTED_FIELDS: tuple[EncryptedField, ...] = (
             "application/bot/update_bot_use_case.py",
         ),
     ),
+    # #107：LINE 憑證 at-rest 加密（repository 層加解密）；既有明文由本腳本一次轉為密文
+    EncryptedField(
+        name="bots.line_channel_secret",
+        model=BotModel,
+        pk="id",
+        column="line_channel_secret",
+        kind="scalar",
+        writers=("infrastructure/db/repositories/bot_repository.py",),
+        encrypt_plaintext=True,
+    ),
+    EncryptedField(
+        name="bots.line_channel_access_token",
+        model=BotModel,
+        pk="id",
+        column="line_channel_access_token",
+        kind="scalar",
+        writers=("infrastructure/db/repositories/bot_repository.py",),
+        encrypt_plaintext=True,
+    ),
 )
 
 # 只寫進 Redis 快取（有 TTL）的密文：不需重新加密。解密失敗時各呼叫點都當作快取
@@ -125,6 +147,7 @@ class FieldReport:
     stale: int = 0
     reencrypted: int = 0
     plaintext_skipped: int = 0
+    plaintext_encrypted: int = 0
     failures: list[str] = field(default_factory=list)
 
 
@@ -138,12 +161,24 @@ def _is_plaintext_json(value: str) -> bool:
     return True
 
 
-def classify(value: str, svc: AESEncryptionService, plaintext_json_ok: bool) -> str:
-    """empty / plaintext / active / stale。"""
+def classify(
+    value: str,
+    svc: AESEncryptionService,
+    plaintext_json_ok: bool,
+    encrypt_plaintext: bool = False,
+) -> str:
+    """empty / plaintext / plaintext_to_encrypt / active / stale。"""
     if not value:
         return "empty"
     if plaintext_json_ok and _is_plaintext_json(value):
         return "plaintext"
+    if encrypt_plaintext:
+        try:
+            svc.decrypt(value)
+        except UnknownEncryptionKeyError:
+            return "stale"  # 交給下游記為失敗（缺金鑰，不是明文）
+        except Exception:
+            return "plaintext_to_encrypt"
     return "stale" if svc.needs_reencrypt(value) else "active"
 
 
@@ -154,14 +189,18 @@ def _reencrypt_value(
     where: str,
     dry_run: bool,
     plaintext_json_ok: bool = False,
+    encrypt_plaintext: bool = False,
 ) -> str:
     """回傳寫回的值（不需要或失敗時回原值）；統計寫進 report。"""
-    kind = classify(value, svc, plaintext_json_ok)
+    kind = classify(value, svc, plaintext_json_ok, encrypt_plaintext)
     if kind == "empty":
         return value
     if kind == "plaintext":
         report.plaintext_skipped += 1
         return value
+    if kind == "plaintext_to_encrypt":
+        report.plaintext_encrypted += 1
+        return value if dry_run else svc.encrypt(value)
     if kind == "active":
         report.already_active += 1
         return value
@@ -226,7 +265,13 @@ async def process_field(
             report.scanned += 1
             if spec.kind == "scalar":
                 new_value: Any = _reencrypt_value(
-                    value or "", svc, report, str(pk), dry_run, spec.plaintext_json_ok
+                    value or "",
+                    svc,
+                    report,
+                    str(pk),
+                    dry_run,
+                    spec.plaintext_json_ok,
+                    spec.encrypt_plaintext,
                 )
                 changed = new_value != (value or "")
             else:
@@ -265,13 +310,13 @@ def format_report(reports: list[FieldReport], dry_run: bool, active_id: str) -> 
     lines = [
         f"active 金鑰 id：{active_id}（{'dry-run，未寫入' if dry_run else '執行'}）",
         f"{'欄位':45} {'掃描':>6} {'已是active':>9} {verb:>6} "
-        f"{'明文略過':>7} {'失敗':>5}",
+        f"{'明文略過':>7} {'明文→密文':>8} {'失敗':>5}",
     ]
     for r in reports:
         done = r.stale - len(r.failures) if dry_run else r.reencrypted
         lines.append(
             f"{r.name:45} {r.scanned:6} {r.already_active:9} {done:6} "
-            f"{r.plaintext_skipped:7} {len(r.failures):5}"
+            f"{r.plaintext_skipped:7} {r.plaintext_encrypted:8} {len(r.failures):5}"
         )
         lines.extend(f"    失敗：{f}" for f in r.failures)
     return "\n".join(lines)

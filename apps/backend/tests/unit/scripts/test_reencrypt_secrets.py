@@ -144,3 +144,42 @@ def test_報表列出每個欄位的待轉筆數():
     text = format_report([report], dry_run=True, active_id="v2")
     assert "provider_settings.api_key_encrypted" in text
     assert "待轉" in text and "v2" in text
+
+
+# ---- #107：LINE 憑證的一次性明文 → 密文遷移 ----
+
+LINE_SECRET = next(f for f in ENCRYPTED_FIELDS if f.name == "bots.line_channel_secret")
+V1_ONLY = AESEncryptionService(master_key=K1)  # 尚未輪替：active 就是 v1
+
+
+def test_LINE_憑證的明文在未輪替時也會被加密():
+    plain = "0123456789abcdef0123456789abcdef"
+    session = SelectQueueSession([[("bot-1", plain), ("bot-2", V1_ONLY.encrypt("s"))]])
+    report = _run(session, LINE_SECRET, dry_run=False, svc=V1_ONLY)
+    (stmt,) = session.updates()
+    written = _written_value(stmt, "line_channel_secret")
+    assert written != plain and V1_ONLY.decrypt(written) == plain
+    assert (report.plaintext_encrypted, report.already_active) == (1, 1)
+    assert report.failures == []
+
+
+def test_LINE_憑證明文遷移_dry_run_只統計():
+    session = SelectQueueSession([[("bot-1", "plain-secret-value")]])
+    report = _run(session, LINE_SECRET, dry_run=True, svc=V1_ONLY)
+    assert report.plaintext_encrypted == 1 and session.updates() == []
+    assert "明文→密文" in format_report([report], dry_run=True, active_id="v1")
+
+
+def test_LINE_憑證遇到缺金鑰的密文記為失敗_不當明文重加密():
+    other = AESEncryptionService(master_key=K2, key_id="v9").encrypt("s")
+    session = SelectQueueSession([[("bot-1", other)]])
+    report = _run(session, LINE_SECRET, dry_run=False, svc=V1_ONLY)
+    assert session.updates() == [] and report.plaintext_encrypted == 0
+    (failure,) = report.failures
+    assert "v9" in failure
+
+
+def test_LINE_憑證重跑冪等():
+    session = SelectQueueSession([[("bot-1", V1_ONLY.encrypt("s"))]])
+    report = _run(session, LINE_SECRET, dry_run=False, svc=V1_ONLY)
+    assert session.updates() == [] and report.already_active == 1

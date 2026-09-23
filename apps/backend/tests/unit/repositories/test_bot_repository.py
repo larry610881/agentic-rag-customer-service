@@ -17,6 +17,7 @@ from src.domain.bot.entity import (
     ToolRagConfig,
 )
 from src.domain.bot.value_objects import BotId, BotShortCode
+from src.infrastructure.crypto.aes_encryption_service import AESEncryptionService
 from src.infrastructure.db.models.bot_knowledge_base_model import (
     BotKnowledgeBaseModel,
 )
@@ -156,7 +157,9 @@ def session() -> SpySession:
 
 @pytest.fixture
 def repo(session) -> SQLAlchemyBotRepository:
-    return SQLAlchemyBotRepository(session)  # type: ignore[arg-type]
+    return SQLAlchemyBotRepository(  # type: ignore[arg-type]
+        session, encryption=AESEncryptionService(master_key="11" * 32)
+    )
 
 
 # ---------------------------------------------------------------- 讀取與映射

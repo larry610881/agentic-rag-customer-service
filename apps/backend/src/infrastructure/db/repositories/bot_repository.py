@@ -15,6 +15,8 @@ from src.domain.bot.entity import (
 )
 from src.domain.bot.repository import BotRepository
 from src.domain.bot.value_objects import BotId, BotShortCode
+from src.domain.platform.services import EncryptionService
+from src.infrastructure.crypto.aes_encryption_service import UnknownEncryptionKeyError
 from src.infrastructure.db.atomic import atomic
 from src.infrastructure.db.models.bot_knowledge_base_model import (
     BotKnowledgeBaseModel,
@@ -72,8 +74,27 @@ def _guard_stages_from_model(model: BotModel) -> list[str] | None:
 
 
 class SQLAlchemyBotRepository(BotRepository):
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, encryption: EncryptionService) -> None:
         self._session = session
+        # Issue #107：LINE 憑證 at-rest 加密；domain 與各通路看到的仍是明文
+        self._enc = encryption
+
+    def _seal(self, value: str | None) -> str | None:
+        return self._enc.encrypt(value) if value else value
+
+    def _open(self, value: str | None) -> str | None:
+        """解密 LINE 憑證；遷移前的明文照樣回傳（之後由存檔或 reencrypt 轉為密文）。
+
+        金鑰 id 不在設定中時直接拋出：若當明文吞掉，後台存檔會把原憑證覆寫掉。
+        """
+        if not value:
+            return value
+        try:
+            return self._enc.decrypt(value)
+        except UnknownEncryptionKeyError:
+            raise
+        except Exception:
+            return value  # 遷移前的明文
 
     def _to_entity(
         self, model: BotModel, kb_ids: list[str]
@@ -206,8 +227,8 @@ class SQLAlchemyBotRepository(BotRepository):
             ],
             router_model=model.router_model or "",
             summary_model=model.summary_model or "",
-            line_channel_secret=model.line_channel_secret,
-            line_channel_access_token=model.line_channel_access_token,
+            line_channel_secret=self._open(model.line_channel_secret),
+            line_channel_access_token=self._open(model.line_channel_access_token),
             line_show_sources=(
                 model.line_show_sources
                 if model.line_show_sources is not None
@@ -341,8 +362,10 @@ class SQLAlchemyBotRepository(BotRepository):
                 ]
                 existing.router_model = bot.router_model
                 existing.summary_model = bot.summary_model
-                existing.line_channel_secret = bot.line_channel_secret
-                existing.line_channel_access_token = bot.line_channel_access_token
+                existing.line_channel_secret = self._seal(bot.line_channel_secret)
+                existing.line_channel_access_token = self._seal(
+                    bot.line_channel_access_token
+                )
                 existing.line_show_sources = bot.line_show_sources
                 existing.busy_reply_message = bot.busy_reply_message
                 existing.temperature = bot.llm_params.temperature
@@ -444,8 +467,10 @@ class SQLAlchemyBotRepository(BotRepository):
                     ],
                     router_model=bot.router_model,
                     summary_model=bot.summary_model,
-                    line_channel_secret=bot.line_channel_secret,
-                    line_channel_access_token=bot.line_channel_access_token,
+                    line_channel_secret=self._seal(bot.line_channel_secret),
+                    line_channel_access_token=self._seal(
+                        bot.line_channel_access_token
+                    ),
                     line_show_sources=bot.line_show_sources,
                     busy_reply_message=bot.busy_reply_message,
                     temperature=bot.llm_params.temperature,

@@ -202,11 +202,10 @@ class BotModel(Base):
         default="小編正在努力回覆中，請稍等一下喔～",
         server_default="小編正在努力回覆中，請稍等一下喔～",
     )
-    line_channel_secret: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
+    # Issue #107：at-rest 加密後 access token 密文約 268 字元，VARCHAR(255) 放不下
+    line_channel_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     line_channel_access_token: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
+        Text, nullable=True
     )
     line_show_sources: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
