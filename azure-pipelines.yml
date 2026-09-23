@@ -137,6 +137,16 @@ stages:
                 -q --tb=short
             displayName: 單元測試（覆蓋率門檻 ${{ parameters.coverageFailUnder }}%）
 
+          # 安全關鍵模組個別下限（Issue #101）：認證、租戶隔離、防護、額度不能被其他模組
+          # 的高覆蓋率平均掉。全域門檻失敗時也照跑，兩份報告一起看。
+          - script: |
+              set -euo pipefail
+              cd apps/backend
+              uv run python scripts/check_coverage_floors.py \
+                $(Build.ArtifactStagingDirectory)/coverage.xml
+            displayName: 安全模組覆蓋率下限
+            condition: succeededOrFailed()
+
           - task: PublishTestResults@2
             condition: succeededOrFailed()
             inputs:
