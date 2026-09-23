@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Activity,
@@ -36,6 +36,7 @@ import {
 } from "@/components/shared/page-breadcrumb";
 import {
   useOptimizationRunPolling,
+  type OptimizationIteration,
   useRollbackRun,
   useStopOptimization,
 } from "@/hooks/queries/use-prompt-optimizer";
@@ -66,16 +67,7 @@ const STOPPED_REASON_LABELS: Record<string, string> = {
 const isFinishedStatus = (s: string) =>
   s === "completed" || s === "failed" || s === "stopped";
 
-interface IterationData {
-  iteration: number;
-  score: number;
-  passed_count: number;
-  total_count: number;
-  is_best: boolean;
-  details: Record<string, unknown> | null;
-  prompt_snapshot: string;
-  created_at: string;
-}
+type IterationData = OptimizationIteration;
 
 export default function AdminPromptOptimizerRunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
@@ -87,15 +79,17 @@ export default function AdminPromptOptimizerRunDetailPage() {
 
   const [elapsed, setElapsed] = useState(0);
   const [expandedIter, setExpandedIter] = useState<number | null>(null);
-  const startTimeRef = useRef(Date.now());
+  const [startTime] = useState(() => Date.now());
 
   const status = run?.status ?? "unknown";
   const currentIteration = run?.current_iteration ?? 0;
   const maxIterations = run?.max_iterations ?? 1;
   const bestScore = run?.best_score ?? 0;
   const baselineScore = run?.baseline_score ?? 0;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const iterations: IterationData[] = (run as any)?.iterations ?? [];
+  const iterations = useMemo<IterationData[]>(
+    () => run?.iterations ?? [],
+    [run?.iterations],
+  );
 
   const isRunning = status === "running";
   const isFinished = isFinishedStatus(status);
@@ -104,31 +98,31 @@ export default function AdminPromptOptimizerRunDetailPage() {
   useEffect(() => {
     if (isFinished) return;
     const timer = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
     }, 1000);
     return () => clearInterval(timer);
-  }, [isFinished]);
+  }, [isFinished, startTime]);
 
   // Build score history from iterations (DB) or score_log (in-memory during run)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const scoreLog: { iteration: number; score: number }[] = (run as any)?.score_log ?? [];
+  const scoreLog = run?.score_log;
 
   const scoreHistory = useMemo(() => {
     // Prefer iterations from DB (includes during run now, since we save immediately)
     // Fall back to score_log from ActiveRun (in-memory)
     const source = iterations.length > 0
       ? iterations.map((it) => ({ iteration: it.iteration, score: it.score }))
-      : scoreLog;
+      : (scoreLog ?? []);
+    const history: { iteration: number; score: number; bestScore: number }[] = [];
     let runningBest = 0;
-    return source.map((p) => {
-      if (p.score > runningBest) runningBest = p.score;
-      return { iteration: p.iteration, score: p.score, bestScore: runningBest };
-    });
+    for (const p of source) {
+      runningBest = Math.max(runningBest, p.score);
+      history.push({ iteration: p.iteration, score: p.score, bestScore: runningBest });
+    }
+    return history;
   }, [iterations, scoreLog]);
 
   // Progress log from backend (complete history, no polling gaps)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const progressLog: string[] = (run as any)?.progress_log ?? [];
+  const progressLog = run?.progress_log ?? [];
 
   const handleStop = useCallback(() => {
     if (!runId) return;

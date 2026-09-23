@@ -16,21 +16,7 @@ import {
 import { formatDateTime } from "@/lib/format-date";
 import type { AuditLog } from "@/types/audit-log";
 import { ConfigDiffTable } from "./config-diff-table";
-
-export const ENTITY_TYPE_LABEL: Record<string, string> = {
-  guard_rules: "安全規則",
-  system_prompt: "系統提示詞",
-  bot: "機器人",
-  worker: "Worker",
-  tenant: "租戶",
-};
-
-export const ACTION_LABEL: Record<string, string> = {
-  create: "建立",
-  update: "更新",
-  delete: "刪除",
-  reset: "重設",
-};
+import { ACTION_LABEL, ENTITY_TYPE_LABEL } from "@/features/admin/audit-log-labels";
 
 function actionBadgeClass(action: string): string {
   switch (action) {

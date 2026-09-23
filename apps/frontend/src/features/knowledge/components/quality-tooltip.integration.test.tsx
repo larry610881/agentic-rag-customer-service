@@ -2,23 +2,28 @@ import { describe, it, expect } from "vitest";
 import { screen } from "@testing-library/react";
 import { renderWithProviders } from "@/test/test-utils";
 import { DocumentList } from "@/features/knowledge/components/document-list";
-import type { DocumentQualityStat } from "@/types/knowledge";
+import type { DocumentQualityStat, DocumentResponse } from "@/types/knowledge";
 
 describe("Document quality indicators integration", () => {
-  const documents = [
+  const documents: DocumentResponse[] = [
     {
       id: "doc-good",
       kb_id: "kb-1",
       tenant_id: "tenant-1",
       filename: "good-doc.pdf",
       content_type: "application/pdf",
-      status: "processed" as const,
+      status: "processed",
       chunk_count: 20,
       avg_chunk_length: 200,
       min_chunk_length: 100,
       max_chunk_length: 400,
       quality_score: 0.9,
       quality_issues: [],
+      has_file: true,
+      task_progress: null,
+      parent_id: null,
+      page_number: null,
+      children_count: 0,
       created_at: "2024-01-01T00:00:00Z",
       updated_at: "2024-01-01T00:00:00Z",
     },
@@ -28,13 +33,18 @@ describe("Document quality indicators integration", () => {
       tenant_id: "tenant-1",
       filename: "warning-doc.pdf",
       content_type: "application/pdf",
-      status: "processed" as const,
+      status: "processed",
       chunk_count: 10,
       avg_chunk_length: 150,
       min_chunk_length: 50,
       max_chunk_length: 300,
       quality_score: 0.6,
       quality_issues: ["short_chunks"],
+      has_file: true,
+      task_progress: null,
+      parent_id: null,
+      page_number: null,
+      children_count: 0,
       created_at: "2024-01-02T00:00:00Z",
       updated_at: "2024-01-02T00:00:00Z",
     },
@@ -44,13 +54,18 @@ describe("Document quality indicators integration", () => {
       tenant_id: "tenant-1",
       filename: "poor-doc.pdf",
       content_type: "application/pdf",
-      status: "processed" as const,
+      status: "processed",
       chunk_count: 5,
       avg_chunk_length: 50,
       min_chunk_length: 20,
       max_chunk_length: 100,
       quality_score: 0.3,
       quality_issues: ["too_short", "low_diversity"],
+      has_file: true,
+      task_progress: null,
+      parent_id: null,
+      page_number: null,
+      children_count: 0,
       created_at: "2024-01-03T00:00:00Z",
       updated_at: "2024-01-03T00:00:00Z",
     },
@@ -59,8 +74,9 @@ describe("Document quality indicators integration", () => {
   const qualityStats: DocumentQualityStat[] = [
     {
       document_id: "doc-poor",
+      filename: "poor-doc.pdf",
+      quality_score: 0.3,
       negative_feedback_count: 3,
-      total_feedback_count: 5,
     },
   ];
 

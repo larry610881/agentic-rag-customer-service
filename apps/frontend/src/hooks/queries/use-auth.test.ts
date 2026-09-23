@@ -14,7 +14,7 @@ describe("useLogin", () => {
       wrapper: AllProviders,
     });
 
-    result.current.mutate({ username: "admin", password: "password" });
+    result.current.mutate({ account: "admin", password: "password" });
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);

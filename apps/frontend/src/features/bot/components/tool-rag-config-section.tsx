@@ -116,8 +116,7 @@ export function ToolRagConfigSection({
     ) {
       delete merged[field];
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (merged as any)[field] = next;
+      Object.assign(merged, { [field]: next });
     }
     onChange(normalize(merged));
   };

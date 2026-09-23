@@ -114,7 +114,7 @@ function addonBadge(remaining: number, hasLedger: boolean) {
 }
 
 export default function AdminQuotaOverviewPage() {
-  const cycleOptions = useMemo(buildCycleOptions, []);
+  const cycleOptions = useMemo(() => buildCycleOptions(), []);
   const [cycle, setCycle] = useState<string>(cycleOptions[0]?.value ?? "");
 
   const { data, isLoading, isError, refetch } = useAdminTenantsQuotas(cycle);

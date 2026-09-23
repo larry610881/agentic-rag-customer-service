@@ -24,6 +24,7 @@ import {
 } from "@/features/admin/lib/trace-node-style";
 import {
   getLayoutedElements,
+  groupParallelByStartMs,
   makeParallelGroupId,
 } from "@/features/admin/lib/trace-layout";
 import { cn } from "@/lib/utils";
@@ -418,13 +419,13 @@ export function TraceNode({ data }: { data: CustomNodeData }) {
           </button>
           {showRaw && (
             <div className="nopan nodrag mt-2 space-y-2 text-xs max-h-[400px] overflow-y-auto">
-              {meta.llm_input && (
+              {Boolean(meta.llm_input) && (
                 <div>
                   <span className="font-medium text-blue-600 dark:text-blue-400">Input:</span>
                   <SmartPre value={meta.llm_input} className="mt-1 bg-blue-50 dark:bg-blue-950" />
                 </div>
               )}
-              {meta.llm_output && (
+              {Boolean(meta.llm_output) && (
                 <div>
                   <span className="font-medium text-green-600 dark:text-green-400">Output:</span>
                   <SmartPre value={meta.llm_output} className="mt-1 bg-green-50 dark:bg-green-950" />
@@ -444,31 +445,6 @@ export function TraceNode({ data }: { data: CustomNodeData }) {
 }
 
 const nodeTypes = { traceNode: TraceNode };
-
-/**
- * 把連續的同 type + 同 start_ms（差距 < 50ms 容忍）節點群組為 parallel group。
- * 避免把不相關的 start_ms=0 節點（如 user_input + worker_routing）誤合，
- * 只有「相鄰」且「節點類型一致」的視為真正的平行呼叫。
- */
-export function groupParallelByStartMs(nodes: ExecutionNode[]): ExecutionNode[][] {
-  const groups: ExecutionNode[][] = [];
-  let current: ExecutionNode[] = [];
-  for (const n of nodes) {
-    const last = current[current.length - 1];
-    if (
-      last &&
-      n.node_type === last.node_type &&
-      Math.abs(n.start_ms - last.start_ms) < 50
-    ) {
-      current.push(n);
-    } else {
-      if (current.length > 0) groups.push(current);
-      current = [n];
-    }
-  }
-  if (current.length > 0) groups.push(current);
-  return groups;
-}
 
 function buildGraph(execNodes: ExecutionNode[]): {
   nodes: Node[];

@@ -258,12 +258,14 @@ export function useStreaming() {
       startAssistantMessage,
       appendToAssistantMessage,
       resetAssistantContent,
+      replaceAssistantContent,
       finalizeAssistantMessage,
       setIsStreaming,
       setConversationId,
       setToolHint,
       setAssistantMessageId,
       setAssistantGuardBlocked,
+      setAssistantQuotaExhausted,
     ],
   );
 

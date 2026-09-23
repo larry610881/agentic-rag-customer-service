@@ -251,7 +251,6 @@ export default function AdminBotDetailPage() {
                     )
                   }
                 />
-                <FieldRow label="Audit Mode" value={bot.audit_mode} />
                 <FieldRow label="Eval Depth" value={bot.eval_depth || "-"} />
                 <FieldRow label="Eval Provider" value={bot.eval_provider || "-"} />
                 <FieldRow label="Eval Model" value={bot.eval_model || "-"} />

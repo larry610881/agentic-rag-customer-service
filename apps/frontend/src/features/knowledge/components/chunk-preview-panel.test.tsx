@@ -5,9 +5,9 @@ import type { ChunkPreviewResponse } from "@/types/knowledge";
 
 const mockChunkData: ChunkPreviewResponse = {
   chunks: [
-    { id: "c1", content: "Normal chunk content that is long enough.", chunk_index: 0, issues: [] },
-    { id: "c2", content: "Short", chunk_index: 1, issues: ["too_short"] },
-    { id: "c3", content: "This chunk has a mid-sentence break issue and is long enough", chunk_index: 2, issues: ["mid_sentence_break"] },
+    { id: "c1", content: "Normal chunk content that is long enough.", context_text: "", chunk_index: 0, issues: [] },
+    { id: "c2", content: "Short", context_text: "", chunk_index: 1, issues: ["too_short"] },
+    { id: "c3", content: "This chunk has a mid-sentence break issue and is long enough", context_text: "", chunk_index: 2, issues: ["mid_sentence_break"] },
   ],
   total: 10,
 };

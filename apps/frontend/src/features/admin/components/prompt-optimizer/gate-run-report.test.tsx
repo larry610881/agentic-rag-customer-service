@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { GateRun } from "@/types/config-version";
+import type { GateRun, GateRunDetails } from "@/types/config-version";
 
 import { GateRunReport } from "./gate-run-report";
 
@@ -119,9 +119,7 @@ describe("GateRunReport", () => {
 
   it("unstable case 顯示不穩定徽章（M53）", () => {
     const run = makeRun();
-    const c = (
-      run.details as { cases: Array<Record<string, unknown>> }
-    ).cases[0];
+    const c = (run.details as GateRunDetails).cases[0];
     c.unstable = true;
     c.soft_passed = true;
     c.hard_failed = false;

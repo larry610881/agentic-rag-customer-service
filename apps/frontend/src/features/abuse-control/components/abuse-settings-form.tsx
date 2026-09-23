@@ -51,7 +51,8 @@ export interface AbuseSettingsFormProps {
 }
 
 function stripProfile(overrides: AbuseOverrides): AbuseOverrides {
-  const { profile: _profile, ...rest } = overrides;
+  const rest = { ...overrides };
+  delete rest.profile;
   return rest;
 }
 
@@ -64,7 +65,7 @@ function sortedJson(value: AbuseOverrides): string {
 }
 
 /** 把草稿轉成要送給後端的覆寫：空字串 / 空清單視為「移除覆寫」 */
-export function normalizeDraft(draft: Draft, defs: Map<string, AbuseFieldDef>): AbuseOverrides {
+function normalizeDraft(draft: Draft, defs: Map<string, AbuseFieldDef>): AbuseOverrides {
   const out: AbuseOverrides = {};
   for (const [key, raw] of Object.entries(draft)) {
     if (raw === undefined || raw === null) continue;
@@ -269,8 +270,8 @@ export function AbuseSettingsForm({
         {control}
         <p className="text-xs text-muted-foreground">
           {overridden ? `已覆寫（${inheritLabel}）` : inheritLabel}
-          {range && def.kind === "number" ? `　範圍 ${range[0]}–${range[1]}` : ""}
-          {def.hint ? `　${def.hint}` : ""}
+          {range && def.kind === "number" ? `\u3000範圍 ${range[0]}–${range[1]}` : ""}
+          {def.hint ? `\u3000${def.hint}` : ""}
         </p>
       </div>
     );

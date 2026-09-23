@@ -26,20 +26,14 @@ import {
   useDeleteWorker,
 } from "@/hooks/queries/use-workers";
 import { useMcpRegistryAccessible } from "@/hooks/queries/use-mcp-registry";
-import { useAuthStore } from "@/stores/use-auth-store";
 import type { WorkerConfig } from "@/types/worker-config";
 import type { ToolRagConfig } from "@/types/bot";
+import type { EnabledModel } from "@/types/provider-setting";
 import {
   ToolRagConfigSection,
   type ModelOption,
   type ToolRagInherited,
 } from "./tool-rag-config-section";
-
-type EnabledModel = {
-  provider_name: string;
-  model_id: string;
-  display_name: string;
-};
 
 type KnowledgeBaseInfo = {
   id: string;

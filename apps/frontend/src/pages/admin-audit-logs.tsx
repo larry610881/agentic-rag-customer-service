@@ -15,10 +15,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdminTenantFilter } from "@/features/admin/components/admin-tenant-filter";
-import {
-  AuditLogsTable,
-  ENTITY_TYPE_LABEL,
-} from "@/features/admin/components/audit-logs-table";
+import { AuditLogsTable } from "@/features/admin/components/audit-logs-table";
+import { ENTITY_TYPE_LABEL } from "@/features/admin/audit-log-labels";
 import { useAuditLogs } from "@/hooks/queries/use-audit-logs";
 import { useTenants } from "@/hooks/queries/use-tenants";
 

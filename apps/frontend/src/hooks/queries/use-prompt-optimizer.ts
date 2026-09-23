@@ -22,6 +22,16 @@ export interface EvalDataset {
   updated_at: string;
 }
 
+export interface TestCaseAssertion {
+  type: string;
+  params?: Record<string, unknown>;
+}
+
+export interface TestCaseTurn {
+  role: string;
+  content: string;
+}
+
 export interface TestCase {
   id: string;
   dataset_id: string;
@@ -31,8 +41,8 @@ export interface TestCase {
   category: string;
   /** Issue #54 — 停用的 case 不參與閘門驗證 */
   enabled: boolean;
-  conversation_history: Record<string, unknown>[];
-  assertions: Record<string, unknown>[];
+  conversation_history: TestCaseTurn[];
+  assertions: TestCaseAssertion[];
   tags: string[];
   created_at: string;
 }
@@ -249,13 +259,35 @@ export function useOptimizationRun(id: string) {
 }
 
 /** Polling variant: auto-refetch every 3s while run is active */
+export interface OptimizationIteration {
+  iteration: number;
+  score: number;
+  passed_count: number;
+  total_count: number;
+  is_best: boolean;
+  details: Record<string, unknown> | null;
+  prompt_snapshot: string;
+  created_at: string;
+}
+
+/** GET /prompt-optimizer/runs/{id}（RunDetailResponse） */
+export interface OptimizationRunDetail extends OptimizationRun {
+  iterations?: OptimizationIteration[];
+  /**
+   * 執行中的記憶體紀錄。注意：use case 有產出，但 RunDetailResponse 未宣告這兩個欄位，
+   * response_model 會把它們濾掉 → 目前前端永遠拿到 undefined。
+   */
+  score_log?: { iteration: number; score: number }[];
+  progress_log?: string[];
+}
+
 export function useOptimizationRunPolling(id: string) {
   const token = useAuthStore((s) => s.token);
 
   return useQuery({
     queryKey: [...queryKeys.promptOptimizer.run(id), "polling"],
     queryFn: () =>
-      apiFetch<OptimizationRun>(
+      apiFetch<OptimizationRunDetail>(
         API_ENDPOINTS.promptOptimizer.run(id),
         {},
         token ?? undefined,
@@ -355,21 +387,71 @@ export function useRunEval() {
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface ModelPricingPer1M {
+  input_per_1m: number;
+  output_per_1m: number;
+}
+
+export interface EstimateTokenBreakdown {
+  prompt_tokens: number;
+  rag_context_tokens: number;
+  rag_top_k: number;
+  avg_chunk_chars: number;
+  avg_question_tokens: number;
+  avg_history_tokens: number;
+  input_with_rag: number;
+  input_without_rag: number;
+  weighted_avg_input: number;
+  output_tokens: number;
+  rag_case_count: number;
+  no_rag_case_count: number;
+  rag_case_ratio: number;
+}
+
+export interface EstimateRange {
+  iterations: number;
+  total_calls: number;
+  cost: number;
+}
+
+/** POST /prompt-optimizer/estimate（後端回 dict，欄位對齊 EstimateCostUseCase） */
+export interface EstimateCostResult {
+  billing_mode: string;
+  est_points: number;
+  dataset_id: string;
+  dataset_name: string;
+  num_cases: number;
+  max_iterations: number;
+  patience: number;
+  budget: number;
+  model_id: string;
+  mutator_model_id: string;
+  eval_cost_per_call: number;
+  mutator_cost_per_call: number;
+  eval_model_pricing: ModelPricingPer1M | null;
+  mutator_model_pricing: ModelPricingPer1M | null;
+  token_breakdown: EstimateTokenBreakdown;
+  calls_per_iteration: number;
+  baseline_cost: number;
+  cost_per_iteration: number;
+  min_estimate: EstimateRange;
+  max_estimate: EstimateRange;
+}
+
 export function useEstimateCost() {
   const token = useAuthStore((s) => s.token);
 
   return useMutation({
     mutationFn: (data: {
       dataset_id: string;
+      bot_id?: string;
       model_id?: string;
       mutator_model_id?: string;
       max_iterations?: number;
       patience?: number;
       budget?: number;
     }) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      apiFetch<any>(
+      apiFetch<EstimateCostResult>(
         API_ENDPOINTS.promptOptimizer.estimate,
         { method: "POST", body: JSON.stringify(data) },
         token ?? undefined,

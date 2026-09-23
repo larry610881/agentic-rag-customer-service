@@ -36,7 +36,8 @@ export function UploadProgressCard({ file }: UploadProgressCardProps) {
     >
       <CircularProgress
         value={file.progress}
-        status={file.status}
+        // 排隊中尚未送出：圓環沿用 uploading 樣式（0%），卡片本身以 opacity 區分
+        status={file.status === "queued" ? "uploading" : file.status}
         size={56}
         strokeWidth={5}
         ariaLabel={ariaLabel}

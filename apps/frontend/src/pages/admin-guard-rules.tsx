@@ -33,19 +33,6 @@ import {
 
 export default function AdminGuardRulesPage() {
   const [activeTab, setActiveTab] = useState<"rules" | "logs">("rules");
-  const [expandedLogIds, setExpandedLogIds] = useState<Set<string>>(new Set());
-
-  const toggleLogExpanded = (id: string) => {
-    setExpandedLogIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
 
   return (
     <div className="space-y-6 p-6">
@@ -264,16 +251,37 @@ function GuardRulesEditor() {
 function GuardLogsTable() {
   const [page, setPage] = useState(1);
   const [logType, setLogType] = useState<string>("");
+  // "all" 是「全部類型」選項的哨兵值，不可原樣送給後端（會變成 WHERE log_type='all' → 永遠空）
   const { data, isLoading } = useGuardLogs(
     page,
     20,
-    logType || undefined,
+    logType && logType !== "all" ? logType : undefined,
   );
+  // 展開狀態屬於此表格（曾誤放在父元件 → 切到攔截記錄時 ReferenceError 白屏）
+  const [expandedLogIds, setExpandedLogIds] = useState<Set<string>>(new Set());
+
+  const toggleLogExpanded = (id: string) => {
+    setExpandedLogIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <Select value={logType} onValueChange={setLogType}>
+        <Select
+          value={logType}
+          onValueChange={(v) => {
+            setLogType(v);
+            setPage(1);
+          }}
+        >
           <SelectTrigger className="w-40">
             <SelectValue placeholder="全部類型" />
           </SelectTrigger>

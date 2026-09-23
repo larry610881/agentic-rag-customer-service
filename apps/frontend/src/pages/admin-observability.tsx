@@ -4,11 +4,11 @@ import { ObservabilityEvalsTable } from "@/features/admin/components/observabili
 import { AgentTracesTable } from "@/features/admin/components/agent-traces-table";
 import { AgentTracesGroupedTable } from "@/features/admin/components/agent-traces-grouped-table";
 import { AgentTraceDetail } from "@/features/admin/components/agent-trace-detail";
+import { AgentTracesFilterRow } from "@/features/admin/components/agent-traces-filter-row";
 import {
-  AgentTracesFilterRow,
   daysToDateFrom,
   useAgentTracesFilterUrl,
-} from "@/features/admin/components/agent-traces-filter-row";
+} from "@/features/admin/components/agent-traces-filter-url";
 import type { AgentTraceFilters } from "@/hooks/queries/use-agent-traces";
 import type { AgentExecutionTrace } from "@/types/agent-trace";
 

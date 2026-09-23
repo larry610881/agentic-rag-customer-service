@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +16,8 @@ interface ConfirmDangerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  description: string;
+  /** 純文字會包在 <p>；傳入 JSX（含段落 / 表單元件）時改用 <div> 承載，避免 <p> 內巢狀區塊元素 */
+  description: ReactNode;
   /** 必須輸入此名稱才能 enable confirm 按鈕 */
   confirmName?: string;
   confirmLabel?: string;
@@ -48,7 +49,13 @@ export function ConfirmDangerDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+          {typeof description === "string" ? (
+            <AlertDialogDescription>{description}</AlertDialogDescription>
+          ) : (
+            <AlertDialogDescription asChild>
+              <div>{description}</div>
+            </AlertDialogDescription>
+          )}
         </AlertDialogHeader>
 
         {confirmName && (

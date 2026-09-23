@@ -32,9 +32,6 @@ describe("FeedbackButtons", () => {
 
     await user.click(screen.getByRole("button", { name: "有幫助" }));
 
-    // After optimistic update, store should have feedback set
-    const state = useChatStore.getState();
-    const msg = state.messages.find((m) => m.id === "msg-1");
     // The store update happens through setMessageFeedback, but since we mock,
     // we check the mutation was triggered (buttons should still be visible in test)
     expect(screen.getByRole("button", { name: "有幫助" })).toBeInTheDocument();

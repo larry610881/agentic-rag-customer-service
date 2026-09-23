@@ -442,7 +442,3 @@ export function BlueprintCanvas(props: BlueprintCanvasProps) {
     </ReactFlowProvider>
   );
 }
-
-// 給外部用：tool node id 規則（與 onChunkNode 對應 parent）
-export const blueprintToolNodeId = (agentId: string, toolName: string) =>
-  `tool:${agentId}:${toolName}`;

@@ -280,7 +280,7 @@ function TenantSettingsTab() {
     if (tenant.data) setProfile(tenant.data.profile);
   }, [tenant.data]);
 
-  const profiles = overview.data?.profiles ?? {};
+  const profiles = useMemo(() => overview.data?.profiles ?? {}, [overview.data?.profiles]);
   // 租戶覆寫的繼承基底 = 平台生效預設 + 所選方案（切換方案時即時反映在提示）
   const baseValues = useMemo(
     () => ({ ...(overview.data?.effective_default ?? {}), ...(profiles[profile] ?? {}) }),

@@ -7,6 +7,19 @@ export interface IntentRoute {
 /** Issue #43 — Bot-level RAG retrieval mode */
 export type RetrievalMode = "raw" | "rewrite" | "hyde";
 
+/** 評估層級組合（對齊後端 bot_router._VALID_EVAL_DEPTHS；層級以 + 串接且依序排列） */
+export const EVAL_DEPTHS = [
+  "off",
+  "L1",
+  "L2",
+  "L3",
+  "L1+L2",
+  "L1+L3",
+  "L2+L3",
+  "L1+L2+L3",
+] as const;
+export type EvalDepth = (typeof EVAL_DEPTHS)[number];
+
 export const RETRIEVAL_MODES: RetrievalMode[] = ["raw", "rewrite", "hyde"];
 
 /**
@@ -83,7 +96,7 @@ export interface Bot {
   show_sources: boolean;
   eval_provider: string;
   eval_model: string;
-  eval_depth: string;
+  eval_depth: EvalDepth;
   /** Issue #54 — 發布閘門設定（治理欄位，不受版控） */
   gate_mode: "off" | "warn" | "block";
   gate_soft_threshold: number;
@@ -133,7 +146,8 @@ export interface Bot {
   hyde_model: string;
   hyde_extra_hint: string;
   intent_routes: IntentRoute[];
-  router_model: string;
+  /** BotResponse 目前不回傳此欄位（僅 intent classifier 內部參數），故為 optional */
+  router_model?: string;
   summary_model?: string;
   busy_reply_message: string;
   line_channel_secret: string | null;
@@ -165,7 +179,7 @@ export interface CreateBotRequest {
   show_sources?: boolean;
   eval_provider?: string;
   eval_model?: string;
-  eval_depth?: "off" | "L1" | "L1+L2" | "L1+L2+L3";
+  eval_depth?: EvalDepth;
   /** Issue #54 — 發布閘門設定 */
   gate_mode?: "off" | "warn" | "block";
   gate_soft_threshold?: number;
@@ -240,7 +254,7 @@ export interface UpdateBotRequest {
   show_sources?: boolean;
   eval_provider?: string;
   eval_model?: string;
-  eval_depth?: "off" | "L1" | "L1+L2" | "L1+L2+L3";
+  eval_depth?: EvalDepth;
   /** Issue #54 — 發布閘門設定 */
   gate_mode?: "off" | "warn" | "block";
   gate_soft_threshold?: number;

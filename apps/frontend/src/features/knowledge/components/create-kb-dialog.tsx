@@ -43,7 +43,8 @@ const createKbSchema = z.object({
   dm_metadata_model: z.string().default(""),
 });
 
-type CreateKbFormValues = z.infer<typeof createKbSchema>;
+type CreateKbFormInput = z.input<typeof createKbSchema>;
+type CreateKbFormValues = z.output<typeof createKbSchema>;
 
 const OCR_MODE_OPTIONS = [
   { value: "general", label: "通用文字提取" },
@@ -90,7 +91,7 @@ export function CreateKbDialog() {
     setValue,
     watch,
     formState: { errors },
-  } = useForm<CreateKbFormValues>({
+  } = useForm<CreateKbFormInput, unknown, CreateKbFormValues>({
     resolver: zodResolver(createKbSchema),
     defaultValues: {
       ocr_mode: "general",
@@ -199,7 +200,7 @@ export function CreateKbDialog() {
                 <div key={field.key} className="flex flex-col gap-1">
                   <Label className="text-sm">{field.label}</Label>
                   <ModelSelect
-                    value={watch(field.key)}
+                    value={watch(field.key) ?? ""}
                     onValueChange={(v) => setValue(field.key, v)}
                     enabledModels={enabledModels}
                     placeholder={field.emptyLabel}

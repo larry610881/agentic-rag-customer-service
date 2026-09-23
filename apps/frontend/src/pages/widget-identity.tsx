@@ -53,7 +53,7 @@ import type {
 } from "@/types/widget-identity";
 
 /** 把後端 `{"detail": "..."}` 轉成可讀訊息；其餘落到 fallback */
-export function describeWidgetIdentityError(err: unknown, fallback: string): string {
+function describeWidgetIdentityError(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
     try {
       const parsed = JSON.parse(err.message) as { detail?: unknown };

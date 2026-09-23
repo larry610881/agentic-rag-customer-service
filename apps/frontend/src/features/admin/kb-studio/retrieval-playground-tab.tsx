@@ -133,7 +133,10 @@ export function RetrievalPlaygroundTab({ kbId }: RetrievalPlaygroundTabProps) {
   const results = test.data?.results ?? [];
   const chunkResults = results.filter((r) => r.source === "chunk");
   const convResults = results.filter((r) => r.source === "conv_summary");
-  const modeQueries = test.data?.mode_queries ?? {};
+  const modeQueries = useMemo(
+    () => test.data?.mode_queries ?? {},
+    [test.data?.mode_queries],
+  );
   const rewrittenQuery = test.data?.rewritten_query ?? "";
 
   // 為了「每條候選 query 命中哪些 chunks」用：當前 result 的 chunk_id ↔ 命中 modes

@@ -1,9 +1,7 @@
 import { useParams } from "react-router-dom";
 import { Suspense, lazy } from "react";
-import {
-  KbStudioTabs,
-  useKbStudioTab,
-} from "@/features/admin/kb-studio/kb-studio-tabs";
+import { KbStudioTabs } from "@/features/admin/kb-studio/kb-studio-tabs";
+import { useKbStudioTab } from "@/features/admin/kb-studio/kb-studio-tab-state";
 import { DocumentsTab } from "@/features/admin/kb-studio/documents-tab";
 import { SettingsTab } from "@/features/admin/kb-studio/settings-tab";
 import { QualityTab } from "@/features/admin/kb-studio/quality-tab";

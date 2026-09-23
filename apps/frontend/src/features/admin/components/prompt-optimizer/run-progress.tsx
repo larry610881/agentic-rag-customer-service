@@ -26,15 +26,15 @@ export function RunProgress({ runId, onComplete }: RunProgressProps) {
     status: "connecting",
   });
   const [elapsed, setElapsed] = useState(0);
-  const startTimeRef = useRef(Date.now());
+  const [startTime] = useState(() => Date.now());
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [startTime]);
 
   useEffect(() => {
     const es = new EventSource(

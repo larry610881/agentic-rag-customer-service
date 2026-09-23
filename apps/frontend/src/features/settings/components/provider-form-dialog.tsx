@@ -110,8 +110,6 @@ export function ProviderFormDialog({
     }
   };
 
-  const providerType = watch("provider_type");
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>

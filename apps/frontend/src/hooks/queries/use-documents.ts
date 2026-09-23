@@ -167,9 +167,11 @@ export function useUploadDocument() {
           };
           xhr.onload = () => {
             console.log("[upload] GCS response:", xhr.status, xhr.statusText);
-            xhr.status >= 200 && xhr.status < 300
-              ? resolve()
-              : reject(new Error(`GCS upload failed: ${xhr.status} ${xhr.responseText?.substring(0, 200)}`));
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              reject(new Error(`GCS upload failed: ${xhr.status} ${xhr.responseText?.substring(0, 200)}`));
+            }
           };
           xhr.onerror = () => {
             console.error("[upload] GCS network error");

@@ -19,7 +19,7 @@ import { useBotAuditLogs } from "@/hooks/queries/use-bot-audit-logs";
 import { formatDateTime } from "@/lib/format-date";
 import { isLongTextChange, type BotAuditChange, type BotAuditLogEntry } from "@/types/bot-audit-log";
 
-export const BOT_AUDIT_ACTION_LABEL: Record<string, string> = {
+const BOT_AUDIT_ACTION_LABEL: Record<string, string> = {
   create: "建立",
   update: "更新",
   delete: "刪除",
@@ -31,7 +31,7 @@ export const BOT_AUDIT_ACTION_LABEL: Record<string, string> = {
  * 平台改了租戶的防護設定 → 「防護設定（平台）」；worker → 「worker：<名稱>」。
  * bot 本體不顯示標籤（entity_type 缺省時視為 bot，相容舊資料）。
  */
-export function entityBadgeLabel(entry: BotAuditLogEntry): string | null {
+function entityBadgeLabel(entry: BotAuditLogEntry): string | null {
   switch (entry.entity_type) {
     case "guard_settings":
       return "防護設定（平台）";

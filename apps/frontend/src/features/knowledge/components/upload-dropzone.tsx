@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useRef, useState, type DragEvent } from "react";
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -6,10 +6,7 @@ import {
   type UploadResumeState,
 } from "@/hooks/queries/use-documents";
 import { useUploadQueue } from "@/features/knowledge/hooks/use-upload-queue";
-import {
-  UploadProgressCard,
-  type UploadingFileItem,
-} from "@/features/knowledge/components/upload-progress-card";
+import { UploadProgressCard } from "@/features/knowledge/components/upload-progress-card";
 import { cn } from "@/lib/utils";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB

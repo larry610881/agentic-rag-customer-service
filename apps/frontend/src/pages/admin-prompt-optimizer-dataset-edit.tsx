@@ -104,18 +104,6 @@ const ASSERTION_LABELS: Record<string, string> = {
   references_history: "引用歷史對話",
 };
 
-interface TestCaseData {
-  id: string;
-  case_id: string;
-  question: string;
-  priority: string;
-  category: string;
-  /** Issue #54 Phase E — 停用的 case 不參與閘門驗證 */
-  enabled: boolean;
-  assertions: { type: string; params?: Record<string, unknown> }[];
-  conversation_history?: { role: string; content: string }[];
-}
-
 export default function AdminPromptOptimizerDatasetEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -299,7 +287,7 @@ export default function AdminPromptOptimizerDatasetEditPage() {
     if (selectedIds.size === dataset.test_cases.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(dataset.test_cases.map((tc: TestCaseData) => tc.id)));
+      setSelectedIds(new Set(dataset.test_cases.map((tc) => tc.id)));
     }
   };
 
@@ -604,7 +592,7 @@ export default function AdminPromptOptimizerDatasetEditPage() {
               </div>
 
               {/* Case rows */}
-              {dataset.test_cases.map((tc: TestCaseData) => {
+              {dataset.test_cases.map((tc) => {
                 const isExpanded = expandedIds.has(tc.id);
                 const isSelected = selectedIds.has(tc.id);
                 const categoryLabel =
@@ -725,10 +713,7 @@ export default function AdminPromptOptimizerDatasetEditPage() {
                                 </Label>
                                 <div className="mt-1 space-y-2">
                                   {tc.conversation_history.map(
-                                    (
-                                      msg: { role: string; content: string },
-                                      i: number,
-                                    ) => (
+                                    (msg, i) => (
                                       <div
                                         key={i}
                                         className={`rounded p-2 text-sm ${
@@ -760,13 +745,7 @@ export default function AdminPromptOptimizerDatasetEditPage() {
                             </Label>
                             <div className="mt-1 flex flex-wrap gap-2">
                               {tc.assertions?.map(
-                                (
-                                  a: {
-                                    type: string;
-                                    params?: Record<string, unknown>;
-                                  },
-                                  i: number,
-                                ) => (
+                                (a, i) => (
                                   <Badge
                                     key={i}
                                     variant="outline"
@@ -778,7 +757,7 @@ export default function AdminPromptOptimizerDatasetEditPage() {
                                         <span className="ml-1 text-muted-foreground">
                                           (
                                           {Object.entries(a.params)
-                                            .map(([k, v]) => {
+                                            .map(([, v]) => {
                                               if (Array.isArray(v))
                                                 return `${v.length} 項`;
                                               return String(v);

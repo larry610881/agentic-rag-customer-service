@@ -6,10 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  useMcpRegistry,
-  useMcpRegistryAccessible,
-} from "@/hooks/queries/use-mcp-registry";
+import { useMcpRegistryAccessible } from "@/hooks/queries/use-mcp-registry";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { useDiscoverMcpTools } from "@/hooks/queries/use-mcp";
 import type { McpRegistration } from "@/types/mcp-registry";

@@ -7,7 +7,7 @@ import { ProviderList } from "./provider-list";
 describe("ProviderList", () => {
   it("should render loading skeletons initially", () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
-    renderWithProviders(<ProviderList type="llm" />);
+    renderWithProviders(<ProviderList />);
     expect(
       document.querySelectorAll("[data-slot='skeleton']").length,
     ).toBeGreaterThanOrEqual(0);
@@ -15,7 +15,7 @@ describe("ProviderList", () => {
 
   it("should show all pre-defined provider cards for LLM type", async () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
-    renderWithProviders(<ProviderList type="llm" />);
+    renderWithProviders(<ProviderList />);
 
     // Pre-defined providers always appear
     await waitFor(() => {
@@ -28,7 +28,7 @@ describe("ProviderList", () => {
 
   it("should show LLM badges when type=llm", async () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
-    renderWithProviders(<ProviderList type="llm" />);
+    renderWithProviders(<ProviderList />);
 
     await waitFor(() => {
       expect(screen.getByText("DeepSeek")).toBeInTheDocument();
@@ -42,7 +42,7 @@ describe("ProviderList", () => {
 
   it("should show enable/disable switches on each card", async () => {
     useAuthStore.setState({ token: "mock-token", tenantId: "t-001" });
-    renderWithProviders(<ProviderList type="llm" />);
+    renderWithProviders(<ProviderList />);
 
     await waitFor(() => {
       expect(screen.getByText("DeepSeek")).toBeInTheDocument();

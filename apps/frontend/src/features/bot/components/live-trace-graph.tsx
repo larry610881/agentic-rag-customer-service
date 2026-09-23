@@ -17,11 +17,11 @@ import type { SSEEvent } from "@/lib/sse-client";
 import type { ExecutionNode, ExecutionNodeType } from "@/types/agent-trace";
 import {
   TraceNode,
-  groupParallelByStartMs,
   type CustomNodeData,
 } from "@/features/admin/components/agent-trace-graph";
 import {
   getLayoutedElements,
+  groupParallelByStartMs,
   makeParallelGroupId,
 } from "@/features/admin/lib/trace-layout";
 

@@ -48,7 +48,7 @@ function buildCycleOptions(): { value: string; label: string }[] {
 }
 
 export default function AdminBillingPage() {
-  const cycleOptions = useMemo(buildCycleOptions, []);
+  const cycleOptions = useMemo(() => buildCycleOptions(), []);
   const currentCycle = cycleOptions[0]?.value ?? "";
   const sixMonthsBack = cycleOptions[5]?.value ?? cycleOptions[0]?.value ?? "";
   const [end, setEnd] = useState<string>(currentCycle);

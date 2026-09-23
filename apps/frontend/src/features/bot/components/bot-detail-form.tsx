@@ -82,7 +82,7 @@ import type {
   ToolRagConfig,
   UpdateBotRequest,
 } from "@/types/bot";
-import { OUTPUT_FORMATS, RETRIEVAL_MODES } from "@/types/bot";
+import { EVAL_DEPTHS, OUTPUT_FORMATS, RETRIEVAL_MODES } from "@/types/bot";
 import {
   DEFAULT_MISS_REPLY,
   DEFAULT_MISS_REPLY_JSON,
@@ -161,16 +161,18 @@ const botFormSchema = z.object({
   show_sources: z.boolean(),
   eval_provider: z.string().optional(),
   eval_model: z.string().optional(),
-  eval_depth: z.string(),
+  eval_depth: z.enum(EVAL_DEPTHS),
   mcp_servers: z.array(
     z.object({
       url: z.string(),
       name: z.string(),
       enabled_tools: z.array(z.string()),
-      tools: z
-        .array(z.object({ name: z.string(), description: z.string() }))
-        .default([]),
-      version: z.string().default(""),
+      tools: z.array(z.object({ name: z.string(), description: z.string() })),
+      version: z.string(),
+      // stdio 綁定需保留 transport/command/args，否則 zod 預設 strip 會讓儲存後變成空 url 的 http server
+      transport: z.enum(["http", "stdio"]).optional(),
+      command: z.string().optional(),
+      args: z.array(z.string()).optional(),
     }),
   ),
   max_tool_calls: z.coerce.number().int().min(1).max(20),
@@ -214,7 +216,7 @@ const botFormSchema = z.object({
       z.object({
         name: z.string().min(1, "請輸入名稱").max(50),
         description: z.string().min(1, "請輸入描述").max(500),
-        bot_prompt: z.string().min(1, "請輸入提示詞").max(10000),
+        system_prompt: z.string().min(1, "請輸入提示詞").max(10000),
       }),
     )
     .max(10)
@@ -258,7 +260,11 @@ const botFormSchema = z.object({
     }
   });
 
-type BotFormValues = z.infer<typeof botFormSchema>;
+/** 表單內部狀態（zod input：coerce 欄位可能暫存字串、default 欄位可缺） */
+type BotFormInput = z.input<typeof botFormSchema>;
+/** 通過驗證後交給 onSubmit 的值（zod output） */
+type BotFormValues = z.output<typeof botFormSchema>;
+type BotFormControl = Control<BotFormInput, unknown, BotFormValues>;
 
 /** 解析成 JSON 物件（非陣列 / null / 純量）；失敗回 null */
 function parseJsonObject(text: string): BotOutputSchema | null {
@@ -283,7 +289,7 @@ function isValidJson(text: string): boolean {
 }
 
 /** Issue #71：表單初始值由 bot 建立（defaultValues / reset / 儲存前 diff 基準共用） */
-function buildFormValues(bot: Bot): DefaultValues<BotFormValues> {
+function buildFormValues(bot: Bot): DefaultValues<BotFormInput> {
   return {
     name: bot.name,
     description: bot.description,
@@ -515,11 +521,11 @@ const TAB_KEYS = {
  * （DB 留 boolean 給其他地方判斷；source of truth 是 rag_retrieval_modes）
  */
 type RetrievalModesSectionProps = {
-  control: Control<BotFormValues>;
-  register: UseFormRegister<BotFormValues>;
-  watch: UseFormWatch<BotFormValues>;
-  setValue: UseFormSetValue<BotFormValues>;
-  errors: FieldErrors<BotFormValues>;
+  control: BotFormControl;
+  register: UseFormRegister<BotFormInput>;
+  watch: UseFormWatch<BotFormInput>;
+  setValue: UseFormSetValue<BotFormInput>;
+  errors: FieldErrors<BotFormInput>;
 };
 
 const RETRIEVAL_MODE_LABELS: Record<RetrievalMode, { label: string; hint: string }> = {
@@ -760,10 +766,10 @@ function RetrievalModesSection({
 
 
 type GateSettingsSectionProps = {
-  control: Control<BotFormValues>;
-  register: UseFormRegister<BotFormValues>;
-  watch: UseFormWatch<BotFormValues>;
-  setValue: UseFormSetValue<BotFormValues>;
+  control: BotFormControl;
+  register: UseFormRegister<BotFormInput>;
+  watch: UseFormWatch<BotFormInput>;
+  setValue: UseFormSetValue<BotFormInput>;
 };
 
 /** Issue #54 — 平台通用集題目勾選排除（單一 dataset 的案例清單） */
@@ -804,10 +810,10 @@ function PlatformDatasetCases({
 }
 
 type ModeSectionProps = {
-  register: UseFormRegister<BotFormValues>;
-  watch: UseFormWatch<BotFormValues>;
-  setValue: UseFormSetValue<BotFormValues>;
-  errors: FieldErrors<BotFormValues>;
+  register: UseFormRegister<BotFormInput>;
+  watch: UseFormWatch<BotFormInput>;
+  setValue: UseFormSetValue<BotFormInput>;
+  errors: FieldErrors<BotFormInput>;
 };
 
 /**
@@ -815,7 +821,7 @@ type ModeSectionProps = {
  * 與後端 `domain/bot/mode_presets.MODE_PRESETS` 一一對應；套用後各開關即為真相，
  * 使用者可任意偏離（舊版是執行期強制覆蓋，導致開關打開卻不生效）。
  */
-const MODE_PRESET_VALUES: Record<string, Partial<BotFormValues>> = {
+const MODE_PRESET_VALUES: Record<string, Partial<BotFormInput>> = {
   kb: {
     direct_retrieval: true,
     escalate_on_miss: false,
@@ -898,7 +904,7 @@ function ModeSection({ register, watch, setValue, errors }: ModeSectionProps) {
                     // Issue #92：選預設 = 一次填好各開關；之後開關即為真相
                     const preset = MODE_PRESET_VALUES[e.target.value] ?? {};
                     for (const [k, v] of Object.entries(preset)) {
-                      setValue(k as keyof BotFormValues, v as never, {
+                      setValue(k as keyof BotFormInput, v as never, {
                         shouldDirty: true,
                       });
                     }
@@ -950,10 +956,10 @@ function ModeSection({ register, watch, setValue, errors }: ModeSectionProps) {
 }
 
 type OutputFormatSectionProps = {
-  register: UseFormRegister<BotFormValues>;
-  watch: UseFormWatch<BotFormValues>;
-  setValue: UseFormSetValue<BotFormValues>;
-  errors: FieldErrors<BotFormValues>;
+  register: UseFormRegister<BotFormInput>;
+  watch: UseFormWatch<BotFormInput>;
+  setValue: UseFormSetValue<BotFormInput>;
+  errors: FieldErrors<BotFormInput>;
 };
 
 /** Issue #70 — 輸出格式（text / plain_text / json）+ JSON schema + 供應商能力等級提示 */
@@ -1310,7 +1316,7 @@ export function BotDetailForm({
     setValue,
     watch,
     formState: { errors },
-  } = useForm<BotFormValues>({
+  } = useForm<BotFormInput, unknown, BotFormValues>({
     resolver: zodResolver(botFormSchema),
     defaultValues: buildFormValues(bot),
   });
@@ -1321,12 +1327,9 @@ export function BotDetailForm({
     name: "intent_routes",
   });
 
-  const enabledTools = watch("enabled_tools") ?? [];
   const showSources = watch("show_sources");
   const greetingMessages = watch("widget_greeting_messages") ?? [];
   const mcpServers = watch("mcp_servers") ?? [];
-  const currentLlmProvider = watch("llm_provider");
-  const currentLlmModel = watch("llm_model");
   const toolConfigs = (watch("tool_configs") ?? {}) as Record<
     string,
     ToolRagConfig
@@ -1419,7 +1422,7 @@ export function BotDetailForm({
     if (pending) await persist(pending.payload);
   };
 
-  const onInvalid = (errs: FieldErrors<BotFormValues>) => {
+  const onInvalid = (errs: FieldErrors<BotFormInput>) => {
     const flat: string[] = [];
     const walk = (obj: unknown, path: string) => {
       if (!obj || typeof obj !== "object") return;
@@ -2253,7 +2256,7 @@ export function BotDetailForm({
                 botId={bot.id}
                 value={field.value ?? null}
                 persisted={bot.guard_stages}
-                mode={watch("mode")}
+                mode={watch("mode") ?? "deep"}
                 onChange={(next) => field.onChange(next)}
               />
             )}

@@ -15,7 +15,7 @@ import type { ConfigFieldChange } from "@/types/config-snapshot";
 
 export const COLLAPSE_THRESHOLD = 120;
 
-export function formatDiffValue(value: unknown): string {
+function formatDiffValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") {

@@ -96,7 +96,7 @@ export function TopIssuesChart({ data, isLoading }: TopIssuesChartProps) {
               allowDecimals={false}
             />
             <Tooltip
-              formatter={(value: number) => [value, "次數"]}
+              formatter={(value: number | undefined) => [value ?? 0, "次數"]}
               contentStyle={{
                 background: "oklch(0.14 0.02 250)",
                 border: "1px solid oklch(0.75 0.15 195 / 20%)",

@@ -15,11 +15,11 @@ import { Activity, Search, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConversationListPanel } from "@/features/admin/conversation-insights/conversation-list-panel";
 import { ConversationDetailPanel } from "@/features/admin/conversation-insights/conversation-detail-panel";
+import { AgentTracesFilterRow } from "@/features/admin/components/agent-traces-filter-row";
 import {
-  AgentTracesFilterRow,
   daysToDateFrom,
   useAgentTracesFilterUrl,
-} from "@/features/admin/components/agent-traces-filter-row";
+} from "@/features/admin/components/agent-traces-filter-url";
 import { AgentTracesGroupedTable } from "@/features/admin/components/agent-traces-grouped-table";
 import { AgentTracesTable } from "@/features/admin/components/agent-traces-table";
 import { ObservabilityEvalsTable } from "@/features/admin/components/observability-evals-table";

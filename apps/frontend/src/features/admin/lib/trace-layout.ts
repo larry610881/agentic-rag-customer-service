@@ -113,3 +113,28 @@ export function makeParallelGroupId(
   const bucket = Math.floor(startMs / 50);
   return `${parentId ?? "__root__"}::${bucket}`;
 }
+
+/**
+ * 把連續的同 type + 同 start_ms（差距 < 50ms 容忍）節點群組為 parallel group。
+ * 避免把不相關的 start_ms=0 節點（如 user_input + worker_routing）誤合，
+ * 只有「相鄰」且「節點類型一致」的視為真正的平行呼叫。
+ */
+export function groupParallelByStartMs(nodes: ExecutionNode[]): ExecutionNode[][] {
+  const groups: ExecutionNode[][] = [];
+  let current: ExecutionNode[] = [];
+  for (const n of nodes) {
+    const last = current[current.length - 1];
+    if (
+      last &&
+      n.node_type === last.node_type &&
+      Math.abs(n.start_ms - last.start_ms) < 50
+    ) {
+      current.push(n);
+    } else {
+      if (current.length > 0) groups.push(current);
+      current = [n];
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
+}
