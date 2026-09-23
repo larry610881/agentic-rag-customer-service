@@ -97,6 +97,20 @@ async def _run_log_cleanup_once(container: object) -> None:
         logger.info("log_cleanup.success", deleted_count=deleted)
 
 
+def _validate_encryption_keys() -> None:
+    """Issue #105：加密金鑰環設定不合法 → 任何環境都拒絕啟動（不退回預設金鑰）。"""
+    from src.infrastructure.crypto.aes_encryption_service import (
+        EncryptionKeyConfigError,
+        build_encryption_service,
+    )
+
+    try:
+        build_encryption_service(settings)
+    except EncryptionKeyConfigError as e:
+        logger.error("app.startup.invalid_encryption_keys", detail=str(e))
+        raise RuntimeError(f"拒絕啟動：加密金鑰設定不合法（{e}）") from None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_logging(
@@ -109,6 +123,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log_level=settings.effective_log_level,
         enabled_modules=settings.enabled_modules,
     )
+
+    _validate_encryption_keys()
 
     # M24：非 development 環境拒絕以預設密鑰啟動（fail-closed）
     secret_problems = settings.validate_production_secrets()

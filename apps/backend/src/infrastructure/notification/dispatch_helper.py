@@ -18,7 +18,7 @@ from src.domain.audit.entity import AuditEntry
 from src.domain.observability.config_change import NOTIFIABLE_ENTITY_TYPES
 from src.domain.observability.diagnostic import DiagnosticEvent
 from src.domain.observability.error_event import ErrorEvent
-from src.infrastructure.crypto.aes_encryption_service import AESEncryptionService
+from src.infrastructure.crypto.aes_encryption_service import build_encryption_service
 from src.infrastructure.db.engine import async_session_factory
 from src.infrastructure.db.repositories.bot_repository import SQLAlchemyBotRepository
 from src.infrastructure.db.repositories.notification_channel_repository import (
@@ -45,9 +45,8 @@ def _build_dispatcher(settings: Settings) -> NotificationDispatcher:
     }
     return NotificationDispatcher(
         senders=senders,
-        encryption_service=AESEncryptionService(
-            master_key=settings.encryption_master_key or "0" * 64
-        ),
+        # Issue #105：與 DI container 同一份金鑰環（含 previous，才解得開舊密文）
+        encryption_service=build_encryption_service(settings),
     )
 
 

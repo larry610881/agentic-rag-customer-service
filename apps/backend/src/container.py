@@ -465,7 +465,7 @@ from src.infrastructure.conversation import (
 from src.infrastructure.conversation.llm_summary_service import (
     LLMConversationSummaryService,
 )
-from src.infrastructure.crypto.aes_encryption_service import AESEncryptionService
+from src.infrastructure.crypto.aes_encryption_service import build_encryption_service
 from src.infrastructure.db.engine import (
     async_session_factory as _async_session_factory,
 )
@@ -1273,14 +1273,8 @@ class Container(containers.DeclarativeContainer):
         redis_client=redis_client,
     )
 
-    encryption_service = providers.Singleton(
-        AESEncryptionService,
-        master_key=providers.Callable(
-            lambda cfg: cfg.encryption_master_key
-            or "0" * 64,  # fallback dev key (all zeros)
-            config,
-        ),
-    )
+    # Issue #105：金鑰環（active + previous）；空 master key 時沿用開發用全零金鑰
+    encryption_service = providers.Singleton(build_encryption_service, config)
 
     # Issue #68 P7b：widget 宿主身分綁定（租戶 identity secret）
     tenant_identity_secret_repository = providers.Factory(

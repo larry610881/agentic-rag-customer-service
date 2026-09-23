@@ -26,6 +26,7 @@ FLOORS: list[tuple[tuple[str, ...], float, str]] = [
         "認證／版本／限流入口",
     ),
     (("infrastructure/auth/*",), 90, "JWT、密碼雜湊"),
+    (("infrastructure/crypto/*",), 95, "加密金鑰環與密文格式（#105 輪替）"),
     (("application/auth/*",), 90, "登入、refresh、api key"),
     (("application/security/*", "domain/security/*"), 85, "防護管線"),
     (

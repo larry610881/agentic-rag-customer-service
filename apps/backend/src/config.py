@@ -141,6 +141,9 @@ class Settings(BaseSettings):
 
     # Encryption
     encryption_master_key: str = ""
+    # Issue #105 金鑰輪替：active 金鑰 id 與只用於解密的舊金鑰（"id:hex,id:hex"）
+    encryption_master_key_id: str = "v1"
+    encryption_previous_keys: str = ""
 
     # Bcrypt
     bcrypt_rounds: int = 12
