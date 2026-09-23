@@ -344,7 +344,12 @@ stages:
           runOnce:
             deploy:
               steps:
-                - checkout: none
+                # rollback 需要完整歷史，檢查目標 commit 是否支援金鑰輪替（防呆步驟）
+                - ${{ if eq(parameters.mode, 'rollback') }}:
+                  - checkout: self
+                    fetchDepth: 0
+                - ${{ else }}:
+                  - checkout: none
 
                 - template: infra/azure-pipelines/steps-gcp-auth.yml
                   parameters:
@@ -415,6 +420,45 @@ stages:
                   env:
                     MODE: ${{ parameters.mode }}
                     REQ_TAG: ${{ parameters.rollbackImageTag }}
+
+                # 回滾防呆（Issue #106）：金鑰一旦輪替（active 不是 v1，或有 previous 金鑰），
+                # DB 就可能有 `v2:` 前綴密文，#105 之前的程式讀不懂——回滾過去會讓供應商
+                # API key、widget 身分、通知通道、MCP env 全部解不開。以目標 commit 的程式碼
+                # 特徵判斷是否支援輪替（不看 commit 先後，cherry-pick 也判斷得對）。
+                - ${{ if eq(parameters.mode, 'rollback') }}:
+                  - script: |
+                      set -euo pipefail
+                      SHA="$(resolve.TARGET_SHA)"
+                      STATE="$(gcloud run services describe $(serviceName) \
+                        --region=$(GCP_REGION) --project=$(GCP_PROJECT_ID) --format=json \
+                        | python3 -c '
+                      import json, sys
+                      env = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env", [])
+                      by = {e["name"]: e for e in env}
+                      kid = by.get("ENCRYPTION_MASTER_KEY_ID", {})
+                      key_id = kid.get("value", "secret" if "valueFrom" in kid else "v1") or "v1"
+                      prev = by.get("ENCRYPTION_PREVIOUS_KEYS")
+                      has_prev = bool(prev) and (bool(prev.get("value")) or "valueFrom" in prev)
+                      print(key_id, "yes" if has_prev else "no")
+                      ')"
+                      read -r KEY_ID HAS_PREV <<< "$STATE"
+                      echo "線上 ENCRYPTION_MASTER_KEY_ID=$KEY_ID，ENCRYPTION_PREVIOUS_KEYS 存在：$HAS_PREV"
+                      if [ "$KEY_ID" = "v1" ] && [ "$HAS_PREV" = "no" ]; then
+                        echo "尚未輪替金鑰，回滾不受限制"
+                        exit 0
+                      fi
+                      if ! git cat-file -e "$SHA^{commit}"; then
+                        echo "##vso[task.logissue type=error]repo 裡找不到目標 commit $SHA，無法確認是否支援金鑰輪替"
+                        exit 1
+                      fi
+                      CRYPTO=apps/backend/src/infrastructure/crypto/aes_encryption_service.py
+                      if git show "$SHA:$CRYPTO" 2>/dev/null | grep -q 'def split_ciphertext'; then
+                        echo "目標 commit 支援金鑰輪替，可以回滾"
+                        exit 0
+                      fi
+                      echo "##vso[task.logissue type=error]金鑰已輪替（active=$KEY_ID，previous=$HAS_PREV），但目標版本 $(resolve.TARGET_TAG) 不支援金鑰輪替（#105 之前），回滾後加密資料會解不開。請改選 #105 之後的 rc-<sha>，或先依 docs/encryption-key-rotation-runbook.md 把 active 切回 v1、跑完 reencrypt、清空 ENCRYPTION_PREVIOUS_KEYS。"
+                      exit 1
+                    displayName: 回滾防呆：目標版本須支援已輪替的加密金鑰
 
                 # 記下部署前的線上版本。deploy 模式把它標成 poc-previous（下一次 rollback 的
                 # 預設目標）；rollback 模式不動 poc-previous，免得連續回滾兩次變成來回互換。

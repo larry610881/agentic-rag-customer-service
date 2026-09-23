@@ -407,4 +407,8 @@ rollbackImageTag 只接受英數與 `. _ -`；映像不存在或別名反查不�
 - `gcloud run deploy` 只帶 `--image`，不帶 `--set-env-vars` / `--set-secrets`、不用
   `services replace`：環境變數與 Secret Manager 掛載由 infra 管，換映像時沿用服務現況。
 - 緊急修補一律開 `fix/*` 分支 → 合併 `main` 走一般部署，不手動 gcloud。
+- **金鑰輪替後的回滾防呆**（Issue #106）：rollback 模式會讀 Cloud Run 的 `ENCRYPTION_MASTER_KEY_ID`
+  與 `ENCRYPTION_PREVIOUS_KEYS`。只要 active 不是 `v1` 或有 previous 金鑰，就檢查目標 commit 是否
+  支援金鑰輪替（#105 之後），不支援即紅燈——否則回滾後 `v2:` 密文全部解不開。要回到 #105 之前，
+  必須先照 `docs/encryption-key-rotation-runbook.md` 把 active 切回 `v1`、跑完 reencrypt、清空 previous。
 
