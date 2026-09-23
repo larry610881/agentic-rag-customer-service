@@ -4,14 +4,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.application.bot._guard_stages import validate_bot_guard_stages_for_tenant
+from src.application.bot._mcp_config import build_mcp_server_configs
 from src.application.bot._output_settings import validate_output_settings
 from src.domain.bot.entity import (
     Bot,
     BotLLMParams,
     BotMcpBinding,
     IntentRoute,
-    McpServerConfig,
-    McpToolMeta,
     ToolRagConfig,
     validate_reasoning_effort,
 )
@@ -189,22 +188,8 @@ class CreateBotUseCase:
             gate_daily_limit=command.gate_daily_limit,
             gate_budget_usd=command.gate_budget_usd,
             gate_excluded_cases=list(command.gate_excluded_cases or []),
-            mcp_servers=[
-                McpServerConfig(
-                    url=s.get("url", ""),
-                    name=s.get("name", ""),
-                    enabled_tools=s.get("enabled_tools", []),
-                    tools=[
-                        McpToolMeta(
-                            name=t.get("name", ""),
-                            description=t.get("description", ""),
-                        )
-                        for t in s.get("tools", [])
-                    ],
-                    version=s.get("version", ""),
-                )
-                for s in command.mcp_servers
-            ],
+            # #103：與更新共用組裝（保留 stdio 的 transport / command / args）
+            mcp_servers=build_mcp_server_configs(list(command.mcp_servers)),
             mcp_bindings=mcp_bindings,
             max_tool_calls=command.max_tool_calls,
             widget_enabled=command.widget_enabled,

@@ -30,7 +30,7 @@ from src.container import Container
 from src.domain.bot.entity import VALID_BOT_MODES, VALID_REASONING_EFFORTS, Bot
 from src.domain.platform.value_objects import ProviderName
 from src.domain.shared.exceptions import EntityNotFoundError, ValidationError
-from src.domain.shared.secret_masking import mask_url
+from src.domain.shared.secret_masking import mask_args, mask_url
 from src.interfaces.api.deps import (
     CurrentTenant,
     get_current_tenant,
@@ -404,6 +404,10 @@ def _to_response(bot: Bot) -> BotResponse:
                     {"name": t.name, "description": t.description} for t in s.tools
                 ],
                 "version": s.version,
+                # #103：stdio 需要這三欄，缺了前端存檔送不回；args 遮罩憑證（#102）
+                "transport": s.transport,
+                "command": s.command,
+                "args": mask_args(s.args),
             }
             for s in bot.mcp_servers
         ],
