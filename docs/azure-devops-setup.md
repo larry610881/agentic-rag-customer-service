@@ -363,3 +363,48 @@ GCP 端無法從 Larry 帳號驗證（IAM 讀取全被擋）：WIF pool / provid
 而那一處剛好沒有型別註記或被 `except Exception` 包住」——單元測試用 mock 走不到，只有型別檢查
 看得到。所以 CI 的 ruff / mypy / tsc 是硬閘門，不做軟閘。
 
+## 九、部署、重新部署與回滾（Azure UI 操作）
+
+> 2026-09-23 定案（Issue #104）：**唯一部署入口是管線 3888**。WIF 接通後收回個人帳號的
+> `run.developer` / `artifactregistry.writer` / `iam.serviceAccountUser`，不再用 `gcloud run deploy`
+> 直推。回滾也在 3888 內做，不另開管線：infra 的 WIF 只綁 subject `<prj_id>/3888`，且只放行
+> `refs/heads/main`，另開管線就要 infra 再綁一次。
+
+### 版本怎麼識別
+
+每次 deploy 建出的映像 tag 是 `rc-<完整 commit sha>`，另外維護兩個移動式別名：
+
+| 別名 | 指向 | 何時更新 |
+|---|---|---|
+| `poc-current` | 目前線上版本 | 每次部署（含 rollback）健康檢查通過後 |
+| `poc-previous` | 上一次 **deploy** 之前的線上版本 | deploy 模式在換映像前標記；rollback 不動它；同版重新部署也不動它 |
+
+rollback 不動 `poc-previous`，是為了避免連續回滾兩次變成在兩版之間來回互換。
+
+### 四種操作
+
+| 要做什麼 | 在哪裡 | 參數 |
+|---|---|---|
+| 一般部署 | 合併到 `main` 自動觸發 | 無 |
+| 重新部署同一版（例如 VM worker 異常要重同步） | Pipelines → 3888 → **Run pipeline**，branch `main` | mode `deploy` |
+| 回滾到上一版 | 同上 | mode `rollback`，rollbackImageTag 留預設 `poc-previous` |
+| 回滾到指定版 | 同上 | mode `rollback`，rollbackImageTag 填 `rc-<commit sha>` |
+
+指定版的 tag 從兩個地方找：前一次 run 的 **Summary** 分頁（每次部署都寫出本次 tag、commit、
+部署前的 tag 與回滾指令），或 Environments → `poc` 的部署歷史。
+
+rollback 模式會跳過 CI 與建置，直接把既有映像部署回 Cloud Run，VM worker 也同步回該 commit
+（Release 以 `TARGET_TAG` / `TARGET_SHA` 統一驅動三段：換映像、確認線上映像＋健康檢查、VM 同步）。
+rollbackImageTag 只接受英數與 `. _ -`；映像不存在或別名反查不到 `rc-*` 時直接紅燈，並列出最近
+10 個 `rc-*` 供挑選。
+
+### 限制
+
+- **不回滾 DB schema**。migration 規範要求加法式，回滾到舊版仍相容；若某次 migration 是破壞性的，
+  那一版之前不可回滾——管線無法判斷，靠 Issue / SPRINT_TODOLIST 的紀錄。
+- **Artifact Registry 清理政策**不能刪掉舊的 `rc-*`，至少保留最近 20 個（待 infra 確認
+  `poc-ar-rag` 的 cleanup policy）。
+- `gcloud run deploy` 只帶 `--image`，不帶 `--set-env-vars` / `--set-secrets`、不用
+  `services replace`：環境變數與 Secret Manager 掛載由 infra 管，換映像時沿用服務現況。
+- 緊急修補一律開 `fix/*` 分支 → 合併 `main` 走一般部署，不手動 gcloud。
+
