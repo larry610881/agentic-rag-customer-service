@@ -111,26 +111,31 @@ branch = true
 source = ["src"]
 parallel = true
 concurrency = ["greenlet", "thread"]
+# 排除只允許三類（B8，Issue #100 計畫檔）：
+#   (a) 行程入口 / DI 宣告 / 純 ORM 宣告與連線
+#   (b) 對外 SaaS 的純 pass-through（單元測試只能 mock 到什麼都沒斷言）
+#   (c) 重型第三方演算法包裝
+# router、認證、repository（租戶過濾）、LLM / agent 轉接一律計量——
+# 跨租戶漏洞就出在過去被排除的 router 層。不准為了數字加排除。
 omit = [
     "tests/*",
+    # (a)
     "src/infrastructure/db/seed.py",
     "src/infrastructure/db/engine.py",
     "src/infrastructure/db/base.py",
     "src/infrastructure/db/models/*",
-    "src/infrastructure/db/repositories/*",
-    "src/infrastructure/db/health_repository.py",
     "src/infrastructure/logging/*",
-    "src/infrastructure/auth/*",
-    "src/infrastructure/embedding/*",
-    "src/infrastructure/llm/*",
-    "src/infrastructure/milvus/*",
-    "src/infrastructure/sentiment/*",
-    "src/infrastructure/langgraph/*",
-    "src/infrastructure/tools/*",
-    "src/infrastructure/line/*",
-    "src/interfaces/*",
+    "src/worker.py",
     "src/container.py",
-    "src/main.py",
+    # (b)
+    "src/infrastructure/storage/gcs_document_file_storage.py",
+    "src/infrastructure/notification/sendgrid_quota_alert_sender.py",
+    "src/infrastructure/notification/teams_workflow_sender.py",
+    "src/infrastructure/notification/dispatch_helper.py",
+    "src/infrastructure/prompt_optimizer/run_manager.py",
+    "src/application/billing/_email_templates.py",
+    # (c)
+    "src/infrastructure/classification/cluster_classification_service.py",
 ]
 
 [tool.coverage.report]
@@ -146,6 +151,8 @@ exclude_lines = [
     "raise NotImplementedError",
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
+    "except ImportError:",
+    "\\.\\.\\.$",
 ]
 
 [tool.coverage.paths]
