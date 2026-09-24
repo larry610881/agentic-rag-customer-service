@@ -96,8 +96,14 @@ class ComputeTenantQuotaUseCase:
                 base_total = existing.base_total
                 plan_name = existing.plan_name
             else:
+                # 該 cycle 尚未建 ledger（租戶本月還沒用量 = 「未啟用」）：
+                # 唯讀預估為方案 base 額度（即 ensure_ledger 將 snapshot 的值），
+                # 不建 ledger。ea7cbb3 改走本 use case 時誤填 0，導致系統層
+                # 額度總覽對未啟用租戶顯示 0 / 0（dd7ea60 規格為方案基準額度）。
                 target_cycle = cycle
-                base_total = 0
+                base_total = (
+                    await self._ensure_ledger.plan_base_total(tenant.plan) or 0
+                )
                 plan_name = tenant.plan
 
         audit_total = await self._usage_repo.sum_tokens_in_cycle(

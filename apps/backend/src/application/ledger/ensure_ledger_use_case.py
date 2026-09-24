@@ -69,9 +69,9 @@ class EnsureLedgerUseCase:
             return existing
 
         # 從 plan 讀基準 base_total
-        plan = await self._plan_repo.find_by_name(plan_name)
-        base_total = plan.base_monthly_tokens if plan else 0
-        if plan is None:
+        base_total = await self.plan_base_total(plan_name)
+        if base_total is None:
+            base_total = 0
             logger.warning(
                 "ledger.plan_not_found",
                 tenant_id=tenant_id,
@@ -114,6 +114,15 @@ class EnsureLedgerUseCase:
             carryover=carryover,
         )
         return ledger
+
+    async def plan_base_total(self, plan_name: str) -> int | None:
+        """方案的每月 base 額度（= 建 ledger 時 snapshot 的 base_total）。
+
+        找不到方案回 None。供唯讀路徑（尚未建 ledger 的 cycle）預估額度，
+        不產生任何寫入。
+        """
+        plan = await self._plan_repo.find_by_name(plan_name)
+        return plan.base_monthly_tokens if plan else None
 
     async def _compute_carryover(self, tenant_id: str, cycle: str) -> int:
         """計算上月 final addon_remaining（= 本月 carryover amount）。
