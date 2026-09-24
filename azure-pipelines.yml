@@ -625,7 +625,10 @@ stages:
                       echo "##vso[task.logissue type=error]repo 裡找不到 commit $SHA，無法同步 VM"
                       exit 1
                     fi
-                    git bundle create /tmp/deploy.bundle "$SHA"
+                    # bundle 只收 ref，給裸 SHA 會 "Refusing to create empty bundle"：先掛暫時 ref
+                    git update-ref refs/deploy/target "$SHA"
+                    git bundle create /tmp/deploy.bundle refs/deploy/target
+                    git update-ref -d refs/deploy/target
                     gcloud compute scp /tmp/deploy.bundle \
                       $(WORKER_VM_NAME):/tmp/deploy.bundle \
                       --zone=$(WORKER_VM_ZONE) --tunnel-through-iap \
@@ -643,7 +646,7 @@ stages:
                         sudo chmod 0644 /tmp/deploy.bundle
                         sudo -u $(WORKER_VM_USER) bash -lc '
                           cd $(WORKER_REPO_PATH)
-                          git fetch --quiet /tmp/deploy.bundle $SHA
+                          git fetch --quiet /tmp/deploy.bundle refs/deploy/target
                           git reset --hard $SHA
                           echo HEAD: \$(git rev-parse --short HEAD)
                           cd apps/backend
