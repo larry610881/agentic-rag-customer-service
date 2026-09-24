@@ -59,8 +59,10 @@ export function BotSelector() {
     selectBot(bot.id, bot.name);
   };
 
+  // min-h-full（不是 h-full）：清單超過一屏時容器跟著長高、由外層 main 捲動；
+  // h-full + justify-center 會讓超出的內容上下平均溢出，頂端那段捲不到（#470083）。
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-6 p-8">
+    <div className="flex min-h-full flex-col items-center justify-center gap-6 p-8">
       <div className="text-center">
         <h2 className="text-lg font-semibold">選擇一個機器人開始對話</h2>
         <p className="text-sm text-muted-foreground">
