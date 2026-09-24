@@ -678,11 +678,14 @@ def _mount_admin_spa(application: FastAPI, static_dir: str) -> None:
     from fastapi import HTTPException
     from fastapi.responses import FileResponse
 
-    reserved = ("api/", "static/", "docs", "openapi.json", "redoc")
+    # 非前端路徑：未匹配時回 404 JSON，不回 SPA。以第一個路徑段比對（/healthcare
+    # 仍是前端路由）。health 必須在內：部署健康檢查打錯路徑時要失敗，不能被
+    # index.html 的 200 蓋過（#470075）。
+    reserved = {"api", "static", "health", "docs", "redoc", "openapi.json"}
 
     @application.get("/{full_path:path}", include_in_schema=False)
     async def admin_spa(full_path: str) -> FileResponse:
-        if full_path.startswith(reserved):
+        if full_path.split("/", 1)[0] in reserved:
             raise HTTPException(status_code=404)
         candidate = os.path.normpath(os.path.join(admin_dir, full_path))
         if candidate.startswith(admin_dir) and os.path.isfile(candidate):

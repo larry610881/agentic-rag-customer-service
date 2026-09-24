@@ -260,7 +260,7 @@ graph LR
 |-------|------|------|
 | `CI` | 每個 PR 與 main push | 後端 ruff、mypy 兩個獨立步驟 → 單元測試（覆蓋率門檻 80%，首跑以 78 排程）→ OpenAPI 破壞性變更檢查；整合測試（`resources.containers` 起 postgres:16-alpine + redis:7-alpine，測試庫由 conftest 自建，**不灌 `infra/schema.sql`**；#65 修完前 `continueOnError`）；前端 `npm run lint`（eslint src/）/ tsc / vitest；測試結果與覆蓋率上傳到 Tests / Code Coverage 頁籤 |
 | `Package` | 只有 `main` | 先建 widget（打包進後端映像），再 `docker build` 後端推到 Artifact Registry，tag 為 `rc-<commit sha>` 與 `latest` |
-| `Release` | `Package` 成功後**自動**執行 | `gcloud run deploy` 指定 tag → 輪詢 `/health` 直到 200（失敗整條紅燈）→ 把本次 commit 做成 git bundle scp 進 VM、還原、`uv sync`、重啟 `arq-worker.service` → 回讀 VM 的 HEAD 確認等於本次 commit |
+| `Release` | `Package` 成功後**自動**執行 | `gcloud run deploy` 指定 tag → 輪詢 `/api/v1/health` 直到 HTTP 200 且 JSON `status=healthy`、`database=connected`（20 次未過整條紅燈，每次印出回應）→ 把本次 commit 做成 git bundle scp 進 VM、還原、`uv sync`、重啟 `arq-worker.service` → 回讀 VM 的 HEAD 確認等於本次 commit |
 
 **為什麼 worker 要獨立一段**：worker 是沒有 HTTP 介面的常駐程序，跑在 GCE VM 上由
 systemd 管理，跟 Cloud Run 是兩條部署路徑。漏掉它的後果是 worker 永遠跑舊 code，
@@ -299,7 +299,7 @@ GitHub Actions 那條線上真的發生過（快取計費與自動分類記帳�
 - [ ] Library：把 infra 兩值填進 group 390
 - [ ] main 加 branch policy（至少 1 reviewer + CI build validation）；合入即部署，不能再直推
 - [ ] 管線 3888 指向 `/azure-pipelines.yml`，首次排程 `coverageFailUnder` 填 78
-- [ ] main 推一次 → CI 綠 → Package 推出 `rc-<sha>` → Release 部署且 `/health` 200 → VM worker HEAD 等於本次 commit
+- [ ] main 推一次 → CI 綠 → Package 推出 `rc-<sha>` → Release 部署且 `/api/v1/health` 回 `healthy` / `connected` → VM worker HEAD 等於本次 commit
 
 ## 六、2026-09-16 更新（掛上 Azure 前對齊現況）
 
@@ -364,6 +364,12 @@ GCP 端無法從 Larry 帳號驗證（IAM 讀取全被擋）：WIF pool / provid
 看得到。所以 CI 的 ruff / mypy / tsc 是硬閘門，不做軟閘。
 
 ## 九、部署、重新部署與回滾（Azure UI 操作）
+
+> **2026-09-24 修正（Bug #470075）**：健康檢查原本打 `/health`。那不是後端路由，會被 admin SPA 的
+> `/{full_path:path}` 回退接走，永遠回 200 + `index.html`——後端壞了管線也判成功。改打
+> `/api/v1/health` 並驗 JSON；後端 DB 斷線時該端點仍回 200（`status=unhealthy`），所以只看狀態碼不夠。
+> SPA 回退同時改為對 `api`、`static`、`health`、`docs`、`redoc`、`openapi.json` 開頭的路徑（以第一個
+> 路徑段比對）回 404 JSON，不再回 `index.html`。
 
 > 2026-09-23 定案（Issue #104）：**唯一部署入口是管線 3888**。WIF 接通後收回個人帳號的
 > `run.developer` / `artifactregistry.writer` / `iam.serviceAccountUser`，不再用 `gcloud run deploy`

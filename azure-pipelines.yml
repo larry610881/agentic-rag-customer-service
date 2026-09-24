@@ -640,13 +640,28 @@ stages:
                       --region=$(GCP_REGION) --project=$(GCP_PROJECT_ID) \
                       --format='value(status.url)')
                     echo "服務網址：$URL"
+                    # 打 /api/v1/health，並驗 JSON 內容（#470075）。不可打 /health：它不是後端
+                    # 路由，舊版會被 admin SPA 回退接走回 200 + index.html，後端壞了也判成功。
+                    # 後端 DB 斷線時仍回 200（status=unhealthy），所以只看狀態碼不夠。
+                    BODY="$(mktemp)"
                     for i in $(seq 1 20); do
-                      CODE=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$URL/health" || echo 000)
-                      echo "health 第 $i 次：$CODE"
-                      [ "$CODE" = "200" ] && exit 0
+                      CODE=$(curl -s -o "$BODY" -w '%{http_code}' -m 10 "$URL/api/v1/health" || echo 000)
+                      if [ "$CODE" = "200" ] && python3 -c '
+                    import json, sys
+                    try:
+                        b = json.load(open(sys.argv[1]))
+                    except ValueError:
+                        sys.exit(1)
+                    ok = isinstance(b, dict) and b.get("status") == "healthy" and b.get("database") == "connected"
+                    sys.exit(0 if ok else 1)
+                    ' "$BODY"; then
+                        echo "health 第 $i 次：HTTP 200，$(head -c 300 "$BODY")"
+                        exit 0
+                      fi
+                      echo "health 第 $i 次：HTTP $CODE，回應：$(head -c 300 "$BODY" | tr '\n' ' ')"
                       sleep 5
                     done
-                    echo "##vso[task.logissue type=error]health 檢查未通過"
+                    echo "##vso[task.logissue type=error]健康檢查未通過：/api/v1/health 需 HTTP 200 且 status=healthy、database=connected"
                     exit 1
                   displayName: 確認線上映像並健康檢查（失敗即整條 Release 紅燈）
 
