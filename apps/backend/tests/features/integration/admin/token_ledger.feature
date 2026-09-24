@@ -8,11 +8,15 @@ Feature: Token Ledger 扣費 + 月度重置 — S-Token-Gov.2
     Given admin 已登入並 seed 三個方案
     And 已建立租戶 "ledger-co" 綁定 plan "starter"
 
+  # ea7cbb3（S-Ledger-Unification）：餘額改由 ComputeTenantQuotaUseCase 從
+  # token_usage_records + token_ledger_topups 即時算出，ledger 的 mutable 欄位
+  # 不再維護；total_used_in_cycle 改名 total_billable_in_cycle。
+  # 0e30148（Issue #73）：rag 類別已 deprecated，record_usage 拒寫 → 改 chat_web。
   Scenario: 第一次扣費 — 自動建本月 ledger
-    When record_usage 寫入 1500 tokens (category=rag) 給 ledger-co
+    When record_usage 寫入 1500 tokens (category=chat_web) 給 ledger-co
     Then 該租戶本月 ledger 應存在
     And base_remaining 應為 9998500
-    And total_used_in_cycle 應為 1500
+    And total_billable_in_cycle 應為 1500
 
   Scenario: 連續扣費 — 累計扣 base
     When record_usage 寫入 1000 tokens 給 ledger-co
@@ -36,8 +40,8 @@ Feature: Token Ledger 扣費 + 月度重置 — S-Token-Gov.2
     And 本月 addon_remaining 應為 2000
 
   Scenario: included_categories 過濾 — 只扣指定 category
-    Given ledger-co 設定 included_categories=["rag"]
-    When record_usage 寫入 1000 tokens (category=rag) 給 ledger-co
+    Given ledger-co 設定 included_categories=["chat_web"]
+    When record_usage 寫入 1000 tokens (category=chat_web) 給 ledger-co
     And record_usage 寫入 500 tokens (category=embedding) 給 ledger-co
     Then base_remaining 應為 9999000
-    And total_used_in_cycle 應為 1000
+    And total_billable_in_cycle 應為 1000

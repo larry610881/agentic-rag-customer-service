@@ -9,9 +9,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-scenarios("integration/feedback/feedback_api.feature")
+from tests.integration.conftest import TEST_DB_URL  # 跟隨 INTEGRATION_TEST_DB
 
-TEST_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/agentic_rag_test"
+scenarios("integration/feedback/feedback_api.feature")
 
 
 def _run(coro):

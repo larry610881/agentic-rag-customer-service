@@ -3,6 +3,8 @@
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
+from tests.integration.conftest import TEST_DB_URL
+
 scenarios("integration/conversation/conversation_api.feature")
 
 
@@ -45,7 +47,7 @@ def other_tenant_has_conversation(ctx, client, create_tenant_login, app, name):
 
     async def _insert():
         eng = create_async_engine(
-            "postgresql+asyncpg://postgres:postgres@localhost:5432/agentic_rag_test",
+            TEST_DB_URL,
             poolclass=NullPool,
         )
         async with eng.begin() as conn:

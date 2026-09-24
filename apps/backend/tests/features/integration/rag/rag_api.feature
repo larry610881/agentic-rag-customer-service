@@ -10,5 +10,5 @@ Feature: RAG Query API Integration
     Then 回應狀態碼為 404
 
   Scenario: 未認證時拒絕存取
-    When 我不帶 token 送出 POST /api/v1/rag/query
+    When 我不帶 token 送出 POST /api/v1/rag/search
     Then 回應狀態碼為 401

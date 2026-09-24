@@ -45,23 +45,27 @@ def create_kb(ctx, client, kb_name):
 # ---------------------------------------------------------------------------
 
 
+# /api/v1/rag/query 已於 6c0da0c（清 pure RAG legacy）移除，RAG 查詢統一走
+# /api/v1/rag/search（UnifiedSearchRequest：kb_ids 清單）。測試意圖不變。
+
+
 @when("我送出 RAG 查詢到不存在的知識庫")
 def post_rag_query_not_found(ctx, client):
     ctx["response"] = client.post(
-        "/api/v1/rag/query",
+        "/api/v1/rag/search",
         json={
-            "knowledge_base_id": "00000000-0000-0000-0000-000000000000",
+            "kb_ids": ["00000000-0000-0000-0000-000000000000"],
             "query": "測試查詢",
         },
         headers=_auth_only(ctx["headers"]),
     )
 
 
-@when("我不帶 token 送出 POST /api/v1/rag/query")
+@when("我不帶 token 送出 POST /api/v1/rag/search")
 def post_rag_no_auth(ctx, client):
     ctx["response"] = client.post(
-        "/api/v1/rag/query",
-        json={"knowledge_base_id": "any", "query": "test"},
+        "/api/v1/rag/search",
+        json={"kb_ids": ["any"], "query": "test"},
     )
 
 

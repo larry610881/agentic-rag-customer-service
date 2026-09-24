@@ -172,8 +172,17 @@ def seed_billing_transactions(ctx, tname, cycle, n, amount, tokens):
 # ---------------------------------------------------------------------------
 
 
+# 預設區間 = current_year_month() 往前 6 個月；feature 的 seed cycle 寫死
+# 2026-03/04，故把 router 的時鐘固定在 2026-04，讓結果不隨執行日期漂移。
+FIXED_CURRENT_CYCLE = "2026-04"
+
+
 @when("admin 呼叫 GET /api/v1/admin/billing/dashboard")
-def admin_get_dashboard(ctx, client):
+def admin_get_dashboard(ctx, client, monkeypatch):
+    monkeypatch.setattr(
+        "src.interfaces.api.admin_router.current_year_month",
+        lambda: FIXED_CURRENT_CYCLE,
+    )
     resp = client.get(
         "/api/v1/admin/billing/dashboard",
         headers=ctx["admin_headers"],

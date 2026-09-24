@@ -4,6 +4,9 @@ Feature: 系統層額度總覽 — S-Token-Gov.2.5
   我希望一次看到所有租戶當月 Token 額度狀況
   以便快速判斷誰快超用、誰閒置、是否該手動續約
 
+  # ea7cbb3（S-Ledger-Unification）：額度總覽 total_used_in_cycle 拆為
+  # total_audit_in_cycle（全用量）+ total_billable_in_cycle（計費），此處驗全用量。
+
   Background:
     Given admin 已登入並 seed 三個方案
     And 已建立租戶 "quota-alpha" 綁定 plan "starter"
@@ -16,18 +19,18 @@ Feature: 系統層額度總覽 — S-Token-Gov.2.5
     When admin 呼叫 GET /api/v1/admin/tenants/quotas
     Then 回應應包含 3 筆租戶資料
     And 租戶 "quota-alpha" 的 has_ledger 應為 True
-    And 租戶 "quota-alpha" 的 total_used_in_cycle 應為 1000
+    And 租戶 "quota-alpha" 的 total_audit_in_cycle 應為 1000
     And 租戶 "quota-beta" 的 has_ledger 應為 True
-    And 租戶 "quota-beta" 的 total_used_in_cycle 應為 5000
+    And 租戶 "quota-beta" 的 total_audit_in_cycle 應為 5000
     And 租戶 "quota-gamma" 的 has_ledger 應為 False
-    And 租戶 "quota-gamma" 的 total_used_in_cycle 應為 0
+    And 租戶 "quota-gamma" 的 total_audit_in_cycle 應為 0
     And 租戶 "quota-gamma" 的 base_total 應等於 plan.base_monthly_tokens
 
   Scenario: 指定 cycle 查歷史月份 — 該月無 ledger 顯示 0
     When admin 呼叫 GET /api/v1/admin/tenants/quotas?cycle=2025-01
     Then 回應應包含 3 筆租戶資料
     And 所有租戶的 has_ledger 應為 False
-    And 所有租戶的 total_used_in_cycle 應為 0
+    And 所有租戶的 total_audit_in_cycle 應為 0
 
   Scenario: 非 admin 訪問 quota 總覽 — 拒絕 403
     Given 已建立非 admin 使用者 "regular-user" 綁定 quota-alpha

@@ -71,14 +71,17 @@ async def _insert_kb(conn, kb_id: str, tenant_id: str) -> None:
 
 
 async def _insert_doc(conn, doc_id: str, kb_id: str, tenant_id: str) -> None:
+    # source / source_id 由 3d2489e（Issue #44 bulk ingest）新增為 NOT NULL；
+    # ORM 預設 "" 只在 Python 端（DocumentRepository.save 一律帶值），
+    # create_all 建出的測試表沒有 server default，raw INSERT 必須顯式給值。
     await conn.execute(
         text(
             "INSERT INTO documents (id, kb_id, tenant_id, filename, content_type, "
             "content, storage_path, status, chunk_count, avg_chunk_length, "
             "min_chunk_length, max_chunk_length, quality_score, quality_issues, "
-            "created_at, updated_at) "
+            "source, source_id, created_at, updated_at) "
             "VALUES (:id, :kb, :tid, :fn, 'pdf', '', '', 'processed', 1, "
-            "100, 100, 100, 1.0, '', :at, :at)"
+            "100, 100, 100, 1.0, '', '', '', :at, :at)"
         ),
         {
             "id": doc_id,

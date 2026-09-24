@@ -1,6 +1,7 @@
 """Auto-topup + Quota Alerts — BDD Step Definitions (S-Token-Gov.3)
 
-驗證 DeductTokensUseCase 在 addon ≤ 0 時自動觸發 TopupAddonUseCase，
+驗證 RecordUsageUseCase 的 auto-topup hook 在 base 與 addon 皆耗盡時觸發
+TopupAddonUseCase（ea7cbb3 起取代已刪除的 DeductTokensUseCase），
 以及 ProcessQuotaAlertsUseCase 寫 80%/100% 警示且重跑冪等。
 """
 
@@ -16,7 +17,9 @@ from src.domain.billing.quota_alert import (
     ALERT_TYPE_BASE_WARNING_80,
 )
 from src.domain.ledger.entity import current_year_month
+from src.domain.ledger.topup_entity import REASON_MANUAL_ADJUST, TokenLedgerTopup
 from src.domain.rag.value_objects import TokenUsage
+from src.domain.usage.entity import UsageRecord
 
 scenarios("integration/admin/auto_topup.feature")
 
@@ -130,24 +133,51 @@ def create_custom_plan(ctx, client, plan_name, pack):
     "{tname} 本月 ledger base_remaining={base:d} addon_remaining={addon:d}"
 ))
 def setup_ledger_with_state(ctx, tname, base, addon):
+    """以 SSOT 資料造出指定餘額。
+
+    ea7cbb3（S-Ledger-Unification）後 base/addon_remaining 由
+    ComputeTenantQuotaUseCase 從 SUM(usage) + SUM(topups) 即時算出，
+    改 ledger 欄位不再有任何效果（ProcessQuotaAlerts 也讀 compute_quota）。
+    故以「補差額」方式造狀態，可重複呼叫（同 scenario 內第二次 Given）：
+
+    - 直接寫 usage record（繞過 record_usage 的 auto-topup hook）讓
+      billable = base_total - base
+    - 寫 manual_adjust topup（可為負 = 手動扣）讓 addon_remaining = addon
+    """
     container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
-    ensure = container.ensure_ledger_use_case()
     tenant_id = ctx["tenants"][tname]
     ctx["current_tenant"] = tname
 
-    tenant_repo = container.tenant_repository()
-    tenant = _run(tenant_repo.find_by_id(tenant_id))
-    assert tenant is not None
-    plan_name = tenant.plan
+    async def _setup():
+        tenant = await container.tenant_repository().find_by_id(tenant_id)
+        assert tenant is not None
+        await container.ensure_ledger_use_case().execute(tenant_id, tenant.plan)
+        compute = container.compute_tenant_quota_use_case()
+        snap = await compute.execute(tenant_id)
+        delta_usage = (snap.base_total - base) - snap.total_billable_in_cycle
+        assert delta_usage >= 0, "無法以追加 usage 回到較高 base_remaining"
+        if delta_usage:
+            await container.usage_repository().save(
+                UsageRecord(
+                    tenant_id=tenant_id,
+                    request_type="chat_web",
+                    model="test",
+                    input_tokens=delta_usage,
+                )
+            )
+            snap = await compute.execute(tenant_id)
+        delta_topup = addon - snap.addon_remaining
+        if delta_topup:
+            await container.token_ledger_topup_repository().save(
+                TokenLedgerTopup(
+                    tenant_id=tenant_id,
+                    cycle_year_month=snap.cycle_year_month,
+                    amount=delta_topup,
+                    reason=REASON_MANUAL_ADJUST,
+                )
+            )
 
-    ledger = _run(ensure.execute(tenant_id, plan_name))
-    # base_total 保持 ensure_ledger 從 plan snapshot 來的值（10M for starter）
-    # 只覆寫 remaining/used，模擬「已用過一段」狀態
-    ledger.base_remaining = base
-    ledger.addon_remaining = addon
-    ledger.total_used_in_cycle = max(0, ledger.base_total - base)
-    _run(ledger_repo.save(ledger))
+    _run(_setup())
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +199,7 @@ def record_usage(ctx, n, tname):
                 model="test",
                 input_tokens=n,
                 output_tokens=0,
-                total_tokens=n,
+                # total_tokens 已改 @property（fbeeec6）
             ),
         )
     )
@@ -197,17 +227,14 @@ def run_process_quota_alerts_again(ctx):
 @then(parsers.parse("addon_remaining 應為 {n:d}"))
 def verify_addon_remaining(ctx, n):
     container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
-    cycle = current_year_month()
     # 預設驗第一個 tenant — 但若 ctx 有設 current_tenant 用那個
     tenant_name = ctx.get("current_tenant") or list(ctx["tenants"].keys())[0]
     tenant_id = ctx["tenants"][tenant_name]
-    ledger = _run(
-        ledger_repo.find_by_tenant_and_cycle(tenant_id, cycle)
-    )
-    assert ledger is not None, "ledger missing"
-    assert ledger.addon_remaining == n, (
-        f"addon_remaining: expected {n}, got {ledger.addon_remaining}"
+    # ea7cbb3：addon_remaining 唯一讀取入口為 ComputeTenantQuotaUseCase
+    compute = container.compute_tenant_quota_use_case()
+    quota = _run(compute.execute(tenant_id))
+    assert quota.addon_remaining == n, (
+        f"addon_remaining: expected {n}, got {quota.addon_remaining}"
     )
 
 

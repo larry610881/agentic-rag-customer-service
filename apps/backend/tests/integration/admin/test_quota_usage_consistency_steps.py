@@ -1,7 +1,9 @@
 """Quota / Usage Consistency — BDD Step Definitions (Route B)
 
-驗證 GET /tenants/{id}/quota 回傳的 total_used_in_cycle 來自 token_usage_records
-的即時 SUM，而非 ledger.total_used_in_cycle 累計欄位。
+驗證本月額度用量來自 token_usage_records 的即時 SUM，而非
+ledger.total_used_in_cycle 累計欄位。ea7cbb3 起拆雙視角：
+GET /tenants/{id}/quota 回 total_billable_in_cycle，
+GET /admin/tenants/quotas 回 total_audit_in_cycle（全用量）。
 
 Plan: .claude/plans/b-bug-delightful-starlight.md
 Issue: #35
@@ -120,7 +122,7 @@ def seed_usage_with_category(ctx, tname, n, cat):
                 model="test",
                 input_tokens=n,
                 output_tokens=0,
-                total_tokens=n,
+                # total_tokens 已改 @property（fbeeec6）
             ),
         )
     )
@@ -202,6 +204,13 @@ def admin_query_quota(ctx, client, tname):
     )
     ctx["response"] = resp
     ctx["current_tenant"] = tname
+    overview = client.get(
+        "/api/v1/admin/tenants/quotas", headers=ctx["admin_headers"]
+    )
+    assert overview.status_code == 200, overview.text
+    ctx["overview_row"] = next(
+        r for r in overview.json() if r["tenant_id"] == tenant_id
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -209,13 +218,22 @@ def admin_query_quota(ctx, client, tname):
 # ---------------------------------------------------------------------------
 
 
-@then(parsers.parse("total_used_in_cycle 應為 {n:d}"))
-def verify_total_used(ctx, n):
+@then(parsers.parse("total_audit_in_cycle 應為 {n:d}"))
+def verify_total_audit(ctx, n):
+    row = ctx["overview_row"]
+    assert row["total_audit_in_cycle"] == n, (
+        f"total_audit_in_cycle expected {n}, got {row['total_audit_in_cycle']}"
+    )
+
+
+@then(parsers.parse("total_billable_in_cycle 應為 {n:d}"))
+def verify_total_billable(ctx, n):
     resp = ctx["response"]
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["total_used_in_cycle"] == n, (
-        f"total_used_in_cycle expected {n}, got {body['total_used_in_cycle']}"
+    assert body["total_billable_in_cycle"] == n, (
+        f"total_billable_in_cycle expected {n}, "
+        f"got {body['total_billable_in_cycle']}"
     )
 
 

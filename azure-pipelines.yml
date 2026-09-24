@@ -196,9 +196,6 @@ stages:
 
       - job: backend_integration
         displayName: 後端整合測試（真實 Postgres / Redis）
-        # Issue #65：本機 45 個整合測試因 fixture / 環境不一致失敗，CI 首次接管線先不擋
-        # Package；結果照樣發布到 Tests 分頁。#65 修完拿掉這行讓它回到硬閘門。
-        continueOnError: true
         services:
           postgres: postgres
           redis: redis

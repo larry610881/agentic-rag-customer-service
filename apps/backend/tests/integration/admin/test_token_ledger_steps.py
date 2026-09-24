@@ -11,8 +11,10 @@ import asyncio
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from src.domain.ledger.entity import current_year_month
+from src.domain.ledger.entity import current_year_month, previous_year_month
+from src.domain.ledger.topup_entity import REASON_MANUAL_ADJUST, TokenLedgerTopup
 from src.domain.rag.value_objects import TokenUsage
+from src.domain.usage.entity import UsageRecord
 
 scenarios("integration/admin/token_ledger.feature")
 
@@ -115,7 +117,7 @@ def record_usage_with_category(ctx, n, cat):
                 model="test",
                 input_tokens=n,
                 output_tokens=0,
-                total_tokens=n,
+                # total_tokens 已改 @property（fbeeec6）
             ),
         )
     )
@@ -133,7 +135,7 @@ def record_usage_default_cat(ctx, n):
                 model="test",
                 input_tokens=n,
                 output_tokens=0,
-                total_tokens=n,
+                # total_tokens 已改 @property（fbeeec6）
             ),
         )
     )
@@ -151,48 +153,40 @@ def verify_ledger_exists(ctx):
     ctx["ledger"] = ledger
 
 
+def _quota(ctx):
+    """ea7cbb3（S-Ledger-Unification）：餘額唯一讀取入口為
+    ComputeTenantQuotaUseCase（SUM usage + topups），ledger mutable 欄位已廢棄。"""
+    compute = ctx["app"].container.compute_tenant_quota_use_case()
+    return _run(compute.execute(ctx["tenant_id"]))
+
+
 @then(parsers.parse("base_remaining 應為 {n:d}"))
 def verify_base_remaining(ctx, n):
-    container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
-    cycle = current_year_month()
-    ledger = _run(
-        ledger_repo.find_by_tenant_and_cycle(ctx["tenant_id"], cycle)
-    )
-    assert ledger is not None, "ledger missing"
-    assert ledger.base_remaining == n, (
-        f"base_remaining: expected {n}, got {ledger.base_remaining}"
+    quota = _quota(ctx)
+    assert quota.base_remaining == n, (
+        f"base_remaining: expected {n}, got {quota.base_remaining}"
     )
 
 
-@then(parsers.parse("total_used_in_cycle 應為 {n:d}"))
-def verify_total_used(ctx, n):
-    container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
-    cycle = current_year_month()
-    ledger = _run(
-        ledger_repo.find_by_tenant_and_cycle(ctx["tenant_id"], cycle)
+@then(parsers.parse("total_billable_in_cycle 應為 {n:d}"))
+def verify_total_billable(ctx, n):
+    quota = _quota(ctx)
+    assert quota.total_billable_in_cycle == n, (
+        f"total_billable_in_cycle: expected {n}, "
+        f"got {quota.total_billable_in_cycle}"
     )
-    assert ledger is not None
-    assert ledger.total_used_in_cycle == n
 
 
 @then(parsers.parse("addon_remaining 應為 {n:d}"))
 def verify_addon_remaining(ctx, n):
-    container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
-    cycle = current_year_month()
-    ledger = _run(
-        ledger_repo.find_by_tenant_and_cycle(ctx["tenant_id"], cycle)
-    )
-    assert ledger is not None
-    assert ledger.addon_remaining == n, (
-        f"addon_remaining: expected {n}, got {ledger.addon_remaining}"
+    quota = _quota(ctx)
+    assert quota.addon_remaining == n, (
+        f"addon_remaining: expected {n}, got {quota.addon_remaining}"
     )
 
 
 # ---------------------------------------------------------------------------
-# Scenario 3: base 用完 — addon 變負（軟上限）
+# Scenario 3: base 用完 — addon 觸發自動續約
 # ---------------------------------------------------------------------------
 
 
@@ -200,17 +194,43 @@ def verify_addon_remaining(ctx, n):
     "ledger-co 本月 ledger base_remaining={base:d} addon_remaining={addon:d}"
 ))
 def setup_ledger_with_state(ctx, base, addon):
+    """以 SSOT 資料造出指定餘額（ea7cbb3 後不可直接改 ledger 欄位）：
+
+    - 直接寫 usage record（繞過 record_usage 的 auto-topup hook）讓
+      billable = base_total - base
+    - 寫 manual_adjust topup 讓 addon_remaining = addon
+    """
     container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
-    ensure = container.ensure_ledger_use_case()
-    # 先建本月 ledger
-    ledger = _run(ensure.execute(ctx["tenant_id"], "starter"))
-    # 強制設定特定狀態
-    ledger.base_remaining = base
-    ledger.base_total = base if base > 0 else 10_000_000
-    ledger.addon_remaining = addon
-    ledger.total_used_in_cycle = 0
-    _run(ledger_repo.save(ledger))
+    tenant_id = ctx["tenant_id"]
+
+    async def _setup():
+        await container.ensure_ledger_use_case().execute(tenant_id, "starter")
+        compute = container.compute_tenant_quota_use_case()
+        snap = await compute.execute(tenant_id)
+        delta_usage = (snap.base_total - base) - snap.total_billable_in_cycle
+        assert delta_usage >= 0, "無法以追加 usage 回到較高 base_remaining"
+        if delta_usage:
+            await container.usage_repository().save(
+                UsageRecord(
+                    tenant_id=tenant_id,
+                    request_type="chat_web",
+                    model="test",
+                    input_tokens=delta_usage,
+                )
+            )
+            snap = await compute.execute(tenant_id)
+        delta_topup = addon - snap.addon_remaining
+        if delta_topup:
+            await container.token_ledger_topup_repository().save(
+                TokenLedgerTopup(
+                    tenant_id=tenant_id,
+                    cycle_year_month=snap.cycle_year_month,
+                    amount=delta_topup,
+                    reason=REASON_MANUAL_ADJUST,
+                )
+            )
+
+    _run(_setup())
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +242,11 @@ def setup_ledger_with_state(ctx, base, addon):
     "ledger-co 上月 ledger addon_remaining={addon:d}"
 ))
 def setup_last_month_ledger(ctx, addon):
-    """直接寫入「上月」ledger row 模擬上月用過的狀態。
+    """直接寫入「上月」ledger row + 上月 topup 模擬上月結束時 addon 餘額。
+
+    ea7cbb3 / 49fe6f1（T1.2）：carryover 改由上月 SUM(topups) - overage 算出，
+    ledger.addon_remaining 欄位已不再被讀取 → 以上月 topup 紀錄表達該餘額
+    （上月 usage 2M < base 10M，無 overage）。
 
     用 test app 的 session factory（test DB）— 不可用 module-level
     async_session_factory（指向 dev DB）會 FK 失敗。
@@ -237,11 +261,8 @@ def setup_last_month_ledger(ctx, addon):
     )
 
     now = datetime.now(timezone.utc)
-    if now.month == 1:
-        last_cycle = f"{now.year - 1}-12"
-    else:
-        last_cycle = f"{now.year:04d}-{now.month - 1:02d}"
     cycle = current_year_month()
+    last_cycle = previous_year_month(cycle)
     tenant_id = ctx["tenant_id"]
     container = ctx["app"].container
 
@@ -270,6 +291,15 @@ def setup_last_month_ledger(ctx, addon):
                 )
             )
             await session.commit()
+            await container.token_ledger_topup_repository().save(
+                TokenLedgerTopup(
+                    tenant_id=tenant_id,
+                    cycle_year_month=last_cycle,
+                    amount=addon,
+                    reason=REASON_MANUAL_ADJUST,
+                    created_at=now - timedelta(days=30),
+                )
+            )
         finally:
             await session.close()
 
@@ -297,27 +327,18 @@ def verify_new_ledger_created(ctx):
 
 @then("本月 base_remaining 應等於 plan.base_monthly_tokens")
 def verify_base_equals_plan(ctx):
-    container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
-    plan_repo = container.plan_repository()
-    cycle = current_year_month()
-
-    ledger = _run(
-        ledger_repo.find_by_tenant_and_cycle(ctx["tenant_id"], cycle)
-    )
+    plan_repo = ctx["app"].container.plan_repository()
     plan = _run(plan_repo.find_by_name("starter"))
-    assert ledger.base_remaining == plan.base_monthly_tokens
+    quota = _quota(ctx)
+    assert quota.base_remaining == plan.base_monthly_tokens
 
 
 @then(parsers.parse("本月 addon_remaining 應為 {n:d}"))
 def verify_carryover(ctx, n):
-    container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
-    cycle = current_year_month()
-    ledger = _run(
-        ledger_repo.find_by_tenant_and_cycle(ctx["tenant_id"], cycle)
+    quota = _quota(ctx)
+    assert quota.addon_remaining == n, (
+        f"carryover addon_remaining: expected {n}, got {quota.addon_remaining}"
     )
-    assert ledger.addon_remaining == n
 
 
 # ---------------------------------------------------------------------------

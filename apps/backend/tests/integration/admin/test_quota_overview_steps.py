@@ -115,7 +115,7 @@ def seed_usage(ctx, tname, n):
                 model="test",
                 input_tokens=n,
                 output_tokens=0,
-                total_tokens=n,
+                # total_tokens 已改 @property（fbeeec6）
             ),
         )
     )
@@ -200,12 +200,12 @@ def verify_has_ledger(ctx, tname, flag):
     )
 
 
-@then(parsers.parse('租戶 "{tname}" 的 total_used_in_cycle 應為 {n:d}'))
+@then(parsers.parse('租戶 "{tname}" 的 total_audit_in_cycle 應為 {n:d}'))
 def verify_used(ctx, tname, n):
     item = _find(ctx, tname)
-    assert item["total_used_in_cycle"] == n, (
-        f"{tname}.total_used_in_cycle expected {n}, "
-        f"got {item['total_used_in_cycle']}"
+    assert item["total_audit_in_cycle"] == n, (
+        f"{tname}.total_audit_in_cycle expected {n}, "
+        f"got {item['total_audit_in_cycle']}"
     )
 
 
@@ -226,10 +226,10 @@ def verify_all_no_ledger(ctx):
         )
 
 
-@then("所有租戶的 total_used_in_cycle 應為 0")
+@then("所有租戶的 total_audit_in_cycle 應為 0")
 def verify_all_zero_used(ctx):
     for item in ctx["response"].json():
-        assert item["total_used_in_cycle"] == 0, (
+        assert item["total_audit_in_cycle"] == 0, (
             f"tenant {item['tenant_id']} unexpectedly used > 0"
         )
 

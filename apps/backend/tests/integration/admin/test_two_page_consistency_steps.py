@@ -175,7 +175,11 @@ def call_both_apis_tname(ctx, client, tname):
 
 
 def _call_both(ctx, client, tenant_id: str):
-    """取 Token 用量頁的 by-bot 總和 + 本月額度頁的 total_used_in_cycle。"""
+    """取 Token 用量頁 by-bot 總和 + 本月額度頁 billable + 額度總覽 audit。
+
+    ea7cbb3：租戶 /quota 只回 total_billable_in_cycle（原 total_used_in_cycle
+    breaking rename）；全用量（audit）只在系統層 /admin/tenants/quotas。
+    """
     # Token 用量頁：GET /api/v1/usage/by-bot — 模擬前端 reduce(row.total_tokens)
     by_bot = client.get(
         "/api/v1/usage/by-bot",
@@ -192,7 +196,15 @@ def _call_both(ctx, client, tenant_id: str):
         headers=_tenant_headers(ctx, tenant_id),
     )
     assert quota.status_code == 200, quota.text
-    ctx["quota_total_used"] = quota.json()["total_used_in_cycle"]
+    ctx["quota_total_billable"] = quota.json()["total_billable_in_cycle"]
+
+    # 額度總覽（system_admin）：GET /api/v1/admin/tenants/quotas
+    overview = client.get(
+        "/api/v1/admin/tenants/quotas", headers=ctx["admin_headers"]
+    )
+    assert overview.status_code == 200, overview.text
+    row = next(r for r in overview.json() if r["tenant_id"] == tenant_id)
+    ctx["quota_total_audit"] = row["total_audit_in_cycle"]
 
 
 def _tenant_headers(ctx, tenant_id: str) -> dict[str, str]:
@@ -229,9 +241,17 @@ def verify_usage_page_total(ctx, n):
     )
 
 
-@then(parsers.parse("本月額度頁 total_used_in_cycle 應等於 {n:d}"))
-def verify_quota_total_used(ctx, n):
-    actual = ctx.get("quota_total_used")
+@then(parsers.parse("額度總覽 total_audit_in_cycle 應等於 {n:d}"))
+def verify_quota_total_audit(ctx, n):
+    actual = ctx.get("quota_total_audit")
     assert actual == n, (
-        f"本月額度頁 total_used_in_cycle expected {n}, got {actual}"
+        f"額度總覽 total_audit_in_cycle expected {n}, got {actual}"
+    )
+
+
+@then(parsers.parse("本月額度頁 total_billable_in_cycle 應等於 {n:d}"))
+def verify_quota_total_billable(ctx, n):
+    actual = ctx.get("quota_total_billable")
+    assert actual == n, (
+        f"本月額度頁 total_billable_in_cycle expected {n}, got {actual}"
     )
