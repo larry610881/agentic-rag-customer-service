@@ -6,8 +6,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
@@ -15,6 +13,7 @@ from src.domain.ledger.entity import current_year_month, previous_year_month
 from src.domain.ledger.topup_entity import REASON_MANUAL_ADJUST, TokenLedgerTopup
 from src.domain.rag.value_objects import TokenUsage
 from src.domain.usage.entity import UsageRecord
+from tests.integration.conftest import run_outside_request
 
 scenarios("integration/admin/token_ledger.feature")
 
@@ -48,14 +47,6 @@ SEED_PLANS = [
         "description": "pro",
     },
 ]
-
-
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @pytest.fixture
@@ -108,9 +99,8 @@ def create_tenant_with_plan(ctx, client, app, tname, plan_name):
 ))
 def record_usage_with_category(ctx, n, cat):
     container = ctx["app"].container
-    record_usage = container.record_usage_use_case()
-    _run(
-        record_usage.execute(
+    run_outside_request(
+        lambda: container.record_usage_use_case().execute(
             tenant_id=ctx["tenant_id"],
             request_type=cat,
             usage=TokenUsage(
@@ -126,9 +116,8 @@ def record_usage_with_category(ctx, n, cat):
 @when(parsers.parse("record_usage 寫入 {n:d} tokens 給 ledger-co"))
 def record_usage_default_cat(ctx, n):
     container = ctx["app"].container
-    record_usage = container.record_usage_use_case()
-    _run(
-        record_usage.execute(
+    run_outside_request(
+        lambda: container.record_usage_use_case().execute(
             tenant_id=ctx["tenant_id"],
             request_type="chat_web",  # Issue #73：rag 已 deprecated（僅供讀取）
             usage=TokenUsage(
@@ -144,10 +133,11 @@ def record_usage_default_cat(ctx, n):
 @then("該租戶本月 ledger 應存在")
 def verify_ledger_exists(ctx):
     container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
     cycle = current_year_month()
-    ledger = _run(
-        ledger_repo.find_by_tenant_and_cycle(ctx["tenant_id"], cycle)
+    ledger = run_outside_request(
+        lambda: container.token_ledger_repository().find_by_tenant_and_cycle(
+            ctx["tenant_id"], cycle
+        )
     )
     assert ledger is not None, f"ledger missing for {ctx['tenant_id']}/{cycle}"
     ctx["ledger"] = ledger
@@ -156,8 +146,10 @@ def verify_ledger_exists(ctx):
 def _quota(ctx):
     """ea7cbb3（S-Ledger-Unification）：餘額唯一讀取入口為
     ComputeTenantQuotaUseCase（SUM usage + topups），ledger mutable 欄位已廢棄。"""
-    compute = ctx["app"].container.compute_tenant_quota_use_case()
-    return _run(compute.execute(ctx["tenant_id"]))
+    container = ctx["app"].container
+    return run_outside_request(
+        lambda: container.compute_tenant_quota_use_case().execute(ctx["tenant_id"])
+    )
 
 
 @then(parsers.parse("base_remaining 應為 {n:d}"))
@@ -230,7 +222,7 @@ def setup_ledger_with_state(ctx, base, addon):
                 )
             )
 
-    _run(_setup())
+    run_outside_request(_setup)
 
 
 # ---------------------------------------------------------------------------
@@ -303,23 +295,25 @@ def setup_last_month_ledger(ctx, addon):
         finally:
             await session.close()
 
-    _run(_setup())
+    run_outside_request(_setup)
 
 
 @when("執行 ProcessMonthlyResetUseCase")
 def run_monthly_reset(ctx):
     container = ctx["app"].container
-    use_case = container.process_monthly_reset_use_case()
-    ctx["reset_stats"] = _run(use_case.execute())
+    ctx["reset_stats"] = run_outside_request(
+        lambda: container.process_monthly_reset_use_case().execute()
+    )
 
 
 @then("應為 ledger-co 建本月新 ledger")
 def verify_new_ledger_created(ctx):
     container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
     cycle = current_year_month()
-    ledger = _run(
-        ledger_repo.find_by_tenant_and_cycle(ctx["tenant_id"], cycle)
+    ledger = run_outside_request(
+        lambda: container.token_ledger_repository().find_by_tenant_and_cycle(
+            ctx["tenant_id"], cycle
+        )
     )
     assert ledger is not None
     ctx["ledger"] = ledger
@@ -327,8 +321,10 @@ def verify_new_ledger_created(ctx):
 
 @then("本月 base_remaining 應等於 plan.base_monthly_tokens")
 def verify_base_equals_plan(ctx):
-    plan_repo = ctx["app"].container.plan_repository()
-    plan = _run(plan_repo.find_by_name("starter"))
+    container = ctx["app"].container
+    plan = run_outside_request(
+        lambda: container.plan_repository().find_by_name("starter")
+    )
     quota = _quota(ctx)
     assert quota.base_remaining == plan.base_monthly_tokens
 

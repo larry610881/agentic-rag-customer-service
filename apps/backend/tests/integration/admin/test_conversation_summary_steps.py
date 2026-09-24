@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -26,6 +25,7 @@ from src.domain.conversation.summary_service import (
 )
 from src.domain.conversation.value_objects import ConversationId, MessageId
 from src.domain.rag.value_objects import SearchResult
+from tests.integration.conftest import run_outside_request
 
 scenarios("integration/admin/conversation_summary.feature")
 
@@ -83,14 +83,6 @@ class MockMilvusStore:
         limit=20, score_threshold=0.3,
     ) -> list[SearchResult]:
         return list(self.search_preset)
-
-
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @pytest.fixture
@@ -156,10 +148,10 @@ def _seed_conv(
 ):
     """用 conversation_repository 直接建一個含 N 條 messages 的對話。"""
     container = ctx["app"].container
-    conv_repo = container.conversation_repository()
     tenant_id = ctx["tenants"][tenant_name]
 
     async def _seed():
+        conv_repo = container.conversation_repository()
         cid = ConversationId()
         now = datetime.now(timezone.utc)
         messages = [
@@ -190,7 +182,7 @@ def _seed_conv(
         await conv_repo.save(conv)
         return cid.value
 
-    cid = _run(_seed())
+    cid = run_outside_request(_seed)
     ctx["convs"][conv_name] = cid
     return cid
 
@@ -223,10 +215,10 @@ def seed_conv_already_summarized(ctx, conv_name, tname, n, smc):
 def add_message_to_conv(ctx, conv_name, n):
     """模擬 user 又發 1 條新 message — 更新 message_count + last_message_at。"""
     container = ctx["app"].container
-    conv_repo = container.conversation_repository()
     cid = ctx["convs"][conv_name]
 
     async def _bump():
+        conv_repo = container.conversation_repository()
         conv = await conv_repo.find_by_id(cid)
         assert conv is not None
         # 加新 message
@@ -235,7 +227,7 @@ def add_message_to_conv(ctx, conv_name, n):
         conv.last_message_at = datetime.now(timezone.utc) - timedelta(minutes=6)
         await conv_repo.save(conv)
 
-    _run(_bump())
+    run_outside_request(_bump)
 
 
 @given(parsers.parse('已 seed {n:d} 個 summary：'))
@@ -302,9 +294,10 @@ def set_included_categories(ctx, client, tname, category):
 @when(parsers.parse('執行 ProcessConversationSummaryUseCase 給 "{conv_name}"'))
 def run_generate_summary(ctx, conv_name):
     container = ctx["app"].container
-    use_case = container.generate_conversation_summary_use_case()
     cid = ctx["convs"][conv_name]
-    ctx["last_result"] = _run(use_case.execute(cid))
+    ctx["last_result"] = run_outside_request(
+        lambda: container.generate_conversation_summary_use_case().execute(cid)
+    )
 
 
 @when(parsers.parse(
@@ -337,13 +330,13 @@ def admin_search_semantic(ctx, client, query):
 @then(parsers.parse('conversation "{conv_name}" 的 summary 應被寫入'))
 def verify_summary_written(ctx, conv_name):
     container = ctx["app"].container
-    conv_repo = container.conversation_repository()
     cid = ctx["convs"][conv_name]
 
     async def _fetch():
+        conv_repo = container.conversation_repository()
         return await conv_repo.find_by_id(cid)
 
-    conv = _run(_fetch())
+    conv = run_outside_request(_fetch)
     assert conv is not None
     assert conv.summary, f"summary not written for {conv_name}"
 
@@ -353,13 +346,13 @@ def verify_summary_written(ctx, conv_name):
 ))
 def verify_summary_message_count(ctx, conv_name, n):
     container = ctx["app"].container
-    conv_repo = container.conversation_repository()
     cid = ctx["convs"][conv_name]
 
     async def _fetch():
+        conv_repo = container.conversation_repository()
         return await conv_repo.find_by_id(cid)
 
-    conv = _run(_fetch())
+    conv = run_outside_request(_fetch)
     assert conv is not None
     assert conv.summary_message_count == n, (
         f"expected summary_message_count={n}, got {conv.summary_message_count}"
@@ -426,14 +419,14 @@ def verify_score_positive(ctx):
 ))
 def verify_ledger_not_deducted(ctx, tname, n):
     container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
     tenant_id = ctx["tenants"][tname]
     cycle = datetime.now(timezone.utc).strftime("%Y-%m")
 
     async def _fetch():
+        ledger_repo = container.token_ledger_repository()
         return await ledger_repo.find_by_tenant_and_cycle(tenant_id, cycle)
 
-    ledger = _run(_fetch())
+    ledger = run_outside_request(_fetch)
     # ledger 可能不存在（根本沒 trigger deduct）— 視為 0
     actual = ledger.total_used_in_cycle if ledger else 0
     assert actual == n, (

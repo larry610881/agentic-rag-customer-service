@@ -22,6 +22,8 @@ import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 from sqlalchemy import text
 
+from tests.integration.conftest import run_outside_request
+
 scenarios("integration/knowledge/source_tracking.feature")
 
 
@@ -167,7 +169,9 @@ def when_delete_by_source_empty_ids(ctx, client, source):
 def when_drain_outbox(ctx, app):
     # 與 worker.drain_outbox_task 相同的 use case；handlers 綁定的是被
     # integration app fixture 覆寫成 AsyncMock 的 vector_store。
-    ctx["drain_result"] = _run(app.container.drain_outbox_use_case().execute())
+    ctx["drain_result"] = run_outside_request(
+        lambda: app.container.drain_outbox_use_case().execute()
+    )
 
 
 # ---------------------------------------------------------------------------

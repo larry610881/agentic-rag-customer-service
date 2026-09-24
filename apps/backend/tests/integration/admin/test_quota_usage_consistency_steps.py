@@ -10,7 +10,6 @@ Issue: #35
 """
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -21,6 +20,7 @@ from sqlalchemy import delete
 from src.domain.rag.value_objects import TokenUsage
 from src.infrastructure.db.models.token_ledger_model import TokenLedgerModel
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
+from tests.integration.conftest import run_outside_request
 
 scenarios("integration/admin/quota_usage_consistency.feature")
 
@@ -54,14 +54,6 @@ SEED_PLANS = [
         "description": "POC test",
     },
 ]
-
-
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @pytest.fixture
@@ -113,9 +105,8 @@ def create_tenant(ctx, client, app, tname, plan_name):
 @given(parsers.parse('{tname} 已寫入 {n:d} tokens 用量 category "{cat}"'))
 def seed_usage_with_category(ctx, tname, n, cat):
     container = ctx["app"].container
-    record_usage = container.record_usage_use_case()
-    _run(
-        record_usage.execute(
+    run_outside_request(
+        lambda: container.record_usage_use_case().execute(
             tenant_id=ctx["tenants"][tname],
             request_type=cat,
             usage=TokenUsage(
@@ -172,7 +163,7 @@ def seed_usage_historical(ctx, tname, cycle, n):
         finally:
             await session.close()
 
-    _run(_insert())
+    run_outside_request(_insert)
 
 
 @given(parsers.parse('{tname} 設定 included_categories=[{quoted}]'))
@@ -272,4 +263,4 @@ def _cleanup_ledgers_and_usage(ctx, tname):
         finally:
             await session.close()
 
-    _run(_del())
+    run_outside_request(_del)

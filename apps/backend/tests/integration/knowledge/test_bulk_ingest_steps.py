@@ -13,13 +13,6 @@ worker's ``drain_outbox`` cron does) before asserting on ``vector_store.delete``
 ``vector_store.delete`` an in-memory store that applies filters the way
 ``MilvusVectorStore._build_filter_expr`` does (AND of keys; list → IN), so the
 "new version processed before drain" ordering is observable.
-
-Session semantics: the shared integration ``app`` fixture gives every repository
-its own session, but production shares one session per request
-(``get_tracked_session``) — DeleteDocumentUseCase relies on that: the outbox
-INSERT rides the PG delete's ``atomic()`` commit. This feature restores the
-production provider (its factory is already patched to the test DB); the drain
-step runs in ``independent_session_scope`` like a worker job.
 """
 
 from __future__ import annotations
@@ -27,17 +20,12 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from dependency_injector import providers
 from pytest_bdd import given, parsers, scenarios, then, when
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from src.infrastructure.db.session_middleware import (
-    get_tracked_session,
-    independent_session_scope,
-)
-from tests.integration.conftest import TEST_DB_URL
+from tests.integration.conftest import TEST_DB_URL, run_outside_request
 
 scenarios("integration/knowledge/bulk_ingest.feature")
 
@@ -45,12 +33,6 @@ scenarios("integration/knowledge/bulk_ingest.feature")
 @pytest.fixture
 def ctx():
     return {}
-
-
-@pytest.fixture(autouse=True)
-def _production_session_semantics(app):
-    # app fixture 的 teardown 會 reset_override
-    app.container.db_session.override(providers.Factory(get_tracked_session))
 
 
 def _auth(headers: dict) -> dict:
@@ -210,15 +192,7 @@ def when_last_upload_processed(ctx):
 def when_drain_outbox(ctx, app):
     # 與 worker.drain_outbox_task 相同的 use case；handlers 綁定的是被
     # integration app fixture 覆寫成 AsyncMock 的 vector_store。
-    async def _drain():
-        async with independent_session_scope():
-            await app.container.drain_outbox_use_case().execute()
-
-    loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(_drain())
-    finally:
-        loop.close()
+    run_outside_request(lambda: app.container.drain_outbox_use_case().execute())
 
 
 @when(parsers.parse("我送出 POST /bulk 含 {n:d} 筆 documents"))

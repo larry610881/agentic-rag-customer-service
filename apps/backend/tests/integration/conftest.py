@@ -8,12 +8,20 @@ Key design decisions:
 - Per-test: terminate zombie connections → drop_all → create_all gives a
   pristine schema every time (more robust than TRUNCATE).
 - NullPool ensures every engine.begin() is a brand-new TCP connection.
+- Session semantics match production (#469966): ``container.db_session`` stays
+  on ``get_tracked_session`` — one shared AsyncSession per HTTP request, closed
+  / rolled back by ``SessionCleanupMiddleware``. Step code that runs OUTSIDE a
+  request (calling use cases / repositories directly, drain jobs, seeding) must
+  go through ``run_outside_request``, which gives the work its own session
+  scope the way the worker does (``independent_session_scope``).
 """
 
 import asyncio
 import importlib
 import os
 import pkgutil
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 from unittest.mock import AsyncMock
 
 import pytest
@@ -26,6 +34,10 @@ from sqlalchemy.pool import NullPool
 import src.infrastructure.db.models as _models_pkg
 from src.infrastructure.cache.in_memory_cache_service import InMemoryCacheService
 from src.infrastructure.db.base import Base
+from src.infrastructure.db.session_middleware import (
+    _request_session,
+    independent_session_scope,
+)
 
 # Ensure all ORM models are registered on Base.metadata before create_all.
 # 自動匯入 models 目錄下每個模組，不維護手寫清單（#65：舊清單漏了 7 個 model，
@@ -46,6 +58,26 @@ def _run(coro):
         return loop.run_until_complete(coro)
     finally:
         loop.close()
+
+
+_T = TypeVar("_T")
+
+
+def run_outside_request(work: Callable[[], Awaitable[_T]]) -> _T:
+    """在 HTTP request 之外執行 async 工作（直接呼叫 use case / repo、drain、seed）。
+
+    與 worker job 相同：包在 ``independent_session_scope()`` 裡，工作期間所有
+    ``container.db_session()`` 共用一個 session，結束時 rollback 未提交的部分並
+    close。只收 callable（不收已建好的 coroutine）：container provider 必須在
+    scope 內解析，在 step 的同步程式碼裡先解析會把 session 綁進主執行緒的
+    ContextVar，跨 step / 跨 event loop 洩漏（``_no_request_session_leak`` 會抓）。
+    """
+
+    async def _scoped() -> _T:
+        async with independent_session_scope():
+            return await work()
+
+    return _run(_scoped())
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +154,25 @@ def _test_db():
     _run(_force_drop_db())
 
 
+@pytest.fixture(autouse=True)
+def _no_request_session_leak():
+    """測試結束時主執行緒不得殘留 per-request session（ContextVar）。
+
+    殘留代表某個 step 在 request / ``run_outside_request`` 之外解析了
+    ``container.db_session``：該 session 永不關閉，且會被後續 step 在另一個
+    event loop 上重用（asyncpg "attached to a different loop"）。
+    """
+    assert _request_session.get() is None, "上一個測試洩漏了 request session"
+    yield
+    leaked = _request_session.get()
+    if leaked is not None:
+        _request_session.set(None)
+        pytest.fail(
+            "step 在 request 之外解析了 container.db_session — "
+            "改用 run_outside_request(lambda: ...)"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Per-test: kill zombie connections + drop/create all tables
 # ---------------------------------------------------------------------------
@@ -189,7 +240,9 @@ def app(test_engine, monkeypatch):
     test_session_factory = async_sessionmaker(
         test_engine, class_=AsyncSession, expire_on_commit=False
     )
-    container.db_session.override(providers.Factory(test_session_factory))
+    # container.db_session 保留 production provider（get_tracked_session）：
+    # 每個 request 共用一個 session，由 SessionCleanupMiddleware 收尾。它讀的
+    # session_middleware.async_session_factory 會在下方 monkeypatch 成 test factory。
     container.trace_session_factory.override(
         providers.Object(test_session_factory)
     )
@@ -243,7 +296,6 @@ def app(test_engine, monkeypatch):
 
     yield application
 
-    container.db_session.reset_override()
     container.trace_session_factory.reset_override()
     container.process_document_use_case.reset_override()
     container.vector_store.reset_override()

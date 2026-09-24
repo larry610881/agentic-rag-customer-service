@@ -8,13 +8,13 @@ Issue: #36
 """
 from __future__ import annotations
 
-import asyncio
 from uuid import uuid4
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from src.infrastructure.db.models.usage_record_model import UsageRecordModel
+from tests.integration.conftest import run_outside_request
 
 scenarios("integration/admin/two_page_consistency.feature")
 
@@ -48,14 +48,6 @@ SEED_PLANS = [
         "description": "POC test",
     },
 ]
-
-
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @pytest.fixture
@@ -134,7 +126,7 @@ def seed_usage_full(ctx, tname, inp, out, cr, cc, cat):
         finally:
             await session.close()
 
-    _run(_insert())
+    run_outside_request(_insert)
 
 
 @given(parsers.parse(

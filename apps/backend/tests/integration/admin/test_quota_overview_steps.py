@@ -6,13 +6,12 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from src.domain.ledger.entity import current_year_month
 from src.domain.rag.value_objects import TokenUsage
+from tests.integration.conftest import run_outside_request
 
 scenarios("integration/admin/quota_overview.feature")
 
@@ -46,14 +45,6 @@ SEED_PLANS = [
         "description": "pro",
     },
 ]
-
-
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @pytest.fixture
@@ -105,10 +96,9 @@ def create_tenant_with_plan(ctx, client, app, tname, plan_name):
 @given(parsers.parse("{tname} 已寫入 {n:d} tokens 用量"))
 def seed_usage(ctx, tname, n):
     container = ctx["app"].container
-    record_usage = container.record_usage_use_case()
     tenant_id = ctx["tenants"][tname]
-    _run(
-        record_usage.execute(
+    run_outside_request(
+        lambda: container.record_usage_use_case().execute(
             tenant_id=tenant_id,
             request_type="chat_web",  # Issue #73：rag 已 deprecated（僅供讀取）
             usage=TokenUsage(

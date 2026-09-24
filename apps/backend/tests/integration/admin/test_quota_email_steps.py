@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -25,6 +24,7 @@ from src.domain.billing.quota_alert import (
     QuotaAlertLog,
 )
 from src.domain.ledger.entity import current_year_month
+from tests.integration.conftest import run_outside_request
 
 scenarios("integration/admin/quota_email.feature")
 
@@ -40,14 +40,6 @@ SEED_PLANS = [
         "description": "starter",
     },
 ]
-
-
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 # ---------------------------------------------------------------------------
@@ -129,10 +121,10 @@ def create_tenant_with_plan(ctx, client, app, tname, plan_name):
 ))
 def seed_unsent_alert(ctx, tname):
     container = ctx["app"].container
-    alert_repo = container.quota_alert_log_repository()
     tenant_id = ctx["tenants"][tname]
 
     async def _seed():
+        alert_repo = container.quota_alert_log_repository()
         alert = QuotaAlertLog(
             id=str(uuid4()),
             tenant_id=tenant_id,
@@ -147,7 +139,7 @@ def seed_unsent_alert(ctx, tname):
         assert saved is not None
         return saved.id
 
-    ctx["alert_id"] = _run(_seed())
+    ctx["alert_id"] = run_outside_request(_seed)
 
 
 @given(parsers.parse(
@@ -182,8 +174,9 @@ def configure_sender_fail(ctx):
 @when("執行 QuotaEmailDispatchUseCase")
 def run_dispatch(ctx):
     container = ctx["app"].container
-    use_case = container.quota_email_dispatch_use_case()
-    ctx["dispatch_stats"] = _run(use_case.execute())
+    ctx["dispatch_stats"] = run_outside_request(
+        lambda: container.quota_email_dispatch_use_case().execute()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -210,15 +203,15 @@ def verify_recipient(ctx, email):
 def verify_delivered_flag(ctx, flag):
     expected = flag == "True"
     container = ctx["app"].container
-    alert_repo = container.quota_alert_log_repository()
     cycle = current_year_month()
     tenant_id = list(ctx["tenants"].values())[0]
 
     async def _fetch():
+        alert_repo = container.quota_alert_log_repository()
         alerts = await alert_repo.find_by_tenant_and_cycle(tenant_id, cycle)
         return alerts
 
-    alerts = _run(_fetch())
+    alerts = run_outside_request(_fetch)
     assert len(alerts) > 0, "no alerts found"
     target = next((a for a in alerts if a.id == ctx["alert_id"]), None)
     assert target is not None, f"alert {ctx['alert_id']} not found"

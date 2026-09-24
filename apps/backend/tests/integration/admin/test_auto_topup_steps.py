@@ -7,8 +7,6 @@ TopupAddonUseCase（ea7cbb3 起取代已刪除的 DeductTokensUseCase），
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
@@ -20,6 +18,7 @@ from src.domain.ledger.entity import current_year_month
 from src.domain.ledger.topup_entity import REASON_MANUAL_ADJUST, TokenLedgerTopup
 from src.domain.rag.value_objects import TokenUsage
 from src.domain.usage.entity import UsageRecord
+from tests.integration.conftest import run_outside_request
 
 scenarios("integration/admin/auto_topup.feature")
 
@@ -53,14 +52,6 @@ SEED_PLANS = [
         "description": "pro",
     },
 ]
-
-
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @pytest.fixture
@@ -177,7 +168,7 @@ def setup_ledger_with_state(ctx, tname, base, addon):
                 )
             )
 
-    _run(_setup())
+    run_outside_request(_setup)
 
 
 # ---------------------------------------------------------------------------
@@ -188,11 +179,10 @@ def setup_ledger_with_state(ctx, tname, base, addon):
 @when(parsers.parse("record_usage 寫入 {n:d} tokens 給 {tname}"))
 def record_usage(ctx, n, tname):
     container = ctx["app"].container
-    record_usage = container.record_usage_use_case()
     tenant_id = ctx["tenants"][tname]
     ctx["current_tenant"] = tname
-    _run(
-        record_usage.execute(
+    run_outside_request(
+        lambda: container.record_usage_use_case().execute(
             tenant_id=tenant_id,
             request_type="chat_web",  # Issue #73：rag 已 deprecated（僅供讀取）
             usage=TokenUsage(
@@ -208,15 +198,17 @@ def record_usage(ctx, n, tname):
 @when("執行 ProcessQuotaAlertsUseCase")
 def run_process_quota_alerts(ctx):
     container = ctx["app"].container
-    use_case = container.process_quota_alerts_use_case()
-    ctx["alerts_stats"] = _run(use_case.execute())
+    ctx["alerts_stats"] = run_outside_request(
+        lambda: container.process_quota_alerts_use_case().execute()
+    )
 
 
 @when("再執行一次 ProcessQuotaAlertsUseCase")
 def run_process_quota_alerts_again(ctx):
     container = ctx["app"].container
-    use_case = container.process_quota_alerts_use_case()
-    ctx["alerts_stats_2"] = _run(use_case.execute())
+    ctx["alerts_stats_2"] = run_outside_request(
+        lambda: container.process_quota_alerts_use_case().execute()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -231,8 +223,9 @@ def verify_addon_remaining(ctx, n):
     tenant_name = ctx.get("current_tenant") or list(ctx["tenants"].keys())[0]
     tenant_id = ctx["tenants"][tenant_name]
     # ea7cbb3：addon_remaining 唯一讀取入口為 ComputeTenantQuotaUseCase
-    compute = container.compute_tenant_quota_use_case()
-    quota = _run(compute.execute(tenant_id))
+    quota = run_outside_request(
+        lambda: container.compute_tenant_quota_use_case().execute(tenant_id)
+    )
     assert quota.addon_remaining == n, (
         f"addon_remaining: expected {n}, got {quota.addon_remaining}"
     )
@@ -241,12 +234,13 @@ def verify_addon_remaining(ctx, n):
 @then(parsers.parse("該租戶本月應有 {n:d} 筆 BillingTransaction"))
 def verify_billing_count(ctx, n):
     container = ctx["app"].container
-    billing_repo = container.billing_transaction_repository()
     cycle = current_year_month()
     tenant_name = ctx.get("current_tenant") or list(ctx["tenants"].keys())[0]
     tenant_id = ctx["tenants"][tenant_name]
-    txs = _run(
-        billing_repo.find_by_tenant_and_cycle(tenant_id, cycle)
+    txs = run_outside_request(
+        lambda: container.billing_transaction_repository().find_by_tenant_and_cycle(
+            tenant_id, cycle
+        )
     )
     assert len(txs) == n, (
         f"expected {n} transactions, got {len(txs)}: "
@@ -272,10 +266,13 @@ def verify_latest_tx_addon(ctx, n):
 @then(parsers.parse("{tname} 應有 {n:d} 筆 base_warning_80 警示"))
 def verify_warning_count(ctx, tname, n):
     container = ctx["app"].container
-    alert_repo = container.quota_alert_log_repository()
     tenant_id = ctx["tenants"][tname]
     cycle = current_year_month()
-    alerts = _run(alert_repo.find_by_tenant_and_cycle(tenant_id, cycle))
+    alerts = run_outside_request(
+        lambda: container.quota_alert_log_repository().find_by_tenant_and_cycle(
+            tenant_id, cycle
+        )
+    )
     matching = [a for a in alerts if a.alert_type == ALERT_TYPE_BASE_WARNING_80]
     assert len(matching) == n, (
         f"{tname}.warning_80 count expected {n}, got {len(matching)}: "
@@ -286,10 +283,13 @@ def verify_warning_count(ctx, tname, n):
 @then(parsers.parse("{tname} 應有 {n:d} 筆 base_exhausted_100 警示"))
 def verify_exhausted_count(ctx, tname, n):
     container = ctx["app"].container
-    alert_repo = container.quota_alert_log_repository()
     tenant_id = ctx["tenants"][tname]
     cycle = current_year_month()
-    alerts = _run(alert_repo.find_by_tenant_and_cycle(tenant_id, cycle))
+    alerts = run_outside_request(
+        lambda: container.quota_alert_log_repository().find_by_tenant_and_cycle(
+            tenant_id, cycle
+        )
+    )
     matching = [
         a for a in alerts if a.alert_type == ALERT_TYPE_BASE_EXHAUSTED_100
     ]

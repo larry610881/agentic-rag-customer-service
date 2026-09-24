@@ -6,7 +6,6 @@ top_tenants 三個聚合，按 cycle range 正確過濾，非 admin 拒絕。
 
 from __future__ import annotations
 
-import asyncio
 from decimal import Decimal
 
 import pytest
@@ -18,6 +17,7 @@ from src.domain.billing.entity import (
     BillingTransaction,
 )
 from src.domain.ledger.entity import current_year_month
+from tests.integration.conftest import run_outside_request
 
 scenarios("integration/admin/billing_dashboard.feature")
 
@@ -51,14 +51,6 @@ SEED_PLANS = [
         "description": "pro",
     },
 ]
-
-
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @pytest.fixture
@@ -112,7 +104,7 @@ def create_tenant_with_plan(ctx, client, app, tname, plan_name):
     '金額 {amount:d} TWD addon {tokens:d}'
 ))
 def seed_billing_transactions(ctx, tname, cycle, n, amount, tokens):
-    """單一 _run() 內完成 ensure_ledger + n 個 BillingTransaction 寫入。
+    """單一 run_outside_request() 內完成 ensure_ledger + n 個 BillingTransaction 寫入。
 
     一定要在同一 event loop 跑完所有 DB 操作，否則 asyncpg connection
     跨 loop 會炸 'got Future attached to a different loop'。
@@ -123,12 +115,12 @@ def seed_billing_transactions(ctx, tname, cycle, n, amount, tokens):
     from src.domain.ledger.entity import TokenLedger
 
     container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
-    tenant_repo = container.tenant_repository()
-    billing_repo = container.billing_transaction_repository()
     tenant_id = ctx["tenants"][tname]
 
     async def _seed():
+        ledger_repo = container.token_ledger_repository()
+        tenant_repo = container.tenant_repository()
+        billing_repo = container.billing_transaction_repository()
         tenant = await tenant_repo.find_by_id(tenant_id)
         assert tenant is not None
         plan_name = tenant.plan
@@ -164,7 +156,7 @@ def seed_billing_transactions(ctx, tname, cycle, n, amount, tokens):
             )
             await billing_repo.save(tx)
 
-    _run(_seed())
+    run_outside_request(_seed)
 
 
 # ---------------------------------------------------------------------------

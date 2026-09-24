@@ -12,7 +12,6 @@ factory，讓 endpoint 真的查 test DB。
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -23,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.infrastructure.db.models.agent_trace_model import (
     AgentExecutionTraceModel,
 )
+from tests.integration.conftest import run_outside_request
 
 scenarios("integration/admin/agent_trace_filters.feature")
 
@@ -41,14 +41,6 @@ def _patch_observability_session(app, test_engine, monkeypatch):
         test_session_factory,
     )
     yield
-
-
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @pytest.fixture
@@ -145,7 +137,7 @@ def _seed_trace(
         finally:
             await session.close()
 
-    _run(_insert())
+    run_outside_request(_insert)
     ctx["seeded_traces"][name] = trace_id
 
 

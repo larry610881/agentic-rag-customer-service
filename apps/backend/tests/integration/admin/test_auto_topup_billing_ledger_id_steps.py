@@ -6,7 +6,6 @@ violation 靜默失敗，金流審計紀錄正確可追蹤。
 
 from __future__ import annotations
 
-import asyncio
 from uuid import uuid4
 
 import pytest
@@ -15,6 +14,7 @@ from pytest_bdd import given, parsers, scenarios, then, when
 from src.domain.ledger.entity import current_year_month
 from src.domain.rag.value_objects import TokenUsage
 from src.domain.usage.entity import UsageRecord
+from tests.integration.conftest import run_outside_request
 
 scenarios("integration/admin/auto_topup_billing_ledger_id.feature")
 
@@ -48,14 +48,6 @@ SEED_PLANS = [
         "description": "poc",
     },
 ]
-
-
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @pytest.fixture
@@ -109,18 +101,19 @@ def seed_exhausted_state(ctx, tname):
     """寫 usage_records 到 base_total 全耗盡。無 topup → addon_remaining=0。
     這樣 base + addon 同時耗盡 → 下一筆 record_usage 會 trigger auto_topup。"""
     container = ctx["app"].container
-    usage_repo = container.usage_repository()
-    ensure = container.ensure_ledger_use_case()
-    tenant_repo = container.tenant_repository()
     tenant_id = ctx["tenants"][tname]
     ctx["current_tenant"] = tname
 
-    tenant = _run(tenant_repo.find_by_id(tenant_id))
+    tenant = run_outside_request(
+        lambda: container.tenant_repository().find_by_id(tenant_id)
+    )
     assert tenant is not None
-    ledger = _run(ensure.execute(tenant_id, tenant.plan))
+    ledger = run_outside_request(
+        lambda: container.ensure_ledger_use_case().execute(tenant_id, tenant.plan)
+    )
 
     # 一次寫一筆 category="rag" 的 usage 吃掉全 base
-    _run(usage_repo.save(UsageRecord(
+    run_outside_request(lambda: container.usage_repository().save(UsageRecord(
         id=str(uuid4()),
         tenant_id=tenant_id,
         request_type="rag",
@@ -139,10 +132,9 @@ def seed_exhausted_state(ctx, tname):
 @when(parsers.parse("record_usage 寫入 {n:d} tokens 給 {tname}"))
 def record_usage_step(ctx, n, tname):
     container = ctx["app"].container
-    uc = container.record_usage_use_case()
     tenant_id = ctx["tenants"][tname]
     ctx["current_tenant"] = tname
-    _run(uc.execute(
+    run_outside_request(lambda: container.record_usage_use_case().execute(
         tenant_id=tenant_id,
         request_type="chat_web",  # Issue #73：rag 已 deprecated（僅供讀取）
         usage=TokenUsage(
@@ -161,10 +153,13 @@ def record_usage_step(ctx, n, tname):
 @then(parsers.parse("{tname} 本月應有 {n:d} 筆 BillingTransaction"))
 def verify_billing_count(ctx, tname, n):
     container = ctx["app"].container
-    billing_repo = container.billing_transaction_repository()
     cycle = current_year_month()
     tenant_id = ctx["tenants"][tname]
-    txs = _run(billing_repo.find_by_tenant_and_cycle(tenant_id, cycle))
+    txs = run_outside_request(
+        lambda: container.billing_transaction_repository().find_by_tenant_and_cycle(
+            tenant_id, cycle
+        )
+    )
     assert len(txs) == n, (
         f"{tname} expected {n} BillingTransactions, got {len(txs)}: "
         f"{[(t.transaction_type, t.ledger_id) for t in txs]}"
@@ -177,10 +172,13 @@ def verify_ledger_id_matches(ctx, tname):
     txs = ctx["billing_txs"]
     assert len(txs) > 0
     container = ctx["app"].container
-    ledger_repo = container.token_ledger_repository()
     cycle = current_year_month()
     tenant_id = ctx["tenants"][tname]
-    ledger = _run(ledger_repo.find_by_tenant_and_cycle(tenant_id, cycle))
+    ledger = run_outside_request(
+        lambda: container.token_ledger_repository().find_by_tenant_and_cycle(
+            tenant_id, cycle
+        )
+    )
     assert ledger is not None
     assert txs[-1].ledger_id == ledger.id, (
         f"expected ledger_id={ledger.id}, got {txs[-1].ledger_id!r}"
