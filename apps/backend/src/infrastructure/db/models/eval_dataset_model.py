@@ -17,7 +17,8 @@ class EvalDatasetModel(Base):
     tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
     bot_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # 線上 DB 與 infra/schema.sql 皆為 nullable（預設 ''），ORM 對齊（#469962）
+    description: Mapped[str] = mapped_column(Text, nullable=True, default="")
     target_prompt: Mapped[str] = mapped_column(
         String(50), nullable=False, default="bot_prompt"
     )
@@ -55,7 +56,8 @@ class EvalTestCaseModel(Base):
     case_id: Mapped[str] = mapped_column(String(100), nullable=False)
     question: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[str] = mapped_column(String(5), nullable=False, default="P1")
-    category: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    # 線上 DB 與 infra/schema.sql 皆為 nullable（預設 ''），ORM 對齊（#469962）
+    category: Mapped[str] = mapped_column(String(100), nullable=True, default="")
     conversation_history: Mapped[list | None] = mapped_column(JSON, nullable=True)
     assertions: Mapped[list] = mapped_column(JSON, nullable=False)
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True)

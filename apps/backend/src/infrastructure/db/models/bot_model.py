@@ -11,7 +11,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.dialects.postgresql import JSON, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.db.base import Base
@@ -105,7 +105,7 @@ class BotModel(Base):
         Float, nullable=False, default=1.0, server_default="1.0"
     )
     gate_excluded_cases: Mapped[list] = mapped_column(
-        JSON, nullable=False, default=list, server_default="[]"
+        JSONB, nullable=False, default=list, server_default="[]"
     )
     fab_icon_url: Mapped[str] = mapped_column(
         String(512), nullable=False, default="", server_default=""
@@ -154,7 +154,7 @@ class BotModel(Base):
     )
     # Issue #43 — Bot-level RAG retrieval modes
     rag_retrieval_modes: Mapped[list] = mapped_column(
-        JSON,
+        JSONB,
         nullable=False,
         default=lambda: ["raw"],
         server_default='["raw"]',

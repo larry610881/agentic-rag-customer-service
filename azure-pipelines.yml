@@ -228,6 +228,19 @@ stages:
                 -q --tb=short
             displayName: 整合測試
 
+          # ORM ↔ infra/schema.sql 一致性（#469962）：暫時 DB 套 schema.sql 後反射比對表、
+          # 欄位、型別、nullable。先軟閘（continueOnError）觀察一輪，穩定後拿掉改硬閘。
+          # 刻意保留的差異放 scripts/check_orm_schema.py 的 ALLOWED，並寫理由。
+          - script: |
+              set -euo pipefail
+              cd apps/backend
+              uv run python scripts/check_orm_schema.py
+            displayName: ORM 與 schema.sql 一致性（軟閘）
+            condition: succeededOrFailed()
+            continueOnError: true
+            env:
+              CHECK_SCHEMA_PG: postgresql://postgres:postgres@localhost:5432
+
           - task: PublishTestResults@2
             condition: succeededOrFailed()
             inputs:

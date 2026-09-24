@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
@@ -14,10 +15,10 @@ class GuardRulesConfigModel(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default="default")
     input_rules: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSON, nullable=False, default=list
+        JSONB, nullable=False, default=list
     )
     output_keywords: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSON, nullable=False, default=list
+        JSONB, nullable=False, default=list
     )
     llm_guard_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False

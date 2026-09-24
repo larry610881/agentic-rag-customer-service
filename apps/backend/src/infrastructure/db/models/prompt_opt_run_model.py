@@ -23,11 +23,13 @@ class PromptOptRunModel(Base):
     score: Mapped[float] = mapped_column(Float, nullable=False)
     passed_count: Mapped[int] = mapped_column(Integer, nullable=False)
     total_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    is_best: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 線上 DB 與 infra/schema.sql 皆為 nullable（預設 false / now()），
+    # ORM 對齊（#469962）
+    is_best: Mapped[bool] = mapped_column(Boolean, nullable=True, default=False)
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
-        nullable=False,
+        nullable=True,
         default=lambda: datetime.now(timezone.utc),
     )
 
