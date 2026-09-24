@@ -24,11 +24,13 @@ Monorepo 架構的 RAG AI Agent 電商客服平台。採用 DDD + TDD + BDD 開�
 
 ## 開發工作流（六階段，不可跳過）
 
-### Stage 0：Issue 建立
-- 計畫確認後，使用 `gh issue create` 建立 GitHub Issue
-- Issue 內容：Summary + Sub-tasks（checkbox） + Acceptance Criteria
-- Issue label：`enhancement`（功能）/ `bug`（修復）/ `refactor`（重構）
-- 後續 commit message 加上 `Refs #<issue-number>`
+### Stage 0：Work Item 建立（Azure Boards）
+- 計畫確認後，在 Azure Boards 建立 work item（專案 `檯帳系列-平台POC`，流程範本 PIC_AGILE），細節見 `.claude/rules/git-workflow.md`「Azure Boards 工作項目管理」
+- 類型：功能 → `User Story`；修復 → `Bug`；重構 / 測試 / 基礎建設 → `Task`；跨多張單的大計畫 → `Feature`
+- 內容：標題簡短（只寫做什麼）；描述放 Summary + Sub-tasks（checkbox）+ Acceptance Criteria
+- 指派給 Larry（`p10359945@pic.net.tw`）
+- 後續 commit message 加上 `#<work item id>`（Boards 編號是六位數，不會和舊 GitHub 編號混淆）
+- 2026-09-24 前的 GitHub Issue 已搬到 Boards，舊 commit 的 `Refs #N` 請查 `docs/github-issue-migration-map.md`；**不再使用 `gh issue`**
 
 ### Stage 1：設計與架構
 - 確認限界上下文歸屬
@@ -58,7 +60,7 @@ Monorepo 架構的 RAG AI Agent 電商客服平台。採用 DDD + TDD + BDD 開�
 - 無 lint 錯誤：`make lint`
 - 覆蓋率 ≥ 80%
 - 已 commit 並 push
-- **Close Issue**：`gh issue close <number> --reason completed`
+- **關閉 work item**：部署上線並驗證後改為 `Closed`（合進 main 但未部署時為 `Resolved`）
 
 ## Bug Fix 工作流（不可省略測試）
 
@@ -86,9 +88,9 @@ Monorepo 架構的 RAG AI Agent 電商客服平台。採用 DDD + TDD + BDD 開�
 
 ### Issue 進度同步規則
 
-1. **計畫完成後** — 建立 GitHub Issue（Sub-tasks 用 checkbox）
-2. **每個子任務完成後** — 在 Issue 留 comment 更新進度（如 `E1.3 完成：6 Use Cases`）
-3. **全部完成後** — Close Issue + 更新 SPRINT_TODOLIST.md
+1. **計畫完成後** — 建立 Azure Boards work item（Sub-tasks 用 checkbox）
+2. **每個子任務完成後** — 在 work item 留言更新進度（如 `E1.3 完成：6 Use Cases`）
+3. **合進 main 後** — 狀態改 `Resolved`；**部署上線並驗證後** — 改 `Closed` + 更新 SPRINT_TODOLIST.md
 
 ## Agent Team 協調
 

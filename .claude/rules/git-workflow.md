@@ -69,24 +69,57 @@ refactor/<scope>/<描述>       # 重構
 - PR 標題遵循 Conventional Commits 格式
 - PR 必須通過所有測試與 lint 檢查
 - PR 描述需包含：變更摘要、測試計畫
-- 相關的 Issue 以 `Closes #123` 格式關聯
+- 相關的 work item 以 `Fixes #<work item id>` 格式關聯（Azure Repos 語法）
 
-## GitHub Issue 管理
+## Azure Boards 工作項目管理
 
-### Issue 生命週期
+> 2026-09-24 起工作項目一律開在 Azure Boards（組織 `PIC-DevOps`、專案 `檯帳系列-平台POC`、流程範本 **PIC_AGILE**）。
+> GitHub Issues 已停用；舊編號對照見 `docs/github-issue-migration-map.md`。
+
+### 生命週期
 
 1. **建立時機**：功能計畫確認後、開發開始前
-2. **必要欄位**：
-   - Title：`<type>(<scope>): <description>`（與 commit 格式一致）
-   - Body：Summary + Sub-tasks (checkbox) + Acceptance Criteria
-   - Labels：`enhancement` / `bug` / `refactor`
-3. **進度更新**：每個階段/子任務完成後留 comment
-4. **關閉**：開發完成 + 測試通過後 `gh issue close <number> --reason completed`
+2. **類型**：
+   | 情境 | 類型 |
+   |---|---|
+   | 新功能 | `User Story` |
+   | 缺陷修復 | `Bug`（重現步驟寫在 Repro Steps） |
+   | 重構 / 測試 / 基礎建設 / CI | `Task` |
+   | 跨多張單的大計畫 | `Feature`（其他單掛在底下） |
+3. **必要欄位**：
+   - Title：簡短描述做什麼（不加 `feat(scope):` 前綴，那是 commit 格式）
+   - Description：Summary + Sub-tasks（checkbox）+ Acceptance Criteria
+   - Assigned To：`p10359945@pic.net.tw`
+   - Tags：`refactor` / `test` / `infra` / `security` 等補充分類
+4. **狀態流轉**（PIC_AGILE）：
+   | 狀態 | 時機 |
+   |---|---|
+   | `New` | 建立 |
+   | `Active` | 開始開發 |
+   | `Resolved` | 已合進 main，尚未部署（Bug、User Story、Feature 才有） |
+   | `Closed` | 已部署上線並驗證 |
+   | `Removed` | 決定不做 |
+5. **進度更新**：每個階段 / 子任務完成後留言（支援 Markdown）
 
-### Commit 關聯 Issue
+### CLI
 
-- 開發中的 commit：message 末尾加 `Refs #<issue-number>`
-- 最終完成的 commit：message 末尾加 `Closes #<issue-number>`
+```bash
+# 建立（先 az devops login；預設 org / project 已由 az devops configure 設好）
+az boards work-item create --type "User Story" --title "<簡短標題>" \
+  --description "<HTML 或純文字>" --assigned-to p10359945@pic.net.tw --fields "System.Tags=security"
+# 留言
+az boards work-item update --id <id> --discussion "E1.3 完成：6 Use Cases"
+# 改狀態
+az boards work-item update --id <id> --state Resolved
+```
+
+注意：`--description` 以 HTML 儲存，Markdown 不會被轉換；需要格式時先轉成 HTML。
+
+### Commit 關聯 work item
+
+- 開發中的 commit：message 末尾加 `#<work item id>`（Azure Repos 會自動連結到該單）
+- 最終完成的 commit：`Fixes #<work item id>`
+- 舊的 `Refs #N` / `Closes #N`（N < 200）指的是已停用的 GitHub Issue
 
 ## 提交前檢查
 

@@ -96,9 +96,9 @@ paths:
 
 - [ ] 全量測試通過（`make test` 或對應指令）
 - [ ] Lint 通過（`make lint` 或對應指令）
-- [ ] Git commit — Conventional Commits 格式，含 `Refs #N` 或 `Closes #N`
+- [ ] Git commit — Conventional Commits 格式，含 `#<work item id>` 或 `Fixes #<work item id>`
 - [ ] **架構學習筆記**（若 non-trivial）— 追加至 `docs/architecture-journal.md`
 - [ ] **SPRINT_TODOLIST.md 同步**（若有狀態變更）— 標記 ✅ 並 commit
-- [ ] **GitHub Issue 更新**（若有關聯 Issue）— 留 comment 或 close
+- [ ] **Azure Boards work item 更新**（若有關聯）— 留言，合進 main 改 `Resolved`、部署驗證後改 `Closed`
 
 > **口訣：DDD 定位 → BDD 先寫 → TDD 紅燈 → 實作 → 過清單交付。跳階段 = 違規。**
