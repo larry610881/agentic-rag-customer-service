@@ -97,6 +97,16 @@ class DocumentRepository(ABC):
         """只算 top-level documents (parent_id IS NULL)，用於 UI 分頁總數。"""
         ...
 
+    async def find_top_level_ids_by_source(
+        self, kb_id: str, tenant_id: str, source: str, source_id: str
+    ) -> list[str]:
+        """同 KB 內 (source, source_id) 相同的 top-level 文件 id（bulk ingest 去重用）。
+
+        子文件（PDF 拆頁）由 DeleteDocumentUseCase 依 parent cascade，不在此列。
+        預設 return []（既有 FakeDocumentRepo 不需實作）。
+        """
+        return []
+
     async def find_children(self, parent_id: str) -> list[Document]:
         """回傳 parent_id 的所有子文件（PDF 拆頁的 child documents）。
 

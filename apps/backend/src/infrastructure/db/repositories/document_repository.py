@@ -253,6 +253,23 @@ class SQLAlchemyDocumentRepository(DocumentRepository):
         result = await self._session.execute(stmt)
         return [self._to_entity(m) for m in result.scalars().all()]
 
+    async def find_top_level_ids_by_source(
+        self, kb_id: str, tenant_id: str, source: str, source_id: str
+    ) -> list[str]:
+        stmt = (
+            select(DocumentModel.id)
+            .where(
+                DocumentModel.kb_id == kb_id,
+                DocumentModel.tenant_id == tenant_id,
+                DocumentModel.source == source,
+                DocumentModel.source_id == source_id,
+                DocumentModel.parent_id.is_(None),
+            )
+            .order_by(DocumentModel.created_at)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def find_children(self, parent_id: str) -> list[Document]:
         stmt = (
             select(DocumentModel)

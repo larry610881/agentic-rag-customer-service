@@ -1900,7 +1900,9 @@ class Container(containers.DeclarativeContainer):
     bulk_ingest_use_case = providers.Factory(
         BulkIngestUseCase,
         upload_use_case=upload_document_use_case,
-        delete_by_source_use_case=delete_documents_by_source_use_case,
+        delete_document_use_case=delete_document_use_case,
+        kb_repository=kb_repository,
+        document_repository=document_repository,
     )
 
     # S-Token-Gov.2 + Tier 1 T1.2: EnsureLedger 注入計算 carryover 需要的 repos。

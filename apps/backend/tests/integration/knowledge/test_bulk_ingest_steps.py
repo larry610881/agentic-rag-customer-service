@@ -8,6 +8,18 @@ Since 5e80c3f (Outbox Phase C) the dedup sweep writes a ``vector.delete``
 outbox event instead of calling ``vector_store.delete`` inline; the dedup
 scenario runs the real ``DrainOutboxUseCase`` once after each push (what the
 worker's ``drain_outbox`` cron does) before asserting on ``vector_store.delete``.
+
+#469963: dedup deletes by document id. The race scenario gives the mocked
+``vector_store.delete`` an in-memory store that applies filters the way
+``MilvusVectorStore._build_filter_expr`` does (AND of keys; list → IN), so the
+"new version processed before drain" ordering is observable.
+
+Session semantics: the shared integration ``app`` fixture gives every repository
+its own session, but production shares one session per request
+(``get_tracked_session``) — DeleteDocumentUseCase relies on that: the outbox
+INSERT rides the PG delete's ``atomic()`` commit. This feature restores the
+production provider (its factory is already patched to the test DB); the drain
+step runs in ``independent_session_scope`` like a worker job.
 """
 
 from __future__ import annotations
@@ -15,7 +27,17 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from dependency_injector import providers
 from pytest_bdd import given, parsers, scenarios, then, when
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
+
+from src.infrastructure.db.session_middleware import (
+    get_tracked_session,
+    independent_session_scope,
+)
+from tests.integration.conftest import TEST_DB_URL
 
 scenarios("integration/knowledge/bulk_ingest.feature")
 
@@ -23,6 +45,12 @@ scenarios("integration/knowledge/bulk_ingest.feature")
 @pytest.fixture
 def ctx():
     return {}
+
+
+@pytest.fixture(autouse=True)
+def _production_session_semantics(app):
+    # app fixture 的 teardown 會 reset_override
+    app.container.db_session.override(providers.Factory(get_tracked_session))
 
 
 def _auth(headers: dict) -> dict:
@@ -61,6 +89,28 @@ def given_tenant_and_kb(ctx, client, app, create_tenant_login, name, kb_name):
     assert resp.status_code == 201, resp.text
     ctx["kb_id"] = resp.json()["id"]
     ctx["vs_mock"] = app.container.vector_store()
+
+
+@given("向量庫依 filter 實際刪除資料")
+def given_vector_store_applies_filters(ctx):
+    ctx["vectors"] = []
+
+    def _matches(row: dict, filters: dict) -> bool:
+        for k, v in filters.items():
+            if isinstance(v, list):
+                if row.get(k) not in v:
+                    return False
+            elif row.get(k) != v:
+                return False
+        return True
+
+    async def _delete(collection, filters, **_kw):
+        ctx["vectors"][:] = [
+            r for r in ctx["vectors"]
+            if not (r["collection"] == collection and _matches(r, filters))
+        ]
+
+    ctx["vs_mock"].delete.side_effect = _delete
 
 
 # ---------------------------------------------------------------------------
@@ -141,13 +191,32 @@ def when_bulk_post_resend(ctx, client, source, source_id):
     ctx["response"] = ctx["response_second"]
 
 
+@when("上一筆上傳的文件處理完成並寫入向量")
+def when_last_upload_processed(ctx):
+    """模擬 worker process_document 完成：新文件 chunks 進向量庫（帶 source 欄位）。"""
+    (item,) = ctx["response"].json()["results"]
+    ctx["vectors"].append(
+        {
+            "collection": f"kb_{ctx['kb_id']}",
+            "document_id": item["document_id"],
+            "tenant_id": ctx["headers"]["_tenant_id"],
+            "source": "audit_log",
+            "source_id": "12345",
+        }
+    )
+
+
 @when("outbox drain 排程執行一次")
 def when_drain_outbox(ctx, app):
     # 與 worker.drain_outbox_task 相同的 use case；handlers 綁定的是被
     # integration app fixture 覆寫成 AsyncMock 的 vector_store。
+    async def _drain():
+        async with independent_session_scope():
+            await app.container.drain_outbox_use_case().execute()
+
     loop = asyncio.new_event_loop()
     try:
-        loop.run_until_complete(app.container.drain_outbox_use_case().execute())
+        loop.run_until_complete(_drain())
     finally:
         loop.close()
 
@@ -205,18 +274,51 @@ def then_failed_error_contains(ctx, token):
     )
 
 
-@then("第二次呼叫前應觸發 vector_store.delete 帶 source / source_id filter")
+def _doc_id(resp) -> str:
+    (item,) = resp.json()["results"]
+    return item["document_id"]
+
+
+@then("第二次推送應觸發 vector_store.delete 帶第一次文件的 document_id filter")
 def then_dedup_delete_called(ctx):
     vs = ctx["vs_mock"]
     new_calls = vs.delete.call_args_list[len(ctx["delete_calls_before_second"]):]
-    matching = [
-        c for c in new_calls
-        if c.kwargs.get("filters", {}).get("source") == "audit_log"
-    ]
-    assert matching, (
-        f"Expected vector_store.delete called with source=audit_log "
-        f"during second push, got new calls: {new_calls}"
+    first_id = _doc_id(ctx["response_first"])
+    filters = [c.kwargs.get("filters", {}) for c in new_calls]
+    assert filters == [{"document_id": [first_id]}], (
+        f"dedup 應只以舊文件 id 刪除（不可用 source/source_id 過濾），got: {filters}"
     )
+
+
+@then("向量庫只剩第二次上傳文件的向量")
+def then_only_second_vectors_remain(ctx):
+    remaining = [r["document_id"] for r in ctx["vectors"]]
+    assert remaining == [_doc_id(ctx["response_second"])], remaining
+
+
+@then("該 source_id 在 PG 只剩第二次上傳的文件")
+def then_pg_only_second_document(ctx):
+    async def _ids():
+        eng = create_async_engine(TEST_DB_URL, poolclass=NullPool)
+        try:
+            async with eng.connect() as conn:
+                rows = await conn.execute(
+                    text(
+                        "SELECT id FROM documents WHERE kb_id = :kb "
+                        "AND source = 'audit_log' AND source_id = '12345'"
+                    ),
+                    {"kb": ctx["kb_id"]},
+                )
+                return [r[0] for r in rows]
+        finally:
+            await eng.dispose()
+
+    loop = asyncio.new_event_loop()
+    try:
+        ids = loop.run_until_complete(_ids())
+    finally:
+        loop.close()
+    assert ids == [_doc_id(ctx["response_second"])], ids
 
 
 @then("兩次回應 indexed 都為 1")
