@@ -372,20 +372,25 @@ stages:
 
                     # 只用 tags list 查 digest：images describe 會連帶讀 Container Analysis 弱點
                     # metadata，部署 SA 沒有（也不該有）containeranalysis.occurrences.list。
-                    tag_versions() {  # 每行「tag 完整路徑<TAB>version 完整路徑」
-                      gcloud artifacts docker tags list "$IMAGE_REPO" --format='value(tag,version)'
+                    # 以 JSON 解析並把 tag / version 正規化成「短 tag」「sha256:...」：
+                    # gcloud 的資源欄位是 name（完整路徑）與 version（完整路徑），也容忍
+                    # tag / digest 與短名稱，避免輸出形狀不同時比對全數落空。
+                    tag_versions() {  # 每行「短 tag<TAB>sha256:...」
+                      gcloud artifacts docker tags list "$IMAGE_REPO" --format=json \
+                        | python3 -c 'import json,sys; rows=json.load(sys.stdin); [print(a + "\t" + b) for a, b in (((t.get("tag") or t.get("name") or "").rsplit("/", 1)[-1], (t.get("version") or t.get("digest") or "").rsplit("/", 1)[-1]) for t in rows) if a and b]'
                     }
                     digest_of() {  # $1 = tag → sha256:...；映像不存在回空字串
-                      tag_versions | awk -v t="/tags/$1" '
-                        { n = length(t)
-                          if (substr($1, length($1) - n + 1) == t) {
-                            sub(/.*\/versions\//, "", $2); print $2; exit } }' || true
+                      tag_versions | awk -F'\t' -v t="$1" '$1 == t { print $2; exit }' || true
                     }
                     rc_tag_of() {  # $1 = sha256:... → 同一個映像上的 rc-<sha> tag
-                      tag_versions | awk -v d="/versions/$1" '
-                        { n = length(d)
-                          if (substr($2, length($2) - n + 1) == d && $1 ~ /\/tags\/rc-/) {
-                            sub(/.*\/tags\//, "", $1); print $1; exit } }' || true
+                      tag_versions | awk -F'\t' -v d="$1" '$2 == d && $1 ~ /^rc-/ { print $1; exit }' || true
+                    }
+                    debug_tags() {  # 比對失敗時印出實際格式，免得再猜 gcloud 輸出形狀
+                      echo "tags list 解析後前 3 筆：" >&2
+                      tag_versions | head -3 >&2 || true
+                      echo -n "原始 JSON 第一筆的欄位：" >&2
+                      gcloud artifacts docker tags list "$IMAGE_REPO" --format=json \
+                        | python3 -c 'import json,sys; r=json.load(sys.stdin); print(sorted(r[0]) if r else "（空）")' >&2 || true
                     }
 
                     if [ "$MODE" = "deploy" ]; then
@@ -399,6 +404,7 @@ stages:
                       DIGEST="$(digest_of "$REQ_TAG")"
                       if [ -z "$DIGEST" ]; then
                         echo "##vso[task.logissue type=error]找不到映像 $IMAGE_REPO:$REQ_TAG"
+                        debug_tags
                         list_recent
                         exit 1
                       fi
@@ -482,20 +488,25 @@ stages:
                     echo "部署前線上映像：$CUR"
                     # 只用 tags list 查 digest：images describe 會連帶讀 Container Analysis 弱點
                     # metadata，部署 SA 沒有（也不該有）containeranalysis.occurrences.list。
-                    tag_versions() {  # 每行「tag 完整路徑<TAB>version 完整路徑」
-                      gcloud artifacts docker tags list "$IMAGE_REPO" --format='value(tag,version)'
+                    # 以 JSON 解析並把 tag / version 正規化成「短 tag」「sha256:...」：
+                    # gcloud 的資源欄位是 name（完整路徑）與 version（完整路徑），也容忍
+                    # tag / digest 與短名稱，避免輸出形狀不同時比對全數落空。
+                    tag_versions() {  # 每行「短 tag<TAB>sha256:...」
+                      gcloud artifacts docker tags list "$IMAGE_REPO" --format=json \
+                        | python3 -c 'import json,sys; rows=json.load(sys.stdin); [print(a + "\t" + b) for a, b in (((t.get("tag") or t.get("name") or "").rsplit("/", 1)[-1], (t.get("version") or t.get("digest") or "").rsplit("/", 1)[-1]) for t in rows) if a and b]'
                     }
                     digest_of() {  # $1 = tag → sha256:...；映像不存在回空字串
-                      tag_versions | awk -v t="/tags/$1" '
-                        { n = length(t)
-                          if (substr($1, length($1) - n + 1) == t) {
-                            sub(/.*\/versions\//, "", $2); print $2; exit } }' || true
+                      tag_versions | awk -F'\t' -v t="$1" '$1 == t { print $2; exit }' || true
                     }
                     rc_tag_of() {  # $1 = sha256:... → 同一個映像上的 rc-<sha> tag
-                      tag_versions | awk -v d="/versions/$1" '
-                        { n = length(d)
-                          if (substr($2, length($2) - n + 1) == d && $1 ~ /\/tags\/rc-/) {
-                            sub(/.*\/tags\//, "", $1); print $1; exit } }' || true
+                      tag_versions | awk -F'\t' -v d="$1" '$2 == d && $1 ~ /^rc-/ { print $1; exit }' || true
+                    }
+                    debug_tags() {  # 比對失敗時印出實際格式，免得再猜 gcloud 輸出形狀
+                      echo "tags list 解析後前 3 筆：" >&2
+                      tag_versions | head -3 >&2 || true
+                      echo -n "原始 JSON 第一筆的欄位：" >&2
+                      gcloud artifacts docker tags list "$IMAGE_REPO" --format=json \
+                        | python3 -c 'import json,sys; r=json.load(sys.stdin); print(sorted(r[0]) if r else "（空）")' >&2 || true
                     }
                     case "$CUR" in
                       "$IMAGE_REPO"@sha256:*) IN_REPO=1; CUR_DIGEST="${CUR##*@}" ;;
@@ -509,6 +520,7 @@ stages:
                       TARGET_DIGEST="$(digest_of "$(resolve.TARGET_TAG)")"
                       if [ -z "$TARGET_DIGEST" ]; then
                         echo "##vso[task.logissue type=error]查不到目標映像 $(resolve.TARGET_TAG) 的 digest"
+                        debug_tags
                         exit 1
                       fi
                       if [ "$CUR_DIGEST" = "$TARGET_DIGEST" ]; then
