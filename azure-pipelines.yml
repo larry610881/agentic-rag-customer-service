@@ -9,6 +9,14 @@
 #     改成 sa-key，或改下面的 default
 #   - 變數群組 `agentic-rag-gcp-<environment>`（一個環境一組，見 docs/azure-devops-setup.md §4）
 #   - Environment `poc`（只留部署歷史；**不要加 approvals**，加了就變成要人核准）
+#
+# 部署限制與操作（細節見 docs/azure-devops-setup.md 第九節）：
+#   - GCP 的 WIF provider 只放行 refs/heads/main：其他分支只能跑 CI，Package / Release
+#     一定拿不到 GCP 權限。個人帳號的部署權限已收回（2026-09-24），唯一部署入口是本管線
+#   - 回滾：手動 Run pipeline，分支 main、mode=rollback；rollbackImageTag 填 previous
+#     （上一個 Ready revision 的映像）或 rc-<commit sha>。回滾是重新部署舊映像，不切流量
+#   - 部署後健康檢查打 /api/v1/health，要求 HTTP 200 且 status=healthy、database=connected；
+#     /health 只會回 404（後台 SPA 不接管保留路徑），不要拿來判斷後端狀態
 # =============================================================================
 
 parameters:
