@@ -5,12 +5,22 @@ The integration ``app`` fixture overrides ``container.vector_store`` with an
 (routing, status codes, tenant isolation, mock-call shape). The actual
 Milvus filter-expression / schema behavior is covered by unit tests of
 ``_build_filter_expr`` and ``_build_schema``.
+
+Since 5e80c3f (Outbox Phase C) the endpoint no longer calls
+``vector_store.delete`` inline: it writes a ``vector.delete`` outbox event and
+the worker's ``drain_outbox`` cron applies it. The scenarios therefore assert
+the committed outbox row, then run the real ``DrainOutboxUseCase`` once in-test
+and assert the resulting ``vector_store.delete`` call — same intent (right
+vectors deleted with the right filter), now end-to-end through the outbox.
 """
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
+from sqlalchemy import text
 
 scenarios("integration/knowledge/source_tracking.feature")
 
@@ -22,6 +32,30 @@ def ctx():
 
 def _auth(headers: dict) -> dict:
     return {k: v for k, v in headers.items() if not k.startswith("_")}
+
+
+def _run(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def _committed_vector_delete_events(engine) -> list[dict]:
+    """Read outbox rows through a fresh connection (= only committed rows)."""
+
+    async def _q():
+        async with engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT payload FROM outbox_events "
+                    "WHERE event_type = 'vector.delete' ORDER BY created_at"
+                )
+            )
+            return [r[0] for r in rows]
+
+    return _run(_q())
 
 
 def _parse_quoted_list(quoted: str) -> list[str]:
@@ -129,9 +163,40 @@ def when_delete_by_source_empty_ids(ctx, client, source):
     )
 
 
+@when("outbox drain 排程執行一次")
+def when_drain_outbox(ctx, app):
+    # 與 worker.drain_outbox_task 相同的 use case；handlers 綁定的是被
+    # integration app fixture 覆寫成 AsyncMock 的 vector_store。
+    ctx["drain_result"] = _run(app.container.drain_outbox_use_case().execute())
+
+
 # ---------------------------------------------------------------------------
 # Then
 # ---------------------------------------------------------------------------
+
+
+@then(
+    parsers.parse(
+        'outbox 應已寫入 vector.delete 事件且 filter 為 source "{source}" '
+        '與 source_ids [{quoted_ids}]'
+    )
+)
+def then_outbox_event_committed(ctx, test_engine, source, quoted_ids):
+    expected_ids = _parse_quoted_list(quoted_ids)
+    payloads = _committed_vector_delete_events(test_engine)
+    matching = [
+        p for p in payloads if p.get("filters", {}).get("source") == source
+    ]
+    assert matching, (
+        f"No committed vector.delete outbox event for source={source!r}; "
+        f"committed vector.delete payloads: {payloads}"
+    )
+    payload = matching[-1]
+    assert payload["collection"] == f"kb_{ctx['kb_id']}", payload
+    assert payload["filters"]["source_id"] == expected_ids, payload
+    assert payload["filters"].get("tenant_id"), (
+        f"tenant_id filter is mandatory on source-driven deletes: {payload}"
+    )
 
 
 @then(parsers.parse("回應狀態碼為 {code:d}"))

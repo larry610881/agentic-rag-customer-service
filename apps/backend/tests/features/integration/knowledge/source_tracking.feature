@@ -2,18 +2,23 @@ Feature: Source Tracking — DELETE by-source 端點
     為了讓外部 producer（例如 PMO 平台）在 source record 被刪除時連動清理 RAG 索引，
     租戶可透過 DELETE /by-source 端點，依照 (source, source_ids) 一次刪掉
     Milvus 中對應 chunks。
+    （5e80c3f Outbox Phase C 起，端點只寫入 vector.delete outbox 事件，
+    實際的 vector_store.delete 由 worker 的 drain_outbox 排程非同步執行。）
 
     Scenario: DELETE /by-source 單一 source_id — 204 + Milvus delete 帶正確 filter
         Given 已登入為租戶 "Alpha Corp" 並建立知識庫 "AuditLogs"
         When 我送出 DELETE /by-source 帶 source "audit_log" 與 source_ids ["12345"]
         Then 回應狀態碼為 204
-        And vector_store.delete 應被呼叫且 filter 為 source "audit_log" 與 source_ids ["12345"]
+        And outbox 應已寫入 vector.delete 事件且 filter 為 source "audit_log" 與 source_ids ["12345"]
+        When outbox drain 排程執行一次
+        Then vector_store.delete 應被呼叫且 filter 為 source "audit_log" 與 source_ids ["12345"]
 
     Scenario: DELETE /by-source 多個 source_ids — filter 用 list 形式（IN operator）
         Given 已登入為租戶 "Alpha Corp" 並建立知識庫 "AuditLogs"
         When 我送出 DELETE /by-source 帶 source "audit_log" 與 source_ids ["12345","12346","12347"]
         Then 回應狀態碼為 204
-        And vector_store.delete 的 filter source_ids 應為 list 且長度為 3
+        When outbox drain 排程執行一次
+        Then vector_store.delete 的 filter source_ids 應為 list 且長度為 3
 
     Scenario: DELETE /by-source 跨租戶應回 404（tenant isolation）
         Given 已登入為租戶 "Alpha Corp" 並建立知識庫 "AuditLogs"

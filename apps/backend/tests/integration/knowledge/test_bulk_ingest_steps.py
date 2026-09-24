@@ -3,9 +3,16 @@
 The integration ``app`` fixture overrides ``container.process_document_use_case``
 and ``container.vector_store`` with AsyncMocks. We assert at the API contract
 level (response shape, partial failure aggregation, dedup hook fires).
+
+Since 5e80c3f (Outbox Phase C) the dedup sweep writes a ``vector.delete``
+outbox event instead of calling ``vector_store.delete`` inline; the dedup
+scenario runs the real ``DrainOutboxUseCase`` once after each push (what the
+worker's ``drain_outbox`` cron does) before asserting on ``vector_store.delete``.
 """
 
 from __future__ import annotations
+
+import asyncio
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
@@ -132,6 +139,17 @@ def when_bulk_post_resend(ctx, client, source, source_id):
         headers=_auth(ctx["headers"]),
     )
     ctx["response"] = ctx["response_second"]
+
+
+@when("outbox drain 排程執行一次")
+def when_drain_outbox(ctx, app):
+    # 與 worker.drain_outbox_task 相同的 use case；handlers 綁定的是被
+    # integration app fixture 覆寫成 AsyncMock 的 vector_store。
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(app.container.drain_outbox_use_case().execute())
+    finally:
+        loop.close()
 
 
 @when(parsers.parse("我送出 POST /bulk 含 {n:d} 筆 documents"))

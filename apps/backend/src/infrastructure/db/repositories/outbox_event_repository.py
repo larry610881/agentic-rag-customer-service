@@ -66,6 +66,11 @@ class SQLAlchemyOutboxEventRepository(OutboxEventRepository):
         self._session.add(row)
         # 不 flush 也不 commit — atomic() 統一管理
 
+    async def save_and_commit(self, event: OutboxEvent) -> None:
+        """INSERT 新事件並 commit（無伴隨業務 SQL 的 standalone publish 用）。"""
+        async with atomic(self._session):
+            await self.save(event)
+
     async def claim_batch(
         self,
         worker_id: str,

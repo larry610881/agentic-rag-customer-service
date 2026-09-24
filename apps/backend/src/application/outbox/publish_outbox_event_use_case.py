@@ -24,8 +24,16 @@ class PublishOutboxEventUseCase:
     def __init__(self, outbox_repo: OutboxEventRepository) -> None:
         self._outbox_repo = outbox_repo
 
-    async def execute(self, event: OutboxEvent) -> None:
-        await self._outbox_repo.save(event)
+    async def execute(self, event: OutboxEvent, *, standalone: bool = False) -> None:
+        """寫入事件。
+
+        ``standalone=True``：呼叫端沒有任何業務 SQL 要與事件同 transaction
+        （因此也沒有後續 atomic() commit 可帶飛），由 repository 自行 commit。
+        """
+        if standalone:
+            await self._outbox_repo.save_and_commit(event)
+        else:
+            await self._outbox_repo.save(event)
         logger.info(
             "outbox.event.published",
             event_id=event.id,

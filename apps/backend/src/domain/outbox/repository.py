@@ -21,6 +21,15 @@ class OutboxEventRepository(ABC):
         """INSERT 新事件（不 commit）。"""
         ...
 
+    async def save_and_commit(self, event: OutboxEvent) -> None:
+        """INSERT 新事件並自帶 commit — 只給「沒有伴隨業務 SQL」的呼叫端用。
+
+        例：DeleteDocumentsBySource 只發 vector.delete 事件、不改任何 PG 資料，
+        沒有後續 atomic() 可以帶飛 ``save()`` 的 INSERT；若只呼叫 ``save()``，
+        request 結束時 SessionCleanupMiddleware rollback 會把事件丟掉。
+        """
+        raise NotImplementedError
+
     @abstractmethod
     async def claim_batch(
         self,

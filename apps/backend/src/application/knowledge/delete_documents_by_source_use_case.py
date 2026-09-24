@@ -71,7 +71,11 @@ class DeleteDocumentsBySourceUseCase:
             # 不帶 watermark — source-driven 無單一 doc.created_at 可比
             doc_watermark_ts=None,
         )
-        await self._publish_outbox.execute(event)
+        # standalone：本 use case 不改任何 PG 資料，沒有後續 atomic() 可以把
+        # publish 的 INSERT 一起 commit；只 save() 的話 request 結束時
+        # SessionCleanupMiddleware 會 rollback，事件遺失、端點回 204 但
+        # Milvus 什麼都沒刪（#65 integration 測試抓到）。
+        await self._publish_outbox.execute(event, standalone=True)
 
         logger.info(
             "kb.documents.delete_by_source.outbox_published",
