@@ -370,9 +370,22 @@ stages:
                         | tr ',' '\n' | grep '^rc-' || true
                     }
 
-                    digest_of() {  # $1 = tag；映像不存在回空字串
-                      gcloud artifacts docker images describe "$IMAGE_REPO:$1" \
-                        --format='value(image_summary.digest)' 2>/dev/null || true
+                    # 只用 tags list 查 digest：images describe 會連帶讀 Container Analysis 弱點
+                    # metadata，部署 SA 沒有（也不該有）containeranalysis.occurrences.list。
+                    tag_versions() {  # 每行「tag 完整路徑<TAB>version 完整路徑」
+                      gcloud artifacts docker tags list "$IMAGE_REPO" --format='value(tag,version)'
+                    }
+                    digest_of() {  # $1 = tag → sha256:...；映像不存在回空字串
+                      tag_versions | awk -v t="/tags/$1" '
+                        { n = length(t)
+                          if (substr($1, length($1) - n + 1) == t) {
+                            sub(/.*\/versions\//, "", $2); print $2; exit } }' || true
+                    }
+                    rc_tag_of() {  # $1 = sha256:... → 同一個映像上的 rc-<sha> tag
+                      tag_versions | awk -v d="/versions/$1" '
+                        { n = length(d)
+                          if (substr($2, length($2) - n + 1) == d && $1 ~ /\/tags\/rc-/) {
+                            sub(/.*\/tags\//, "", $1); print $1; exit } }' || true
                     }
 
                     if [ "$MODE" = "deploy" ]; then
@@ -393,10 +406,7 @@ stages:
                         TAG="$REQ_TAG"
                       else
                         # 別名（poc-previous 等）→ 以 digest 反查同一個映像上的 rc-<sha> tag
-                        TAG="$(gcloud artifacts docker tags list "$IMAGE_REPO" \
-                          --format='value(tag,version)' \
-                          | awk -v d="$DIGEST" '$2 ~ d && $1 ~ /\/tags\/rc-/ {print $1}' \
-                          | sed 's#.*/tags/##' | head -1)"
+                        TAG="$(rc_tag_of "$DIGEST")"
                         if [ -z "$TAG" ]; then
                           echo "##vso[task.logissue type=error]$REQ_TAG（$DIGEST）沒有對應的 rc-<sha> tag，無法確定 commit"
                           list_recent
@@ -470,17 +480,37 @@ stages:
                       --region=$(GCP_REGION) --project=$(GCP_PROJECT_ID) \
                       --format='value(spec.template.spec.containers[0].image)')"
                     echo "部署前線上映像：$CUR"
-                    PREV_TAG="${CUR##*:}"
+                    # 只用 tags list 查 digest：images describe 會連帶讀 Container Analysis 弱點
+                    # metadata，部署 SA 沒有（也不該有）containeranalysis.occurrences.list。
+                    tag_versions() {  # 每行「tag 完整路徑<TAB>version 完整路徑」
+                      gcloud artifacts docker tags list "$IMAGE_REPO" --format='value(tag,version)'
+                    }
+                    digest_of() {  # $1 = tag → sha256:...；映像不存在回空字串
+                      tag_versions | awk -v t="/tags/$1" '
+                        { n = length(t)
+                          if (substr($1, length($1) - n + 1) == t) {
+                            sub(/.*\/versions\//, "", $2); print $2; exit } }' || true
+                    }
+                    rc_tag_of() {  # $1 = sha256:... → 同一個映像上的 rc-<sha> tag
+                      tag_versions | awk -v d="/versions/$1" '
+                        { n = length(d)
+                          if (substr($2, length($2) - n + 1) == d && $1 ~ /\/tags\/rc-/) {
+                            sub(/.*\/tags\//, "", $1); print $1; exit } }' || true
+                    }
                     case "$CUR" in
-                      "$IMAGE_REPO":*|"$IMAGE_REPO"@*) IN_REPO=1 ;;
-                      *) IN_REPO=0 ;;
+                      "$IMAGE_REPO"@sha256:*) IN_REPO=1; CUR_DIGEST="${CUR##*@}" ;;
+                      "$IMAGE_REPO":*) IN_REPO=1; CUR_DIGEST="$(digest_of "${CUR##*:}")" ;;
+                      *) IN_REPO=0; CUR_DIGEST="" ;;
                     esac
+                    # 部署前 tag：優先用同 digest 的 rc-<sha>（線上以 @sha256 部署時也看得懂）
+                    PREV_TAG="$( [ -n "$CUR_DIGEST" ] && rc_tag_of "$CUR_DIGEST" || true)"
+                    [ -n "$PREV_TAG" ] || PREV_TAG="${CUR##*[:@]}"
                     if [ "$IN_REPO" = 1 ] && [ "$MODE" = "deploy" ]; then
-                      CUR_DIGEST="$(gcloud artifacts docker images describe "$CUR" \
-                        --format='value(image_summary.digest)')"
-                      TARGET_DIGEST="$(gcloud artifacts docker images describe \
-                        "$IMAGE_REPO:$(resolve.TARGET_TAG)" \
-                        --format='value(image_summary.digest)')"
+                      TARGET_DIGEST="$(digest_of "$(resolve.TARGET_TAG)")"
+                      if [ -z "$TARGET_DIGEST" ]; then
+                        echo "##vso[task.logissue type=error]查不到目標映像 $(resolve.TARGET_TAG) 的 digest"
+                        exit 1
+                      fi
                       if [ "$CUR_DIGEST" = "$TARGET_DIGEST" ]; then
                         echo "線上已是目標版本（同版重新部署），poc-previous 維持不變"
                       else
