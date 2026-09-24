@@ -372,14 +372,27 @@ GCP 端無法從 Larry 帳號驗證（IAM 讀取全被擋）：WIF pool / provid
 
 ### 版本怎麼識別
 
-每次 deploy 建出的映像 tag 是 `rc-<完整 commit sha>`，另外維護兩個移動式別名：
+每次 deploy 建出的映像 tag 是 `rc-<完整 commit sha>`，建立後不再移動。**「上一版」以 Cloud Run 的
+revision 歷史為準，不維護任何可變 tag。**
 
-| 別名 | 指向 | 何時更新 |
-|---|---|---|
-| `poc-current` | 目前線上版本 | 每次部署（含 rollback）健康檢查通過後 |
-| `poc-previous` | 上一次 **deploy** 之前的線上版本 | deploy 模式在換映像前標記；rollback 不動它；同版重新部署也不動它 |
+> 2026-09-24 改版（run 180903）：原本用 `poc-previous` / `poc-current` 兩個移動式別名，但在
+> Artifact Registry 把既有 tag 移到另一個映像要先刪再建，需要 `artifactregistry.tags.delete`；
+> `artifactregistry.writer` 沒有，只有 `repoAdmin` 有，而 `repoAdmin` 還能刪映像，部署 SA 不該拿。
+> 改由 revision 歷史推導後，這兩個 tag 不再更新，填 `poc-previous` / `poc-current` 會直接紅燈。
+> infra 那條保留 `poc-*` tag 的 cleanup 規則（keep-poc-tags）已不需要，留著也無害。
 
-rollback 不動 `poc-previous`，是為了避免連續回滾兩次變成在兩版之間來回互換。
+rollbackImageTag 的預設值 `previous` 的解析方式：
+
+1. 讀 Cloud Run 服務目前承接流量的 revision（流量最大者）。
+2. 在 revision 歷史（`gcloud run revisions list`，依建立時間新到舊）中，往它之前找第一個 **Ready**
+   且**映像 digest 與目前線上不同**的 revision。同版重新部署產生的 revision 映像相同，會被跳過。
+3. 用該映像的 digest 反查同一映像上的 `rc-<sha>` tag，得到目標 commit（VM 同步用）。
+   revision 以 `:tag` 或 `@sha256:` 部署都一樣處理。
+4. 找不到（例如舊 revision 已被刪除）或前一版映像不在 `poc-ar-rag` 時紅燈，並列出最近 10 個
+   `rc-*` 讓人改填。
+
+注意：`previous` 是「目前線上之前最近一個不同的映像」。**剛做完回滾時，它指向被退掉的那一版**；
+要再往前退，請直接填 `rc-<commit sha>`。
 
 ### 四種操作
 
@@ -387,23 +400,24 @@ rollback 不動 `poc-previous`，是為了避免連續回滾兩次變成在兩�
 |---|---|---|
 | 一般部署 | 合併到 `main` 自動觸發 | 無 |
 | 重新部署同一版（例如 VM worker 異常要重同步） | Pipelines → 3888 → **Run pipeline**，branch `main` | mode `deploy` |
-| 回滾到上一版 | 同上 | mode `rollback`，rollbackImageTag 留預設 `poc-previous` |
+| 回滾到上一版 | 同上 | mode `rollback`，rollbackImageTag 留預設 `previous` |
 | 回滾到指定版 | 同上 | mode `rollback`，rollbackImageTag 填 `rc-<commit sha>` |
 
 指定版的 tag 從兩個地方找：前一次 run 的 **Summary** 分頁（每次部署都寫出本次 tag、commit、
-部署前的 tag 與回滾指令），或 Environments → `poc` 的部署歷史。
+部署前線上的 tag 與回滾指令），或 Environments → `poc` 的部署歷史。
 
 rollback 模式會跳過 CI 與建置，直接把既有映像部署回 Cloud Run，VM worker 也同步回該 commit
 （Release 以 `TARGET_TAG` / `TARGET_SHA` 統一驅動三段：換映像、確認線上映像＋健康檢查、VM 同步）。
-rollbackImageTag 只接受英數與 `. _ -`；映像不存在或別名反查不到 `rc-*` 時直接紅燈，並列出最近
-10 個 `rc-*` 供挑選。
+rollbackImageTag 只接受 `previous` 或英數與 `. _ -` 組成的 tag；映像不存在或反查不到 `rc-*` 時直接
+紅燈，並列出最近 10 個 `rc-*` 供挑選。管線所需權限只有 `run.revisions.list`（`run.developer` 已含）
+與 `artifactregistry.tags.list`，不需要任何寫入 tag 的權限。
 
 ### 限制
 
 - **不回滾 DB schema**。migration 規範要求加法式，回滾到舊版仍相容；若某次 migration 是破壞性的，
   那一版之前不可回滾——管線無法判斷，靠 Issue / SPRINT_TODOLIST 的紀錄。
 - **Artifact Registry 清理政策**不能刪掉舊的 `rc-*`，至少保留最近 20 個（待 infra 確認
-  `poc-ar-rag` 的 cleanup policy）。
+  `poc-ar-rag` 的 cleanup policy）。Cloud Run 的舊 revision 也不要手動清掉，`previous` 靠它推導。
 - `gcloud run deploy` 只帶 `--image`，不帶 `--set-env-vars` / `--set-secrets`、不用
   `services replace`：環境變數與 Secret Manager 掛載由 infra 管，換映像時沿用服務現況。
 - 緊急修補一律開 `fix/*` 分支 → 合併 `main` 走一般部署，不手動 gcloud。

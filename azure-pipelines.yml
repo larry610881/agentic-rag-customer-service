@@ -37,9 +37,9 @@ parameters:
       - deploy
       - rollback
   - name: rollbackImageTag
-    displayName: 回滾目標映像 tag（只在 rollback 用；poc-previous＝上一次 deploy 前的版本，或填 rc-<commit sha>）
+    displayName: 回滾目標（只在 rollback 用；previous＝目前線上 revision 之前最近一個不同映像的 revision，或填 rc-<commit sha>）
     type: string
-    default: poc-previous
+    default: previous
 
 trigger:
   batch: true
@@ -318,7 +318,11 @@ stages:
   #   mode=deploy（預設）：main 上的 push 一路跑到底：CI → Package → 部署 Cloud Run →
   #     同步並重啟 VM worker。部署本次 commit 的映像 rc-<sha>。
   #   mode=rollback：CI / Package 跳過，直接把 rollbackImageTag 指到的既有映像部署回去
-  #     （預設 poc-previous = 上一次 deploy 前的線上版本），VM 也同步回該 commit。
+  #     （預設 previous = Cloud Run revision 歷史中、目前線上版本之前最近一個不同映像），
+  #     VM 也同步回該 commit。
+  #   版本真相來源是 Cloud Run 的 revision 歷史，不用可變 tag（poc-previous / poc-current）：
+  #     在 Artifact Registry 移動既有 tag 需要 artifactregistry.tags.delete，只有 repoAdmin
+  #     有，而 repoAdmin 還能刪映像，部署 SA 不該拿。
   #   兩種模式都只允許 main：infra 的 WIF provider 只放行 refs/heads/main。
   #   Environment `poc` 只用來留部署歷史與稽核紀錄，**不要**在上面加 approvals，
   #   一加就變成要人按核准（要臨時擋住上線時才加）。
@@ -393,6 +397,60 @@ stages:
                         | python3 -c 'import json,sys; r=json.load(sys.stdin); print(sorted(r[0]) if r else "（空）")' >&2 || true
                     }
 
+                    # previous：從 revision 歷史找「目前承接流量的 revision」之前、最近一個 Ready
+                    # 且映像與線上不同的 revision（同版重新部署會產生映像相同的 revision，要跳過），
+                    # 輸出其映像 digest（sha256:...）；找不到輸出空字串。
+                    # 映像比對一律用 digest：revision 可能以 :tag 或 @sha256 部署。
+                    previous_digest() {
+                      local T; T="$(mktemp -d)"
+                      gcloud run services describe $(serviceName) \
+                        --region=$(GCP_REGION) --project=$(GCP_PROJECT_ID) --format=json > "$T/svc.json"
+                      gcloud run revisions list --service=$(serviceName) \
+                        --region=$(GCP_REGION) --project=$(GCP_PROJECT_ID) \
+                        --sort-by=~metadata.creationTimestamp --format=json > "$T/revs.json"
+                      tag_versions > "$T/tags.tsv"
+                      IMAGE_REPO="$IMAGE_REPO" python3 - "$T" <<'PY'
+                    import json, os, sys
+                    d = sys.argv[1]
+                    repo = os.environ["IMAGE_REPO"]
+                    svc = json.load(open(f"{d}/svc.json"))
+                    revs = json.load(open(f"{d}/revs.json"))
+                    tags = dict(l.rstrip("\n").split("\t", 1) for l in open(f"{d}/tags.tsv") if "\t" in l)
+
+                    def digest(rev):
+                        img = (rev.get("status", {}).get("imageDigest")
+                               or rev["spec"]["containers"][0]["image"])
+                        if "@sha256:" in img:
+                            return img.rsplit("@", 1)[1]
+                        if img.startswith(repo + ":"):
+                            return tags.get(img.rsplit(":", 1)[1], img)
+                        return img  # 不在本 repo：原樣比對，後面判定為無法回滾
+
+                    def ready(rev):
+                        return any(c.get("type") == "Ready" and c.get("status") == "True"
+                                   for c in rev.get("status", {}).get("conditions", []))
+
+                    revs.sort(key=lambda r: r["metadata"]["creationTimestamp"], reverse=True)
+                    st = svc.get("status", {})
+                    serving = [t for t in st.get("traffic", []) if t.get("percent", 0) > 0]
+                    cur_name = None
+                    if serving:
+                        top = max(serving, key=lambda t: t["percent"])
+                        cur_name = top.get("revisionName") or st.get("latestReadyRevisionName")
+                    cur_name = cur_name or st.get("latestReadyRevisionName")
+                    names = [r["metadata"]["name"] for r in revs]
+                    if cur_name not in names:
+                        sys.exit(0)
+                    cur = revs[names.index(cur_name)]
+                    cur_digest = digest(cur)
+                    for r in revs[names.index(cur_name) + 1:]:
+                        if ready(r) and digest(r) != cur_digest:
+                            print(digest(r))
+                            break
+                    PY
+                      rm -rf "$T"
+                    }
+
                     if [ "$MODE" = "deploy" ]; then
                       TAG="rc-$(Build.SourceVersion)"
                       SHA="$(Build.SourceVersion)"
@@ -401,7 +459,28 @@ stages:
                         echo "##vso[task.logissue type=error]rollbackImageTag 格式不合法：只允許英數與 . _ -"
                         exit 1
                       fi
-                      DIGEST="$(digest_of "$REQ_TAG")"
+                      case "$REQ_TAG" in
+                        poc-previous|poc-current)
+                          echo "##vso[task.logissue type=error]$REQ_TAG 已停用（管線不再維護這個 tag，內容可能過期）：請填 previous 或 rc-<commit sha>"
+                          list_recent
+                          exit 1 ;;
+                      esac
+                      if [ "$REQ_TAG" = "previous" ]; then
+                        DIGEST="$(previous_digest)"
+                        if [ -z "$DIGEST" ]; then
+                          echo "##vso[task.logissue type=error]Cloud Run revision 歷史裡找不到目前線上版本之前的其他映像（舊 revision 可能已被刪除）：請改填 rc-<commit sha>"
+                          list_recent
+                          exit 1
+                        fi
+                        if ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                          echo "##vso[task.logissue type=error]前一個 revision 的映像 $DIGEST 不在 $IMAGE_REPO，無法回滾：請改填 rc-<commit sha>"
+                          list_recent
+                          exit 1
+                        fi
+                        echo "previous → $DIGEST"
+                      else
+                        DIGEST="$(digest_of "$REQ_TAG")"
+                      fi
                       if [ -z "$DIGEST" ]; then
                         echo "##vso[task.logissue type=error]找不到映像 $IMAGE_REPO:$REQ_TAG"
                         debug_tags
@@ -411,7 +490,7 @@ stages:
                       if [[ "$REQ_TAG" == rc-* ]]; then
                         TAG="$REQ_TAG"
                       else
-                        # 別名（poc-previous 等）→ 以 digest 反查同一個映像上的 rc-<sha> tag
+                        # previous → 以 digest 反查同一個映像上的 rc-<sha> tag
                         TAG="$(rc_tag_of "$DIGEST")"
                         if [ -z "$TAG" ]; then
                           echo "##vso[task.logissue type=error]$REQ_TAG（$DIGEST）沒有對應的 rc-<sha> tag，無法確定 commit"
@@ -476,9 +555,7 @@ stages:
                       exit 1
                     displayName: 回滾防呆：目標版本須支援已輪替的加密金鑰
 
-                # 記下部署前的線上版本。deploy 模式把它標成 poc-previous（下一次 rollback 的
-                # 預設目標）；rollback 模式不動 poc-previous，免得連續回滾兩次變成來回互換。
-                # 線上已經是目標版本（同版重新部署）時也不重標，否則 poc-previous 會指向同一版。
+                # 記下部署前的線上版本（只寫進部署摘要，不打任何 tag；回滾目標由 revision 歷史決定）。
                 - script: |
                     set -euo pipefail
                     IMAGE_REPO="$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(arRepo)/$(serviceName)"
@@ -516,28 +593,13 @@ stages:
                     # 部署前 tag：優先用同 digest 的 rc-<sha>（線上以 @sha256 部署時也看得懂）
                     PREV_TAG="$( [ -n "$CUR_DIGEST" ] && rc_tag_of "$CUR_DIGEST" || true)"
                     [ -n "$PREV_TAG" ] || PREV_TAG="${CUR##*[:@]}"
-                    if [ "$IN_REPO" = 1 ] && [ "$MODE" = "deploy" ]; then
-                      TARGET_DIGEST="$(digest_of "$(resolve.TARGET_TAG)")"
-                      if [ -z "$TARGET_DIGEST" ]; then
-                        echo "##vso[task.logissue type=error]查不到目標映像 $(resolve.TARGET_TAG) 的 digest"
-                        debug_tags
-                        exit 1
-                      fi
-                      if [ "$CUR_DIGEST" = "$TARGET_DIGEST" ]; then
-                        echo "線上已是目標版本（同版重新部署），poc-previous 維持不變"
-                      else
-                        gcloud artifacts docker tags add "$CUR" "$IMAGE_REPO:poc-previous" --quiet
-                        echo "已將部署前的線上映像標為 poc-previous"
-                      fi
-                    elif [ "$IN_REPO" = 0 ]; then
-                      echo "##vso[task.logissue type=warning]部署前映像不在 $IMAGE_REPO，無法標 poc-previous"
+                    if [ "$IN_REPO" = 0 ]; then
+                      echo "##vso[task.logissue type=warning]部署前映像不在 $IMAGE_REPO"
                     fi
                     echo "##vso[task.setvariable variable=PREV_IMAGE;isOutput=true]$CUR"
                     echo "##vso[task.setvariable variable=PREV_TAG;isOutput=true]$PREV_TAG"
                   name: previous
-                  displayName: 記錄部署前版本（deploy 模式標 poc-previous）
-                  env:
-                    MODE: ${{ parameters.mode }}
+                  displayName: 記錄部署前版本
 
                 # 只換映像，不准帶 --set-env-vars / --set-secrets，也不准 services replace（infra 4.1）。
                 # 網路（Direct VPC egress poc-vpc/poc-subnet, all-traffic）、資源（1 CPU / 2Gi /
@@ -577,14 +639,6 @@ stages:
                     echo "##vso[task.logissue type=error]health 檢查未通過"
                     exit 1
                   displayName: 確認線上映像並健康檢查（失敗即整條 Release 紅燈）
-
-                - script: |
-                    set -euo pipefail
-                    IMAGE_REPO="$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(arRepo)/$(serviceName)"
-                    gcloud artifacts docker tags add \
-                      "$IMAGE_REPO:$(resolve.TARGET_TAG)" "$IMAGE_REPO:poc-current" --quiet
-                    echo "poc-current → $(resolve.TARGET_TAG)"
-                  displayName: 標記 poc-current
 
       - deployment: worker
         displayName: 同步並重啟 VM 上的 arq worker
@@ -688,7 +742,11 @@ stages:
                       echo "| 部署前線上 tag | \`$(PREV_TAG)\` |"
                       echo
                       echo "回滾：Pipelines → 3888 → Run pipeline（branch main），mode 選 \`rollback\`，"
-                      echo "rollbackImageTag 填 \`$(PREV_TAG)\`（deploy 後也可留預設 \`poc-previous\`）。"
+                      echo "rollbackImageTag 留預設 \`previous\`（回到部署前線上的 \`$(PREV_TAG)\`），"
+                      echo "或填任一 \`rc-<commit sha>\`。"
+                      echo
+                      echo "注意：\`previous\` 是「目前線上之前最近一個不同映像」。剛做完回滾時它指向被退掉的版本，"
+                      echo "要再往前退請直接填 rc-<commit sha>。"
                       echo "DB schema 不會隨回滾還原；破壞性 migration 之前的版本不可回滾。"
                     } > "$F"
                     echo "##vso[task.uploadsummary]$F"
