@@ -99,9 +99,9 @@ class PromptDBClient:
             session.execute(
                 text("""
                 INSERT INTO eval_datasets (id, tenant_id, bot_id, name, description, target_prompt,
-                    agent_mode, default_assertions, cost_config, include_security, created_at, updated_at)
+                    default_assertions, cost_config, include_security, created_at, updated_at)
                 VALUES (:id, :tenant_id, :bot_id, :name, :description, :target_prompt,
-                    :agent_mode, CAST(:default_assertions AS JSON), CAST(:cost_config AS JSON),
+                    CAST(:default_assertions AS JSON), CAST(:cost_config AS JSON),
                     :include_security, NOW(), NOW())
             """),
                 {
@@ -111,7 +111,6 @@ class PromptDBClient:
                     "name": dataset.metadata.description or "Imported Dataset",
                     "description": dataset.metadata.description,
                     "target_prompt": dataset.metadata.target_prompt,
-                    "agent_mode": dataset.metadata.agent_mode,
                     "default_assertions": json.dumps(
                         [
                             {"type": a.type, "params": a.params}
@@ -218,7 +217,7 @@ class PromptDBClient:
                 tenant_id=ds["tenant_id"],
                 bot_id=ds.get("bot_id") or "",
                 target_prompt=ds["target_prompt"],
-                agent_mode=ds["agent_mode"],
+                # eval_datasets.agent_mode 已移除（#469965）；不影響評測，用預設值
                 description=ds.get("description") or "",
                 cost_config=CostConfigData(
                     token_budget=cost_raw.get("token_budget", 2000),

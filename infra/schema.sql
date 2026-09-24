@@ -1855,7 +1855,6 @@ CREATE TABLE public.eval_datasets (
     name character varying(200) NOT NULL,
     description text DEFAULT ''::text,
     target_prompt character varying(50) DEFAULT 'bot_prompt'::character varying NOT NULL,
-    agent_mode character varying(20) DEFAULT 'router'::character varying NOT NULL,
     default_assertions json,
     cost_config json,
     include_security boolean DEFAULT true NOT NULL,

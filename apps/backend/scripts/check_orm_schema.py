@@ -24,13 +24,8 @@ import sys
 from pathlib import Path
 
 # (表, 欄位) → 理由。只放「已知且刻意保留」的差異；每條要寫清楚何時可以拿掉。
-ALLOWED: dict[tuple[str, str], str] = {
-    ("eval_datasets", "agent_mode"): (
-        "ORM 已移除（ce97472 / 558be1f），線上仍在（varchar NOT NULL default "
-        "'router'，DB 預設值兜住，不影響寫入）。DROP COLUMN 需 Larry 口頭確認後另走 "
-        "migration，DROP 之後從這裡拿掉。"
-    ),
-}
+# （eval_datasets.agent_mode 已於 #469965 DROP，項目移除）
+ALLOWED: dict[tuple[str, str], str] = {}
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_SQL = ROOT.parents[1] / "infra" / "schema.sql"
