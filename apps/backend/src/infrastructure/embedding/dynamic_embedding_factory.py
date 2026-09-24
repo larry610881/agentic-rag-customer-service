@@ -55,6 +55,10 @@ class DynamicEmbeddingServiceFactory:
 
     async def get_service(self) -> EmbeddingService:
         cfg = Settings()
+        # E2E_MODE：不打真的 embedding API（後備服務在 E2E 模式由 container 設為 fake）
+        # 原本只在「沒有 key」時退回，測試環境設了假 key 就會真的外連（#65）。
+        if cfg.e2e_mode:
+            return self._fallback
         cache_key = "embedding_config:default"
 
         # Try cache first

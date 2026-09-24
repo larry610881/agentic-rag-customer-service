@@ -11,6 +11,9 @@ Key design decisions:
 """
 
 import asyncio
+import importlib
+import os
+import pkgutil
 from unittest.mock import AsyncMock
 
 import pytest
@@ -20,33 +23,19 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+import src.infrastructure.db.models as _models_pkg
 from src.infrastructure.cache.in_memory_cache_service import InMemoryCacheService
 from src.infrastructure.db.base import Base
 
-# Ensure all ORM models are registered on Base.metadata before create_all
-from src.infrastructure.db.models import (  # noqa: F401
-    BotKnowledgeBaseModel,
-    BotModel,
-    ChunkModel,
-    ConversationModel,
-    DocumentModel,
-    FeedbackModel,
-    KnowledgeBaseModel,
-    MessageModel,
-    ModelPricingModel,
-    PricingRecalcAuditModel,
-    ProcessingTaskModel,
-    ProviderSettingModel,
-    RAGEvalModel,
-    RateLimitConfigModel,
-    RequestLogModel,
-    TenantModel,
-    UsageRecordModel,
-    UserModel,
-)
+# Ensure all ORM models are registered on Base.metadata before create_all.
+# 自動匯入 models 目錄下每個模組，不維護手寫清單（#65：舊清單漏了 7 個 model，
+# 例如 config_snapshots，create_all 建不出表，依賴它的測試直接 UndefinedTable）。
+for _m in pkgutil.iter_modules(_models_pkg.__path__):
+    importlib.import_module(f"{_models_pkg.__name__}.{_m.name}")
 
 ADMIN_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/agentic_rag"
-TEST_DB_NAME = "agentic_rag_test"
+# 可用環境變數指定，讓多個整合測試行程各用自己的資料庫平行跑（互不 DROP 對方）
+TEST_DB_NAME = os.getenv("INTEGRATION_TEST_DB", "agentic_rag_test")
 TEST_DB_URL = f"postgresql+asyncpg://postgres:postgres@localhost:5432/{TEST_DB_NAME}"
 
 

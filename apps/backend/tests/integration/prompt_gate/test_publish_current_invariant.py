@@ -36,10 +36,13 @@ def bot_id(client, writer_headers):
 
 
 def _create_and_publish(client, headers, bot_id, prompt):
-    """建一個改 base_prompt 的 draft 版本並發布，回傳版本 id。"""
+    """建一個改 bot_prompt 的 draft 版本並發布，回傳版本 id。
+
+    （base_prompt 已於 7b4ebe5 移除；受版控的 prompt 欄位為 bot_prompt，#65）
+    """
     created = client.post(
         f"/api/v1/bots/{bot_id}/config-versions",
-        json={"changes": {"base_prompt": prompt}},
+        json={"changes": {"bot_prompt": prompt}},
         headers=headers,
     )
     assert created.status_code == 201, created.text
@@ -81,7 +84,7 @@ def test_second_publish_flips_current_without_index_violation(
 def test_put_bot_prompt_change_twice_keeps_single_current(
     client, auth_headers, bot_id
 ):
-    """PUT /bots 版控墊片：連續改 base_prompt 兩次不得撞 ix_bcv_current（C1 第二現場）。
+    """PUT /bots 版控墊片：連續改 bot_prompt 兩次不得撞 ix_bcv_current（C1 第二現場）。
 
     gate off 時每次改受版控欄位會透明產生 published+current 版本；第二次改動
     需翻轉 current，與 publish 端點同一根因（mark_published + save 先於 set_current）。
@@ -90,14 +93,14 @@ def test_put_bot_prompt_change_twice_keeps_single_current(
 
     r1 = client.put(
         f"/api/v1/bots/{bot_id}",
-        json={"base_prompt": "墊片第一版"},
+        json={"bot_prompt": "墊片第一版"},
         headers=headers,
     )
     assert r1.status_code == 200, r1.text
     # 第二次：修復前在此 500
     r2 = client.put(
         f"/api/v1/bots/{bot_id}",
-        json={"base_prompt": "墊片第二版"},
+        json={"bot_prompt": "墊片第二版"},
         headers=headers,
     )
     assert r2.status_code == 200, r2.text

@@ -119,6 +119,16 @@ class _FixedClassifier:
     ):
         return workers[0] if workers else None
 
+    async def classify_sanitize(
+        self, user_message, router_context, workers, router_model="", **_kw
+    ):
+        """管線改呼叫 classify_sanitize；舊假物件缺此方法而只回 error（#65）。"""
+        from src.application.agent.intent_classifier import ClassifyOutcome
+
+        return ClassifyOutcome(
+            worker=workers[0] if workers else None, query="", is_attack=False
+        )
+
 
 @pytest.fixture(autouse=True)
 def _override_di(app, test_engine, fake_agent_factory):
@@ -303,7 +313,7 @@ def check_events_have_node_id(ctx, test_engine):
             )
             return row.scalar_one_or_none()
 
-    nodes = asyncio.get_event_loop().run_until_complete(_query()) or []
+    nodes = asyncio.run(_query()) or []
     trace_node_ids = {n.get("node_id") for n in nodes}
 
     cross_match = [
@@ -352,7 +362,7 @@ def check_trace_has_failed_node(ctx, test_engine, outcome):
             )
             return row.scalar_one_or_none()
 
-    nodes = asyncio.get_event_loop().run_until_complete(_query()) or []
+    nodes = asyncio.run(_query()) or []
     matched = [n for n in nodes if n.get("outcome") == outcome]
     assert matched, (
         f"no node with outcome={outcome}; nodes outcomes: "
@@ -386,7 +396,7 @@ def check_trace_source(ctx, test_engine, expected):
             )
             return row.scalar_one_or_none()
 
-    source = asyncio.get_event_loop().run_until_complete(_query())
+    source = asyncio.run(_query())
     assert source == expected, f"Expected source={expected}, got {source}"
 
 
@@ -407,7 +417,7 @@ def check_all_nodes_success(ctx, test_engine, expected):
             )
             return row.scalar_one_or_none()
 
-    nodes = asyncio.get_event_loop().run_until_complete(_query()) or []
+    nodes = asyncio.run(_query()) or []
     outcomes = [n.get("outcome", "success") for n in nodes]
     assert all(o == expected for o in outcomes), (
         f"some nodes outcome != {expected}: {outcomes}"

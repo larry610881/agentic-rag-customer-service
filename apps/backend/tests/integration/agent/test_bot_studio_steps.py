@@ -185,5 +185,5 @@ def check_trace_source_in_db(ctx, test_engine, expected):
             )
             return row.scalar_one_or_none()
 
-    source = asyncio.get_event_loop().run_until_complete(_query())
+    source = asyncio.run(_query())
     assert source == expected, f"Expected source={expected}, got {source}"

@@ -1432,9 +1432,11 @@ class Container(containers.DeclarativeContainer):
         ),
     )
 
+    # E2E_MODE 的約定是「不打真的 LLM / embedding API」：與 agent 一樣強制走 fake
+    # （#65：原本只有 agent 生效，整合測試的語意搜尋真的打到 api.openai.com）
     _static_embedding_service = providers.Selector(
         providers.Callable(
-            lambda cfg: cfg.embedding_provider, config
+            lambda cfg: "fake" if cfg.e2e_mode else cfg.embedding_provider, config
         ),
         fake=providers.Factory(
             FakeEmbeddingService,
